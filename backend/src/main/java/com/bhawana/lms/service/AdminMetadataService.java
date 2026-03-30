@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.domain.ApiClientStatus;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
@@ -14,7 +15,8 @@ public class AdminMetadataService {
         return new AdminMetadataResponse(
                 enumNames(RoleCode.values()),
                 enumNames(LspStatus.values()),
-                enumNames(UserStatus.values())
+                enumNames(UserStatus.values()),
+                enumNames(ApiClientStatus.values())
         );
     }
 
@@ -27,7 +29,8 @@ public class AdminMetadataService {
     public record AdminMetadataResponse(
             List<String> roleCodes,
             List<String> lspStatuses,
-            List<String> userStatuses
+            List<String> userStatuses,
+            List<String> apiClientStatuses
     ) {
     }
 }

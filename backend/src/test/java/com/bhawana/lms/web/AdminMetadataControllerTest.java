@@ -33,7 +33,9 @@ class AdminMetadataControllerTest {
                 .andExpect(jsonPath("$.lspStatuses[0]").value("ACTIVE"))
                 .andExpect(jsonPath("$.lspStatuses[1]").value("INACTIVE"))
                 .andExpect(jsonPath("$.userStatuses[0]").value("ACTIVE"))
-                .andExpect(jsonPath("$.userStatuses[1]").value("INACTIVE"));
+                .andExpect(jsonPath("$.userStatuses[1]").value("INACTIVE"))
+                .andExpect(jsonPath("$.apiClientStatuses[0]").value("ACTIVE"))
+                .andExpect(jsonPath("$.apiClientStatuses[1]").value("INACTIVE"));
     }
 
     @Test
