@@ -6,6 +6,7 @@ import { Input } from '../../components/ui/input'
 import {
   createLoanProduct,
   getAdminMetadata,
+  listProductAuditEvents,
   listLoanProducts,
   listLsps,
   listProductLspMappings,
@@ -13,6 +14,7 @@ import {
   updateLoanProduct,
   type AdminMetadata,
   type LspRecord,
+  type ProductAuditEventRecord,
   type LoanProductRecord,
   type ProductLspMappingRecord,
   type LoanProductStatus,
@@ -83,10 +85,45 @@ function currencyLabel(value: number) {
   }).format(value)
 }
 
+function auditActionLabel(action: string) {
+  switch (action) {
+    case 'PRODUCT_CREATED':
+      return 'Created'
+    case 'PRODUCT_UPDATED':
+      return 'Updated'
+    case 'PRODUCT_MAPPINGS_REPLACED':
+      return 'Mappings replaced'
+    case 'PRODUCT_MAPPING_ENTRY_UPDATED':
+      return 'Mapping entry updated'
+    default:
+      return action.replaceAll('_', ' ')
+  }
+}
+
+function auditActionVariant(action: string): 'success' | 'warning' | 'destructive' {
+  if (action === 'PRODUCT_CREATED') {
+    return 'success'
+  }
+
+  if (action === 'PRODUCT_UPDATED') {
+    return 'warning'
+  }
+
+  return 'destructive'
+}
+
+function formatAuditTimestamp(value: string) {
+  return new Intl.DateTimeFormat('en-IN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value))
+}
+
 export function ProductConfigurationPage() {
   const [products, setProducts] = useState<LoanProductRecord[]>([])
   const [lsps, setLsps] = useState<LspRecord[]>([])
   const [productMappings, setProductMappings] = useState<ProductLspMappingRecord[]>([])
+  const [productAuditEvents, setProductAuditEvents] = useState<ProductAuditEventRecord[]>([])
   const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
   const [editingProductId, setEditingProductId] = useState<string | null>(null)
   const [selectedProductId, setSelectedProductId] = useState('')
@@ -95,8 +132,11 @@ export function ProductConfigurationPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [mappingSubmitting, setMappingSubmitting] = useState(false)
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditRefreshToken, setAuditRefreshToken] = useState(0)
   const [error, setError] = useState('')
   const [mappingError, setMappingError] = useState('')
+  const [auditError, setAuditError] = useState('')
 
   const statusOptions = useMemo(
     () => metadata?.loanProductStatuses ?? ['DRAFT', 'ACTIVE', 'INACTIVE'],
@@ -167,6 +207,44 @@ export function ProductConfigurationPage() {
     setSelectedLspIds(mappingByProduct.get(selectedProductId) ?? [])
   }, [mappingByProduct, selectedProductId])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadAuditEvents() {
+      if (!selectedProductId) {
+        setProductAuditEvents([])
+        setAuditError('')
+        return
+      }
+
+      setAuditLoading(true)
+      setAuditError('')
+
+      try {
+        const auditResponse = await listProductAuditEvents(selectedProductId)
+        if (!cancelled) {
+          setProductAuditEvents(auditResponse)
+        }
+      } catch (loadError) {
+        const message =
+          loadError instanceof Error ? loadError.message : 'Unable to load product audit trail.'
+        if (!cancelled) {
+          setAuditError(message)
+        }
+      } finally {
+        if (!cancelled) {
+          setAuditLoading(false)
+        }
+      }
+    }
+
+    void loadAuditEvents()
+
+    return () => {
+      cancelled = true
+    }
+  }, [auditRefreshToken, selectedProductId])
+
   function resetForm() {
     setEditingProductId(null)
     setForm(buildFormState(null, (statusOptions[0] as LoanProductStatus | '') || 'DRAFT'))
@@ -174,6 +252,7 @@ export function ProductConfigurationPage() {
 
   function startEdit(product: LoanProductRecord) {
     setEditingProductId(product.id)
+    setSelectedProductId(product.id)
     setForm(buildFormState(product, product.status))
     setError('')
   }
@@ -206,6 +285,7 @@ export function ProductConfigurationPage() {
         })
         return next.sort((left, right) => left.productId.localeCompare(right.productId))
       })
+      setAuditRefreshToken((current) => current + 1)
     } catch (saveError) {
       const message =
         saveError instanceof Error ? saveError.message : 'Unable to save product mappings.'
@@ -247,6 +327,7 @@ export function ProductConfigurationPage() {
         return next.sort((left, right) => left.code.localeCompare(right.code))
       })
       setSelectedProductId(saved.id)
+      setAuditRefreshToken((current) => current + 1)
       resetForm()
     } catch (submitError) {
       const message =
@@ -314,147 +395,147 @@ export function ProductConfigurationPage() {
 
       <div className="form-stack">
         <Card>
-        <CardHeader>
-          <div className="section-eyebrow">{editingProductId ? 'Edit product' : 'Create product'}</div>
-          <CardTitle>{editingProductId ? 'Update configuration' : 'Add loan product'}</CardTitle>
-          <CardDescription>
-            Use this form to define pricing ranges and activation state for product rollout.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="form-grid" onSubmit={handleSubmit}>
-            <div className="field-stack">
-              <label htmlFor="product-code">Product code</label>
-              <Input
-                id="product-code"
-                value={form.code}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))
-                }
-                placeholder="SALARY-PLUS"
-              />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="product-name">Product name</label>
-              <Input
-                id="product-name"
-                value={form.name}
-                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                placeholder="Salary Plus"
-              />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="min-principal">Minimum principal</label>
-              <Input
-                id="min-principal"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.minPrincipal}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, minPrincipal: event.target.value }))
-                }
-              />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="max-principal">Maximum principal</label>
-              <Input
-                id="max-principal"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.maxPrincipal}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, maxPrincipal: event.target.value }))
-                }
-              />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="interest-rate">Interest rate %</label>
-              <Input
-                id="interest-rate"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.interestRate}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, interestRate: event.target.value }))
-                }
-              />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="processing-fee-rate">Processing fee %</label>
-              <Input
-                id="processing-fee-rate"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.processingFeeRate}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, processingFeeRate: event.target.value }))
-                }
-              />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="min-tenure">Minimum tenure (months)</label>
-              <Input
-                id="min-tenure"
-                type="number"
-                min="1"
-                step="1"
-                value={form.minTenureMonths}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, minTenureMonths: event.target.value }))
-                }
-              />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="max-tenure">Maximum tenure (months)</label>
-              <Input
-                id="max-tenure"
-                type="number"
-                min="1"
-                step="1"
-                value={form.maxTenureMonths}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, maxTenureMonths: event.target.value }))
-                }
-              />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="product-status">Status</label>
-              <select
-                id="product-status"
-                className="ui-input"
-                value={form.status}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    status: event.target.value as LoanProductStatus,
-                  }))
-                }
-              >
-                <option value="">Select a status</option>
-                {statusOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {error ? <div className="empty-state">{error}</div> : null}
-            <div className="inline-actions">
-              <Button disabled={submitting} type="submit">
-                {submitting ? 'Saving...' : editingProductId ? 'Save changes' : 'Create product'}
-              </Button>
-              {editingProductId ? (
-                <Button type="button" variant="ghost" onClick={resetForm}>
-                  Cancel edit
+          <CardHeader>
+            <div className="section-eyebrow">{editingProductId ? 'Edit product' : 'Create product'}</div>
+            <CardTitle>{editingProductId ? 'Update configuration' : 'Add loan product'}</CardTitle>
+            <CardDescription>
+              Use this form to define pricing ranges and activation state for product rollout.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="form-grid" onSubmit={handleSubmit}>
+              <div className="field-stack">
+                <label htmlFor="product-code">Product code</label>
+                <Input
+                  id="product-code"
+                  value={form.code}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))
+                  }
+                  placeholder="SALARY-PLUS"
+                />
+              </div>
+              <div className="field-stack">
+                <label htmlFor="product-name">Product name</label>
+                <Input
+                  id="product-name"
+                  value={form.name}
+                  onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="Salary Plus"
+                />
+              </div>
+              <div className="field-stack">
+                <label htmlFor="min-principal">Minimum principal</label>
+                <Input
+                  id="min-principal"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.minPrincipal}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, minPrincipal: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="field-stack">
+                <label htmlFor="max-principal">Maximum principal</label>
+                <Input
+                  id="max-principal"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.maxPrincipal}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, maxPrincipal: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="field-stack">
+                <label htmlFor="interest-rate">Interest rate %</label>
+                <Input
+                  id="interest-rate"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.interestRate}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, interestRate: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="field-stack">
+                <label htmlFor="processing-fee-rate">Processing fee %</label>
+                <Input
+                  id="processing-fee-rate"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.processingFeeRate}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, processingFeeRate: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="field-stack">
+                <label htmlFor="min-tenure">Minimum tenure (months)</label>
+                <Input
+                  id="min-tenure"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.minTenureMonths}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, minTenureMonths: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="field-stack">
+                <label htmlFor="max-tenure">Maximum tenure (months)</label>
+                <Input
+                  id="max-tenure"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.maxTenureMonths}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, maxTenureMonths: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="field-stack">
+                <label htmlFor="product-status">Status</label>
+                <select
+                  id="product-status"
+                  className="ui-input"
+                  value={form.status}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      status: event.target.value as LoanProductStatus,
+                    }))
+                  }
+                >
+                  <option value="">Select a status</option>
+                  {statusOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {error ? <div className="empty-state">{error}</div> : null}
+              <div className="inline-actions">
+                <Button disabled={submitting} type="submit">
+                  {submitting ? 'Saving...' : editingProductId ? 'Save changes' : 'Create product'}
                 </Button>
-              ) : null}
-            </div>
-          </form>
-        </CardContent>
+                {editingProductId ? (
+                  <Button type="button" variant="ghost" onClick={resetForm}>
+                    Cancel edit
+                  </Button>
+                ) : null}
+              </div>
+            </form>
+          </CardContent>
         </Card>
 
         <Card>
@@ -551,6 +632,55 @@ export function ProductConfigurationPage() {
                 </div>
               </>
             ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="section-eyebrow">Audit trail</div>
+            <CardTitle>Product change history</CardTitle>
+            <CardDescription>
+              Review who changed the selected product, when it changed, and what was updated.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!selectedProduct ? (
+              <div className="empty-state">Select a product to review its audit history.</div>
+            ) : (
+              <>
+                <div className="inline-actions" style={{ marginBottom: '1rem' }}>
+                  <Badge variant="warning">{selectedProduct.code}</Badge>
+                  <Badge>{productAuditEvents.length} events</Badge>
+                </div>
+                {auditLoading ? <div className="empty-state">Loading audit trail...</div> : null}
+                {auditError ? <div className="empty-state">{auditError}</div> : null}
+                {!auditLoading && !auditError && !productAuditEvents.length ? (
+                  <div className="empty-state">No audit entries recorded for this product yet.</div>
+                ) : null}
+                {!auditLoading && !auditError && productAuditEvents.length ? (
+                  <div className="table-grid">
+                    {productAuditEvents.map((event) => (
+                      <div className="table-row" key={event.id}>
+                        <div>
+                          <strong>{auditActionLabel(event.action)}</strong>
+                          <p className="helper-copy">{event.summary}</p>
+                          <p className="helper-copy">{formatAuditTimestamp(event.createdAt)}</p>
+                          {event.correlationId ? (
+                            <p className="helper-copy">Correlation: {event.correlationId}</p>
+                          ) : null}
+                        </div>
+                        <div className="inline-actions">
+                          <Badge variant={auditActionVariant(event.action)}>
+                            {auditActionLabel(event.action)}
+                          </Badge>
+                          <Badge variant="warning">{event.actorUsername}</Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -117,6 +117,16 @@ export type ProductLspMappingRecord = {
   lspIds: string[]
 }
 
+export type ProductAuditEventRecord = {
+  id: string
+  productId: string
+  action: string
+  actorUsername: string
+  summary: string
+  correlationId: string | null
+  createdAt: string
+}
+
 export class ApiError extends Error {
   status: number
   body: string
@@ -366,6 +376,12 @@ export function listLoanProducts() {
 
 export function listProductLspMappings() {
   return requestJson<ProductLspMappingRecord[]>('/api/v1/internal/admin/product-lsp-mappings')
+}
+
+export function listProductAuditEvents(productId: string) {
+  return requestJson<ProductAuditEventRecord[]>(
+    `/api/v1/internal/admin/products/${productId}/audit-events`,
+  )
 }
 
 export function createLoanProduct(payload: {
