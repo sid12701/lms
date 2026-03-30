@@ -5,9 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Input } from '../../components/ui/input'
 import {
   createLoanApplication,
+  listLoanApplicationIntakeAudits,
   listLoanApplications,
   listLoanProducts,
   listLsps,
+  type LoanApplicationIntakeAuditRecord,
   type LoanApplicationRecord,
   type LoanProductRecord,
   type LspRecord,
@@ -72,11 +74,14 @@ function formatTimestamp(value: string) {
 
 export function LoanApplicationsPage() {
   const [applications, setApplications] = useState<LoanApplicationRecord[]>([])
+  const [intakeAudits, setIntakeAudits] = useState<LoanApplicationIntakeAuditRecord[]>([])
   const [lsps, setLsps] = useState<LspRecord[]>([])
   const [products, setProducts] = useState<LoanProductRecord[]>([])
   const [form, setForm] = useState<IntakeFormState>(initialFormState)
   const [filters, setFilters] = useState<ListFilterState>(initialFilterState)
+  const [selectedApplicationId, setSelectedApplicationId] = useState('')
   const [loading, setLoading] = useState(true)
+  const [auditLoading, setAuditLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -99,6 +104,9 @@ export function LoanApplicationsPage() {
         .sort((left, right) => left.localeCompare(right)),
     [applications],
   )
+  const selectedApplication =
+    applications.find((application) => application.id === selectedApplicationId) ?? null
+  const latestAudit = intakeAudits[0] ?? null
 
   async function loadApplications(nextFilters: ListFilterState) {
     const response = await listLoanApplications({
@@ -109,6 +117,9 @@ export function LoanApplicationsPage() {
       query: nextFilters.query.trim() || undefined,
     })
     setApplications(response)
+    setSelectedApplicationId((current) =>
+      response.some((application) => application.id === current) ? current : response[0]?.id ?? '',
+    )
   }
 
   useEffect(() => {
@@ -127,6 +138,7 @@ export function LoanApplicationsPage() {
 
         if (!cancelled) {
           setApplications(applicationResponse)
+          setSelectedApplicationId(applicationResponse[0]?.id ?? '')
           setLsps(lspResponse)
           setProducts(productResponse)
           setForm((current) => ({
@@ -191,13 +203,50 @@ export function LoanApplicationsPage() {
     }
   }, [filters, loading])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadIntakeAudit() {
+      if (!selectedApplicationId) {
+        setIntakeAudits([])
+        return
+      }
+
+      setAuditLoading(true)
+
+      try {
+        const response = await listLoanApplicationIntakeAudits(selectedApplicationId)
+        if (!cancelled) {
+          setIntakeAudits(response)
+        }
+      } catch (loadError) {
+        const message =
+          loadError instanceof Error ? loadError.message : 'Unable to load intake audit.'
+        if (!cancelled) {
+          setIntakeAudits([])
+          setError(message)
+        }
+      } finally {
+        if (!cancelled) {
+          setAuditLoading(false)
+        }
+      }
+    }
+
+    void loadIntakeAudit()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedApplicationId])
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitting(true)
     setError('')
 
     try {
-      await createLoanApplication({
+      const created = await createLoanApplication({
         lspId: form.lspId,
         productId: form.productId,
         externalLoanId: form.externalLoanId,
@@ -211,6 +260,7 @@ export function LoanApplicationsPage() {
       })
 
       await loadApplications(filters)
+      setSelectedApplicationId(created.id)
       setForm((current) => ({
         ...initialFormState,
         lspId: current.lspId,
@@ -332,7 +382,22 @@ export function LoanApplicationsPage() {
           {!loading && !error ? (
             <div className="table-grid">
               {applications.map((application) => (
-                <div className="table-row" key={application.id}>
+                <button
+                  className="table-row"
+                  key={application.id}
+                  onClick={() => setSelectedApplicationId(application.id)}
+                  style={{
+                    cursor: 'pointer',
+                    border: application.id === selectedApplicationId ? '1px solid var(--color-accent)' : undefined,
+                    background:
+                      application.id === selectedApplicationId
+                        ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)'
+                        : undefined,
+                    textAlign: 'left',
+                    width: '100%',
+                  }}
+                  type="button"
+                >
                   <div>
                     <strong>{application.borrowerFullName}</strong>
                     <p className="helper-copy">
@@ -347,7 +412,7 @@ export function LoanApplicationsPage() {
                   </span>
                   <span className="helper-copy">{application.externalLoanId}</span>
                   <span className="helper-copy">{formatTimestamp(application.createdAt)}</span>
-                </div>
+                </button>
               ))}
               {!applications.length ? (
                 <div className="empty-state">No loan applications matched the current filters.</div>
@@ -511,7 +576,72 @@ export function LoanApplicationsPage() {
             </form>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="section-eyebrow">Troubleshooting</div>
+            <CardTitle>Selected intake audit</CardTitle>
+            <CardDescription>
+              Inspect the persisted raw intake payload captured when the selected application was created.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {selectedApplication ? (
+              <div className="form-grid">
+                <div className="inline-actions">
+                  <Badge>{selectedApplication.externalLoanId}</Badge>
+                  <Badge variant="warning">{selectedApplication.status}</Badge>
+                </div>
+                <div className="helper-copy">
+                  Borrower: {selectedApplication.borrowerFullName} · {selectedApplication.borrowerPan}
+                </div>
+                <div className="helper-copy">
+                  Product: {selectedApplication.productCode} · Source: {selectedApplication.sourceChannel}
+                </div>
+                {auditLoading ? <div className="empty-state">Loading intake audit...</div> : null}
+                {!auditLoading && latestAudit ? (
+                  <>
+                    <div className="helper-copy">
+                      Captured {formatTimestamp(latestAudit.createdAt)} by {latestAudit.actorUsername}
+                    </div>
+                    <div className="helper-copy">
+                      Correlation ID: {latestAudit.correlationId ?? 'Not captured'}
+                    </div>
+                    <pre
+                      className="helper-copy"
+                      style={{
+                        margin: 0,
+                        maxHeight: '22rem',
+                        overflow: 'auto',
+                        padding: '1rem',
+                        borderRadius: '1rem',
+                        background: 'var(--color-panel-muted)',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {formatPayloadJson(latestAudit.payloadJson)}
+                    </pre>
+                  </>
+                ) : null}
+                {!auditLoading && !latestAudit ? (
+                  <div className="empty-state">No intake audit is available for the selected application.</div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="empty-state">Select a loan application to inspect its intake audit.</div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
+}
+
+function formatPayloadJson(payloadJson: string) {
+  try {
+    return JSON.stringify(JSON.parse(payloadJson), null, 2)
+  } catch {
+    return payloadJson
+  }
 }

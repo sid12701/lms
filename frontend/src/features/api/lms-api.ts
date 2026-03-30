@@ -148,6 +148,15 @@ export type LoanApplicationRecord = {
   createdAt: string
 }
 
+export type LoanApplicationIntakeAuditRecord = {
+  id: string
+  loanApplicationId: string
+  actorUsername: string
+  correlationId: string | null
+  payloadJson: string
+  createdAt: string
+}
+
 export class ApiError extends Error {
   status: number
   body: string
@@ -507,4 +516,10 @@ export function createLoanApplication(payload: {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+}
+
+export function listLoanApplicationIntakeAudits(applicationId: string) {
+  return requestJson<LoanApplicationIntakeAuditRecord[]>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/intake-audits`,
+  )
 }
