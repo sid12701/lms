@@ -58,10 +58,10 @@ class AuthControllerTest {
     @Test
     void protectedEndpointAcceptsJwtAuthorities() throws Exception {
         mockMvc.perform(get("/api/v1/internal/system/context")
-                        .with(jwt().jwt(jwt -> jwt
+                .with(jwt().jwt(jwt -> jwt
                                         .subject("ops.user")
                                         .claim("roles", List.of("OPS_USER")))
-                                .authorities(() -> "ROLE_OPS_USER")))
+                        .authorities(() -> "ROLE_OPS_USER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("ops.user"))
                 .andExpect(jsonPath("$.roles[0]").value("OPS_USER"));
