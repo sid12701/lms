@@ -1,5 +1,9 @@
 package com.bhawana.lms.security;
 
+import com.bhawana.lms.domain.AppRole;
+import com.bhawana.lms.domain.AppUser;
+import com.bhawana.lms.domain.UserStatus;
+import com.bhawana.lms.repo.AppUserRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.List;
@@ -22,6 +26,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -47,24 +52,22 @@ public class SecurityConfig {
     }
 
     @Bean
-    UserDetailsService userDetailsService(SecurityProperties securityProperties, PasswordEncoder passwordEncoder) {
+    UserDetailsService userDetailsService(
+            SecurityProperties securityProperties,
+            AppUserRepository appUserRepository,
+            PasswordEncoder passwordEncoder
+    ) {
         SecurityProperties.BootstrapUser bootstrapUser = securityProperties.getBootstrapUser();
-
-        List<String> roles = bootstrapUser.getRoles().stream()
-                .map(role -> role.startsWith("ROLE_") ? role.substring("ROLE_".length()) : role)
-                .toList();
-
-        UserDetails user = User.builder()
-                .username(bootstrapUser.getUsername())
-                .password(passwordEncoder.encode(bootstrapUser.getPassword()))
-                .roles(roles.toArray(String[]::new))
-                .build();
+        UserDetails bootstrapUserDetails = bootstrapUserDetails(bootstrapUser, passwordEncoder);
 
         return username -> {
-            if (!user.getUsername().equals(username)) {
-                throw new org.springframework.security.core.userdetails.UsernameNotFoundException(username);
+            if (bootstrapUser.getUsername().equalsIgnoreCase(username)) {
+                return bootstrapUserDetails;
             }
-            return user;
+
+            AppUser appUser = appUserRepository.findByUsernameIgnoreCase(username)
+                    .orElseThrow(() -> new UsernameNotFoundException(username));
+            return appUserDetails(appUser);
         };
     }
 
@@ -160,5 +163,39 @@ public class SecurityConfig {
                 .map(GrantedAuthority.class::cast)
                 .toList();
         };
+    }
+
+    private static UserDetails bootstrapUserDetails(SecurityProperties.BootstrapUser bootstrapUser, PasswordEncoder passwordEncoder) {
+        List<String> roles = bootstrapUser.getRoles().stream()
+                .map(role -> role.startsWith("ROLE_") ? role.substring("ROLE_".length()) : role)
+                .toList();
+
+        return User.builder()
+                .username(bootstrapUser.getUsername())
+                .password(passwordEncoder.encode(bootstrapUser.getPassword()))
+                .roles(roles.toArray(String[]::new))
+                .disabled(false)
+                .accountExpired(false)
+                .accountLocked(false)
+                .credentialsExpired(false)
+                .build();
+    }
+
+    private static UserDetails appUserDetails(AppUser appUser) {
+        List<String> roles = appUser.getRoles().stream()
+                .map(AppRole::getCode)
+                .map(Enum::name)
+                .toList();
+
+        boolean enabled = appUser.getStatus() == UserStatus.ACTIVE;
+        return User.builder()
+                .username(appUser.getUsername())
+                .password(appUser.getPasswordHash())
+                .roles(roles.toArray(String[]::new))
+                .disabled(!enabled)
+                .accountExpired(false)
+                .accountLocked(false)
+                .credentialsExpired(false)
+                .build();
     }
 }

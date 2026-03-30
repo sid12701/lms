@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -45,26 +46,13 @@ public class AuthController {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.username(), request.password())
         );
+        return mintTokenResponse(authentication);
+    }
 
-        Instant issuedAt = Instant.now();
-        Instant expiresAt = issuedAt.plus(securityProperties.getJwt().getTtl());
-
-        List<String> roles = authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .map(role -> role.startsWith("ROLE_") ? role.substring("ROLE_".length()) : role)
-                .toList();
-
-        JwtClaimsSet claims = JwtClaimsSet.builder()
-                .issuer(securityProperties.getJwt().getIssuer())
-                .subject(authentication.getName())
-                .issuedAt(issuedAt)
-                .expiresAt(expiresAt)
-                .claim("roles", roles)
-                .build();
-
-        JwsHeader jwsHeader = JwsHeader.with(MacAlgorithm.HS256).build();
-        String token = jwtEncoder.encode(JwtEncoderParameters.from(jwsHeader, claims)).getTokenValue();
-        return new TokenResponse(token, "Bearer", expiresAt.getEpochSecond() - issuedAt.getEpochSecond());
+    @PostMapping("/refresh")
+    @ResponseStatus(HttpStatus.OK)
+    public TokenResponse refresh(Authentication authentication) {
+        return mintTokenResponse(authentication);
     }
 
     public record LoginRequest(
@@ -78,5 +66,31 @@ public class AuthController {
             String tokenType,
             long expiresInSeconds
     ) {
+    }
+
+    private TokenResponse mintTokenResponse(Authentication authentication) {
+        Instant issuedAt = Instant.now();
+        Instant expiresAt = issuedAt.plus(securityProperties.getJwt().getTtl());
+        List<String> roles = extractRoles(authentication);
+
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer(securityProperties.getJwt().getIssuer())
+                .subject(authentication.getName())
+                .issuedAt(issuedAt)
+                .expiresAt(expiresAt)
+                .id(UUID.randomUUID().toString())
+                .claim("roles", roles)
+                .build();
+
+        JwsHeader jwsHeader = JwsHeader.with(MacAlgorithm.HS256).build();
+        String token = jwtEncoder.encode(JwtEncoderParameters.from(jwsHeader, claims)).getTokenValue();
+        return new TokenResponse(token, "Bearer", expiresAt.getEpochSecond() - issuedAt.getEpochSecond());
+    }
+
+    private static List<String> extractRoles(Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .map(role -> role.startsWith("ROLE_") ? role.substring("ROLE_".length()) : role)
+                .toList();
     }
 }

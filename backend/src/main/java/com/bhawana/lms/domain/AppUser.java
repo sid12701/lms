@@ -97,6 +97,10 @@ public class AppUser {
         return email;
     }
 
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
     public UserStatus getStatus() {
         return status;
     }
