@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,8 +38,12 @@ class ProductLspMappingAdminControllerTest {
     @Autowired
     private LoanProductLspMappingRepository loanProductLspMappingRepository;
 
+    @Autowired
+    private LoanProductAuditEventRepository loanProductAuditEventRepository;
+
     @BeforeEach
     void setUp() {
+        loanProductAuditEventRepository.deleteAll();
         loanProductLspMappingRepository.deleteAll();
     }
 
@@ -66,6 +71,13 @@ class ProductLspMappingAdminControllerTest {
                 .andExpect(jsonPath("$[0].lspId").value(lsp.id()))
                 .andExpect(jsonPath("$[0].productId").value(product.id()))
                 .andExpect(jsonPath("$[0].enabled").value(true));
+
+        mockMvc.perform(get("/api/v1/internal/admin/products/{productId}/audit-events", product.id())
+                        .with(productAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].action").value("PRODUCT_MAPPING_ENTRY_UPDATED"))
+                .andExpect(jsonPath("$[0].actorUsername").value("product.admin"))
+                .andExpect(jsonPath("$[0].summary").value(org.hamcrest.Matchers.containsString(lsp.code())));
     }
 
     @Test

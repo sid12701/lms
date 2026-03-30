@@ -1,9 +1,13 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.LoanProduct;
+import com.bhawana.lms.domain.LoanProductAuditAction;
+import com.bhawana.lms.domain.LoanProductAuditEvent;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.Lsp;
+import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LspRepository;
@@ -12,6 +16,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -20,15 +26,18 @@ public class ProductConfigurationService {
     private final LoanProductRepository loanProductRepository;
     private final LspRepository lspRepository;
     private final LoanProductLspMappingRepository loanProductLspMappingRepository;
+    private final LoanProductAuditEventRepository loanProductAuditEventRepository;
 
     public ProductConfigurationService(
             LoanProductRepository loanProductRepository,
             LspRepository lspRepository,
-            LoanProductLspMappingRepository loanProductLspMappingRepository
+            LoanProductLspMappingRepository loanProductLspMappingRepository,
+            LoanProductAuditEventRepository loanProductAuditEventRepository
     ) {
         this.loanProductRepository = loanProductRepository;
         this.lspRepository = lspRepository;
         this.loanProductLspMappingRepository = loanProductLspMappingRepository;
+        this.loanProductAuditEventRepository = loanProductAuditEventRepository;
     }
 
     @Transactional(readOnly = true)
@@ -74,7 +83,13 @@ public class ProductConfigurationService {
                 maxTenureMonths,
                 status
         );
-        return loanProductRepository.save(product);
+        LoanProduct savedProduct = loanProductRepository.save(product);
+        recordAuditEvent(
+                savedProduct,
+                LoanProductAuditAction.PRODUCT_CREATED,
+                "Created product " + savedProduct.getCode() + " with status " + savedProduct.getStatus().name()
+        );
+        return savedProduct;
     }
 
     @Transactional
@@ -113,7 +128,18 @@ public class ProductConfigurationService {
                 maxTenureMonths,
                 status
         );
-        return loanProductRepository.save(product);
+        LoanProduct savedProduct = loanProductRepository.save(product);
+        recordAuditEvent(
+                savedProduct,
+                LoanProductAuditAction.PRODUCT_UPDATED,
+                "Updated product " + savedProduct.getCode()
+                        + " to " + savedProduct.getStatus().name()
+                        + " with principal "
+                        + savedProduct.getMinPrincipal() + "-" + savedProduct.getMaxPrincipal()
+                        + " and tenure "
+                        + savedProduct.getMinTenureMonths() + "-" + savedProduct.getMaxTenureMonths() + " months"
+        );
+        return savedProduct;
     }
 
     @Transactional(readOnly = true)
@@ -150,18 +176,30 @@ public class ProductConfigurationService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<LoanProductAuditEvent> listAuditEvents(UUID productId) {
+        getProduct(productId);
+        return loanProductAuditEventRepository.findTop25ByLoanProduct_IdOrderByCreatedAtDesc(productId);
+    }
+
     @Transactional
     public LoanProductLspMapping upsertMapping(UUID lspId, UUID productId, boolean enabled) {
         LoanProduct product = getProduct(productId);
         Lsp lsp = lspRepository.findById(lspId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown LSP id: " + lspId));
 
-        return loanProductLspMappingRepository.findByLsp_IdAndLoanProduct_Id(lspId, productId)
+        LoanProductLspMapping mapping = loanProductLspMappingRepository.findByLsp_IdAndLoanProduct_Id(lspId, productId)
                 .map(existing -> {
                     existing.update(enabled);
                     return loanProductLspMappingRepository.save(existing);
                 })
                 .orElseGet(() -> loanProductLspMappingRepository.save(new LoanProductLspMapping(product, lsp, enabled)));
+        recordAuditEvent(
+                product,
+                LoanProductAuditAction.PRODUCT_MAPPING_ENTRY_UPDATED,
+                "Set mapping for LSP " + lsp.getCode() + " to " + (enabled ? "enabled" : "disabled")
+        );
+        return mapping;
     }
 
     @Transactional
@@ -181,6 +219,15 @@ public class ProductConfigurationService {
                 .map(lsp -> new LoanProductLspMapping(product, lsp, true))
                 .toList();
         loanProductLspMappingRepository.saveAll(mappings);
+        String mappedCodes = lsps.stream()
+                .map(Lsp::getCode)
+                .toList()
+                .toString();
+        recordAuditEvent(
+                product,
+                LoanProductAuditAction.PRODUCT_MAPPINGS_REPLACED,
+                "Replaced product mappings with " + lsps.size() + " LSPs " + mappedCodes
+        );
         return lsps;
     }
 
@@ -217,6 +264,24 @@ public class ProductConfigurationService {
 
     private static String normalizeCode(String code) {
         return code.trim().toUpperCase();
+    }
+
+    private void recordAuditEvent(LoanProduct product, LoanProductAuditAction action, String summary) {
+        loanProductAuditEventRepository.save(new LoanProductAuditEvent(
+                product,
+                action,
+                currentActorUsername(),
+                summary,
+                CorrelationIdHolder.get()
+        ));
+    }
+
+    private static String currentActorUsername() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+            return "system";
+        }
+        return authentication.getName();
     }
 
     private static BigDecimal scaleCurrency(BigDecimal value) {

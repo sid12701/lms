@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -40,10 +41,14 @@ class LoanProductAdminControllerTest {
     private LoanProductRepository loanProductRepository;
 
     @Autowired
+    private LoanProductAuditEventRepository loanProductAuditEventRepository;
+
+    @Autowired
     private LoanProductLspMappingRepository loanProductLspMappingRepository;
 
     @BeforeEach
     void setUp() {
+        loanProductAuditEventRepository.deleteAll();
         loanProductLspMappingRepository.deleteAll();
         loanProductRepository.deleteAll();
     }
@@ -95,6 +100,13 @@ class LoanProductAdminControllerTest {
                 .andExpect(jsonPath("$.name").value("Salary Plus Prime"))
                 .andExpect(jsonPath("$.status").value("INACTIVE"))
                 .andExpect(jsonPath("$.maxTenureMonths").value(30));
+
+        mockMvc.perform(get("/api/v1/internal/admin/products/{productId}/audit-events", productId)
+                        .with(productAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].action").value("PRODUCT_UPDATED"))
+                .andExpect(jsonPath("$[0].actorUsername").value("product.admin"))
+                .andExpect(jsonPath("$[1].action").value("PRODUCT_CREATED"));
     }
 
     @Test
@@ -147,6 +159,12 @@ class LoanProductAdminControllerTest {
                 .andExpect(jsonPath("$.mappedLsps.length()").value(2))
                 .andExpect(jsonPath("$.mappedLsps[0].code").value(apex.code()))
                 .andExpect(jsonPath("$.mappedLsps[1].code").value(north.code()));
+
+        mockMvc.perform(get("/api/v1/internal/admin/products/{productId}/audit-events", product.id())
+                        .with(productAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].action").value("PRODUCT_MAPPINGS_REPLACED"))
+                .andExpect(jsonPath("$[0].summary").value(org.hamcrest.Matchers.containsString(apex.code())));
     }
 
     @Test

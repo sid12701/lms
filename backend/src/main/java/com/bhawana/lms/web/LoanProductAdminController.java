@@ -1,6 +1,7 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanProduct;
+import com.bhawana.lms.domain.LoanProductAuditEvent;
 import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.service.ProductConfigurationService;
@@ -11,6 +12,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -100,6 +102,13 @@ public class LoanProductAdminController {
         return new ProductMappingResponse(product.getId().toString(), product.getCode(), product.getName(), mappedLsps);
     }
 
+    @GetMapping("/{productId}/audit-events")
+    public List<ProductAuditEventResponse> listAuditEvents(@PathVariable UUID productId) {
+        return productConfigurationService.listAuditEvents(productId).stream()
+                .map(LoanProductAdminController::toAuditResponse)
+                .toList();
+    }
+
     private static ProductResponse toResponse(LoanProduct product) {
         return new ProductResponse(
                 product.getId().toString(),
@@ -121,6 +130,18 @@ public class LoanProductAdminController {
                 lsp.getCode(),
                 lsp.getName(),
                 lsp.getStatus().name()
+        );
+    }
+
+    private static ProductAuditEventResponse toAuditResponse(LoanProductAuditEvent event) {
+        return new ProductAuditEventResponse(
+                event.getId().toString(),
+                event.getLoanProduct().getId().toString(),
+                event.getAction().name(),
+                event.getActorUsername(),
+                event.getSummary(),
+                event.getCorrelationId(),
+                event.getCreatedAt()
         );
     }
 
@@ -174,6 +195,17 @@ public class LoanProductAdminController {
             String code,
             String name,
             String status
+    ) {
+    }
+
+    public record ProductAuditEventResponse(
+            String id,
+            String productId,
+            String action,
+            String actorUsername,
+            String summary,
+            String correlationId,
+            Instant createdAt
     ) {
     }
 }
