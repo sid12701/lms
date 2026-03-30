@@ -1,16 +1,26 @@
 # LMS
 
-Loan Management System workspace.
+Loan Management System workspace for the Bhawana multi-tenant platform.
 
-## Current scope
+## Scope
 
-- `backend/`: Spring Boot backend bootstrap and domain modules
-- `frontend/`: Angular application to be added separately
-- `infra/`: local infrastructure and environment bootstrap
-- `docs/`: architecture, planning, and design references
+- Spring Boot backend for loan origination, lifecycle, servicing, reporting, and integrations
+- Angular frontend for internal operations and selective LSP access
+- Local infrastructure for PostgreSQL, Redis, RabbitMQ, MinIO, and MailHog
+- Architecture, planning, and UI design references under `docs/`
 
-## Delivery approach
+## Current Structure
 
-- Keep backend and frontend streams isolated where possible.
-- Prefer small, reviewable commits tied to a single checkpoint.
-- Use the roadmap in `docs/planning/implementation-roadmap.md` as the build sequence.
+```text
+backend/  Spring Boot service and domain modules
+docs/     Architecture, roadmap, and design references
+infra/    Local development infrastructure and deployment scaffolding
+```
+
+## Delivery Notes
+
+- The project starts as a modular monolith backend with a separate SPA frontend.
+- Backend and frontend should evolve in parallel, with small commits for each verified checkpoint.
+- Current architecture and roadmap references live in:
+  - `docs/architecture/lms-blueprint.md`
+  - `docs/planning/implementation-roadmap.md`

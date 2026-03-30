@@ -1,15 +1,32 @@
-backend/target/
-frontend/node_modules/
-frontend/dist/
+.DS_Store
+Thumbs.db
 
 .idea/
 .vscode/
+*.iml
 
-.DS_Store
-Thumbs.db
+*.log
+logs/
+tmp/
 
 .env
 .env.*
 !.env.example
+.env.local
+.env.test
 
-*.log
+backend/.gradle/
+backend/build/
+backend/out/
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+
+frontend/.angular/
+frontend/dist/
+frontend/node_modules/
+frontend/.cache/
+frontend/coverage/
+
+infra/data/
+infra/volumes/
+infra/.env
