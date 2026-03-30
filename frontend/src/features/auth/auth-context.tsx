@@ -99,7 +99,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
     }
 
-    void refreshStoredSession(storedAccessToken)
+    void refreshStoredSession(currentSession.accessToken)
 
     return () => {
       cancelled = true

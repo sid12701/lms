@@ -13,8 +13,10 @@ import {
   createUser,
   getAdminMetadata,
   listUsers,
+  resetUserPassword,
   type AdminMetadata,
   type RoleCode,
+  type ResetPasswordResponse,
   type UserRecord,
   type UserStatus,
 } from '../api/lms-api'
@@ -37,6 +39,8 @@ export function UsersPage() {
   const [status, setStatus] = useState<UserStatus | ''>('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [resettingUserId, setResettingUserId] = useState('')
+  const [resetResult, setResetResult] = useState<ResetPasswordResponse | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -108,6 +112,22 @@ export function UsersPage() {
     }
   }
 
+  async function handleResetPassword(userId: string) {
+    setResettingUserId(userId)
+    setError('')
+    setResetResult(null)
+
+    try {
+      const result = await resetUserPassword(userId)
+      setResetResult(result)
+    } catch (resetError) {
+      const message = resetError instanceof Error ? resetError.message : 'Unable to reset password.'
+      setError(message)
+    } finally {
+      setResettingUserId('')
+    }
+  }
+
   return (
     <div className="users-layout">
       <Card className="list-card">
@@ -136,6 +156,14 @@ export function UsersPage() {
                   <Badge variant={statusVariant(user.status)}>{user.status}</Badge>
                   <Badge>{user.roles[0] ?? 'UNASSIGNED'}</Badge>
                   <span>{user.lspName}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={resettingUserId === user.id}
+                    onClick={() => handleResetPassword(user.id)}
+                  >
+                    {resettingUserId === user.id ? 'Resetting...' : 'Reset password'}
+                  </Button>
                 </div>
               ))}
               {!users.length ? <div className="empty-state">No users found.</div> : null}
@@ -143,6 +171,33 @@ export function UsersPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      {resetResult ? (
+        <Card className="content-card">
+          <CardHeader>
+            <div className="section-eyebrow">Temporary password issued</div>
+            <CardTitle>{resetResult.username}</CardTitle>
+            <CardDescription>
+              Copy this password now. It is shown only once after reset.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="secret-panel">
+              <div className="secret-panel__row">
+                <span>User</span>
+                <strong>{resetResult.username}</strong>
+              </div>
+              <div className="secret-panel__row">
+                <span>Temporary password</span>
+                <strong>{resetResult.temporaryPassword}</strong>
+              </div>
+              <Button type="button" variant="ghost" onClick={() => setResetResult(null)}>
+                Acknowledge and hide password
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

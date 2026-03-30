@@ -71,6 +71,12 @@ export type UserRecord = {
   roles: string[]
 }
 
+export type ResetPasswordResponse = {
+  id: string
+  username: string
+  temporaryPassword: string
+}
+
 export type ApiClientRecord = {
   id: string
   clientId: string
@@ -234,6 +240,12 @@ export function createUser(payload: {
   return requestJson<UserRecord>('/api/v1/internal/admin/users', {
     method: 'POST',
     body: JSON.stringify(payload),
+  })
+}
+
+export function resetUserPassword(userId: string) {
+  return requestJson<ResetPasswordResponse>(`/api/v1/internal/admin/users/${userId}/reset-password`, {
+    method: 'POST',
   })
 }
 
