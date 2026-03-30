@@ -1,10 +1,15 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.domain.LoanProduct;
+import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
+import com.bhawana.lms.domain.Lsp;
+import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
+import com.bhawana.lms.repo.LspRepository;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,9 +18,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProductConfigurationService {
 
     private final LoanProductRepository loanProductRepository;
+    private final LspRepository lspRepository;
+    private final LoanProductLspMappingRepository loanProductLspMappingRepository;
 
-    public ProductConfigurationService(LoanProductRepository loanProductRepository) {
+    public ProductConfigurationService(
+            LoanProductRepository loanProductRepository,
+            LspRepository lspRepository,
+            LoanProductLspMappingRepository loanProductLspMappingRepository
+    ) {
         this.loanProductRepository = loanProductRepository;
+        this.lspRepository = lspRepository;
+        this.loanProductLspMappingRepository = loanProductLspMappingRepository;
     }
 
     @Transactional(readOnly = true)
@@ -101,6 +114,77 @@ public class ProductConfigurationService {
                 status
         );
         return loanProductRepository.save(product);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Lsp> listProductMappings(UUID productId) {
+        getProduct(productId);
+        return loanProductLspMappingRepository.findAllByLoanProduct_Id(productId).stream()
+                .map(LoanProductLspMapping::getLsp)
+                .sorted(java.util.Comparator.comparing(Lsp::getCode))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductLspMappingView> listAllProductMappings() {
+        return loanProductLspMappingRepository.findAll().stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        mapping -> mapping.getLoanProduct().getId(),
+                        java.util.TreeMap::new,
+                        java.util.stream.Collectors.mapping(mapping -> mapping.getLsp().getId(), java.util.stream.Collectors.toCollection(java.util.TreeSet::new))
+                ))
+                .entrySet().stream()
+                .map(entry -> new ProductLspMappingView(
+                        entry.getKey(),
+                        List.copyOf(entry.getValue())
+                ))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanProductLspMapping> listMappings() {
+        return loanProductLspMappingRepository.findAll().stream()
+                .sorted(java.util.Comparator
+                        .comparing((LoanProductLspMapping mapping) -> mapping.getLsp().getCode())
+                        .thenComparing(mapping -> mapping.getLoanProduct().getCode()))
+                .toList();
+    }
+
+    @Transactional
+    public LoanProductLspMapping upsertMapping(UUID lspId, UUID productId, boolean enabled) {
+        LoanProduct product = getProduct(productId);
+        Lsp lsp = lspRepository.findById(lspId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown LSP id: " + lspId));
+
+        return loanProductLspMappingRepository.findByLsp_IdAndLoanProduct_Id(lspId, productId)
+                .map(existing -> {
+                    existing.update(enabled);
+                    return loanProductLspMappingRepository.save(existing);
+                })
+                .orElseGet(() -> loanProductLspMappingRepository.save(new LoanProductLspMapping(product, lsp, enabled)));
+    }
+
+    @Transactional
+    public List<Lsp> replaceProductMappings(UUID productId, Set<UUID> lspIds) {
+        LoanProduct product = getProduct(productId);
+        Set<UUID> distinctLspIds = Set.copyOf(lspIds);
+        List<Lsp> lsps = lspRepository.findAllById(distinctLspIds).stream()
+                .sorted(java.util.Comparator.comparing(Lsp::getCode))
+                .toList();
+
+        if (lsps.size() != distinctLspIds.size()) {
+            throw new IllegalArgumentException("One or more requested LSP ids are not available.");
+        }
+
+        loanProductLspMappingRepository.deleteByLoanProduct_Id(productId);
+        List<LoanProductLspMapping> mappings = lsps.stream()
+                .map(lsp -> new LoanProductLspMapping(product, lsp, true))
+                .toList();
+        loanProductLspMappingRepository.saveAll(mappings);
+        return lsps;
+    }
+
+    public record ProductLspMappingView(UUID productId, List<UUID> lspIds) {
     }
 
     private static void validateRanges(

@@ -2,6 +2,7 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductStatus;
+import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.service.ProductConfigurationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
@@ -11,6 +12,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -77,6 +79,27 @@ public class LoanProductAdminController {
         return toResponse(product);
     }
 
+    @GetMapping("/{productId}/mappings")
+    public ProductMappingResponse getProductMappings(@PathVariable UUID productId) {
+        LoanProduct product = productConfigurationService.getProduct(productId);
+        List<LspMappingItem> mappedLsps = productConfigurationService.listProductMappings(productId).stream()
+                .map(LoanProductAdminController::toLspMappingItem)
+                .toList();
+        return new ProductMappingResponse(product.getId().toString(), product.getCode(), product.getName(), mappedLsps);
+    }
+
+    @PutMapping("/{productId}/mappings")
+    public ProductMappingResponse replaceProductMappings(
+            @PathVariable UUID productId,
+            @Valid @RequestBody ProductMappingRequest request
+    ) {
+        LoanProduct product = productConfigurationService.getProduct(productId);
+        List<LspMappingItem> mappedLsps = productConfigurationService.replaceProductMappings(productId, request.lspIds()).stream()
+                .map(LoanProductAdminController::toLspMappingItem)
+                .toList();
+        return new ProductMappingResponse(product.getId().toString(), product.getCode(), product.getName(), mappedLsps);
+    }
+
     private static ProductResponse toResponse(LoanProduct product) {
         return new ProductResponse(
                 product.getId().toString(),
@@ -89,6 +112,15 @@ public class LoanProductAdminController {
                 product.getMinTenureMonths(),
                 product.getMaxTenureMonths(),
                 product.getStatus().name()
+        );
+    }
+
+    private static LspMappingItem toLspMappingItem(Lsp lsp) {
+        return new LspMappingItem(
+                lsp.getId().toString(),
+                lsp.getCode(),
+                lsp.getName(),
+                lsp.getStatus().name()
         );
     }
 
@@ -120,6 +152,27 @@ public class LoanProductAdminController {
             BigDecimal processingFeeRate,
             Integer minTenureMonths,
             Integer maxTenureMonths,
+            String status
+    ) {
+    }
+
+    public record ProductMappingRequest(
+            @NotNull Set<UUID> lspIds
+    ) {
+    }
+
+    public record ProductMappingResponse(
+            String productId,
+            String productCode,
+            String productName,
+            List<LspMappingItem> mappedLsps
+    ) {
+    }
+
+    public record LspMappingItem(
+            String id,
+            String code,
+            String name,
             String status
     ) {
     }

@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -32,16 +33,17 @@ class AdminDirectoryControllerTest {
 
     @Test
     void systemAdminCanCreateAndListLspsAndUsers() throws Exception {
+        String lspCode = "APEX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         MvcResult lspResult = mockMvc.perform(post("/api/v1/internal/admin/lsps")
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "code", "APEX",
-                                "name", "Apex Finance",
+                                "code", lspCode,
+                                "name", "Apex Finance " + lspCode,
                                 "status", "ACTIVE"
                         ))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value("APEX"))
+                .andExpect(jsonPath("$.code").value(lspCode))
                 .andReturn();
 
         JsonNode lspJson = objectMapper.readTree(lspResult.getResponse().getContentAsString());
@@ -49,7 +51,7 @@ class AdminDirectoryControllerTest {
 
         mockMvc.perform(get("/api/v1/internal/admin/lsps").with(systemAdmin()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].code").value("APEX"));
+                .andExpect(jsonPath("$[0].code").value(lspCode));
 
         mockMvc.perform(post("/api/v1/internal/admin/users")
                         .with(systemAdmin())
@@ -65,7 +67,7 @@ class AdminDirectoryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("apex.ops"))
                 .andExpect(jsonPath("$.roles[0]").value("LSP_UI_WRITE"))
-                .andExpect(jsonPath("$.lspName").value("Apex Finance"));
+                .andExpect(jsonPath("$.lspName").value("Apex Finance " + lspCode));
 
         mockMvc.perform(get("/api/v1/internal/admin/users").with(systemAdmin()))
                 .andExpect(status().isOk())
