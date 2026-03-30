@@ -25,3 +25,6 @@ app:
         - SYSTEM_ADMIN
     jwt:
       secret: change-me-test-secret-change-me-test-secret
+  seed:
+    sample-data:
+      enabled: false

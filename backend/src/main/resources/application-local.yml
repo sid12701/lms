@@ -24,6 +24,9 @@ app:
   security:
     jwt:
       secret: ${APP_SECURITY_JWT_SECRET:change-me-local-dev-secret-change-me-local-dev}
+  seed:
+    sample-data:
+      enabled: true
   storage:
     minio:
       endpoint: ${LMS_MINIO_ENDPOINT:http://localhost:9000}

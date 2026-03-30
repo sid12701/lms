@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface LspRepository extends JpaRepository<Lsp, UUID> {
 
     boolean existsByCodeIgnoreCase(String code);
+
+    java.util.Optional<Lsp> findByCodeIgnoreCase(String code);
 }
