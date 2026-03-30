@@ -311,6 +311,19 @@
     margin-top: 2rem;
   }
 
+  .borrower-enrichment-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .section-divider {
+    display: grid;
+    gap: 0.35rem;
+    padding-top: 0.25rem;
+    margin-top: 0.25rem;
+  }
+
   .field-stack {
     display: flex;
     flex-direction: column;
@@ -692,6 +705,25 @@
     }
   }
 
+  .borrower-summary__identity {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .borrower-summary__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    font-size: 0.84rem;
+    color: var(--color-muted);
+
+    & span {
+      padding: 0.35rem 0.65rem;
+      border-radius: 999px;
+      background: rgba(0, 6, 102, 0.05);
+    }
+  }
+
   .loan-workflow__headline-metrics {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -765,6 +797,11 @@
   .loan-detail-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem;
+  }
+
+  .detail-section {
+    display: grid;
     gap: 0.85rem;
   }
 
@@ -1155,6 +1192,10 @@
     grid-template-columns: 1fr;
   }
 
+  .borrower-enrichment-grid {
+    grid-template-columns: 1fr;
+  }
+
   .loan-workflow__summary {
     grid-template-columns: 1fr;
   }
@@ -1197,6 +1238,10 @@
   .loan-workflow__summary,
   .loan-history__item {
     padding: 1rem;
+  }
+
+  .borrower-enrichment-grid {
+    gap: 0.85rem;
   }
 
   .loan-transition-panel {

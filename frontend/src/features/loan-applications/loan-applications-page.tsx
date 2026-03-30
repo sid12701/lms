@@ -31,6 +31,11 @@ type IntakeFormState = {
   borrowerFullName: string
   borrowerMobile: string
   borrowerEmail: string
+  borrowerDateOfBirth: string
+  borrowerCity: string
+  borrowerState: string
+  borrowerEmploymentType: string
+  borrowerMonthlyIncome: string
   requestedAmount: string
   tenureMonths: string
 }
@@ -59,9 +64,24 @@ const initialFormState: IntakeFormState = {
   borrowerFullName: '',
   borrowerMobile: '',
   borrowerEmail: '',
+  borrowerDateOfBirth: '',
+  borrowerCity: '',
+  borrowerState: '',
+  borrowerEmploymentType: '',
+  borrowerMonthlyIncome: '',
   requestedAmount: '50000',
   tenureMonths: '12',
 }
+
+const borrowerEmploymentTypeOptions = [
+  'SALARIED',
+  'SELF_EMPLOYED',
+  'BUSINESS',
+  'STUDENT',
+  'RETIRED',
+  'HOMEMAKER',
+  'OTHER',
+] as const
 
 const initialFilterState: ListFilterState = {
   lspId: '',
@@ -102,6 +122,88 @@ function formatTimestamp(value: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value))
+}
+
+function formatDateLabel(value?: string | null) {
+  if (!value) {
+    return 'Not provided'
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('en-IN', {
+    dateStyle: 'medium',
+  }).format(parsed)
+}
+
+function formatAgeLabel(value?: string | null) {
+  if (!value) {
+    return 'Age not provided'
+  }
+
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Age not available'
+  }
+
+  const today = new Date()
+  let age = today.getFullYear() - parsed.getFullYear()
+  const monthDelta = today.getMonth() - parsed.getMonth()
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < parsed.getDate())) {
+    age -= 1
+  }
+
+  return `${age} years old`
+}
+
+function formatIncomeLabel(value?: number | null) {
+  if (value == null) {
+    return 'Not provided'
+  }
+
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+function formatEmploymentType(value?: string | null) {
+  if (!value) {
+    return 'Not provided'
+  }
+
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ')
+}
+
+function countBorrowerProfileSignals(application: LoanApplicationRecord | null) {
+  if (!application) {
+    return 0
+  }
+
+  return [
+    application.borrowerDateOfBirth,
+    application.borrowerCity,
+    application.borrowerState,
+    application.borrowerEmploymentType,
+    application.borrowerMonthlyIncome,
+  ].filter((value) => value != null && value !== '').length
+}
+
+function formatIncomeCoverage(application: LoanApplicationRecord | null) {
+  if (!application || !application.borrowerMonthlyIncome || application.borrowerMonthlyIncome <= 0) {
+    return 'Income context not provided'
+  }
+
+  const ratio = application.requestedAmount / application.borrowerMonthlyIncome
+  return `${ratio.toFixed(1)}x monthly income`
 }
 
 function loanStatusLabel(status: LoanApplicationStatus) {
@@ -227,7 +329,10 @@ export function LoanApplicationsPage() {
   )
   const selectedApplicationFromList =
     applications.find((application) => application.id === selectedApplicationId) ?? null
-  const visibleSelectedApplication = selectedLoan ?? selectedApplicationFromList
+  const visibleSelectedApplication =
+    selectedLoan && selectedApplicationFromList
+      ? { ...selectedLoan, ...selectedApplicationFromList }
+      : selectedLoan ?? selectedApplicationFromList
   const latestAudit = intakeAudits[0] ?? null
   const selectedStatusHistory = useMemo(() => sortByCreatedAtDesc(statusHistory), [statusHistory])
   const transitionActions = useMemo(
@@ -240,6 +345,16 @@ export function LoanApplicationsPage() {
   const currentProgressIndex = visibleSelectedApplication
     ? statusProgressIndex(visibleSelectedApplication.status as LoanApplicationStatus)
     : 0
+  const borrowerProfileCompleteness = countBorrowerProfileSignals(visibleSelectedApplication)
+  const borrowerLocation = visibleSelectedApplication
+    ? [visibleSelectedApplication.borrowerCity, visibleSelectedApplication.borrowerState]
+        .filter(Boolean)
+        .join(', ') || 'Location not provided'
+    : 'Location not provided'
+  const borrowerEmployment = formatEmploymentType(
+    visibleSelectedApplication?.borrowerEmploymentType,
+  )
+  const borrowerIncomeCoverage = formatIncomeCoverage(visibleSelectedApplication)
 
   async function loadApplications(nextFilters: ListFilterState) {
     const response = await listLoanApplications({
@@ -454,6 +569,11 @@ export function LoanApplicationsPage() {
         borrowerFullName: form.borrowerFullName,
         borrowerMobile: form.borrowerMobile,
         borrowerEmail: form.borrowerEmail || undefined,
+        borrowerDateOfBirth: form.borrowerDateOfBirth || undefined,
+        borrowerCity: form.borrowerCity || undefined,
+        borrowerState: form.borrowerState || undefined,
+        borrowerEmploymentType: form.borrowerEmploymentType || undefined,
+        borrowerMonthlyIncome: form.borrowerMonthlyIncome ? Number(form.borrowerMonthlyIncome) : undefined,
         requestedAmount: Number(form.requestedAmount),
         tenureMonths: Number(form.tenureMonths),
       })
@@ -773,6 +893,85 @@ export function LoanApplicationsPage() {
                   placeholder="anika@example.com"
                 />
               </div>
+              <div className="section-divider">
+                <div className="section-eyebrow">Borrower profile</div>
+                <p className="helper-copy">
+                  Optional enrichment that makes the selected-loan view more borrower-centric.
+                </p>
+              </div>
+              <div className="borrower-enrichment-grid">
+                <div className="field-stack">
+                  <label htmlFor="borrower-dob">Date of birth</label>
+                  <Input
+                    id="borrower-dob"
+                    type="date"
+                    value={form.borrowerDateOfBirth}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, borrowerDateOfBirth: event.target.value }))
+                    }
+                  />
+                </div>
+                <div className="field-stack">
+                  <label htmlFor="borrower-employment">Employment type</label>
+                  <select
+                    id="borrower-employment"
+                    className="ui-input"
+                    value={form.borrowerEmploymentType}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        borrowerEmploymentType: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Select employment type</option>
+                    {borrowerEmploymentTypeOptions.map((employmentType) => (
+                      <option key={employmentType} value={employmentType}>
+                        {formatEmploymentType(employmentType)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field-stack">
+                  <label htmlFor="borrower-city">City</label>
+                  <Input
+                    id="borrower-city"
+                    value={form.borrowerCity}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, borrowerCity: event.target.value }))
+                    }
+                    placeholder="Pune"
+                  />
+                </div>
+                <div className="field-stack">
+                  <label htmlFor="borrower-state">State</label>
+                  <Input
+                    id="borrower-state"
+                    value={form.borrowerState}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, borrowerState: event.target.value }))
+                    }
+                    placeholder="Maharashtra"
+                  />
+                </div>
+                <div className="field-stack">
+                  <label htmlFor="borrower-income">Monthly income</label>
+                  <Input
+                    id="borrower-income"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={form.borrowerMonthlyIncome}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        borrowerMonthlyIncome: event.target.value,
+                      }))
+                    }
+                    placeholder="75000"
+                  />
+                </div>
+              </div>
               <div className="field-stack">
                 <label htmlFor="requested-amount">Requested amount</label>
                 <Input
@@ -821,32 +1020,104 @@ export function LoanApplicationsPage() {
           <CardContent>
             {visibleSelectedApplication ? (
               <div className="loan-workflow">
-                <div className="loan-workflow__summary">
-                  <div>
+                <div className="loan-workflow__summary borrower-summary">
+                  <div className="borrower-summary__identity">
                     <div className="inline-actions">
                       <Badge variant={loanStatusVariant(visibleSelectedApplication.status as LoanApplicationStatus)}>
                         {loanStatusLabel(visibleSelectedApplication.status as LoanApplicationStatus)}
                       </Badge>
                       <Badge>{visibleSelectedApplication.externalLoanId}</Badge>
+                      <Badge variant={borrowerProfileCompleteness >= 5 ? 'success' : 'warning'}>
+                        {borrowerProfileCompleteness}/5 profile fields
+                      </Badge>
                     </div>
                     <h3>{visibleSelectedApplication.borrowerFullName}</h3>
                     <p className="helper-copy">
-                      {visibleSelectedApplication.lspCode} - {visibleSelectedApplication.productCode}
-                      {' '}| Source {visibleSelectedApplication.sourceChannel}
+                      {visibleSelectedApplication.borrowerPan} - {visibleSelectedApplication.borrowerMobile}
+                      {' '}| {visibleSelectedApplication.borrowerEmail || 'No email provided'}
                     </p>
+                    <div className="borrower-summary__meta">
+                      <span>{formatDateLabel(visibleSelectedApplication.borrowerDateOfBirth)} / {formatAgeLabel(visibleSelectedApplication.borrowerDateOfBirth)}</span>
+                      <span>{borrowerLocation}</span>
+                      <span>{borrowerEmployment}</span>
+                    </div>
                   </div>
                   <div className="loan-workflow__headline-metrics">
                     <div className="loan-workflow__metric">
-                      <span>Amount</span>
+                      <span>Monthly income</span>
+                      <strong>{formatIncomeLabel(visibleSelectedApplication.borrowerMonthlyIncome)}</strong>
+                    </div>
+                    <div className="loan-workflow__metric">
+                      <span>Requested amount</span>
                       <strong>{currencyLabel(visibleSelectedApplication.requestedAmount)}</strong>
                     </div>
                     <div className="loan-workflow__metric">
+                      <span>Income coverage</span>
+                      <strong>{borrowerIncomeCoverage}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="detail-section">
+                  <div className="section-eyebrow">Borrower profile</div>
+                  <div className="loan-detail-grid">
+                    <div className="loan-detail-field">
+                      <span>Date of birth</span>
+                      <strong>{formatDateLabel(visibleSelectedApplication.borrowerDateOfBirth)}</strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>Employment type</span>
+                      <strong>{borrowerEmployment}</strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>City</span>
+                      <strong>{visibleSelectedApplication.borrowerCity || 'Not provided'}</strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>State</span>
+                      <strong>{visibleSelectedApplication.borrowerState || 'Not provided'}</strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>Monthly income</span>
+                      <strong>{formatIncomeLabel(visibleSelectedApplication.borrowerMonthlyIncome)}</strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>Borrower email</span>
+                      <strong>{visibleSelectedApplication.borrowerEmail || 'Not provided'}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="detail-section">
+                  <div className="section-eyebrow">Application context</div>
+                  <div className="loan-detail-grid">
+                    <div className="loan-detail-field">
+                      <span>Application id</span>
+                      <strong>{visibleSelectedApplication.id}</strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>LSP</span>
+                      <strong>
+                        {visibleSelectedApplication.lspCode} - {visibleSelectedApplication.lspName}
+                      </strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>Product</span>
+                      <strong>
+                        {visibleSelectedApplication.productCode} - {visibleSelectedApplication.productName}
+                      </strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>Source channel</span>
+                      <strong>{visibleSelectedApplication.sourceChannel}</strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>Requested amount</span>
+                      <strong>{currencyLabel(visibleSelectedApplication.requestedAmount)}</strong>
+                    </div>
+                    <div className="loan-detail-field">
                       <span>Tenure</span>
                       <strong>{visibleSelectedApplication.tenureMonths} months</strong>
-                    </div>
-                    <div className="loan-workflow__metric">
-                      <span>Created</span>
-                      <strong>{formatTimestamp(visibleSelectedApplication.createdAt)}</strong>
                     </div>
                   </div>
                 </div>
@@ -885,45 +1156,6 @@ export function LoanApplicationsPage() {
                       </div>
                     )
                   })}
-                </div>
-
-                <div className="loan-detail-grid">
-                  <div className="loan-detail-field">
-                    <span>Application id</span>
-                    <strong>{visibleSelectedApplication.id}</strong>
-                  </div>
-                  <div className="loan-detail-field">
-                    <span>Borrower PAN</span>
-                    <strong>{visibleSelectedApplication.borrowerPan}</strong>
-                  </div>
-                  <div className="loan-detail-field">
-                    <span>Borrower mobile</span>
-                    <strong>{visibleSelectedApplication.borrowerMobile}</strong>
-                  </div>
-                  <div className="loan-detail-field">
-                    <span>Borrower email</span>
-                    <strong>{visibleSelectedApplication.borrowerEmail || 'Not provided'}</strong>
-                  </div>
-                  <div className="loan-detail-field">
-                    <span>LSP</span>
-                    <strong>
-                      {visibleSelectedApplication.lspCode} - {visibleSelectedApplication.lspName}
-                    </strong>
-                  </div>
-                  <div className="loan-detail-field">
-                    <span>Product</span>
-                    <strong>
-                      {visibleSelectedApplication.productCode} - {visibleSelectedApplication.productName}
-                    </strong>
-                  </div>
-                  <div className="loan-detail-field">
-                    <span>Requested amount</span>
-                    <strong>{currencyLabel(visibleSelectedApplication.requestedAmount)}</strong>
-                  </div>
-                  <div className="loan-detail-field">
-                    <span>Tenure</span>
-                    <strong>{visibleSelectedApplication.tenureMonths} months</strong>
-                  </div>
                 </div>
 
                 <div className="loan-transition-panel">

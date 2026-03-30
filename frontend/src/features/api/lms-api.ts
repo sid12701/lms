@@ -141,6 +141,11 @@ export type LoanApplicationRecord = {
   borrowerPan: string
   borrowerMobile: string
   borrowerEmail: string | null
+  borrowerDateOfBirth?: string | null
+  borrowerCity?: string | null
+  borrowerState?: string | null
+  borrowerEmploymentType?: string | null
+  borrowerMonthlyIncome?: number | null
   lspId: string
   lspCode: string
   lspName: string
@@ -529,6 +534,11 @@ export function createLoanApplication(payload: {
   borrowerFullName: string
   borrowerMobile: string
   borrowerEmail?: string
+  borrowerDateOfBirth?: string
+  borrowerCity?: string
+  borrowerState?: string
+  borrowerEmploymentType?: string
+  borrowerMonthlyIncome?: number
   requestedAmount: number
   tenureMonths: number
 }) {
