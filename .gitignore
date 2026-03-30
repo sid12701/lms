@@ -1,27 +1,15 @@
-.DS_Store
-Thumbs.db
+backend/target/
+frontend/node_modules/
+frontend/dist/
 
 .idea/
 .vscode/
-*.iml
 
-*.log
-logs/
-tmp/
+.DS_Store
+Thumbs.db
 
 .env
 .env.*
 !.env.example
 
-backend/.gradle/
-backend/build/
-backend/out/
-backend/target/
-
-frontend/.angular/
-frontend/dist/
-frontend/node_modules/
-frontend/.cache/
-
-infra/data/
-infra/volumes/
+*.log
