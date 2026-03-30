@@ -3,13 +3,17 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanApplication;
+import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
 import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
+import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.domain.LspStatus;
+import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
@@ -29,7 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class LoanApplicationService {
 
+    private final AppUserRepository appUserRepository;
     private final BorrowerRepository borrowerRepository;
+    private final LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository;
     private final LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
@@ -39,7 +45,9 @@ public class LoanApplicationService {
     private final ObjectMapper objectMapper;
 
     public LoanApplicationService(
+            AppUserRepository appUserRepository,
             BorrowerRepository borrowerRepository,
+            LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository,
             LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository,
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
@@ -48,7 +56,9 @@ public class LoanApplicationService {
             LoanProductLspMappingRepository loanProductLspMappingRepository,
             ObjectMapper objectMapper
     ) {
+        this.appUserRepository = appUserRepository;
         this.borrowerRepository = borrowerRepository;
+        this.loanApplicationAssignmentEventRepository = loanApplicationAssignmentEventRepository;
         this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
@@ -90,6 +100,12 @@ public class LoanApplicationService {
     public List<LoanApplicationStatusTransition> listStatusTransitions(UUID applicationId) {
         getApplication(applicationId);
         return loanApplicationStatusTransitionRepository.findTop20ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanApplicationAssignmentEvent> listAssignmentEvents(UUID applicationId) {
+        getApplication(applicationId);
+        return loanApplicationAssignmentEventRepository.findTop20ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
     }
 
     @Transactional
@@ -234,6 +250,65 @@ public class LoanApplicationService {
         return savedApplication;
     }
 
+    @Transactional
+    public LoanApplication assignApplication(
+            UUID applicationId,
+            String actorUsername,
+            String assigneeUsername,
+            String note
+    ) {
+        LoanApplication application = getApplication(applicationId);
+        if (application.getStatus() == LoanApplicationStatus.APPROVED
+                || application.getStatus() == LoanApplicationStatus.REJECTED) {
+            throw new IllegalArgumentException("Assignment is only available for active review queue items.");
+        }
+
+        String normalizedActor = normalizeActorUsername(actorUsername);
+        String normalizedAssignee = normalizeAssigneeUsername(assigneeUsername);
+        String normalizedNote = normalizeOptional(note);
+        String currentAssignee = application.getAssignedToUsername();
+
+        if (normalizedAssignee == null) {
+            if (currentAssignee == null) {
+                throw new IllegalArgumentException("Loan application is not currently assigned.");
+            }
+
+            application.releaseAssignment();
+            LoanApplication savedApplication = loanApplicationRepository.save(application);
+            loanApplicationAssignmentEventRepository.save(new LoanApplicationAssignmentEvent(
+                    savedApplication,
+                    currentAssignee,
+                    null,
+                    normalizedActor,
+                    normalizedNote == null ? "Released assignment" : normalizedNote,
+                    CorrelationIdHolder.get()
+            ));
+            return savedApplication;
+        }
+
+        var assignee = appUserRepository.findByUsernameIgnoreCase(normalizedAssignee)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown assignee username: " + normalizedAssignee));
+        if (assignee.getStatus() != UserStatus.ACTIVE) {
+            throw new IllegalArgumentException("Loan applications can only be assigned to active users.");
+        }
+
+        if (normalizedAssignee.equalsIgnoreCase(currentAssignee)) {
+            throw new IllegalArgumentException("Loan application is already assigned to " + normalizedAssignee + ".");
+        }
+
+        application.assignTo(assignee.getUsername(), normalizedActor);
+        LoanApplication savedApplication = loanApplicationRepository.save(application);
+        loanApplicationAssignmentEventRepository.save(new LoanApplicationAssignmentEvent(
+                savedApplication,
+                currentAssignee,
+                assignee.getUsername(),
+                normalizedActor,
+                normalizedNote == null ? "Assigned application to " + assignee.getUsername() : normalizedNote,
+                CorrelationIdHolder.get()
+        ));
+        return savedApplication;
+    }
+
     @Transactional(readOnly = true)
     public List<LoanApplicationIntakeAudit> listIntakeAudits(UUID applicationId) {
         getApplication(applicationId);
@@ -333,6 +408,11 @@ public class LoanApplicationService {
 
         String normalized = actorUsername.trim();
         return normalized.isBlank() ? "system" : normalized;
+    }
+
+    private static String normalizeAssigneeUsername(String assigneeUsername) {
+        String normalized = normalizeOptional(assigneeUsername);
+        return normalized == null ? null : normalized.toLowerCase();
     }
 
     private String serializePayload(LoanApplication application) {

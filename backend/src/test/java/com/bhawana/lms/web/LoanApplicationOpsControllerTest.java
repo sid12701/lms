@@ -10,11 +10,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
+import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
+import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,8 +24,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -57,6 +61,9 @@ class LoanApplicationOpsControllerTest {
     private LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
 
     @Autowired
+    private LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository;
+
+    @Autowired
     private LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
 
     @Autowired
@@ -75,10 +82,14 @@ class LoanApplicationOpsControllerTest {
     private AppUserRepository appUserRepository;
 
     @Autowired
+    private AppRoleRepository appRoleRepository;
+
+    @Autowired
     private LspRepository lspRepository;
 
     @BeforeEach
     void setUp() {
+        loanApplicationAssignmentEventRepository.deleteAllInBatch();
         loanApplicationStatusTransitionRepository.deleteAllInBatch();
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
@@ -432,6 +443,75 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].borrowerMonthlyIncome").value(91000.00));
     }
 
+    @Test
+    void opsUserCanAssignAndReleaseLoanApplications() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+        createManagedOpsUser("queue.owner");
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-120", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/assignment", applicationId)
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "assigneeUsername", "queue.owner",
+                                "note", "Picked for document review"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assignedToUsername").value("queue.owner"))
+                .andExpect(jsonPath("$.assignedByUsername").value("ops.user"))
+                .andExpect(jsonPath("$.assignedAt").exists());
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/assignment-events", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].toAssigneeUsername").value("queue.owner"))
+                .andExpect(jsonPath("$[0].note").value("Picked for document review"));
+
+        Map<String, Object> releasePayload = new LinkedHashMap<>();
+        releasePayload.put("assigneeUsername", null);
+        releasePayload.put("note", "Released back to shared queue");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/assignment", applicationId)
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(releasePayload)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assignedToUsername").doesNotExist())
+                .andExpect(jsonPath("$.assignedAt").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/assignment-events", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].fromAssigneeUsername").value("queue.owner"))
+                .andExpect(jsonPath("$[0].toAssigneeUsername").doesNotExist())
+                .andExpect(jsonPath("$[0].note").value("Released back to shared queue"));
+    }
+
+    @Test
+    void assignmentToUnknownUserIsRejected() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-121", "API", "ABCDE1234F");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/assignment", created.get("id").asText())
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "assigneeUsername", "missing.user",
+                                "note", "Assign"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
     private JsonNode createApplication(
             String lspId,
             String productId,
@@ -567,6 +647,20 @@ class LoanApplicationOpsControllerTest {
     }
 
     private record LspFixture(String id, String code) {
+    }
+
+    private void createManagedOpsUser(String username) {
+        Set<com.bhawana.lms.domain.AppRole> roles = new LinkedHashSet<>(
+                appRoleRepository.findByCodeIn(List.of(com.bhawana.lms.domain.RoleCode.OPS_USER))
+        );
+        appUserRepository.save(new com.bhawana.lms.domain.AppUser(
+                username,
+                username + "@example.com",
+                "$2a$10$abcdefghijklmnopqrstuv",
+                com.bhawana.lms.domain.UserStatus.ACTIVE,
+                null,
+                roles
+        ));
     }
 
     private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor systemAdmin() {

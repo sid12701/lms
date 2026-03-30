@@ -50,6 +50,15 @@ public class LoanApplication {
     @Column(nullable = false, length = 32)
     private LoanApplicationStatus status;
 
+    @Column(name = "assigned_to_username", length = 128)
+    private String assignedToUsername;
+
+    @Column(name = "assigned_by_username", length = 128)
+    private String assignedByUsername;
+
+    @Column(name = "assigned_at")
+    private Instant assignedAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -132,6 +141,18 @@ public class LoanApplication {
         return status;
     }
 
+    public String getAssignedToUsername() {
+        return assignedToUsername;
+    }
+
+    public String getAssignedByUsername() {
+        return assignedByUsername;
+    }
+
+    public Instant getAssignedAt() {
+        return assignedAt;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -142,5 +163,17 @@ public class LoanApplication {
 
     public void transitionTo(LoanApplicationStatus status) {
         this.status = status;
+    }
+
+    public void assignTo(String assignedToUsername, String assignedByUsername) {
+        this.assignedToUsername = assignedToUsername;
+        this.assignedByUsername = assignedByUsername;
+        this.assignedAt = Instant.now();
+    }
+
+    public void releaseAssignment() {
+        this.assignedToUsername = null;
+        this.assignedByUsername = null;
+        this.assignedAt = null;
     }
 }

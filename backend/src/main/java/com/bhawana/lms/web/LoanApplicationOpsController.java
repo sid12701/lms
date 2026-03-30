@@ -1,6 +1,7 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanApplication;
+import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
 import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
@@ -72,6 +73,13 @@ public class LoanApplicationOpsController {
                 .toList();
     }
 
+    @GetMapping("/{applicationId}/assignment-events")
+    public List<LoanApplicationAssignmentEventResponse> listAssignmentEvents(@PathVariable UUID applicationId) {
+        return loanApplicationService.listAssignmentEvents(applicationId).stream()
+                .map(LoanApplicationOpsController::toAssignmentEventResponse)
+                .toList();
+    }
+
     @PostMapping
     public LoanApplicationResponse createApplication(
             Authentication authentication,
@@ -113,6 +121,21 @@ public class LoanApplicationOpsController {
         return toDetailResponse(application);
     }
 
+    @PostMapping("/{applicationId}/assignment")
+    public LoanApplicationDetailResponse assignApplication(
+            Authentication authentication,
+            @PathVariable UUID applicationId,
+            @Valid @RequestBody LoanApplicationAssignmentRequest request
+    ) {
+        LoanApplication application = loanApplicationService.assignApplication(
+                applicationId,
+                authentication.getName(),
+                request.assigneeUsername(),
+                request.note()
+        );
+        return toDetailResponse(application);
+    }
+
     private static LoanApplicationResponse toResponse(LoanApplication application) {
         return new LoanApplicationResponse(
                 application.getId().toString(),
@@ -137,6 +160,9 @@ public class LoanApplicationOpsController {
                 application.getRequestedAmount(),
                 application.getRequestedTenureMonths(),
                 application.getStatus().name(),
+                application.getAssignedToUsername(),
+                application.getAssignedByUsername(),
+                application.getAssignedAt(),
                 application.getCreatedAt().toString()
         );
     }
@@ -165,6 +191,9 @@ public class LoanApplicationOpsController {
                 application.getRequestedAmount(),
                 application.getRequestedTenureMonths(),
                 application.getStatus().name(),
+                application.getAssignedToUsername(),
+                application.getAssignedByUsername(),
+                application.getAssignedAt(),
                 application.getCreatedAt().toString(),
                 application.getUpdatedAt().toString()
         );
@@ -191,6 +220,19 @@ public class LoanApplicationOpsController {
                 transition.getNote(),
                 transition.getCorrelationId(),
                 transition.getCreatedAt().toString()
+        );
+    }
+
+    private static LoanApplicationAssignmentEventResponse toAssignmentEventResponse(LoanApplicationAssignmentEvent event) {
+        return new LoanApplicationAssignmentEventResponse(
+                event.getId().toString(),
+                event.getLoanApplication().getId().toString(),
+                event.getFromAssigneeUsername(),
+                event.getToAssigneeUsername(),
+                event.getActorUsername(),
+                event.getNote(),
+                event.getCorrelationId(),
+                event.getCreatedAt().toString()
         );
     }
 
@@ -236,6 +278,9 @@ public class LoanApplicationOpsController {
             BigDecimal requestedAmount,
             Integer tenureMonths,
             String status,
+            String assignedToUsername,
+            String assignedByUsername,
+            Instant assignedAt,
             String createdAt
     ) {
     }
@@ -263,6 +308,9 @@ public class LoanApplicationOpsController {
             BigDecimal requestedAmount,
             Integer tenureMonths,
             String status,
+            String assignedToUsername,
+            String assignedByUsername,
+            Instant assignedAt,
             String createdAt,
             String updatedAt
     ) {
@@ -284,12 +332,30 @@ public class LoanApplicationOpsController {
     ) {
     }
 
+    public record LoanApplicationAssignmentRequest(
+            String assigneeUsername,
+            @Size(max = 500) String note
+    ) {
+    }
+
     public record LoanApplicationStatusTransitionResponse(
             String id,
             String loanApplicationId,
             String actorUsername,
             String fromStatus,
             String toStatus,
+            String note,
+            String correlationId,
+            String createdAt
+    ) {
+    }
+
+    public record LoanApplicationAssignmentEventResponse(
+            String id,
+            String loanApplicationId,
+            String fromAssigneeUsername,
+            String toAssigneeUsername,
+            String actorUsername,
             String note,
             String correlationId,
             String createdAt
