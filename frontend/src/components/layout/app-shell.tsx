@@ -2,6 +2,7 @@ import {
   BellRing,
   KeyRound,
   LayoutDashboard,
+  NotebookPen,
   LogOut,
   Settings2,
   ShieldCheck,
@@ -20,6 +21,7 @@ const navigation = [
   { to: '/api-clients', label: 'API Clients', icon: KeyRound },
   { to: '/users', label: 'User Administration', icon: Users },
   { to: '/products', label: 'Product Configuration', icon: Settings2 },
+  { to: '/loan-applications', label: 'Loan Intake', icon: NotebookPen },
   { to: '/dashboard', label: 'Alerts & Monitoring', icon: BellRing },
 ]
 

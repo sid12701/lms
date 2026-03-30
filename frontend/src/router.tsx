@@ -7,6 +7,7 @@ import { DashboardPage } from './features/dashboard/dashboard-page'
 import { LoginPage } from './features/auth/login-page'
 import { LspAdminPage } from './features/admin/lsp-admin-page'
 import { ApiClientsPage } from './features/api-clients/api-clients-page'
+import { LoanApplicationsPage } from './features/loan-applications/loan-applications-page'
 import { UsersPage } from './features/users/users-page'
 import { ProductConfigurationPage } from './features/products/product-configuration-page'
 
@@ -74,6 +75,7 @@ export function AppRouter() {
         <Route path="api-clients" element={<ApiClientsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="products" element={<ProductConfigurationPage />} />
+        <Route path="loan-applications" element={<LoanApplicationsPage />} />
       </Route>
     </Routes>
   )

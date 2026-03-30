@@ -127,6 +127,27 @@ export type ProductAuditEventRecord = {
   createdAt: string
 }
 
+export type LoanApplicationRecord = {
+  id: string
+  borrowerId: string
+  borrowerFullName: string
+  borrowerPan: string
+  borrowerMobile: string
+  borrowerEmail: string | null
+  lspId: string
+  lspCode: string
+  lspName: string
+  productId: string
+  productCode: string
+  productName: string
+  externalLoanId: string
+  sourceChannel: string
+  requestedAmount: number
+  tenureMonths: number
+  status: string
+  createdAt: string
+}
+
 export class ApiError extends Error {
   status: number
   body: string
@@ -429,6 +450,28 @@ export function saveProductLspMappings(
 ) {
   return requestJson<void>(`/api/v1/internal/admin/product-lsp-mappings/${productId}`, {
     method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function listLoanApplications() {
+  return requestJson<LoanApplicationRecord[]>('/api/v1/internal/ops/loan-applications')
+}
+
+export function createLoanApplication(payload: {
+  lspId: string
+  productId: string
+  externalLoanId: string
+  sourceChannel: string
+  borrowerPan: string
+  borrowerFullName: string
+  borrowerMobile: string
+  borrowerEmail?: string
+  requestedAmount: number
+  tenureMonths: number
+}) {
+  return requestJson<LoanApplicationRecord>('/api/v1/internal/ops/loan-applications', {
+    method: 'POST',
     body: JSON.stringify(payload),
   })
 }
