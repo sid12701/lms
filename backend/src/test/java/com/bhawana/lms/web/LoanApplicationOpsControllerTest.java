@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
@@ -30,6 +31,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import static org.hamcrest.Matchers.containsString;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -47,6 +49,9 @@ class LoanApplicationOpsControllerTest {
 
     @Autowired
     private BorrowerRepository borrowerRepository;
+
+    @Autowired
+    private LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
 
     @Autowired
     private LoanProductAuditEventRepository loanProductAuditEventRepository;
@@ -68,6 +73,7 @@ class LoanApplicationOpsControllerTest {
 
     @BeforeEach
     void setUp() {
+        loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
         apiClientRepository.deleteAllInBatch();
@@ -187,6 +193,24 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].externalLoanId").value("EXT-302"))
                 .andExpect(jsonPath("$[0].sourceChannel").value("PARTNER_PORTAL"));
+    }
+
+    @Test
+    void opsUserCanInspectLoanApplicationIntakeAudit() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-901", "API", "ABCDE1234F");
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/intake-audits", created.get("id").asText())
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].loanApplicationId").value(created.get("id").asText()))
+                .andExpect(jsonPath("$[0].actorUsername").value("ops.user"))
+                .andExpect(jsonPath("$[0].payloadJson", containsString("\"externalLoanId\":\"EXT-901\"")))
+                .andExpect(jsonPath("$[0].payloadJson", containsString("\"sourceChannel\":\"API\"")));
     }
 
     @Test

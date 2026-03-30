@@ -1,17 +1,23 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanApplication;
+import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -21,23 +27,29 @@ import org.springframework.transaction.annotation.Transactional;
 public class LoanApplicationService {
 
     private final BorrowerRepository borrowerRepository;
+    private final LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanProductRepository loanProductRepository;
     private final LspRepository lspRepository;
     private final LoanProductLspMappingRepository loanProductLspMappingRepository;
+    private final ObjectMapper objectMapper;
 
     public LoanApplicationService(
             BorrowerRepository borrowerRepository,
+            LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository,
             LoanApplicationRepository loanApplicationRepository,
             LoanProductRepository loanProductRepository,
             LspRepository lspRepository,
-            LoanProductLspMappingRepository loanProductLspMappingRepository
+            LoanProductLspMappingRepository loanProductLspMappingRepository,
+            ObjectMapper objectMapper
     ) {
         this.borrowerRepository = borrowerRepository;
+        this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanProductRepository = loanProductRepository;
         this.lspRepository = lspRepository;
         this.loanProductLspMappingRepository = loanProductLspMappingRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -64,6 +76,7 @@ public class LoanApplicationService {
 
     @Transactional
     public LoanApplication createApplication(
+            String actorUsername,
             UUID lspId,
             UUID productId,
             String externalLoanId,
@@ -136,7 +149,23 @@ public class LoanApplicationService {
                 tenureMonths,
                 LoanApplicationStatus.RECEIVED
         );
-        return loanApplicationRepository.save(application);
+        LoanApplication savedApplication = loanApplicationRepository.save(application);
+        loanApplicationIntakeAuditRepository.save(new LoanApplicationIntakeAudit(
+                savedApplication,
+                actorUsername,
+                CorrelationIdHolder.get(),
+                serializePayload(savedApplication)
+        ));
+        return savedApplication;
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanApplicationIntakeAudit> listIntakeAudits(UUID applicationId) {
+        if (!loanApplicationRepository.existsById(applicationId)) {
+            throw new IllegalArgumentException("Unknown loan application id: " + applicationId);
+        }
+
+        return loanApplicationIntakeAuditRepository.findTop10ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
     }
 
     private static String normalizePan(String pan) {
@@ -183,5 +212,29 @@ public class LoanApplicationService {
 
     private static boolean contains(String value, String normalizedQuery) {
         return value != null && value.toLowerCase().contains(normalizedQuery);
+    }
+
+    private String serializePayload(LoanApplication application) {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("loanApplicationId", application.getId());
+        payload.put("lspId", application.getLsp().getId());
+        payload.put("lspCode", application.getLsp().getCode());
+        payload.put("productId", application.getLoanProduct().getId());
+        payload.put("productCode", application.getLoanProduct().getCode());
+        payload.put("externalLoanId", application.getExternalLoanId());
+        payload.put("sourceChannel", application.getSourceChannel());
+        payload.put("requestedAmount", application.getRequestedAmount());
+        payload.put("tenureMonths", application.getRequestedTenureMonths());
+        payload.put("borrowerPan", application.getBorrower().getPan());
+        payload.put("borrowerFullName", application.getBorrower().getFullName());
+        payload.put("borrowerMobile", application.getBorrower().getMobile());
+        payload.put("borrowerEmail", application.getBorrower().getEmail());
+        payload.put("status", application.getStatus().name());
+
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize intake payload audit.", exception);
+        }
     }
 }

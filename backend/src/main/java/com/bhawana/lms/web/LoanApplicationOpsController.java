@@ -1,6 +1,7 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanApplication;
+import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
 import com.bhawana.lms.service.LoanApplicationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -10,10 +11,13 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -44,9 +48,20 @@ public class LoanApplicationOpsController {
                 .toList();
     }
 
+    @GetMapping("/{applicationId}/intake-audits")
+    public List<LoanApplicationIntakeAuditResponse> listIntakeAudits(@PathVariable UUID applicationId) {
+        return loanApplicationService.listIntakeAudits(applicationId).stream()
+                .map(LoanApplicationOpsController::toAuditResponse)
+                .toList();
+    }
+
     @PostMapping
-    public LoanApplicationResponse createApplication(@Valid @RequestBody LoanApplicationRequest request) {
+    public LoanApplicationResponse createApplication(
+            Authentication authentication,
+            @Valid @RequestBody LoanApplicationRequest request
+    ) {
         LoanApplication application = loanApplicationService.createApplication(
+                authentication.getName(),
                 request.lspId(),
                 request.productId(),
                 request.externalLoanId(),
@@ -84,6 +99,17 @@ public class LoanApplicationOpsController {
         );
     }
 
+    private static LoanApplicationIntakeAuditResponse toAuditResponse(LoanApplicationIntakeAudit audit) {
+        return new LoanApplicationIntakeAuditResponse(
+                audit.getId().toString(),
+                audit.getLoanApplication().getId().toString(),
+                audit.getActorUsername(),
+                audit.getCorrelationId(),
+                audit.getPayloadJson(),
+                audit.getCreatedAt()
+        );
+    }
+
     public record LoanApplicationRequest(
             @NotNull UUID lspId,
             @NotNull UUID productId,
@@ -117,6 +143,16 @@ public class LoanApplicationOpsController {
             Integer tenureMonths,
             String status,
             String createdAt
+    ) {
+    }
+
+    public record LoanApplicationIntakeAuditResponse(
+            String id,
+            String loanApplicationId,
+            String actorUsername,
+            String correlationId,
+            String payloadJson,
+            Instant createdAt
     ) {
     }
 }
