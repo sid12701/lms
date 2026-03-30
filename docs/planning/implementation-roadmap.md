@@ -54,7 +54,7 @@ Create the runnable technical base for all future modules.
 
 1. Initialize the repository structure with `backend`, `frontend`, `infra`, and `docs`.
 2. Create Spring Boot backend skeleton with modular package layout.
-3. Create Angular frontend skeleton with Tailwind and app shell.
+3. Create React frontend skeleton with shadcn-style components, Tailwind, and app shell.
 4. Add Docker Compose for PostgreSQL, Redis, RabbitMQ, MinIO, and MailHog.
 5. Add Flyway and baseline database migration strategy.
 6. Add shared error handling, API response model, and request correlation id support.
@@ -84,7 +84,7 @@ Establish who can access what and how tenant scoping is enforced.
 5. Build admin APIs for user creation, role assignment, and activation.
 6. Build API client credential management for LSP integrations.
 7. Implement password reset and token refresh flow.
-8. Build Angular screens for login and user administration.
+8. Build React screens for login and user administration.
 9. Add `All LSPs` access handling for internal roles only.
 10. Add audit logging for auth, user, and permission changes.
 
@@ -106,7 +106,7 @@ Allow admins to define and manage loan products before loan intake starts.
 2. Add LSP-to-product mapping and activation rules.
 3. Build backend APIs to create, edit, activate, deactivate, and view products.
 4. Add validation rules for duplicate product codes and invalid rate ranges.
-5. Build Angular product list and product create-edit forms.
+5. Build React product list and product create-edit forms.
 6. Add audit trail for product changes.
 7. Seed sample products and LSP mappings for test environments.
 
@@ -132,7 +132,7 @@ Accept loan applications from LSPs and create the borrower-loan foundation.
 7. Build document metadata capture and upload linking during intake.
 8. Persist raw inbound request payloads for audit and troubleshooting.
 9. Build internal loan list API with server-side pagination and filters.
-10. Build Angular loan listing screen using LSP and status filters.
+10. Build React loan listing screen using LSP and status filters.
 
 ### Exit criteria
 
@@ -153,7 +153,7 @@ Make the system operational for review, approval, rejection, and full loan visib
 3. Build internal APIs for approve, reject, hold, and manual status updates.
 4. Capture actor, remarks, and reason code on every transition.
 5. Create the unified Loan 360 read model.
-6. Build Angular loan detail page with borrower, documents, status history, and loan data.
+6. Build React loan detail page with borrower, documents, status history, and loan data.
 7. Show last-modified actor and LSP source on the UI.
 8. Add role-based action buttons for allowed transitions only.
 9. Add search by LMS loan id, external loan id, borrower name, and mobile.
@@ -204,7 +204,7 @@ Expose system activity to LSPs and operations through reliable outbound communic
 6. Build asynchronous report job processing.
 7. Generate CSV export for the day-one MIS report.
 8. Email report completion to requester and optional recipient.
-9. Build Angular report request and report history screens.
+9. Build React report request and report history screens.
 10. Add webhook delivery monitoring for internal users.
 
 ### Exit criteria
@@ -261,7 +261,7 @@ Make the platform safe to operate in production.
 ## Recommended Build Order Inside the Team
 
 1. One stream on backend platform plus security.
-2. One stream on Angular shell plus auth and shared table components.
+2. One stream on React shell plus auth and shared table components.
 3. One stream on domain modules in this order:
    product -> borrower and intake -> lifecycle -> servicing -> integrations -> reporting.
 
@@ -271,7 +271,7 @@ If execution starts immediately, the first sprint should cover:
 
 1. Repository initialization
 2. Local infrastructure with Docker Compose
-3. Spring Boot and Angular skeletons
+3. Spring Boot and React skeletons
 4. Auth baseline
 5. LSP entity and user administration basics
 6. Loan product entity and CRUD foundation

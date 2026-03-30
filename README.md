@@ -5,7 +5,7 @@ Loan Management System workspace for the Bhawana multi-tenant platform.
 ## Scope
 
 - Spring Boot backend for loan origination, lifecycle, servicing, reporting, and integrations
-- Angular frontend for internal operations and selective LSP access
+- React frontend with shadcn-style components for internal operations and selective LSP access
 - Local infrastructure for PostgreSQL, Redis, RabbitMQ, MinIO, and MailHog
 - Architecture, planning, and UI design references under `docs/`
 

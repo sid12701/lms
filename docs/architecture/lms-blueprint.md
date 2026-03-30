@@ -9,7 +9,7 @@ Build a multi-tenant Loan Management System (LMS) for multiple Loan Service Prov
 - The system sends outbound webhooks for status changes and integrates with ICICI for disbursement.
 - Borrower, loan, repayment, document, and audit data stay segregated by LSP while still allowing internal "All LSPs" views.
 
-This blueprint assumes a greenfield build with Spring Boot for the backend and Angular for the frontend.
+This blueprint assumes a greenfield build with Spring Boot for the backend and React for the frontend.
 
 ## 1.1 Confirmed Business Decisions
 
@@ -25,7 +25,7 @@ The following decisions were confirmed on March 29, 2026:
 
 ### Decision
 
-Start with a **modular monolith backend** and a **separate Angular SPA frontend**.
+Start with a **modular monolith backend** and a **separate React SPA frontend**.
 
 ### Why this is the right first shape
 
@@ -36,7 +36,7 @@ Start with a **modular monolith backend** and a **separate Angular SPA frontend*
 ### Proposed stack
 
 - Backend: Java 21, Spring Boot, Spring Security, Spring Data JPA, Flyway
-- Frontend: Angular with standalone components, Angular Router, Angular Signals, Tailwind CSS
+- Frontend: React, React Router, shadcn-style components, and Tailwind CSS
 - Database: PostgreSQL
 - Cache and rate limiting: Redis
 - Async processing: RabbitMQ
@@ -49,7 +49,7 @@ Start with a **modular monolith backend** and a **separate Angular SPA frontend*
 ```mermaid
 flowchart LR
     LSP["LSP Systems"] -->|REST API| API["Spring Boot API"]
-    Ops["Internal Ops / Admin UI"] -->|HTTPS| UI["Angular Frontend"]
+Ops["Internal Ops / Admin UI"] -->|HTTPS| UI["React Frontend"]
     UI -->|JWT| API
     API --> DB["PostgreSQL"]
     API --> Cache["Redis"]
@@ -399,7 +399,7 @@ The foreclosure quote must be versioned and time-bound because the payoff amount
 
 ## 16. Frontend Architecture
 
-Use Angular as a secure internal portal and selective LSP portal.
+Use React as a secure internal portal and selective LSP portal.
 
 ### Main screens
 
@@ -456,7 +456,7 @@ LMS/
       webhooks/
       shared-kernel/
   frontend/
-    angular app
+react app
   infra/
     docker-compose
     db
