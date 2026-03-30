@@ -8,6 +8,7 @@ import {
 } from 'react'
 import {
   clearStoredSession,
+  completePasswordChange,
   getSystemContext,
   loadStoredSession,
   loginWithPassword,
@@ -25,7 +26,9 @@ type LoginRequest = {
 
 type AuthContextValue = {
   user: AuthUser | null
-  login: (request: LoginRequest) => Promise<void>
+  mustChangePassword: boolean
+  login: (request: LoginRequest) => Promise<AuthSession>
+  completePasswordChange: (newPassword: string) => Promise<AuthSession>
   logout: () => void
 }
 
@@ -47,10 +50,14 @@ function buildUserFromSession(session: AuthSession | null): AuthUser | null {
   return session?.user ?? null
 }
 
-async function buildSessionFromToken(accessToken: string) {
+async function buildSessionFromToken(
+  accessToken: string,
+  options: { mustChangePassword?: boolean } = {},
+) {
   const context = await getSystemContext(accessToken)
   return {
     accessToken,
+    mustChangePassword: options.mustChangePassword ?? false,
     user: {
       username: context.username,
       primaryRole: context.roles[0] ?? 'UNKNOWN',
@@ -73,7 +80,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     bootstrapped.current = true
 
     const currentSession = session
-    if (!currentSession) {
+    if (!currentSession || currentSession.mustChangePassword) {
       return
     }
 
@@ -109,17 +116,38 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const value = useMemo<AuthContextValue>(
     () => ({
       user: buildUserFromSession(session),
+      mustChangePassword: session?.mustChangePassword ?? false,
       login: async ({ username, password }) => {
         if (!username.trim() || !password.trim()) {
           throw new Error('Username and password are required.')
         }
 
         const token = await loginWithPassword(username, password)
-        const nextSession = await buildSessionFromToken(token.accessToken)
+        const nextSession = await buildSessionFromToken(token.accessToken, {
+          mustChangePassword: token.passwordChangeRequired ?? false,
+        })
         saveStoredSession(nextSession)
         startTransition(() => {
           setSession(nextSession)
         })
+        return nextSession
+      },
+      completePasswordChange: async (newPassword: string) => {
+        if (!newPassword.trim()) {
+          throw new Error('A new password is required.')
+        }
+
+        const token = await completePasswordChange({
+          newPassword,
+        })
+        const nextSession = await buildSessionFromToken(token.accessToken, {
+          mustChangePassword: token.passwordChangeRequired ?? false,
+        })
+        saveStoredSession(nextSession)
+        startTransition(() => {
+          setSession(nextSession)
+        })
+        return nextSession
       },
       logout: () => {
         clearStoredSession()

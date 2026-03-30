@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
+import { isPasswordChangeRequired } from '../api/lms-api'
 import { useAuth } from './auth-context'
 
 export function LoginPage() {
@@ -27,11 +28,14 @@ export function LoginPage() {
     setError('')
 
     try {
-      await login({ username, password })
-      navigate('/dashboard')
+      const session = await login({ username, password })
+      navigate(session.mustChangePassword ? '/change-password' : '/dashboard')
     } catch (submitError) {
-      const message =
-        submitError instanceof Error ? submitError.message : 'Unable to sign in.'
+      const message = isPasswordChangeRequired(submitError)
+        ? 'This account must set a new password before continuing.'
+        : submitError instanceof Error
+          ? submitError.message
+          : 'Unable to sign in.'
       setError(message)
     } finally {
       setSubmitting(false)
@@ -72,6 +76,7 @@ export function LoginPage() {
               <div className="login-actions">
                 <div className="helper-copy">
                   Managed or bootstrap credentials issue a JWT and unlock the internal Phase 2 routes.
+                  Temporary passwords may require a one-time password update before access is granted.
                 </div>
                 <Button disabled={submitting} type="submit">
                   {submitting ? 'Signing in...' : 'Enter console'}

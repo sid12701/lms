@@ -23,6 +23,7 @@ export type AuthTokenResponse = {
   accessToken: string
   tokenType: string
   expiresInSeconds: number
+  passwordChangeRequired?: boolean
 }
 
 export type AdminMetadata = {
@@ -43,6 +44,7 @@ export type SystemContext = {
 export type AuthSession = {
   accessToken: string
   user: AuthUser
+  mustChangePassword: boolean
 }
 
 export type AuthUser = {
@@ -92,6 +94,20 @@ export type ApiClientCreateResponse = ApiClientRecord & {
   clientSecret: string
 }
 
+export class ApiError extends Error {
+  status: number
+  body: string
+  code: string | null
+
+  constructor(message: string, status: number, body: string, code: string | null) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.body = body
+    this.code = code
+  }
+}
+
 const SESSION_STORAGE_KEY = 'lms.auth.session'
 
 function buildUrl(path: string) {
@@ -107,6 +123,37 @@ function readJson<T>(raw: string | null): T | null {
     return JSON.parse(raw) as T
   } catch {
     return null
+  }
+}
+
+function readResponseError(body: string): { message: string; code: string | null } {
+  if (!body.trim()) {
+    return { message: 'Request failed.', code: null }
+  }
+
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>
+    const message =
+      typeof parsed.message === 'string'
+        ? parsed.message
+        : typeof parsed.error === 'string'
+          ? parsed.error
+          : typeof parsed.detail === 'string'
+            ? parsed.detail
+            : body
+
+    const code =
+      typeof parsed.code === 'string'
+        ? parsed.code
+        : typeof parsed.errorCode === 'string'
+          ? parsed.errorCode
+          : typeof parsed.error === 'string'
+            ? parsed.error
+            : null
+
+    return { message, code }
+  } catch {
+    return { message: body, code: null }
   }
 }
 
@@ -162,7 +209,8 @@ async function requestJson<T>(
 
   if (!response.ok) {
     const errorBody = await response.text()
-    throw new Error(errorBody || `Request failed with status ${response.status}`)
+    const { message, code } = readResponseError(errorBody)
+    throw new ApiError(message || `Request failed with status ${response.status}`, response.status, errorBody, code)
   }
 
   if (response.status === 204) {
@@ -188,6 +236,16 @@ export function loginWithPassword(username: string, password: string) {
   )
 }
 
+export function completePasswordChange(payload: { newPassword: string }) {
+  return requestJson<AuthTokenResponse>(
+    '/api/v1/auth/password',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
 export function refreshAccessToken(accessToken: string) {
   return requestJson<AuthTokenResponse>(
     '/api/v1/auth/refresh',
@@ -195,6 +253,21 @@ export function refreshAccessToken(accessToken: string) {
       method: 'POST',
     },
     { accessToken },
+  )
+}
+
+export function isPasswordChangeRequired(error: unknown) {
+  if (!(error instanceof ApiError)) {
+    return false
+  }
+
+  return (
+    error.status === 428 ||
+    error.status === 409 ||
+    error.code === 'PASSWORD_CHANGE_REQUIRED' ||
+    error.code === 'PASSWORD_RESET_REQUIRED' ||
+    error.body.includes('PASSWORD_CHANGE_REQUIRED') ||
+    error.body.includes('PASSWORD_RESET_REQUIRED')
   )
 }
 
