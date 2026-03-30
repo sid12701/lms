@@ -41,8 +41,13 @@ public class LoanApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public List<LoanApplication> listApplications() {
-        return loanApplicationRepository.findAllByOrderByCreatedAtDesc();
+    public List<LoanApplication> listApplications(UUID lspId, UUID productId, String query) {
+        String normalizedQuery = normalizeQuery(query);
+        return loanApplicationRepository.findAllByOrderByCreatedAtDesc().stream()
+                .filter(application -> lspId == null || application.getLsp().getId().equals(lspId))
+                .filter(application -> productId == null || application.getLoanProduct().getId().equals(productId))
+                .filter(application -> normalizedQuery == null || matchesQuery(application, normalizedQuery))
+                .toList();
     }
 
     @Transactional
@@ -137,5 +142,25 @@ public class LoanApplicationService {
 
     private static String normalizeSourceChannel(String sourceChannel) {
         return sourceChannel.trim().toUpperCase();
+    }
+
+    private static String normalizeQuery(String query) {
+        if (query == null) {
+            return null;
+        }
+
+        String normalized = query.trim().toLowerCase();
+        return normalized.isBlank() ? null : normalized;
+    }
+
+    private static boolean matchesQuery(LoanApplication application, String normalizedQuery) {
+        return contains(application.getBorrower().getFullName(), normalizedQuery)
+                || contains(application.getBorrower().getPan(), normalizedQuery)
+                || contains(application.getBorrower().getMobile(), normalizedQuery)
+                || contains(application.getExternalLoanId(), normalizedQuery);
+    }
+
+    private static boolean contains(String value, String normalizedQuery) {
+        return value != null && value.toLowerCase().contains(normalizedQuery);
     }
 }

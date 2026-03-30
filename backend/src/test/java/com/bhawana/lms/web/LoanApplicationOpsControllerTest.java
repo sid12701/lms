@@ -116,6 +116,45 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
+    void opsUserCanFilterLoanApplicationsByLspProductAndSearchQuery() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        LspFixture north = createLsp("ACTIVE");
+        ProductFixture salary = createProduct("ACTIVE");
+        ProductFixture merchant = createProduct("ACTIVE");
+        mapProductToLsp(salary.id(), apex.id());
+        mapProductToLsp(merchant.id(), north.id());
+
+        createApplication(apex.id(), salary.id(), "EXT-100", "API", "ABCDE1234F");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "lspId", north.id(),
+                                "productId", merchant.id(),
+                                "externalLoanId", "NORTH-200",
+                                "sourceChannel", "PARTNER_PORTAL",
+                                "borrowerPan", "ZXCVB1234N",
+                                "borrowerFullName", "Rahul Shah",
+                                "borrowerMobile", "9876543210",
+                                "borrowerEmail", "rahul@example.com",
+                                "requestedAmount", new BigDecimal("45000.00"),
+                                "tenureMonths", 12
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("lspId", north.id())
+                        .queryParam("productId", merchant.id())
+                        .queryParam("q", "rahul"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].externalLoanId").value("NORTH-200"))
+                .andExpect(jsonPath("$[0].borrowerFullName").value("Rahul Shah"));
+    }
+
+    @Test
     void invalidLoanAmountIsRejected() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");

@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -31,8 +32,12 @@ public class LoanApplicationOpsController {
     }
 
     @GetMapping
-    public List<LoanApplicationResponse> listApplications() {
-        return loanApplicationService.listApplications().stream()
+    public List<LoanApplicationResponse> listApplications(
+            @RequestParam(required = false) UUID lspId,
+            @RequestParam(required = false) UUID productId,
+            @RequestParam(required = false, name = "q") String query
+    ) {
+        return loanApplicationService.listApplications(lspId, productId, query).stream()
                 .map(LoanApplicationOpsController::toResponse)
                 .toList();
     }
