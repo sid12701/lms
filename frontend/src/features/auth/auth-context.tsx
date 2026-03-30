@@ -12,9 +12,11 @@ import {
   loadStoredSession,
   loginWithPassword,
   saveStoredSession,
+  refreshAccessToken,
   type AuthSession,
   type AuthUser,
 } from '../api/lms-api'
+import { useEffect, useRef } from 'react'
 
 type LoginRequest = {
   username: string
@@ -45,12 +47,10 @@ function buildUserFromSession(session: AuthSession | null): AuthUser | null {
   return session?.user ?? null
 }
 
-async function createSession(username: string, password: string) {
-  const token = await loginWithPassword(username, password)
-  const context = await getSystemContext(token.accessToken)
-
+async function buildSessionFromToken(accessToken: string) {
+  const context = await getSystemContext(accessToken)
   return {
-    accessToken: token.accessToken,
+    accessToken,
     user: {
       username: context.username,
       primaryRole: context.roles[0] ?? 'UNKNOWN',
@@ -64,6 +64,47 @@ async function createSession(username: string, password: string) {
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<AuthSession | null>(() => loadStoredSession())
+  const bootstrapped = useRef(false)
+
+  useEffect(() => {
+    if (bootstrapped.current) {
+      return
+    }
+    bootstrapped.current = true
+
+    const currentSession = session
+    if (!currentSession) {
+      return
+    }
+
+    let cancelled = false
+
+    async function refreshStoredSession(accessToken: string) {
+      try {
+        const token = await refreshAccessToken(accessToken)
+        const nextSession = await buildSessionFromToken(token.accessToken)
+        if (!cancelled) {
+          saveStoredSession(nextSession)
+          startTransition(() => {
+            setSession(nextSession)
+          })
+        }
+      } catch {
+        if (!cancelled) {
+          clearStoredSession()
+          startTransition(() => {
+            setSession(null)
+          })
+        }
+      }
+    }
+
+    void refreshStoredSession(storedAccessToken)
+
+    return () => {
+      cancelled = true
+    }
+  }, [session])
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -73,7 +114,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
           throw new Error('Username and password are required.')
         }
 
-        const nextSession = await createSession(username, password)
+        const token = await loginWithPassword(username, password)
+        const nextSession = await buildSessionFromToken(token.accessToken)
         saveStoredSession(nextSession)
         startTransition(() => {
           setSession(nextSession)

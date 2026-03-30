@@ -182,6 +182,16 @@ export function loginWithPassword(username: string, password: string) {
   )
 }
 
+export function refreshAccessToken(accessToken: string) {
+  return requestJson<AuthTokenResponse>(
+    '/api/v1/auth/refresh',
+    {
+      method: 'POST',
+    },
+    { accessToken },
+  )
+}
+
 export function getSystemContext(accessToken?: string) {
   return requestJson<SystemContext>(
     '/api/v1/internal/system/context',

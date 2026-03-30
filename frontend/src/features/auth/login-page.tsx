@@ -46,7 +46,7 @@ export function LoginPage() {
             <div className="section-eyebrow">Internal Access</div>
             <CardTitle>Sovereign Ledger Login</CardTitle>
             <CardDescription>
-              Use the bootstrap JWT flow to enter the internal operations console.
+              Use your internal credentials to enter the internal operations console.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -71,7 +71,7 @@ export function LoginPage() {
               {error ? <div className="empty-state">{error}</div> : null}
               <div className="login-actions">
                 <div className="helper-copy">
-                  Bootstrap session issues a JWT and unlocks the internal Phase 2 routes.
+                  Managed or bootstrap credentials issue a JWT and unlock the internal Phase 2 routes.
                 </div>
                 <Button disabled={submitting} type="submit">
                   {submitting ? 'Signing in...' : 'Enter console'}
@@ -82,7 +82,7 @@ export function LoginPage() {
           </CardContent>
           <CardFooter>
             <div className="helper-copy">
-              Phase 2 target: this form talks directly to the backend `/api/v1/auth/token` flow.
+              Phase 2 target: this form talks directly to the backend auth token flow.
             </div>
           </CardFooter>
         </Card>
