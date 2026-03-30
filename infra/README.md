@@ -19,6 +19,8 @@ Local development stack for the LMS platform.
 docker compose -f infra/docker-compose.yml up -d
 ```
 
+The MinIO bucket defined by `MINIO_BUCKET` is created automatically by the `minio-init` one-shot service.
+
 3. Stop the stack:
 
 ```powershell
@@ -33,3 +35,9 @@ docker compose -f infra/docker-compose.yml down
 - MinIO API: `http://localhost:9000`
 - MinIO Console: `http://localhost:9001`
 - MailHog UI: `http://localhost:8025`
+
+## Default Credentials
+
+- PostgreSQL: `lms` / `lms`
+- RabbitMQ: `lms` / `lms`
+- MinIO: `minio` / `minio123`
