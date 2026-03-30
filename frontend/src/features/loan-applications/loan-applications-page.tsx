@@ -29,6 +29,8 @@ type IntakeFormState = {
 type ListFilterState = {
   lspId: string
   productId: string
+  status: string
+  sourceChannel: string
   query: string
 }
 
@@ -48,6 +50,8 @@ const initialFormState: IntakeFormState = {
 const initialFilterState: ListFilterState = {
   lspId: '',
   productId: '',
+  status: '',
+  sourceChannel: '',
   query: '',
 }
 
@@ -81,11 +85,27 @@ export function LoanApplicationsPage() {
     () => products.filter((item) => item.status === 'ACTIVE'),
     [products],
   )
+  const sourceChannelOptions = useMemo(
+    () =>
+      Array.from(new Set(applications.map((item) => item.sourceChannel)))
+        .filter(Boolean)
+        .sort((left, right) => left.localeCompare(right)),
+    [applications],
+  )
+  const statusOptions = useMemo(
+    () =>
+      Array.from(new Set(applications.map((item) => item.status)))
+        .filter(Boolean)
+        .sort((left, right) => left.localeCompare(right)),
+    [applications],
+  )
 
   async function loadApplications(nextFilters: ListFilterState) {
     const response = await listLoanApplications({
       lspId: nextFilters.lspId || undefined,
       productId: nextFilters.productId || undefined,
+      status: nextFilters.status || undefined,
+      sourceChannel: nextFilters.sourceChannel || undefined,
       query: nextFilters.query.trim() || undefined,
     })
     setApplications(response)
@@ -147,6 +167,8 @@ export function LoanApplicationsPage() {
         const response = await listLoanApplications({
           lspId: filters.lspId || undefined,
           productId: filters.productId || undefined,
+          status: filters.status || undefined,
+          sourceChannel: filters.sourceChannel || undefined,
           query: filters.query.trim() || undefined,
         })
         if (!cancelled) {
@@ -267,6 +289,42 @@ export function LoanApplicationsPage() {
                 }
                 placeholder="Borrower, PAN, mobile, external loan id"
               />
+            </div>
+            <div className="field-stack">
+              <label htmlFor="filter-status">Filter by status</label>
+              <select
+                id="filter-status"
+                className="ui-input"
+                value={filters.status}
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, status: event.target.value }))
+                }
+              >
+                <option value="">All statuses</option>
+                {statusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field-stack">
+              <label htmlFor="filter-source-channel">Filter by source</label>
+              <select
+                id="filter-source-channel"
+                className="ui-input"
+                value={filters.sourceChannel}
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, sourceChannel: event.target.value }))
+                }
+              >
+                <option value="">All sources</option>
+                {sourceChannelOptions.map((sourceChannel) => (
+                  <option key={sourceChannel} value={sourceChannel}>
+                    {sourceChannel}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
           {loading ? <div className="empty-state">Loading loan applications...</div> : null}

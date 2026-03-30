@@ -457,6 +457,8 @@ export function saveProductLspMappings(
 export function listLoanApplications(filters?: {
   lspId?: string
   productId?: string
+  status?: string
+  sourceChannel?: string
   query?: string
 }) {
   const params = new URLSearchParams()
@@ -467,6 +469,14 @@ export function listLoanApplications(filters?: {
 
   if (filters?.productId) {
     params.set('productId', filters.productId)
+  }
+
+  if (filters?.status) {
+    params.set('status', filters.status)
+  }
+
+  if (filters?.sourceChannel) {
+    params.set('sourceChannel', filters.sourceChannel)
   }
 
   if (filters?.query) {
