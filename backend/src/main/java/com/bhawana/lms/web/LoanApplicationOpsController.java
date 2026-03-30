@@ -2,6 +2,8 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
+import com.bhawana.lms.domain.LoanApplicationStatus;
+import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.service.LoanApplicationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -10,6 +12,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -48,10 +51,22 @@ public class LoanApplicationOpsController {
                 .toList();
     }
 
+    @GetMapping("/{applicationId}")
+    public LoanApplicationDetailResponse getApplication(@PathVariable UUID applicationId) {
+        return toDetailResponse(loanApplicationService.getApplication(applicationId));
+    }
+
     @GetMapping("/{applicationId}/intake-audits")
     public List<LoanApplicationIntakeAuditResponse> listIntakeAudits(@PathVariable UUID applicationId) {
         return loanApplicationService.listIntakeAudits(applicationId).stream()
                 .map(LoanApplicationOpsController::toAuditResponse)
+                .toList();
+    }
+
+    @GetMapping("/{applicationId}/status-transitions")
+    public List<LoanApplicationStatusTransitionResponse> listStatusTransitions(@PathVariable UUID applicationId) {
+        return loanApplicationService.listStatusTransitions(applicationId).stream()
+                .map(LoanApplicationOpsController::toTransitionResponse)
                 .toList();
     }
 
@@ -74,6 +89,21 @@ public class LoanApplicationOpsController {
                 request.tenureMonths()
         );
         return toResponse(application);
+    }
+
+    @PostMapping("/{applicationId}/status-transitions")
+    public LoanApplicationDetailResponse transitionStatus(
+            Authentication authentication,
+            @PathVariable UUID applicationId,
+            @Valid @RequestBody LoanApplicationStatusTransitionRequest request
+    ) {
+        LoanApplication application = loanApplicationService.transitionStatus(
+                applicationId,
+                authentication.getName(),
+                request.targetStatus(),
+                request.note()
+        );
+        return toDetailResponse(application);
     }
 
     private static LoanApplicationResponse toResponse(LoanApplication application) {
@@ -99,6 +129,30 @@ public class LoanApplicationOpsController {
         );
     }
 
+    private static LoanApplicationDetailResponse toDetailResponse(LoanApplication application) {
+        return new LoanApplicationDetailResponse(
+                application.getId().toString(),
+                application.getBorrower().getId().toString(),
+                application.getBorrower().getFullName(),
+                application.getBorrower().getPan(),
+                application.getBorrower().getMobile(),
+                application.getBorrower().getEmail(),
+                application.getLsp().getId().toString(),
+                application.getLsp().getCode(),
+                application.getLsp().getName(),
+                application.getLoanProduct().getId().toString(),
+                application.getLoanProduct().getCode(),
+                application.getLoanProduct().getName(),
+                application.getExternalLoanId(),
+                application.getSourceChannel(),
+                application.getRequestedAmount(),
+                application.getRequestedTenureMonths(),
+                application.getStatus().name(),
+                application.getCreatedAt().toString(),
+                application.getUpdatedAt().toString()
+        );
+    }
+
     private static LoanApplicationIntakeAuditResponse toAuditResponse(LoanApplicationIntakeAudit audit) {
         return new LoanApplicationIntakeAuditResponse(
                 audit.getId().toString(),
@@ -107,6 +161,19 @@ public class LoanApplicationOpsController {
                 audit.getCorrelationId(),
                 audit.getPayloadJson(),
                 audit.getCreatedAt()
+        );
+    }
+
+    private static LoanApplicationStatusTransitionResponse toTransitionResponse(LoanApplicationStatusTransition transition) {
+        return new LoanApplicationStatusTransitionResponse(
+                transition.getId().toString(),
+                transition.getLoanApplication().getId().toString(),
+                transition.getActorUsername(),
+                transition.getFromStatus().name(),
+                transition.getToStatus().name(),
+                transition.getNote(),
+                transition.getCorrelationId(),
+                transition.getCreatedAt().toString()
         );
     }
 
@@ -146,6 +213,29 @@ public class LoanApplicationOpsController {
     ) {
     }
 
+    public record LoanApplicationDetailResponse(
+            String id,
+            String borrowerId,
+            String borrowerFullName,
+            String borrowerPan,
+            String borrowerMobile,
+            String borrowerEmail,
+            String lspId,
+            String lspCode,
+            String lspName,
+            String productId,
+            String productCode,
+            String productName,
+            String externalLoanId,
+            String sourceChannel,
+            BigDecimal requestedAmount,
+            Integer tenureMonths,
+            String status,
+            String createdAt,
+            String updatedAt
+    ) {
+    }
+
     public record LoanApplicationIntakeAuditResponse(
             String id,
             String loanApplicationId,
@@ -153,6 +243,24 @@ public class LoanApplicationOpsController {
             String correlationId,
             String payloadJson,
             Instant createdAt
+    ) {
+    }
+
+    public record LoanApplicationStatusTransitionRequest(
+            @NotNull LoanApplicationStatus targetStatus,
+            @Size(max = 500) String note
+    ) {
+    }
+
+    public record LoanApplicationStatusTransitionResponse(
+            String id,
+            String loanApplicationId,
+            String actorUsername,
+            String fromStatus,
+            String toStatus,
+            String note,
+            String correlationId,
+            String createdAt
     ) {
     }
 }

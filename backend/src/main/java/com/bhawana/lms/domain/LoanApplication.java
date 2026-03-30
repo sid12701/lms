@@ -53,6 +53,9 @@ public class LoanApplication {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
     protected LoanApplication() {
     }
 
@@ -79,7 +82,14 @@ public class LoanApplication {
 
     @PrePersist
     void onCreate() {
-        createdAt = Instant.now();
+        Instant now = Instant.now();
+        createdAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
     }
 
     public UUID getId() {
@@ -124,5 +134,13 @@ public class LoanApplication {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void transitionTo(LoanApplicationStatus status) {
+        this.status = status;
     }
 }

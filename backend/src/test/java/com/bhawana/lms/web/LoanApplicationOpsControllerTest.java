@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
+import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
@@ -54,6 +55,9 @@ class LoanApplicationOpsControllerTest {
     private LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
 
     @Autowired
+    private LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
+
+    @Autowired
     private LoanProductAuditEventRepository loanProductAuditEventRepository;
 
     @Autowired
@@ -73,6 +77,7 @@ class LoanApplicationOpsControllerTest {
 
     @BeforeEach
     void setUp() {
+        loanApplicationStatusTransitionRepository.deleteAllInBatch();
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
@@ -214,6 +219,68 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
+    void opsUserCanInspectLoanApplicationDetailAndStatusHistory() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-951", "API", "ABCDE1234F");
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", created.get("id").asText())
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(created.get("id").asText()))
+                .andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.updatedAt").exists());
+
+        transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Assigned for analyst review");
+        transitionApplication(created.get("id").asText(), "APPROVED", "Approved after validation");
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", created.get("id").asText())
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].fromStatus").value("UNDER_REVIEW"))
+                .andExpect(jsonPath("$[0].toStatus").value("APPROVED"))
+                .andExpect(jsonPath("$[0].note").value("Approved after validation"))
+                .andExpect(jsonPath("$[1].fromStatus").value("RECEIVED"))
+                .andExpect(jsonPath("$[1].toStatus").value("UNDER_REVIEW"))
+                .andExpect(jsonPath("$[1].note").value("Assigned for analyst review"));
+    }
+
+    @Test
+    void invalidLoanApplicationStatusTransitionsAreRejected() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-961", "API", "ABCDE1234F");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", created.get("id").asText())
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "APPROVED",
+                                "note", "Skipping review"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+
+        transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Started review");
+        transitionApplication(created.get("id").asText(), "APPROVED", "Approved after checks");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", created.get("id").asText())
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "REJECTED",
+                                "note", "Cannot revert after approval"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
     void invalidLoanAmountIsRejected() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
@@ -310,6 +377,20 @@ class LoanApplicationOpsControllerTest {
                                 "borrowerEmail", "anika@example.com",
                                 "requestedAmount", new BigDecimal("45000.00"),
                                 "tenureMonths", 12
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private JsonNode transitionApplication(String applicationId, String targetStatus, String note) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", targetStatus,
+                                "note", note
                         ))))
                 .andExpect(status().isOk())
                 .andReturn();

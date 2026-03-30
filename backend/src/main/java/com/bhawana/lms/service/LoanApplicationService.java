@@ -5,12 +5,14 @@ import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
 import com.bhawana.lms.domain.LoanApplicationStatus;
+import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
+import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LspRepository;
@@ -29,6 +31,7 @@ public class LoanApplicationService {
     private final BorrowerRepository borrowerRepository;
     private final LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
     private final LoanApplicationRepository loanApplicationRepository;
+    private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
     private final LoanProductRepository loanProductRepository;
     private final LspRepository lspRepository;
     private final LoanProductLspMappingRepository loanProductLspMappingRepository;
@@ -38,6 +41,7 @@ public class LoanApplicationService {
             BorrowerRepository borrowerRepository,
             LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository,
             LoanApplicationRepository loanApplicationRepository,
+            LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
             LoanProductRepository loanProductRepository,
             LspRepository lspRepository,
             LoanProductLspMappingRepository loanProductLspMappingRepository,
@@ -46,6 +50,7 @@ public class LoanApplicationService {
         this.borrowerRepository = borrowerRepository;
         this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
         this.loanApplicationRepository = loanApplicationRepository;
+        this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
         this.loanProductRepository = loanProductRepository;
         this.lspRepository = lspRepository;
         this.loanProductLspMappingRepository = loanProductLspMappingRepository;
@@ -72,6 +77,18 @@ public class LoanApplicationService {
                         || application.getSourceChannel().equalsIgnoreCase(normalizedSourceChannel))
                 .filter(application -> normalizedQuery == null || matchesQuery(application, normalizedQuery))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public LoanApplication getApplication(UUID applicationId) {
+        return loanApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown loan application id: " + applicationId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanApplicationStatusTransition> listStatusTransitions(UUID applicationId) {
+        getApplication(applicationId);
+        return loanApplicationStatusTransitionRepository.findTop20ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
     }
 
     @Transactional
@@ -159,12 +176,51 @@ public class LoanApplicationService {
         return savedApplication;
     }
 
-    @Transactional(readOnly = true)
-    public List<LoanApplicationIntakeAudit> listIntakeAudits(UUID applicationId) {
-        if (!loanApplicationRepository.existsById(applicationId)) {
-            throw new IllegalArgumentException("Unknown loan application id: " + applicationId);
+    @Transactional
+    public LoanApplication transitionStatus(
+            UUID applicationId,
+            String actorUsername,
+            LoanApplicationStatus targetStatus,
+            String note
+    ) {
+        if (targetStatus == null) {
+            throw new IllegalArgumentException("Target status is required.");
         }
 
+        LoanApplication application = getApplication(applicationId);
+        LoanApplicationStatus currentStatus = application.getStatus();
+
+        if (currentStatus == targetStatus) {
+            throw new IllegalArgumentException("Loan application is already in status " + currentStatus.name() + ".");
+        }
+
+        if (!currentStatus.canTransitionTo(targetStatus)) {
+            throw new IllegalArgumentException(
+                    "Cannot transition loan application from "
+                            + currentStatus.name()
+                            + " to "
+                            + targetStatus.name()
+                            + "."
+            );
+        }
+
+        String resolvedNote = resolveTransitionNote(note, currentStatus, targetStatus);
+        application.transitionTo(targetStatus);
+        LoanApplication savedApplication = loanApplicationRepository.save(application);
+        loanApplicationStatusTransitionRepository.save(new LoanApplicationStatusTransition(
+                savedApplication,
+                currentStatus,
+                targetStatus,
+                normalizeActorUsername(actorUsername),
+                resolvedNote,
+                CorrelationIdHolder.get()
+        ));
+        return savedApplication;
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanApplicationIntakeAudit> listIntakeAudits(UUID applicationId) {
+        getApplication(applicationId);
         return loanApplicationIntakeAuditRepository.findTop10ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
     }
 
@@ -212,6 +268,40 @@ public class LoanApplicationService {
 
     private static boolean contains(String value, String normalizedQuery) {
         return value != null && value.toLowerCase().contains(normalizedQuery);
+    }
+
+    private static String resolveTransitionNote(
+            String note,
+            LoanApplicationStatus currentStatus,
+            LoanApplicationStatus targetStatus
+    ) {
+        if (note == null) {
+            return defaultTransitionNote(currentStatus, targetStatus);
+        }
+
+        String normalizedNote = note.trim();
+        return normalizedNote.isBlank()
+                ? defaultTransitionNote(currentStatus, targetStatus)
+                : normalizedNote;
+    }
+
+    private static String defaultTransitionNote(
+            LoanApplicationStatus currentStatus,
+            LoanApplicationStatus targetStatus
+    ) {
+        return "Transitioned loan application from "
+                + currentStatus.name()
+                + " to "
+                + targetStatus.name();
+    }
+
+    private static String normalizeActorUsername(String actorUsername) {
+        if (actorUsername == null) {
+            return "system";
+        }
+
+        String normalized = actorUsername.trim();
+        return normalized.isBlank() ? "system" : normalized;
     }
 
     private String serializePayload(LoanApplication application) {
