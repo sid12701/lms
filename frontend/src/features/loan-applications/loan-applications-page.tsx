@@ -4,9 +4,12 @@ import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
+import { useAuth } from '../auth/auth-context'
 import {
+  assignLoanApplication,
   createLoanApplication,
   getLoanApplication,
+  listLoanApplicationAssignmentEvents,
   listLoanApplicationIntakeAudits,
   listLoanApplicationStatusTransitions,
   listLoanApplications,
@@ -15,6 +18,7 @@ import {
   loanApplicationStatusOptions,
   transitionLoanApplicationStatus,
   type LoanApplicationIntakeAuditRecord,
+  type LoanApplicationAssignmentEventRecord,
   type LoanApplicationRecord,
   type LoanApplicationStatus,
   type LoanApplicationStatusTransitionRecord,
@@ -296,8 +300,10 @@ function formatNote(note: string | null) {
 }
 
 export function LoanApplicationsPage() {
+  const { user } = useAuth()
   const [applications, setApplications] = useState<LoanApplicationRecord[]>([])
   const [selectedLoan, setSelectedLoan] = useState<LoanApplicationRecord | null>(null)
+  const [assignmentHistory, setAssignmentHistory] = useState<LoanApplicationAssignmentEventRecord[]>([])
   const [statusHistory, setStatusHistory] = useState<LoanApplicationStatusTransitionRecord[]>([])
   const [intakeAudits, setIntakeAudits] = useState<LoanApplicationIntakeAuditRecord[]>([])
   const [lsps, setLsps] = useState<LspRecord[]>([])
@@ -310,10 +316,13 @@ export function LoanApplicationsPage() {
   const [auditLoading, setAuditLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
+  const [assigning, setAssigning] = useState(false)
   const [pageError, setPageError] = useState('')
   const [workflowError, setWorkflowError] = useState('')
   const [auditError, setAuditError] = useState('')
+  const [assignmentError, setAssignmentError] = useState('')
   const [transitionNote, setTransitionNote] = useState('')
+  const [assignmentNote, setAssignmentNote] = useState('')
 
   const activeLsps = useMemo(() => lsps.filter((item) => item.status === 'ACTIVE'), [lsps])
   const activeProducts = useMemo(
@@ -335,6 +344,10 @@ export function LoanApplicationsPage() {
       : selectedLoan ?? selectedApplicationFromList
   const latestAudit = intakeAudits[0] ?? null
   const selectedStatusHistory = useMemo(() => sortByCreatedAtDesc(statusHistory), [statusHistory])
+  const selectedAssignmentHistory = useMemo(
+    () => sortByCreatedAtDesc(assignmentHistory),
+    [assignmentHistory],
+  )
   const transitionActions = useMemo(
     () =>
       visibleSelectedApplication
@@ -374,13 +387,15 @@ export function LoanApplicationsPage() {
   }
 
   async function refreshSelectedLoan(applicationId: string) {
-    const [detailResponse, historyResponse] = await Promise.all([
+    const [detailResponse, historyResponse, assignmentResponse] = await Promise.all([
       getLoanApplication(applicationId),
       listLoanApplicationStatusTransitions(applicationId),
+      listLoanApplicationAssignmentEvents(applicationId),
     ])
 
     setSelectedLoan(detailResponse)
     setStatusHistory(sortByCreatedAtDesc(historyResponse))
+    setAssignmentHistory(sortByCreatedAtDesc(assignmentResponse))
   }
 
   useEffect(() => {
@@ -434,31 +449,38 @@ export function LoanApplicationsPage() {
     async function loadSelectedLoan() {
       if (!selectedApplicationId) {
         setSelectedLoan(null)
+        setAssignmentHistory([])
         setStatusHistory([])
         setWorkflowError('')
+        setAssignmentError('')
         return
       }
 
       setSelectedLoan(null)
+      setAssignmentHistory([])
       setStatusHistory([])
       setDetailLoading(true)
       setWorkflowError('')
+      setAssignmentError('')
 
       try {
-        const [detailResponse, historyResponse] = await Promise.all([
+        const [detailResponse, historyResponse, assignmentResponse] = await Promise.all([
           getLoanApplication(selectedApplicationId),
           listLoanApplicationStatusTransitions(selectedApplicationId),
+          listLoanApplicationAssignmentEvents(selectedApplicationId),
         ])
 
         if (!cancelled) {
           setSelectedLoan(detailResponse)
           setStatusHistory(sortByCreatedAtDesc(historyResponse))
+          setAssignmentHistory(sortByCreatedAtDesc(assignmentResponse))
         }
       } catch (loadError) {
         const message =
           loadError instanceof Error ? loadError.message : 'Unable to load loan detail.'
         if (!cancelled) {
           setSelectedLoan(null)
+          setAssignmentHistory([])
           setStatusHistory([])
           setWorkflowError(message)
         }
@@ -621,6 +643,31 @@ export function LoanApplicationsPage() {
     }
   }
 
+  async function handleAssignment(assigneeUsername?: string | null) {
+    if (!selectedApplicationId) {
+      return
+    }
+
+    setAssigning(true)
+    setAssignmentError('')
+
+    try {
+      await assignLoanApplication(selectedApplicationId, {
+        assigneeUsername,
+        note: assignmentNote.trim() || undefined,
+      })
+      setAssignmentNote('')
+      await refreshSelectedLoan(selectedApplicationId)
+      await loadApplications(filters)
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : 'Unable to update assignment.'
+      setAssignmentError(message)
+    } finally {
+      setAssigning(false)
+    }
+  }
+
   return (
     <div className="users-layout">
       <Card className="list-card">
@@ -762,6 +809,9 @@ export function LoanApplicationsPage() {
                     {application.lspCode} - {application.productCode}
                   </span>
                   <span className="helper-copy">{application.externalLoanId}</span>
+                  <span className="helper-copy">
+                    {application.assignedToUsername ? `Owner ${application.assignedToUsername}` : 'Unassigned'}
+                  </span>
                   <span className="helper-copy">{formatTimestamp(application.createdAt)}</span>
                 </button>
               ))}
@@ -1084,6 +1134,100 @@ export function LoanApplicationsPage() {
                     <div className="loan-detail-field">
                       <span>Borrower email</span>
                       <strong>{visibleSelectedApplication.borrowerEmail || 'Not provided'}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="detail-section">
+                  <div className="section-eyebrow">Queue ownership</div>
+                  <div className="loan-transition-panel">
+                    <div className="loan-transition-panel__header">
+                      <div>
+                        <h4>Assignment</h4>
+                        <p className="helper-copy">
+                          Claim the case or release it back to the shared review queue.
+                        </p>
+                      </div>
+                      <Badge variant={visibleSelectedApplication.assignedToUsername ? 'default' : 'warning'}>
+                        {visibleSelectedApplication.assignedToUsername || 'Unassigned'}
+                      </Badge>
+                    </div>
+                    <div className="loan-assignment-summary">
+                      <div className="loan-detail-field">
+                        <span>Assigned to</span>
+                        <strong>{visibleSelectedApplication.assignedToUsername || 'Shared queue'}</strong>
+                      </div>
+                      <div className="loan-detail-field">
+                        <span>Assigned by</span>
+                        <strong>{visibleSelectedApplication.assignedByUsername || 'Not captured'}</strong>
+                      </div>
+                      <div className="loan-detail-field">
+                        <span>Assigned at</span>
+                        <strong>
+                          {visibleSelectedApplication.assignedAt
+                            ? formatTimestamp(visibleSelectedApplication.assignedAt)
+                            : 'Not assigned'}
+                        </strong>
+                      </div>
+                    </div>
+                    <div className="field-stack">
+                      <label htmlFor="assignment-note">Assignment note</label>
+                      <textarea
+                        id="assignment-note"
+                        className="ui-textarea"
+                        value={assignmentNote}
+                        onChange={(event) => setAssignmentNote(event.target.value)}
+                        placeholder="Add context for the handoff. This is optional."
+                        rows={3}
+                      />
+                    </div>
+                    {assignmentError ? <div className="empty-state">{assignmentError}</div> : null}
+                    <div className="loan-transition-actions">
+                      <Button
+                        disabled={assigning || !user?.username}
+                        onClick={() => void handleAssignment(user?.username)}
+                        type="button"
+                        variant="secondary"
+                      >
+                        {assigning ? 'Updating...' : 'Assign to me'}
+                      </Button>
+                      <Button
+                        disabled={assigning || !visibleSelectedApplication.assignedToUsername}
+                        onClick={() => void handleAssignment(null)}
+                        type="button"
+                        variant="outline"
+                      >
+                        {assigning ? 'Updating...' : 'Release'}
+                      </Button>
+                    </div>
+                    <div className="loan-history">
+                      <div className="loan-history__header">
+                        <div className="section-eyebrow">Assignment history</div>
+                        <Badge>{selectedAssignmentHistory.length} events</Badge>
+                      </div>
+                      {!selectedAssignmentHistory.length ? (
+                        <div className="empty-state">No assignment events recorded yet.</div>
+                      ) : (
+                        <div className="loan-history__list">
+                          {selectedAssignmentHistory.map((event) => (
+                            <div className="loan-history__item" key={event.id}>
+                              <div>
+                                <strong>
+                                  {event.fromAssigneeUsername || 'Shared queue'} - {event.toAssigneeUsername || 'Shared queue'}
+                                </strong>
+                                <p className="helper-copy">{formatTimestamp(event.createdAt)}</p>
+                                <p className="helper-copy">{formatNote(event.note)}</p>
+                                <p className="helper-copy">
+                                  Correlation ID: {event.correlationId ?? 'Not captured'}
+                                </p>
+                              </div>
+                              <div className="inline-actions">
+                                <Badge>{event.actorUsername}</Badge>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

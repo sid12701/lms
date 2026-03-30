@@ -157,6 +157,9 @@ export type LoanApplicationRecord = {
   requestedAmount: number
   tenureMonths: number
   status: string
+  assignedToUsername?: string | null
+  assignedByUsername?: string | null
+  assignedAt?: string | null
   createdAt: string
 }
 
@@ -178,6 +181,17 @@ export type LoanApplicationStatusTransitionRecord = {
   toStatus: LoanApplicationStatus
   actorUsername: string
   note: string
+  correlationId: string | null
+  createdAt: string
+}
+
+export type LoanApplicationAssignmentEventRecord = {
+  id: string
+  loanApplicationId: string
+  fromAssigneeUsername: string | null
+  toAssigneeUsername: string | null
+  actorUsername: string
+  note: string | null
   correlationId: string | null
   createdAt: string
 }
@@ -566,6 +580,12 @@ export function listLoanApplicationStatusTransitions(applicationId: string) {
   )
 }
 
+export function listLoanApplicationAssignmentEvents(applicationId: string) {
+  return requestJson<LoanApplicationAssignmentEventRecord[]>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/assignment-events`,
+  )
+}
+
 export function transitionLoanApplicationStatus(
   applicationId: string,
   payload: {
@@ -575,6 +595,22 @@ export function transitionLoanApplicationStatus(
 ) {
   return requestJson<LoanApplicationDetailRecord>(
     `/api/v1/internal/ops/loan-applications/${applicationId}/status-transitions`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
+export function assignLoanApplication(
+  applicationId: string,
+  payload: {
+    assigneeUsername?: string | null
+    note?: string
+  },
+) {
+  return requestJson<LoanApplicationDetailRecord>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/assignment`,
     {
       method: 'POST',
       body: JSON.stringify(payload),
