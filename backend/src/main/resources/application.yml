@@ -32,5 +32,6 @@ app:
         - SYSTEM_ADMIN
         - OPS_USER
     jwt:
+      secret: ${APP_SECURITY_JWT_SECRET:}
       issuer: ${APP_SECURITY_JWT_ISSUER:bhawana-lms}
       ttl: ${APP_SECURITY_JWT_TTL:PT30M}
