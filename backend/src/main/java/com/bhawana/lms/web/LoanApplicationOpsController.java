@@ -12,9 +12,11 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
@@ -85,6 +87,11 @@ public class LoanApplicationOpsController {
                 request.borrowerFullName(),
                 request.borrowerMobile(),
                 request.borrowerEmail(),
+                request.borrowerDateOfBirth(),
+                request.borrowerCity(),
+                request.borrowerState(),
+                request.borrowerEmploymentType(),
+                request.borrowerMonthlyIncome(),
                 request.requestedAmount(),
                 request.tenureMonths()
         );
@@ -114,6 +121,11 @@ public class LoanApplicationOpsController {
                 application.getBorrower().getPan(),
                 application.getBorrower().getMobile(),
                 application.getBorrower().getEmail(),
+                application.getBorrower().getDateOfBirth(),
+                application.getBorrower().getCity(),
+                application.getBorrower().getState(),
+                application.getBorrower().getEmploymentType(),
+                application.getBorrower().getMonthlyIncome(),
                 application.getLsp().getId().toString(),
                 application.getLsp().getCode(),
                 application.getLsp().getName(),
@@ -137,6 +149,11 @@ public class LoanApplicationOpsController {
                 application.getBorrower().getPan(),
                 application.getBorrower().getMobile(),
                 application.getBorrower().getEmail(),
+                application.getBorrower().getDateOfBirth(),
+                application.getBorrower().getCity(),
+                application.getBorrower().getState(),
+                application.getBorrower().getEmploymentType(),
+                application.getBorrower().getMonthlyIncome(),
                 application.getLsp().getId().toString(),
                 application.getLsp().getCode(),
                 application.getLsp().getName(),
@@ -186,6 +203,11 @@ public class LoanApplicationOpsController {
             @NotBlank String borrowerFullName,
             @NotBlank @Pattern(regexp = "^[0-9]{10,15}$", message = "Mobile must contain 10 to 15 digits") String borrowerMobile,
             @Email String borrowerEmail,
+            @Past LocalDate borrowerDateOfBirth,
+            @Size(max = 128) String borrowerCity,
+            @Size(max = 128) String borrowerState,
+            @Size(max = 64) String borrowerEmploymentType,
+            @DecimalMin(value = "0.01") BigDecimal borrowerMonthlyIncome,
             @NotNull @DecimalMin("0.01") BigDecimal requestedAmount,
             @NotNull @Min(1) Integer tenureMonths
     ) {
@@ -198,6 +220,11 @@ public class LoanApplicationOpsController {
             String borrowerPan,
             String borrowerMobile,
             String borrowerEmail,
+            LocalDate borrowerDateOfBirth,
+            String borrowerCity,
+            String borrowerState,
+            String borrowerEmploymentType,
+            BigDecimal borrowerMonthlyIncome,
             String lspId,
             String lspCode,
             String lspName,
@@ -220,6 +247,11 @@ public class LoanApplicationOpsController {
             String borrowerPan,
             String borrowerMobile,
             String borrowerEmail,
+            LocalDate borrowerDateOfBirth,
+            String borrowerCity,
+            String borrowerState,
+            String borrowerEmploymentType,
+            BigDecimal borrowerMonthlyIncome,
             String lspId,
             String lspCode,
             String lspName,

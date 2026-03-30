@@ -20,6 +20,8 @@ import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -101,20 +103,26 @@ class LoanApplicationOpsControllerTest {
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
                         .with(opsUser())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "lspId", lsp.id(),
-                                "productId", product.id(),
-                                "externalLoanId", "EXT-002",
-                                "sourceChannel", "PARTNER_PORTAL",
-                                "borrowerPan", "ABCDE1234F",
-                                "borrowerFullName", "Anika Sharma",
-                                "borrowerMobile", "9999999999",
-                                "borrowerEmail", "anika.updated@example.com",
-                                "requestedAmount", new BigDecimal("50000.00"),
-                                "tenureMonths", 12
+                        .content(objectMapper.writeValueAsString(loanApplicationPayload(
+                                lsp.id(),
+                                product.id(),
+                                "EXT-002",
+                                "PARTNER_PORTAL",
+                                "ABCDE1234F",
+                                "Anika Sharma",
+                                "9999999999",
+                                "anika.updated@example.com",
+                                LocalDate.of(1994, 2, 14),
+                                "Bengaluru",
+                                "Karnataka",
+                                "SALARIED",
+                                new BigDecimal("85000.00"),
+                                new BigDecimal("50000.00"),
+                                12
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.borrowerId").value(firstBorrowerId))
+                .andExpect(jsonPath("$.borrowerCity").value("Bengaluru"))
                 .andExpect(jsonPath("$.status").value("RECEIVED"));
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
@@ -140,17 +148,22 @@ class LoanApplicationOpsControllerTest {
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
                         .with(opsUser())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "lspId", north.id(),
-                                "productId", merchant.id(),
-                                "externalLoanId", "NORTH-200",
-                                "sourceChannel", "PARTNER_PORTAL",
-                                "borrowerPan", "ZXCVB1234N",
-                                "borrowerFullName", "Rahul Shah",
-                                "borrowerMobile", "9876543210",
-                                "borrowerEmail", "rahul@example.com",
-                                "requestedAmount", new BigDecimal("45000.00"),
-                                "tenureMonths", 12
+                        .content(objectMapper.writeValueAsString(loanApplicationPayload(
+                                north.id(),
+                                merchant.id(),
+                                "NORTH-200",
+                                "PARTNER_PORTAL",
+                                "ZXCVB1234N",
+                                "Rahul Shah",
+                                "9876543210",
+                                "rahul@example.com",
+                                LocalDate.of(1991, 9, 12),
+                                "Delhi",
+                                "Delhi",
+                                "SELF_EMPLOYED",
+                                new BigDecimal("92000.00"),
+                                new BigDecimal("45000.00"),
+                                12
                         ))))
                 .andExpect(status().isOk());
 
@@ -231,6 +244,11 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(created.get("id").asText()))
                 .andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.borrowerDateOfBirth").value("1992-03-10"))
+                .andExpect(jsonPath("$.borrowerCity").value("Mumbai"))
+                .andExpect(jsonPath("$.borrowerState").value("Maharashtra"))
+                .andExpect(jsonPath("$.borrowerEmploymentType").value("SALARIED"))
+                .andExpect(jsonPath("$.borrowerMonthlyIncome").value(78000.00))
                 .andExpect(jsonPath("$.updatedAt").exists());
 
         transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Assigned for analyst review");
@@ -289,17 +307,22 @@ class LoanApplicationOpsControllerTest {
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "lspId", lsp.id(),
-                                "productId", product.id(),
-                                "externalLoanId", "EXT-003",
-                                "sourceChannel", "API",
-                                "borrowerPan", "PQRSX4321Z",
-                                "borrowerFullName", "Riya Kapoor",
-                                "borrowerMobile", "9898989898",
-                                "borrowerEmail", "riya@example.com",
-                                "requestedAmount", new BigDecimal("999999.00"),
-                                "tenureMonths", 12
+                        .content(objectMapper.writeValueAsString(loanApplicationPayload(
+                                lsp.id(),
+                                product.id(),
+                                "EXT-003",
+                                "API",
+                                "PQRSX4321Z",
+                                "Riya Kapoor",
+                                "9898989898",
+                                "riya@example.com",
+                                LocalDate.of(1995, 1, 11),
+                                "Jaipur",
+                                "Rajasthan",
+                                "SALARIED",
+                                new BigDecimal("64000.00"),
+                                new BigDecimal("999999.00"),
+                                12
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
@@ -316,17 +339,22 @@ class LoanApplicationOpsControllerTest {
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
                         .with(opsUser())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "lspId", lsp.id(),
-                                "productId", product.id(),
-                                "externalLoanId", "EXT-010",
-                                "sourceChannel", "API",
-                                "borrowerPan", "ZXCVB1234N",
-                                "borrowerFullName", "Rahul Shah",
-                                "borrowerMobile", "9876543210",
-                                "borrowerEmail", "rahul@example.com",
-                                "requestedAmount", new BigDecimal("45000.00"),
-                                "tenureMonths", 12
+                        .content(objectMapper.writeValueAsString(loanApplicationPayload(
+                                lsp.id(),
+                                product.id(),
+                                "EXT-010",
+                                "API",
+                                "ZXCVB1234N",
+                                "Rahul Shah",
+                                "9876543210",
+                                "rahul@example.com",
+                                LocalDate.of(1991, 9, 12),
+                                "Delhi",
+                                "Delhi",
+                                "SELF_EMPLOYED",
+                                new BigDecimal("92000.00"),
+                                new BigDecimal("45000.00"),
+                                12
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
@@ -340,20 +368,68 @@ class LoanApplicationOpsControllerTest {
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
                         .with(opsUser())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "lspId", lsp.id(),
-                                "productId", product.id(),
-                                "externalLoanId", "EXT-020",
-                                "sourceChannel", "API",
-                                "borrowerPan", "ABCDE1234F",
-                                "borrowerFullName", "Anika Sharma",
-                                "borrowerMobile", "9999999999",
-                                "borrowerEmail", "anika@example.com",
-                                "requestedAmount", new BigDecimal("45000.00"),
-                                "tenureMonths", 12
+                        .content(objectMapper.writeValueAsString(loanApplicationPayload(
+                                lsp.id(),
+                                product.id(),
+                                "EXT-020",
+                                "API",
+                                "ABCDE1234F",
+                                "Anika Sharma",
+                                "9999999999",
+                                "anika@example.com",
+                                LocalDate.of(1992, 3, 10),
+                                "Mumbai",
+                                "Maharashtra",
+                                "SALARIED",
+                                new BigDecimal("78000.00"),
+                                new BigDecimal("45000.00"),
+                                12
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void borrowerProfileFieldsAreReturnedInListAndRefreshedOnRepeatedPanIntake() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        createApplication(lsp.id(), product.id(), "EXT-110", "API", "ABCDE1234F");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loanApplicationPayload(
+                                lsp.id(),
+                                product.id(),
+                                "EXT-111",
+                                "PARTNER_PORTAL",
+                                "ABCDE1234F",
+                                "Anika Sharma",
+                                "9999999998",
+                                "anika.refresh@example.com",
+                                LocalDate.of(1992, 3, 10),
+                                "Pune",
+                                "Maharashtra",
+                                "SELF_EMPLOYED",
+                                new BigDecimal("91000.00"),
+                                new BigDecimal("52000.00"),
+                                18
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.borrowerCity").value("Pune"))
+                .andExpect(jsonPath("$.borrowerEmploymentType").value("SELF_EMPLOYED"));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("q", "pune"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].borrowerCity").value("Pune"))
+                .andExpect(jsonPath("$[0].borrowerState").value("Maharashtra"))
+                .andExpect(jsonPath("$[0].borrowerEmploymentType").value("SELF_EMPLOYED"))
+                .andExpect(jsonPath("$[0].borrowerMonthlyIncome").value(91000.00));
     }
 
     private JsonNode createApplication(
@@ -366,17 +442,22 @@ class LoanApplicationOpsControllerTest {
         MvcResult result = mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
                         .with(opsUser())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "lspId", lspId,
-                                "productId", productId,
-                                "externalLoanId", externalLoanId,
-                                "sourceChannel", sourceChannel,
-                                "borrowerPan", borrowerPan,
-                                "borrowerFullName", "Anika Sharma",
-                                "borrowerMobile", "9999999999",
-                                "borrowerEmail", "anika@example.com",
-                                "requestedAmount", new BigDecimal("45000.00"),
-                                "tenureMonths", 12
+                        .content(objectMapper.writeValueAsString(loanApplicationPayload(
+                                lspId,
+                                productId,
+                                externalLoanId,
+                                sourceChannel,
+                                borrowerPan,
+                                "Anika Sharma",
+                                "9999999999",
+                                "anika@example.com",
+                                LocalDate.of(1992, 3, 10),
+                                "Mumbai",
+                                "Maharashtra",
+                                "SALARIED",
+                                new BigDecimal("78000.00"),
+                                new BigDecimal("45000.00"),
+                                12
                         ))))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -396,6 +477,42 @@ class LoanApplicationOpsControllerTest {
                 .andReturn();
 
         return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private static Map<String, Object> loanApplicationPayload(
+            String lspId,
+            String productId,
+            String externalLoanId,
+            String sourceChannel,
+            String borrowerPan,
+            String borrowerFullName,
+            String borrowerMobile,
+            String borrowerEmail,
+            LocalDate borrowerDateOfBirth,
+            String borrowerCity,
+            String borrowerState,
+            String borrowerEmploymentType,
+            BigDecimal borrowerMonthlyIncome,
+            BigDecimal requestedAmount,
+            int tenureMonths
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("lspId", lspId);
+        payload.put("productId", productId);
+        payload.put("externalLoanId", externalLoanId);
+        payload.put("sourceChannel", sourceChannel);
+        payload.put("borrowerPan", borrowerPan);
+        payload.put("borrowerFullName", borrowerFullName);
+        payload.put("borrowerMobile", borrowerMobile);
+        payload.put("borrowerEmail", borrowerEmail);
+        payload.put("borrowerDateOfBirth", borrowerDateOfBirth);
+        payload.put("borrowerCity", borrowerCity);
+        payload.put("borrowerState", borrowerState);
+        payload.put("borrowerEmploymentType", borrowerEmploymentType);
+        payload.put("borrowerMonthlyIncome", borrowerMonthlyIncome);
+        payload.put("requestedAmount", requestedAmount);
+        payload.put("tenureMonths", tenureMonths);
+        return payload;
     }
 
     private ProductFixture createProduct(String status) throws Exception {

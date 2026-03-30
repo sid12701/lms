@@ -19,6 +19,7 @@ import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
@@ -102,6 +103,11 @@ public class LoanApplicationService {
             String borrowerFullName,
             String borrowerMobile,
             String borrowerEmail,
+            LocalDate borrowerDateOfBirth,
+            String borrowerCity,
+            String borrowerState,
+            String borrowerEmploymentType,
+            BigDecimal borrowerMonthlyIncome,
             BigDecimal requestedAmount,
             int tenureMonths
     ) {
@@ -145,7 +151,12 @@ public class LoanApplicationService {
                     existing.refreshProfile(
                             borrowerFullName.trim(),
                             borrowerMobile.trim(),
-                            normalizeEmail(borrowerEmail)
+                            normalizeEmail(borrowerEmail),
+                            borrowerDateOfBirth,
+                            borrowerCity,
+                            borrowerState,
+                            borrowerEmploymentType,
+                            normalizeMonthlyIncome(borrowerMonthlyIncome)
                     );
                     return borrowerRepository.save(existing);
                 })
@@ -153,7 +164,12 @@ public class LoanApplicationService {
                         borrowerFullName.trim(),
                         normalizePan(borrowerPan),
                         borrowerMobile.trim(),
-                        normalizeEmail(borrowerEmail)
+                        normalizeEmail(borrowerEmail),
+                        borrowerDateOfBirth,
+                        borrowerCity,
+                        borrowerState,
+                        borrowerEmploymentType,
+                        normalizeMonthlyIncome(borrowerMonthlyIncome)
                 )));
 
         LoanApplication application = new LoanApplication(
@@ -241,6 +257,18 @@ public class LoanApplicationService {
         return sourceChannel.trim().toUpperCase();
     }
 
+    private static BigDecimal normalizeMonthlyIncome(BigDecimal monthlyIncome) {
+        if (monthlyIncome == null) {
+            return null;
+        }
+
+        if (monthlyIncome.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Borrower monthly income must be greater than zero.");
+        }
+
+        return monthlyIncome.setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
     private static String normalizeOptional(String value) {
         if (value == null) {
             return null;
@@ -263,6 +291,9 @@ public class LoanApplicationService {
         return contains(application.getBorrower().getFullName(), normalizedQuery)
                 || contains(application.getBorrower().getPan(), normalizedQuery)
                 || contains(application.getBorrower().getMobile(), normalizedQuery)
+                || contains(application.getBorrower().getCity(), normalizedQuery)
+                || contains(application.getBorrower().getState(), normalizedQuery)
+                || contains(application.getBorrower().getEmploymentType(), normalizedQuery)
                 || contains(application.getExternalLoanId(), normalizedQuery);
     }
 
@@ -319,6 +350,11 @@ public class LoanApplicationService {
         payload.put("borrowerFullName", application.getBorrower().getFullName());
         payload.put("borrowerMobile", application.getBorrower().getMobile());
         payload.put("borrowerEmail", application.getBorrower().getEmail());
+        payload.put("borrowerDateOfBirth", application.getBorrower().getDateOfBirth());
+        payload.put("borrowerCity", application.getBorrower().getCity());
+        payload.put("borrowerState", application.getBorrower().getState());
+        payload.put("borrowerEmploymentType", application.getBorrower().getEmploymentType());
+        payload.put("borrowerMonthlyIncome", application.getBorrower().getMonthlyIncome());
         payload.put("status", application.getStatus().name());
 
         try {
