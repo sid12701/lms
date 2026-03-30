@@ -17,7 +17,7 @@ import { useAuth } from './auth-context'
 export function LoginPage() {
   const navigate = useNavigate()
   const { login } = useAuth()
-  const [username, setUsername] = useState('ops.admin')
+  const [username, setUsername] = useState('local.admin')
   const [password, setPassword] = useState('ChangeMe123!')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
