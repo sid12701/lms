@@ -14,12 +14,19 @@ export const lspStatusOptions = ['ACTIVE', 'INACTIVE'] as const
 export const userStatusOptions = ['ACTIVE', 'INACTIVE'] as const
 export const apiClientStatusOptions = ['ACTIVE', 'INACTIVE'] as const
 export const loanProductStatusOptions = ['DRAFT', 'ACTIVE', 'INACTIVE'] as const
+export const loanApplicationStatusOptions = [
+  'RECEIVED',
+  'UNDER_REVIEW',
+  'APPROVED',
+  'REJECTED',
+] as const
 
 export type RoleCode = (typeof roleOptions)[number]
 export type LspStatus = (typeof lspStatusOptions)[number]
 export type UserStatus = (typeof userStatusOptions)[number]
 export type ApiClientStatus = (typeof apiClientStatusOptions)[number]
 export type LoanProductStatus = (typeof loanProductStatusOptions)[number]
+export type LoanApplicationStatus = (typeof loanApplicationStatusOptions)[number]
 
 export type AuthTokenResponse = {
   accessToken: string
@@ -148,12 +155,25 @@ export type LoanApplicationRecord = {
   createdAt: string
 }
 
+export type LoanApplicationDetailRecord = LoanApplicationRecord
+
 export type LoanApplicationIntakeAuditRecord = {
   id: string
   loanApplicationId: string
   actorUsername: string
   correlationId: string | null
   payloadJson: string
+  createdAt: string
+}
+
+export type LoanApplicationStatusTransitionRecord = {
+  id: string
+  loanApplicationId: string
+  fromStatus: LoanApplicationStatus
+  toStatus: LoanApplicationStatus
+  actorUsername: string
+  note: string
+  correlationId: string | null
   createdAt: string
 }
 
@@ -521,5 +541,33 @@ export function createLoanApplication(payload: {
 export function listLoanApplicationIntakeAudits(applicationId: string) {
   return requestJson<LoanApplicationIntakeAuditRecord[]>(
     `/api/v1/internal/ops/loan-applications/${applicationId}/intake-audits`,
+  )
+}
+
+export function getLoanApplication(applicationId: string) {
+  return requestJson<LoanApplicationDetailRecord>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}`,
+  )
+}
+
+export function listLoanApplicationStatusTransitions(applicationId: string) {
+  return requestJson<LoanApplicationStatusTransitionRecord[]>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/status-transitions`,
+  )
+}
+
+export function transitionLoanApplicationStatus(
+  applicationId: string,
+  payload: {
+    targetStatus: LoanApplicationStatus
+    note?: string
+  },
+) {
+  return requestJson<LoanApplicationDetailRecord>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/status-transitions`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
   )
 }

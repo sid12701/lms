@@ -1,16 +1,23 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { ArrowRight, CheckCircle2, FileText } from 'lucide-react'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
 import {
   createLoanApplication,
+  getLoanApplication,
   listLoanApplicationIntakeAudits,
+  listLoanApplicationStatusTransitions,
   listLoanApplications,
   listLoanProducts,
   listLsps,
+  loanApplicationStatusOptions,
+  transitionLoanApplicationStatus,
   type LoanApplicationIntakeAuditRecord,
   type LoanApplicationRecord,
+  type LoanApplicationStatus,
+  type LoanApplicationStatusTransitionRecord,
   type LoanProductRecord,
   type LspRecord,
 } from '../api/lms-api'
@@ -36,6 +43,13 @@ type ListFilterState = {
   query: string
 }
 
+type TransitionAction = {
+  targetStatus: LoanApplicationStatus
+  label: string
+  description: string
+  variant: 'primary' | 'secondary' | 'outline'
+}
+
 const initialFormState: IntakeFormState = {
   lspId: '',
   productId: '',
@@ -57,6 +71,24 @@ const initialFilterState: ListFilterState = {
   query: '',
 }
 
+const workflowProgression: Array<{
+  status: LoanApplicationStatus | 'DECISION'
+  label: string
+  description: string
+}> = [
+  { status: 'RECEIVED', label: 'Received', description: 'Captured from intake and ready for review.' },
+  {
+    status: 'UNDER_REVIEW',
+    label: 'Under review',
+    description: 'Ops is validating the case and supporting data.',
+  },
+  {
+    status: 'DECISION',
+    label: 'Decision',
+    description: 'Approved or rejected after review.',
+  },
+]
+
 function currencyLabel(value: number) {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -72,8 +104,99 @@ function formatTimestamp(value: string) {
   }).format(new Date(value))
 }
 
+function loanStatusLabel(status: LoanApplicationStatus) {
+  switch (status) {
+    case 'RECEIVED':
+      return 'Received'
+    case 'UNDER_REVIEW':
+      return 'Under review'
+    case 'APPROVED':
+      return 'Approved'
+    case 'REJECTED':
+      return 'Rejected'
+  }
+}
+
+function loanStatusVariant(
+  status: LoanApplicationStatus,
+): 'default' | 'success' | 'warning' | 'destructive' {
+  switch (status) {
+    case 'RECEIVED':
+      return 'warning'
+    case 'UNDER_REVIEW':
+      return 'default'
+    case 'APPROVED':
+      return 'success'
+    case 'REJECTED':
+      return 'destructive'
+  }
+}
+
+function statusProgressIndex(status: LoanApplicationStatus) {
+  switch (status) {
+    case 'RECEIVED':
+      return 1
+    case 'UNDER_REVIEW':
+      return 2
+    case 'APPROVED':
+    case 'REJECTED':
+      return 3
+  }
+}
+
+function getTransitionActions(status: LoanApplicationStatus): TransitionAction[] {
+  switch (status) {
+    case 'RECEIVED':
+      return [
+        {
+          targetStatus: 'UNDER_REVIEW',
+          label: 'Move to review',
+          description: 'Promote the case into the review queue.',
+          variant: 'secondary',
+        },
+      ]
+    case 'UNDER_REVIEW':
+      return [
+        {
+          targetStatus: 'APPROVED',
+          label: 'Approve',
+          description: 'Mark the case as approved and ready for downstream processing.',
+          variant: 'primary',
+        },
+        {
+          targetStatus: 'REJECTED',
+          label: 'Reject',
+          description: 'Close the case and capture the decision note.',
+          variant: 'outline',
+        },
+      ]
+    case 'APPROVED':
+    case 'REJECTED':
+      return []
+  }
+}
+
+function sortByCreatedAtDesc<T extends { createdAt: string }>(records: T[]) {
+  return [...records].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+}
+
+function formatPayloadJson(payloadJson: string) {
+  try {
+    return JSON.stringify(JSON.parse(payloadJson), null, 2)
+  } catch {
+    return payloadJson
+  }
+}
+
+function formatNote(note: string | null) {
+  const trimmed = note?.trim()
+  return trimmed ? trimmed : 'No note recorded.'
+}
+
 export function LoanApplicationsPage() {
   const [applications, setApplications] = useState<LoanApplicationRecord[]>([])
+  const [selectedLoan, setSelectedLoan] = useState<LoanApplicationRecord | null>(null)
+  const [statusHistory, setStatusHistory] = useState<LoanApplicationStatusTransitionRecord[]>([])
   const [intakeAudits, setIntakeAudits] = useState<LoanApplicationIntakeAuditRecord[]>([])
   const [lsps, setLsps] = useState<LspRecord[]>([])
   const [products, setProducts] = useState<LoanProductRecord[]>([])
@@ -81,9 +204,14 @@ export function LoanApplicationsPage() {
   const [filters, setFilters] = useState<ListFilterState>(initialFilterState)
   const [selectedApplicationId, setSelectedApplicationId] = useState('')
   const [loading, setLoading] = useState(true)
+  const [detailLoading, setDetailLoading] = useState(false)
   const [auditLoading, setAuditLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
+  const [transitioning, setTransitioning] = useState(false)
+  const [pageError, setPageError] = useState('')
+  const [workflowError, setWorkflowError] = useState('')
+  const [auditError, setAuditError] = useState('')
+  const [transitionNote, setTransitionNote] = useState('')
 
   const activeLsps = useMemo(() => lsps.filter((item) => item.status === 'ACTIVE'), [lsps])
   const activeProducts = useMemo(
@@ -97,16 +225,21 @@ export function LoanApplicationsPage() {
         .sort((left, right) => left.localeCompare(right)),
     [applications],
   )
-  const statusOptions = useMemo(
-    () =>
-      Array.from(new Set(applications.map((item) => item.status)))
-        .filter(Boolean)
-        .sort((left, right) => left.localeCompare(right)),
-    [applications],
-  )
-  const selectedApplication =
+  const selectedApplicationFromList =
     applications.find((application) => application.id === selectedApplicationId) ?? null
+  const visibleSelectedApplication = selectedLoan ?? selectedApplicationFromList
   const latestAudit = intakeAudits[0] ?? null
+  const selectedStatusHistory = useMemo(() => sortByCreatedAtDesc(statusHistory), [statusHistory])
+  const transitionActions = useMemo(
+    () =>
+      visibleSelectedApplication
+        ? getTransitionActions(visibleSelectedApplication.status as LoanApplicationStatus)
+        : [],
+    [visibleSelectedApplication],
+  )
+  const currentProgressIndex = visibleSelectedApplication
+    ? statusProgressIndex(visibleSelectedApplication.status as LoanApplicationStatus)
+    : 0
 
   async function loadApplications(nextFilters: ListFilterState) {
     const response = await listLoanApplications({
@@ -116,10 +249,23 @@ export function LoanApplicationsPage() {
       sourceChannel: nextFilters.sourceChannel || undefined,
       query: nextFilters.query.trim() || undefined,
     })
+
     setApplications(response)
     setSelectedApplicationId((current) =>
       response.some((application) => application.id === current) ? current : response[0]?.id ?? '',
     )
+
+    return response
+  }
+
+  async function refreshSelectedLoan(applicationId: string) {
+    const [detailResponse, historyResponse] = await Promise.all([
+      getLoanApplication(applicationId),
+      listLoanApplicationStatusTransitions(applicationId),
+    ])
+
+    setSelectedLoan(detailResponse)
+    setStatusHistory(sortByCreatedAtDesc(historyResponse))
   }
 
   useEffect(() => {
@@ -127,7 +273,7 @@ export function LoanApplicationsPage() {
 
     async function loadPage() {
       setLoading(true)
-      setError('')
+      setPageError('')
 
       try {
         const [applicationResponse, lspResponse, productResponse] = await Promise.all([
@@ -151,7 +297,7 @@ export function LoanApplicationsPage() {
       } catch (loadError) {
         const message = loadError instanceof Error ? loadError.message : 'Unable to load intake data.'
         if (!cancelled) {
-          setError(message)
+          setPageError(message)
         }
       } finally {
         if (!cancelled) {
@@ -166,6 +312,54 @@ export function LoanApplicationsPage() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSelectedLoan() {
+      if (!selectedApplicationId) {
+        setSelectedLoan(null)
+        setStatusHistory([])
+        setWorkflowError('')
+        return
+      }
+
+      setSelectedLoan(null)
+      setStatusHistory([])
+      setDetailLoading(true)
+      setWorkflowError('')
+
+      try {
+        const [detailResponse, historyResponse] = await Promise.all([
+          getLoanApplication(selectedApplicationId),
+          listLoanApplicationStatusTransitions(selectedApplicationId),
+        ])
+
+        if (!cancelled) {
+          setSelectedLoan(detailResponse)
+          setStatusHistory(sortByCreatedAtDesc(historyResponse))
+        }
+      } catch (loadError) {
+        const message =
+          loadError instanceof Error ? loadError.message : 'Unable to load loan detail.'
+        if (!cancelled) {
+          setSelectedLoan(null)
+          setStatusHistory([])
+          setWorkflowError(message)
+        }
+      } finally {
+        if (!cancelled) {
+          setDetailLoading(false)
+        }
+      }
+    }
+
+    void loadSelectedLoan()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedApplicationId])
 
   useEffect(() => {
     let cancelled = false
@@ -185,13 +379,16 @@ export function LoanApplicationsPage() {
         })
         if (!cancelled) {
           setApplications(response)
-          setError('')
+          setPageError('')
+          setSelectedApplicationId((current) =>
+            response.some((application) => application.id === current) ? current : response[0]?.id ?? '',
+          )
         }
       } catch (loadError) {
         const message =
           loadError instanceof Error ? loadError.message : 'Unable to filter loan applications.'
         if (!cancelled) {
-          setError(message)
+          setPageError(message)
         }
       }
     }
@@ -209,22 +406,24 @@ export function LoanApplicationsPage() {
     async function loadIntakeAudit() {
       if (!selectedApplicationId) {
         setIntakeAudits([])
+        setAuditError('')
         return
       }
 
       setAuditLoading(true)
+      setAuditError('')
 
       try {
         const response = await listLoanApplicationIntakeAudits(selectedApplicationId)
         if (!cancelled) {
-          setIntakeAudits(response)
+          setIntakeAudits(sortByCreatedAtDesc(response))
         }
       } catch (loadError) {
         const message =
           loadError instanceof Error ? loadError.message : 'Unable to load intake audit.'
         if (!cancelled) {
           setIntakeAudits([])
-          setError(message)
+          setAuditError(message)
         }
       } finally {
         if (!cancelled) {
@@ -243,7 +442,7 @@ export function LoanApplicationsPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitting(true)
-    setError('')
+    setPageError('')
 
     try {
       const created = await createLoanApplication({
@@ -270,9 +469,35 @@ export function LoanApplicationsPage() {
     } catch (submitError) {
       const message =
         submitError instanceof Error ? submitError.message : 'Unable to create loan application.'
-      setError(message)
+      setPageError(message)
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function handleStatusTransition(targetStatus: LoanApplicationStatus) {
+    if (!selectedApplicationId) {
+      return
+    }
+
+    setTransitioning(true)
+    setWorkflowError('')
+
+    try {
+      await transitionLoanApplicationStatus(selectedApplicationId, {
+        targetStatus,
+        note: transitionNote.trim() || undefined,
+      })
+
+      setTransitionNote('')
+      await refreshSelectedLoan(selectedApplicationId)
+      await loadApplications(filters)
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : 'Unable to update loan status.'
+      setWorkflowError(message)
+    } finally {
+      setTransitioning(false)
     }
   }
 
@@ -283,7 +508,8 @@ export function LoanApplicationsPage() {
           <div className="section-eyebrow">Loan intake</div>
           <CardTitle>Received applications</CardTitle>
           <CardDescription>
-            Phase 4 foundation: capture borrower-linked intake records and review newly received applications.
+            Phase 4 foundation: capture borrower-linked intake records and review newly received
+            applications.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -351,9 +577,9 @@ export function LoanApplicationsPage() {
                 }
               >
                 <option value="">All statuses</option>
-                {statusOptions.map((status) => (
+                {loanApplicationStatusOptions.map((status) => (
                   <option key={status} value={status}>
-                    {status}
+                    {loanStatusLabel(status)}
                   </option>
                 ))}
               </select>
@@ -378,8 +604,8 @@ export function LoanApplicationsPage() {
             </div>
           </div>
           {loading ? <div className="empty-state">Loading loan applications...</div> : null}
-          {error ? <div className="empty-state">{error}</div> : null}
-          {!loading && !error ? (
+          {pageError ? <div className="empty-state">{pageError}</div> : null}
+          {!loading && !pageError ? (
             <div className="table-grid">
               {applications.map((application) => (
                 <button
@@ -388,7 +614,10 @@ export function LoanApplicationsPage() {
                   onClick={() => setSelectedApplicationId(application.id)}
                   style={{
                     cursor: 'pointer',
-                    border: application.id === selectedApplicationId ? '1px solid var(--color-accent)' : undefined,
+                    border:
+                      application.id === selectedApplicationId
+                        ? '1px solid var(--color-accent)'
+                        : undefined,
                     background:
                       application.id === selectedApplicationId
                         ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)'
@@ -401,14 +630,16 @@ export function LoanApplicationsPage() {
                   <div>
                     <strong>{application.borrowerFullName}</strong>
                     <p className="helper-copy">
-                      {application.borrowerPan} · {application.borrowerMobile}
+                      {application.borrowerPan} - {application.borrowerMobile}
                     </p>
                   </div>
-                  <Badge variant="warning">{application.status}</Badge>
+                  <Badge variant={loanStatusVariant(application.status as LoanApplicationStatus)}>
+                    {loanStatusLabel(application.status as LoanApplicationStatus)}
+                  </Badge>
                   <span>{currencyLabel(application.requestedAmount)}</span>
                   <span>{application.tenureMonths} months</span>
                   <span className="helper-copy">
-                    {application.lspCode} · {application.productCode}
+                    {application.lspCode} - {application.productCode}
                   </span>
                   <span className="helper-copy">{application.externalLoanId}</span>
                   <span className="helper-copy">{formatTimestamp(application.createdAt)}</span>
@@ -428,7 +659,8 @@ export function LoanApplicationsPage() {
             <div className="section-eyebrow">Create intake</div>
             <CardTitle>Register a loan application</CardTitle>
             <CardDescription>
-              Use this internal intake form to create the borrower and application foundation for Phase 4.
+              Use this internal intake form to create the borrower and application foundation for
+              Phase 4.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -567,7 +799,7 @@ export function LoanApplicationsPage() {
                   }
                 />
               </div>
-              {error ? <div className="empty-state">{error}</div> : null}
+              {pageError ? <div className="empty-state">{pageError}</div> : null}
               <div className="inline-actions">
                 <Button disabled={submitting} type="submit">
                   {submitting ? 'Creating...' : 'Create application'}
@@ -579,27 +811,245 @@ export function LoanApplicationsPage() {
 
         <Card>
           <CardHeader>
-            <div className="section-eyebrow">Troubleshooting</div>
-            <CardTitle>Selected intake audit</CardTitle>
+            <div className="section-eyebrow">Loan workflow</div>
+            <CardTitle>Selected loan detail and status</CardTitle>
             <CardDescription>
-              Inspect the persisted raw intake payload captured when the selected application was created.
+              Review the selected application, move it through the first review lifecycle, and
+              inspect the status history.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {selectedApplication ? (
+            {visibleSelectedApplication ? (
+              <div className="loan-workflow">
+                <div className="loan-workflow__summary">
+                  <div>
+                    <div className="inline-actions">
+                      <Badge variant={loanStatusVariant(visibleSelectedApplication.status as LoanApplicationStatus)}>
+                        {loanStatusLabel(visibleSelectedApplication.status as LoanApplicationStatus)}
+                      </Badge>
+                      <Badge>{visibleSelectedApplication.externalLoanId}</Badge>
+                    </div>
+                    <h3>{visibleSelectedApplication.borrowerFullName}</h3>
+                    <p className="helper-copy">
+                      {visibleSelectedApplication.lspCode} - {visibleSelectedApplication.productCode}
+                      {' '}| Source {visibleSelectedApplication.sourceChannel}
+                    </p>
+                  </div>
+                  <div className="loan-workflow__headline-metrics">
+                    <div className="loan-workflow__metric">
+                      <span>Amount</span>
+                      <strong>{currencyLabel(visibleSelectedApplication.requestedAmount)}</strong>
+                    </div>
+                    <div className="loan-workflow__metric">
+                      <span>Tenure</span>
+                      <strong>{visibleSelectedApplication.tenureMonths} months</strong>
+                    </div>
+                    <div className="loan-workflow__metric">
+                      <span>Created</span>
+                      <strong>{formatTimestamp(visibleSelectedApplication.createdAt)}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="loan-status-lane" aria-label="Loan status progression">
+                  {workflowProgression.map((step) => {
+                    const stepIndex =
+                      step.status === 'RECEIVED' ? 1 : step.status === 'UNDER_REVIEW' ? 2 : 3
+                    const isCurrent = currentProgressIndex === stepIndex
+                    const isComplete = currentProgressIndex > stepIndex
+
+                    return (
+                      <div
+                        key={step.status}
+                        className={[
+                          'loan-status-lane__step',
+                          isCurrent ? 'loan-status-lane__step--current' : '',
+                          isComplete ? 'loan-status-lane__step--complete' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                      >
+                        <div className="loan-status-lane__step-number">
+                          {step.status === 'DECISION' ? '3' : statusProgressIndex(step.status)}
+                        </div>
+                        <div>
+                          <strong>{step.label}</strong>
+                          <p className="helper-copy">{step.description}</p>
+                        </div>
+                        {step.status === 'DECISION' ? (
+                          <div className="inline-actions">
+                            <Badge variant="success">Approved</Badge>
+                            <Badge variant="destructive">Rejected</Badge>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="loan-detail-grid">
+                  <div className="loan-detail-field">
+                    <span>Application id</span>
+                    <strong>{visibleSelectedApplication.id}</strong>
+                  </div>
+                  <div className="loan-detail-field">
+                    <span>Borrower PAN</span>
+                    <strong>{visibleSelectedApplication.borrowerPan}</strong>
+                  </div>
+                  <div className="loan-detail-field">
+                    <span>Borrower mobile</span>
+                    <strong>{visibleSelectedApplication.borrowerMobile}</strong>
+                  </div>
+                  <div className="loan-detail-field">
+                    <span>Borrower email</span>
+                    <strong>{visibleSelectedApplication.borrowerEmail || 'Not provided'}</strong>
+                  </div>
+                  <div className="loan-detail-field">
+                    <span>LSP</span>
+                    <strong>
+                      {visibleSelectedApplication.lspCode} - {visibleSelectedApplication.lspName}
+                    </strong>
+                  </div>
+                  <div className="loan-detail-field">
+                    <span>Product</span>
+                    <strong>
+                      {visibleSelectedApplication.productCode} - {visibleSelectedApplication.productName}
+                    </strong>
+                  </div>
+                  <div className="loan-detail-field">
+                    <span>Requested amount</span>
+                    <strong>{currencyLabel(visibleSelectedApplication.requestedAmount)}</strong>
+                  </div>
+                  <div className="loan-detail-field">
+                    <span>Tenure</span>
+                    <strong>{visibleSelectedApplication.tenureMonths} months</strong>
+                  </div>
+                </div>
+
+                <div className="loan-transition-panel">
+                  <div className="loan-transition-panel__header">
+                    <div>
+                      <h4>Transition action</h4>
+                      <p className="helper-copy">
+                        Add an optional note before updating the status.
+                      </p>
+                    </div>
+                    <Badge variant={loanStatusVariant(visibleSelectedApplication.status as LoanApplicationStatus)}>
+                      {loanStatusLabel(visibleSelectedApplication.status as LoanApplicationStatus)}
+                    </Badge>
+                  </div>
+                  <div className="field-stack">
+                    <label htmlFor="status-note">Decision note</label>
+                    <textarea
+                      id="status-note"
+                      className="ui-textarea"
+                      value={transitionNote}
+                      onChange={(event) => setTransitionNote(event.target.value)}
+                      placeholder="Add context for the review decision. This is optional."
+                      rows={4}
+                    />
+                  </div>
+                  {workflowError ? <div className="empty-state">{workflowError}</div> : null}
+                  <div className="loan-transition-actions">
+                    {transitionActions.map((action) => (
+                      <Button
+                        key={action.targetStatus}
+                        disabled={transitioning}
+                        onClick={() => void handleStatusTransition(action.targetStatus)}
+                        type="button"
+                        variant={action.variant}
+                        className={
+                          action.targetStatus === 'REJECTED'
+                            ? 'loan-transition-button--reject'
+                            : undefined
+                        }
+                      >
+                        {action.targetStatus === 'APPROVED' ? (
+                          <CheckCircle2 size={16} />
+                        ) : action.targetStatus === 'REJECTED' ? (
+                          <FileText size={16} />
+                        ) : (
+                          <ArrowRight size={16} />
+                        )}
+                        {transitioning ? 'Updating...' : action.label}
+                      </Button>
+                    ))}
+                    {!transitionActions.length ? (
+                      <div className="empty-state">This loan is in a terminal state.</div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="loan-history">
+                  <div className="loan-history__header">
+                    <div className="section-eyebrow">Status history</div>
+                    <Badge>{selectedStatusHistory.length} events</Badge>
+                  </div>
+                  {detailLoading ? <div className="empty-state">Loading loan detail...</div> : null}
+                  {!detailLoading && !selectedStatusHistory.length ? (
+                    <div className="empty-state">No status transitions recorded yet.</div>
+                  ) : null}
+                  {!detailLoading && selectedStatusHistory.length ? (
+                    <div className="loan-history__list">
+                      {selectedStatusHistory.map((transition) => (
+                        <div className="loan-history__item" key={transition.id}>
+                          <div>
+                            <strong>
+                              {loanStatusLabel(transition.fromStatus)} - {loanStatusLabel(transition.toStatus)}
+                            </strong>
+                            <p className="helper-copy">{formatTimestamp(transition.createdAt)}</p>
+                            <p className="helper-copy">{formatNote(transition.note)}</p>
+                            <p className="helper-copy">
+                              Correlation ID: {transition.correlationId ?? 'Not captured'}
+                            </p>
+                          </div>
+                          <div className="inline-actions">
+                            <Badge variant={loanStatusVariant(transition.toStatus)}>
+                              {loanStatusLabel(transition.toStatus)}
+                            </Badge>
+                            <Badge variant="warning">{transition.actorUsername}</Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <div className="empty-state">Select a loan application to inspect its detail view.</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="section-eyebrow">Troubleshooting</div>
+            <CardTitle>Selected intake audit</CardTitle>
+            <CardDescription>
+              Inspect the persisted raw intake payload captured when the selected application was
+              created.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {visibleSelectedApplication ? (
               <div className="form-grid">
                 <div className="inline-actions">
-                  <Badge>{selectedApplication.externalLoanId}</Badge>
-                  <Badge variant="warning">{selectedApplication.status}</Badge>
+                  <Badge>{visibleSelectedApplication.externalLoanId}</Badge>
+                  <Badge variant={loanStatusVariant(visibleSelectedApplication.status as LoanApplicationStatus)}>
+                    {loanStatusLabel(visibleSelectedApplication.status as LoanApplicationStatus)}
+                  </Badge>
                 </div>
                 <div className="helper-copy">
-                  Borrower: {selectedApplication.borrowerFullName} · {selectedApplication.borrowerPan}
+                  Borrower: {visibleSelectedApplication.borrowerFullName} -{' '}
+                  {visibleSelectedApplication.borrowerPan}
                 </div>
                 <div className="helper-copy">
-                  Product: {selectedApplication.productCode} · Source: {selectedApplication.sourceChannel}
+                  Product: {visibleSelectedApplication.productCode} - Source:{' '}
+                  {visibleSelectedApplication.sourceChannel}
                 </div>
                 {auditLoading ? <div className="empty-state">Loading intake audit...</div> : null}
-                {!auditLoading && latestAudit ? (
+                {auditError ? <div className="empty-state">{auditError}</div> : null}
+                {!auditLoading && !auditError && latestAudit ? (
                   <>
                     <div className="helper-copy">
                       Captured {formatTimestamp(latestAudit.createdAt)} by {latestAudit.actorUsername}
@@ -624,8 +1074,10 @@ export function LoanApplicationsPage() {
                     </pre>
                   </>
                 ) : null}
-                {!auditLoading && !latestAudit ? (
-                  <div className="empty-state">No intake audit is available for the selected application.</div>
+                {!auditLoading && !auditError && !latestAudit ? (
+                  <div className="empty-state">
+                    No intake audit is available for the selected application.
+                  </div>
                 ) : null}
               </div>
             ) : (
@@ -636,12 +1088,4 @@ export function LoanApplicationsPage() {
       </div>
     </div>
   )
-}
-
-function formatPayloadJson(payloadJson: string) {
-  try {
-    return JSON.stringify(JSON.parse(payloadJson), null, 2)
-  } catch {
-    return payloadJson
-  }
 }
