@@ -13,6 +13,10 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "app.security")
 public class SecurityProperties {
 
+    private static final String DEFAULT_BOOTSTRAP_USERNAME = "ops.admin";
+    private static final String DEFAULT_BOOTSTRAP_PASSWORD = "ChangeMe123!";
+    private static final List<String> DEFAULT_BOOTSTRAP_ROLES = List.of("SYSTEM_ADMIN", "OPS_USER");
+
     @Valid
     private final BootstrapUser bootstrapUser = new BootstrapUser();
 
@@ -39,6 +43,9 @@ public class SecurityProperties {
         private List<String> roles = new ArrayList<>();
 
         public String getUsername() {
+            if (username == null || username.isBlank()) {
+                return DEFAULT_BOOTSTRAP_USERNAME;
+            }
             return username;
         }
 
@@ -47,6 +54,9 @@ public class SecurityProperties {
         }
 
         public String getPassword() {
+            if (password == null || password.isBlank()) {
+                return DEFAULT_BOOTSTRAP_PASSWORD;
+            }
             return password;
         }
 
@@ -55,6 +65,9 @@ public class SecurityProperties {
         }
 
         public List<String> getRoles() {
+            if (roles == null || roles.isEmpty()) {
+                return DEFAULT_BOOTSTRAP_ROLES;
+            }
             return roles;
         }
 
