@@ -454,8 +454,31 @@ export function saveProductLspMappings(
   })
 }
 
-export function listLoanApplications() {
-  return requestJson<LoanApplicationRecord[]>('/api/v1/internal/ops/loan-applications')
+export function listLoanApplications(filters?: {
+  lspId?: string
+  productId?: string
+  query?: string
+}) {
+  const params = new URLSearchParams()
+
+  if (filters?.lspId) {
+    params.set('lspId', filters.lspId)
+  }
+
+  if (filters?.productId) {
+    params.set('productId', filters.productId)
+  }
+
+  if (filters?.query) {
+    params.set('q', filters.query)
+  }
+
+  const queryString = params.toString()
+  const path = queryString
+    ? `/api/v1/internal/ops/loan-applications?${queryString}`
+    : '/api/v1/internal/ops/loan-applications'
+
+  return requestJson<LoanApplicationRecord[]>(path)
 }
 
 export function createLoanApplication(payload: {

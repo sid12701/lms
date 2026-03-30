@@ -26,6 +26,12 @@ type IntakeFormState = {
   tenureMonths: string
 }
 
+type ListFilterState = {
+  lspId: string
+  productId: string
+  query: string
+}
+
 const initialFormState: IntakeFormState = {
   lspId: '',
   productId: '',
@@ -37,6 +43,12 @@ const initialFormState: IntakeFormState = {
   borrowerEmail: '',
   requestedAmount: '50000',
   tenureMonths: '12',
+}
+
+const initialFilterState: ListFilterState = {
+  lspId: '',
+  productId: '',
+  query: '',
 }
 
 function currencyLabel(value: number) {
@@ -59,6 +71,7 @@ export function LoanApplicationsPage() {
   const [lsps, setLsps] = useState<LspRecord[]>([])
   const [products, setProducts] = useState<LoanProductRecord[]>([])
   const [form, setForm] = useState<IntakeFormState>(initialFormState)
+  const [filters, setFilters] = useState<ListFilterState>(initialFilterState)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -68,6 +81,15 @@ export function LoanApplicationsPage() {
     () => products.filter((item) => item.status === 'ACTIVE'),
     [products],
   )
+
+  async function loadApplications(nextFilters: ListFilterState) {
+    const response = await listLoanApplications({
+      lspId: nextFilters.lspId || undefined,
+      productId: nextFilters.productId || undefined,
+      query: nextFilters.query.trim() || undefined,
+    })
+    setApplications(response)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -113,13 +135,47 @@ export function LoanApplicationsPage() {
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function refreshFilteredList() {
+      if (loading) {
+        return
+      }
+
+      try {
+        const response = await listLoanApplications({
+          lspId: filters.lspId || undefined,
+          productId: filters.productId || undefined,
+          query: filters.query.trim() || undefined,
+        })
+        if (!cancelled) {
+          setApplications(response)
+          setError('')
+        }
+      } catch (loadError) {
+        const message =
+          loadError instanceof Error ? loadError.message : 'Unable to filter loan applications.'
+        if (!cancelled) {
+          setError(message)
+        }
+      }
+    }
+
+    void refreshFilteredList()
+
+    return () => {
+      cancelled = true
+    }
+  }, [filters, loading])
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmitting(true)
     setError('')
 
     try {
-      const created = await createLoanApplication({
+      await createLoanApplication({
         lspId: form.lspId,
         productId: form.productId,
         externalLoanId: form.externalLoanId,
@@ -132,7 +188,7 @@ export function LoanApplicationsPage() {
         tenureMonths: Number(form.tenureMonths),
       })
 
-      setApplications((current) => [created, ...current.filter((item) => item.id !== created.id)])
+      await loadApplications(filters)
       setForm((current) => ({
         ...initialFormState,
         lspId: current.lspId,
@@ -164,6 +220,55 @@ export function LoanApplicationsPage() {
             <Badge variant="warning">{activeLsps.length} active LSPs</Badge>
             <Badge variant="success">{activeProducts.length} active products</Badge>
           </div>
+          <div className="form-grid" style={{ marginBottom: '1rem' }}>
+            <div className="field-stack">
+              <label htmlFor="filter-lsp">Filter by LSP</label>
+              <select
+                id="filter-lsp"
+                className="ui-input"
+                value={filters.lspId}
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, lspId: event.target.value }))
+                }
+              >
+                <option value="">All LSPs</option>
+                {activeLsps.map((lsp) => (
+                  <option key={lsp.id} value={lsp.id}>
+                    {lsp.code} - {lsp.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field-stack">
+              <label htmlFor="filter-product">Filter by product</label>
+              <select
+                id="filter-product"
+                className="ui-input"
+                value={filters.productId}
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, productId: event.target.value }))
+                }
+              >
+                <option value="">All products</option>
+                {activeProducts.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.code} - {product.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field-stack">
+              <label htmlFor="filter-query">Search</label>
+              <Input
+                id="filter-query"
+                value={filters.query}
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, query: event.target.value }))
+                }
+                placeholder="Borrower, PAN, mobile, external loan id"
+              />
+            </div>
+          </div>
           {loading ? <div className="empty-state">Loading loan applications...</div> : null}
           {error ? <div className="empty-state">{error}</div> : null}
           {!loading && !error ? (
@@ -187,7 +292,7 @@ export function LoanApplicationsPage() {
                 </div>
               ))}
               {!applications.length ? (
-                <div className="empty-state">No loan applications have been received yet.</div>
+                <div className="empty-state">No loan applications matched the current filters.</div>
               ) : null}
             </div>
           ) : null}
@@ -211,7 +316,9 @@ export function LoanApplicationsPage() {
                   id="intake-lsp"
                   className="ui-input"
                   value={form.lspId}
-                  onChange={(event) => setForm((current) => ({ ...current, lspId: event.target.value }))}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, lspId: event.target.value }))
+                  }
                 >
                   <option value="">Select an LSP</option>
                   {activeLsps.map((lsp) => (
