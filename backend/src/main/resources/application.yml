@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: lms-backend
+  profiles:
+    default: local
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  security:
+    bootstrap-user:
+      username: ${APP_SECURITY_BOOTSTRAP_USERNAME:ops.admin}
+      password: ${APP_SECURITY_BOOTSTRAP_PASSWORD:ChangeMe123!}
+      roles:
+        - SYSTEM_ADMIN
+        - OPS_USER
+    jwt:
+      issuer: ${APP_SECURITY_JWT_ISSUER:bhawana-lms}
+      ttl: ${APP_SECURITY_JWT_TTL:PT30M}

@@ -1,0 +1,32 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${LMS_DB_HOST:localhost}:${LMS_DB_PORT:5432}/${LMS_DB_NAME:lms}
+    username: ${LMS_DB_USERNAME:lms}
+    password: ${LMS_DB_PASSWORD:lms}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  data:
+    redis:
+      host: ${LMS_REDIS_HOST:localhost}
+      port: ${LMS_REDIS_PORT:6379}
+  rabbitmq:
+    host: ${LMS_RABBITMQ_HOST:localhost}
+    port: ${LMS_RABBITMQ_PORT:5672}
+    username: ${LMS_RABBITMQ_USERNAME:lms}
+    password: ${LMS_RABBITMQ_PASSWORD:lms}
+
+app:
+  security:
+    jwt:
+      secret: ${APP_SECURITY_JWT_SECRET:change-me-local-dev-secret-change-me-local-dev}
+  storage:
+    minio:
+      endpoint: ${LMS_MINIO_ENDPOINT:http://localhost:9000}
+      access-key: ${LMS_MINIO_ACCESS_KEY:minio}
+      secret-key: ${LMS_MINIO_SECRET_KEY:minio123}
+      bucket: ${LMS_MINIO_BUCKET:lms-documents}

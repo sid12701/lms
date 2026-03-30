@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:lms;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  flyway:
+    enabled: false
+  jpa:
+    hibernate:
+      ddl-auto: none
+
+app:
+  security:
+    bootstrap-user:
+      username: test.admin
+      password: TestPassword123!
+      roles:
+        - SYSTEM_ADMIN
+    jwt:
+      secret: change-me-test-secret-change-me-test-secret
