@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Input } from '../../components/ui/input'
 import {
   createLsp,
+  getAdminMetadata,
   listLsps,
-  lspStatusOptions,
+  type AdminMetadata,
   type LspRecord,
   type LspStatus,
 } from '../api/lms-api'
@@ -21,9 +22,10 @@ function statusVariant(status: LspStatus): 'success' | 'warning' {
 
 export function LspAdminPage() {
   const [lsps, setLsps] = useState<LspRecord[]>([])
+  const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
-  const [status, setStatus] = useState<LspStatus>('ACTIVE')
+  const [status, setStatus] = useState<LspStatus | ''>('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -36,9 +38,11 @@ export function LspAdminPage() {
       setError('')
 
       try {
-        const response = await listLsps()
+        const [metadataResponse, response] = await Promise.all([getAdminMetadata(), listLsps()])
         if (!cancelled) {
+          setMetadata(metadataResponse)
           setLsps(response)
+          setStatus((current) => current || (metadataResponse.lspStatuses[0] as LspStatus | ''))
         }
       } catch (loadError) {
         const message = loadError instanceof Error ? loadError.message : 'Unable to load LSPs.'
@@ -65,6 +69,8 @@ export function LspAdminPage() {
       return
     }
 
+    const nextStatus = status || (metadata?.lspStatuses[0] as LspStatus | undefined) || 'ACTIVE'
+
     setSubmitting(true)
     setError('')
 
@@ -72,13 +78,13 @@ export function LspAdminPage() {
       const created = await createLsp({
         code,
         name,
-        status,
+        status: nextStatus,
       })
 
       setLsps((current) => [created, ...current.filter((item) => item.id !== created.id)])
       setCode('')
       setName('')
-      setStatus('ACTIVE')
+      setStatus(nextStatus)
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : 'Unable to create LSP.'
       setError(message)
@@ -100,7 +106,7 @@ export function LspAdminPage() {
         <CardContent>
           <div className="inline-actions" style={{ marginBottom: '1rem' }}>
             <Badge>{lsps.length} tenants</Badge>
-            <Badge variant="warning">{lspStatusOptions.length} statuses</Badge>
+            <Badge variant="warning">{metadata?.lspStatuses.length ?? 0} statuses</Badge>
           </div>
           {loading ? <div className="empty-state">Loading tenant registry...</div> : null}
           {error ? <div className="empty-state">{error}</div> : null}
@@ -155,8 +161,10 @@ export function LspAdminPage() {
                 className="ui-input"
                 value={status}
                 onChange={(event) => setStatus(event.target.value as LspStatus)}
+                disabled={!metadata?.lspStatuses.length}
               >
-                {lspStatusOptions.map((option) => (
+                <option value="">Select a status</option>
+                {(metadata?.lspStatuses ?? []).map((option) => (
                   <option key={option} value={option}>
                     {option}
                   </option>

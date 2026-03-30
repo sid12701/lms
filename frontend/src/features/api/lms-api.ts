@@ -23,6 +23,12 @@ export type AuthTokenResponse = {
   expiresInSeconds: number
 }
 
+export type AdminMetadata = {
+  roleCodes: string[]
+  lspStatuses: string[]
+  userStatuses: string[]
+}
+
 export type SystemContext = {
   application: string
   activeProfiles: string[]
@@ -164,6 +170,10 @@ export function getSystemContext(accessToken?: string) {
     {},
     accessToken ? { accessToken } : {},
   )
+}
+
+export function getAdminMetadata() {
+  return requestJson<AdminMetadata>('/api/v1/internal/admin/metadata')
 }
 
 export function listLsps() {

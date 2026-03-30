@@ -11,9 +11,9 @@ import {
 import { Input } from '../../components/ui/input'
 import {
   createUser,
+  getAdminMetadata,
   listUsers,
-  roleOptions,
-  userStatusOptions,
+  type AdminMetadata,
   type RoleCode,
   type UserRecord,
   type UserStatus,
@@ -29,11 +29,12 @@ function statusVariant(status: UserStatus): 'success' | 'warning' {
 
 export function UsersPage() {
   const [users, setUsers] = useState<UserRecord[]>([])
+  const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('TempPass123!')
-  const [role, setRole] = useState<RoleCode>('OPS_USER')
-  const [status, setStatus] = useState<UserStatus>('ACTIVE')
+  const [role, setRole] = useState<RoleCode | ''>('')
+  const [status, setStatus] = useState<UserStatus | ''>('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -46,9 +47,12 @@ export function UsersPage() {
       setError('')
 
       try {
-        const response = await listUsers()
+        const [metadataResponse, response] = await Promise.all([getAdminMetadata(), listUsers()])
         if (!cancelled) {
+          setMetadata(metadataResponse)
           setUsers(response)
+          setRole((current) => current || (metadataResponse.roleCodes[0] as RoleCode | ''))
+          setStatus((current) => current || (metadataResponse.userStatuses[0] as UserStatus | ''))
         }
       } catch (loadError) {
         const message = loadError instanceof Error ? loadError.message : 'Unable to load users.'
@@ -75,6 +79,9 @@ export function UsersPage() {
       return
     }
 
+    const nextRole = role || (metadata?.roleCodes[0] as RoleCode | undefined) || 'OPS_USER'
+    const nextStatus = status || (metadata?.userStatuses[0] as UserStatus | undefined) || 'ACTIVE'
+
     setSubmitting(true)
     setError('')
 
@@ -83,16 +90,16 @@ export function UsersPage() {
         username,
         email,
         password,
-        status,
-        roles: [role],
+        status: nextStatus,
+        roles: [nextRole],
       })
 
       setUsers((current) => [created, ...current.filter((item) => item.id !== created.id)])
       setUsername('')
       setEmail('')
       setPassword('TempPass123!')
-      setRole('OPS_USER')
-      setStatus('ACTIVE')
+      setRole(nextRole)
+      setStatus(nextStatus)
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : 'Unable to create user.'
       setError(message)
@@ -114,7 +121,7 @@ export function UsersPage() {
         <CardContent>
           <div className="inline-actions" style={{ marginBottom: '1rem' }}>
             <Badge>{users.length} users</Badge>
-            <Badge variant="warning">{roleOptions.length} role codes</Badge>
+            <Badge variant="warning">{metadata?.roleCodes.length ?? 0} role codes</Badge>
           </div>
           {loading ? <div className="empty-state">Loading user registry...</div> : null}
           {error ? <div className="empty-state">{error}</div> : null}
@@ -182,8 +189,10 @@ export function UsersPage() {
                 className="ui-input"
                 value={role}
                 onChange={(event) => setRole(event.target.value as RoleCode)}
+                disabled={!metadata?.roleCodes.length}
               >
-                {roleOptions.map((option) => (
+                <option value="">Select a role</option>
+                {(metadata?.roleCodes ?? []).map((option) => (
                   <option key={option} value={option}>
                     {option}
                   </option>
@@ -197,8 +206,10 @@ export function UsersPage() {
                 className="ui-input"
                 value={status}
                 onChange={(event) => setStatus(event.target.value as UserStatus)}
+                disabled={!metadata?.userStatuses.length}
               >
-                {userStatusOptions.map((option) => (
+                <option value="">Select a status</option>
+                {(metadata?.userStatuses ?? []).map((option) => (
                   <option key={option} value={option}>
                     {option}
                   </option>
