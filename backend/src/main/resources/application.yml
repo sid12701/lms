@@ -6,6 +6,8 @@ spring:
   jackson:
     serialization:
       write-dates-as-timestamps: false
+  jpa:
+    open-in-view: false
 
 management:
   endpoints:
