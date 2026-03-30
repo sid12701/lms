@@ -41,11 +41,23 @@ public class LoanApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public List<LoanApplication> listApplications(UUID lspId, UUID productId, String query) {
+    public List<LoanApplication> listApplications(
+            UUID lspId,
+            UUID productId,
+            String status,
+            String sourceChannel,
+            String query
+    ) {
         String normalizedQuery = normalizeQuery(query);
+        String normalizedStatus = normalizeOptional(status);
+        String normalizedSourceChannel = normalizeOptional(sourceChannel);
         return loanApplicationRepository.findAllByOrderByCreatedAtDesc().stream()
                 .filter(application -> lspId == null || application.getLsp().getId().equals(lspId))
                 .filter(application -> productId == null || application.getLoanProduct().getId().equals(productId))
+                .filter(application -> normalizedStatus == null
+                        || application.getStatus().name().equalsIgnoreCase(normalizedStatus))
+                .filter(application -> normalizedSourceChannel == null
+                        || application.getSourceChannel().equalsIgnoreCase(normalizedSourceChannel))
                 .filter(application -> normalizedQuery == null || matchesQuery(application, normalizedQuery))
                 .toList();
     }
@@ -142,6 +154,15 @@ public class LoanApplicationService {
 
     private static String normalizeSourceChannel(String sourceChannel) {
         return sourceChannel.trim().toUpperCase();
+    }
+
+    private static String normalizeOptional(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String normalized = value.trim();
+        return normalized.isBlank() ? null : normalized;
     }
 
     private static String normalizeQuery(String query) {

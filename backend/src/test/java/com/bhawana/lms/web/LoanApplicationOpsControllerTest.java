@@ -155,6 +155,41 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
+    void opsUserCanFilterLoanApplicationsByStatusAndSourceChannel() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        createApplication(lsp.id(), product.id(), "EXT-301", "API", "ABCDE1234F");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "lspId", lsp.id(),
+                                "productId", product.id(),
+                                "externalLoanId", "EXT-302",
+                                "sourceChannel", "PARTNER_PORTAL",
+                                "borrowerPan", "ZXCVB1234N",
+                                "borrowerFullName", "Rahul Shah",
+                                "borrowerMobile", "9876543210",
+                                "borrowerEmail", "rahul@example.com",
+                                "requestedAmount", new BigDecimal("45000.00"),
+                                "tenureMonths", 12
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("status", "RECEIVED")
+                        .queryParam("sourceChannel", "PARTNER_PORTAL"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].externalLoanId").value("EXT-302"))
+                .andExpect(jsonPath("$[0].sourceChannel").value("PARTNER_PORTAL"));
+    }
+
+    @Test
     void invalidLoanAmountIsRejected() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");

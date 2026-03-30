@@ -35,9 +35,11 @@ public class LoanApplicationOpsController {
     public List<LoanApplicationResponse> listApplications(
             @RequestParam(required = false) UUID lspId,
             @RequestParam(required = false) UUID productId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String sourceChannel,
             @RequestParam(required = false, name = "q") String query
     ) {
-        return loanApplicationService.listApplications(lspId, productId, query).stream()
+        return loanApplicationService.listApplications(lspId, productId, status, sourceChannel, query).stream()
                 .map(LoanApplicationOpsController::toResponse)
                 .toList();
     }
