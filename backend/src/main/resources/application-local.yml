@@ -22,6 +22,12 @@ spring:
 
 app:
   security:
+    bootstrap-user:
+      username: ${APP_SECURITY_BOOTSTRAP_USERNAME:ops.admin}
+      password: ${APP_SECURITY_BOOTSTRAP_PASSWORD:ChangeMe123!}
+      roles:
+        - SYSTEM_ADMIN
+        - OPS_USER
     jwt:
       secret: ${APP_SECURITY_JWT_SECRET:change-me-local-dev-secret-change-me-local-dev}
   seed:
