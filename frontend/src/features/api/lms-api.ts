@@ -12,10 +12,12 @@ export const roleOptions = [
 export const lspStatusOptions = ['ACTIVE', 'INACTIVE'] as const
 
 export const userStatusOptions = ['ACTIVE', 'INACTIVE'] as const
+export const apiClientStatusOptions = ['ACTIVE', 'INACTIVE'] as const
 
 export type RoleCode = (typeof roleOptions)[number]
 export type LspStatus = (typeof lspStatusOptions)[number]
 export type UserStatus = (typeof userStatusOptions)[number]
+export type ApiClientStatus = (typeof apiClientStatusOptions)[number]
 
 export type AuthTokenResponse = {
   accessToken: string
@@ -27,6 +29,7 @@ export type AdminMetadata = {
   roleCodes: string[]
   lspStatuses: string[]
   userStatuses: string[]
+  apiClientStatuses?: string[]
 }
 
 export type SystemContext = {
@@ -66,6 +69,21 @@ export type UserRecord = {
   lspId: string | null
   lspName: string
   roles: string[]
+}
+
+export type ApiClientRecord = {
+  id: string
+  clientId: string
+  name: string
+  lspId: string | null
+  lspName: string
+  status: ApiClientStatus
+  createdAt: string
+  lastUsedAt: string | null
+}
+
+export type ApiClientCreateResponse = ApiClientRecord & {
+  clientSecret: string
 }
 
 const SESSION_STORAGE_KEY = 'lms.auth.session'
@@ -204,6 +222,21 @@ export function createUser(payload: {
   roles: RoleCode[]
 }) {
   return requestJson<UserRecord>('/api/v1/internal/admin/users', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function listApiClients() {
+  return requestJson<ApiClientRecord[]>('/api/v1/internal/admin/api-clients')
+}
+
+export function createApiClient(payload: {
+  name: string
+  lspId?: string | null
+  status?: ApiClientStatus
+}) {
+  return requestJson<ApiClientCreateResponse>('/api/v1/internal/admin/api-clients', {
     method: 'POST',
     body: JSON.stringify(payload),
   })

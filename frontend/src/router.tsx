@@ -5,6 +5,7 @@ import { useAuth } from './features/auth/auth-context'
 import { DashboardPage } from './features/dashboard/dashboard-page'
 import { LoginPage } from './features/auth/login-page'
 import { LspAdminPage } from './features/admin/lsp-admin-page'
+import { ApiClientsPage } from './features/api-clients/api-clients-page'
 import { UsersPage } from './features/users/users-page'
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
@@ -27,6 +28,7 @@ export function AppRouter() {
       >
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="lsps" element={<LspAdminPage />} />
+        <Route path="api-clients" element={<ApiClientsPage />} />
         <Route path="users" element={<UsersPage />} />
       </Route>
     </Routes>

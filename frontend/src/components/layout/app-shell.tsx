@@ -1,5 +1,6 @@
 import {
   BellRing,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Settings2,
@@ -16,6 +17,7 @@ import { cn } from '../../lib/cn'
 const navigation = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/lsps', label: 'LSP Administration', icon: Building2 },
+  { to: '/api-clients', label: 'API Clients', icon: KeyRound },
   { to: '/users', label: 'User Administration', icon: Users },
   { to: '/dashboard', label: 'Alerts & Monitoring', icon: BellRing },
   { to: '/dashboard', label: 'Product Control', icon: Settings2 },
