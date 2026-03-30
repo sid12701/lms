@@ -89,7 +89,8 @@ class UserAdminControllerTest {
                                 new AuthController.LoginRequest("test.user", temporaryPassword))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
-                .andExpect(jsonPath("$.tokenType").value("Bearer"));
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.passwordChangeRequired").value(true));
     }
 
     @Test

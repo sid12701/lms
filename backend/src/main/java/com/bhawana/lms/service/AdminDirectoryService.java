@@ -108,7 +108,7 @@ public class AdminDirectoryService {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown user id: " + userId));
 
         String temporaryPassword = generateTemporaryPassword();
-        user.updatePasswordHash(passwordEncoder.encode(temporaryPassword));
+        user.requirePasswordChange(passwordEncoder.encode(temporaryPassword));
         appUserRepository.save(user);
 
         return new ResetPasswordResult(user, temporaryPassword);

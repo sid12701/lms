@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,23 +11,22 @@ import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
+import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.service.AdminDirectoryService;
-import com.bhawana.lms.repo.AppRoleRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Set;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -79,6 +79,7 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.passwordChangeRequired").value(false))
                 .andReturn();
 
         String accessToken = objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
@@ -100,6 +101,7 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.passwordChangeRequired").value(false))
                 .andReturn();
 
         String accessToken = objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
@@ -118,6 +120,7 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(
                                 new AuthController.LoginRequest("test.user", "TestPassword123!"))))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passwordChangeRequired").value(false))
                 .andReturn();
 
         String originalToken = objectMapper.readTree(tokenResult.getResponse().getContentAsString())
@@ -129,6 +132,7 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.passwordChangeRequired").value(false))
                 .andReturn();
 
         String refreshedToken = objectMapper.readTree(refreshResult.getResponse().getContentAsString())
@@ -159,7 +163,65 @@ class AuthControllerTest {
                                 new AuthController.LoginRequest("test.user", resetResult.temporaryPassword()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
-                .andExpect(jsonPath("$.tokenType").value("Bearer"));
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.passwordChangeRequired").value(true));
+    }
+
+    @Test
+    void managedUserMustChangePasswordAfterAdminReset() throws Exception {
+        AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
+        AdminDirectoryService.ResetPasswordResult resetResult = adminDirectoryService.resetUserPassword(managedUser.getId());
+
+        MvcResult resetLoginResult = mockMvc.perform(post("/api/v1/auth/token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new AuthController.LoginRequest("test.user", resetResult.temporaryPassword()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passwordChangeRequired").value(true))
+                .andReturn();
+
+        String resetToken = objectMapper.readTree(resetLoginResult.getResponse().getContentAsString())
+                .get("accessToken")
+                .asText();
+
+        mockMvc.perform(get("/api/v1/internal/system/context")
+                        .header("Authorization", "Bearer " + resetToken))
+                .andExpect(status().isPreconditionRequired())
+                .andExpect(jsonPath("$.code").value("PASSWORD_CHANGE_REQUIRED"));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .header("Authorization", "Bearer " + resetToken))
+                .andExpect(status().isPreconditionRequired())
+                .andExpect(jsonPath("$.code").value("PASSWORD_CHANGE_REQUIRED"));
+
+        MvcResult changePasswordResult = mockMvc.perform(post("/api/v1/auth/password")
+                        .header("Authorization", "Bearer " + resetToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new AuthController.ChangePasswordRequest("NewPassword456!"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passwordChangeRequired").value(false))
+                .andReturn();
+
+        String changedToken = objectMapper.readTree(changePasswordResult.getResponse().getContentAsString())
+                .get("accessToken")
+                .asText();
+
+        mockMvc.perform(post("/api/v1/auth/token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new AuthController.LoginRequest("test.user", "NewPassword456!"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passwordChangeRequired").value(false));
+
+        mockMvc.perform(get("/api/v1/internal/system/context")
+                        .header("Authorization", "Bearer " + changedToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("test.user"));
+
+        mockMvc.perform(get("/api/v1/internal/system/context")
+                        .header("Authorization", "Bearer " + resetToken))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

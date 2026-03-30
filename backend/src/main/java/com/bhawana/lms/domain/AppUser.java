@@ -38,6 +38,12 @@ public class AppUser {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
+    @Column(name = "password_change_required", nullable = false)
+    private boolean passwordChangeRequired;
+
+    @Column(name = "password_changed_at", nullable = false)
+    private Instant passwordChangedAt;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private UserStatus status;
@@ -64,6 +70,8 @@ public class AppUser {
         this.username = username;
         this.email = email;
         this.passwordHash = passwordHash;
+        this.passwordChangeRequired = false;
+        this.passwordChangedAt = Instant.now();
         this.status = status;
         this.lsp = lsp;
         this.roles = new LinkedHashSet<>(roles);
@@ -101,6 +109,14 @@ public class AppUser {
         return passwordHash;
     }
 
+    public boolean isPasswordChangeRequired() {
+        return passwordChangeRequired;
+    }
+
+    public Instant getPasswordChangedAt() {
+        return passwordChangedAt;
+    }
+
     public UserStatus getStatus() {
         return status;
     }
@@ -111,5 +127,17 @@ public class AppUser {
 
     public void updatePasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    public void requirePasswordChange(String passwordHash) {
+        this.passwordHash = passwordHash;
+        this.passwordChangeRequired = true;
+        this.passwordChangedAt = Instant.now();
+    }
+
+    public void changePassword(String passwordHash) {
+        this.passwordHash = passwordHash;
+        this.passwordChangeRequired = false;
+        this.passwordChangedAt = Instant.now();
     }
 }
