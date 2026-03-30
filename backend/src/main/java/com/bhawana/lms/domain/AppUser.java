@@ -108,4 +108,8 @@ public class AppUser {
     public Set<AppRole> getRoles() {
         return roles;
     }
+
+    public void updatePasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
 }

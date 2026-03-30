@@ -10,8 +10,9 @@ import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
-import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
+import com.bhawana.lms.service.AdminDirectoryService;
+import com.bhawana.lms.repo.AppRoleRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Set;
@@ -46,6 +47,9 @@ class AuthControllerTest {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private AdminDirectoryService adminDirectoryService;
 
     @BeforeEach
     void setUpManagedUser() {
@@ -138,6 +142,24 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("test.user"))
                 .andExpect(jsonPath("$.roles[0]").value("OPS_USER"));
+    }
+
+    @Test
+    void managedUserPasswordResetAllowsNewLogin() throws Exception {
+        AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
+        String oldPasswordHash = managedUser.getPasswordHash();
+
+        AdminDirectoryService.ResetPasswordResult resetResult = adminDirectoryService.resetUserPassword(managedUser.getId());
+
+        assertNotEquals(oldPasswordHash, appUserRepository.findById(managedUser.getId()).orElseThrow().getPasswordHash());
+
+        mockMvc.perform(post("/api/v1/auth/token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new AuthController.LoginRequest("test.user", resetResult.temporaryPassword()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isString())
+                .andExpect(jsonPath("$.tokenType").value("Bearer"));
     }
 
     @Test

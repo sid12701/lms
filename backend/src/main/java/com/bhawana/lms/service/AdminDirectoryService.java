@@ -13,12 +13,16 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.security.SecureRandom;
+import java.util.Base64;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AdminDirectoryService {
+
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final LspRepository lspRepository;
     private final AppRoleRepository appRoleRepository;
@@ -96,5 +100,26 @@ public class AdminDirectoryService {
         return appUserRepository.findAll().stream()
                 .sorted(java.util.Comparator.comparing(AppUser::getUsername))
                 .toList();
+    }
+
+    @Transactional
+    public ResetPasswordResult resetUserPassword(UUID userId) {
+        AppUser user = appUserRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown user id: " + userId));
+
+        String temporaryPassword = generateTemporaryPassword();
+        user.updatePasswordHash(passwordEncoder.encode(temporaryPassword));
+        appUserRepository.save(user);
+
+        return new ResetPasswordResult(user, temporaryPassword);
+    }
+
+    private static String generateTemporaryPassword() {
+        byte[] randomBytes = new byte[18];
+        SECURE_RANDOM.nextBytes(randomBytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+    }
+
+    public record ResetPasswordResult(AppUser user, String temporaryPassword) {
     }
 }

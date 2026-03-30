@@ -49,6 +49,16 @@ public class UserAdminController {
         return toResponse(user);
     }
 
+    @PostMapping("/{userId}/reset-password")
+    public ResetPasswordResponse resetPassword(@org.springframework.web.bind.annotation.PathVariable UUID userId) {
+        AdminDirectoryService.ResetPasswordResult result = adminDirectoryService.resetUserPassword(userId);
+        return new ResetPasswordResponse(
+                result.user().getId().toString(),
+                result.user().getUsername(),
+                result.temporaryPassword()
+        );
+    }
+
     private static UserResponse toResponse(AppUser user) {
         return new UserResponse(
                 user.getId().toString(),
@@ -84,6 +94,13 @@ public class UserAdminController {
             String lspId,
             String lspName,
             List<String> roles
+    ) {
+    }
+
+    public record ResetPasswordResponse(
+            String id,
+            String username,
+            String temporaryPassword
     ) {
     }
 }

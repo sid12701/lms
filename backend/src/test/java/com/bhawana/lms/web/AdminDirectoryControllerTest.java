@@ -73,8 +73,38 @@ class AdminDirectoryControllerTest {
     }
 
     @Test
+    void systemAdminCanResetManagedUserPassword() throws Exception {
+        MvcResult userResult = mockMvc.perform(post("/api/v1/internal/admin/users")
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "username", "reset.user",
+                                "email", "reset.user@bhawana.local",
+                                "password", "Secret123!",
+                                "status", "ACTIVE",
+                                "roles", List.of("OPS_USER")
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode userJson = objectMapper.readTree(userResult.getResponse().getContentAsString());
+        String userId = userJson.get("id").asText();
+
+        mockMvc.perform(post("/api/v1/internal/admin/users/" + userId + "/reset-password")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(userId))
+                .andExpect(jsonPath("$.username").value("reset.user"))
+                .andExpect(jsonPath("$.temporaryPassword").isString());
+    }
+
+    @Test
     void nonSystemAdminCannotAccessAdminDirectoryEndpoints() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/lsps").with(opsUser()))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/internal/admin/users/00000000-0000-0000-0000-000000000000/reset-password")
+                        .with(opsUser()))
                 .andExpect(status().isForbidden());
     }
 
