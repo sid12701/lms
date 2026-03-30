@@ -2,6 +2,7 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.domain.ApiClientStatus;
 import com.bhawana.lms.domain.LspStatus;
+import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
 import java.util.Arrays;
@@ -16,7 +17,8 @@ public class AdminMetadataService {
                 enumNames(RoleCode.values()),
                 enumNames(LspStatus.values()),
                 enumNames(UserStatus.values()),
-                enumNames(ApiClientStatus.values())
+                enumNames(ApiClientStatus.values()),
+                enumNames(LoanProductStatus.values())
         );
     }
 
@@ -30,7 +32,8 @@ public class AdminMetadataService {
             List<String> roleCodes,
             List<String> lspStatuses,
             List<String> userStatuses,
-            List<String> apiClientStatuses
+            List<String> apiClientStatuses,
+            List<String> loanProductStatuses
     ) {
     }
 }

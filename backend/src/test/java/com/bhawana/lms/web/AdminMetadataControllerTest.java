@@ -35,7 +35,10 @@ class AdminMetadataControllerTest {
                 .andExpect(jsonPath("$.userStatuses[0]").value("ACTIVE"))
                 .andExpect(jsonPath("$.userStatuses[1]").value("INACTIVE"))
                 .andExpect(jsonPath("$.apiClientStatuses[0]").value("ACTIVE"))
-                .andExpect(jsonPath("$.apiClientStatuses[1]").value("INACTIVE"));
+                .andExpect(jsonPath("$.apiClientStatuses[1]").value("INACTIVE"))
+                .andExpect(jsonPath("$.loanProductStatuses[0]").value("DRAFT"))
+                .andExpect(jsonPath("$.loanProductStatuses[1]").value("ACTIVE"))
+                .andExpect(jsonPath("$.loanProductStatuses[2]").value("INACTIVE"));
     }
 
     @Test
