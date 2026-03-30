@@ -19,8 +19,8 @@ const navigation = [
   { to: '/lsps', label: 'LSP Administration', icon: Building2 },
   { to: '/api-clients', label: 'API Clients', icon: KeyRound },
   { to: '/users', label: 'User Administration', icon: Users },
+  { to: '/products', label: 'Product Configuration', icon: Settings2 },
   { to: '/dashboard', label: 'Alerts & Monitoring', icon: BellRing },
-  { to: '/dashboard', label: 'Product Control', icon: Settings2 },
 ]
 
 export function AppShell() {
@@ -72,12 +72,12 @@ export function AppShell() {
         <header className="content-header">
           <div>
             <div className="section-eyebrow">Operations Console</div>
-            <h2>Phase 2 Administration</h2>
+            <h2>Admin and Product Control</h2>
           </div>
           <div className="header-meta">
             <Badge variant="success">
               <ShieldCheck size={14} />
-              JWT bootstrap session
+              JWT session
             </Badge>
             <Badge>{user?.activeProfiles?.join(', ') || 'default'}</Badge>
           </div>

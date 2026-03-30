@@ -8,6 +8,7 @@ import { LoginPage } from './features/auth/login-page'
 import { LspAdminPage } from './features/admin/lsp-admin-page'
 import { ApiClientsPage } from './features/api-clients/api-clients-page'
 import { UsersPage } from './features/users/users-page'
+import { ProductConfigurationPage } from './features/products/product-configuration-page'
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
   const { user, mustChangePassword } = useAuth()
@@ -72,6 +73,7 @@ export function AppRouter() {
         <Route path="lsps" element={<LspAdminPage />} />
         <Route path="api-clients" element={<ApiClientsPage />} />
         <Route path="users" element={<UsersPage />} />
+        <Route path="products" element={<ProductConfigurationPage />} />
       </Route>
     </Routes>
   )

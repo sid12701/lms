@@ -13,11 +13,13 @@ export const lspStatusOptions = ['ACTIVE', 'INACTIVE'] as const
 
 export const userStatusOptions = ['ACTIVE', 'INACTIVE'] as const
 export const apiClientStatusOptions = ['ACTIVE', 'INACTIVE'] as const
+export const loanProductStatusOptions = ['DRAFT', 'ACTIVE', 'INACTIVE'] as const
 
 export type RoleCode = (typeof roleOptions)[number]
 export type LspStatus = (typeof lspStatusOptions)[number]
 export type UserStatus = (typeof userStatusOptions)[number]
 export type ApiClientStatus = (typeof apiClientStatusOptions)[number]
+export type LoanProductStatus = (typeof loanProductStatusOptions)[number]
 
 export type AuthTokenResponse = {
   accessToken: string
@@ -31,6 +33,7 @@ export type AdminMetadata = {
   lspStatuses: string[]
   userStatuses: string[]
   apiClientStatuses?: string[]
+  loanProductStatuses?: string[]
 }
 
 export type SystemContext = {
@@ -93,6 +96,21 @@ export type ApiClientRecord = {
 export type ApiClientCreateResponse = ApiClientRecord & {
   clientSecret: string
 }
+
+export type LoanProductRecord = {
+  id: string
+  code: string
+  name: string
+  minPrincipal: number
+  maxPrincipal: number
+  interestRate: number
+  processingFeeRate: number
+  minTenureMonths: number
+  maxTenureMonths: number
+  status: LoanProductStatus
+}
+
+export type LoanProductCreateResponse = LoanProductRecord
 
 export class ApiError extends Error {
   status: number
@@ -333,6 +351,47 @@ export function createApiClient(payload: {
 }) {
   return requestJson<ApiClientCreateResponse>('/api/v1/internal/admin/api-clients', {
     method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function listLoanProducts() {
+  return requestJson<LoanProductRecord[]>('/api/v1/internal/admin/products')
+}
+
+export function createLoanProduct(payload: {
+  code: string
+  name: string
+  minPrincipal: number
+  maxPrincipal: number
+  interestRate: number
+  processingFeeRate: number
+  minTenureMonths: number
+  maxTenureMonths: number
+  status?: LoanProductStatus
+}) {
+  return requestJson<LoanProductCreateResponse>('/api/v1/internal/admin/products', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateLoanProduct(
+  productId: string,
+  payload: {
+    code: string
+    name: string
+    minPrincipal: number
+    maxPrincipal: number
+    interestRate: number
+    processingFeeRate: number
+    minTenureMonths: number
+    maxTenureMonths: number
+    status?: LoanProductStatus
+  },
+) {
+  return requestJson<LoanProductRecord>(`/api/v1/internal/admin/products/${productId}`, {
+    method: 'PUT',
     body: JSON.stringify(payload),
   })
 }
