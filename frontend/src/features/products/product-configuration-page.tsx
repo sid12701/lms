@@ -7,9 +7,14 @@ import {
   createLoanProduct,
   getAdminMetadata,
   listLoanProducts,
+  listLsps,
+  listProductLspMappings,
+  saveProductLspMappings,
   updateLoanProduct,
   type AdminMetadata,
+  type LspRecord,
   type LoanProductRecord,
+  type ProductLspMappingRecord,
   type LoanProductStatus,
 } from '../api/lms-api'
 
@@ -80,17 +85,29 @@ function currencyLabel(value: number) {
 
 export function ProductConfigurationPage() {
   const [products, setProducts] = useState<LoanProductRecord[]>([])
+  const [lsps, setLsps] = useState<LspRecord[]>([])
+  const [productMappings, setProductMappings] = useState<ProductLspMappingRecord[]>([])
   const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
   const [editingProductId, setEditingProductId] = useState<string | null>(null)
+  const [selectedProductId, setSelectedProductId] = useState('')
+  const [selectedLspIds, setSelectedLspIds] = useState<string[]>([])
   const [form, setForm] = useState<ProductFormState>(initialFormState)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [mappingSubmitting, setMappingSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [mappingError, setMappingError] = useState('')
 
   const statusOptions = useMemo(
     () => metadata?.loanProductStatuses ?? ['DRAFT', 'ACTIVE', 'INACTIVE'],
     [metadata],
   )
+  const mappingByProduct = useMemo(
+    () => new Map(productMappings.map((item) => [item.productId, item.lspIds])),
+    [productMappings],
+  )
+  const lspById = useMemo(() => new Map(lsps.map((item) => [item.id, item])), [lsps])
+  const selectedProduct = products.find((product) => product.id === selectedProductId) ?? null
 
   useEffect(() => {
     let cancelled = false
@@ -100,14 +117,19 @@ export function ProductConfigurationPage() {
       setError('')
 
       try {
-        const [metadataResponse, productResponse] = await Promise.all([
+        const [metadataResponse, productResponse, lspResponse, mappingResponse] = await Promise.all([
           getAdminMetadata(),
           listLoanProducts(),
+          listLsps(),
+          listProductLspMappings(),
         ])
 
         if (!cancelled) {
           setMetadata(metadataResponse)
           setProducts(productResponse)
+          setLsps(lspResponse)
+          setProductMappings(mappingResponse)
+          setSelectedProductId((current) => current || productResponse[0]?.id || '')
           setForm((current) =>
             current.status
               ? current
@@ -136,6 +158,15 @@ export function ProductConfigurationPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!selectedProductId) {
+      setSelectedLspIds([])
+      return
+    }
+
+    setSelectedLspIds(mappingByProduct.get(selectedProductId) ?? [])
+  }, [mappingByProduct, selectedProductId])
+
   function resetForm() {
     setEditingProductId(null)
     setForm(buildFormState(null, (statusOptions[0] as LoanProductStatus | '') || 'DRAFT'))
@@ -145,6 +176,43 @@ export function ProductConfigurationPage() {
     setEditingProductId(product.id)
     setForm(buildFormState(product, product.status))
     setError('')
+  }
+
+  function toggleLspSelection(lspId: string) {
+    setSelectedLspIds((current) =>
+      current.includes(lspId)
+        ? current.filter((item) => item !== lspId)
+        : [...current, lspId],
+    )
+  }
+
+  async function handleSaveMappings() {
+    if (!selectedProductId) {
+      return
+    }
+
+    setMappingSubmitting(true)
+    setMappingError('')
+
+    try {
+      await saveProductLspMappings(selectedProductId, {
+        lspIds: selectedLspIds,
+      })
+      setProductMappings((current) => {
+        const next = current.filter((item) => item.productId !== selectedProductId)
+        next.push({
+          productId: selectedProductId,
+          lspIds: [...selectedLspIds].sort(),
+        })
+        return next.sort((left, right) => left.productId.localeCompare(right.productId))
+      })
+    } catch (saveError) {
+      const message =
+        saveError instanceof Error ? saveError.message : 'Unable to save product mappings.'
+      setMappingError(message)
+    } finally {
+      setMappingSubmitting(false)
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -178,6 +246,7 @@ export function ProductConfigurationPage() {
         const next = [saved, ...current.filter((item) => item.id !== saved.id)]
         return next.sort((left, right) => left.code.localeCompare(right.code))
       })
+      setSelectedProductId(saved.id)
       resetForm()
     } catch (submitError) {
       const message =
@@ -195,7 +264,7 @@ export function ProductConfigurationPage() {
           <div className="section-eyebrow">Product configuration</div>
           <CardTitle>Loan product catalog</CardTitle>
           <CardDescription>
-            Phase 3 foundation: configure principal bands, pricing, tenure boundaries, and product state.
+            Phase 3 foundation: configure product pricing, tenure boundaries, state, and LSP rollout mapping.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -223,8 +292,17 @@ export function ProductConfigurationPage() {
                   <span>
                     {product.minTenureMonths} to {product.maxTenureMonths} months
                   </span>
+                  <span className="helper-copy">
+                    {(mappingByProduct.get(product.id) ?? [])
+                      .map((lspId) => lspById.get(lspId)?.name)
+                      .filter(Boolean)
+                      .join(', ') || 'No LSPs assigned'}
+                  </span>
                   <Button type="button" variant="ghost" onClick={() => startEdit(product)}>
                     Edit
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={() => setSelectedProductId(product.id)}>
+                    Map LSPs
                   </Button>
                 </div>
               ))}
@@ -234,7 +312,8 @@ export function ProductConfigurationPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <div className="form-stack">
+        <Card>
         <CardHeader>
           <div className="section-eyebrow">{editingProductId ? 'Edit product' : 'Create product'}</div>
           <CardTitle>{editingProductId ? 'Update configuration' : 'Add loan product'}</CardTitle>
@@ -376,7 +455,105 @@ export function ProductConfigurationPage() {
             </div>
           </form>
         </CardContent>
-      </Card>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="section-eyebrow">LSP mapping</div>
+            <CardTitle>Assign lenders to products</CardTitle>
+            <CardDescription>
+              Pick a product, toggle the LSPs that can offer it, and save the rollout mapping.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? <div className="empty-state">Loading LSP assignments...</div> : null}
+            {!loading && !products.length ? (
+              <div className="empty-state">Create a product before assigning LSP access.</div>
+            ) : null}
+            {!loading && products.length && !lsps.length ? (
+              <div className="empty-state">Create an LSP before assigning product access.</div>
+            ) : null}
+            {!loading && products.length && lsps.length ? (
+              <>
+                <div className="field-stack">
+                  <label htmlFor="mapping-product">Product</label>
+                  <select
+                    id="mapping-product"
+                    className="ui-input"
+                    value={selectedProductId}
+                    onChange={(event) => setSelectedProductId(event.target.value)}
+                  >
+                    <option value="">Select a product</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.code} - {product.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {selectedProduct ? (
+                  <div className="inline-actions" style={{ marginBottom: '1rem' }}>
+                    <Badge>{(mappingByProduct.get(selectedProduct.id) ?? []).length} assigned</Badge>
+                    <Badge variant="warning">{selectedProduct.code}</Badge>
+                  </div>
+                ) : null}
+                <div className="table-grid">
+                  {lsps.map((lsp) => {
+                    const checked = selectedLspIds.includes(lsp.id)
+
+                    return (
+                      <div className="table-row" key={lsp.id}>
+                        <label
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            flex: 1,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleLspSelection(lsp.id)}
+                          />
+                          <div>
+                            <strong>{lsp.name}</strong>
+                            <p className="helper-copy">{lsp.code}</p>
+                          </div>
+                        </label>
+                        <Badge variant={lsp.status === 'ACTIVE' ? 'success' : 'warning'}>
+                          {lsp.status}
+                        </Badge>
+                      </div>
+                    )
+                  })}
+                </div>
+                {mappingError ? <div className="empty-state">{mappingError}</div> : null}
+                <div className="inline-actions">
+                  <Button
+                    disabled={!selectedProductId || mappingSubmitting}
+                    type="button"
+                    onClick={handleSaveMappings}
+                  >
+                    {mappingSubmitting ? 'Saving...' : 'Save assignments'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setSelectedLspIds(mappingByProduct.get(selectedProductId) ?? [])}
+                  >
+                    Reset selection
+                  </Button>
+                </div>
+                <div className="helper-copy" style={{ marginTop: '0.75rem' }}>
+                  Changes are applied per product. The current selection is stored as the active rollout set for the chosen LSPs.
+                </div>
+              </>
+            ) : null}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

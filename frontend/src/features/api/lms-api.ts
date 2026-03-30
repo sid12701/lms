@@ -112,6 +112,11 @@ export type LoanProductRecord = {
 
 export type LoanProductCreateResponse = LoanProductRecord
 
+export type ProductLspMappingRecord = {
+  productId: string
+  lspIds: string[]
+}
+
 export class ApiError extends Error {
   status: number
   body: string
@@ -359,6 +364,10 @@ export function listLoanProducts() {
   return requestJson<LoanProductRecord[]>('/api/v1/internal/admin/products')
 }
 
+export function listProductLspMappings() {
+  return requestJson<ProductLspMappingRecord[]>('/api/v1/internal/admin/product-lsp-mappings')
+}
+
 export function createLoanProduct(payload: {
   code: string
   name: string
@@ -391,6 +400,18 @@ export function updateLoanProduct(
   },
 ) {
   return requestJson<LoanProductRecord>(`/api/v1/internal/admin/products/${productId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function saveProductLspMappings(
+  productId: string,
+  payload: {
+    lspIds: string[]
+  },
+) {
+  return requestJson<void>(`/api/v1/internal/admin/product-lsp-mappings/${productId}`, {
     method: 'PUT',
     body: JSON.stringify(payload),
   })
