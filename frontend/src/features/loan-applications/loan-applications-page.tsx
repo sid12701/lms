@@ -318,6 +318,20 @@ function formatOptionalTimestamp(value?: string | null) {
   return formatTimestamp(value)
 }
 
+function loanDocumentPlaceholderReasonLabel(status: LoanApplicationDocumentPlaceholderStatus) {
+  return status === 'REJECTED' ? 'Rejection reason' : 'Review reason'
+}
+
+function loanDocumentPlaceholderReasonPlaceholder(status: LoanApplicationDocumentPlaceholderStatus) {
+  return status === 'REJECTED'
+    ? 'Capture why this document was rejected.'
+    : 'Capture why this document still needs attention.'
+}
+
+function loanDocumentPlaceholderReasonFallback(status: LoanApplicationDocumentPlaceholderStatus) {
+  return status === 'REJECTED' ? 'No rejection reason recorded.' : 'No review reason recorded.'
+}
+
 type ApprovalBlocker = {
   message: string
   documents: string[]
@@ -451,6 +465,8 @@ function seedDocumentDrafts(records: LoanApplicationDocumentPlaceholderRecord[])
       {
         status: LoanApplicationDocumentPlaceholderStatus
         note: string
+        reviewReason: string
+        rejectionReason: string
         fileName: string
         contentType: string
         sourceReference: string
@@ -460,6 +476,8 @@ function seedDocumentDrafts(records: LoanApplicationDocumentPlaceholderRecord[])
     accumulator[record.id] = {
       status: record.status,
       note: record.note ?? '',
+      reviewReason: record.reviewReason ?? '',
+      rejectionReason: record.rejectionReason ?? '',
       fileName: record.fileName ?? '',
       contentType: record.contentType ?? '',
       sourceReference: record.sourceReference ?? '',
@@ -511,6 +529,8 @@ export function LoanApplicationsPage() {
       {
         status: LoanApplicationDocumentPlaceholderStatus
         note: string
+        reviewReason: string
+        rejectionReason: string
         fileName: string
         contentType: string
         sourceReference: string
@@ -1012,6 +1032,8 @@ export function LoanApplicationsPage() {
       await updateLoanApplicationDocumentPlaceholder(selectedApplicationId, placeholder.documentType, {
         status: draft.status,
         note: draft.note.trim() || undefined,
+        reviewReason: draft.reviewReason.trim() || undefined,
+        rejectionReason: draft.rejectionReason.trim() || undefined,
         fileName: draft.fileName.trim() || undefined,
         contentType: draft.contentType.trim() || undefined,
         sourceReference: draft.sourceReference.trim() || undefined,
@@ -1553,12 +1575,14 @@ export function LoanApplicationsPage() {
                       {!documentPlaceholdersLoading && !documentPlaceholdersError && sortedDocumentPlaceholders.length ? (
                         <div className="loan-checklist">
                           {sortedDocumentPlaceholders.map((placeholder) => {
-                            const draft = documentPlaceholderDrafts[placeholder.id] ?? {
-                              status: placeholder.status,
-                              note: placeholder.note ?? '',
-                              fileName: placeholder.fileName ?? '',
-                              contentType: placeholder.contentType ?? '',
-                              sourceReference: placeholder.sourceReference ?? '',
+                              const draft = documentPlaceholderDrafts[placeholder.id] ?? {
+                                status: placeholder.status,
+                                note: placeholder.note ?? '',
+                                reviewReason: placeholder.reviewReason ?? '',
+                                rejectionReason: placeholder.rejectionReason ?? '',
+                                fileName: placeholder.fileName ?? '',
+                                contentType: placeholder.contentType ?? '',
+                                sourceReference: placeholder.sourceReference ?? '',
                             }
                             const isSaving = documentPlaceholderSavingId === placeholder.id
                             const metadataIsPresent = Boolean(
@@ -1611,9 +1635,20 @@ export function LoanApplicationsPage() {
                                       : 'Awaiting first review.'}
                                   </p>
                                   <p className="helper-copy">
+                                    <strong>{loanDocumentPlaceholderReasonLabel(draft.status)}:</strong>{' '}
+                                    {(draft.status === 'REJECTED'
+                                      ? placeholder.rejectionReason
+                                      : placeholder.reviewReason)?.trim()
+                                      ? draft.status === 'REJECTED'
+                                        ? placeholder.rejectionReason
+                                        : placeholder.reviewReason
+                                      : loanDocumentPlaceholderReasonFallback(draft.status)}
+                                  </p>
+                                  <p className="helper-copy">
+                                    <strong>Ops note:</strong>{' '}
                                     {placeholder.note?.trim()
                                       ? placeholder.note
-                                      : 'Add a short review note when you update the metadata placeholder.'}
+                                      : 'No general note recorded.'}
                                   </p>
                                 </div>
                                 <div className="loan-checklist__controls">
@@ -1692,20 +1727,56 @@ export function LoanApplicationsPage() {
                                     />
                                   </div>
                                   <div className="field-stack">
-                                    <label htmlFor={`placeholder-note-${placeholder.id}`}>Note</label>
-                                    <Input
+                                    <label htmlFor={`placeholder-reason-${placeholder.id}`}>
+                                      {loanDocumentPlaceholderReasonLabel(draft.status)}
+                                    </label>
+                                    <textarea
+                                      id={`placeholder-reason-${placeholder.id}`}
+                                      className="ui-textarea"
+                                      value={
+                                        draft.status === 'REJECTED'
+                                          ? draft.rejectionReason
+                                          : draft.reviewReason
+                                      }
+                                      onChange={(event) =>
+                                        setDocumentPlaceholderDrafts((current) => ({
+                                          ...current,
+                                          [placeholder.id]: {
+                                            ...(current[placeholder.id] ?? draft),
+                                            reviewReason:
+                                              draft.status === 'REJECTED'
+                                                ? (current[placeholder.id] ?? draft).reviewReason
+                                                : event.target.value,
+                                            rejectionReason:
+                                              draft.status === 'REJECTED'
+                                                ? event.target.value
+                                                : (current[placeholder.id] ?? draft).rejectionReason,
+                                          },
+                                        }))
+                                      }
+                                      placeholder={loanDocumentPlaceholderReasonPlaceholder(draft.status)}
+                                      rows={3}
+                                    />
+                                  </div>
+                                  <div className="field-stack">
+                                    <label htmlFor={`placeholder-note-${placeholder.id}`}>
+                                      Ops note
+                                    </label>
+                                    <textarea
                                       id={`placeholder-note-${placeholder.id}`}
+                                      className="ui-textarea"
                                       value={draft.note}
-                                    onChange={(event) =>
-                                      setDocumentPlaceholderDrafts((current) => ({
-                                        ...current,
-                                        [placeholder.id]: {
-                                          ...(current[placeholder.id] ?? draft),
-                                          note: event.target.value,
-                                        },
-                                      }))
-                                    }
-                                      placeholder="Optional review note"
+                                      onChange={(event) =>
+                                        setDocumentPlaceholderDrafts((current) => ({
+                                          ...current,
+                                          [placeholder.id]: {
+                                            ...(current[placeholder.id] ?? draft),
+                                            note: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                      placeholder="Optional general note for handoff or review context."
+                                      rows={3}
                                     />
                                   </div>
                                   <div className="loan-checklist__actions">

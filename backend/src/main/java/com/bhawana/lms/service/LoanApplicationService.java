@@ -341,7 +341,9 @@ public class LoanApplicationService {
             String fileName,
             String fileReference,
             String sourceReference,
-            String contentType
+            String contentType,
+            String reviewReason,
+            String rejectionReason
     ) {
         LoanApplication application = getApplication(applicationId);
         ensureDocumentChecklist(application);
@@ -352,6 +354,15 @@ public class LoanApplicationService {
                         "Unknown document checklist item: " + documentType.name()
                 ));
 
+        String normalizedReviewReason = normalizeOptional(reviewReason);
+        String normalizedRejectionReason = normalizeOptional(rejectionReason);
+        if (status == LoanApplicationDocumentChecklistStatus.VERIFIED && normalizedReviewReason == null) {
+            throw new IllegalArgumentException("Review reason is required when a document is marked VERIFIED.");
+        }
+        if (status == LoanApplicationDocumentChecklistStatus.REJECTED && normalizedRejectionReason == null) {
+            throw new IllegalArgumentException("Rejection reason is required when a document is marked REJECTED.");
+        }
+
         checklistItem.update(
                 status,
                 note,
@@ -359,7 +370,9 @@ public class LoanApplicationService {
                 fileName,
                 fileReference,
                 sourceReference,
-                contentType
+                contentType,
+                normalizedReviewReason,
+                normalizedRejectionReason
         );
         return loanApplicationDocumentChecklistRepository.save(checklistItem);
     }

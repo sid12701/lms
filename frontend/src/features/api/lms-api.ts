@@ -213,6 +213,8 @@ export type LoanApplicationDocumentPlaceholderRecord = {
   required: boolean
   status: LoanApplicationDocumentPlaceholderStatus
   note: string | null
+  reviewReason: string | null
+  rejectionReason: string | null
   fileName: string | null
   contentType: string | null
   sourceReference: string | null
@@ -625,6 +627,8 @@ export function updateLoanApplicationDocumentPlaceholder(
   payload: {
     status: LoanApplicationDocumentPlaceholderStatus
     note?: string
+    reviewReason?: string
+    rejectionReason?: string
     fileName?: string
     contentType?: string
     sourceReference?: string

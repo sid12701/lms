@@ -327,6 +327,59 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.uploadedByUsername").value("ops.user"))
                 .andExpect(jsonPath("$.updatedByUsername").value("ops.user"))
                 .andExpect(jsonPath("$.updatedAt").exists());
+
+        mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
+                        created.get("id").asText(),
+                        "PAN_CARD")
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "status", "VERIFIED",
+                                "note", "PAN validated against OCR",
+                                "reviewReason", "PAN matches the applicant details"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("VERIFIED"))
+                .andExpect(jsonPath("$.reviewReason").value("PAN matches the applicant details"))
+                .andExpect(jsonPath("$.rejectionReason").doesNotExist());
+
+        mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
+                        created.get("id").asText(),
+                        "SELFIE_PHOTOGRAPH")
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "status", "REJECTED",
+                                "note", "Selfie unusable",
+                                "rejectionReason", "Image is blurred and does not show the applicant clearly"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.rejectionReason").value("Image is blurred and does not show the applicant clearly"))
+                .andExpect(jsonPath("$.reviewReason").doesNotExist());
+    }
+
+    @Test
+    void missingDocumentReviewReasonIsRejected() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-992", "API", "ABCDE1234F");
+
+        transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Ready for KYC review");
+
+        mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
+                        created.get("id").asText(),
+                        "PAN_CARD")
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "status", "VERIFIED",
+                                "note", "PAN validated"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
     }
 
     @Test
@@ -744,7 +797,9 @@ class LoanApplicationOpsControllerTest {
                                 item.getFileName(),
                                 item.getFileReference(),
                                 item.getSourceReference(),
-                                item.getContentType()
+                                item.getContentType(),
+                                "Matches borrower records",
+                                null
                         );
                         loanApplicationDocumentChecklistRepository.save(item);
                     }

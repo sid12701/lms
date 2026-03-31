@@ -39,6 +39,12 @@ public class LoanApplicationDocumentChecklist {
     @Column(name = "note", length = 500)
     private String note;
 
+    @Column(name = "review_reason", length = 500)
+    private String reviewReason;
+
+    @Column(name = "rejection_reason", length = 500)
+    private String rejectionReason;
+
     @Column(name = "file_name", length = 255)
     private String fileName;
 
@@ -122,6 +128,14 @@ public class LoanApplicationDocumentChecklist {
         return note;
     }
 
+    public String getReviewReason() {
+        return reviewReason;
+    }
+
+    public String getRejectionReason() {
+        return rejectionReason;
+    }
+
     public String getFileName() {
         return fileName;
     }
@@ -165,7 +179,9 @@ public class LoanApplicationDocumentChecklist {
             String fileName,
             String fileReference,
             String sourceReference,
-            String contentType
+            String contentType,
+            String reviewReason,
+            String rejectionReason
     ) {
         this.status = status;
         this.note = normalizeOptional(note);
@@ -173,6 +189,8 @@ public class LoanApplicationDocumentChecklist {
         this.fileReference = normalizeOptional(fileReference);
         this.sourceReference = normalizeOptional(sourceReference);
         this.contentType = normalizeOptional(contentType);
+        this.reviewReason = normalizeOptional(reviewReason);
+        this.rejectionReason = normalizeOptional(rejectionReason);
         this.updatedByUsername = normalizeOptional(updatedByUsername);
         if (hasUploadMetadata()) {
             this.uploadedAt = Instant.now();
