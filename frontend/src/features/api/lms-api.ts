@@ -20,6 +20,13 @@ export const loanApplicationStatusOptions = [
   'APPROVED',
   'REJECTED',
 ] as const
+export const loanApplicationDocumentPlaceholderStatusOptions = [
+  'PENDING',
+  'RECEIVED',
+  'VERIFIED',
+  'REJECTED',
+  'NOT_REQUIRED',
+] as const
 
 export type RoleCode = (typeof roleOptions)[number]
 export type LspStatus = (typeof lspStatusOptions)[number]
@@ -27,6 +34,8 @@ export type UserStatus = (typeof userStatusOptions)[number]
 export type ApiClientStatus = (typeof apiClientStatusOptions)[number]
 export type LoanProductStatus = (typeof loanProductStatusOptions)[number]
 export type LoanApplicationStatus = (typeof loanApplicationStatusOptions)[number]
+export type LoanApplicationDocumentPlaceholderStatus =
+  (typeof loanApplicationDocumentPlaceholderStatusOptions)[number]
 
 export type AuthTokenResponse = {
   accessToken: string
@@ -193,6 +202,19 @@ export type LoanApplicationAssignmentEventRecord = {
   actorUsername: string
   note: string | null
   correlationId: string | null
+  createdAt: string
+}
+
+export type LoanApplicationDocumentPlaceholderRecord = {
+  id: string
+  loanApplicationId: string
+  documentCode: string
+  documentLabel: string
+  required: boolean
+  status: LoanApplicationDocumentPlaceholderStatus
+  note: string | null
+  updatedByUsername: string | null
+  updatedAt: string | null
   createdAt: string
 }
 
@@ -583,6 +605,29 @@ export function listLoanApplicationStatusTransitions(applicationId: string) {
 export function listLoanApplicationAssignmentEvents(applicationId: string) {
   return requestJson<LoanApplicationAssignmentEventRecord[]>(
     `/api/v1/internal/ops/loan-applications/${applicationId}/assignment-events`,
+  )
+}
+
+export function listLoanApplicationDocumentPlaceholders(applicationId: string) {
+  return requestJson<LoanApplicationDocumentPlaceholderRecord[]>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/document-placeholders`,
+  )
+}
+
+export function updateLoanApplicationDocumentPlaceholder(
+  applicationId: string,
+  placeholderId: string,
+  payload: {
+    status: LoanApplicationDocumentPlaceholderStatus
+    note?: string
+  },
+) {
+  return requestJson<LoanApplicationDocumentPlaceholderRecord>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/document-placeholders/${placeholderId}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    },
   )
 }
 

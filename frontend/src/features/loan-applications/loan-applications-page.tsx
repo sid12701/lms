@@ -6,19 +6,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Input } from '../../components/ui/input'
 import { useAuth } from '../auth/auth-context'
 import {
+  ApiError,
   assignLoanApplication,
   createLoanApplication,
   getLoanApplication,
   listLoanApplicationAssignmentEvents,
   listLoanApplicationIntakeAudits,
+  listLoanApplicationDocumentPlaceholders,
   listLoanApplicationStatusTransitions,
   listLoanApplications,
   listLoanProducts,
   listLsps,
   loanApplicationStatusOptions,
+  loanApplicationDocumentPlaceholderStatusOptions,
   transitionLoanApplicationStatus,
+  updateLoanApplicationDocumentPlaceholder,
   type LoanApplicationIntakeAuditRecord,
   type LoanApplicationAssignmentEventRecord,
+  type LoanApplicationDocumentPlaceholderRecord,
+  type LoanApplicationDocumentPlaceholderStatus,
   type LoanApplicationRecord,
   type LoanApplicationStatus,
   type LoanApplicationStatusTransitionRecord,
@@ -299,6 +305,61 @@ function formatNote(note: string | null) {
   return trimmed ? trimmed : 'No note recorded.'
 }
 
+function loanDocumentPlaceholderStatusLabel(status: LoanApplicationDocumentPlaceholderStatus) {
+  switch (status) {
+    case 'PENDING':
+      return 'Pending'
+    case 'RECEIVED':
+      return 'Received'
+    case 'VERIFIED':
+      return 'Verified'
+    case 'REJECTED':
+      return 'Rejected'
+    case 'NOT_REQUIRED':
+      return 'Not required'
+  }
+}
+
+function loanDocumentPlaceholderStatusVariant(
+  status: LoanApplicationDocumentPlaceholderStatus,
+): 'default' | 'success' | 'warning' | 'destructive' {
+  switch (status) {
+    case 'PENDING':
+      return 'warning'
+    case 'RECEIVED':
+      return 'default'
+    case 'VERIFIED':
+      return 'success'
+    case 'REJECTED':
+      return 'destructive'
+    case 'NOT_REQUIRED':
+      return 'default'
+  }
+}
+
+function sortLoanDocumentPlaceholders(records: LoanApplicationDocumentPlaceholderRecord[]) {
+  return [...records].sort((left, right) => {
+    if (left.required !== right.required) {
+      return left.required ? -1 : 1
+    }
+
+    return left.documentLabel.localeCompare(right.documentLabel)
+  })
+}
+
+function seedDocumentDrafts(records: LoanApplicationDocumentPlaceholderRecord[]) {
+  return records.reduce<Record<string, { status: LoanApplicationDocumentPlaceholderStatus; note: string }>>(
+    (accumulator, record) => {
+      accumulator[record.id] = {
+        status: record.status,
+        note: record.note ?? '',
+      }
+      return accumulator
+    },
+    {},
+  )
+}
+
 export function LoanApplicationsPage() {
   const { user } = useAuth()
   const [applications, setApplications] = useState<LoanApplicationRecord[]>([])
@@ -321,6 +382,15 @@ export function LoanApplicationsPage() {
   const [workflowError, setWorkflowError] = useState('')
   const [auditError, setAuditError] = useState('')
   const [assignmentError, setAssignmentError] = useState('')
+  const [documentPlaceholders, setDocumentPlaceholders] = useState<
+    LoanApplicationDocumentPlaceholderRecord[]
+  >([])
+  const [documentPlaceholderDrafts, setDocumentPlaceholderDrafts] = useState<
+    Record<string, { status: LoanApplicationDocumentPlaceholderStatus; note: string }>
+  >({})
+  const [documentPlaceholdersLoading, setDocumentPlaceholdersLoading] = useState(false)
+  const [documentPlaceholdersError, setDocumentPlaceholdersError] = useState('')
+  const [documentPlaceholderSavingId, setDocumentPlaceholderSavingId] = useState('')
   const [transitionNote, setTransitionNote] = useState('')
   const [assignmentNote, setAssignmentNote] = useState('')
 
@@ -368,6 +438,29 @@ export function LoanApplicationsPage() {
     visibleSelectedApplication?.borrowerEmploymentType,
   )
   const borrowerIncomeCoverage = formatIncomeCoverage(visibleSelectedApplication)
+  const sortedDocumentPlaceholders = useMemo(
+    () => sortLoanDocumentPlaceholders(documentPlaceholders),
+    [documentPlaceholders],
+  )
+  const requiredDocumentCount = useMemo(
+    () => sortedDocumentPlaceholders.filter((item) => item.required).length,
+    [sortedDocumentPlaceholders],
+  )
+  const verifiedDocumentCount = useMemo(
+    () =>
+      sortedDocumentPlaceholders.filter(
+        (item) => item.status === 'VERIFIED' || item.status === 'NOT_REQUIRED',
+      ).length,
+    [sortedDocumentPlaceholders],
+  )
+  const receivedDocumentCount = useMemo(
+    () => sortedDocumentPlaceholders.filter((item) => item.status === 'RECEIVED').length,
+    [sortedDocumentPlaceholders],
+  )
+  const pendingDocumentCount = useMemo(
+    () => sortedDocumentPlaceholders.filter((item) => item.status === 'PENDING').length,
+    [sortedDocumentPlaceholders],
+  )
 
   async function loadApplications(nextFilters: ListFilterState) {
     const response = await listLoanApplications({
@@ -396,6 +489,30 @@ export function LoanApplicationsPage() {
     setSelectedLoan(detailResponse)
     setStatusHistory(sortByCreatedAtDesc(historyResponse))
     setAssignmentHistory(sortByCreatedAtDesc(assignmentResponse))
+  }
+
+  async function refreshDocumentPlaceholders(applicationId: string) {
+    try {
+      const response = await listLoanApplicationDocumentPlaceholders(applicationId)
+      setDocumentPlaceholders(sortLoanDocumentPlaceholders(response))
+      setDocumentPlaceholderDrafts(seedDocumentDrafts(response))
+      setDocumentPlaceholdersError('')
+    } catch (loadError) {
+      if (loadError instanceof ApiError && loadError.status === 404) {
+        setDocumentPlaceholders([])
+        setDocumentPlaceholderDrafts({})
+        setDocumentPlaceholdersError('')
+        return
+      }
+
+      const message =
+        loadError instanceof Error ? loadError.message : 'Unable to load document placeholders.'
+      setDocumentPlaceholders([])
+      setDocumentPlaceholderDrafts({})
+      setDocumentPlaceholdersError(message)
+    } finally {
+      setDocumentPlaceholdersLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -492,6 +609,57 @@ export function LoanApplicationsPage() {
     }
 
     void loadSelectedLoan()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedApplicationId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadDocumentPlaceholders() {
+      if (!selectedApplicationId) {
+        setDocumentPlaceholders([])
+        setDocumentPlaceholderDrafts({})
+        setDocumentPlaceholdersError('')
+        setDocumentPlaceholdersLoading(false)
+        return
+      }
+
+      setDocumentPlaceholdersLoading(true)
+      setDocumentPlaceholdersError('')
+
+      try {
+        const response = await listLoanApplicationDocumentPlaceholders(selectedApplicationId)
+        if (!cancelled) {
+          setDocumentPlaceholders(sortLoanDocumentPlaceholders(response))
+          setDocumentPlaceholderDrafts(seedDocumentDrafts(response))
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          if (loadError instanceof ApiError && loadError.status === 404) {
+            setDocumentPlaceholders([])
+            setDocumentPlaceholderDrafts({})
+            setDocumentPlaceholdersError('')
+          } else {
+            const message =
+              loadError instanceof Error
+                ? loadError.message
+                : 'Unable to load document placeholders.'
+            setDocumentPlaceholders([])
+            setDocumentPlaceholderDrafts({})
+            setDocumentPlaceholdersError(message)
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setDocumentPlaceholdersLoading(false)
+        }
+      }
+    }
+
+    void loadDocumentPlaceholders()
 
     return () => {
       cancelled = true
@@ -665,6 +833,36 @@ export function LoanApplicationsPage() {
       setAssignmentError(message)
     } finally {
       setAssigning(false)
+    }
+  }
+
+  async function handleDocumentPlaceholderSave(placeholderId: string) {
+    if (!selectedApplicationId) {
+      return
+    }
+
+    const placeholder = documentPlaceholders.find((item) => item.id === placeholderId)
+    const draft = documentPlaceholderDrafts[placeholderId]
+    if (!placeholder || !draft) {
+      return
+    }
+
+    setDocumentPlaceholderSavingId(placeholderId)
+    setDocumentPlaceholdersError('')
+
+    try {
+      await updateLoanApplicationDocumentPlaceholder(selectedApplicationId, placeholderId, {
+        status: draft.status,
+        note: draft.note.trim() || undefined,
+      })
+      setDocumentPlaceholdersLoading(true)
+      await refreshDocumentPlaceholders(selectedApplicationId)
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : 'Unable to update document placeholder.'
+      setDocumentPlaceholdersError(message)
+    } finally {
+      setDocumentPlaceholderSavingId('')
     }
   }
 
@@ -1135,6 +1333,140 @@ export function LoanApplicationsPage() {
                       <span>Borrower email</span>
                       <strong>{visibleSelectedApplication.borrowerEmail || 'Not provided'}</strong>
                     </div>
+                  </div>
+                </div>
+
+                <div className="detail-section">
+                  <div className="section-eyebrow">KYC checklist</div>
+                  <div className="loan-transition-panel">
+                    <div className="loan-transition-panel__header">
+                      <div>
+                        <h4>Document placeholders</h4>
+                        <p className="helper-copy">
+                          Track the per-loan KYC checklist until live document upload handling is added.
+                        </p>
+                      </div>
+                      <Badge
+                        variant={
+                          sortedDocumentPlaceholders.length > 0 &&
+                          verifiedDocumentCount === sortedDocumentPlaceholders.length
+                            ? 'success'
+                            : 'warning'
+                        }
+                      >
+                        {verifiedDocumentCount}/{sortedDocumentPlaceholders.length || 0} ready
+                      </Badge>
+                    </div>
+                    <div className="loan-workflow__headline-metrics">
+                      <div className="loan-workflow__metric">
+                        <span>Required</span>
+                        <strong>{requiredDocumentCount}</strong>
+                      </div>
+                      <div className="loan-workflow__metric">
+                        <span>Ready</span>
+                        <strong>{verifiedDocumentCount}</strong>
+                      </div>
+                      <div className="loan-workflow__metric">
+                        <span>Awaiting action</span>
+                        <strong>{receivedDocumentCount + pendingDocumentCount}</strong>
+                      </div>
+                    </div>
+                    {documentPlaceholdersLoading ? <div className="empty-state">Loading document placeholders...</div> : null}
+                    {documentPlaceholdersError ? <div className="empty-state">{documentPlaceholdersError}</div> : null}
+                    {!documentPlaceholdersLoading && !documentPlaceholdersError && !sortedDocumentPlaceholders.length ? (
+                      <div className="empty-state">No KYC document placeholders are configured for this loan yet.</div>
+                    ) : null}
+                    {!documentPlaceholdersLoading && !documentPlaceholdersError && sortedDocumentPlaceholders.length ? (
+                      <div className="loan-checklist">
+                        {sortedDocumentPlaceholders.map((placeholder) => {
+                          const draft = documentPlaceholderDrafts[placeholder.id] ?? {
+                            status: placeholder.status,
+                            note: placeholder.note ?? '',
+                          }
+                          const isSaving = documentPlaceholderSavingId === placeholder.id
+
+                          return (
+                            <div className="loan-checklist__item" key={placeholder.id}>
+                              <div className="loan-checklist__body">
+                                <div className="inline-actions">
+                                  <strong>{placeholder.documentLabel}</strong>
+                                  <Badge variant={placeholder.required ? 'destructive' : 'default'}>
+                                    {placeholder.required ? 'Required' : 'Optional'}
+                                  </Badge>
+                                  <Badge variant={loanDocumentPlaceholderStatusVariant(draft.status)}>
+                                    {loanDocumentPlaceholderStatusLabel(draft.status)}
+                                  </Badge>
+                                </div>
+                                <p className="helper-copy">{placeholder.documentCode}</p>
+                                <p className="helper-copy">
+                                  {placeholder.updatedAt
+                                    ? `Updated ${formatTimestamp(placeholder.updatedAt)} by ${placeholder.updatedByUsername ?? 'system'}`
+                                    : 'Awaiting first review.'}
+                                </p>
+                                <p className="helper-copy">
+                                  {placeholder.note?.trim()
+                                    ? placeholder.note
+                                    : 'Add a short review note when you update the placeholder.'}
+                                </p>
+                              </div>
+                              <div className="loan-checklist__controls">
+                                <div className="field-stack">
+                                  <label htmlFor={`placeholder-status-${placeholder.id}`}>Status</label>
+                                  <select
+                                    id={`placeholder-status-${placeholder.id}`}
+                                    className="ui-input ui-select"
+                                    value={draft.status}
+                                    onChange={(event) =>
+                                      setDocumentPlaceholderDrafts((current) => ({
+                                        ...current,
+                                        [placeholder.id]: {
+                                          ...(current[placeholder.id] ?? draft),
+                                          status: event.target.value as LoanApplicationDocumentPlaceholderStatus,
+                                        },
+                                      }))
+                                    }
+                                  >
+                                    {loanApplicationDocumentPlaceholderStatusOptions.map((option) => (
+                                      <option key={option} value={option}>
+                                        {loanDocumentPlaceholderStatusLabel(option)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div className="field-stack">
+                                  <label htmlFor={`placeholder-note-${placeholder.id}`}>Note</label>
+                                  <Input
+                                    id={`placeholder-note-${placeholder.id}`}
+                                    value={draft.note}
+                                    onChange={(event) =>
+                                      setDocumentPlaceholderDrafts((current) => ({
+                                        ...current,
+                                        [placeholder.id]: {
+                                          ...(current[placeholder.id] ?? draft),
+                                          note: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    placeholder="Optional review note"
+                                  />
+                                </div>
+                                <div className="loan-checklist__actions">
+                                  <Button
+                                    disabled={isSaving}
+                                    onClick={() => void handleDocumentPlaceholderSave(placeholder.id)}
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                  >
+                                    {isSaving ? 'Saving...' : 'Save'}
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 

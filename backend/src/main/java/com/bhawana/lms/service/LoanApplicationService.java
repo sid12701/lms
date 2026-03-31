@@ -4,6 +4,9 @@ import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
+import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
+import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
+import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
@@ -14,6 +17,7 @@ import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
+import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
@@ -36,6 +40,7 @@ public class LoanApplicationService {
     private final AppUserRepository appUserRepository;
     private final BorrowerRepository borrowerRepository;
     private final LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository;
+    private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     private final LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
@@ -48,6 +53,7 @@ public class LoanApplicationService {
             AppUserRepository appUserRepository,
             BorrowerRepository borrowerRepository,
             LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository,
+            LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
             LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository,
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
@@ -59,6 +65,7 @@ public class LoanApplicationService {
         this.appUserRepository = appUserRepository;
         this.borrowerRepository = borrowerRepository;
         this.loanApplicationAssignmentEventRepository = loanApplicationAssignmentEventRepository;
+        this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
         this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
@@ -106,6 +113,13 @@ public class LoanApplicationService {
     public List<LoanApplicationAssignmentEvent> listAssignmentEvents(UUID applicationId) {
         getApplication(applicationId);
         return loanApplicationAssignmentEventRepository.findTop20ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
+    }
+
+    @Transactional
+    public List<LoanApplicationDocumentChecklist> listDocumentChecklist(UUID applicationId) {
+        LoanApplication application = getApplication(applicationId);
+        ensureDocumentChecklist(application);
+        return loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(applicationId);
     }
 
     @Transactional
@@ -205,6 +219,7 @@ public class LoanApplicationService {
                 CorrelationIdHolder.get(),
                 serializePayload(savedApplication)
         ));
+        seedDocumentChecklist(savedApplication, actorUsername);
         return savedApplication;
     }
 
@@ -307,6 +322,27 @@ public class LoanApplicationService {
                 CorrelationIdHolder.get()
         ));
         return savedApplication;
+    }
+
+    @Transactional
+    public LoanApplicationDocumentChecklist updateDocumentChecklistItem(
+            UUID applicationId,
+            LoanApplicationDocumentType documentType,
+            String actorUsername,
+            LoanApplicationDocumentChecklistStatus status,
+            String note
+    ) {
+        LoanApplication application = getApplication(applicationId);
+        ensureDocumentChecklist(application);
+
+        LoanApplicationDocumentChecklist checklistItem = loanApplicationDocumentChecklistRepository
+                .findByLoanApplication_IdAndDocumentType(applicationId, documentType)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown document checklist item: " + documentType.name()
+                ));
+
+        checklistItem.update(status, note, normalizeActorUsername(actorUsername));
+        return loanApplicationDocumentChecklistRepository.save(checklistItem);
     }
 
     @Transactional(readOnly = true)
@@ -413,6 +449,42 @@ public class LoanApplicationService {
     private static String normalizeAssigneeUsername(String assigneeUsername) {
         String normalized = normalizeOptional(assigneeUsername);
         return normalized == null ? null : normalized.toLowerCase();
+    }
+
+    private void ensureDocumentChecklist(LoanApplication application) {
+        if (!loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(application.getId()).isEmpty()) {
+            return;
+        }
+
+        seedDocumentChecklist(application, "system");
+    }
+
+    private void seedDocumentChecklist(LoanApplication application, String actorUsername) {
+        List<LoanApplicationDocumentChecklist> checklistItems = List.of(
+                buildChecklistItem(application, LoanApplicationDocumentType.PAN_CARD, actorUsername),
+                buildChecklistItem(application, LoanApplicationDocumentType.ADDRESS_PROOF, actorUsername),
+                buildChecklistItem(application, LoanApplicationDocumentType.INCOME_PROOF, actorUsername),
+                buildChecklistItem(application, LoanApplicationDocumentType.BANK_STATEMENT, actorUsername),
+                buildChecklistItem(application, LoanApplicationDocumentType.SELFIE_PHOTOGRAPH, actorUsername)
+        );
+        loanApplicationDocumentChecklistRepository.saveAll(checklistItems);
+    }
+
+    private LoanApplicationDocumentChecklist buildChecklistItem(
+            LoanApplication application,
+            LoanApplicationDocumentType documentType,
+            String actorUsername
+    ) {
+        return new LoanApplicationDocumentChecklist(
+                application,
+                documentType,
+                documentType.isRequiredByDefault(),
+                documentType.isRequiredByDefault()
+                        ? LoanApplicationDocumentChecklistStatus.PENDING
+                        : LoanApplicationDocumentChecklistStatus.NOT_REQUIRED,
+                documentType.isRequiredByDefault() ? "Awaiting " + documentType.getDisplayName() : "Optional placeholder",
+                actorUsername
+        );
     }
 
     private String serializePayload(LoanApplication application) {

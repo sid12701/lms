@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
@@ -64,6 +65,9 @@ class LoanApplicationOpsControllerTest {
     private LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository;
 
     @Autowired
+    private LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
+
+    @Autowired
     private LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
 
     @Autowired
@@ -90,6 +94,7 @@ class LoanApplicationOpsControllerTest {
     @BeforeEach
     void setUp() {
         loanApplicationAssignmentEventRepository.deleteAllInBatch();
+        loanApplicationDocumentChecklistRepository.deleteAllInBatch();
         loanApplicationStatusTransitionRepository.deleteAllInBatch();
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
@@ -275,6 +280,41 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[1].fromStatus").value("RECEIVED"))
                 .andExpect(jsonPath("$[1].toStatus").value("UNDER_REVIEW"))
                 .andExpect(jsonPath("$[1].note").value("Assigned for analyst review"));
+    }
+
+    @Test
+    void opsUserCanInspectAndUpdateLoanApplicationDocumentChecklist() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-990", "API", "ABCDE1234F");
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents", created.get("id").asText())
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$[0].documentType").value("PAN_CARD"))
+                .andExpect(jsonPath("$[0].documentDisplayName").value("PAN Card"))
+                .andExpect(jsonPath("$[0].required").value(true))
+                .andExpect(jsonPath("$[0].status").value("PENDING"))
+                .andExpect(jsonPath("$[0].updatedByUsername").value("ops.user"));
+
+        mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
+                        created.get("id").asText(),
+                        "BANK_STATEMENT")
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "status", "RECEIVED",
+                                "note", "Bank statement attached"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentType").value("BANK_STATEMENT"))
+                .andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.note").value("Bank statement attached"))
+                .andExpect(jsonPath("$.updatedByUsername").value("ops.user"))
+                .andExpect(jsonPath("$.updatedAt").exists());
     }
 
     @Test

@@ -859,6 +859,36 @@
     flex-wrap: wrap;
   }
 
+  .loan-checklist {
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  .loan-checklist__item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.9fr);
+    gap: 1rem;
+    padding: 1rem 1.05rem;
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-alt);
+  }
+
+  .loan-checklist__body {
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .loan-checklist__controls {
+    display: grid;
+    gap: 0.7rem;
+    align-content: start;
+  }
+
+  .loan-checklist__actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
   .loan-transition-button--reject {
     color: var(--color-danger);
     box-shadow: inset 0 0 0 1.5px rgba(178, 58, 72, 0.18);
@@ -1109,6 +1139,19 @@
     }
   }
 
+  .ui-select {
+    appearance: none;
+    padding-right: 2.4rem;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--color-muted) 50%),
+      linear-gradient(135deg, var(--color-muted) 50%, transparent 50%);
+    background-position:
+      calc(100% - 1rem) calc(50% - 1px),
+      calc(100% - 0.82rem) calc(50% - 1px);
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+  }
+
 
   /* ─────────────────────────────────────────────────────────────────────────
      UI Badge
@@ -1246,6 +1289,10 @@
 
   .loan-transition-panel {
     padding: 1rem;
+  }
+
+  .loan-checklist__item {
+    grid-template-columns: 1fr;
   }
 
   .loan-history__item {

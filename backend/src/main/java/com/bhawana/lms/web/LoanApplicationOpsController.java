@@ -2,6 +2,9 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
+import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
+import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
+import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
@@ -25,6 +28,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -77,6 +81,13 @@ public class LoanApplicationOpsController {
     public List<LoanApplicationAssignmentEventResponse> listAssignmentEvents(@PathVariable UUID applicationId) {
         return loanApplicationService.listAssignmentEvents(applicationId).stream()
                 .map(LoanApplicationOpsController::toAssignmentEventResponse)
+                .toList();
+    }
+
+    @GetMapping("/{applicationId}/kyc-documents")
+    public List<LoanApplicationDocumentChecklistResponse> listDocumentChecklist(@PathVariable UUID applicationId) {
+        return loanApplicationService.listDocumentChecklist(applicationId).stream()
+                .map(LoanApplicationOpsController::toDocumentChecklistResponse)
                 .toList();
     }
 
@@ -134,6 +145,22 @@ public class LoanApplicationOpsController {
                 request.note()
         );
         return toDetailResponse(application);
+    }
+
+    @PutMapping("/{applicationId}/kyc-documents/{documentType}")
+    public LoanApplicationDocumentChecklistResponse updateDocumentChecklistItem(
+            Authentication authentication,
+            @PathVariable UUID applicationId,
+            @PathVariable LoanApplicationDocumentType documentType,
+            @Valid @RequestBody LoanApplicationDocumentChecklistUpdateRequest request
+    ) {
+        return toDocumentChecklistResponse(loanApplicationService.updateDocumentChecklistItem(
+                applicationId,
+                documentType,
+                authentication.getName(),
+                request.status(),
+                request.note()
+        ));
     }
 
     private static LoanApplicationResponse toResponse(LoanApplication application) {
@@ -233,6 +260,23 @@ public class LoanApplicationOpsController {
                 event.getNote(),
                 event.getCorrelationId(),
                 event.getCreatedAt().toString()
+        );
+    }
+
+    private static LoanApplicationDocumentChecklistResponse toDocumentChecklistResponse(
+            LoanApplicationDocumentChecklist checklistItem
+    ) {
+        return new LoanApplicationDocumentChecklistResponse(
+                checklistItem.getId().toString(),
+                checklistItem.getLoanApplication().getId().toString(),
+                checklistItem.getDocumentType().name(),
+                checklistItem.getDocumentType().getDisplayName(),
+                checklistItem.isRequired(),
+                checklistItem.getStatus().name(),
+                checklistItem.getNote(),
+                checklistItem.getUpdatedByUsername(),
+                checklistItem.getCreatedAt().toString(),
+                checklistItem.getUpdatedAt().toString()
         );
     }
 
@@ -338,6 +382,12 @@ public class LoanApplicationOpsController {
     ) {
     }
 
+    public record LoanApplicationDocumentChecklistUpdateRequest(
+            @NotNull LoanApplicationDocumentChecklistStatus status,
+            @Size(max = 500) String note
+    ) {
+    }
+
     public record LoanApplicationStatusTransitionResponse(
             String id,
             String loanApplicationId,
@@ -359,6 +409,20 @@ public class LoanApplicationOpsController {
             String note,
             String correlationId,
             String createdAt
+    ) {
+    }
+
+    public record LoanApplicationDocumentChecklistResponse(
+            String id,
+            String loanApplicationId,
+            String documentType,
+            String documentDisplayName,
+            boolean required,
+            String status,
+            String note,
+            String updatedByUsername,
+            String createdAt,
+            String updatedAt
     ) {
     }
 }
