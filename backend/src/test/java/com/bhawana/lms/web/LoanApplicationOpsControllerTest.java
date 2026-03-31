@@ -307,12 +307,22 @@ class LoanApplicationOpsControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "status", "RECEIVED",
-                                "note", "Bank statement attached"
+                                "note", "Bank statement attached",
+                                "fileName", "bank-statement-2026-03.pdf",
+                                "fileReference", "s3://loan-docs/EXT-990/bank-statement-2026-03.pdf",
+                                "fileReferenceSource", "ops.manual",
+                                "contentType", "application/pdf",
+                                "uploadedByUsername", "ops.user"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.documentType").value("BANK_STATEMENT"))
                 .andExpect(jsonPath("$.status").value("RECEIVED"))
                 .andExpect(jsonPath("$.note").value("Bank statement attached"))
+                .andExpect(jsonPath("$.fileName").value("bank-statement-2026-03.pdf"))
+                .andExpect(jsonPath("$.fileReference").value("s3://loan-docs/EXT-990/bank-statement-2026-03.pdf"))
+                .andExpect(jsonPath("$.fileReferenceSource").value("ops.manual"))
+                .andExpect(jsonPath("$.contentType").value("application/pdf"))
+                .andExpect(jsonPath("$.uploadedByUsername").value("ops.user"))
                 .andExpect(jsonPath("$.updatedByUsername").value("ops.user"))
                 .andExpect(jsonPath("$.updatedAt").exists());
     }

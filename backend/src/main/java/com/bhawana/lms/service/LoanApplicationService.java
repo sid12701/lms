@@ -27,6 +27,7 @@ import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -330,7 +331,13 @@ public class LoanApplicationService {
             LoanApplicationDocumentType documentType,
             String actorUsername,
             LoanApplicationDocumentChecklistStatus status,
-            String note
+            String note,
+            String fileName,
+            String fileReference,
+            String fileReferenceSource,
+            String contentType,
+            java.time.Instant uploadedAt,
+            String uploadedByUsername
     ) {
         LoanApplication application = getApplication(applicationId);
         ensureDocumentChecklist(application);
@@ -341,7 +348,27 @@ public class LoanApplicationService {
                         "Unknown document checklist item: " + documentType.name()
                 ));
 
-        checklistItem.update(status, note, normalizeActorUsername(actorUsername));
+        Instant resolvedUploadedAt = uploadedAt;
+        if (resolvedUploadedAt == null && hasAnyUploadMetadata(fileName, fileReference, fileReferenceSource, contentType, uploadedByUsername)) {
+            resolvedUploadedAt = Instant.now();
+        }
+
+        String resolvedUploadedByUsername = uploadedByUsername;
+        if (resolvedUploadedByUsername == null && resolvedUploadedAt != null) {
+            resolvedUploadedByUsername = normalizeActorUsername(actorUsername);
+        }
+
+        checklistItem.update(
+                status,
+                note,
+                normalizeActorUsername(actorUsername),
+                fileName,
+                fileReference,
+                fileReferenceSource,
+                contentType,
+                resolvedUploadedAt,
+                resolvedUploadedByUsername
+        );
         return loanApplicationDocumentChecklistRepository.save(checklistItem);
     }
 
@@ -485,6 +512,20 @@ public class LoanApplicationService {
                 documentType.isRequiredByDefault() ? "Awaiting " + documentType.getDisplayName() : "Optional placeholder",
                 actorUsername
         );
+    }
+
+    private static boolean hasAnyUploadMetadata(
+            String fileName,
+            String fileReference,
+            String fileReferenceSource,
+            String contentType,
+            String uploadedByUsername
+    ) {
+        return fileName != null
+                || fileReference != null
+                || fileReferenceSource != null
+                || contentType != null
+                || uploadedByUsername != null;
     }
 
     private String serializePayload(LoanApplication application) {
