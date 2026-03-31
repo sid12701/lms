@@ -298,7 +298,8 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].documentDisplayName").value("PAN Card"))
                 .andExpect(jsonPath("$[0].required").value(true))
                 .andExpect(jsonPath("$[0].status").value("PENDING"))
-                .andExpect(jsonPath("$[0].updatedByUsername").value("ops.user"));
+                .andExpect(jsonPath("$[0].updatedByUsername").value("ops.user"))
+                .andExpect(jsonPath("$[0].uploadedAt").doesNotExist());
 
         mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
                         created.get("id").asText(),
@@ -309,19 +310,17 @@ class LoanApplicationOpsControllerTest {
                                 "status", "RECEIVED",
                                 "note", "Bank statement attached",
                                 "fileName", "bank-statement-2026-03.pdf",
-                                "fileReference", "s3://loan-docs/EXT-990/bank-statement-2026-03.pdf",
-                                "fileReferenceSource", "ops.manual",
                                 "contentType", "application/pdf",
-                                "uploadedByUsername", "ops.user"
+                                "sourceReference", "s3://loan-docs/EXT-990/bank-statement-2026-03.pdf"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.documentType").value("BANK_STATEMENT"))
                 .andExpect(jsonPath("$.status").value("RECEIVED"))
                 .andExpect(jsonPath("$.note").value("Bank statement attached"))
                 .andExpect(jsonPath("$.fileName").value("bank-statement-2026-03.pdf"))
-                .andExpect(jsonPath("$.fileReference").value("s3://loan-docs/EXT-990/bank-statement-2026-03.pdf"))
-                .andExpect(jsonPath("$.fileReferenceSource").value("ops.manual"))
                 .andExpect(jsonPath("$.contentType").value("application/pdf"))
+                .andExpect(jsonPath("$.sourceReference").value("s3://loan-docs/EXT-990/bank-statement-2026-03.pdf"))
+                .andExpect(jsonPath("$.uploadedAt").exists())
                 .andExpect(jsonPath("$.uploadedByUsername").value("ops.user"))
                 .andExpect(jsonPath("$.updatedByUsername").value("ops.user"))
                 .andExpect(jsonPath("$.updatedAt").exists());
