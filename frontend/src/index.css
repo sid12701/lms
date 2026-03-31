@@ -646,6 +646,34 @@
     text-align: center;
   }
 
+  .loan-alert {
+    display: grid;
+    gap: 0.55rem;
+    padding: 1rem 1.1rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(177, 124, 0, 0.18);
+    background: rgba(255, 248, 232, 0.92);
+    color: var(--color-foreground);
+  }
+
+  .loan-alert--warning {
+    box-shadow: inset 0 0 0 1px rgba(177, 124, 0, 0.08);
+  }
+
+  .loan-alert__title {
+    font-size: 0.95rem;
+    font-weight: 650;
+    color: #8a5a00;
+  }
+
+  .loan-alert__list {
+    margin: 0;
+    padding-left: 1.1rem;
+    color: var(--color-foreground);
+    display: grid;
+    gap: 0.3rem;
+  }
+
   .ui-textarea {
     width: 100%;
     min-height: 7rem;

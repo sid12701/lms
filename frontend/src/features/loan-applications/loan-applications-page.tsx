@@ -318,6 +318,90 @@ function formatOptionalTimestamp(value?: string | null) {
   return formatTimestamp(value)
 }
 
+type ApprovalBlocker = {
+  message: string
+  documents: string[]
+}
+
+function extractApprovalBlocker(error: unknown): ApprovalBlocker | null {
+  if (!(error instanceof ApiError)) {
+    return null
+  }
+
+  const parsedBody = (() => {
+    try {
+      return JSON.parse(error.body) as Record<string, unknown>
+    } catch {
+      return null
+    }
+  })()
+
+  const code =
+    (parsedBody && typeof parsedBody.code === 'string' ? parsedBody.code : null) ?? error.code
+  const message =
+    (parsedBody && typeof parsedBody.message === 'string' ? parsedBody.message : null) ??
+    error.message
+
+  const documentCandidates = [
+    parsedBody?.blockingDocuments,
+    parsedBody?.blockedDocuments,
+    parsedBody?.requiredDocuments,
+    parsedBody?.violations,
+  ]
+
+  const documents = documentCandidates.flatMap((candidate) => {
+    if (!Array.isArray(candidate)) {
+      return []
+    }
+
+    return candidate.flatMap((entry) => {
+      if (typeof entry === 'string') {
+        return [entry]
+      }
+
+      if (entry && typeof entry === 'object') {
+        const record = entry as Record<string, unknown>
+        const displayName =
+          typeof record.documentDisplayName === 'string'
+            ? record.documentDisplayName
+            : typeof record.documentType === 'string'
+              ? record.documentType
+              : typeof record.name === 'string'
+                ? record.name
+                : null
+        const detail =
+          typeof record.message === 'string'
+            ? record.message
+            : typeof record.detail === 'string'
+              ? record.detail
+              : null
+
+        return displayName ? [detail ? `${displayName}: ${detail}` : displayName] : []
+      }
+
+      return []
+    })
+  })
+
+  const isKycRelated =
+    Boolean(code && /KYC|DOCUMENT|CHECKLIST/i.test(code)) ||
+    /KYC|document|checklist|required/i.test(message) ||
+    documents.length > 0
+
+  if (!isKycRelated) {
+    return null
+  }
+
+  return {
+    message,
+    documents: Array.from(new Set(documents)).filter(Boolean),
+  }
+}
+
+function formatBlockingDocuments(documents: LoanApplicationDocumentPlaceholderRecord[]) {
+  return documents.map((document) => document.documentDisplayName)
+}
+
 function loanDocumentPlaceholderStatusLabel(status: LoanApplicationDocumentPlaceholderStatus) {
   switch (status) {
     case 'PENDING':
@@ -436,6 +520,7 @@ export function LoanApplicationsPage() {
   const [documentPlaceholdersLoading, setDocumentPlaceholdersLoading] = useState(false)
   const [documentPlaceholdersError, setDocumentPlaceholdersError] = useState('')
   const [documentPlaceholderSavingId, setDocumentPlaceholderSavingId] = useState('')
+  const [approvalBlocker, setApprovalBlocker] = useState<ApprovalBlocker | null>(null)
   const [transitionNote, setTransitionNote] = useState('')
   const [assignmentNote, setAssignmentNote] = useState('')
 
@@ -510,6 +595,24 @@ export function LoanApplicationsPage() {
     () => countDocumentMetadataSignals(sortedDocumentPlaceholders),
     [sortedDocumentPlaceholders],
   )
+  const incompleteRequiredDocuments = useMemo(
+    () =>
+      sortedDocumentPlaceholders.filter(
+        (item) => item.required && item.status !== 'VERIFIED' && item.status !== 'NOT_REQUIRED',
+      ),
+    [sortedDocumentPlaceholders],
+  )
+  const incompleteRequiredDocumentLabels = useMemo(
+    () => formatBlockingDocuments(incompleteRequiredDocuments),
+    [incompleteRequiredDocuments],
+  )
+  const kycApprovalReady = incompleteRequiredDocuments.length === 0
+
+  useEffect(() => {
+    if (kycApprovalReady) {
+      setApprovalBlocker(null)
+    }
+  }, [kycApprovalReady])
 
   async function loadApplications(nextFilters: ListFilterState) {
     const response = await listLoanApplications({
@@ -613,21 +716,23 @@ export function LoanApplicationsPage() {
     let cancelled = false
 
     async function loadSelectedLoan() {
-      if (!selectedApplicationId) {
+        if (!selectedApplicationId) {
+          setSelectedLoan(null)
+          setAssignmentHistory([])
+          setStatusHistory([])
+          setWorkflowError('')
+          setApprovalBlocker(null)
+          setAssignmentError('')
+          return
+        }
+
         setSelectedLoan(null)
         setAssignmentHistory([])
         setStatusHistory([])
+        setDetailLoading(true)
         setWorkflowError('')
+        setApprovalBlocker(null)
         setAssignmentError('')
-        return
-      }
-
-      setSelectedLoan(null)
-      setAssignmentHistory([])
-      setStatusHistory([])
-      setDetailLoading(true)
-      setWorkflowError('')
-      setAssignmentError('')
 
       try {
         const [detailResponse, historyResponse, assignmentResponse] = await Promise.all([
@@ -841,6 +946,7 @@ export function LoanApplicationsPage() {
 
     setTransitioning(true)
     setWorkflowError('')
+    setApprovalBlocker(null)
 
     try {
       await transitionLoanApplicationStatus(selectedApplicationId, {
@@ -855,6 +961,9 @@ export function LoanApplicationsPage() {
       const message =
         submitError instanceof Error ? submitError.message : 'Unable to update loan status.'
       setWorkflowError(message)
+      if (targetStatus === 'APPROVED') {
+        setApprovalBlocker(extractApprovalBlocker(submitError))
+      }
     } finally {
       setTransitioning(false)
     }
@@ -1409,20 +1518,33 @@ export function LoanApplicationsPage() {
                         {verifiedDocumentCount}/{sortedDocumentPlaceholders.length || 0} ready
                       </Badge>
                       </div>
-                      <div className="loan-workflow__headline-metrics">
-                        <div className="loan-workflow__metric">
-                          <span>Required</span>
-                          <strong>{requiredDocumentCount}</strong>
+                    <div className="loan-workflow__headline-metrics">
+                      <div className="loan-workflow__metric">
+                        <span>Required</span>
+                        <strong>{requiredDocumentCount}</strong>
                         </div>
                         <div className="loan-workflow__metric">
                           <span>Metadata tagged</span>
                           <strong>{metadataDocumentCount}</strong>
                         </div>
-                        <div className="loan-workflow__metric">
-                          <span>Awaiting action</span>
-                          <strong>{receivedDocumentCount + pendingDocumentCount}</strong>
+                      <div className="loan-workflow__metric">
+                        <span>Awaiting action</span>
+                        <strong>{receivedDocumentCount + pendingDocumentCount}</strong>
                       </div>
                     </div>
+                    {!kycApprovalReady ? (
+                      <div className="loan-alert loan-alert--warning">
+                        <div className="loan-alert__title">Approval blocked by KYC</div>
+                        <p className="helper-copy">
+                          {incompleteRequiredDocumentLabels.length
+                            ? `Required documents still need review: ${incompleteRequiredDocumentLabels.join(', ')}.`
+                            : 'Required KYC documents are still incomplete.'}
+                        </p>
+                        <p className="helper-copy">
+                          Approval will remain blocked until each required item is marked Verified or Not required.
+                        </p>
+                      </div>
+                    ) : null}
                     {documentPlaceholdersLoading ? <div className="empty-state">Loading document placeholders...</div> : null}
                     {documentPlaceholdersError ? <div className="empty-state">{documentPlaceholdersError}</div> : null}
                     {!documentPlaceholdersLoading && !documentPlaceholdersError && !sortedDocumentPlaceholders.length ? (
@@ -1793,6 +1915,29 @@ export function LoanApplicationsPage() {
                       rows={4}
                     />
                   </div>
+                  {!kycApprovalReady ? (
+                    <div className="loan-alert loan-alert--warning">
+                      <div className="loan-alert__title">Approval currently blocked</div>
+                      <p className="helper-copy">
+                        {incompleteRequiredDocumentLabels.length
+                          ? `Complete these required KYC items before approving: ${incompleteRequiredDocumentLabels.join(', ')}.`
+                          : 'Complete the required KYC checklist before approving this loan.'}
+                      </p>
+                    </div>
+                  ) : null}
+                  {approvalBlocker ? (
+                    <div className="loan-alert loan-alert--warning">
+                      <div className="loan-alert__title">Approval blocked by backend validation</div>
+                      <p className="helper-copy">{approvalBlocker.message}</p>
+                      {approvalBlocker.documents.length ? (
+                        <ul className="loan-alert__list">
+                          {approvalBlocker.documents.map((document) => (
+                            <li key={document}>{document}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {workflowError ? <div className="empty-state">{workflowError}</div> : null}
                   <div className="loan-transition-actions">
                     {transitionActions.map((action) => (
