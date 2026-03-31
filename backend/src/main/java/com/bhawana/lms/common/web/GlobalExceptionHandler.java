@@ -2,6 +2,7 @@ package com.bhawana.lms.common.web;
 
 import com.bhawana.lms.common.api.ApiError;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -30,6 +31,28 @@ public class GlobalExceptionHandler {
         }
 
         return build(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed", request, fieldErrors);
+    }
+
+    @ExceptionHandler(KycCompletionRequiredException.class)
+    public ResponseEntity<ApiError> handleKycCompletionRequired(
+            KycCompletionRequiredException exception,
+            HttpServletRequest request
+    ) {
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        for (LoanApplicationDocumentType documentType : exception.getBlockingDocumentTypes()) {
+            fieldErrors.put(
+                    documentType.name(),
+                    documentType.getDisplayName() + " must be VERIFIED before approval."
+            );
+        }
+
+        return build(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "KYC_COMPLETION_REQUIRED",
+                exception.getMessage(),
+                request,
+                fieldErrors
+        );
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

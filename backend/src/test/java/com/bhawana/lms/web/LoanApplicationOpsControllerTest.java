@@ -268,6 +268,7 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.updatedAt").exists());
 
         transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Assigned for analyst review");
+        markAllRequiredKycDocumentsVerified(created.get("id").asText());
         transitionApplication(created.get("id").asText(), "APPROVED", "Approved after validation");
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", created.get("id").asText())
@@ -290,6 +291,8 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-990", "API", "ABCDE1234F");
 
+        transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Ready for KYC review");
+
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents", created.get("id").asText())
                         .with(opsUser()))
                 .andExpect(status().isOk())
@@ -311,22 +314,56 @@ class LoanApplicationOpsControllerTest {
                                 "note", "Bank statement attached",
                                 "fileName", "bank-statement-2026-03.pdf",
                                 "contentType", "application/pdf",
-                                "fileReference", "s3://loan-docs/EXT-990/bank-statement-2026-03.pdf",
-                                "fileReferenceSource", "ops.manual",
-                                "uploadedByUsername", "ops.user"
+                                "sourceReference", "s3://loan-docs/EXT-990/bank-statement-2026-03.pdf"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.documentType").value("BANK_STATEMENT"))
                 .andExpect(jsonPath("$.status").value("RECEIVED"))
                 .andExpect(jsonPath("$.note").value("Bank statement attached"))
                 .andExpect(jsonPath("$.fileName").value("bank-statement-2026-03.pdf"))
-                .andExpect(jsonPath("$.fileReference").value("s3://loan-docs/EXT-990/bank-statement-2026-03.pdf"))
-                .andExpect(jsonPath("$.fileReferenceSource").value("ops.manual"))
                 .andExpect(jsonPath("$.contentType").value("application/pdf"))
+                .andExpect(jsonPath("$.sourceReference").value("s3://loan-docs/EXT-990/bank-statement-2026-03.pdf"))
                 .andExpect(jsonPath("$.uploadedAt").exists())
                 .andExpect(jsonPath("$.uploadedByUsername").value("ops.user"))
                 .andExpect(jsonPath("$.updatedByUsername").value("ops.user"))
                 .andExpect(jsonPath("$.updatedAt").exists());
+    }
+
+    @Test
+    void approvalIsBlockedUntilRequiredKycDocumentsAreComplete() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-991", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+
+        transitionApplication(applicationId, "UNDER_REVIEW", "Ready for final approval");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "APPROVED",
+                                "note", "Approve after checks"
+                        ))))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("KYC_COMPLETION_REQUIRED"))
+                .andExpect(jsonPath("$.message").value("Loan application cannot be approved until required KYC documents are complete."))
+                .andExpect(jsonPath("$.violations.length()").value(4))
+                .andExpect(jsonPath("$.violations[0].field").value("PAN_CARD"));
+
+        markAllRequiredKycDocumentsVerified(applicationId);
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "APPROVED",
+                                "note", "Approve after checks"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED"));
     }
 
     @Test
@@ -348,6 +385,7 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
 
         transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(created.get("id").asText());
         transitionApplication(created.get("id").asText(), "APPROVED", "Approved after checks");
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", created.get("id").asText())
@@ -693,6 +731,24 @@ class LoanApplicationOpsControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("lspIds", List.of(lspId)))))
                 .andExpect(status().isOk());
+    }
+
+    private void markAllRequiredKycDocumentsVerified(String applicationId) {
+        loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(UUID.fromString(applicationId))
+                .forEach(item -> {
+                    if (item.isRequired()) {
+                        item.update(
+                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.VERIFIED,
+                                "Verified for approval",
+                                "ops.user",
+                                item.getFileName(),
+                                item.getFileReference(),
+                                item.getSourceReference(),
+                                item.getContentType()
+                        );
+                        loanApplicationDocumentChecklistRepository.save(item);
+                    }
+                });
     }
 
     private record ProductFixture(String id, String code) {

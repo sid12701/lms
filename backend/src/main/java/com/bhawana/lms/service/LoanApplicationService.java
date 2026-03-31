@@ -1,6 +1,7 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.KycCompletionRequiredException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
@@ -252,6 +253,11 @@ public class LoanApplicationService {
             );
         }
 
+        if (currentStatus == LoanApplicationStatus.UNDER_REVIEW
+                && targetStatus == LoanApplicationStatus.APPROVED) {
+            validateKycCompletionBeforeApproval(applicationId);
+        }
+
         String resolvedNote = resolveTransitionNote(note, currentStatus, targetStatus);
         application.transitionTo(targetStatus);
         LoanApplication savedApplication = loanApplicationRepository.save(application);
@@ -334,10 +340,8 @@ public class LoanApplicationService {
             String note,
             String fileName,
             String fileReference,
-            String fileReferenceSource,
-            String contentType,
-            Instant uploadedAt,
-            String uploadedByUsername
+            String sourceReference,
+            String contentType
     ) {
         LoanApplication application = getApplication(applicationId);
         ensureDocumentChecklist(application);
@@ -348,27 +352,14 @@ public class LoanApplicationService {
                         "Unknown document checklist item: " + documentType.name()
                 ));
 
-        Instant resolvedUploadedAt = uploadedAt;
-        if (resolvedUploadedAt == null
-                && hasAnyUploadMetadata(fileName, fileReference, fileReferenceSource, contentType, uploadedByUsername)) {
-            resolvedUploadedAt = Instant.now();
-        }
-
-        String resolvedUploadedByUsername = uploadedByUsername;
-        if (resolvedUploadedByUsername == null && resolvedUploadedAt != null) {
-            resolvedUploadedByUsername = normalizeActorUsername(actorUsername);
-        }
-
         checklistItem.update(
                 status,
                 note,
                 normalizeActorUsername(actorUsername),
                 fileName,
                 fileReference,
-                fileReferenceSource,
-                contentType,
-                resolvedUploadedAt,
-                resolvedUploadedByUsername
+                sourceReference,
+                contentType
         );
         return loanApplicationDocumentChecklistRepository.save(checklistItem);
     }
@@ -515,18 +506,22 @@ public class LoanApplicationService {
         );
     }
 
-    private static boolean hasAnyUploadMetadata(
-            String fileName,
-            String fileReference,
-            String fileReferenceSource,
-            String contentType,
-            String uploadedByUsername
-    ) {
-        return fileName != null
-                || fileReference != null
-                || fileReferenceSource != null
-                || contentType != null
-                || uploadedByUsername != null;
+    private void validateKycCompletionBeforeApproval(UUID applicationId) {
+        LoanApplication application = getApplication(applicationId);
+        ensureDocumentChecklist(application);
+
+        List<LoanApplicationDocumentType> blockingDocumentTypes = loanApplicationDocumentChecklistRepository
+                .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
+                .stream()
+                .filter(LoanApplicationDocumentChecklist::isRequired)
+                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.VERIFIED
+                        && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
+                .map(LoanApplicationDocumentChecklist::getDocumentType)
+                .toList();
+
+        if (!blockingDocumentTypes.isEmpty()) {
+            throw new KycCompletionRequiredException(blockingDocumentTypes);
+        }
     }
 
     private String serializePayload(LoanApplication application) {

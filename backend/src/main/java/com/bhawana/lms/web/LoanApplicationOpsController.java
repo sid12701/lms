@@ -162,10 +162,8 @@ public class LoanApplicationOpsController {
                 request.note(),
                 request.fileName(),
                 request.fileReference(),
-                request.fileReferenceSource(),
-                request.contentType(),
-                request.uploadedAt(),
-                request.uploadedByUsername()
+                request.sourceReference(),
+                request.contentType()
         ));
     }
 
@@ -282,8 +280,8 @@ public class LoanApplicationOpsController {
                 checklistItem.getNote(),
                 checklistItem.getFileName(),
                 checklistItem.getFileReference(),
-                checklistItem.getFileReferenceSource(),
                 checklistItem.getContentType(),
+                checklistItem.getSourceReference(),
                 checklistItem.getUploadedAt(),
                 checklistItem.getUploadedByUsername(),
                 checklistItem.getUpdatedByUsername(),
@@ -399,10 +397,8 @@ public class LoanApplicationOpsController {
             @Size(max = 500) String note,
             @Size(max = 255) String fileName,
             @Size(max = 500) String fileReference,
-            @Size(max = 255) String fileReferenceSource,
-            @Size(max = 128) String contentType,
-            Instant uploadedAt,
-            @Size(max = 128) String uploadedByUsername
+            @Size(max = 500) String sourceReference,
+            @Size(max = 128) String contentType
     ) {
     }
 
@@ -440,8 +436,8 @@ public class LoanApplicationOpsController {
             String note,
             String fileName,
             String fileReference,
-            String fileReferenceSource,
             String contentType,
+            String sourceReference,
             Instant uploadedAt,
             String uploadedByUsername,
             String updatedByUsername,

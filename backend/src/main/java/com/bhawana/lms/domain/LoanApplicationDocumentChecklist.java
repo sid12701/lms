@@ -45,8 +45,8 @@ public class LoanApplicationDocumentChecklist {
     @Column(name = "file_reference", length = 500)
     private String fileReference;
 
-    @Column(name = "file_reference_source", length = 255)
-    private String fileReferenceSource;
+    @Column(name = "source_reference", length = 500)
+    private String sourceReference;
 
     @Column(name = "content_type", length = 128)
     private String contentType;
@@ -130,8 +130,8 @@ public class LoanApplicationDocumentChecklist {
         return fileReference;
     }
 
-    public String getFileReferenceSource() {
-        return fileReferenceSource;
+    public String getSourceReference() {
+        return sourceReference;
     }
 
     public String getContentType() {
@@ -164,22 +164,27 @@ public class LoanApplicationDocumentChecklist {
             String updatedByUsername,
             String fileName,
             String fileReference,
-            String fileReferenceSource,
-            String contentType,
-            Instant uploadedAt,
-            String uploadedByUsername
+            String sourceReference,
+            String contentType
     ) {
         this.status = status;
-        if (note != null) {
-            this.note = normalizeOptional(note);
-        }
+        this.note = normalizeOptional(note);
         this.fileName = normalizeOptional(fileName);
         this.fileReference = normalizeOptional(fileReference);
-        this.fileReferenceSource = normalizeOptional(fileReferenceSource);
+        this.sourceReference = normalizeOptional(sourceReference);
         this.contentType = normalizeOptional(contentType);
-        this.uploadedAt = uploadedAt;
-        this.uploadedByUsername = normalizeOptional(uploadedByUsername);
         this.updatedByUsername = normalizeOptional(updatedByUsername);
+        if (hasUploadMetadata()) {
+            this.uploadedAt = Instant.now();
+            this.uploadedByUsername = this.updatedByUsername;
+        } else {
+            this.uploadedAt = null;
+            this.uploadedByUsername = null;
+        }
+    }
+
+    private boolean hasUploadMetadata() {
+        return fileName != null || fileReference != null || sourceReference != null || contentType != null;
     }
 
     private static String normalizeOptional(String value) {
