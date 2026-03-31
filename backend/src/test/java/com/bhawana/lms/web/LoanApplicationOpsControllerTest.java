@@ -311,15 +311,18 @@ class LoanApplicationOpsControllerTest {
                                 "note", "Bank statement attached",
                                 "fileName", "bank-statement-2026-03.pdf",
                                 "contentType", "application/pdf",
-                                "sourceReference", "s3://loan-docs/EXT-990/bank-statement-2026-03.pdf"
+                                "fileReference", "s3://loan-docs/EXT-990/bank-statement-2026-03.pdf",
+                                "fileReferenceSource", "ops.manual",
+                                "uploadedByUsername", "ops.user"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.documentType").value("BANK_STATEMENT"))
                 .andExpect(jsonPath("$.status").value("RECEIVED"))
                 .andExpect(jsonPath("$.note").value("Bank statement attached"))
                 .andExpect(jsonPath("$.fileName").value("bank-statement-2026-03.pdf"))
+                .andExpect(jsonPath("$.fileReference").value("s3://loan-docs/EXT-990/bank-statement-2026-03.pdf"))
+                .andExpect(jsonPath("$.fileReferenceSource").value("ops.manual"))
                 .andExpect(jsonPath("$.contentType").value("application/pdf"))
-                .andExpect(jsonPath("$.sourceReference").value("s3://loan-docs/EXT-990/bank-statement-2026-03.pdf"))
                 .andExpect(jsonPath("$.uploadedAt").exists())
                 .andExpect(jsonPath("$.uploadedByUsername").value("ops.user"))
                 .andExpect(jsonPath("$.updatedByUsername").value("ops.user"))

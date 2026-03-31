@@ -334,7 +334,10 @@ public class LoanApplicationService {
             String note,
             String fileName,
             String fileReference,
-            String contentType
+            String fileReferenceSource,
+            String contentType,
+            Instant uploadedAt,
+            String uploadedByUsername
     ) {
         LoanApplication application = getApplication(applicationId);
         ensureDocumentChecklist(application);
@@ -345,13 +348,27 @@ public class LoanApplicationService {
                         "Unknown document checklist item: " + documentType.name()
                 ));
 
+        Instant resolvedUploadedAt = uploadedAt;
+        if (resolvedUploadedAt == null
+                && hasAnyUploadMetadata(fileName, fileReference, fileReferenceSource, contentType, uploadedByUsername)) {
+            resolvedUploadedAt = Instant.now();
+        }
+
+        String resolvedUploadedByUsername = uploadedByUsername;
+        if (resolvedUploadedByUsername == null && resolvedUploadedAt != null) {
+            resolvedUploadedByUsername = normalizeActorUsername(actorUsername);
+        }
+
         checklistItem.update(
                 status,
                 note,
                 normalizeActorUsername(actorUsername),
                 fileName,
                 fileReference,
-                contentType
+                fileReferenceSource,
+                contentType,
+                resolvedUploadedAt,
+                resolvedUploadedByUsername
         );
         return loanApplicationDocumentChecklistRepository.save(checklistItem);
     }
@@ -496,6 +513,20 @@ public class LoanApplicationService {
                 documentType.isRequiredByDefault() ? "Awaiting " + documentType.getDisplayName() : "Optional placeholder",
                 actorUsername
         );
+    }
+
+    private static boolean hasAnyUploadMetadata(
+            String fileName,
+            String fileReference,
+            String fileReferenceSource,
+            String contentType,
+            String uploadedByUsername
+    ) {
+        return fileName != null
+                || fileReference != null
+                || fileReferenceSource != null
+                || contentType != null
+                || uploadedByUsername != null;
     }
 
     private String serializePayload(LoanApplication application) {
