@@ -878,6 +878,13 @@
     gap: 0.45rem;
   }
 
+  .loan-checklist__meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7rem;
+    padding-top: 0.25rem;
+  }
+
   .loan-checklist__controls {
     display: grid;
     gap: 0.7rem;
@@ -1292,6 +1299,10 @@
   }
 
   .loan-checklist__item {
+    grid-template-columns: 1fr;
+  }
+
+  .loan-checklist__meta-grid {
     grid-template-columns: 1fr;
   }
 

@@ -305,6 +305,19 @@ function formatNote(note: string | null) {
   return trimmed ? trimmed : 'No note recorded.'
 }
 
+function formatMetadataValue(value?: string | null) {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : 'Not provided'
+}
+
+function formatOptionalTimestamp(value?: string | null) {
+  if (!value) {
+    return 'Not uploaded'
+  }
+
+  return formatTimestamp(value)
+}
+
 function loanDocumentPlaceholderStatusLabel(status: LoanApplicationDocumentPlaceholderStatus) {
   switch (status) {
     case 'PENDING':
@@ -348,16 +361,39 @@ function sortLoanDocumentPlaceholders(records: LoanApplicationDocumentPlaceholde
 }
 
 function seedDocumentDrafts(records: LoanApplicationDocumentPlaceholderRecord[]) {
-  return records.reduce<Record<string, { status: LoanApplicationDocumentPlaceholderStatus; note: string }>>(
-    (accumulator, record) => {
-      accumulator[record.id] = {
-        status: record.status,
-        note: record.note ?? '',
+  return records.reduce<
+    Record<
+      string,
+      {
+        status: LoanApplicationDocumentPlaceholderStatus
+        note: string
+        fileName: string
+        contentType: string
+        sourceReference: string
       }
-      return accumulator
-    },
-    {},
-  )
+    >
+  >((accumulator, record) => {
+    accumulator[record.id] = {
+      status: record.status,
+      note: record.note ?? '',
+      fileName: record.fileName ?? '',
+      contentType: record.contentType ?? '',
+      sourceReference: record.sourceReference ?? '',
+    }
+    return accumulator
+  }, {})
+}
+
+function countDocumentMetadataSignals(records: LoanApplicationDocumentPlaceholderRecord[]) {
+  return records.filter((item) =>
+    Boolean(
+      item.fileName?.trim() ||
+        item.contentType?.trim() ||
+        item.sourceReference?.trim() ||
+        item.uploadedAt ||
+        item.uploadedByUsername?.trim(),
+    ),
+  ).length
 }
 
 export function LoanApplicationsPage() {
@@ -386,7 +422,16 @@ export function LoanApplicationsPage() {
     LoanApplicationDocumentPlaceholderRecord[]
   >([])
   const [documentPlaceholderDrafts, setDocumentPlaceholderDrafts] = useState<
-    Record<string, { status: LoanApplicationDocumentPlaceholderStatus; note: string }>
+    Record<
+      string,
+      {
+        status: LoanApplicationDocumentPlaceholderStatus
+        note: string
+        fileName: string
+        contentType: string
+        sourceReference: string
+      }
+    >
   >({})
   const [documentPlaceholdersLoading, setDocumentPlaceholdersLoading] = useState(false)
   const [documentPlaceholdersError, setDocumentPlaceholdersError] = useState('')
@@ -459,6 +504,10 @@ export function LoanApplicationsPage() {
   )
   const pendingDocumentCount = useMemo(
     () => sortedDocumentPlaceholders.filter((item) => item.status === 'PENDING').length,
+    [sortedDocumentPlaceholders],
+  )
+  const metadataDocumentCount = useMemo(
+    () => countDocumentMetadataSignals(sortedDocumentPlaceholders),
     [sortedDocumentPlaceholders],
   )
 
@@ -854,6 +903,9 @@ export function LoanApplicationsPage() {
       await updateLoanApplicationDocumentPlaceholder(selectedApplicationId, placeholder.documentType, {
         status: draft.status,
         note: draft.note.trim() || undefined,
+        fileName: draft.fileName.trim() || undefined,
+        contentType: draft.contentType.trim() || undefined,
+        sourceReference: draft.sourceReference.trim() || undefined,
       })
       setDocumentPlaceholdersLoading(true)
       await refreshDocumentPlaceholders(selectedApplicationId)
@@ -1343,7 +1395,7 @@ export function LoanApplicationsPage() {
                       <div>
                         <h4>Document placeholders</h4>
                         <p className="helper-copy">
-                          Track the per-loan KYC checklist until live document upload handling is added.
+                          Track the per-loan KYC checklist and document metadata until live upload handling is added.
                         </p>
                       </div>
                       <Badge
@@ -1356,19 +1408,19 @@ export function LoanApplicationsPage() {
                       >
                         {verifiedDocumentCount}/{sortedDocumentPlaceholders.length || 0} ready
                       </Badge>
-                    </div>
-                    <div className="loan-workflow__headline-metrics">
-                      <div className="loan-workflow__metric">
-                        <span>Required</span>
-                        <strong>{requiredDocumentCount}</strong>
                       </div>
-                      <div className="loan-workflow__metric">
-                        <span>Ready</span>
-                        <strong>{verifiedDocumentCount}</strong>
-                      </div>
-                      <div className="loan-workflow__metric">
-                        <span>Awaiting action</span>
-                        <strong>{receivedDocumentCount + pendingDocumentCount}</strong>
+                      <div className="loan-workflow__headline-metrics">
+                        <div className="loan-workflow__metric">
+                          <span>Required</span>
+                          <strong>{requiredDocumentCount}</strong>
+                        </div>
+                        <div className="loan-workflow__metric">
+                          <span>Metadata tagged</span>
+                          <strong>{metadataDocumentCount}</strong>
+                        </div>
+                        <div className="loan-workflow__metric">
+                          <span>Awaiting action</span>
+                          <strong>{receivedDocumentCount + pendingDocumentCount}</strong>
                       </div>
                     </div>
                     {documentPlaceholdersLoading ? <div className="empty-state">Loading document placeholders...</div> : null}
@@ -1376,42 +1428,75 @@ export function LoanApplicationsPage() {
                     {!documentPlaceholdersLoading && !documentPlaceholdersError && !sortedDocumentPlaceholders.length ? (
                       <div className="empty-state">No KYC document placeholders are configured for this loan yet.</div>
                     ) : null}
-                    {!documentPlaceholdersLoading && !documentPlaceholdersError && sortedDocumentPlaceholders.length ? (
-                      <div className="loan-checklist">
-                        {sortedDocumentPlaceholders.map((placeholder) => {
-                          const draft = documentPlaceholderDrafts[placeholder.id] ?? {
-                            status: placeholder.status,
-                            note: placeholder.note ?? '',
-                          }
-                          const isSaving = documentPlaceholderSavingId === placeholder.id
+                      {!documentPlaceholdersLoading && !documentPlaceholdersError && sortedDocumentPlaceholders.length ? (
+                        <div className="loan-checklist">
+                          {sortedDocumentPlaceholders.map((placeholder) => {
+                            const draft = documentPlaceholderDrafts[placeholder.id] ?? {
+                              status: placeholder.status,
+                              note: placeholder.note ?? '',
+                              fileName: placeholder.fileName ?? '',
+                              contentType: placeholder.contentType ?? '',
+                              sourceReference: placeholder.sourceReference ?? '',
+                            }
+                            const isSaving = documentPlaceholderSavingId === placeholder.id
+                            const metadataIsPresent = Boolean(
+                              placeholder.fileName?.trim() ||
+                                placeholder.contentType?.trim() ||
+                                placeholder.sourceReference?.trim(),
+                            )
 
-                          return (
-                            <div className="loan-checklist__item" key={placeholder.id}>
-                              <div className="loan-checklist__body">
-                                <div className="inline-actions">
-                                  <strong>{placeholder.documentDisplayName}</strong>
-                                  <Badge variant={placeholder.required ? 'destructive' : 'default'}>
-                                    {placeholder.required ? 'Required' : 'Optional'}
-                                  </Badge>
-                                  <Badge variant={loanDocumentPlaceholderStatusVariant(draft.status)}>
-                                    {loanDocumentPlaceholderStatusLabel(draft.status)}
-                                  </Badge>
+                            return (
+                              <div className="loan-checklist__item" key={placeholder.id}>
+                                <div className="loan-checklist__body">
+                                  <div className="inline-actions">
+                                    <strong>{placeholder.documentDisplayName}</strong>
+                                    <Badge variant={placeholder.required ? 'destructive' : 'default'}>
+                                      {placeholder.required ? 'Required' : 'Optional'}
+                                    </Badge>
+                                    <Badge variant={loanDocumentPlaceholderStatusVariant(draft.status)}>
+                                      {loanDocumentPlaceholderStatusLabel(draft.status)}
+                                    </Badge>
+                                  </div>
+                                  <div className="loan-checklist__meta-grid">
+                                    <div className="loan-detail-field">
+                                      <span>File name</span>
+                                      <strong>{formatMetadataValue(placeholder.fileName)}</strong>
+                                    </div>
+                                    <div className="loan-detail-field">
+                                      <span>Content type</span>
+                                      <strong>{formatMetadataValue(placeholder.contentType)}</strong>
+                                    </div>
+                                    <div className="loan-detail-field">
+                                      <span>Source / reference</span>
+                                      <strong>{formatMetadataValue(placeholder.sourceReference)}</strong>
+                                    </div>
+                                    <div className="loan-detail-field">
+                                      <span>Uploaded at</span>
+                                      <strong>{formatOptionalTimestamp(placeholder.uploadedAt)}</strong>
+                                    </div>
+                                    <div className="loan-detail-field">
+                                      <span>Uploaded by</span>
+                                      <strong>{formatMetadataValue(placeholder.uploadedByUsername)}</strong>
+                                    </div>
+                                    <div className="loan-detail-field">
+                                      <span>Metadata state</span>
+                                      <strong>{metadataIsPresent ? 'Captured' : 'Awaiting metadata'}</strong>
+                                    </div>
+                                  </div>
+                                  <p className="helper-copy">
+                                    {placeholder.updatedAt
+                                      ? `Updated ${formatTimestamp(placeholder.updatedAt)} by ${placeholder.updatedByUsername ?? 'system'}`
+                                      : 'Awaiting first review.'}
+                                  </p>
+                                  <p className="helper-copy">
+                                    {placeholder.note?.trim()
+                                      ? placeholder.note
+                                      : 'Add a short review note when you update the metadata placeholder.'}
+                                  </p>
                                 </div>
-                                <p className="helper-copy">{placeholder.documentType}</p>
-                                <p className="helper-copy">
-                                  {placeholder.updatedAt
-                                    ? `Updated ${formatTimestamp(placeholder.updatedAt)} by ${placeholder.updatedByUsername ?? 'system'}`
-                                    : 'Awaiting first review.'}
-                                </p>
-                                <p className="helper-copy">
-                                  {placeholder.note?.trim()
-                                    ? placeholder.note
-                                    : 'Add a short review note when you update the placeholder.'}
-                                </p>
-                              </div>
-                              <div className="loan-checklist__controls">
-                                <div className="field-stack">
-                                  <label htmlFor={`placeholder-status-${placeholder.id}`}>Status</label>
+                                <div className="loan-checklist__controls">
+                                  <div className="field-stack">
+                                    <label htmlFor={`placeholder-status-${placeholder.id}`}>Status</label>
                                   <select
                                     id={`placeholder-status-${placeholder.id}`}
                                     className="ui-input ui-select"
@@ -1426,18 +1511,69 @@ export function LoanApplicationsPage() {
                                       }))
                                     }
                                   >
-                                    {loanApplicationDocumentPlaceholderStatusOptions.map((option) => (
-                                      <option key={option} value={option}>
-                                        {loanDocumentPlaceholderStatusLabel(option)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div className="field-stack">
-                                  <label htmlFor={`placeholder-note-${placeholder.id}`}>Note</label>
-                                  <Input
-                                    id={`placeholder-note-${placeholder.id}`}
-                                    value={draft.note}
+                                      {loanApplicationDocumentPlaceholderStatusOptions.map((option) => (
+                                        <option key={option} value={option}>
+                                          {loanDocumentPlaceholderStatusLabel(option)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="field-stack">
+                                    <label htmlFor={`placeholder-file-${placeholder.id}`}>File name</label>
+                                    <Input
+                                      id={`placeholder-file-${placeholder.id}`}
+                                      value={draft.fileName}
+                                      onChange={(event) =>
+                                        setDocumentPlaceholderDrafts((current) => ({
+                                          ...current,
+                                          [placeholder.id]: {
+                                            ...(current[placeholder.id] ?? draft),
+                                            fileName: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                      placeholder="e.g. pan-card.pdf"
+                                    />
+                                  </div>
+                                  <div className="field-stack">
+                                    <label htmlFor={`placeholder-content-${placeholder.id}`}>Content type</label>
+                                    <Input
+                                      id={`placeholder-content-${placeholder.id}`}
+                                      value={draft.contentType}
+                                      onChange={(event) =>
+                                        setDocumentPlaceholderDrafts((current) => ({
+                                          ...current,
+                                          [placeholder.id]: {
+                                            ...(current[placeholder.id] ?? draft),
+                                            contentType: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                      placeholder="e.g. application/pdf"
+                                    />
+                                  </div>
+                                  <div className="field-stack">
+                                    <label htmlFor={`placeholder-reference-${placeholder.id}`}>Source / reference</label>
+                                    <Input
+                                      id={`placeholder-reference-${placeholder.id}`}
+                                      value={draft.sourceReference}
+                                      onChange={(event) =>
+                                        setDocumentPlaceholderDrafts((current) => ({
+                                          ...current,
+                                          [placeholder.id]: {
+                                            ...(current[placeholder.id] ?? draft),
+                                            sourceReference: event.target.value,
+                                          },
+                                        }))
+                                      }
+                                      placeholder="e.g. DigiLocker ref or storage key"
+                                    />
+                                  </div>
+                                  <div className="field-stack">
+                                    <label htmlFor={`placeholder-note-${placeholder.id}`}>Note</label>
+                                    <Input
+                                      id={`placeholder-note-${placeholder.id}`}
+                                      value={draft.note}
                                     onChange={(event) =>
                                       setDocumentPlaceholderDrafts((current) => ({
                                         ...current,
@@ -1447,22 +1583,22 @@ export function LoanApplicationsPage() {
                                         },
                                       }))
                                     }
-                                    placeholder="Optional review note"
-                                  />
-                                </div>
-                                <div className="loan-checklist__actions">
-                                  <Button
+                                      placeholder="Optional review note"
+                                    />
+                                  </div>
+                                  <div className="loan-checklist__actions">
+                                    <Button
                                     disabled={isSaving}
                                     onClick={() => void handleDocumentPlaceholderSave(placeholder.id)}
                                     type="button"
                                     variant="secondary"
                                     size="sm"
                                   >
-                                    {isSaving ? 'Saving...' : 'Save'}
-                                  </Button>
+                                      {isSaving ? 'Saving...' : 'Save'}
+                                    </Button>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
                           )
                         })}
                       </div>
