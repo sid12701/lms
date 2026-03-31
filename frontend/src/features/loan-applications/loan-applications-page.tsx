@@ -343,7 +343,7 @@ function sortLoanDocumentPlaceholders(records: LoanApplicationDocumentPlaceholde
       return left.required ? -1 : 1
     }
 
-    return left.documentLabel.localeCompare(right.documentLabel)
+    return left.documentDisplayName.localeCompare(right.documentDisplayName)
   })
 }
 
@@ -851,7 +851,7 @@ export function LoanApplicationsPage() {
     setDocumentPlaceholdersError('')
 
     try {
-      await updateLoanApplicationDocumentPlaceholder(selectedApplicationId, placeholderId, {
+      await updateLoanApplicationDocumentPlaceholder(selectedApplicationId, placeholder.documentType, {
         status: draft.status,
         note: draft.note.trim() || undefined,
       })
@@ -1389,7 +1389,7 @@ export function LoanApplicationsPage() {
                             <div className="loan-checklist__item" key={placeholder.id}>
                               <div className="loan-checklist__body">
                                 <div className="inline-actions">
-                                  <strong>{placeholder.documentLabel}</strong>
+                                  <strong>{placeholder.documentDisplayName}</strong>
                                   <Badge variant={placeholder.required ? 'destructive' : 'default'}>
                                     {placeholder.required ? 'Required' : 'Optional'}
                                   </Badge>
@@ -1397,7 +1397,7 @@ export function LoanApplicationsPage() {
                                     {loanDocumentPlaceholderStatusLabel(draft.status)}
                                   </Badge>
                                 </div>
-                                <p className="helper-copy">{placeholder.documentCode}</p>
+                                <p className="helper-copy">{placeholder.documentType}</p>
                                 <p className="helper-copy">
                                   {placeholder.updatedAt
                                     ? `Updated ${formatTimestamp(placeholder.updatedAt)} by ${placeholder.updatedByUsername ?? 'system'}`

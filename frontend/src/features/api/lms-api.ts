@@ -208,8 +208,8 @@ export type LoanApplicationAssignmentEventRecord = {
 export type LoanApplicationDocumentPlaceholderRecord = {
   id: string
   loanApplicationId: string
-  documentCode: string
-  documentLabel: string
+  documentType: string
+  documentDisplayName: string
   required: boolean
   status: LoanApplicationDocumentPlaceholderStatus
   note: string | null
@@ -610,20 +610,20 @@ export function listLoanApplicationAssignmentEvents(applicationId: string) {
 
 export function listLoanApplicationDocumentPlaceholders(applicationId: string) {
   return requestJson<LoanApplicationDocumentPlaceholderRecord[]>(
-    `/api/v1/internal/ops/loan-applications/${applicationId}/document-placeholders`,
+    `/api/v1/internal/ops/loan-applications/${applicationId}/kyc-documents`,
   )
 }
 
 export function updateLoanApplicationDocumentPlaceholder(
   applicationId: string,
-  placeholderId: string,
+  documentType: string,
   payload: {
     status: LoanApplicationDocumentPlaceholderStatus
     note?: string
   },
 ) {
   return requestJson<LoanApplicationDocumentPlaceholderRecord>(
-    `/api/v1/internal/ops/loan-applications/${applicationId}/document-placeholders/${placeholderId}`,
+    `/api/v1/internal/ops/loan-applications/${applicationId}/kyc-documents/${documentType}`,
     {
       method: 'PUT',
       body: JSON.stringify(payload),
