@@ -33,6 +33,7 @@ import {
   type LoanApplicationDocumentPlaceholderRecord,
   type LoanApplicationDocumentPlaceholderStatus,
   type LoanApplicationRecord,
+  type LoanAccountStatus,
   type LoanApplicationStatus,
   type LoanApplicationStatusReasonCode,
   type LoanApplicationStatusTransitionRecord,
@@ -388,6 +389,15 @@ function loanAuditActionLabel(action: LoanApplicationAuditAction) {
     case 'STATUS_TRANSITION':
     default:
       return 'Status transition'
+  }
+}
+
+function loanAccountStatusLabel(status?: LoanAccountStatus | null) {
+  switch (status) {
+    case 'PENDING_DISBURSEMENT':
+      return 'Pending disbursement'
+    default:
+      return 'Account not created'
   }
 }
 
@@ -2244,6 +2254,37 @@ export function LoanApplicationsPage() {
                       <strong>{visibleSelectedApplication.tenureMonths} months</strong>
                     </div>
                   </div>
+                  {selectedLoan?.loanAccount ? (
+                    <div className="loan-history" style={{ marginTop: '1.5rem' }}>
+                      <div className="loan-history__header">
+                        <div>
+                          <div className="section-eyebrow">Servicing account</div>
+                          <p className="helper-copy">
+                            Created automatically when the application is approved.
+                          </p>
+                        </div>
+                        <Badge>{loanAccountStatusLabel(selectedLoan.loanAccount.status)}</Badge>
+                      </div>
+                      <div className="loan-detail-grid">
+                        <div className="loan-detail-field">
+                          <span>Account number</span>
+                          <strong>{selectedLoan.loanAccount.accountNumber}</strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>Principal amount</span>
+                          <strong>{currencyLabel(selectedLoan.loanAccount.principalAmount)}</strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>Tenure</span>
+                          <strong>{selectedLoan.loanAccount.tenureMonths} months</strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>Approved at</span>
+                          <strong>{formatTimestamp(selectedLoan.loanAccount.approvedAt)}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="loan-status-lane" aria-label="Loan status progression">

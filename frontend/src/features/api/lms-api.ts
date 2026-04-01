@@ -21,6 +21,7 @@ export const loanApplicationStatusOptions = [
   'APPROVED',
   'REJECTED',
 ] as const
+export const loanAccountStatusOptions = ['PENDING_DISBURSEMENT'] as const
 export const loanApplicationStatusReasonCodeOptions = [
   'MISSING_DOCUMENTS',
   'BORROWER_CLARIFICATION_REQUIRED',
@@ -43,6 +44,7 @@ export type UserStatus = (typeof userStatusOptions)[number]
 export type ApiClientStatus = (typeof apiClientStatusOptions)[number]
 export type LoanProductStatus = (typeof loanProductStatusOptions)[number]
 export type LoanApplicationStatus = (typeof loanApplicationStatusOptions)[number]
+export type LoanAccountStatus = (typeof loanAccountStatusOptions)[number]
 export type LoanApplicationStatusReasonCode = (typeof loanApplicationStatusReasonCodeOptions)[number]
 export type LoanApplicationDocumentPlaceholderStatus =
   (typeof loanApplicationDocumentPlaceholderStatusOptions)[number]
@@ -192,8 +194,19 @@ export type LoanApplicationLastActivityRecord = {
   occurredAt: string
 }
 
+export type LoanAccountSummaryRecord = {
+  id: string
+  accountNumber: string
+  status: LoanAccountStatus
+  principalAmount: number
+  tenureMonths: number
+  approvedAt: string
+  createdAt: string
+}
+
 export type LoanApplicationDetailRecord = LoanApplicationRecord & {
   updatedAt: string
+  loanAccount: LoanAccountSummaryRecord | null
   lastActivity: LoanApplicationLastActivityRecord | null
 }
 

@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
@@ -57,6 +58,9 @@ class LoanApplicationOpsControllerTest {
     private LoanApplicationRepository loanApplicationRepository;
 
     @Autowired
+    private LoanAccountRepository loanAccountRepository;
+
+    @Autowired
     private BorrowerRepository borrowerRepository;
 
     @Autowired
@@ -97,6 +101,7 @@ class LoanApplicationOpsControllerTest {
 
     @BeforeEach
     void setUp() {
+        loanAccountRepository.deleteAllInBatch();
         loanApplicationAuditEventRepository.deleteAllInBatch();
         loanApplicationAssignmentEventRepository.deleteAllInBatch();
         loanApplicationDocumentChecklistRepository.deleteAllInBatch();
@@ -535,7 +540,19 @@ class LoanApplicationOpsControllerTest {
                                 "note", "Approve after checks"
                         ))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("APPROVED"));
+                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.loanAccount.accountNumber", containsString("LMS-LN-")))
+                .andExpect(jsonPath("$.loanAccount.status").value("PENDING_DISBURSEMENT"))
+                .andExpect(jsonPath("$.loanAccount.principalAmount").value(45000.00))
+                .andExpect(jsonPath("$.loanAccount.tenureMonths").value(12))
+                .andExpect(jsonPath("$.loanAccount.approvedAt").exists());
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.loanAccount.accountNumber", containsString("LMS-LN-")))
+                .andExpect(jsonPath("$.loanAccount.status").value("PENDING_DISBURSEMENT"));
     }
 
     @Test

@@ -3,6 +3,8 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.KycCompletionRequiredException;
 import com.bhawana.lms.domain.Borrower;
+import com.bhawana.lms.domain.LoanAccount;
+import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationAuditEvent;
@@ -20,6 +22,7 @@ import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
@@ -48,6 +51,7 @@ public class LoanApplicationService {
 
     private final AppUserRepository appUserRepository;
     private final BorrowerRepository borrowerRepository;
+    private final LoanAccountRepository loanAccountRepository;
     private final LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
     private final LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository;
     private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
@@ -62,6 +66,7 @@ public class LoanApplicationService {
     public LoanApplicationService(
             AppUserRepository appUserRepository,
             BorrowerRepository borrowerRepository,
+            LoanAccountRepository loanAccountRepository,
             LoanApplicationAuditEventRepository loanApplicationAuditEventRepository,
             LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository,
             LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
@@ -75,6 +80,7 @@ public class LoanApplicationService {
     ) {
         this.appUserRepository = appUserRepository;
         this.borrowerRepository = borrowerRepository;
+        this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationAuditEventRepository = loanApplicationAuditEventRepository;
         this.loanApplicationAssignmentEventRepository = loanApplicationAssignmentEventRepository;
         this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
@@ -192,6 +198,12 @@ public class LoanApplicationService {
     public List<LoanApplicationAuditEvent> listAuditEvents(UUID applicationId) {
         getApplication(applicationId);
         return loanApplicationAuditEventRepository.findTop25ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<LoanAccount> getLoanAccount(UUID applicationId) {
+        getApplication(applicationId);
+        return loanAccountRepository.findByLoanApplication_Id(applicationId);
     }
 
     @Transactional(readOnly = true)
@@ -364,6 +376,9 @@ public class LoanApplicationService {
                 resolvedNote,
                 resolvedReasonCode
         );
+        if (targetStatus == LoanApplicationStatus.APPROVED) {
+            ensureLoanAccountForApprovedApplication(savedApplication);
+        }
         return savedApplication;
     }
 
@@ -692,6 +707,26 @@ public class LoanApplicationService {
                 reasonCode,
                 CorrelationIdHolder.get()
         ));
+    }
+
+    private LoanAccount ensureLoanAccountForApprovedApplication(LoanApplication application) {
+        return loanAccountRepository.findByLoanApplication_Id(application.getId())
+                .orElseGet(() -> loanAccountRepository.save(new LoanAccount(
+                        application,
+                        application.getBorrower(),
+                        application.getLsp(),
+                        application.getLoanProduct(),
+                        generateAccountNumber(application),
+                        application.getRequestedAmount(),
+                        application.getTenureMonths(),
+                        LoanAccountStatus.PENDING_DISBURSEMENT,
+                        Instant.now()
+                )));
+    }
+
+    private static String generateAccountNumber(LoanApplication application) {
+        String compactId = application.getId().toString().replace("-", "").toUpperCase();
+        return "LMS-LN-" + compactId.substring(0, 12);
     }
 
     private boolean hasMeaningfulDocumentActivity(LoanApplicationDocumentChecklist checklistItem) {

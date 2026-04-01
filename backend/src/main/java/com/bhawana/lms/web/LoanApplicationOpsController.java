@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditEvent;
 import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
@@ -65,7 +66,11 @@ public class LoanApplicationOpsController {
     @GetMapping("/{applicationId}")
     public LoanApplicationDetailResponse getApplication(@PathVariable UUID applicationId) {
         LoanApplication application = loanApplicationService.getApplication(applicationId);
-        return toDetailResponse(application, loanApplicationService.getLatestActivity(applicationId).orElse(null));
+        return toDetailResponse(
+                application,
+                loanApplicationService.getLatestActivity(applicationId).orElse(null),
+                loanApplicationService.getLoanAccount(applicationId).orElse(null)
+        );
     }
 
     @GetMapping("/{applicationId}/intake-audits")
@@ -144,7 +149,11 @@ public class LoanApplicationOpsController {
                 request.note(),
                 request.reasonCode()
         );
-        return toDetailResponse(application, loanApplicationService.getLatestActivity(applicationId).orElse(null));
+        return toDetailResponse(
+                application,
+                loanApplicationService.getLatestActivity(applicationId).orElse(null),
+                loanApplicationService.getLoanAccount(applicationId).orElse(null)
+        );
     }
 
     @PostMapping("/{applicationId}/manual-status")
@@ -161,7 +170,11 @@ public class LoanApplicationOpsController {
                 request.note(),
                 request.reasonCode()
         );
-        return toDetailResponse(application, loanApplicationService.getLatestActivity(applicationId).orElse(null));
+        return toDetailResponse(
+                application,
+                loanApplicationService.getLatestActivity(applicationId).orElse(null),
+                loanApplicationService.getLoanAccount(applicationId).orElse(null)
+        );
     }
 
     private static void authorizeStatusTransition(
@@ -206,7 +219,11 @@ public class LoanApplicationOpsController {
                 request.assigneeUsername(),
                 request.note()
         );
-        return toDetailResponse(application, loanApplicationService.getLatestActivity(applicationId).orElse(null));
+        return toDetailResponse(
+                application,
+                loanApplicationService.getLatestActivity(applicationId).orElse(null),
+                loanApplicationService.getLoanAccount(applicationId).orElse(null)
+        );
     }
 
     @PutMapping("/{applicationId}/kyc-documents/{documentType}")
@@ -264,7 +281,8 @@ public class LoanApplicationOpsController {
 
     private static LoanApplicationDetailResponse toDetailResponse(
             LoanApplication application,
-            LoanApplicationService.LoanApplicationLastActivity lastActivity
+            LoanApplicationService.LoanApplicationLastActivity lastActivity,
+            LoanAccount loanAccount
     ) {
         return new LoanApplicationDetailResponse(
                 application.getId().toString(),
@@ -294,6 +312,15 @@ public class LoanApplicationOpsController {
                 application.getAssignedAt(),
                 application.getCreatedAt().toString(),
                 application.getUpdatedAt().toString(),
+                loanAccount == null ? null : new LoanAccountSummaryResponse(
+                        loanAccount.getId().toString(),
+                        loanAccount.getAccountNumber(),
+                        loanAccount.getStatus().name(),
+                        loanAccount.getPrincipalAmount(),
+                        loanAccount.getTenureMonths(),
+                        loanAccount.getApprovedAt().toString(),
+                        loanAccount.getCreatedAt().toString()
+                ),
                 lastActivity == null ? null : new LoanApplicationLastActivityResponse(
                         lastActivity.activityType(),
                         lastActivity.actorUsername(),
@@ -460,7 +487,19 @@ public class LoanApplicationOpsController {
             Instant assignedAt,
             String createdAt,
             String updatedAt,
+            LoanAccountSummaryResponse loanAccount,
             LoanApplicationLastActivityResponse lastActivity
+    ) {
+    }
+
+    public record LoanAccountSummaryResponse(
+            String id,
+            String accountNumber,
+            String status,
+            BigDecimal principalAmount,
+            Integer tenureMonths,
+            String approvedAt,
+            String createdAt
     ) {
     }
 
