@@ -665,6 +665,97 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
+    void systemAdminCanResolveMockDisbursementOutcomes() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-970", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.loanAccount.status").value("DISBURSEMENT_REQUESTED"));
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.loanAccount.status").value("DISBURSED"));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].providerStatus").value("DISBURSED"))
+                .andExpect(jsonPath("$[0].responsePayloadJson", containsString("\"status\":\"DISBURSED\"")))
+                .andExpect(jsonPath("$[0].updatedAt").exists());
+    }
+
+    @Test
+    void mockDisbursementOutcomesSupportFailureAndPendingReconciliation() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-971", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("outcome", "PENDING_RECONCILIATION"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.loanAccount.status").value("DISBURSEMENT_PENDING_RECONCILIATION"));
+
+        JsonNode secondCreated = createApplication(lsp.id(), product.id(), "EXT-972", "API", "ZXCVB1234N");
+        String secondApplicationId = secondCreated.get("id").asText();
+        transitionApplication(secondApplicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(secondApplicationId);
+        transitionApplication(secondApplicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", secondApplicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", secondApplicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("outcome", "FAILED"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.loanAccount.status").value("DISBURSEMENT_FAILED"));
+    }
+
+    @Test
+    void mockDisbursementOutcomeRequiresRaisedRequest() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-973", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
     void opsUserCanMoveLoanApplicationsIntoAndOutOfHold() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");

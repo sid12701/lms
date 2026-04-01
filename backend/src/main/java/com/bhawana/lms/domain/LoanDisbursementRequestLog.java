@@ -7,6 +7,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -50,6 +51,9 @@ public class LoanDisbursementRequestLog {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
     protected LoanDisbursementRequestLog() {
     }
 
@@ -78,7 +82,14 @@ public class LoanDisbursementRequestLog {
 
     @PrePersist
     void onCreate() {
-        createdAt = Instant.now();
+        Instant now = Instant.now();
+        createdAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
     }
 
     public UUID getId() {
@@ -123,5 +134,14 @@ public class LoanDisbursementRequestLog {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void updateOutcome(String providerStatus, String responsePayloadJson) {
+        this.providerStatus = providerStatus;
+        this.responsePayloadJson = responsePayloadJson;
     }
 }

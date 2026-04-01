@@ -17,6 +17,7 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanDisbursementRequestLog;
+import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
@@ -624,6 +625,45 @@ public class LoanApplicationService {
         return application;
     }
 
+    @Transactional
+    public LoanApplication resolveMockDisbursementOutcome(
+            UUID applicationId,
+            String actorUsername,
+            MockDisbursementOutcome outcome
+    ) {
+        if (outcome == null) {
+            throw new IllegalArgumentException("Disbursement outcome is required.");
+        }
+
+        LoanApplication application = getApplication(applicationId);
+        LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
+        if (loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_REQUESTED) {
+            throw new IllegalArgumentException("Mock disbursement outcome can only be applied after a request is raised.");
+        }
+
+        LoanDisbursementRequestLog latestRequest = loanDisbursementRequestLogRepository
+                .findTopByLoanAccount_IdOrderByCreatedAtDesc(loanAccount.getId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Disbursement request log is not available for application id: " + applicationId
+                ));
+
+        LoanAccountStatus resolvedAccountStatus = switch (outcome) {
+            case DISBURSED -> LoanAccountStatus.DISBURSED;
+            case FAILED -> LoanAccountStatus.DISBURSEMENT_FAILED;
+            case PENDING_RECONCILIATION -> LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION;
+        };
+
+        latestRequest.updateOutcome(
+                providerStatusFor(outcome),
+                serializeDisbursementOutcomeResponse(latestRequest, outcome, actorUsername)
+        );
+        loanDisbursementRequestLogRepository.save(latestRequest);
+
+        loanAccount.updateDisbursementStatus(resolvedAccountStatus);
+        loanAccountRepository.save(loanAccount);
+        return application;
+    }
+
     @Transactional(readOnly = true)
     public List<LoanApplicationIntakeAudit> listIntakeAudits(UUID applicationId) {
         getApplication(applicationId);
@@ -857,6 +897,14 @@ public class LoanApplicationService {
                 ));
     }
 
+    private static String providerStatusFor(MockDisbursementOutcome outcome) {
+        return switch (outcome) {
+            case DISBURSED -> "DISBURSED";
+            case FAILED -> "FAILED";
+            case PENDING_RECONCILIATION -> "PENDING_RECONCILIATION";
+        };
+    }
+
     private static BigDecimal calculateMonthlyEmi(BigDecimal principal, BigDecimal monthlyRate, int tenureMonths) {
         if (monthlyRate.compareTo(BigDecimal.ZERO) == 0) {
             return scaleCurrency(principal.divide(BigDecimal.valueOf(tenureMonths), 2, RoundingMode.HALF_UP));
@@ -997,6 +1045,29 @@ public class LoanApplicationService {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to serialize disbursement request payload.", exception);
+        }
+    }
+
+    private String serializeDisbursementOutcomeResponse(
+            LoanDisbursementRequestLog requestLog,
+            MockDisbursementOutcome outcome,
+            String actorUsername
+    ) {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("provider", requestLog.getProviderName());
+        payload.put("providerRequestId", requestLog.getProviderRequestId());
+        payload.put("status", providerStatusFor(outcome));
+        payload.put("resolvedBy", normalizeActorUsername(actorUsername));
+        payload.put("message", switch (outcome) {
+            case DISBURSED -> "Mock disbursement completed successfully.";
+            case FAILED -> "Mock disbursement failed in the simulated provider.";
+            case PENDING_RECONCILIATION -> "Mock disbursement is awaiting reconciliation.";
+        });
+
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize disbursement outcome payload.", exception);
         }
     }
 

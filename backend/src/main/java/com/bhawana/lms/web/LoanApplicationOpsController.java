@@ -12,6 +12,7 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanDisbursementRequestLog;
+import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.service.LoanApplicationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -278,6 +279,26 @@ public class LoanApplicationOpsController {
         );
     }
 
+    @PostMapping("/{applicationId}/disbursement-requests/mock-outcome")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public LoanApplicationDetailResponse applyMockDisbursementOutcome(
+            Authentication authentication,
+            @PathVariable UUID applicationId,
+            @Valid @RequestBody MockDisbursementOutcomeRequest request
+    ) {
+        LoanApplication application = loanApplicationService.resolveMockDisbursementOutcome(
+                applicationId,
+                authentication.getName(),
+                request.outcome()
+        );
+        return toDetailResponse(
+                application,
+                loanApplicationService.getLatestActivity(applicationId).orElse(null),
+                loanApplicationService.getLoanAccount(applicationId).orElse(null),
+                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null)
+        );
+    }
+
     private static LoanApplicationResponse toResponse(LoanApplication application) {
         return new LoanApplicationResponse(
                 application.getId().toString(),
@@ -434,7 +455,8 @@ public class LoanApplicationOpsController {
                 request.getRequestPayloadJson(),
                 request.getResponsePayloadJson(),
                 request.getCorrelationId(),
-                request.getCreatedAt().toString()
+                request.getCreatedAt().toString(),
+                request.getUpdatedAt().toString()
         );
     }
 
@@ -605,6 +627,11 @@ public class LoanApplicationOpsController {
     ) {
     }
 
+    public record MockDisbursementOutcomeRequest(
+            @NotNull MockDisbursementOutcome outcome
+    ) {
+    }
+
     public record LoanApplicationDocumentChecklistUpdateRequest(
             @NotNull LoanApplicationDocumentChecklistStatus status,
             @Size(max = 500) String note,
@@ -667,7 +694,8 @@ public class LoanApplicationOpsController {
             String requestPayloadJson,
             String responsePayloadJson,
             String correlationId,
-            String createdAt
+            String createdAt,
+            String updatedAt
     ) {
     }
 

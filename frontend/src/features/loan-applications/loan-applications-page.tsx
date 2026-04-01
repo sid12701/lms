@@ -7,11 +7,14 @@ import { Input } from '../../components/ui/input'
 import { useAuth } from '../auth/auth-context'
 import {
   ApiError,
+  applyMockLoanDisbursementOutcome,
   assignLoanApplication,
   createLoanApplication,
   getLoanApplication,
+  initiateLoanApplicationDisbursement,
   listLoanApplicationAuditEvents,
   listLoanApplicationAssignmentEvents,
+  listLoanApplicationDisbursementRequests,
   listLoanApplicationIntakeAudits,
   listLoanApplicationDocumentPlaceholders,
   listLoanApplicationStatusTransitions,
@@ -24,10 +27,12 @@ import {
   transitionLoanApplicationStatus,
   manuallyOverrideLoanApplicationStatus,
   updateLoanApplicationDocumentPlaceholder,
+  type MockDisbursementOutcome,
   type LoanApplicationAuditAction,
   type LoanApplicationAuditEventRecord,
   type LoanApplicationIntakeAuditRecord,
   type LoanApplicationAssignmentEventRecord,
+  type LoanDisbursementRequestLogRecord,
   type LoanApplicationDetailRecord,
   type LoanApplicationLastActivityRecord,
   type LoanApplicationDocumentPlaceholderRecord,
@@ -394,6 +399,12 @@ function loanAuditActionLabel(action: LoanApplicationAuditAction) {
 
 function loanAccountStatusLabel(status?: LoanAccountStatus | null) {
   switch (status) {
+    case 'DISBURSED':
+      return 'Disbursed'
+    case 'DISBURSEMENT_FAILED':
+      return 'Disbursement failed'
+    case 'DISBURSEMENT_PENDING_RECONCILIATION':
+      return 'Pending reconciliation'
     case 'DISBURSEMENT_REQUESTED':
       return 'Disbursement requested'
     case 'PENDING_DISBURSEMENT':
@@ -635,6 +646,7 @@ export function LoanApplicationsPage() {
   const [assignmentHistory, setAssignmentHistory] = useState<LoanApplicationAssignmentEventRecord[]>([])
   const [statusHistory, setStatusHistory] = useState<LoanApplicationStatusTransitionRecord[]>([])
   const [auditTrail, setAuditTrail] = useState<LoanApplicationAuditEventRecord[]>([])
+  const [disbursementRequests, setDisbursementRequests] = useState<LoanDisbursementRequestLogRecord[]>([])
   const [intakeAudits, setIntakeAudits] = useState<LoanApplicationIntakeAuditRecord[]>([])
   const [lsps, setLsps] = useState<LspRecord[]>([])
   const [products, setProducts] = useState<LoanProductRecord[]>([])
@@ -645,13 +657,17 @@ export function LoanApplicationsPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditTrailLoading, setAuditTrailLoading] = useState(false)
+  const [disbursementRequestsLoading, setDisbursementRequestsLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
   const [assigning, setAssigning] = useState(false)
+  const [requestingDisbursement, setRequestingDisbursement] = useState(false)
+  const [resolvingDisbursementOutcome, setResolvingDisbursementOutcome] = useState(false)
   const [pageError, setPageError] = useState('')
   const [workflowError, setWorkflowError] = useState('')
   const [auditError, setAuditError] = useState('')
   const [auditTrailError, setAuditTrailError] = useState('')
+  const [disbursementRequestsError, setDisbursementRequestsError] = useState('')
   const [assignmentError, setAssignmentError] = useState('')
   const [documentPlaceholders, setDocumentPlaceholders] = useState<
     LoanApplicationDocumentPlaceholderRecord[]
@@ -706,6 +722,10 @@ export function LoanApplicationsPage() {
       : selectedLoan ?? selectedApplicationFromList
   const latestAudit = intakeAudits[0] ?? null
   const selectedStatusHistory = useMemo(() => sortByCreatedAtDesc(statusHistory), [statusHistory])
+  const selectedDisbursementRequests = useMemo(
+    () => sortByCreatedAtDesc(disbursementRequests),
+    [disbursementRequests],
+  )
   const selectedAuditTrail = useMemo(() => sortByCreatedAtDesc(auditTrail), [auditTrail])
   const availableStatusHistoryReasonCodes = useMemo(
     () =>
@@ -761,6 +781,14 @@ export function LoanApplicationsPage() {
     [visibleSelectedApplication],
   )
   const canManualOverrideStatus = Boolean(user?.roles?.includes('SYSTEM_ADMIN'))
+  const canInitiateDisbursement = Boolean(
+    user?.roles?.includes('SYSTEM_ADMIN') &&
+      selectedLoan?.loanAccount?.status === 'PENDING_DISBURSEMENT',
+  )
+  const canResolveDisbursementOutcome = Boolean(
+    user?.roles?.includes('SYSTEM_ADMIN') &&
+      selectedLoan?.loanAccount?.status === 'DISBURSEMENT_REQUESTED',
+  )
   const borrowerProfileCompleteness = countBorrowerProfileSignals(visibleSelectedApplication)
   const borrowerLocation = visibleSelectedApplication
     ? [visibleSelectedApplication.borrowerCity, visibleSelectedApplication.borrowerState]
@@ -864,6 +892,7 @@ export function LoanApplicationsPage() {
     setStatusHistory(sortByCreatedAtDesc(historyResponse))
     setAssignmentHistory(sortByCreatedAtDesc(assignmentResponse))
     await refreshAuditTrail(applicationId)
+    await refreshDisbursementRequests(applicationId)
   }
 
   async function refreshAuditTrail(applicationId: string, showLoading = false) {
@@ -882,6 +911,27 @@ export function LoanApplicationsPage() {
     } finally {
       if (showLoading) {
         setAuditTrailLoading(false)
+      }
+    }
+  }
+
+  async function refreshDisbursementRequests(applicationId: string, showLoading = false) {
+    if (showLoading) {
+      setDisbursementRequestsLoading(true)
+    }
+
+    try {
+      const response = await listLoanApplicationDisbursementRequests(applicationId)
+      setDisbursementRequests(sortByCreatedAtDesc(response))
+      setDisbursementRequestsError('')
+    } catch (loadError) {
+      const message =
+        loadError instanceof Error ? loadError.message : 'Unable to load disbursement requests.'
+      setDisbursementRequests([])
+      setDisbursementRequestsError(message)
+    } finally {
+      if (showLoading) {
+        setDisbursementRequestsLoading(false)
       }
     }
   }
@@ -964,6 +1014,7 @@ export function LoanApplicationsPage() {
           setAssignmentHistory([])
           setStatusHistory([])
           setAuditTrail([])
+          setDisbursementRequests([])
           setWorkflowError('')
           setApprovalBlocker(null)
           setAssignmentError('')
@@ -974,6 +1025,7 @@ export function LoanApplicationsPage() {
         setAssignmentHistory([])
         setStatusHistory([])
         setAuditTrail([])
+        setDisbursementRequests([])
         setDetailLoading(true)
         setWorkflowError('')
         setApprovalBlocker(null)
@@ -1008,6 +1060,46 @@ export function LoanApplicationsPage() {
     }
 
     void loadSelectedLoan()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedApplicationId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadDisbursementRequests() {
+      if (!selectedApplicationId) {
+        setDisbursementRequests([])
+        setDisbursementRequestsError('')
+        setDisbursementRequestsLoading(false)
+        return
+      }
+
+      setDisbursementRequestsLoading(true)
+      setDisbursementRequestsError('')
+
+      try {
+        const response = await listLoanApplicationDisbursementRequests(selectedApplicationId)
+        if (!cancelled) {
+          setDisbursementRequests(sortByCreatedAtDesc(response))
+        }
+      } catch (loadError) {
+        const message =
+          loadError instanceof Error ? loadError.message : 'Unable to load disbursement requests.'
+        if (!cancelled) {
+          setDisbursementRequests([])
+          setDisbursementRequestsError(message)
+        }
+      } finally {
+        if (!cancelled) {
+          setDisbursementRequestsLoading(false)
+        }
+      }
+    }
+
+    void loadDisbursementRequests()
 
     return () => {
       cancelled = true
@@ -1306,6 +1398,48 @@ export function LoanApplicationsPage() {
       setAssignmentError(message)
     } finally {
       setAssigning(false)
+    }
+  }
+
+  async function handleDisbursementRequest() {
+    if (!selectedApplicationId) {
+      return
+    }
+
+    setRequestingDisbursement(true)
+    setDisbursementRequestsError('')
+
+    try {
+      await initiateLoanApplicationDisbursement(selectedApplicationId)
+      await refreshSelectedLoan(selectedApplicationId)
+      await loadApplications(filters)
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : 'Unable to request disbursement.'
+      setDisbursementRequestsError(message)
+    } finally {
+      setRequestingDisbursement(false)
+    }
+  }
+
+  async function handleDisbursementOutcome(outcome: MockDisbursementOutcome) {
+    if (!selectedApplicationId) {
+      return
+    }
+
+    setResolvingDisbursementOutcome(true)
+    setDisbursementRequestsError('')
+
+    try {
+      await applyMockLoanDisbursementOutcome(selectedApplicationId, { outcome })
+      await refreshSelectedLoan(selectedApplicationId)
+      await loadApplications(filters)
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : 'Unable to apply disbursement outcome.'
+      setDisbursementRequestsError(message)
+    } finally {
+      setResolvingDisbursementOutcome(false)
     }
   }
 
@@ -2265,8 +2399,48 @@ export function LoanApplicationsPage() {
                             Created automatically when the application is approved.
                           </p>
                         </div>
-                        <Badge>{loanAccountStatusLabel(selectedLoan.loanAccount.status)}</Badge>
+                        <div className="inline-actions">
+                          <Badge>{loanAccountStatusLabel(selectedLoan.loanAccount.status)}</Badge>
+                          {user?.roles?.includes('SYSTEM_ADMIN') ? (
+                            <Button
+                              disabled={!canInitiateDisbursement || requestingDisbursement}
+                              onClick={() => void handleDisbursementRequest()}
+                              type="button"
+                              variant="secondary"
+                            >
+                              {requestingDisbursement ? 'Requesting...' : 'Request disbursement'}
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
+                      {canResolveDisbursementOutcome ? (
+                        <div className="loan-transition-actions" style={{ marginBottom: '1rem' }}>
+                          <Button
+                            disabled={resolvingDisbursementOutcome}
+                            onClick={() => void handleDisbursementOutcome('DISBURSED')}
+                            type="button"
+                            variant="secondary"
+                          >
+                            {resolvingDisbursementOutcome ? 'Updating...' : 'Mark disbursed'}
+                          </Button>
+                          <Button
+                            disabled={resolvingDisbursementOutcome}
+                            onClick={() => void handleDisbursementOutcome('FAILED')}
+                            type="button"
+                            variant="outline"
+                          >
+                            {resolvingDisbursementOutcome ? 'Updating...' : 'Mark failed'}
+                          </Button>
+                          <Button
+                            disabled={resolvingDisbursementOutcome}
+                            onClick={() => void handleDisbursementOutcome('PENDING_RECONCILIATION')}
+                            type="button"
+                            variant="outline"
+                          >
+                            {resolvingDisbursementOutcome ? 'Updating...' : 'Mark pending reconciliation'}
+                          </Button>
+                        </div>
+                      ) : null}
                       <div className="loan-detail-grid">
                         <div className="loan-detail-field">
                           <span>Account number</span>
@@ -2314,6 +2488,59 @@ export function LoanApplicationsPage() {
                               : 'Not generated'}
                           </strong>
                         </div>
+                      </div>
+                      {disbursementRequestsError ? (
+                        <div className="empty-state">{disbursementRequestsError}</div>
+                      ) : null}
+                      <div className="loan-history" style={{ marginTop: '1.5rem' }}>
+                        <div className="loan-history__header">
+                          <div>
+                            <div className="section-eyebrow">Disbursement requests</div>
+                            <p className="helper-copy">
+                              Logged mock provider requests raised for this loan account.
+                            </p>
+                          </div>
+                          <Badge>{selectedDisbursementRequests.length} events</Badge>
+                        </div>
+                        {disbursementRequestsLoading ? (
+                          <div className="empty-state">Loading disbursement requests...</div>
+                        ) : null}
+                        {!disbursementRequestsLoading &&
+                        !disbursementRequestsError &&
+                        !selectedDisbursementRequests.length ? (
+                          <div className="empty-state">
+                            No disbursement requests have been logged for this loan account yet.
+                          </div>
+                        ) : null}
+                        {!disbursementRequestsLoading &&
+                        !disbursementRequestsError &&
+                        selectedDisbursementRequests.length ? (
+                          <div className="loan-history__list">
+                            {selectedDisbursementRequests.map((request) => (
+                              <div className="loan-history__item" key={request.id}>
+                                <div>
+                                  <strong>
+                                    {request.providerName} - {request.providerRequestId}
+                                  </strong>
+                                  <p className="helper-copy">{formatTimestamp(request.createdAt)}</p>
+                                  <p className="helper-copy">
+                                    Amount: {currencyLabel(request.amount)}
+                                  </p>
+                                  <p className="helper-copy">
+                                    Correlation ID: {request.correlationId ?? 'Not captured'}
+                                  </p>
+                                  <p className="helper-copy">
+                                    Updated: {formatTimestamp(request.updatedAt)}
+                                  </p>
+                                </div>
+                                <div className="inline-actions">
+                                  <Badge>{request.providerStatus}</Badge>
+                                  <Badge>{request.actorUsername}</Badge>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}

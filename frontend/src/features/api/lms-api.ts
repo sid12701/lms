@@ -21,7 +21,18 @@ export const loanApplicationStatusOptions = [
   'APPROVED',
   'REJECTED',
 ] as const
-export const loanAccountStatusOptions = ['PENDING_DISBURSEMENT', 'DISBURSEMENT_REQUESTED'] as const
+export const loanAccountStatusOptions = [
+  'PENDING_DISBURSEMENT',
+  'DISBURSEMENT_REQUESTED',
+  'DISBURSED',
+  'DISBURSEMENT_FAILED',
+  'DISBURSEMENT_PENDING_RECONCILIATION',
+] as const
+export const mockDisbursementOutcomeOptions = [
+  'DISBURSED',
+  'FAILED',
+  'PENDING_RECONCILIATION',
+] as const
 export const loanApplicationStatusReasonCodeOptions = [
   'MISSING_DOCUMENTS',
   'BORROWER_CLARIFICATION_REQUIRED',
@@ -45,6 +56,7 @@ export type ApiClientStatus = (typeof apiClientStatusOptions)[number]
 export type LoanProductStatus = (typeof loanProductStatusOptions)[number]
 export type LoanApplicationStatus = (typeof loanApplicationStatusOptions)[number]
 export type LoanAccountStatus = (typeof loanAccountStatusOptions)[number]
+export type MockDisbursementOutcome = (typeof mockDisbursementOutcomeOptions)[number]
 export type LoanApplicationStatusReasonCode = (typeof loanApplicationStatusReasonCodeOptions)[number]
 export type LoanApplicationDocumentPlaceholderStatus =
   (typeof loanApplicationDocumentPlaceholderStatusOptions)[number]
@@ -224,6 +236,7 @@ export type LoanDisbursementRequestLogRecord = {
   responsePayloadJson: string
   correlationId: string | null
   createdAt: string
+  updatedAt: string
 }
 
 export type LoanApplicationDetailRecord = LoanApplicationRecord & {
@@ -784,6 +797,21 @@ export function initiateLoanApplicationDisbursement(applicationId: string) {
     `/api/v1/internal/ops/loan-applications/${applicationId}/disbursement-requests`,
     {
       method: 'POST',
+    },
+  )
+}
+
+export function applyMockLoanDisbursementOutcome(
+  applicationId: string,
+  payload: {
+    outcome: MockDisbursementOutcome
+  },
+) {
+  return requestJson<LoanApplicationDetailRecord>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/disbursement-requests/mock-outcome`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
     },
   )
 }
