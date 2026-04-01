@@ -16,6 +16,7 @@ import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
+import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
@@ -69,6 +70,9 @@ class LoanApplicationOpsControllerTest {
     private LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
 
     @Autowired
+    private LoanPaymentTransactionRepository loanPaymentTransactionRepository;
+
+    @Autowired
     private BorrowerRepository borrowerRepository;
 
     @Autowired
@@ -109,6 +113,7 @@ class LoanApplicationOpsControllerTest {
 
     @BeforeEach
     void setUp() {
+        loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
         loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
         loanAccountRepository.deleteAllInBatch();
@@ -581,6 +586,122 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].dueDate").exists())
                 .andExpect(jsonPath("$[11].installmentNumber").value(12))
                 .andExpect(jsonPath("$[11].closingPrincipal").value(0.00));
+    }
+
+    @Test
+    void systemAdminCanRecordAndListLoanPaymentTransactions() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-974", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
+                .andExpect(status().isOk());
+
+        String paymentDate = LocalDate.now().minusDays(2).toString();
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "amount", new BigDecimal("4136.32"),
+                                "paymentDate", paymentDate,
+                                "reference", "PAY-001",
+                                "channel", "UPI",
+                                "status", "RECEIVED",
+                                "note", "Collected from borrower via UPI"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.actorUsername").value("ops.admin"))
+                .andExpect(jsonPath("$.amount").value(4136.32))
+                .andExpect(jsonPath("$.paymentDate").value(paymentDate))
+                .andExpect(jsonPath("$.reference").value("PAY-001"))
+                .andExpect(jsonPath("$.channel").value("UPI"))
+                .andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.correlationId").exists());
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].reference").value("PAY-001"))
+                .andExpect(jsonPath("$[0].channel").value("UPI"))
+                .andExpect(jsonPath("$[0].status").value("RECEIVED"))
+                .andExpect(jsonPath("$[0].createdAt").exists())
+                .andExpect(jsonPath("$[0].updatedAt").exists());
+    }
+
+    @Test
+    void paymentTransactionsRequireDisbursedLoanAccount() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-975", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "amount", new BigDecimal("4136.32"),
+                                "paymentDate", LocalDate.now().minusDays(1).toString(),
+                                "reference", "PAY-002",
+                                "channel", "BANK_TRANSFER",
+                                "status", "RECEIVED"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void opsUserCannotRecordLoanPaymentTransactions() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-976", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "amount", new BigDecimal("4136.32"),
+                                "paymentDate", LocalDate.now().minusDays(1).toString(),
+                                "reference", "PAY-003",
+                                "channel", "UPI",
+                                "status", "RECEIVED"
+                        ))))
+                .andExpect(status().isForbidden());
     }
 
     @Test

@@ -12,6 +12,7 @@ import {
   createLoanApplication,
   getLoanApplication,
   initiateLoanApplicationDisbursement,
+  listLoanApplicationPaymentTransactions,
   listLoanApplicationAuditEvents,
   listLoanApplicationAssignmentEvents,
   listLoanApplicationDisbursementRequests,
@@ -25,6 +26,9 @@ import {
   loanApplicationStatusOptions,
   loanApplicationStatusReasonCodeOptions,
   loanApplicationDocumentPlaceholderStatusOptions,
+  loanPaymentChannelOptions,
+  loanPaymentStatusOptions,
+  recordLoanApplicationPaymentTransaction,
   transitionLoanApplicationStatus,
   manuallyOverrideLoanApplicationStatus,
   updateLoanApplicationDocumentPlaceholder,
@@ -41,6 +45,9 @@ import {
   type LoanApplicationRecord,
   type LoanRepaymentScheduleInstallmentRecord,
   type LoanAccountStatus,
+  type LoanPaymentChannel,
+  type LoanPaymentStatus,
+  type LoanPaymentTransactionRecord,
   type LoanApplicationStatus,
   type LoanApplicationStatusReasonCode,
   type LoanApplicationStatusTransitionRecord,
@@ -72,6 +79,15 @@ type ListFilterState = {
   status: string
   sourceChannel: string
   query: string
+}
+
+type PaymentCaptureState = {
+  amount: string
+  paymentDate: string
+  reference: string
+  channel: LoanPaymentChannel
+  status: LoanPaymentStatus
+  note: string
 }
 
 type TransitionAction = {
@@ -117,6 +133,17 @@ const initialFilterState: ListFilterState = {
   query: '',
 }
 
+function buildInitialPaymentCaptureState(): PaymentCaptureState {
+  return {
+    amount: '',
+    paymentDate: todayDateValue(),
+    reference: '',
+    channel: 'UPI',
+    status: 'RECEIVED',
+    note: '',
+  }
+}
+
 const workflowProgression: Array<{
   status: LoanApplicationStatus | 'DECISION'
   label: string
@@ -146,6 +173,10 @@ function currencyLabel(value: number) {
     currency: 'INR',
     maximumFractionDigits: 0,
   }).format(value)
+}
+
+function todayDateValue() {
+  return new Intl.DateTimeFormat('en-CA').format(new Date())
 }
 
 function formatTimestamp(value: string) {
@@ -416,8 +447,61 @@ function loanAccountStatusLabel(status?: LoanAccountStatus | null) {
   }
 }
 
+function loanPaymentChannelLabel(channel: LoanPaymentChannel) {
+  switch (channel) {
+    case 'BANK_TRANSFER':
+      return 'Bank transfer'
+    case 'NACH':
+      return 'NACH'
+    case 'CASH':
+      return 'Cash'
+    case 'CHEQUE':
+      return 'Cheque'
+    case 'UPI':
+    default:
+      return 'UPI'
+  }
+}
+
+function loanPaymentStatusLabel(status: LoanPaymentStatus) {
+  switch (status) {
+    case 'PENDING_RECONCILIATION':
+      return 'Pending reconciliation'
+    case 'FAILED':
+      return 'Failed'
+    case 'RECEIVED':
+    default:
+      return 'Received'
+  }
+}
+
+function loanPaymentStatusVariant(
+  status: LoanPaymentStatus,
+): 'default' | 'success' | 'warning' | 'destructive' {
+  switch (status) {
+    case 'FAILED':
+      return 'destructive'
+    case 'PENDING_RECONCILIATION':
+      return 'warning'
+    case 'RECEIVED':
+    default:
+      return 'success'
+  }
+}
+
 function sortByCreatedAtDesc<T extends { createdAt: string }>(records: T[]) {
   return [...records].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+}
+
+function sortPaymentTransactions(records: LoanPaymentTransactionRecord[]) {
+  return [...records].sort((left, right) => {
+    const paymentDateComparison = right.paymentDate.localeCompare(left.paymentDate)
+    if (paymentDateComparison !== 0) {
+      return paymentDateComparison
+    }
+
+    return Date.parse(right.createdAt) - Date.parse(left.createdAt)
+  })
 }
 
 function formatPayloadJson(payloadJson: string) {
@@ -650,6 +734,7 @@ export function LoanApplicationsPage() {
   const [auditTrail, setAuditTrail] = useState<LoanApplicationAuditEventRecord[]>([])
   const [disbursementRequests, setDisbursementRequests] = useState<LoanDisbursementRequestLogRecord[]>([])
   const [repaymentSchedule, setRepaymentSchedule] = useState<LoanRepaymentScheduleInstallmentRecord[]>([])
+  const [paymentTransactions, setPaymentTransactions] = useState<LoanPaymentTransactionRecord[]>([])
   const [intakeAudits, setIntakeAudits] = useState<LoanApplicationIntakeAuditRecord[]>([])
   const [lsps, setLsps] = useState<LspRecord[]>([])
   const [products, setProducts] = useState<LoanProductRecord[]>([])
@@ -662,17 +747,20 @@ export function LoanApplicationsPage() {
   const [auditTrailLoading, setAuditTrailLoading] = useState(false)
   const [disbursementRequestsLoading, setDisbursementRequestsLoading] = useState(false)
   const [repaymentScheduleLoading, setRepaymentScheduleLoading] = useState(false)
+  const [paymentTransactionsLoading, setPaymentTransactionsLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
   const [assigning, setAssigning] = useState(false)
   const [requestingDisbursement, setRequestingDisbursement] = useState(false)
   const [resolvingDisbursementOutcome, setResolvingDisbursementOutcome] = useState(false)
+  const [recordingPayment, setRecordingPayment] = useState(false)
   const [pageError, setPageError] = useState('')
   const [workflowError, setWorkflowError] = useState('')
   const [auditError, setAuditError] = useState('')
   const [auditTrailError, setAuditTrailError] = useState('')
   const [disbursementRequestsError, setDisbursementRequestsError] = useState('')
   const [repaymentScheduleError, setRepaymentScheduleError] = useState('')
+  const [paymentTransactionsError, setPaymentTransactionsError] = useState('')
   const [assignmentError, setAssignmentError] = useState('')
   const [documentPlaceholders, setDocumentPlaceholders] = useState<
     LoanApplicationDocumentPlaceholderRecord[]
@@ -706,6 +794,7 @@ export function LoanApplicationsPage() {
   const [manualStatusSubmitting, setManualStatusSubmitting] = useState(false)
   const [manualStatusError, setManualStatusError] = useState('')
   const [assignmentNote, setAssignmentNote] = useState('')
+  const [paymentCapture, setPaymentCapture] = useState<PaymentCaptureState>(buildInitialPaymentCaptureState)
 
   const activeLsps = useMemo(() => lsps.filter((item) => item.status === 'ACTIVE'), [lsps])
   const activeProducts = useMemo(
@@ -734,6 +823,10 @@ export function LoanApplicationsPage() {
   const selectedRepaymentSchedule = useMemo(
     () => [...repaymentSchedule].sort((left, right) => left.installmentNumber - right.installmentNumber),
     [repaymentSchedule],
+  )
+  const selectedPaymentTransactions = useMemo(
+    () => sortPaymentTransactions(paymentTransactions),
+    [paymentTransactions],
   )
   const selectedAuditTrail = useMemo(() => sortByCreatedAtDesc(auditTrail), [auditTrail])
   const availableStatusHistoryReasonCodes = useMemo(
@@ -797,6 +890,9 @@ export function LoanApplicationsPage() {
   const canResolveDisbursementOutcome = Boolean(
     user?.roles?.includes('SYSTEM_ADMIN') &&
       selectedLoan?.loanAccount?.status === 'DISBURSEMENT_REQUESTED',
+  )
+  const canRecordPayments = Boolean(
+    user?.roles?.includes('SYSTEM_ADMIN') && selectedLoan?.loanAccount?.status === 'DISBURSED',
   )
   const borrowerProfileCompleteness = countBorrowerProfileSignals(visibleSelectedApplication)
   const borrowerLocation = visibleSelectedApplication
@@ -873,6 +969,11 @@ export function LoanApplicationsPage() {
     )
   }, [availableStatusHistoryReasonCodes])
 
+  useEffect(() => {
+    setPaymentCapture(buildInitialPaymentCaptureState())
+    setPaymentTransactionsError('')
+  }, [selectedApplicationId])
+
   async function loadApplications(nextFilters: ListFilterState) {
     const response = await listLoanApplications({
       lspId: nextFilters.lspId || undefined,
@@ -903,6 +1004,7 @@ export function LoanApplicationsPage() {
     await refreshAuditTrail(applicationId)
     await refreshDisbursementRequests(applicationId)
     await refreshRepaymentSchedule(applicationId)
+    await refreshPaymentTransactions(applicationId)
   }
 
   async function refreshAuditTrail(applicationId: string, showLoading = false) {
@@ -963,6 +1065,27 @@ export function LoanApplicationsPage() {
     } finally {
       if (showLoading) {
         setRepaymentScheduleLoading(false)
+      }
+    }
+  }
+
+  async function refreshPaymentTransactions(applicationId: string, showLoading = false) {
+    if (showLoading) {
+      setPaymentTransactionsLoading(true)
+    }
+
+    try {
+      const response = await listLoanApplicationPaymentTransactions(applicationId)
+      setPaymentTransactions(sortPaymentTransactions(response))
+      setPaymentTransactionsError('')
+    } catch (loadError) {
+      const message =
+        loadError instanceof Error ? loadError.message : 'Unable to load payment transactions.'
+      setPaymentTransactions([])
+      setPaymentTransactionsError(message)
+    } finally {
+      if (showLoading) {
+        setPaymentTransactionsLoading(false)
       }
     }
   }
@@ -1047,9 +1170,11 @@ export function LoanApplicationsPage() {
           setAuditTrail([])
           setDisbursementRequests([])
           setRepaymentSchedule([])
+          setPaymentTransactions([])
           setWorkflowError('')
           setApprovalBlocker(null)
           setAssignmentError('')
+          setPaymentTransactionsError('')
           return
         }
 
@@ -1059,10 +1184,12 @@ export function LoanApplicationsPage() {
         setAuditTrail([])
         setDisbursementRequests([])
         setRepaymentSchedule([])
+        setPaymentTransactions([])
         setDetailLoading(true)
         setWorkflowError('')
         setApprovalBlocker(null)
         setAssignmentError('')
+        setPaymentTransactionsError('')
 
       try {
         const [detailResponse, historyResponse, assignmentResponse] = await Promise.all([
@@ -1084,6 +1211,7 @@ export function LoanApplicationsPage() {
           setAssignmentHistory([])
           setStatusHistory([])
           setWorkflowError(message)
+          setPaymentTransactions([])
         }
       } finally {
         if (!cancelled) {
@@ -1093,6 +1221,46 @@ export function LoanApplicationsPage() {
     }
 
     void loadSelectedLoan()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedApplicationId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadPaymentTransactions() {
+      if (!selectedApplicationId) {
+        setPaymentTransactions([])
+        setPaymentTransactionsError('')
+        setPaymentTransactionsLoading(false)
+        return
+      }
+
+      setPaymentTransactionsLoading(true)
+      setPaymentTransactionsError('')
+
+      try {
+        const response = await listLoanApplicationPaymentTransactions(selectedApplicationId)
+        if (!cancelled) {
+          setPaymentTransactions(sortPaymentTransactions(response))
+        }
+      } catch (loadError) {
+        const message =
+          loadError instanceof Error ? loadError.message : 'Unable to load payment transactions.'
+        if (!cancelled) {
+          setPaymentTransactions([])
+          setPaymentTransactionsError(message)
+        }
+      } finally {
+        if (!cancelled) {
+          setPaymentTransactionsLoading(false)
+        }
+      }
+    }
+
+    void loadPaymentTransactions()
 
     return () => {
       cancelled = true
@@ -1513,6 +1681,34 @@ export function LoanApplicationsPage() {
       setDisbursementRequestsError(message)
     } finally {
       setResolvingDisbursementOutcome(false)
+    }
+  }
+
+  async function handleRecordPaymentTransaction() {
+    if (!selectedApplicationId) {
+      return
+    }
+
+    setRecordingPayment(true)
+    setPaymentTransactionsError('')
+
+    try {
+      await recordLoanApplicationPaymentTransaction(selectedApplicationId, {
+        amount: Number(paymentCapture.amount),
+        paymentDate: paymentCapture.paymentDate,
+        reference: paymentCapture.reference.trim(),
+        channel: paymentCapture.channel,
+        status: paymentCapture.status,
+        note: paymentCapture.note.trim() || undefined,
+      })
+      setPaymentCapture(buildInitialPaymentCaptureState())
+      await refreshPaymentTransactions(selectedApplicationId)
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : 'Unable to record payment transaction.'
+      setPaymentTransactionsError(message)
+    } finally {
+      setRecordingPayment(false)
     }
   }
 
@@ -2662,6 +2858,192 @@ export function LoanApplicationsPage() {
                                 <div className="inline-actions">
                                   <Badge>{request.providerStatus}</Badge>
                                   <Badge>{request.actorUsername}</Badge>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                      {paymentTransactionsError ? (
+                        <div className="empty-state">{paymentTransactionsError}</div>
+                      ) : null}
+                      <div className="loan-history" style={{ marginTop: '1.5rem' }}>
+                        <div className="loan-history__header">
+                          <div>
+                            <div className="section-eyebrow">Payment transactions</div>
+                            <p className="helper-copy">
+                              Raw repayment receipts are captured here before installment allocation is added.
+                            </p>
+                          </div>
+                          <div className="inline-actions">
+                            <Badge>{selectedPaymentTransactions.length} events</Badge>
+                            {user?.roles?.includes('SYSTEM_ADMIN') ? <Badge variant="warning">Admin write</Badge> : null}
+                          </div>
+                        </div>
+                        {user?.roles?.includes('SYSTEM_ADMIN') ? (
+                          <div className="form-grid" style={{ marginBottom: '1rem' }}>
+                            <div className="field-stack">
+                              <label htmlFor="payment-amount">Amount</label>
+                              <Input
+                                id="payment-amount"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={paymentCapture.amount}
+                                onChange={(event) =>
+                                  setPaymentCapture((current) => ({
+                                    ...current,
+                                    amount: event.target.value,
+                                  }))
+                                }
+                                placeholder="e.g. 4136.32"
+                              />
+                            </div>
+                            <div className="field-stack">
+                              <label htmlFor="payment-date">Payment date</label>
+                              <Input
+                                id="payment-date"
+                                type="date"
+                                value={paymentCapture.paymentDate}
+                                onChange={(event) =>
+                                  setPaymentCapture((current) => ({
+                                    ...current,
+                                    paymentDate: event.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                            <div className="field-stack">
+                              <label htmlFor="payment-reference">Reference</label>
+                              <Input
+                                id="payment-reference"
+                                value={paymentCapture.reference}
+                                onChange={(event) =>
+                                  setPaymentCapture((current) => ({
+                                    ...current,
+                                    reference: event.target.value,
+                                  }))
+                                }
+                                placeholder="e.g. UPI-APR-001"
+                              />
+                            </div>
+                            <div className="field-stack">
+                              <label htmlFor="payment-channel">Channel</label>
+                              <select
+                                id="payment-channel"
+                                className="ui-input ui-select"
+                                value={paymentCapture.channel}
+                                onChange={(event) =>
+                                  setPaymentCapture((current) => ({
+                                    ...current,
+                                    channel: event.target.value as LoanPaymentChannel,
+                                  }))
+                                }
+                              >
+                                {loanPaymentChannelOptions.map((channel) => (
+                                  <option key={channel} value={channel}>
+                                    {loanPaymentChannelLabel(channel)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="field-stack">
+                              <label htmlFor="payment-status">Status</label>
+                              <select
+                                id="payment-status"
+                                className="ui-input ui-select"
+                                value={paymentCapture.status}
+                                onChange={(event) =>
+                                  setPaymentCapture((current) => ({
+                                    ...current,
+                                    status: event.target.value as LoanPaymentStatus,
+                                  }))
+                                }
+                              >
+                                {loanPaymentStatusOptions.map((status) => (
+                                  <option key={status} value={status}>
+                                    {loanPaymentStatusLabel(status)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="field-stack" style={{ gridColumn: '1 / -1' }}>
+                              <label htmlFor="payment-note">Note</label>
+                              <textarea
+                                id="payment-note"
+                                className="ui-textarea"
+                                value={paymentCapture.note}
+                                onChange={(event) =>
+                                  setPaymentCapture((current) => ({
+                                    ...current,
+                                    note: event.target.value,
+                                  }))
+                                }
+                                placeholder="Optional context for this payment capture."
+                                rows={3}
+                              />
+                            </div>
+                            <div className="loan-transition-actions" style={{ gridColumn: '1 / -1' }}>
+                              <Button
+                                disabled={
+                                  recordingPayment ||
+                                  !canRecordPayments ||
+                                  !paymentCapture.amount ||
+                                  Number(paymentCapture.amount) <= 0 ||
+                                  !paymentCapture.paymentDate ||
+                                  !paymentCapture.reference.trim()
+                                }
+                                onClick={() => void handleRecordPaymentTransaction()}
+                                type="button"
+                                variant="secondary"
+                              >
+                                {recordingPayment ? 'Recording...' : 'Record payment'}
+                              </Button>
+                              {!canRecordPayments ? (
+                                <p className="helper-copy">
+                                  Payments can be recorded once disbursement is marked complete.
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : null}
+                        {paymentTransactionsLoading ? (
+                          <div className="empty-state">Loading payment transactions...</div>
+                        ) : null}
+                        {!paymentTransactionsLoading &&
+                        !paymentTransactionsError &&
+                        !selectedPaymentTransactions.length ? (
+                          <div className="empty-state">
+                            No payment transactions have been captured for this loan account yet.
+                          </div>
+                        ) : null}
+                        {!paymentTransactionsLoading &&
+                        !paymentTransactionsError &&
+                        selectedPaymentTransactions.length ? (
+                          <div className="loan-history__list">
+                            {selectedPaymentTransactions.map((payment) => (
+                              <div className="loan-history__item" key={payment.id}>
+                                <div>
+                                  <strong>
+                                    {currencyLabel(payment.amount)} - {payment.reference}
+                                  </strong>
+                                  <p className="helper-copy">
+                                    Payment date: {formatDateLabel(payment.paymentDate)}
+                                  </p>
+                                  <p className="helper-copy">
+                                    Channel: {loanPaymentChannelLabel(payment.channel)}
+                                  </p>
+                                  <p className="helper-copy">{formatNote(payment.note)}</p>
+                                  <p className="helper-copy">
+                                    Correlation ID: {payment.correlationId ?? 'Not captured'}
+                                  </p>
+                                </div>
+                                <div className="inline-actions">
+                                  <Badge variant={loanPaymentStatusVariant(payment.status)}>
+                                    {loanPaymentStatusLabel(payment.status)}
+                                  </Badge>
+                                  <Badge>{payment.actorUsername}</Badge>
+                                  <Badge variant="warning">{formatTimestamp(payment.createdAt)}</Badge>
                                 </div>
                               </div>
                             ))}

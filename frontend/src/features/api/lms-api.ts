@@ -28,6 +28,8 @@ export const loanAccountStatusOptions = [
   'DISBURSEMENT_FAILED',
   'DISBURSEMENT_PENDING_RECONCILIATION',
 ] as const
+export const loanPaymentChannelOptions = ['UPI', 'BANK_TRANSFER', 'NACH', 'CASH', 'CHEQUE'] as const
+export const loanPaymentStatusOptions = ['RECEIVED', 'PENDING_RECONCILIATION', 'FAILED'] as const
 export const mockDisbursementOutcomeOptions = [
   'DISBURSED',
   'FAILED',
@@ -56,6 +58,8 @@ export type ApiClientStatus = (typeof apiClientStatusOptions)[number]
 export type LoanProductStatus = (typeof loanProductStatusOptions)[number]
 export type LoanApplicationStatus = (typeof loanApplicationStatusOptions)[number]
 export type LoanAccountStatus = (typeof loanAccountStatusOptions)[number]
+export type LoanPaymentChannel = (typeof loanPaymentChannelOptions)[number]
+export type LoanPaymentStatus = (typeof loanPaymentStatusOptions)[number]
 export type MockDisbursementOutcome = (typeof mockDisbursementOutcomeOptions)[number]
 export type LoanApplicationStatusReasonCode = (typeof loanApplicationStatusReasonCodeOptions)[number]
 export type LoanApplicationDocumentPlaceholderStatus =
@@ -247,6 +251,21 @@ export type LoanDisbursementRequestLogRecord = {
   providerStatus: string
   requestPayloadJson: string
   responsePayloadJson: string
+  correlationId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type LoanPaymentTransactionRecord = {
+  id: string
+  loanAccountId: string
+  actorUsername: string
+  amount: number
+  paymentDate: string
+  reference: string
+  channel: LoanPaymentChannel
+  status: LoanPaymentStatus
+  note: string | null
   correlationId: string | null
   createdAt: string
   updatedAt: string
@@ -727,6 +746,12 @@ export function listLoanApplicationRepaymentSchedule(applicationId: string) {
   )
 }
 
+export function listLoanApplicationPaymentTransactions(applicationId: string) {
+  return requestJson<LoanPaymentTransactionRecord[]>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/payments`,
+  )
+}
+
 export function listLoanApplicationAuditEvents(applicationId: string) {
   return requestJson<LoanApplicationAuditEventRecord[]>(
     `/api/v1/internal/ops/loan-applications/${applicationId}/audit-events`,
@@ -828,6 +853,26 @@ export function applyMockLoanDisbursementOutcome(
 ) {
   return requestJson<LoanApplicationDetailRecord>(
     `/api/v1/internal/ops/loan-applications/${applicationId}/disbursement-requests/mock-outcome`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
+export function recordLoanApplicationPaymentTransaction(
+  applicationId: string,
+  payload: {
+    amount: number
+    paymentDate: string
+    reference: string
+    channel: LoanPaymentChannel
+    status: LoanPaymentStatus
+    note?: string
+  },
+) {
+  return requestJson<LoanPaymentTransactionRecord>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/payments`,
     {
       method: 'POST',
       body: JSON.stringify(payload),

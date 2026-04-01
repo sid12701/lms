@@ -12,6 +12,9 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanDisbursementRequestLog;
+import com.bhawana.lms.domain.LoanPaymentChannel;
+import com.bhawana.lms.domain.LoanPaymentStatus;
+import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.service.LoanApplicationService;
@@ -23,6 +26,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Past;
+import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -116,6 +120,13 @@ public class LoanApplicationOpsController {
     public List<LoanRepaymentScheduleInstallmentResponse> listRepaymentSchedule(@PathVariable UUID applicationId) {
         return loanApplicationService.listRepaymentSchedule(applicationId).stream()
                 .map(LoanApplicationOpsController::toRepaymentScheduleInstallmentResponse)
+                .toList();
+    }
+
+    @GetMapping("/{applicationId}/payments")
+    public List<LoanPaymentTransactionResponse> listPaymentTransactions(@PathVariable UUID applicationId) {
+        return loanApplicationService.listPaymentTransactions(applicationId).stream()
+                .map(LoanApplicationOpsController::toPaymentTransactionResponse)
                 .toList();
     }
 
@@ -307,6 +318,25 @@ public class LoanApplicationOpsController {
         );
     }
 
+    @PostMapping("/{applicationId}/payments")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public LoanPaymentTransactionResponse recordPaymentTransaction(
+            Authentication authentication,
+            @PathVariable UUID applicationId,
+            @Valid @RequestBody LoanPaymentTransactionRequest request
+    ) {
+        return toPaymentTransactionResponse(loanApplicationService.recordPaymentTransaction(
+                applicationId,
+                authentication.getName(),
+                request.amount(),
+                request.paymentDate(),
+                request.reference(),
+                request.channel(),
+                request.status(),
+                request.note()
+        ));
+    }
+
     private static LoanApplicationResponse toResponse(LoanApplication application) {
         return new LoanApplicationResponse(
                 application.getId().toString(),
@@ -485,6 +515,23 @@ public class LoanApplicationOpsController {
         );
     }
 
+    private static LoanPaymentTransactionResponse toPaymentTransactionResponse(LoanPaymentTransaction paymentTransaction) {
+        return new LoanPaymentTransactionResponse(
+                paymentTransaction.getId().toString(),
+                paymentTransaction.getLoanAccount().getId().toString(),
+                paymentTransaction.getActorUsername(),
+                paymentTransaction.getAmount(),
+                paymentTransaction.getPaymentDate(),
+                paymentTransaction.getReference(),
+                paymentTransaction.getChannel().name(),
+                paymentTransaction.getStatus().name(),
+                paymentTransaction.getNote(),
+                paymentTransaction.getCorrelationId(),
+                paymentTransaction.getCreatedAt().toString(),
+                paymentTransaction.getUpdatedAt().toString()
+        );
+    }
+
     private static LoanApplicationDocumentChecklistResponse toDocumentChecklistResponse(
             LoanApplicationDocumentChecklist checklistItem
     ) {
@@ -657,6 +704,16 @@ public class LoanApplicationOpsController {
     ) {
     }
 
+    public record LoanPaymentTransactionRequest(
+            @NotNull @DecimalMin("0.01") BigDecimal amount,
+            @NotNull @PastOrPresent LocalDate paymentDate,
+            @NotBlank @Size(max = 128) String reference,
+            @NotNull LoanPaymentChannel channel,
+            @NotNull LoanPaymentStatus status,
+            @Size(max = 500) String note
+    ) {
+    }
+
     public record LoanApplicationDocumentChecklistUpdateRequest(
             @NotNull LoanApplicationDocumentChecklistStatus status,
             @Size(max = 500) String note,
@@ -735,6 +792,22 @@ public class LoanApplicationOpsController {
             BigDecimal installmentAmount,
             BigDecimal closingPrincipal,
             String createdAt
+    ) {
+    }
+
+    public record LoanPaymentTransactionResponse(
+            String id,
+            String loanAccountId,
+            String actorUsername,
+            BigDecimal amount,
+            LocalDate paymentDate,
+            String reference,
+            String channel,
+            String status,
+            String note,
+            String correlationId,
+            String createdAt,
+            String updatedAt
     ) {
     }
 

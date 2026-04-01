@@ -17,6 +17,9 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanDisbursementRequestLog;
+import com.bhawana.lms.domain.LoanPaymentChannel;
+import com.bhawana.lms.domain.LoanPaymentStatus;
+import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.LoanProductLspMapping;
@@ -35,6 +38,7 @@ import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
+import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -67,6 +71,7 @@ public class LoanApplicationService {
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
     private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
+    private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final LoanProductRepository loanProductRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LspRepository lspRepository;
@@ -85,6 +90,7 @@ public class LoanApplicationService {
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
             LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
+            LoanPaymentTransactionRepository loanPaymentTransactionRepository,
             LoanProductRepository loanProductRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LspRepository lspRepository,
@@ -102,6 +108,7 @@ public class LoanApplicationService {
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
+        this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.loanProductRepository = loanProductRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.lspRepository = lspRepository;
@@ -248,6 +255,14 @@ public class LoanApplicationService {
     public List<LoanDisbursementRequestLog> listDisbursementRequests(UUID applicationId) {
         LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
         return loanDisbursementRequestLogRepository.findTop20ByLoanAccount_IdOrderByCreatedAtDesc(loanAccount.getId());
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanPaymentTransaction> listPaymentTransactions(UUID applicationId) {
+        LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
+        return loanPaymentTransactionRepository.findTop50ByLoanAccount_IdOrderByPaymentDateDescCreatedAtDesc(
+                loanAccount.getId()
+        );
     }
 
     @Transactional(readOnly = true)
@@ -672,6 +687,53 @@ public class LoanApplicationService {
         return application;
     }
 
+    @Transactional
+    public LoanPaymentTransaction recordPaymentTransaction(
+            UUID applicationId,
+            String actorUsername,
+            BigDecimal amount,
+            LocalDate paymentDate,
+            String reference,
+            LoanPaymentChannel channel,
+            LoanPaymentStatus status,
+            String note
+    ) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Payment amount must be greater than zero.");
+        }
+        if (paymentDate == null) {
+            throw new IllegalArgumentException("Payment date is required.");
+        }
+        if (channel == null) {
+            throw new IllegalArgumentException("Payment channel is required.");
+        }
+        if (status == null) {
+            throw new IllegalArgumentException("Payment status is required.");
+        }
+
+        LoanApplication application = getApplication(applicationId);
+        if (application.getStatus() != LoanApplicationStatus.APPROVED) {
+            throw new IllegalArgumentException("Payments can only be recorded for approved loan applications.");
+        }
+
+        LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
+        if (loanAccount.getStatus() != LoanAccountStatus.DISBURSED) {
+            throw new IllegalArgumentException("Payments can only be recorded after the loan account is disbursed.");
+        }
+
+        return loanPaymentTransactionRepository.save(new LoanPaymentTransaction(
+                loanAccount,
+                normalizeActorUsername(actorUsername),
+                scaleCurrency(amount),
+                paymentDate,
+                requireReference(reference),
+                channel,
+                status,
+                normalizeNote(note),
+                CorrelationIdHolder.get()
+        ));
+    }
+
     @Transactional(readOnly = true)
     public List<LoanApplicationIntakeAudit> listIntakeAudits(UUID applicationId) {
         getApplication(applicationId);
@@ -779,12 +841,24 @@ public class LoanApplicationService {
         return normalized == null ? null : normalized.toLowerCase();
     }
 
+    private static String requireReference(String reference) {
+        String normalized = normalizeOptional(reference);
+        if (normalized == null) {
+            throw new IllegalArgumentException("Payment reference is required.");
+        }
+        return normalized;
+    }
+
     private static String requireNote(String note) {
         String normalized = normalizeOptional(note);
         if (normalized == null) {
             throw new IllegalArgumentException("Manual status note is required.");
         }
         return normalized;
+    }
+
+    private static String normalizeNote(String note) {
+        return normalizeOptional(note);
     }
 
     private static LoanApplicationStatusReasonCode validateTransitionReasonCode(
