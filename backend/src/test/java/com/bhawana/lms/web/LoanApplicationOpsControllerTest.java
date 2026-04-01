@@ -195,6 +195,24 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
+    void opsUserCanSearchLoanApplicationsByApplicationId() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode firstApplication = createApplication(lsp.id(), product.id(), "EXT-410", "API", "ABCDE1234F");
+        createApplication(lsp.id(), product.id(), "EXT-411", "PARTNER_PORTAL", "ZXCVB1234N");
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("q", firstApplication.get("id").asText()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(firstApplication.get("id").asText()))
+                .andExpect(jsonPath("$[0].externalLoanId").value("EXT-410"));
+    }
+
+    @Test
     void opsUserCanFilterLoanApplicationsByStatusAndSourceChannel() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");

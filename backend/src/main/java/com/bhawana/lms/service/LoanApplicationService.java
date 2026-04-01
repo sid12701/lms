@@ -431,7 +431,8 @@ public class LoanApplicationService {
     }
 
     private static boolean matchesQuery(LoanApplication application, String normalizedQuery) {
-        return contains(application.getBorrower().getFullName(), normalizedQuery)
+        return contains(application.getId().toString(), normalizedQuery)
+                || contains(application.getBorrower().getFullName(), normalizedQuery)
                 || contains(application.getBorrower().getPan(), normalizedQuery)
                 || contains(application.getBorrower().getMobile(), normalizedQuery)
                 || contains(application.getBorrower().getCity(), normalizedQuery)

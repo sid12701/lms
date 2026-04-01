@@ -1111,7 +1111,7 @@ export function LoanApplicationsPage() {
                 onChange={(event) =>
                   setFilters((current) => ({ ...current, query: event.target.value }))
                 }
-                placeholder="Borrower, PAN, mobile, external loan id"
+                placeholder="Application id, borrower, PAN, mobile, external loan id"
               />
             </div>
             <div className="field-stack">
@@ -1189,6 +1189,7 @@ export function LoanApplicationsPage() {
                   <span className="helper-copy">
                     {application.lspCode} - {application.productCode}
                   </span>
+                  <span className="helper-copy">Application {application.id}</span>
                   <span className="helper-copy">{application.externalLoanId}</span>
                   <span className="helper-copy">
                     {application.assignedToUsername ? `Owner ${application.assignedToUsername}` : 'Unassigned'}
