@@ -290,6 +290,26 @@ function getTransitionActions(status: LoanApplicationStatus): TransitionAction[]
   }
 }
 
+function getVisibleTransitionActions(
+  status: LoanApplicationStatus,
+  roles: string[] | undefined,
+): TransitionAction[] {
+  const currentRoles = roles ?? []
+  const allActions = getTransitionActions(status)
+
+  if (currentRoles.includes('SYSTEM_ADMIN')) {
+    return allActions
+  }
+
+  if (currentRoles.includes('OPS_USER')) {
+    return status === 'RECEIVED'
+      ? allActions.filter((action) => action.targetStatus === 'UNDER_REVIEW')
+      : []
+  }
+
+  return []
+}
+
 function sortByCreatedAtDesc<T extends { createdAt: string }>(records: T[]) {
   return [...records].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
 }
@@ -585,12 +605,22 @@ export function LoanApplicationsPage() {
     () => sortByCreatedAtDesc(assignmentHistory),
     [assignmentHistory],
   )
-  const transitionActions = useMemo(
+  const statusDrivenTransitionActions = useMemo(
     () =>
       visibleSelectedApplication
         ? getTransitionActions(visibleSelectedApplication.status as LoanApplicationStatus)
         : [],
     [visibleSelectedApplication],
+  )
+  const transitionActions = useMemo(
+    () =>
+      visibleSelectedApplication
+        ? getVisibleTransitionActions(
+            visibleSelectedApplication.status as LoanApplicationStatus,
+            user?.roles,
+          )
+        : [],
+    [visibleSelectedApplication, user?.roles],
   )
   const currentProgressIndex = visibleSelectedApplication
     ? statusProgressIndex(visibleSelectedApplication.status as LoanApplicationStatus)
@@ -2090,7 +2120,11 @@ export function LoanApplicationsPage() {
                       </Button>
                     ))}
                     {!transitionActions.length ? (
-                      <div className="empty-state">This loan is in a terminal state.</div>
+                      <div className="empty-state">
+                        {statusDrivenTransitionActions.length
+                          ? 'No transition actions are available for your current role.'
+                          : 'This loan is in a terminal state.'}
+                      </div>
                     ) : null}
                   </div>
                 </div>

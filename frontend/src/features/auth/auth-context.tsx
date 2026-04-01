@@ -47,7 +47,19 @@ function scopeForRoles(roles: string[]) {
 }
 
 function buildUserFromSession(session: AuthSession | null): AuthUser | null {
-  return session?.user ?? null
+  if (!session?.user) {
+    return null
+  }
+
+  return {
+    ...session.user,
+    roles:
+      Array.isArray(session.user.roles) && session.user.roles.length > 0
+        ? session.user.roles
+        : session.user.primaryRole
+          ? [session.user.primaryRole]
+          : [],
+  }
 }
 
 async function buildSessionFromToken(
@@ -60,6 +72,7 @@ async function buildSessionFromToken(
     mustChangePassword: options.mustChangePassword ?? false,
     user: {
       username: context.username,
+      roles: context.roles,
       primaryRole: context.roles[0] ?? 'UNKNOWN',
       scope: scopeForRoles(context.roles),
       application: context.application,

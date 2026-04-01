@@ -68,6 +68,7 @@ export type AuthSession = {
 
 export type AuthUser = {
   username: string
+  roles: string[]
   primaryRole: string
   scope: string
   application: string
