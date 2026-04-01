@@ -10,6 +10,7 @@ import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
 import com.bhawana.lms.domain.LoanApplicationStatus;
+import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
@@ -132,7 +133,9 @@ public class LoanApplicationService {
                                         "STATUS_TRANSITION",
                                         transition.getActorUsername(),
                                         "Moved from " + transition.getFromStatus().name() + " to " + transition.getToStatus().name(),
-                                        transition.getNote(),
+                                        transition.getReasonCode() == null
+                                                ? transition.getNote()
+                                                : transition.getNote() + " [" + transition.getReasonCode().name() + "]",
                                         transition.getCorrelationId(),
                                         transition.getCreatedAt()
                                 )
@@ -298,7 +301,8 @@ public class LoanApplicationService {
             UUID applicationId,
             String actorUsername,
             LoanApplicationStatus targetStatus,
-            String note
+            String note,
+            LoanApplicationStatusReasonCode reasonCode
     ) {
         if (targetStatus == null) {
             throw new IllegalArgumentException("Target status is required.");
@@ -326,6 +330,7 @@ public class LoanApplicationService {
             validateKycCompletionBeforeApproval(applicationId);
         }
 
+        LoanApplicationStatusReasonCode resolvedReasonCode = validateTransitionReasonCode(targetStatus, reasonCode);
         String resolvedNote = resolveTransitionNote(note, currentStatus, targetStatus);
         application.transitionTo(targetStatus);
         LoanApplication savedApplication = loanApplicationRepository.save(application);
@@ -335,6 +340,7 @@ public class LoanApplicationService {
                 targetStatus,
                 normalizeActorUsername(actorUsername),
                 resolvedNote,
+                resolvedReasonCode,
                 CorrelationIdHolder.get()
         ));
         return savedApplication;
@@ -345,7 +351,8 @@ public class LoanApplicationService {
             UUID applicationId,
             String actorUsername,
             LoanApplicationStatus targetStatus,
-            String note
+            String note,
+            LoanApplicationStatusReasonCode reasonCode
     ) {
         if (targetStatus == null) {
             throw new IllegalArgumentException("Target status is required.");
@@ -373,6 +380,10 @@ public class LoanApplicationService {
             throw new IllegalArgumentException("Manual status updates are not supported for " + targetStatus.name() + ".");
         }
 
+        LoanApplicationStatusReasonCode resolvedReasonCode = requireReasonCode(
+                reasonCode,
+                "Manual status reason code is required."
+        );
         String resolvedNote = "Manual override: " + requireNote(note);
         application.transitionTo(targetStatus);
         LoanApplication savedApplication = loanApplicationRepository.save(application);
@@ -382,6 +393,7 @@ public class LoanApplicationService {
                 targetStatus,
                 normalizeActorUsername(actorUsername),
                 resolvedNote,
+                resolvedReasonCode,
                 CorrelationIdHolder.get()
         ));
         return savedApplication;
@@ -605,6 +617,30 @@ public class LoanApplicationService {
             throw new IllegalArgumentException("Manual status note is required.");
         }
         return normalized;
+    }
+
+    private static LoanApplicationStatusReasonCode validateTransitionReasonCode(
+            LoanApplicationStatus targetStatus,
+            LoanApplicationStatusReasonCode reasonCode
+    ) {
+        if (targetStatus == LoanApplicationStatus.HOLD || targetStatus == LoanApplicationStatus.REJECTED) {
+            return requireReasonCode(
+                    reasonCode,
+                    "Reason code is required when a loan application is moved to " + targetStatus.name() + "."
+            );
+        }
+
+        return reasonCode;
+    }
+
+    private static LoanApplicationStatusReasonCode requireReasonCode(
+            LoanApplicationStatusReasonCode reasonCode,
+            String message
+    ) {
+        if (reasonCode == null) {
+            throw new IllegalArgumentException(message);
+        }
+        return reasonCode;
     }
 
     private boolean hasMeaningfulDocumentActivity(LoanApplicationDocumentChecklist checklistItem) {

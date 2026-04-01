@@ -38,6 +38,10 @@ public class LoanApplicationStatusTransition {
     @Column(name = "note", nullable = false, length = 500)
     private String note;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reason_code", length = 64)
+    private LoanApplicationStatusReasonCode reasonCode;
+
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
 
@@ -53,6 +57,7 @@ public class LoanApplicationStatusTransition {
             LoanApplicationStatus toStatus,
             String actorUsername,
             String note,
+            LoanApplicationStatusReasonCode reasonCode,
             String correlationId
     ) {
         this.id = UUID.randomUUID();
@@ -61,6 +66,7 @@ public class LoanApplicationStatusTransition {
         this.toStatus = toStatus;
         this.actorUsername = actorUsername;
         this.note = note;
+        this.reasonCode = reasonCode;
         this.correlationId = correlationId;
     }
 
@@ -91,6 +97,10 @@ public class LoanApplicationStatusTransition {
 
     public String getNote() {
         return note;
+    }
+
+    public LoanApplicationStatusReasonCode getReasonCode() {
+        return reasonCode;
     }
 
     public String getCorrelationId() {

@@ -7,6 +7,7 @@ import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
 import com.bhawana.lms.domain.LoanApplicationStatus;
+import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.service.LoanApplicationService;
 import jakarta.validation.Valid;
@@ -132,7 +133,8 @@ public class LoanApplicationOpsController {
                 applicationId,
                 authentication.getName(),
                 request.targetStatus(),
-                request.note()
+                request.note(),
+                request.reasonCode()
         );
         return toDetailResponse(application, loanApplicationService.getLatestActivity(applicationId).orElse(null));
     }
@@ -148,7 +150,8 @@ public class LoanApplicationOpsController {
                 applicationId,
                 authentication.getName(),
                 request.targetStatus(),
-                request.note()
+                request.note(),
+                request.reasonCode()
         );
         return toDetailResponse(application, loanApplicationService.getLatestActivity(applicationId).orElse(null));
     }
@@ -313,6 +316,7 @@ public class LoanApplicationOpsController {
                 transition.getFromStatus().name(),
                 transition.getToStatus().name(),
                 transition.getNote(),
+                transition.getReasonCode() == null ? null : transition.getReasonCode().name(),
                 transition.getCorrelationId(),
                 transition.getCreatedAt().toString()
         );
@@ -459,13 +463,15 @@ public class LoanApplicationOpsController {
 
     public record LoanApplicationStatusTransitionRequest(
             @NotNull LoanApplicationStatus targetStatus,
-            @Size(max = 500) String note
+            @Size(max = 500) String note,
+            LoanApplicationStatusReasonCode reasonCode
     ) {
     }
 
     public record ManualStatusUpdateRequest(
             @NotNull LoanApplicationStatus targetStatus,
-            @NotBlank @Size(max = 500) String note
+            @NotBlank @Size(max = 500) String note,
+            @NotNull LoanApplicationStatusReasonCode reasonCode
     ) {
     }
 
@@ -494,6 +500,7 @@ public class LoanApplicationOpsController {
             String fromStatus,
             String toStatus,
             String note,
+            String reasonCode,
             String correlationId,
             String createdAt
     ) {

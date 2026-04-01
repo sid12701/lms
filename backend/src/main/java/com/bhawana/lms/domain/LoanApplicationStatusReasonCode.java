@@ -1,0 +1,10 @@
+package com.bhawana.lms.domain;
+
+public enum LoanApplicationStatusReasonCode {
+    MISSING_DOCUMENTS,
+    BORROWER_CLARIFICATION_REQUIRED,
+    POLICY_EXCEPTION,
+    FAILED_VERIFICATION,
+    DUPLICATE_APPLICATION,
+    MANUAL_ADMIN_OVERRIDE
+}

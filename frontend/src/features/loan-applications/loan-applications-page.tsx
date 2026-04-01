@@ -18,6 +18,7 @@ import {
   listLoanProducts,
   listLsps,
   loanApplicationStatusOptions,
+  loanApplicationStatusReasonCodeOptions,
   loanApplicationDocumentPlaceholderStatusOptions,
   transitionLoanApplicationStatus,
   manuallyOverrideLoanApplicationStatus,
@@ -30,6 +31,7 @@ import {
   type LoanApplicationDocumentPlaceholderStatus,
   type LoanApplicationRecord,
   type LoanApplicationStatus,
+  type LoanApplicationStatusReasonCode,
   type LoanApplicationStatusTransitionRecord,
   type LoanProductRecord,
   type LspRecord,
@@ -353,6 +355,29 @@ function getManualStatusTargets(status: LoanApplicationStatus) {
   return loanApplicationStatusOptions.filter((option) => option !== 'APPROVED' && option !== status)
 }
 
+function statusRequiresReasonCode(status: LoanApplicationStatus) {
+  return status === 'HOLD' || status === 'REJECTED'
+}
+
+function loanStatusReasonCodeLabel(code?: LoanApplicationStatusReasonCode | null) {
+  switch (code) {
+    case 'MISSING_DOCUMENTS':
+      return 'Missing documents'
+    case 'BORROWER_CLARIFICATION_REQUIRED':
+      return 'Borrower clarification required'
+    case 'POLICY_EXCEPTION':
+      return 'Policy exception'
+    case 'FAILED_VERIFICATION':
+      return 'Failed verification'
+    case 'DUPLICATE_APPLICATION':
+      return 'Duplicate application'
+    case 'MANUAL_ADMIN_OVERRIDE':
+      return 'Manual admin override'
+    default:
+      return 'No reason code'
+  }
+}
+
 function sortByCreatedAtDesc<T extends { createdAt: string }>(records: T[]) {
   return [...records].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
 }
@@ -622,8 +647,11 @@ export function LoanApplicationsPage() {
   const [documentPlaceholderSavingId, setDocumentPlaceholderSavingId] = useState('')
   const [approvalBlocker, setApprovalBlocker] = useState<ApprovalBlocker | null>(null)
   const [transitionNote, setTransitionNote] = useState('')
+  const [transitionReasonCode, setTransitionReasonCode] = useState<LoanApplicationStatusReasonCode | ''>('')
   const [manualStatusTarget, setManualStatusTarget] = useState<LoanApplicationStatus | ''>('')
   const [manualStatusNote, setManualStatusNote] = useState('')
+  const [manualStatusReasonCode, setManualStatusReasonCode] =
+    useState<LoanApplicationStatusReasonCode>('MANUAL_ADMIN_OVERRIDE')
   const [manualStatusSubmitting, setManualStatusSubmitting] = useState(false)
   const [manualStatusError, setManualStatusError] = useState('')
   const [assignmentNote, setAssignmentNote] = useState('')
@@ -1087,9 +1115,11 @@ export function LoanApplicationsPage() {
       await transitionLoanApplicationStatus(selectedApplicationId, {
         targetStatus,
         note: transitionNote.trim() || undefined,
+        reasonCode: transitionReasonCode || undefined,
       })
 
       setTransitionNote('')
+      setTransitionReasonCode('')
       await refreshSelectedLoan(selectedApplicationId)
       await loadApplications(filters)
     } catch (submitError) {
@@ -1116,9 +1146,11 @@ export function LoanApplicationsPage() {
       await manuallyOverrideLoanApplicationStatus(selectedApplicationId, {
         targetStatus: manualStatusTarget,
         note: manualStatusNote,
+        reasonCode: manualStatusReasonCode,
       })
 
       setManualStatusNote('')
+      setManualStatusReasonCode('MANUAL_ADMIN_OVERRIDE')
       await refreshSelectedLoan(selectedApplicationId)
       await loadApplications(filters)
     } catch (submitError) {
@@ -2169,6 +2201,29 @@ export function LoanApplicationsPage() {
                       rows={4}
                     />
                   </div>
+                  <div className="field-stack">
+                    <label htmlFor="status-reason-code">Reason code</label>
+                    <select
+                      id="status-reason-code"
+                      className="ui-input ui-select"
+                      value={transitionReasonCode}
+                      onChange={(event) =>
+                        setTransitionReasonCode(
+                          (event.target.value as LoanApplicationStatusReasonCode | '') || '',
+                        )
+                      }
+                    >
+                      <option value="">No reason code</option>
+                      {loanApplicationStatusReasonCodeOptions.map((code) => (
+                        <option key={code} value={code}>
+                          {loanStatusReasonCodeLabel(code)}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="helper-copy">
+                      Required when moving a case to hold or rejection.
+                    </p>
+                  </div>
                   {!kycApprovalReady ? (
                     <div className="loan-alert loan-alert--warning">
                       <div className="loan-alert__title">Approval currently blocked</div>
@@ -2197,7 +2252,10 @@ export function LoanApplicationsPage() {
                     {transitionActions.map((action) => (
                       <Button
                         key={action.targetStatus}
-                        disabled={transitioning}
+                        disabled={
+                          transitioning ||
+                          (statusRequiresReasonCode(action.targetStatus) && !transitionReasonCode)
+                        }
                         onClick={() => void handleStatusTransition(action.targetStatus)}
                         type="button"
                         variant={action.variant}
@@ -2273,11 +2331,33 @@ export function LoanApplicationsPage() {
                             rows={4}
                           />
                         </div>
+                        <div className="field-stack">
+                          <label htmlFor="manual-status-reason-code">Reason code</label>
+                          <select
+                            id="manual-status-reason-code"
+                            className="ui-input ui-select"
+                            value={manualStatusReasonCode}
+                            onChange={(event) =>
+                              setManualStatusReasonCode(
+                                event.target.value as LoanApplicationStatusReasonCode,
+                              )
+                            }
+                          >
+                            {loanApplicationStatusReasonCodeOptions.map((code) => (
+                              <option key={code} value={code}>
+                                {loanStatusReasonCodeLabel(code)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                         {manualStatusError ? <div className="empty-state">{manualStatusError}</div> : null}
                         <div className="loan-transition-actions">
                           <Button
                             disabled={
-                              manualStatusSubmitting || !manualStatusTarget || !manualStatusNote.trim()
+                              manualStatusSubmitting ||
+                              !manualStatusTarget ||
+                              !manualStatusNote.trim() ||
+                              !manualStatusReasonCode
                             }
                             onClick={() => void handleManualStatusOverride()}
                             type="button"
@@ -2310,6 +2390,9 @@ export function LoanApplicationsPage() {
                             </strong>
                             <p className="helper-copy">{formatTimestamp(transition.createdAt)}</p>
                             <p className="helper-copy">{formatNote(transition.note)}</p>
+                            <p className="helper-copy">
+                              Reason code: {loanStatusReasonCodeLabel(transition.reasonCode)}
+                            </p>
                             <p className="helper-copy">
                               Correlation ID: {transition.correlationId ?? 'Not captured'}
                             </p>

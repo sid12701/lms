@@ -21,6 +21,14 @@ export const loanApplicationStatusOptions = [
   'APPROVED',
   'REJECTED',
 ] as const
+export const loanApplicationStatusReasonCodeOptions = [
+  'MISSING_DOCUMENTS',
+  'BORROWER_CLARIFICATION_REQUIRED',
+  'POLICY_EXCEPTION',
+  'FAILED_VERIFICATION',
+  'DUPLICATE_APPLICATION',
+  'MANUAL_ADMIN_OVERRIDE',
+] as const
 export const loanApplicationDocumentPlaceholderStatusOptions = [
   'PENDING',
   'RECEIVED',
@@ -35,6 +43,7 @@ export type UserStatus = (typeof userStatusOptions)[number]
 export type ApiClientStatus = (typeof apiClientStatusOptions)[number]
 export type LoanProductStatus = (typeof loanProductStatusOptions)[number]
 export type LoanApplicationStatus = (typeof loanApplicationStatusOptions)[number]
+export type LoanApplicationStatusReasonCode = (typeof loanApplicationStatusReasonCodeOptions)[number]
 export type LoanApplicationDocumentPlaceholderStatus =
   (typeof loanApplicationDocumentPlaceholderStatusOptions)[number]
 
@@ -204,6 +213,7 @@ export type LoanApplicationStatusTransitionRecord = {
   toStatus: LoanApplicationStatus
   actorUsername: string
   note: string
+  reasonCode: LoanApplicationStatusReasonCode | null
   correlationId: string | null
   createdAt: string
 }
@@ -662,6 +672,7 @@ export function transitionLoanApplicationStatus(
   payload: {
     targetStatus: LoanApplicationStatus
     note?: string
+    reasonCode?: LoanApplicationStatusReasonCode
   },
 ) {
   return requestJson<LoanApplicationDetailRecord>(
@@ -678,6 +689,7 @@ export function manuallyOverrideLoanApplicationStatus(
   payload: {
     targetStatus: LoanApplicationStatus
     note: string
+    reasonCode: LoanApplicationStatusReasonCode
   },
 ) {
   return requestJson<LoanApplicationDetailRecord>(
