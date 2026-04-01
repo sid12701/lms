@@ -17,6 +17,7 @@ import {
   listLoanApplicationDisbursementRequests,
   listLoanApplicationIntakeAudits,
   listLoanApplicationDocumentPlaceholders,
+  listLoanApplicationRepaymentSchedule,
   listLoanApplicationStatusTransitions,
   listLoanApplications,
   listLoanProducts,
@@ -38,6 +39,7 @@ import {
   type LoanApplicationDocumentPlaceholderRecord,
   type LoanApplicationDocumentPlaceholderStatus,
   type LoanApplicationRecord,
+  type LoanRepaymentScheduleInstallmentRecord,
   type LoanAccountStatus,
   type LoanApplicationStatus,
   type LoanApplicationStatusReasonCode,
@@ -647,6 +649,7 @@ export function LoanApplicationsPage() {
   const [statusHistory, setStatusHistory] = useState<LoanApplicationStatusTransitionRecord[]>([])
   const [auditTrail, setAuditTrail] = useState<LoanApplicationAuditEventRecord[]>([])
   const [disbursementRequests, setDisbursementRequests] = useState<LoanDisbursementRequestLogRecord[]>([])
+  const [repaymentSchedule, setRepaymentSchedule] = useState<LoanRepaymentScheduleInstallmentRecord[]>([])
   const [intakeAudits, setIntakeAudits] = useState<LoanApplicationIntakeAuditRecord[]>([])
   const [lsps, setLsps] = useState<LspRecord[]>([])
   const [products, setProducts] = useState<LoanProductRecord[]>([])
@@ -658,6 +661,7 @@ export function LoanApplicationsPage() {
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditTrailLoading, setAuditTrailLoading] = useState(false)
   const [disbursementRequestsLoading, setDisbursementRequestsLoading] = useState(false)
+  const [repaymentScheduleLoading, setRepaymentScheduleLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
   const [assigning, setAssigning] = useState(false)
@@ -668,6 +672,7 @@ export function LoanApplicationsPage() {
   const [auditError, setAuditError] = useState('')
   const [auditTrailError, setAuditTrailError] = useState('')
   const [disbursementRequestsError, setDisbursementRequestsError] = useState('')
+  const [repaymentScheduleError, setRepaymentScheduleError] = useState('')
   const [assignmentError, setAssignmentError] = useState('')
   const [documentPlaceholders, setDocumentPlaceholders] = useState<
     LoanApplicationDocumentPlaceholderRecord[]
@@ -725,6 +730,10 @@ export function LoanApplicationsPage() {
   const selectedDisbursementRequests = useMemo(
     () => sortByCreatedAtDesc(disbursementRequests),
     [disbursementRequests],
+  )
+  const selectedRepaymentSchedule = useMemo(
+    () => [...repaymentSchedule].sort((left, right) => left.installmentNumber - right.installmentNumber),
+    [repaymentSchedule],
   )
   const selectedAuditTrail = useMemo(() => sortByCreatedAtDesc(auditTrail), [auditTrail])
   const availableStatusHistoryReasonCodes = useMemo(
@@ -893,6 +902,7 @@ export function LoanApplicationsPage() {
     setAssignmentHistory(sortByCreatedAtDesc(assignmentResponse))
     await refreshAuditTrail(applicationId)
     await refreshDisbursementRequests(applicationId)
+    await refreshRepaymentSchedule(applicationId)
   }
 
   async function refreshAuditTrail(applicationId: string, showLoading = false) {
@@ -932,6 +942,27 @@ export function LoanApplicationsPage() {
     } finally {
       if (showLoading) {
         setDisbursementRequestsLoading(false)
+      }
+    }
+  }
+
+  async function refreshRepaymentSchedule(applicationId: string, showLoading = false) {
+    if (showLoading) {
+      setRepaymentScheduleLoading(true)
+    }
+
+    try {
+      const response = await listLoanApplicationRepaymentSchedule(applicationId)
+      setRepaymentSchedule(response)
+      setRepaymentScheduleError('')
+    } catch (loadError) {
+      const message =
+        loadError instanceof Error ? loadError.message : 'Unable to load repayment schedule.'
+      setRepaymentSchedule([])
+      setRepaymentScheduleError(message)
+    } finally {
+      if (showLoading) {
+        setRepaymentScheduleLoading(false)
       }
     }
   }
@@ -1015,6 +1046,7 @@ export function LoanApplicationsPage() {
           setStatusHistory([])
           setAuditTrail([])
           setDisbursementRequests([])
+          setRepaymentSchedule([])
           setWorkflowError('')
           setApprovalBlocker(null)
           setAssignmentError('')
@@ -1026,6 +1058,7 @@ export function LoanApplicationsPage() {
         setStatusHistory([])
         setAuditTrail([])
         setDisbursementRequests([])
+        setRepaymentSchedule([])
         setDetailLoading(true)
         setWorkflowError('')
         setApprovalBlocker(null)
@@ -1060,6 +1093,46 @@ export function LoanApplicationsPage() {
     }
 
     void loadSelectedLoan()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedApplicationId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadRepaymentSchedule() {
+      if (!selectedApplicationId) {
+        setRepaymentSchedule([])
+        setRepaymentScheduleError('')
+        setRepaymentScheduleLoading(false)
+        return
+      }
+
+      setRepaymentScheduleLoading(true)
+      setRepaymentScheduleError('')
+
+      try {
+        const response = await listLoanApplicationRepaymentSchedule(selectedApplicationId)
+        if (!cancelled) {
+          setRepaymentSchedule(response)
+        }
+      } catch (loadError) {
+        const message =
+          loadError instanceof Error ? loadError.message : 'Unable to load repayment schedule.'
+        if (!cancelled) {
+          setRepaymentSchedule([])
+          setRepaymentScheduleError(message)
+        }
+      } finally {
+        if (!cancelled) {
+          setRepaymentScheduleLoading(false)
+        }
+      }
+    }
+
+    void loadRepaymentSchedule()
 
     return () => {
       cancelled = true
@@ -2488,6 +2561,59 @@ export function LoanApplicationsPage() {
                               : 'Not generated'}
                           </strong>
                         </div>
+                      </div>
+                      {repaymentScheduleError ? (
+                        <div className="empty-state">{repaymentScheduleError}</div>
+                      ) : null}
+                      <div className="loan-history" style={{ marginTop: '1.5rem' }}>
+                        <div className="loan-history__header">
+                          <div>
+                            <div className="section-eyebrow">Repayment schedule</div>
+                            <p className="helper-copy">
+                              Read-only installment plan generated when the loan account was created.
+                            </p>
+                          </div>
+                          <Badge>{selectedRepaymentSchedule.length} installments</Badge>
+                        </div>
+                        {repaymentScheduleLoading ? (
+                          <div className="empty-state">Loading repayment schedule...</div>
+                        ) : null}
+                        {!repaymentScheduleLoading &&
+                        !repaymentScheduleError &&
+                        !selectedRepaymentSchedule.length ? (
+                          <div className="empty-state">
+                            No repayment schedule has been generated for this loan account yet.
+                          </div>
+                        ) : null}
+                        {!repaymentScheduleLoading &&
+                        !repaymentScheduleError &&
+                        selectedRepaymentSchedule.length ? (
+                          <div className="loan-history__list">
+                            {selectedRepaymentSchedule.map((installment) => (
+                              <div className="loan-history__item" key={installment.id}>
+                                <div>
+                                  <strong>
+                                    Installment {installment.installmentNumber} -{' '}
+                                    {formatDateLabel(installment.dueDate)}
+                                  </strong>
+                                  <p className="helper-copy">
+                                    Opening principal: {currencyLabel(installment.openingPrincipal)}
+                                  </p>
+                                  <p className="helper-copy">
+                                    Principal due: {currencyLabel(installment.principalDue)} / Interest due:{' '}
+                                    {currencyLabel(installment.interestDue)}
+                                  </p>
+                                  <p className="helper-copy">
+                                    Closing principal: {currencyLabel(installment.closingPrincipal)}
+                                  </p>
+                                </div>
+                                <div className="inline-actions">
+                                  <Badge>{currencyLabel(installment.installmentAmount)}</Badge>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                       {disbursementRequestsError ? (
                         <div className="empty-state">{disbursementRequestsError}</div>

@@ -569,6 +569,18 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.loanAccount.status").value("PENDING_DISBURSEMENT"))
                 .andExpect(jsonPath("$.loanAccount.repaymentSchedule.installmentCount").value(12))
                 .andExpect(jsonPath("$.loanAccount.repaymentSchedule.installmentAmount").value(4136.32));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/repayment-schedule", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(12))
+                .andExpect(jsonPath("$[0].installmentNumber").value(1))
+                .andExpect(jsonPath("$[0].installmentAmount").value(4136.32))
+                .andExpect(jsonPath("$[0].interestDue").value(693.75))
+                .andExpect(jsonPath("$[0].principalDue").value(3442.57))
+                .andExpect(jsonPath("$[0].dueDate").exists())
+                .andExpect(jsonPath("$[11].installmentNumber").value(12))
+                .andExpect(jsonPath("$[11].closingPrincipal").value(0.00));
     }
 
     @Test

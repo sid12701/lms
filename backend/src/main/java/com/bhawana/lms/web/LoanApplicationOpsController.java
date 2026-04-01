@@ -12,6 +12,7 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanDisbursementRequestLog;
+import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.service.LoanApplicationService;
 import jakarta.validation.Valid;
@@ -108,6 +109,13 @@ public class LoanApplicationOpsController {
     public List<LoanDisbursementRequestResponse> listDisbursementRequests(@PathVariable UUID applicationId) {
         return loanApplicationService.listDisbursementRequests(applicationId).stream()
                 .map(LoanApplicationOpsController::toDisbursementRequestResponse)
+                .toList();
+    }
+
+    @GetMapping("/{applicationId}/repayment-schedule")
+    public List<LoanRepaymentScheduleInstallmentResponse> listRepaymentSchedule(@PathVariable UUID applicationId) {
+        return loanApplicationService.listRepaymentSchedule(applicationId).stream()
+                .map(LoanApplicationOpsController::toRepaymentScheduleInstallmentResponse)
                 .toList();
     }
 
@@ -460,6 +468,23 @@ public class LoanApplicationOpsController {
         );
     }
 
+    private static LoanRepaymentScheduleInstallmentResponse toRepaymentScheduleInstallmentResponse(
+            LoanRepaymentScheduleInstallment installment
+    ) {
+        return new LoanRepaymentScheduleInstallmentResponse(
+                installment.getId().toString(),
+                installment.getLoanAccount().getId().toString(),
+                installment.getInstallmentNumber(),
+                installment.getDueDate(),
+                installment.getOpeningPrincipal(),
+                installment.getPrincipalDue(),
+                installment.getInterestDue(),
+                installment.getInstallmentAmount(),
+                installment.getClosingPrincipal(),
+                installment.getCreatedAt().toString()
+        );
+    }
+
     private static LoanApplicationDocumentChecklistResponse toDocumentChecklistResponse(
             LoanApplicationDocumentChecklist checklistItem
     ) {
@@ -696,6 +721,20 @@ public class LoanApplicationOpsController {
             String correlationId,
             String createdAt,
             String updatedAt
+    ) {
+    }
+
+    public record LoanRepaymentScheduleInstallmentResponse(
+            String id,
+            String loanAccountId,
+            Integer installmentNumber,
+            LocalDate dueDate,
+            BigDecimal openingPrincipal,
+            BigDecimal principalDue,
+            BigDecimal interestDue,
+            BigDecimal installmentAmount,
+            BigDecimal closingPrincipal,
+            String createdAt
     ) {
     }
 

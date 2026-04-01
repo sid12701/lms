@@ -224,6 +224,19 @@ export type LoanRepaymentScheduleSummaryRecord = {
   finalDueDate: string
 }
 
+export type LoanRepaymentScheduleInstallmentRecord = {
+  id: string
+  loanAccountId: string
+  installmentNumber: number
+  dueDate: string
+  openingPrincipal: number
+  principalDue: number
+  interestDue: number
+  installmentAmount: number
+  closingPrincipal: number
+  createdAt: string
+}
+
 export type LoanDisbursementRequestLogRecord = {
   id: string
   loanAccountId: string
@@ -705,6 +718,12 @@ export function listLoanApplicationAssignmentEvents(applicationId: string) {
 export function listLoanApplicationDisbursementRequests(applicationId: string) {
   return requestJson<LoanDisbursementRequestLogRecord[]>(
     `/api/v1/internal/ops/loan-applications/${applicationId}/disbursement-requests`,
+  )
+}
+
+export function listLoanApplicationRepaymentSchedule(applicationId: string) {
+  return requestJson<LoanRepaymentScheduleInstallmentRecord[]>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/repayment-schedule`,
   )
 }
 

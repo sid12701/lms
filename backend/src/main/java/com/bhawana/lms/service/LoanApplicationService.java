@@ -237,6 +237,14 @@ public class LoanApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public List<LoanRepaymentScheduleInstallment> listRepaymentSchedule(UUID applicationId) {
+        LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
+        return loanRepaymentScheduleInstallmentRepository.findByLoanAccount_IdOrderByInstallmentNumberAsc(
+                loanAccount.getId()
+        );
+    }
+
+    @Transactional(readOnly = true)
     public List<LoanDisbursementRequestLog> listDisbursementRequests(UUID applicationId) {
         LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
         return loanDisbursementRequestLogRepository.findTop20ByLoanAccount_IdOrderByCreatedAtDesc(loanAccount.getId());
