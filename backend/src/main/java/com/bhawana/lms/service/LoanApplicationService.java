@@ -16,6 +16,8 @@ import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
+import com.bhawana.lms.domain.LoanDisbursementRequestLog;
+import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.UserStatus;
@@ -29,14 +31,19 @@ import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
+import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
+import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,9 +65,12 @@ public class LoanApplicationService {
     private final LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
+    private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
     private final LoanProductRepository loanProductRepository;
+    private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LspRepository lspRepository;
     private final LoanProductLspMappingRepository loanProductLspMappingRepository;
+    private final LoanDisbursementAdapter loanDisbursementAdapter;
     private final ObjectMapper objectMapper;
 
     public LoanApplicationService(
@@ -73,9 +83,12 @@ public class LoanApplicationService {
             LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository,
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
+            LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
             LoanProductRepository loanProductRepository,
+            LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LspRepository lspRepository,
             LoanProductLspMappingRepository loanProductLspMappingRepository,
+            LoanDisbursementAdapter loanDisbursementAdapter,
             ObjectMapper objectMapper
     ) {
         this.appUserRepository = appUserRepository;
@@ -87,9 +100,12 @@ public class LoanApplicationService {
         this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
+        this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
         this.loanProductRepository = loanProductRepository;
+        this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.lspRepository = lspRepository;
         this.loanProductLspMappingRepository = loanProductLspMappingRepository;
+        this.loanDisbursementAdapter = loanDisbursementAdapter;
         this.objectMapper = objectMapper;
     }
 
@@ -204,6 +220,25 @@ public class LoanApplicationService {
     public Optional<LoanAccount> getLoanAccount(UUID applicationId) {
         getApplication(applicationId);
         return loanAccountRepository.findByLoanApplication_Id(applicationId);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<LoanRepaymentScheduleSummary> getLoanRepaymentScheduleSummary(UUID applicationId) {
+        return getLoanAccount(applicationId)
+                .map(account -> loanRepaymentScheduleInstallmentRepository.findByLoanAccount_IdOrderByInstallmentNumberAsc(account.getId()))
+                .filter(installments -> !installments.isEmpty())
+                .map(installments -> new LoanRepaymentScheduleSummary(
+                        installments.size(),
+                        installments.getFirst().getInstallmentAmount(),
+                        installments.getFirst().getDueDate(),
+                        installments.getLast().getDueDate()
+                ));
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanDisbursementRequestLog> listDisbursementRequests(UUID applicationId) {
+        LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
+        return loanDisbursementRequestLogRepository.findTop20ByLoanAccount_IdOrderByCreatedAtDesc(loanAccount.getId());
     }
 
     @Transactional(readOnly = true)
@@ -549,6 +584,46 @@ public class LoanApplicationService {
         return loanApplicationDocumentChecklistRepository.save(checklistItem);
     }
 
+    @Transactional
+    public LoanApplication initiateDisbursement(
+            UUID applicationId,
+            String actorUsername
+    ) {
+        LoanApplication application = getApplication(applicationId);
+        if (application.getStatus() != LoanApplicationStatus.APPROVED) {
+            throw new IllegalArgumentException("Disbursement can only be requested for approved loan applications.");
+        }
+
+        LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
+        if (loanAccount.getStatus() != LoanAccountStatus.PENDING_DISBURSEMENT) {
+            throw new IllegalArgumentException("Disbursement has already been requested for this loan account.");
+        }
+
+        LoanDisbursementAdapter.DisbursementCommand command = new LoanDisbursementAdapter.DisbursementCommand(
+                loanAccount.getAccountNumber(),
+                scaleCurrency(loanAccount.getPrincipalAmount()),
+                application.getBorrower().getFullName(),
+                application.getExternalLoanId(),
+                application.getLsp().getCode()
+        );
+        LoanDisbursementAdapter.DisbursementResult result = loanDisbursementAdapter.requestDisbursement(command);
+
+        loanAccount.markDisbursementRequested();
+        loanAccountRepository.save(loanAccount);
+        loanDisbursementRequestLogRepository.save(new LoanDisbursementRequestLog(
+                loanAccount,
+                normalizeActorUsername(actorUsername),
+                scaleCurrency(loanAccount.getPrincipalAmount()),
+                result.providerName(),
+                result.providerRequestId(),
+                result.providerStatus(),
+                serializeDisbursementRequest(command),
+                result.responsePayloadJson(),
+                CorrelationIdHolder.get()
+        ));
+        return application;
+    }
+
     @Transactional(readOnly = true)
     public List<LoanApplicationIntakeAudit> listIntakeAudits(UUID applicationId) {
         getApplication(applicationId);
@@ -710,7 +785,7 @@ public class LoanApplicationService {
     }
 
     private LoanAccount ensureLoanAccountForApprovedApplication(LoanApplication application) {
-        return loanAccountRepository.findByLoanApplication_Id(application.getId())
+        LoanAccount loanAccount = loanAccountRepository.findByLoanApplication_Id(application.getId())
                 .orElseGet(() -> loanAccountRepository.save(new LoanAccount(
                         application,
                         application.getBorrower(),
@@ -722,11 +797,86 @@ public class LoanApplicationService {
                         LoanAccountStatus.PENDING_DISBURSEMENT,
                         Instant.now()
                 )));
+        generateRepaymentSchedule(loanAccount);
+        return loanAccount;
+    }
+
+    private void generateRepaymentSchedule(LoanAccount loanAccount) {
+        if (!loanRepaymentScheduleInstallmentRepository
+                .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId())
+                .isEmpty()) {
+            return;
+        }
+
+        BigDecimal principal = scaleCurrency(loanAccount.getPrincipalAmount());
+        int tenureMonths = loanAccount.getTenureMonths();
+        BigDecimal annualRate = loanAccount.getLoanProduct().getInterestRate();
+        BigDecimal monthlyRate = annualRate
+                .divide(BigDecimal.valueOf(1200), 10, RoundingMode.HALF_UP);
+        BigDecimal emiAmount = calculateMonthlyEmi(principal, monthlyRate, tenureMonths);
+        LocalDate firstDueDate = loanAccount.getApprovedAt().atZone(ZoneOffset.UTC).toLocalDate().plusMonths(1);
+
+        BigDecimal remainingPrincipal = principal;
+        List<LoanRepaymentScheduleInstallment> installments = new java.util.ArrayList<>();
+        for (int installmentNumber = 1; installmentNumber <= tenureMonths; installmentNumber++) {
+            BigDecimal openingPrincipal = scaleCurrency(remainingPrincipal);
+            BigDecimal interestDue = scaleCurrency(openingPrincipal.multiply(monthlyRate));
+            BigDecimal installmentAmount = emiAmount;
+            BigDecimal principalDue = scaleCurrency(installmentAmount.subtract(interestDue));
+
+            if (installmentNumber == tenureMonths) {
+                principalDue = openingPrincipal;
+                installmentAmount = scaleCurrency(principalDue.add(interestDue));
+            }
+
+            BigDecimal closingPrincipal = scaleCurrency(openingPrincipal.subtract(principalDue));
+            if (closingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
+                closingPrincipal = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            }
+
+            installments.add(new LoanRepaymentScheduleInstallment(
+                    loanAccount,
+                    installmentNumber,
+                    firstDueDate.plusMonths(installmentNumber - 1L),
+                    openingPrincipal,
+                    principalDue,
+                    interestDue,
+                    installmentAmount,
+                    closingPrincipal
+            ));
+            remainingPrincipal = closingPrincipal;
+        }
+
+        loanRepaymentScheduleInstallmentRepository.saveAll(installments);
+    }
+
+    private LoanAccount getRequiredLoanAccount(UUID applicationId) {
+        return loanAccountRepository.findByLoanApplication_Id(applicationId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Loan account is not available for application id: " + applicationId
+                ));
+    }
+
+    private static BigDecimal calculateMonthlyEmi(BigDecimal principal, BigDecimal monthlyRate, int tenureMonths) {
+        if (monthlyRate.compareTo(BigDecimal.ZERO) == 0) {
+            return scaleCurrency(principal.divide(BigDecimal.valueOf(tenureMonths), 2, RoundingMode.HALF_UP));
+        }
+
+        BigDecimal rateDecimal = monthlyRate;
+        BigDecimal onePlusRatePower = BigDecimal
+                .valueOf(Math.pow(BigDecimal.ONE.add(rateDecimal).doubleValue(), tenureMonths));
+        BigDecimal numerator = principal.multiply(rateDecimal).multiply(onePlusRatePower, MathContext.DECIMAL64);
+        BigDecimal denominator = onePlusRatePower.subtract(BigDecimal.ONE);
+        return scaleCurrency(numerator.divide(denominator, 2, RoundingMode.HALF_UP));
     }
 
     private static String generateAccountNumber(LoanApplication application) {
         String compactId = application.getId().toString().replace("-", "").toUpperCase();
         return "LMS-LN-" + compactId.substring(0, 12);
+    }
+
+    private static BigDecimal scaleCurrency(BigDecimal value) {
+        return value.setScale(2, RoundingMode.HALF_UP);
     }
 
     private boolean hasMeaningfulDocumentActivity(LoanApplicationDocumentChecklist checklistItem) {
@@ -834,6 +984,22 @@ public class LoanApplicationService {
         }
     }
 
+    private String serializeDisbursementRequest(LoanDisbursementAdapter.DisbursementCommand command) {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("provider", "MOCK_DISBURSEMENT");
+        payload.put("loanAccountNumber", command.loanAccountNumber());
+        payload.put("amount", command.amount());
+        payload.put("borrowerName", command.borrowerName());
+        payload.put("externalLoanId", command.externalLoanId());
+        payload.put("lspCode", command.lspCode());
+
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize disbursement request payload.", exception);
+        }
+    }
+
     private record ActivityCandidate(int priority, LoanApplicationLastActivity activity) {
     }
 
@@ -844,6 +1010,14 @@ public class LoanApplicationService {
             String detail,
             String correlationId,
             Instant occurredAt
+    ) {
+    }
+
+    public record LoanRepaymentScheduleSummary(
+            int installmentCount,
+            BigDecimal installmentAmount,
+            LocalDate firstDueDate,
+            LocalDate finalDueDate
     ) {
     }
 }

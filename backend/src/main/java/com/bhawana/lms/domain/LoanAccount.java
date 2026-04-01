@@ -135,6 +135,10 @@ public class LoanAccount {
         return status;
     }
 
+    public void markDisbursementRequested() {
+        this.status = LoanAccountStatus.DISBURSEMENT_REQUESTED;
+    }
+
     public Instant getApprovedAt() {
         return approvedAt;
     }

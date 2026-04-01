@@ -11,6 +11,7 @@ import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
+import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.service.LoanApplicationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -69,7 +70,8 @@ public class LoanApplicationOpsController {
         return toDetailResponse(
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null)
+                loanApplicationService.getLoanAccount(applicationId).orElse(null),
+                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null)
         );
     }
 
@@ -98,6 +100,13 @@ public class LoanApplicationOpsController {
     public List<LoanApplicationAuditEventResponse> listAuditEvents(@PathVariable UUID applicationId) {
         return loanApplicationService.listAuditEvents(applicationId).stream()
                 .map(LoanApplicationOpsController::toAuditEventResponse)
+                .toList();
+    }
+
+    @GetMapping("/{applicationId}/disbursement-requests")
+    public List<LoanDisbursementRequestResponse> listDisbursementRequests(@PathVariable UUID applicationId) {
+        return loanApplicationService.listDisbursementRequests(applicationId).stream()
+                .map(LoanApplicationOpsController::toDisbursementRequestResponse)
                 .toList();
     }
 
@@ -152,7 +161,8 @@ public class LoanApplicationOpsController {
         return toDetailResponse(
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null)
+                loanApplicationService.getLoanAccount(applicationId).orElse(null),
+                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null)
         );
     }
 
@@ -173,7 +183,8 @@ public class LoanApplicationOpsController {
         return toDetailResponse(
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null)
+                loanApplicationService.getLoanAccount(applicationId).orElse(null),
+                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null)
         );
     }
 
@@ -222,7 +233,8 @@ public class LoanApplicationOpsController {
         return toDetailResponse(
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null)
+                loanApplicationService.getLoanAccount(applicationId).orElse(null),
+                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null)
         );
     }
 
@@ -246,6 +258,24 @@ public class LoanApplicationOpsController {
                 request.reviewReason(),
                 request.rejectionReason()
         ));
+    }
+
+    @PostMapping("/{applicationId}/disbursement-requests")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public LoanApplicationDetailResponse initiateDisbursement(
+            Authentication authentication,
+            @PathVariable UUID applicationId
+    ) {
+        LoanApplication application = loanApplicationService.initiateDisbursement(
+                applicationId,
+                authentication.getName()
+        );
+        return toDetailResponse(
+                application,
+                loanApplicationService.getLatestActivity(applicationId).orElse(null),
+                loanApplicationService.getLoanAccount(applicationId).orElse(null),
+                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null)
+        );
     }
 
     private static LoanApplicationResponse toResponse(LoanApplication application) {
@@ -282,7 +312,8 @@ public class LoanApplicationOpsController {
     private static LoanApplicationDetailResponse toDetailResponse(
             LoanApplication application,
             LoanApplicationService.LoanApplicationLastActivity lastActivity,
-            LoanAccount loanAccount
+            LoanAccount loanAccount,
+            LoanApplicationService.LoanRepaymentScheduleSummary repaymentScheduleSummary
     ) {
         return new LoanApplicationDetailResponse(
                 application.getId().toString(),
@@ -319,7 +350,13 @@ public class LoanApplicationOpsController {
                         loanAccount.getPrincipalAmount(),
                         loanAccount.getTenureMonths(),
                         loanAccount.getApprovedAt().toString(),
-                        loanAccount.getCreatedAt().toString()
+                        loanAccount.getCreatedAt().toString(),
+                        repaymentScheduleSummary == null ? null : new LoanRepaymentScheduleSummaryResponse(
+                                repaymentScheduleSummary.installmentCount(),
+                                repaymentScheduleSummary.installmentAmount(),
+                                repaymentScheduleSummary.firstDueDate(),
+                                repaymentScheduleSummary.finalDueDate()
+                        )
                 ),
                 lastActivity == null ? null : new LoanApplicationLastActivityResponse(
                         lastActivity.activityType(),
@@ -382,6 +419,22 @@ public class LoanApplicationOpsController {
                 event.getReasonCode() == null ? null : event.getReasonCode().name(),
                 event.getCorrelationId(),
                 event.getCreatedAt().toString()
+        );
+    }
+
+    private static LoanDisbursementRequestResponse toDisbursementRequestResponse(LoanDisbursementRequestLog request) {
+        return new LoanDisbursementRequestResponse(
+                request.getId().toString(),
+                request.getLoanAccount().getId().toString(),
+                request.getActorUsername(),
+                request.getAmount(),
+                request.getProviderName(),
+                request.getProviderRequestId(),
+                request.getProviderStatus(),
+                request.getRequestPayloadJson(),
+                request.getResponsePayloadJson(),
+                request.getCorrelationId(),
+                request.getCreatedAt().toString()
         );
     }
 
@@ -499,7 +552,16 @@ public class LoanApplicationOpsController {
             BigDecimal principalAmount,
             Integer tenureMonths,
             String approvedAt,
-            String createdAt
+            String createdAt,
+            LoanRepaymentScheduleSummaryResponse repaymentSchedule
+    ) {
+    }
+
+    public record LoanRepaymentScheduleSummaryResponse(
+            Integer installmentCount,
+            BigDecimal installmentAmount,
+            LocalDate firstDueDate,
+            LocalDate finalDueDate
     ) {
     }
 
@@ -589,6 +651,21 @@ public class LoanApplicationOpsController {
             String toStatus,
             String note,
             String reasonCode,
+            String correlationId,
+            String createdAt
+    ) {
+    }
+
+    public record LoanDisbursementRequestResponse(
+            String id,
+            String loanAccountId,
+            String actorUsername,
+            BigDecimal amount,
+            String providerName,
+            String providerRequestId,
+            String providerStatus,
+            String requestPayloadJson,
+            String responsePayloadJson,
             String correlationId,
             String createdAt
     ) {

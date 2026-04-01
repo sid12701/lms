@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
 public enum LoanAccountStatus {
-    PENDING_DISBURSEMENT
+    PENDING_DISBURSEMENT,
+    DISBURSEMENT_REQUESTED
 }

@@ -394,6 +394,8 @@ function loanAuditActionLabel(action: LoanApplicationAuditAction) {
 
 function loanAccountStatusLabel(status?: LoanAccountStatus | null) {
   switch (status) {
+    case 'DISBURSEMENT_REQUESTED':
+      return 'Disbursement requested'
     case 'PENDING_DISBURSEMENT':
       return 'Pending disbursement'
     default:
@@ -2281,6 +2283,36 @@ export function LoanApplicationsPage() {
                         <div className="loan-detail-field">
                           <span>Approved at</span>
                           <strong>{formatTimestamp(selectedLoan.loanAccount.approvedAt)}</strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>Scheduled installments</span>
+                          <strong>
+                            {selectedLoan.loanAccount.repaymentSchedule?.installmentCount ?? 0}
+                          </strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>Monthly EMI</span>
+                          <strong>
+                            {selectedLoan.loanAccount.repaymentSchedule
+                              ? currencyLabel(selectedLoan.loanAccount.repaymentSchedule.installmentAmount)
+                              : 'Not generated'}
+                          </strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>First due date</span>
+                          <strong>
+                            {selectedLoan.loanAccount.repaymentSchedule?.firstDueDate
+                              ? formatDateLabel(selectedLoan.loanAccount.repaymentSchedule.firstDueDate)
+                              : 'Not generated'}
+                          </strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>Final due date</span>
+                          <strong>
+                            {selectedLoan.loanAccount.repaymentSchedule?.finalDueDate
+                              ? formatDateLabel(selectedLoan.loanAccount.repaymentSchedule.finalDueDate)
+                              : 'Not generated'}
+                          </strong>
                         </div>
                       </div>
                     </div>

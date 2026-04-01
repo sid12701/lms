@@ -15,9 +15,11 @@ import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
+import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
+import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
@@ -61,6 +63,12 @@ class LoanApplicationOpsControllerTest {
     private LoanAccountRepository loanAccountRepository;
 
     @Autowired
+    private LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
+
+    @Autowired
+    private LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
+
+    @Autowired
     private BorrowerRepository borrowerRepository;
 
     @Autowired
@@ -101,6 +109,8 @@ class LoanApplicationOpsControllerTest {
 
     @BeforeEach
     void setUp() {
+        loanDisbursementRequestLogRepository.deleteAllInBatch();
+        loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
         loanAccountRepository.deleteAllInBatch();
         loanApplicationAuditEventRepository.deleteAllInBatch();
         loanApplicationAssignmentEventRepository.deleteAllInBatch();
@@ -545,14 +555,20 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.loanAccount.status").value("PENDING_DISBURSEMENT"))
                 .andExpect(jsonPath("$.loanAccount.principalAmount").value(45000.00))
                 .andExpect(jsonPath("$.loanAccount.tenureMonths").value(12))
-                .andExpect(jsonPath("$.loanAccount.approvedAt").exists());
+                .andExpect(jsonPath("$.loanAccount.approvedAt").exists())
+                .andExpect(jsonPath("$.loanAccount.repaymentSchedule.installmentCount").value(12))
+                .andExpect(jsonPath("$.loanAccount.repaymentSchedule.installmentAmount").value(4136.32))
+                .andExpect(jsonPath("$.loanAccount.repaymentSchedule.firstDueDate").exists())
+                .andExpect(jsonPath("$.loanAccount.repaymentSchedule.finalDueDate").exists());
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("APPROVED"))
                 .andExpect(jsonPath("$.loanAccount.accountNumber", containsString("LMS-LN-")))
-                .andExpect(jsonPath("$.loanAccount.status").value("PENDING_DISBURSEMENT"));
+                .andExpect(jsonPath("$.loanAccount.status").value("PENDING_DISBURSEMENT"))
+                .andExpect(jsonPath("$.loanAccount.repaymentSchedule.installmentCount").value(12))
+                .andExpect(jsonPath("$.loanAccount.repaymentSchedule.installmentAmount").value(4136.32));
     }
 
     @Test
@@ -586,6 +602,66 @@ class LoanApplicationOpsControllerTest {
                         ))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void systemAdminCanInitiateMockDisbursementAndInspectRequestLog() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-968", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.loanAccount.status").value("DISBURSEMENT_REQUESTED"));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].actorUsername").value("ops.admin"))
+                .andExpect(jsonPath("$[0].amount").value(45000.00))
+                .andExpect(jsonPath("$[0].providerName").value("MOCK_DISBURSEMENT"))
+                .andExpect(jsonPath("$[0].providerRequestId", containsString("MDB-")))
+                .andExpect(jsonPath("$[0].providerStatus").value("ACCEPTED"))
+                .andExpect(jsonPath("$[0].requestPayloadJson", containsString("\"externalLoanId\":\"EXT-968\"")))
+                .andExpect(jsonPath("$[0].responsePayloadJson", containsString("\"status\":\"ACCEPTED\"")));
+    }
+
+    @Test
+    void disbursementRequestRequiresApprovedLoanAndCannotBeDuplicated() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-969", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.loanAccount.status").value("DISBURSEMENT_REQUESTED"));
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
     }
 
     @Test

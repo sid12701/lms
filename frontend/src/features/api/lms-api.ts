@@ -21,7 +21,7 @@ export const loanApplicationStatusOptions = [
   'APPROVED',
   'REJECTED',
 ] as const
-export const loanAccountStatusOptions = ['PENDING_DISBURSEMENT'] as const
+export const loanAccountStatusOptions = ['PENDING_DISBURSEMENT', 'DISBURSEMENT_REQUESTED'] as const
 export const loanApplicationStatusReasonCodeOptions = [
   'MISSING_DOCUMENTS',
   'BORROWER_CLARIFICATION_REQUIRED',
@@ -201,6 +201,28 @@ export type LoanAccountSummaryRecord = {
   principalAmount: number
   tenureMonths: number
   approvedAt: string
+  createdAt: string
+  repaymentSchedule: LoanRepaymentScheduleSummaryRecord | null
+}
+
+export type LoanRepaymentScheduleSummaryRecord = {
+  installmentCount: number
+  installmentAmount: number
+  firstDueDate: string
+  finalDueDate: string
+}
+
+export type LoanDisbursementRequestLogRecord = {
+  id: string
+  loanAccountId: string
+  actorUsername: string
+  amount: number
+  providerName: string
+  providerRequestId: string
+  providerStatus: string
+  requestPayloadJson: string
+  responsePayloadJson: string
+  correlationId: string | null
   createdAt: string
 }
 
@@ -667,6 +689,12 @@ export function listLoanApplicationAssignmentEvents(applicationId: string) {
   )
 }
 
+export function listLoanApplicationDisbursementRequests(applicationId: string) {
+  return requestJson<LoanDisbursementRequestLogRecord[]>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/disbursement-requests`,
+  )
+}
+
 export function listLoanApplicationAuditEvents(applicationId: string) {
   return requestJson<LoanApplicationAuditEventRecord[]>(
     `/api/v1/internal/ops/loan-applications/${applicationId}/audit-events`,
@@ -747,6 +775,15 @@ export function assignLoanApplication(
     {
       method: 'POST',
       body: JSON.stringify(payload),
+    },
+  )
+}
+
+export function initiateLoanApplicationDisbursement(applicationId: string) {
+  return requestJson<LoanApplicationDetailRecord>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/disbursement-requests`,
+    {
+      method: 'POST',
     },
   )
 }
