@@ -17,6 +17,7 @@ export const loanProductStatusOptions = ['DRAFT', 'ACTIVE', 'INACTIVE'] as const
 export const loanApplicationStatusOptions = [
   'RECEIVED',
   'UNDER_REVIEW',
+  'HOLD',
   'APPROVED',
   'REJECTED',
 ] as const
@@ -665,6 +666,22 @@ export function transitionLoanApplicationStatus(
 ) {
   return requestJson<LoanApplicationDetailRecord>(
     `/api/v1/internal/ops/loan-applications/${applicationId}/status-transitions`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
+export function manuallyOverrideLoanApplicationStatus(
+  applicationId: string,
+  payload: {
+    targetStatus: LoanApplicationStatus
+    note: string
+  },
+) {
+  return requestJson<LoanApplicationDetailRecord>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/manual-status`,
     {
       method: 'POST',
       body: JSON.stringify(payload),

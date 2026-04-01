@@ -341,6 +341,53 @@ public class LoanApplicationService {
     }
 
     @Transactional
+    public LoanApplication manuallyOverrideStatus(
+            UUID applicationId,
+            String actorUsername,
+            LoanApplicationStatus targetStatus,
+            String note
+    ) {
+        if (targetStatus == null) {
+            throw new IllegalArgumentException("Target status is required.");
+        }
+
+        LoanApplication application = getApplication(applicationId);
+        LoanApplicationStatus currentStatus = application.getStatus();
+
+        if (currentStatus == targetStatus) {
+            throw new IllegalArgumentException("Loan application is already in status " + currentStatus.name() + ".");
+        }
+
+        if (currentStatus == LoanApplicationStatus.APPROVED) {
+            throw new IllegalArgumentException("Approved loan applications cannot be manually overridden.");
+        }
+
+        if (targetStatus == LoanApplicationStatus.APPROVED) {
+            throw new IllegalArgumentException("Use the standard approval flow instead of a manual status update.");
+        }
+
+        if (targetStatus != LoanApplicationStatus.RECEIVED
+                && targetStatus != LoanApplicationStatus.UNDER_REVIEW
+                && targetStatus != LoanApplicationStatus.HOLD
+                && targetStatus != LoanApplicationStatus.REJECTED) {
+            throw new IllegalArgumentException("Manual status updates are not supported for " + targetStatus.name() + ".");
+        }
+
+        String resolvedNote = "Manual override: " + requireNote(note);
+        application.transitionTo(targetStatus);
+        LoanApplication savedApplication = loanApplicationRepository.save(application);
+        loanApplicationStatusTransitionRepository.save(new LoanApplicationStatusTransition(
+                savedApplication,
+                currentStatus,
+                targetStatus,
+                normalizeActorUsername(actorUsername),
+                resolvedNote,
+                CorrelationIdHolder.get()
+        ));
+        return savedApplication;
+    }
+
+    @Transactional
     public LoanApplication assignApplication(
             UUID applicationId,
             String actorUsername,
@@ -550,6 +597,14 @@ public class LoanApplicationService {
     private static String normalizeAssigneeUsername(String assigneeUsername) {
         String normalized = normalizeOptional(assigneeUsername);
         return normalized == null ? null : normalized.toLowerCase();
+    }
+
+    private static String requireNote(String note) {
+        String normalized = normalizeOptional(note);
+        if (normalized == null) {
+            throw new IllegalArgumentException("Manual status note is required.");
+        }
+        return normalized;
     }
 
     private boolean hasMeaningfulDocumentActivity(LoanApplicationDocumentChecklist checklistItem) {

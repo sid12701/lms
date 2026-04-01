@@ -23,7 +23,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -124,6 +126,8 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @Valid @RequestBody LoanApplicationStatusTransitionRequest request
     ) {
+        LoanApplication currentApplication = loanApplicationService.getApplication(applicationId);
+        authorizeStatusTransition(extractRoles(authentication), currentApplication.getStatus(), request.targetStatus());
         LoanApplication application = loanApplicationService.transitionStatus(
                 applicationId,
                 authentication.getName(),
@@ -131,6 +135,52 @@ public class LoanApplicationOpsController {
                 request.note()
         );
         return toDetailResponse(application, loanApplicationService.getLatestActivity(applicationId).orElse(null));
+    }
+
+    @PostMapping("/{applicationId}/manual-status")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public LoanApplicationDetailResponse manuallyOverrideStatus(
+            Authentication authentication,
+            @PathVariable UUID applicationId,
+            @Valid @RequestBody ManualStatusUpdateRequest request
+    ) {
+        LoanApplication application = loanApplicationService.manuallyOverrideStatus(
+                applicationId,
+                authentication.getName(),
+                request.targetStatus(),
+                request.note()
+        );
+        return toDetailResponse(application, loanApplicationService.getLatestActivity(applicationId).orElse(null));
+    }
+
+    private static void authorizeStatusTransition(
+            List<String> actorRoles,
+            LoanApplicationStatus currentStatus,
+            LoanApplicationStatus targetStatus
+    ) {
+        if (actorRoles.contains("SYSTEM_ADMIN")) {
+            return;
+        }
+
+        if (actorRoles.contains("OPS_USER")
+                && ((currentStatus == LoanApplicationStatus.RECEIVED
+                        && targetStatus == LoanApplicationStatus.UNDER_REVIEW)
+                        || (currentStatus == LoanApplicationStatus.UNDER_REVIEW
+                        && targetStatus == LoanApplicationStatus.HOLD)
+                        || (currentStatus == LoanApplicationStatus.HOLD
+                        && targetStatus == LoanApplicationStatus.UNDER_REVIEW))) {
+            return;
+        }
+
+        throw new AccessDeniedException("Your role cannot perform this loan status transition.");
+    }
+
+    private static List<String> extractRoles(Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .filter(authority -> !"ROLE_PASSWORD_CHANGE_REQUIRED".equals(authority))
+                .map(role -> role.startsWith("ROLE_") ? role.substring("ROLE_".length()) : role)
+                .toList();
     }
 
     @PostMapping("/{applicationId}/assignment")
@@ -410,6 +460,12 @@ public class LoanApplicationOpsController {
     public record LoanApplicationStatusTransitionRequest(
             @NotNull LoanApplicationStatus targetStatus,
             @Size(max = 500) String note
+    ) {
+    }
+
+    public record ManualStatusUpdateRequest(
+            @NotNull LoanApplicationStatus targetStatus,
+            @NotBlank @Size(max = 500) String note
     ) {
     }
 

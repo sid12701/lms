@@ -20,6 +20,7 @@ import {
   loanApplicationStatusOptions,
   loanApplicationDocumentPlaceholderStatusOptions,
   transitionLoanApplicationStatus,
+  manuallyOverrideLoanApplicationStatus,
   updateLoanApplicationDocumentPlaceholder,
   type LoanApplicationIntakeAuditRecord,
   type LoanApplicationAssignmentEventRecord,
@@ -113,6 +114,11 @@ const workflowProgression: Array<{
     status: 'UNDER_REVIEW',
     label: 'Under review',
     description: 'Ops is validating the case and supporting data.',
+  },
+  {
+    status: 'HOLD',
+    label: 'On hold',
+    description: 'Review is paused while the case waits for clarification or documents.',
   },
   {
     status: 'DECISION',
@@ -224,6 +230,8 @@ function loanStatusLabel(status: LoanApplicationStatus) {
       return 'Received'
     case 'UNDER_REVIEW':
       return 'Under review'
+    case 'HOLD':
+      return 'On hold'
     case 'APPROVED':
       return 'Approved'
     case 'REJECTED':
@@ -239,6 +247,8 @@ function loanStatusVariant(
       return 'warning'
     case 'UNDER_REVIEW':
       return 'default'
+    case 'HOLD':
+      return 'warning'
     case 'APPROVED':
       return 'success'
     case 'REJECTED':
@@ -252,9 +262,11 @@ function statusProgressIndex(status: LoanApplicationStatus) {
       return 1
     case 'UNDER_REVIEW':
       return 2
+    case 'HOLD':
+      return 3
     case 'APPROVED':
     case 'REJECTED':
-      return 3
+      return 4
   }
 }
 
@@ -272,6 +284,12 @@ function getTransitionActions(status: LoanApplicationStatus): TransitionAction[]
     case 'UNDER_REVIEW':
       return [
         {
+          targetStatus: 'HOLD',
+          label: 'Put on hold',
+          description: 'Pause review while waiting for clarification or missing inputs.',
+          variant: 'secondary',
+        },
+        {
           targetStatus: 'APPROVED',
           label: 'Approve',
           description: 'Mark the case as approved and ready for downstream processing.',
@@ -282,6 +300,15 @@ function getTransitionActions(status: LoanApplicationStatus): TransitionAction[]
           label: 'Reject',
           description: 'Close the case and capture the decision note.',
           variant: 'outline',
+        },
+      ]
+    case 'HOLD':
+      return [
+        {
+          targetStatus: 'UNDER_REVIEW',
+          label: 'Resume review',
+          description: 'Bring the case back into the active review queue.',
+          variant: 'secondary',
         },
       ]
     case 'APPROVED':
@@ -302,12 +329,28 @@ function getVisibleTransitionActions(
   }
 
   if (currentRoles.includes('OPS_USER')) {
-    return status === 'RECEIVED'
-      ? allActions.filter((action) => action.targetStatus === 'UNDER_REVIEW')
-      : []
+    return allActions.filter((action) => {
+      if (status === 'RECEIVED') {
+        return action.targetStatus === 'UNDER_REVIEW'
+      }
+
+      if (status === 'UNDER_REVIEW') {
+        return action.targetStatus === 'HOLD'
+      }
+
+      if (status === 'HOLD') {
+        return action.targetStatus === 'UNDER_REVIEW'
+      }
+
+      return false
+    })
   }
 
   return []
+}
+
+function getManualStatusTargets(status: LoanApplicationStatus) {
+  return loanApplicationStatusOptions.filter((option) => option !== 'APPROVED' && option !== status)
 }
 
 function sortByCreatedAtDesc<T extends { createdAt: string }>(records: T[]) {
@@ -579,6 +622,10 @@ export function LoanApplicationsPage() {
   const [documentPlaceholderSavingId, setDocumentPlaceholderSavingId] = useState('')
   const [approvalBlocker, setApprovalBlocker] = useState<ApprovalBlocker | null>(null)
   const [transitionNote, setTransitionNote] = useState('')
+  const [manualStatusTarget, setManualStatusTarget] = useState<LoanApplicationStatus | ''>('')
+  const [manualStatusNote, setManualStatusNote] = useState('')
+  const [manualStatusSubmitting, setManualStatusSubmitting] = useState(false)
+  const [manualStatusError, setManualStatusError] = useState('')
   const [assignmentNote, setAssignmentNote] = useState('')
 
   const activeLsps = useMemo(() => lsps.filter((item) => item.status === 'ACTIVE'), [lsps])
@@ -625,6 +672,14 @@ export function LoanApplicationsPage() {
   const currentProgressIndex = visibleSelectedApplication
     ? statusProgressIndex(visibleSelectedApplication.status as LoanApplicationStatus)
     : 0
+  const manualStatusTargets = useMemo(
+    () =>
+      visibleSelectedApplication
+        ? getManualStatusTargets(visibleSelectedApplication.status as LoanApplicationStatus)
+        : [],
+    [visibleSelectedApplication],
+  )
+  const canManualOverrideStatus = Boolean(user?.roles?.includes('SYSTEM_ADMIN'))
   const borrowerProfileCompleteness = countBorrowerProfileSignals(visibleSelectedApplication)
   const borrowerLocation = visibleSelectedApplication
     ? [visibleSelectedApplication.borrowerCity, visibleSelectedApplication.borrowerState]
@@ -682,6 +737,17 @@ export function LoanApplicationsPage() {
       setApprovalBlocker(null)
     }
   }, [kycApprovalReady])
+
+  useEffect(() => {
+    if (!manualStatusTargets.length) {
+      setManualStatusTarget('')
+      return
+    }
+
+    setManualStatusTarget((current) =>
+      current && manualStatusTargets.includes(current) ? current : manualStatusTargets[0],
+    )
+  }, [manualStatusTargets])
 
   async function loadApplications(nextFilters: ListFilterState) {
     const response = await listLoanApplications({
@@ -1035,6 +1101,32 @@ export function LoanApplicationsPage() {
       }
     } finally {
       setTransitioning(false)
+    }
+  }
+
+  async function handleManualStatusOverride() {
+    if (!selectedApplicationId || !manualStatusTarget) {
+      return
+    }
+
+    setManualStatusSubmitting(true)
+    setManualStatusError('')
+
+    try {
+      await manuallyOverrideLoanApplicationStatus(selectedApplicationId, {
+        targetStatus: manualStatusTarget,
+        note: manualStatusNote,
+      })
+
+      setManualStatusNote('')
+      await refreshSelectedLoan(selectedApplicationId)
+      await loadApplications(filters)
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : 'Unable to manually update loan status.'
+      setManualStatusError(message)
+    } finally {
+      setManualStatusSubmitting(false)
     }
   }
 
@@ -2015,7 +2107,13 @@ export function LoanApplicationsPage() {
                 <div className="loan-status-lane" aria-label="Loan status progression">
                   {workflowProgression.map((step) => {
                     const stepIndex =
-                      step.status === 'RECEIVED' ? 1 : step.status === 'UNDER_REVIEW' ? 2 : 3
+                      step.status === 'RECEIVED'
+                        ? 1
+                        : step.status === 'UNDER_REVIEW'
+                          ? 2
+                          : step.status === 'HOLD'
+                            ? 3
+                            : 4
                     const isCurrent = currentProgressIndex === stepIndex
                     const isComplete = currentProgressIndex > stepIndex
 
@@ -2031,7 +2129,7 @@ export function LoanApplicationsPage() {
                           .join(' ')}
                       >
                         <div className="loan-status-lane__step-number">
-                          {step.status === 'DECISION' ? '3' : statusProgressIndex(step.status)}
+                          {step.status === 'DECISION' ? '4' : statusProgressIndex(step.status)}
                         </div>
                         <div>
                           <strong>{step.label}</strong>
@@ -2128,6 +2226,70 @@ export function LoanApplicationsPage() {
                     ) : null}
                   </div>
                 </div>
+
+                {canManualOverrideStatus ? (
+                  <div className="loan-transition-panel">
+                    <div className="loan-transition-panel__header">
+                      <div>
+                        <h4>Manual admin override</h4>
+                        <p className="helper-copy">
+                          System admins can move the case between review states or reopen a rejected case.
+                          Approval is intentionally excluded from this override path.
+                        </p>
+                      </div>
+                      <Badge variant="warning">Admin only</Badge>
+                    </div>
+                    {!manualStatusTargets.length ? (
+                      <div className="empty-state">
+                        Manual status override is not available for the current status.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="field-stack">
+                          <label htmlFor="manual-status-target">Override target</label>
+                          <select
+                            id="manual-status-target"
+                            className="ui-input ui-select"
+                            value={manualStatusTarget}
+                            onChange={(event) =>
+                              setManualStatusTarget(event.target.value as LoanApplicationStatus)
+                            }
+                          >
+                            {manualStatusTargets.map((status) => (
+                              <option key={status} value={status}>
+                                {loanStatusLabel(status)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="field-stack">
+                          <label htmlFor="manual-status-note">Override note</label>
+                          <textarea
+                            id="manual-status-note"
+                            className="ui-textarea"
+                            value={manualStatusNote}
+                            onChange={(event) => setManualStatusNote(event.target.value)}
+                            placeholder="Required. Explain why this manual override is needed."
+                            rows={4}
+                          />
+                        </div>
+                        {manualStatusError ? <div className="empty-state">{manualStatusError}</div> : null}
+                        <div className="loan-transition-actions">
+                          <Button
+                            disabled={
+                              manualStatusSubmitting || !manualStatusTarget || !manualStatusNote.trim()
+                            }
+                            onClick={() => void handleManualStatusOverride()}
+                            type="button"
+                            variant="outline"
+                          >
+                            {manualStatusSubmitting ? 'Updating...' : 'Apply manual status'}
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : null}
 
                 <div className="loan-history">
                   <div className="loan-history__header">

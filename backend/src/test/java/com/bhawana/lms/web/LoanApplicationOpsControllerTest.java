@@ -290,7 +290,7 @@ class LoanApplicationOpsControllerTest {
 
         transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Assigned for analyst review");
         markAllRequiredKycDocumentsVerified(created.get("id").asText());
-        transitionApplication(created.get("id").asText(), "APPROVED", "Approved after validation");
+        transitionApplication(created.get("id").asText(), "APPROVED", "Approved after validation", systemAdmin());
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", created.get("id").asText())
                         .with(opsUser()))
@@ -467,7 +467,7 @@ class LoanApplicationOpsControllerTest {
         transitionApplication(applicationId, "UNDER_REVIEW", "Ready for final approval");
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
-                        .with(opsUser())
+                        .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "targetStatus", "APPROVED",
@@ -482,7 +482,7 @@ class LoanApplicationOpsControllerTest {
         markAllRequiredKycDocumentsVerified(applicationId);
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
-                        .with(opsUser())
+                        .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "targetStatus", "APPROVED",
@@ -490,6 +490,146 @@ class LoanApplicationOpsControllerTest {
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("APPROVED"));
+    }
+
+    @Test
+    void opsUserCannotApproveOrRejectLoanApplications() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-962", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "APPROVED",
+                                "note", "Approve after checks"
+                        ))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("ACCESS_DENIED"));
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "REJECTED",
+                                "note", "Reject after checks"
+                        ))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("ACCESS_DENIED"));
+    }
+
+    @Test
+    void opsUserCanMoveLoanApplicationsIntoAndOutOfHold() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-963", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "HOLD",
+                                "note", "Waiting for borrower clarification"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("HOLD"))
+                .andExpect(jsonPath("$.lastActivity.summary").value("Moved from UNDER_REVIEW to HOLD"));
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "UNDER_REVIEW",
+                                "note", "Clarification received"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UNDER_REVIEW"))
+                .andExpect(jsonPath("$.lastActivity.summary").value("Moved from HOLD to UNDER_REVIEW"));
+    }
+
+    @Test
+    void systemAdminCanManuallyOverrideRejectedLoanBackIntoActiveQueue() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-964", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "REJECTED", "Rejected after review", systemAdmin());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/manual-status", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "HOLD",
+                                "note", "Reopening after borrower appeal"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("HOLD"))
+                .andExpect(jsonPath("$.lastActivity.summary").value("Moved from REJECTED to HOLD"))
+                .andExpect(jsonPath("$.lastActivity.detail").value("Manual override: Reopening after borrower appeal"));
+    }
+
+    @Test
+    void opsUserCannotUseManualStatusUpdate() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-965", "API", "ABCDE1234F");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/manual-status", created.get("id").asText())
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "REJECTED",
+                                "note", "Force close"
+                        ))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void manualStatusUpdateCannotTargetApprovedAndRequiresNote() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-966", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/manual-status", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "APPROVED",
+                                "note", "Force approve"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/manual-status", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "HOLD",
+                                "note", ""
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("VALIDATION_FAILED"));
     }
 
     @Test
@@ -501,7 +641,7 @@ class LoanApplicationOpsControllerTest {
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-961", "API", "ABCDE1234F");
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", created.get("id").asText())
-                        .with(opsUser())
+                        .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "targetStatus", "APPROVED",
@@ -512,10 +652,10 @@ class LoanApplicationOpsControllerTest {
 
         transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Started review");
         markAllRequiredKycDocumentsVerified(created.get("id").asText());
-        transitionApplication(created.get("id").asText(), "APPROVED", "Approved after checks");
+        transitionApplication(created.get("id").asText(), "APPROVED", "Approved after checks", systemAdmin());
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", created.get("id").asText())
-                        .with(opsUser())
+                        .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "targetStatus", "REJECTED",
@@ -762,8 +902,17 @@ class LoanApplicationOpsControllerTest {
     }
 
     private JsonNode transitionApplication(String applicationId, String targetStatus, String note) throws Exception {
+        return transitionApplication(applicationId, targetStatus, note, opsUser());
+    }
+
+    private JsonNode transitionApplication(
+            String applicationId,
+            String targetStatus,
+            String note,
+            org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor actor
+    ) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
-                        .with(opsUser())
+                        .with(actor)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "targetStatus", targetStatus,
