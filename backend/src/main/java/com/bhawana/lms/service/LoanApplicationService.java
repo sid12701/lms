@@ -30,9 +30,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -103,6 +106,71 @@ public class LoanApplicationService {
     public LoanApplication getApplication(UUID applicationId) {
         return loanApplicationRepository.findById(applicationId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown loan application id: " + applicationId));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<LoanApplicationLastActivity> getLatestActivity(UUID applicationId) {
+        LoanApplication application = getApplication(applicationId);
+
+        Stream<ActivityCandidate> candidates = Stream.of(
+                loanApplicationIntakeAuditRepository.findTopByLoanApplication_IdOrderByCreatedAtDesc(applicationId)
+                        .map(audit -> new ActivityCandidate(
+                                0,
+                                new LoanApplicationLastActivity(
+                                        "INTAKE_CAPTURED",
+                                        audit.getActorUsername(),
+                                        "Application captured from " + application.getSourceChannel(),
+                                        "External loan id " + application.getExternalLoanId(),
+                                        audit.getCorrelationId(),
+                                        audit.getCreatedAt()
+                                )
+                        )),
+                loanApplicationStatusTransitionRepository.findTopByLoanApplication_IdOrderByCreatedAtDesc(applicationId)
+                        .map(transition -> new ActivityCandidate(
+                                1,
+                                new LoanApplicationLastActivity(
+                                        "STATUS_TRANSITION",
+                                        transition.getActorUsername(),
+                                        "Moved from " + transition.getFromStatus().name() + " to " + transition.getToStatus().name(),
+                                        transition.getNote(),
+                                        transition.getCorrelationId(),
+                                        transition.getCreatedAt()
+                                )
+                        )),
+                loanApplicationAssignmentEventRepository.findTopByLoanApplication_IdOrderByCreatedAtDesc(applicationId)
+                        .map(event -> new ActivityCandidate(
+                                2,
+                                new LoanApplicationLastActivity(
+                                        "ASSIGNMENT_UPDATED",
+                                        event.getActorUsername(),
+                                        event.getToAssigneeUsername() == null
+                                                ? "Released back to the shared queue"
+                                                : "Assigned to " + event.getToAssigneeUsername(),
+                                        event.getNote(),
+                                        event.getCorrelationId(),
+                                        event.getCreatedAt()
+                                )
+                        )),
+                loanApplicationDocumentChecklistRepository.findTopByLoanApplication_IdOrderByUpdatedAtDesc(applicationId)
+                        .filter(this::hasMeaningfulDocumentActivity)
+                        .map(item -> new ActivityCandidate(
+                                3,
+                                new LoanApplicationLastActivity(
+                                        "DOCUMENT_REVIEW_UPDATED",
+                                        item.getUpdatedByUsername(),
+                                        "Updated " + item.getDocumentType().getDisplayName()
+                                                + " to " + item.getStatus().name(),
+                                        resolveDocumentActivityDetail(item),
+                                        null,
+                                        item.getUpdatedAt()
+                                )
+                        ))
+        ).flatMap(Optional::stream);
+
+        return candidates.max(Comparator
+                        .comparing((ActivityCandidate candidate) -> candidate.activity().occurredAt())
+                        .thenComparingInt(ActivityCandidate::priority))
+                .map(ActivityCandidate::activity);
     }
 
     @Transactional(readOnly = true)
@@ -484,6 +552,28 @@ public class LoanApplicationService {
         return normalized == null ? null : normalized.toLowerCase();
     }
 
+    private boolean hasMeaningfulDocumentActivity(LoanApplicationDocumentChecklist checklistItem) {
+        return checklistItem.getUpdatedAt() != null
+                && checklistItem.getCreatedAt() != null
+                && checklistItem.getUpdatedAt().isAfter(checklistItem.getCreatedAt());
+    }
+
+    private static String resolveDocumentActivityDetail(LoanApplicationDocumentChecklist checklistItem) {
+        if (checklistItem.getStatus() == LoanApplicationDocumentChecklistStatus.REJECTED) {
+            return normalizeOptional(checklistItem.getRejectionReason()) != null
+                    ? checklistItem.getRejectionReason()
+                    : checklistItem.getNote();
+        }
+
+        if (checklistItem.getStatus() == LoanApplicationDocumentChecklistStatus.VERIFIED) {
+            return normalizeOptional(checklistItem.getReviewReason()) != null
+                    ? checklistItem.getReviewReason()
+                    : checklistItem.getNote();
+        }
+
+        return checklistItem.getNote();
+    }
+
     private void ensureDocumentChecklist(LoanApplication application) {
         if (!loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(application.getId()).isEmpty()) {
             return;
@@ -565,5 +655,18 @@ public class LoanApplicationService {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to serialize intake payload audit.", exception);
         }
+    }
+
+    private record ActivityCandidate(int priority, LoanApplicationLastActivity activity) {
+    }
+
+    public record LoanApplicationLastActivity(
+            String activityType,
+            String actorUsername,
+            String summary,
+            String detail,
+            String correlationId,
+            Instant occurredAt
+    ) {
     }
 }

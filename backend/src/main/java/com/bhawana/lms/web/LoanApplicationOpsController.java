@@ -60,7 +60,8 @@ public class LoanApplicationOpsController {
 
     @GetMapping("/{applicationId}")
     public LoanApplicationDetailResponse getApplication(@PathVariable UUID applicationId) {
-        return toDetailResponse(loanApplicationService.getApplication(applicationId));
+        LoanApplication application = loanApplicationService.getApplication(applicationId);
+        return toDetailResponse(application, loanApplicationService.getLatestActivity(applicationId).orElse(null));
     }
 
     @GetMapping("/{applicationId}/intake-audits")
@@ -129,7 +130,7 @@ public class LoanApplicationOpsController {
                 request.targetStatus(),
                 request.note()
         );
-        return toDetailResponse(application);
+        return toDetailResponse(application, loanApplicationService.getLatestActivity(applicationId).orElse(null));
     }
 
     @PostMapping("/{applicationId}/assignment")
@@ -144,7 +145,7 @@ public class LoanApplicationOpsController {
                 request.assigneeUsername(),
                 request.note()
         );
-        return toDetailResponse(application);
+        return toDetailResponse(application, loanApplicationService.getLatestActivity(applicationId).orElse(null));
     }
 
     @PutMapping("/{applicationId}/kyc-documents/{documentType}")
@@ -200,7 +201,10 @@ public class LoanApplicationOpsController {
         );
     }
 
-    private static LoanApplicationDetailResponse toDetailResponse(LoanApplication application) {
+    private static LoanApplicationDetailResponse toDetailResponse(
+            LoanApplication application,
+            LoanApplicationService.LoanApplicationLastActivity lastActivity
+    ) {
         return new LoanApplicationDetailResponse(
                 application.getId().toString(),
                 application.getBorrower().getId().toString(),
@@ -228,7 +232,15 @@ public class LoanApplicationOpsController {
                 application.getAssignedByUsername(),
                 application.getAssignedAt(),
                 application.getCreatedAt().toString(),
-                application.getUpdatedAt().toString()
+                application.getUpdatedAt().toString(),
+                lastActivity == null ? null : new LoanApplicationLastActivityResponse(
+                        lastActivity.activityType(),
+                        lastActivity.actorUsername(),
+                        lastActivity.summary(),
+                        lastActivity.detail(),
+                        lastActivity.correlationId(),
+                        lastActivity.occurredAt().toString()
+                )
         );
     }
 
@@ -370,7 +382,18 @@ public class LoanApplicationOpsController {
             String assignedByUsername,
             Instant assignedAt,
             String createdAt,
-            String updatedAt
+            String updatedAt,
+            LoanApplicationLastActivityResponse lastActivity
+    ) {
+    }
+
+    public record LoanApplicationLastActivityResponse(
+            String activityType,
+            String actorUsername,
+            String summary,
+            String detail,
+            String correlationId,
+            String occurredAt
     ) {
     }
 

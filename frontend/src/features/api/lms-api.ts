@@ -172,7 +172,19 @@ export type LoanApplicationRecord = {
   createdAt: string
 }
 
-export type LoanApplicationDetailRecord = LoanApplicationRecord
+export type LoanApplicationLastActivityRecord = {
+  activityType: 'INTAKE_CAPTURED' | 'STATUS_TRANSITION' | 'ASSIGNMENT_UPDATED' | 'DOCUMENT_REVIEW_UPDATED'
+  actorUsername: string | null
+  summary: string
+  detail: string | null
+  correlationId: string | null
+  occurredAt: string
+}
+
+export type LoanApplicationDetailRecord = LoanApplicationRecord & {
+  updatedAt: string
+  lastActivity: LoanApplicationLastActivityRecord | null
+}
 
 export type LoanApplicationIntakeAuditRecord = {
   id: string

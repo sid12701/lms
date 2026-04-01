@@ -278,6 +278,9 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(created.get("id").asText()))
                 .andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.lastActivity.activityType").value("INTAKE_CAPTURED"))
+                .andExpect(jsonPath("$.lastActivity.actorUsername").value("ops.user"))
+                .andExpect(jsonPath("$.lastActivity.summary").value("Application captured from API"))
                 .andExpect(jsonPath("$.borrowerDateOfBirth").value("1992-03-10"))
                 .andExpect(jsonPath("$.borrowerCity").value("Mumbai"))
                 .andExpect(jsonPath("$.borrowerState").value("Maharashtra"))
@@ -299,6 +302,58 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[1].fromStatus").value("RECEIVED"))
                 .andExpect(jsonPath("$[1].toStatus").value("UNDER_REVIEW"))
                 .andExpect(jsonPath("$[1].note").value("Assigned for analyst review"));
+    }
+
+    @Test
+    void loanDetailSurfacesLatestWorkflowActivityAcrossStatusAssignmentAndDocumentReview() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+        createManagedOpsUser("queue.owner");
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-952", "PARTNER_PORTAL", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+
+        transitionApplication(applicationId, "UNDER_REVIEW", "Ready for queue assignment");
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lastActivity.activityType").value("STATUS_TRANSITION"))
+                .andExpect(jsonPath("$.lastActivity.summary").value("Moved from RECEIVED to UNDER_REVIEW"))
+                .andExpect(jsonPath("$.lastActivity.detail").value("Ready for queue assignment"));
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/assignment", applicationId)
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "assigneeUsername", "queue.owner",
+                                "note", "Assigned to queue owner"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lastActivity.activityType").value("ASSIGNMENT_UPDATED"))
+                .andExpect(jsonPath("$.lastActivity.summary").value("Assigned to queue.owner"))
+                .andExpect(jsonPath("$.lastActivity.detail").value("Assigned to queue owner"));
+
+        mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
+                        applicationId,
+                        "PAN_CARD")
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "status", "VERIFIED",
+                                "note", "PAN validated against OCR",
+                                "reviewReason", "PAN matches borrower records"
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lastActivity.activityType").value("DOCUMENT_REVIEW_UPDATED"))
+                .andExpect(jsonPath("$.lastActivity.actorUsername").value("ops.user"))
+                .andExpect(jsonPath("$.lastActivity.summary").value("Updated PAN Card to VERIFIED"))
+                .andExpect(jsonPath("$.lastActivity.detail").value("PAN matches borrower records"));
     }
 
     @Test

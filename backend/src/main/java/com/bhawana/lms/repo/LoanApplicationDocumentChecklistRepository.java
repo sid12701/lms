@@ -15,4 +15,6 @@ public interface LoanApplicationDocumentChecklistRepository extends JpaRepositor
             UUID loanApplicationId,
             LoanApplicationDocumentType documentType
     );
+
+    Optional<LoanApplicationDocumentChecklist> findTopByLoanApplication_IdOrderByUpdatedAtDesc(UUID loanApplicationId);
 }

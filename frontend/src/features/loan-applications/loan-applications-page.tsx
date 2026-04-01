@@ -23,6 +23,8 @@ import {
   updateLoanApplicationDocumentPlaceholder,
   type LoanApplicationIntakeAuditRecord,
   type LoanApplicationAssignmentEventRecord,
+  type LoanApplicationDetailRecord,
+  type LoanApplicationLastActivityRecord,
   type LoanApplicationDocumentPlaceholderRecord,
   type LoanApplicationDocumentPlaceholderStatus,
   type LoanApplicationRecord,
@@ -318,6 +320,21 @@ function formatOptionalTimestamp(value?: string | null) {
   return formatTimestamp(value)
 }
 
+function loanActivityTypeLabel(activityType?: LoanApplicationLastActivityRecord['activityType'] | null) {
+  switch (activityType) {
+    case 'INTAKE_CAPTURED':
+      return 'Intake captured'
+    case 'STATUS_TRANSITION':
+      return 'Status transition'
+    case 'ASSIGNMENT_UPDATED':
+      return 'Assignment updated'
+    case 'DOCUMENT_REVIEW_UPDATED':
+      return 'Document review updated'
+    default:
+      return 'Not captured'
+  }
+}
+
 function loanDocumentPlaceholderReasonLabel(status: LoanApplicationDocumentPlaceholderStatus) {
   return status === 'REJECTED' ? 'Rejection reason' : 'Review reason'
 }
@@ -501,7 +518,7 @@ function countDocumentMetadataSignals(records: LoanApplicationDocumentPlaceholde
 export function LoanApplicationsPage() {
   const { user } = useAuth()
   const [applications, setApplications] = useState<LoanApplicationRecord[]>([])
-  const [selectedLoan, setSelectedLoan] = useState<LoanApplicationRecord | null>(null)
+  const [selectedLoan, setSelectedLoan] = useState<LoanApplicationDetailRecord | null>(null)
   const [assignmentHistory, setAssignmentHistory] = useState<LoanApplicationAssignmentEventRecord[]>([])
   const [statusHistory, setStatusHistory] = useState<LoanApplicationStatusTransitionRecord[]>([])
   const [intakeAudits, setIntakeAudits] = useState<LoanApplicationIntakeAuditRecord[]>([])
@@ -588,6 +605,8 @@ export function LoanApplicationsPage() {
     visibleSelectedApplication?.borrowerEmploymentType,
   )
   const borrowerIncomeCoverage = formatIncomeCoverage(visibleSelectedApplication)
+  const lastActivity =
+    selectedLoan && selectedLoan.id === selectedApplicationId ? selectedLoan.lastActivity ?? null : null
   const sortedDocumentPlaceholders = useMemo(
     () => sortLoanDocumentPlaceholders(documentPlaceholders),
     [documentPlaceholders],
@@ -1486,6 +1505,41 @@ export function LoanApplicationsPage() {
                     <div className="loan-workflow__metric">
                       <span>Income coverage</span>
                       <strong>{borrowerIncomeCoverage}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="detail-section">
+                  <div className="section-eyebrow">Latest activity</div>
+                  <div className="loan-detail-grid">
+                    <div className="loan-detail-field">
+                      <span>Activity type</span>
+                      <strong>{loanActivityTypeLabel(lastActivity?.activityType)}</strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>Last modified by</span>
+                      <strong>{lastActivity?.actorUsername || 'Not captured'}</strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>Last modified at</span>
+                      <strong>
+                        {lastActivity?.occurredAt ? formatTimestamp(lastActivity.occurredAt) : 'Not captured'}
+                      </strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>Correlation ID</span>
+                      <strong>{lastActivity?.correlationId || 'Not captured'}</strong>
+                    </div>
+                  </div>
+                  <div className="loan-transition-panel" style={{ marginTop: '1rem' }}>
+                    <div className="loan-transition-panel__header">
+                      <div>
+                        <h4>{lastActivity?.summary || 'No recent workflow activity yet'}</h4>
+                        <p className="helper-copy">
+                          {lastActivity?.detail || 'The latest workflow mutation will appear here once review activity starts.'}
+                        </p>
+                      </div>
+                      <Badge>{visibleSelectedApplication.sourceChannel}</Badge>
                     </div>
                   </div>
                 </div>
