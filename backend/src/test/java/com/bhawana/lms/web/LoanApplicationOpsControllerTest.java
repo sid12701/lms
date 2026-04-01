@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
@@ -62,6 +63,9 @@ class LoanApplicationOpsControllerTest {
     private LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
 
     @Autowired
+    private LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
+
+    @Autowired
     private LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository;
 
     @Autowired
@@ -93,6 +97,7 @@ class LoanApplicationOpsControllerTest {
 
     @BeforeEach
     void setUp() {
+        loanApplicationAuditEventRepository.deleteAllInBatch();
         loanApplicationAssignmentEventRepository.deleteAllInBatch();
         loanApplicationDocumentChecklistRepository.deleteAllInBatch();
         loanApplicationStatusTransitionRepository.deleteAllInBatch();
@@ -356,6 +361,45 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.lastActivity.actorUsername").value("ops.user"))
                 .andExpect(jsonPath("$.lastActivity.summary").value("Updated PAN Card to VERIFIED"))
                 .andExpect(jsonPath("$.lastActivity.detail").value("PAN matches borrower records"));
+    }
+
+    @Test
+    void statusTransitionsEmitLoanAuditEvents() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-953", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+
+        transitionApplication(applicationId, "UNDER_REVIEW", "Picked up for review");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/manual-status", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "HOLD",
+                                "note", "Escalating to manual exception queue",
+                                "reasonCode", "MANUAL_ADMIN_OVERRIDE"
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/audit-events", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].action").value("MANUAL_STATUS_OVERRIDE"))
+                .andExpect(jsonPath("$[0].fromStatus").value("UNDER_REVIEW"))
+                .andExpect(jsonPath("$[0].toStatus").value("HOLD"))
+                .andExpect(jsonPath("$[0].reasonCode").value("MANUAL_ADMIN_OVERRIDE"))
+                .andExpect(jsonPath("$[0].note").value("Manual override: Escalating to manual exception queue"))
+                .andExpect(jsonPath("$[0].actorUsername").value("ops.admin"))
+                .andExpect(jsonPath("$[1].action").value("STATUS_TRANSITION"))
+                .andExpect(jsonPath("$[1].fromStatus").value("RECEIVED"))
+                .andExpect(jsonPath("$[1].toStatus").value("UNDER_REVIEW"))
+                .andExpect(jsonPath("$[1].reasonCode").doesNotExist())
+                .andExpect(jsonPath("$[1].note").value("Picked up for review"))
+                .andExpect(jsonPath("$[1].actorUsername").value("ops.user"));
     }
 
     @Test

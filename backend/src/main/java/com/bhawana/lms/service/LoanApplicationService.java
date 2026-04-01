@@ -4,6 +4,8 @@ import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.KycCompletionRequiredException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanApplication;
+import com.bhawana.lms.domain.LoanApplicationAuditAction;
+import com.bhawana.lms.domain.LoanApplicationAuditEvent;
 import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
@@ -18,6 +20,7 @@ import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
@@ -45,6 +48,7 @@ public class LoanApplicationService {
 
     private final AppUserRepository appUserRepository;
     private final BorrowerRepository borrowerRepository;
+    private final LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
     private final LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository;
     private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     private final LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
@@ -58,6 +62,7 @@ public class LoanApplicationService {
     public LoanApplicationService(
             AppUserRepository appUserRepository,
             BorrowerRepository borrowerRepository,
+            LoanApplicationAuditEventRepository loanApplicationAuditEventRepository,
             LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository,
             LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
             LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository,
@@ -70,6 +75,7 @@ public class LoanApplicationService {
     ) {
         this.appUserRepository = appUserRepository;
         this.borrowerRepository = borrowerRepository;
+        this.loanApplicationAuditEventRepository = loanApplicationAuditEventRepository;
         this.loanApplicationAssignmentEventRepository = loanApplicationAssignmentEventRepository;
         this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
         this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
@@ -180,6 +186,12 @@ public class LoanApplicationService {
     public List<LoanApplicationStatusTransition> listStatusTransitions(UUID applicationId) {
         getApplication(applicationId);
         return loanApplicationStatusTransitionRepository.findTop20ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanApplicationAuditEvent> listAuditEvents(UUID applicationId) {
+        getApplication(applicationId);
+        return loanApplicationAuditEventRepository.findTop25ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
     }
 
     @Transactional(readOnly = true)
@@ -343,6 +355,15 @@ public class LoanApplicationService {
                 resolvedReasonCode,
                 CorrelationIdHolder.get()
         ));
+        recordAuditEvent(
+                savedApplication,
+                LoanApplicationAuditAction.STATUS_TRANSITION,
+                currentStatus,
+                targetStatus,
+                actorUsername,
+                resolvedNote,
+                resolvedReasonCode
+        );
         return savedApplication;
     }
 
@@ -396,6 +417,15 @@ public class LoanApplicationService {
                 resolvedReasonCode,
                 CorrelationIdHolder.get()
         ));
+        recordAuditEvent(
+                savedApplication,
+                LoanApplicationAuditAction.MANUAL_STATUS_OVERRIDE,
+                currentStatus,
+                targetStatus,
+                actorUsername,
+                resolvedNote,
+                resolvedReasonCode
+        );
         return savedApplication;
     }
 
@@ -641,6 +671,27 @@ public class LoanApplicationService {
             throw new IllegalArgumentException(message);
         }
         return reasonCode;
+    }
+
+    private void recordAuditEvent(
+            LoanApplication application,
+            LoanApplicationAuditAction action,
+            LoanApplicationStatus fromStatus,
+            LoanApplicationStatus toStatus,
+            String actorUsername,
+            String note,
+            LoanApplicationStatusReasonCode reasonCode
+    ) {
+        loanApplicationAuditEventRepository.save(new LoanApplicationAuditEvent(
+                application,
+                action,
+                normalizeActorUsername(actorUsername),
+                fromStatus,
+                toStatus,
+                note,
+                reasonCode,
+                CorrelationIdHolder.get()
+        ));
     }
 
     private boolean hasMeaningfulDocumentActivity(LoanApplicationDocumentChecklist checklistItem) {

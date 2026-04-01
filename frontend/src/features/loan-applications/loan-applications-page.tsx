@@ -10,6 +10,7 @@ import {
   assignLoanApplication,
   createLoanApplication,
   getLoanApplication,
+  listLoanApplicationAuditEvents,
   listLoanApplicationAssignmentEvents,
   listLoanApplicationIntakeAudits,
   listLoanApplicationDocumentPlaceholders,
@@ -23,6 +24,8 @@ import {
   transitionLoanApplicationStatus,
   manuallyOverrideLoanApplicationStatus,
   updateLoanApplicationDocumentPlaceholder,
+  type LoanApplicationAuditAction,
+  type LoanApplicationAuditEventRecord,
   type LoanApplicationIntakeAuditRecord,
   type LoanApplicationAssignmentEventRecord,
   type LoanApplicationDetailRecord,
@@ -378,6 +381,16 @@ function loanStatusReasonCodeLabel(code?: LoanApplicationStatusReasonCode | null
   }
 }
 
+function loanAuditActionLabel(action: LoanApplicationAuditAction) {
+  switch (action) {
+    case 'MANUAL_STATUS_OVERRIDE':
+      return 'Manual admin override'
+    case 'STATUS_TRANSITION':
+    default:
+      return 'Status transition'
+  }
+}
+
 function sortByCreatedAtDesc<T extends { createdAt: string }>(records: T[]) {
   return [...records].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
 }
@@ -609,6 +622,7 @@ export function LoanApplicationsPage() {
   const [selectedLoan, setSelectedLoan] = useState<LoanApplicationDetailRecord | null>(null)
   const [assignmentHistory, setAssignmentHistory] = useState<LoanApplicationAssignmentEventRecord[]>([])
   const [statusHistory, setStatusHistory] = useState<LoanApplicationStatusTransitionRecord[]>([])
+  const [auditTrail, setAuditTrail] = useState<LoanApplicationAuditEventRecord[]>([])
   const [intakeAudits, setIntakeAudits] = useState<LoanApplicationIntakeAuditRecord[]>([])
   const [lsps, setLsps] = useState<LspRecord[]>([])
   const [products, setProducts] = useState<LoanProductRecord[]>([])
@@ -618,12 +632,14 @@ export function LoanApplicationsPage() {
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [auditLoading, setAuditLoading] = useState(false)
+  const [auditTrailLoading, setAuditTrailLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
   const [assigning, setAssigning] = useState(false)
   const [pageError, setPageError] = useState('')
   const [workflowError, setWorkflowError] = useState('')
   const [auditError, setAuditError] = useState('')
+  const [auditTrailError, setAuditTrailError] = useState('')
   const [assignmentError, setAssignmentError] = useState('')
   const [documentPlaceholders, setDocumentPlaceholders] = useState<
     LoanApplicationDocumentPlaceholderRecord[]
@@ -652,6 +668,8 @@ export function LoanApplicationsPage() {
   const [manualStatusNote, setManualStatusNote] = useState('')
   const [manualStatusReasonCode, setManualStatusReasonCode] =
     useState<LoanApplicationStatusReasonCode>('MANUAL_ADMIN_OVERRIDE')
+  const [statusHistoryReasonCodeFilter, setStatusHistoryReasonCodeFilter] =
+    useState<LoanApplicationStatusReasonCode | ''>('')
   const [manualStatusSubmitting, setManualStatusSubmitting] = useState(false)
   const [manualStatusError, setManualStatusError] = useState('')
   const [assignmentNote, setAssignmentNote] = useState('')
@@ -676,6 +694,29 @@ export function LoanApplicationsPage() {
       : selectedLoan ?? selectedApplicationFromList
   const latestAudit = intakeAudits[0] ?? null
   const selectedStatusHistory = useMemo(() => sortByCreatedAtDesc(statusHistory), [statusHistory])
+  const selectedAuditTrail = useMemo(() => sortByCreatedAtDesc(auditTrail), [auditTrail])
+  const availableStatusHistoryReasonCodes = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedStatusHistory.flatMap((transition) =>
+            transition.reasonCode ? [transition.reasonCode] : [],
+          ),
+        ),
+      ).sort((left, right) =>
+        loanStatusReasonCodeLabel(left).localeCompare(loanStatusReasonCodeLabel(right)),
+      ),
+    [selectedStatusHistory],
+  )
+  const filteredStatusHistory = useMemo(
+    () =>
+      statusHistoryReasonCodeFilter
+        ? selectedStatusHistory.filter(
+            (transition) => transition.reasonCode === statusHistoryReasonCodeFilter,
+          )
+        : selectedStatusHistory,
+    [selectedStatusHistory, statusHistoryReasonCodeFilter],
+  )
   const selectedAssignmentHistory = useMemo(
     () => sortByCreatedAtDesc(assignmentHistory),
     [assignmentHistory],
@@ -777,6 +818,12 @@ export function LoanApplicationsPage() {
     )
   }, [manualStatusTargets])
 
+  useEffect(() => {
+    setStatusHistoryReasonCodeFilter((current) =>
+      current && !availableStatusHistoryReasonCodes.includes(current) ? '' : current,
+    )
+  }, [availableStatusHistoryReasonCodes])
+
   async function loadApplications(nextFilters: ListFilterState) {
     const response = await listLoanApplications({
       lspId: nextFilters.lspId || undefined,
@@ -804,6 +851,27 @@ export function LoanApplicationsPage() {
     setSelectedLoan(detailResponse)
     setStatusHistory(sortByCreatedAtDesc(historyResponse))
     setAssignmentHistory(sortByCreatedAtDesc(assignmentResponse))
+    await refreshAuditTrail(applicationId)
+  }
+
+  async function refreshAuditTrail(applicationId: string, showLoading = false) {
+    if (showLoading) {
+      setAuditTrailLoading(true)
+    }
+
+    try {
+      const response = await listLoanApplicationAuditEvents(applicationId)
+      setAuditTrail(sortByCreatedAtDesc(response))
+      setAuditTrailError('')
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : 'Unable to load loan audit trail.'
+      setAuditTrail([])
+      setAuditTrailError(message)
+    } finally {
+      if (showLoading) {
+        setAuditTrailLoading(false)
+      }
+    }
   }
 
   async function refreshDocumentPlaceholders(applicationId: string) {
@@ -883,6 +951,7 @@ export function LoanApplicationsPage() {
           setSelectedLoan(null)
           setAssignmentHistory([])
           setStatusHistory([])
+          setAuditTrail([])
           setWorkflowError('')
           setApprovalBlocker(null)
           setAssignmentError('')
@@ -892,6 +961,7 @@ export function LoanApplicationsPage() {
         setSelectedLoan(null)
         setAssignmentHistory([])
         setStatusHistory([])
+        setAuditTrail([])
         setDetailLoading(true)
         setWorkflowError('')
         setApprovalBlocker(null)
@@ -926,6 +996,46 @@ export function LoanApplicationsPage() {
     }
 
     void loadSelectedLoan()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedApplicationId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadAuditTrail() {
+      if (!selectedApplicationId) {
+        setAuditTrail([])
+        setAuditTrailError('')
+        setAuditTrailLoading(false)
+        return
+      }
+
+      setAuditTrailLoading(true)
+      setAuditTrailError('')
+
+      try {
+        const response = await listLoanApplicationAuditEvents(selectedApplicationId)
+        if (!cancelled) {
+          setAuditTrail(sortByCreatedAtDesc(response))
+        }
+      } catch (loadError) {
+        const message =
+          loadError instanceof Error ? loadError.message : 'Unable to load loan audit trail.'
+        if (!cancelled) {
+          setAuditTrail([])
+          setAuditTrailError(message)
+        }
+      } finally {
+        if (!cancelled) {
+          setAuditTrailLoading(false)
+        }
+      }
+    }
+
+    void loadAuditTrail()
 
     return () => {
       cancelled = true
@@ -2373,16 +2483,50 @@ export function LoanApplicationsPage() {
 
                 <div className="loan-history">
                   <div className="loan-history__header">
-                    <div className="section-eyebrow">Status history</div>
-                    <Badge>{selectedStatusHistory.length} events</Badge>
+                    <div>
+                      <div className="section-eyebrow">Status history</div>
+                      <p className="helper-copy">
+                        Filter by structured reason code to isolate hold and rejection patterns.
+                      </p>
+                    </div>
+                    <div className="inline-actions">
+                      {availableStatusHistoryReasonCodes.length ? (
+                        <select
+                          aria-label="Filter status history by reason code"
+                          className="ui-input ui-select"
+                          value={statusHistoryReasonCodeFilter}
+                          onChange={(event) =>
+                            setStatusHistoryReasonCodeFilter(
+                              (event.target.value as LoanApplicationStatusReasonCode | '') || '',
+                            )
+                          }
+                        >
+                          <option value="">All reason codes</option>
+                          {availableStatusHistoryReasonCodes.map((code) => (
+                            <option key={code} value={code}>
+                              {loanStatusReasonCodeLabel(code)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
+                      <Badge>
+                        {filteredStatusHistory.length}
+                        {statusHistoryReasonCodeFilter ? ` of ${selectedStatusHistory.length}` : ''} events
+                      </Badge>
+                    </div>
                   </div>
                   {detailLoading ? <div className="empty-state">Loading loan detail...</div> : null}
                   {!detailLoading && !selectedStatusHistory.length ? (
                     <div className="empty-state">No status transitions recorded yet.</div>
                   ) : null}
-                  {!detailLoading && selectedStatusHistory.length ? (
+                  {!detailLoading && selectedStatusHistory.length && !filteredStatusHistory.length ? (
+                    <div className="empty-state">
+                      No status transitions match the selected reason code.
+                    </div>
+                  ) : null}
+                  {!detailLoading && filteredStatusHistory.length ? (
                     <div className="loan-history__list">
-                      {selectedStatusHistory.map((transition) => (
+                      {filteredStatusHistory.map((transition) => (
                         <div className="loan-history__item" key={transition.id}>
                           <div>
                             <strong>
@@ -2440,6 +2584,54 @@ export function LoanApplicationsPage() {
                 <div className="helper-copy">
                   Product: {visibleSelectedApplication.productCode} - Source:{' '}
                   {visibleSelectedApplication.sourceChannel}
+                </div>
+                <div className="loan-history">
+                  <div className="loan-history__header">
+                    <div>
+                      <div className="section-eyebrow">Status audit trail</div>
+                      <p className="helper-copy">
+                        Immutable events emitted whenever loan status is changed.
+                      </p>
+                    </div>
+                    <Badge>{selectedAuditTrail.length} events</Badge>
+                  </div>
+                  {auditTrailLoading ? <div className="empty-state">Loading status audit trail...</div> : null}
+                  {!auditTrailLoading && auditTrailError ? (
+                    <div className="empty-state">{auditTrailError}</div>
+                  ) : null}
+                  {!auditTrailLoading && !auditTrailError && !selectedAuditTrail.length ? (
+                    <div className="empty-state">
+                      No status audit events are available for the selected application.
+                    </div>
+                  ) : null}
+                  {!auditTrailLoading && !auditTrailError && selectedAuditTrail.length ? (
+                    <div className="loan-history__list">
+                      {selectedAuditTrail.map((event) => (
+                        <div className="loan-history__item" key={event.id}>
+                          <div>
+                            <strong>
+                              {loanStatusLabel(event.fromStatus)} - {loanStatusLabel(event.toStatus)}
+                            </strong>
+                            <p className="helper-copy">{formatTimestamp(event.createdAt)}</p>
+                            <p className="helper-copy">{formatNote(event.note)}</p>
+                            <p className="helper-copy">
+                              Reason code: {loanStatusReasonCodeLabel(event.reasonCode)}
+                            </p>
+                            <p className="helper-copy">
+                              Correlation ID: {event.correlationId ?? 'Not captured'}
+                            </p>
+                          </div>
+                          <div className="inline-actions">
+                            <Badge variant={loanStatusVariant(event.toStatus)}>
+                              {loanStatusLabel(event.toStatus)}
+                            </Badge>
+                            <Badge>{loanAuditActionLabel(event.action)}</Badge>
+                            <Badge variant="warning">{event.actorUsername}</Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
                 {auditLoading ? <div className="empty-state">Loading intake audit...</div> : null}
                 {auditError ? <div className="empty-state">{auditError}</div> : null}

@@ -229,6 +229,21 @@ export type LoanApplicationAssignmentEventRecord = {
   createdAt: string
 }
 
+export type LoanApplicationAuditAction = 'STATUS_TRANSITION' | 'MANUAL_STATUS_OVERRIDE'
+
+export type LoanApplicationAuditEventRecord = {
+  id: string
+  loanApplicationId: string
+  action: LoanApplicationAuditAction
+  actorUsername: string
+  fromStatus: LoanApplicationStatus
+  toStatus: LoanApplicationStatus
+  note: string
+  reasonCode: LoanApplicationStatusReasonCode | null
+  correlationId: string | null
+  createdAt: string
+}
+
 export type LoanApplicationDocumentPlaceholderRecord = {
   id: string
   loanApplicationId: string
@@ -636,6 +651,12 @@ export function listLoanApplicationStatusTransitions(applicationId: string) {
 export function listLoanApplicationAssignmentEvents(applicationId: string) {
   return requestJson<LoanApplicationAssignmentEventRecord[]>(
     `/api/v1/internal/ops/loan-applications/${applicationId}/assignment-events`,
+  )
+}
+
+export function listLoanApplicationAuditEvents(applicationId: string) {
+  return requestJson<LoanApplicationAuditEventRecord[]>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/audit-events`,
   )
 }
 

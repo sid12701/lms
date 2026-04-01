@@ -1,6 +1,7 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanApplication;
+import com.bhawana.lms.domain.LoanApplicationAuditEvent;
 import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
@@ -85,6 +86,13 @@ public class LoanApplicationOpsController {
     public List<LoanApplicationAssignmentEventResponse> listAssignmentEvents(@PathVariable UUID applicationId) {
         return loanApplicationService.listAssignmentEvents(applicationId).stream()
                 .map(LoanApplicationOpsController::toAssignmentEventResponse)
+                .toList();
+    }
+
+    @GetMapping("/{applicationId}/audit-events")
+    public List<LoanApplicationAuditEventResponse> listAuditEvents(@PathVariable UUID applicationId) {
+        return loanApplicationService.listAuditEvents(applicationId).stream()
+                .map(LoanApplicationOpsController::toAuditEventResponse)
                 .toList();
     }
 
@@ -335,6 +343,21 @@ public class LoanApplicationOpsController {
         );
     }
 
+    private static LoanApplicationAuditEventResponse toAuditEventResponse(LoanApplicationAuditEvent event) {
+        return new LoanApplicationAuditEventResponse(
+                event.getId().toString(),
+                event.getLoanApplication().getId().toString(),
+                event.getAction().name(),
+                event.getActorUsername(),
+                event.getFromStatus().name(),
+                event.getToStatus().name(),
+                event.getNote(),
+                event.getReasonCode() == null ? null : event.getReasonCode().name(),
+                event.getCorrelationId(),
+                event.getCreatedAt().toString()
+        );
+    }
+
     private static LoanApplicationDocumentChecklistResponse toDocumentChecklistResponse(
             LoanApplicationDocumentChecklist checklistItem
     ) {
@@ -513,6 +536,20 @@ public class LoanApplicationOpsController {
             String toAssigneeUsername,
             String actorUsername,
             String note,
+            String correlationId,
+            String createdAt
+    ) {
+    }
+
+    public record LoanApplicationAuditEventResponse(
+            String id,
+            String loanApplicationId,
+            String action,
+            String actorUsername,
+            String fromStatus,
+            String toStatus,
+            String note,
+            String reasonCode,
             String correlationId,
             String createdAt
     ) {
