@@ -9,11 +9,16 @@ import { LspAdminPage } from './features/admin/lsp-admin-page'
 import { ApiClientsPage } from './features/api-clients/api-clients-page'
 import { LoanApplicationsPage } from './features/loan-applications/loan-applications-page'
 import { LspLoansPage } from './features/lsp-loans/lsp-loans-page'
+import { ReportsPage } from './features/reports/reports-page'
 import { UsersPage } from './features/users/users-page'
 import { ProductConfigurationPage } from './features/products/product-configuration-page'
 
 function isLspUiUser(roles: string[]) {
   return roles.includes('LSP_UI_READ') || roles.includes('LSP_UI_WRITE')
+}
+
+function canAccessReports(roles: string[]) {
+  return roles.includes('SYSTEM_ADMIN')
 }
 
 function defaultLandingPath(user: { roles: string[] } | null, mustChangePassword: boolean) {
@@ -81,6 +86,16 @@ function LspOnlyRoute({ children }: { children: ReactElement }) {
 
   if (user && !isLspUiUser(user.roles)) {
     return <Navigate to="/dashboard" replace />
+  }
+
+  return children
+}
+
+function ReportsOnlyRoute({ children }: { children: ReactElement }) {
+  const { user } = useAuth()
+
+  if (user && !canAccessReports(user.roles)) {
+    return <Navigate to={defaultLandingPath(user, false)} replace />
   }
 
   return children
@@ -162,6 +177,16 @@ export function AppRouter() {
           element={
             <InternalOnlyRoute>
               <LoanApplicationsPage />
+            </InternalOnlyRoute>
+          }
+        />
+        <Route
+          path="reports"
+          element={
+            <InternalOnlyRoute>
+              <ReportsOnlyRoute>
+                <ReportsPage />
+              </ReportsOnlyRoute>
             </InternalOnlyRoute>
           }
         />

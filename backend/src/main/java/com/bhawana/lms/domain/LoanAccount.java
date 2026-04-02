@@ -55,6 +55,9 @@ public class LoanAccount {
     @Column(name = "approved_at", nullable = false)
     private Instant approvedAt;
 
+    @Column(name = "disbursed_at")
+    private Instant disbursedAt;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "closure_reason", length = 32)
     private LoanAccountClosureReason closureReason;
@@ -149,12 +152,19 @@ public class LoanAccount {
         this.status = LoanAccountStatus.DISBURSEMENT_REQUESTED;
     }
 
-    public void updateDisbursementStatus(LoanAccountStatus status) {
+    public void updateDisbursementStatus(LoanAccountStatus status, Instant occurredAt) {
         this.status = status;
+        if (status == LoanAccountStatus.DISBURSED) {
+            this.disbursedAt = occurredAt;
+        }
     }
 
     public Instant getApprovedAt() {
         return approvedAt;
+    }
+
+    public Instant getDisbursedAt() {
+        return disbursedAt;
     }
 
     public LoanAccountClosureReason getClosureReason() {

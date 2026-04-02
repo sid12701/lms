@@ -558,6 +558,55 @@ async function requestJson<T>(
   return (await response.json()) as T
 }
 
+function readFilenameFromContentDisposition(contentDisposition: string | null) {
+  if (!contentDisposition) {
+    return null
+  }
+
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1])
+  }
+
+  const quotedMatch = contentDisposition.match(/filename="([^"]+)"/i)
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1]
+  }
+
+  const simpleMatch = contentDisposition.match(/filename=([^;]+)/i)
+  return simpleMatch?.[1]?.trim() ?? null
+}
+
+async function requestBlob(
+  path: string,
+  init: RequestInit = {},
+  options: { authenticated?: boolean; accessToken?: string } = {},
+) {
+  const authenticated = options.authenticated ?? true
+  const headers = new Headers(init.headers)
+  const accessToken = authenticated ? options.accessToken ?? getStoredAccessToken() : null
+
+  if (accessToken) {
+    headers.set('Authorization', `Bearer ${accessToken}`)
+  }
+
+  const response = await fetch(buildUrl(path), {
+    ...init,
+    headers,
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.text()
+    const { message, code } = readResponseError(errorBody)
+    throw new ApiError(message || `Request failed with status ${response.status}`, response.status, errorBody, code)
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: readFilenameFromContentDisposition(response.headers.get('content-disposition')),
+  }
+}
+
 export function loginWithPassword(username: string, password: string) {
   return requestJson<AuthTokenResponse>(
     '/api/v1/auth/token',
@@ -1100,4 +1149,31 @@ export function executeLoanApplicationForeclosureQuote(
       body: JSON.stringify(payload),
     },
   )
+}
+
+export function downloadPortfolioMisReport(filters?: {
+  lspId?: string
+  disbursalDateFrom?: string
+  disbursalDateTo?: string
+}) {
+  const params = new URLSearchParams()
+
+  if (filters?.lspId) {
+    params.set('lspId', filters.lspId)
+  }
+
+  if (filters?.disbursalDateFrom) {
+    params.set('disbursalDateFrom', filters.disbursalDateFrom)
+  }
+
+  if (filters?.disbursalDateTo) {
+    params.set('disbursalDateTo', filters.disbursalDateTo)
+  }
+
+  const queryString = params.toString()
+  const path = queryString
+    ? `/api/v1/internal/reports/portfolio-mis?${queryString}`
+    : '/api/v1/internal/reports/portfolio-mis'
+
+  return requestBlob(path)
 }

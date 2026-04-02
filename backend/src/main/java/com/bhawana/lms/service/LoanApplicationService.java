@@ -792,7 +792,7 @@ public class LoanApplicationService {
         );
         loanDisbursementRequestLogRepository.save(latestRequest);
 
-        loanAccount.updateDisbursementStatus(resolvedAccountStatus);
+        loanAccount.updateDisbursementStatus(resolvedAccountStatus, Instant.now());
         loanAccountRepository.save(loanAccount);
         webhookOutboxService.enqueueIfSubscribed(
                 application.getLsp(),

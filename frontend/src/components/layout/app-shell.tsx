@@ -3,6 +3,7 @@ import {
   KeyRound,
   LayoutDashboard,
   NotebookPen,
+  FileText,
   LogOut,
   Settings2,
   ShieldCheck,
@@ -32,7 +33,12 @@ const lspNavigation = [
 export function AppShell() {
   const { user, logout } = useAuth()
   const isLspUiUser = user?.roles.some((role) => role === 'LSP_UI_READ' || role === 'LSP_UI_WRITE') ?? false
-  const navigation = isLspUiUser ? lspNavigation : internalNavigation
+  const canAccessReports = user?.roles.includes('SYSTEM_ADMIN') ?? false
+  const navigation = isLspUiUser
+    ? lspNavigation
+    : canAccessReports
+      ? [...internalNavigation, { to: '/reports', label: 'Reports', icon: FileText }]
+      : internalNavigation
 
   return (
     <div className="app-shell">
