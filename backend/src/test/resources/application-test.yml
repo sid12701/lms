@@ -31,3 +31,6 @@ app:
   webhooks:
     delivery:
       enabled: false
+  reports:
+    processing:
+      enabled: false

@@ -427,6 +427,28 @@ export type LoanApplicationDocumentPlaceholderRecord = {
   createdAt: string
 }
 
+export const reportRequestStatusOptions = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'] as const
+
+export type ReportRequestStatus = (typeof reportRequestStatusOptions)[number]
+
+export type ReportRequestRecord = {
+  id: string
+  reportType: string
+  status: ReportRequestStatus
+  requestedByUsername: string
+  lspId: string | null
+  lspCode: string | null
+  lspName: string | null
+  disbursalDateFrom: string | null
+  disbursalDateTo: string | null
+  fileName: string | null
+  mediaType: string | null
+  errorMessage: string | null
+  completedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export class ApiError extends Error {
   status: number
   body: string
@@ -1176,4 +1198,23 @@ export function downloadPortfolioMisReport(filters?: {
     : '/api/v1/internal/reports/portfolio-mis'
 
   return requestBlob(path)
+}
+
+export function requestPortfolioMisReport(payload: {
+  lspId?: string
+  disbursalDateFrom?: string
+  disbursalDateTo?: string
+}) {
+  return requestJson<ReportRequestRecord>('/api/v1/internal/reports/portfolio-mis/requests', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function listReportRequests() {
+  return requestJson<ReportRequestRecord[]>('/api/v1/internal/reports/requests')
+}
+
+export function downloadReportRequest(requestId: string) {
+  return requestBlob(`/api/v1/internal/reports/requests/${requestId}/download`)
 }

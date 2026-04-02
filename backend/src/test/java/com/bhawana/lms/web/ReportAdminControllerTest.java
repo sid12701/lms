@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.repo.BorrowerRepository;
@@ -26,6 +27,8 @@ import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.repo.ReportRequestRepository;
+import com.bhawana.lms.service.ReportRequestService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -113,6 +116,12 @@ class ReportAdminControllerTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private ReportRequestService reportRequestService;
+
+    @Autowired
+    private ReportRequestRepository reportRequestRepository;
+
     @BeforeEach
     void setUp() {
         loanForeclosureQuoteRepository.deleteAllInBatch();
@@ -131,6 +140,7 @@ class ReportAdminControllerTest {
         loanProductAuditEventRepository.deleteAllInBatch();
         loanProductLspMappingRepository.deleteAllInBatch();
         loanProductRepository.deleteAllInBatch();
+        reportRequestRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
     }
 
@@ -194,6 +204,56 @@ class ReportAdminControllerTest {
         mockMvc.perform(get("/api/v1/internal/reports/portfolio-mis")
                         .with(opsUser()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void systemAdminCanCreateProcessListAndDownloadPortfolioMisRequests() throws Exception {
+        LspFixture apex = createLsp("APEX");
+        ProductFixture product = createProduct();
+        mapProductToLsps(product.id(), apex.id());
+
+        JsonNode apexLoan = createApplication(apex.id(), product.id(), "APEX-ASYNC-001", "ABCDE1234F");
+        approveLoan(apexLoan.get("id").asText());
+        disburseLoan(apexLoan.get("id").asText());
+        setDisbursedAt(apexLoan.get("id").asText(), LocalDate.of(2026, 3, 10));
+
+        MvcResult createResult = mockMvc.perform(post("/api/v1/internal/reports/portfolio-mis/requests")
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "lspId", apex.id(),
+                                "disbursalDateFrom", "2026-03-01",
+                                "disbursalDateTo", "2026-03-31"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.requestedByUsername").value("ops.admin"))
+                .andExpect(jsonPath("$.lspId").value(apex.id()))
+                .andReturn();
+
+        String requestId = objectMapper.readTree(createResult.getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(get("/api/v1/internal/reports/requests")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(requestId))
+                .andExpect(jsonPath("$[0].status").value("PENDING"));
+
+        reportRequestService.processPendingRequests(10);
+
+        mockMvc.perform(get("/api/v1/internal/reports/requests")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(requestId))
+                .andExpect(jsonPath("$[0].status").value("COMPLETED"))
+                .andExpect(jsonPath("$[0].fileName").value(org.hamcrest.Matchers.containsString("portfolio-mis-")));
+
+        mockMvc.perform(get("/api/v1/internal/reports/requests/{requestId}/download", requestId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", org.hamcrest.Matchers.containsString("text/csv")))
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("portfolio-mis-")))
+                .andExpect(result -> assertTrue(result.getResponse().getContentAsString().contains("APEX-ASYNC-001")));
     }
 
     private ProductFixture createProduct() throws Exception {

@@ -1,17 +1,20 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.domain.ReportRequest;
 import com.bhawana.lms.service.AdminReportingService;
-import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
+import com.bhawana.lms.service.ReportRequestService;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,9 +25,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class ReportAdminController {
 
     private final AdminReportingService adminReportingService;
+    private final ReportRequestService reportRequestService;
 
-    public ReportAdminController(AdminReportingService adminReportingService) {
+    public ReportAdminController(
+            AdminReportingService adminReportingService,
+            ReportRequestService reportRequestService
+    ) {
         this.adminReportingService = adminReportingService;
+        this.reportRequestService = reportRequestService;
     }
 
     @GetMapping(value = "/portfolio-mis", produces = "text/csv")
@@ -33,76 +41,92 @@ public class ReportAdminController {
             @RequestParam(required = false) LocalDate disbursalDateFrom,
             @RequestParam(required = false) LocalDate disbursalDateTo
     ) {
-        List<AdminReportingService.PortfolioMisRow> rows = adminReportingService.buildPortfolioMisReport(
+        AdminReportingService.GeneratedReport report = adminReportingService.generatePortfolioMisCsv(
                 lspId,
                 disbursalDateFrom,
                 disbursalDateTo
         );
 
-        String csv = buildPortfolioMisCsv(rows);
-        String filename = "portfolio-mis-" + LocalDate.now(ZoneOffset.UTC) + ".csv";
-        MediaType contentType = new MediaType("text", "csv", StandardCharsets.UTF_8);
+        return downloadResponse(report.fileName(), report.mediaType(), report.content());
+    }
 
+    @PostMapping("/portfolio-mis/requests")
+    public ReportRequestResponse createPortfolioMisRequest(
+            Authentication authentication,
+            @RequestBody PortfolioMisReportRequest request
+    ) {
+        return toResponse(reportRequestService.createPortfolioMisRequest(
+                request.lspId(),
+                request.disbursalDateFrom(),
+                request.disbursalDateTo(),
+                authentication.getName()
+        ));
+    }
+
+    @GetMapping("/requests")
+    public List<ReportRequestResponse> listReportRequests() {
+        return reportRequestService.listRequests().stream()
+                .map(ReportAdminController::toResponse)
+                .toList();
+    }
+
+    @GetMapping("/requests/{requestId}/download")
+    public ResponseEntity<byte[]> downloadGeneratedReport(@PathVariable UUID requestId) {
+        ReportRequestService.GeneratedStoredReport report = reportRequestService.getCompletedReport(requestId);
+        return downloadResponse(report.fileName(), report.mediaType(), report.content());
+    }
+
+    private static ResponseEntity<byte[]> downloadResponse(String fileName, String mediaType, byte[] content) {
+        MediaType contentType = MediaType.parseMediaType(mediaType);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
                 .contentType(contentType)
-                .body(csv.getBytes(StandardCharsets.UTF_8));
+                .body(content);
     }
 
-    private static String buildPortfolioMisCsv(List<AdminReportingService.PortfolioMisRow> rows) {
-        StringBuilder csv = new StringBuilder();
-        csv.append(String.join(",",
-                "LSP Code",
-                "LSP Name",
-                "Application ID",
-                "External Loan ID",
-                "Borrower Name",
-                "Product Code",
-                "Product Name",
-                "Account Number",
-                "Principal Amount",
-                "Account Status",
-                "Disbursal Date",
-                "Delinquency Bucket",
-                "Overdue Amount",
-                "Closure Reason",
-                "Closed Date"
-        )).append('\n');
-
-        for (AdminReportingService.PortfolioMisRow row : rows) {
-            csv.append(toCsvCell(row.lspCode())).append(',')
-                    .append(toCsvCell(row.lspName())).append(',')
-                    .append(toCsvCell(row.applicationId())).append(',')
-                    .append(toCsvCell(row.externalLoanId())).append(',')
-                    .append(toCsvCell(row.borrowerFullName())).append(',')
-                    .append(toCsvCell(row.productCode())).append(',')
-                    .append(toCsvCell(row.productName())).append(',')
-                    .append(toCsvCell(row.accountNumber())).append(',')
-                    .append(toCsvCell(row.principalAmount())).append(',')
-                    .append(toCsvCell(row.accountStatus())).append(',')
-                    .append(toCsvCell(row.disbursalDate())).append(',')
-                    .append(toCsvCell(row.delinquencyBucket())).append(',')
-                    .append(toCsvCell(row.overdueAmount())).append(',')
-                    .append(toCsvCell(row.closureReason())).append(',')
-                    .append(toCsvCell(row.closedDate()))
-                    .append('\n');
-        }
-
-        return csv.toString();
+    private static ReportRequestResponse toResponse(ReportRequest reportRequest) {
+        return new ReportRequestResponse(
+                reportRequest.getId().toString(),
+                reportRequest.getReportType().name(),
+                reportRequest.getStatus().name(),
+                reportRequest.getRequestedByUsername(),
+                reportRequest.getLsp() == null ? null : reportRequest.getLsp().getId().toString(),
+                reportRequest.getLsp() == null ? null : reportRequest.getLsp().getCode(),
+                reportRequest.getLsp() == null ? null : reportRequest.getLsp().getName(),
+                reportRequest.getDisbursalDateFrom(),
+                reportRequest.getDisbursalDateTo(),
+                reportRequest.getFileName(),
+                reportRequest.getMediaType(),
+                reportRequest.getErrorMessage(),
+                reportRequest.getCompletedAt() == null ? null : reportRequest.getCompletedAt().toString(),
+                reportRequest.getCreatedAt().toString(),
+                reportRequest.getUpdatedAt().toString()
+        );
     }
 
-    private static String toCsvCell(Object value) {
-        if (value == null) {
-            return "";
-        }
-        if (value instanceof BigDecimal decimal) {
-            return decimal.toPlainString();
-        }
+    public record PortfolioMisReportRequest(
+            UUID lspId,
+            LocalDate disbursalDateFrom,
+            LocalDate disbursalDateTo
+    ) {
+    }
 
-        String text = value.toString();
-        if (!text.contains(",") && !text.contains("\"") && !text.contains("\n")) {
-            return text;
-        }
-        return "\"" + text.replace("\"", "\"\"") + "\"";
+    public record ReportRequestResponse(
+            String id,
+            String reportType,
+            String status,
+            String requestedByUsername,
+            String lspId,
+            String lspCode,
+            String lspName,
+            LocalDate disbursalDateFrom,
+            LocalDate disbursalDateTo,
+            String fileName,
+            String mediaType,
+            String errorMessage,
+            String completedAt,
+            String createdAt,
+            String updatedAt
+    ) {
     }
 }
