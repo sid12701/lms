@@ -27,6 +27,7 @@ import com.bhawana.lms.domain.LoanRepaymentScheduleInstallmentStatus;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.UserStatus;
+import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
@@ -54,6 +55,7 @@ import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -79,6 +81,7 @@ public class LoanApplicationService {
     private final LspRepository lspRepository;
     private final LoanProductLspMappingRepository loanProductLspMappingRepository;
     private final LoanDisbursementAdapter loanDisbursementAdapter;
+    private final WebhookOutboxService webhookOutboxService;
     private final ObjectMapper objectMapper;
 
     public LoanApplicationService(
@@ -98,6 +101,7 @@ public class LoanApplicationService {
             LspRepository lspRepository,
             LoanProductLspMappingRepository loanProductLspMappingRepository,
             LoanDisbursementAdapter loanDisbursementAdapter,
+            WebhookOutboxService webhookOutboxService,
             ObjectMapper objectMapper
     ) {
         this.appUserRepository = appUserRepository;
@@ -116,6 +120,7 @@ public class LoanApplicationService {
         this.lspRepository = lspRepository;
         this.loanProductLspMappingRepository = loanProductLspMappingRepository;
         this.loanDisbursementAdapter = loanDisbursementAdapter;
+        this.webhookOutboxService = webhookOutboxService;
         this.objectMapper = objectMapper;
     }
 
@@ -386,6 +391,13 @@ public class LoanApplicationService {
                 serializePayload(savedApplication)
         ));
         seedDocumentChecklist(savedApplication, actorUsername);
+        webhookOutboxService.enqueueIfSubscribed(
+                savedApplication.getLsp(),
+                WebhookEventType.LOAN_CREATED,
+                "LOAN_APPLICATION",
+                savedApplication.getId().toString(),
+                buildLoanCreatedPayload(savedApplication)
+        );
         return savedApplication;
     }
 
@@ -448,6 +460,13 @@ public class LoanApplicationService {
         if (targetStatus == LoanApplicationStatus.APPROVED) {
             ensureLoanAccountForApprovedApplication(savedApplication);
         }
+        webhookOutboxService.enqueueIfSubscribed(
+                savedApplication.getLsp(),
+                WebhookEventType.LOAN_STATUS_CHANGED,
+                "LOAN_APPLICATION",
+                savedApplication.getId().toString(),
+                buildLoanStatusChangedPayload(savedApplication, currentStatus, targetStatus, resolvedReasonCode)
+        );
         return savedApplication;
     }
 
@@ -509,6 +528,13 @@ public class LoanApplicationService {
                 actorUsername,
                 resolvedNote,
                 resolvedReasonCode
+        );
+        webhookOutboxService.enqueueIfSubscribed(
+                savedApplication.getLsp(),
+                WebhookEventType.LOAN_STATUS_CHANGED,
+                "LOAN_APPLICATION",
+                savedApplication.getId().toString(),
+                buildLoanStatusChangedPayload(savedApplication, currentStatus, targetStatus, resolvedReasonCode)
         );
         return savedApplication;
     }
@@ -655,6 +681,13 @@ public class LoanApplicationService {
                 result.responsePayloadJson(),
                 CorrelationIdHolder.get()
         ));
+        webhookOutboxService.enqueueIfSubscribed(
+                application.getLsp(),
+                WebhookEventType.LOAN_DISBURSEMENT_UPDATED,
+                "LOAN_ACCOUNT",
+                loanAccount.getId().toString(),
+                buildDisbursementPayload(application, loanAccount)
+        );
         return application;
     }
 
@@ -694,6 +727,13 @@ public class LoanApplicationService {
 
         loanAccount.updateDisbursementStatus(resolvedAccountStatus);
         loanAccountRepository.save(loanAccount);
+        webhookOutboxService.enqueueIfSubscribed(
+                application.getLsp(),
+                WebhookEventType.LOAN_DISBURSEMENT_UPDATED,
+                "LOAN_ACCOUNT",
+                loanAccount.getId().toString(),
+                buildDisbursementPayload(application, loanAccount)
+        );
         return application;
     }
 
@@ -743,7 +783,16 @@ public class LoanApplicationService {
                 CorrelationIdHolder.get()
         ));
         recomputePaymentAllocation(loanAccount);
-        return loanPaymentTransactionRepository.findById(paymentTransaction.getId()).orElse(paymentTransaction);
+        LoanPaymentTransaction savedPaymentTransaction = loanPaymentTransactionRepository.findById(paymentTransaction.getId())
+                .orElse(paymentTransaction);
+        webhookOutboxService.enqueueIfSubscribed(
+                application.getLsp(),
+                WebhookEventType.LOAN_REPAYMENT_RECORDED,
+                "LOAN_PAYMENT_TRANSACTION",
+                savedPaymentTransaction.getId().toString(),
+                buildRepaymentPayload(application, loanAccount, savedPaymentTransaction)
+        );
+        return savedPaymentTransaction;
     }
 
     @Transactional(readOnly = true)
@@ -871,6 +920,60 @@ public class LoanApplicationService {
 
     private static String normalizeNote(String note) {
         return normalizeOptional(note);
+    }
+
+    private static Map<String, Object> buildLoanCreatedPayload(LoanApplication application) {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("loanApplicationId", application.getId());
+        payload.put("externalLoanId", application.getExternalLoanId());
+        payload.put("status", application.getStatus().name());
+        payload.put("borrowerId", application.getBorrower().getId());
+        payload.put("requestedAmount", application.getRequestedAmount());
+        payload.put("tenureMonths", application.getRequestedTenureMonths());
+        return payload;
+    }
+
+    private static Map<String, Object> buildLoanStatusChangedPayload(
+            LoanApplication application,
+            LoanApplicationStatus fromStatus,
+            LoanApplicationStatus toStatus,
+            LoanApplicationStatusReasonCode reasonCode
+    ) {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("loanApplicationId", application.getId());
+        payload.put("externalLoanId", application.getExternalLoanId());
+        payload.put("fromStatus", fromStatus.name());
+        payload.put("toStatus", toStatus.name());
+        payload.put("reasonCode", reasonCode == null ? null : reasonCode.name());
+        return payload;
+    }
+
+    private static Map<String, Object> buildDisbursementPayload(LoanApplication application, LoanAccount loanAccount) {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("loanApplicationId", application.getId());
+        payload.put("loanAccountId", loanAccount.getId());
+        payload.put("accountNumber", loanAccount.getAccountNumber());
+        payload.put("loanAccountStatus", loanAccount.getStatus().name());
+        payload.put("principalAmount", loanAccount.getPrincipalAmount());
+        return payload;
+    }
+
+    private static Map<String, Object> buildRepaymentPayload(
+            LoanApplication application,
+            LoanAccount loanAccount,
+            LoanPaymentTransaction paymentTransaction
+    ) {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("loanApplicationId", application.getId());
+        payload.put("loanAccountId", loanAccount.getId());
+        payload.put("paymentTransactionId", paymentTransaction.getId());
+        payload.put("reference", paymentTransaction.getReference());
+        payload.put("amount", paymentTransaction.getAmount());
+        payload.put("allocatedAmount", paymentTransaction.getAllocatedAmount());
+        payload.put("unallocatedAmount", paymentTransaction.getUnallocatedAmount());
+        payload.put("paymentStatus", paymentTransaction.getStatus().name());
+        payload.put("paymentDate", paymentTransaction.getPaymentDate());
+        return payload;
     }
 
     private static LoanApplicationStatusReasonCode validateTransitionReasonCode(
