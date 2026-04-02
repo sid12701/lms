@@ -6,6 +6,7 @@ import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
+import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspRepository;
@@ -54,6 +55,40 @@ public class AdminDirectoryService {
         return lspRepository.findAll().stream()
                 .sorted(java.util.Comparator.comparing(Lsp::getCode))
                 .toList();
+    }
+
+    @Transactional
+    public Lsp updateWebhookSubscription(
+            UUID lspId,
+            boolean enabled,
+            String endpointUrl,
+            String signingSecret,
+            List<WebhookEventType> eventTypes
+    ) {
+        Lsp lsp = lspRepository.findById(lspId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown LSP id: " + lspId));
+
+        String normalizedEndpointUrl = normalizeOptional(endpointUrl);
+        String normalizedSigningSecret = normalizeOptional(signingSecret);
+        List<WebhookEventType> normalizedEventTypes = eventTypes == null ? List.of() : eventTypes.stream().distinct().toList();
+
+        if (enabled) {
+            if (normalizedEndpointUrl == null) {
+                throw new IllegalArgumentException("Webhook endpoint URL is required when the subscription is enabled.");
+            }
+            if (!normalizedEndpointUrl.startsWith("http://") && !normalizedEndpointUrl.startsWith("https://")) {
+                throw new IllegalArgumentException("Webhook endpoint URL must start with http:// or https://.");
+            }
+            if (normalizedSigningSecret == null) {
+                throw new IllegalArgumentException("Webhook signing secret is required when the subscription is enabled.");
+            }
+            if (normalizedEventTypes.isEmpty()) {
+                throw new IllegalArgumentException("At least one webhook event must be selected when the subscription is enabled.");
+            }
+        }
+
+        lsp.updateWebhookSubscription(enabled, normalizedEndpointUrl, normalizedSigningSecret, normalizedEventTypes);
+        return lspRepository.save(lsp);
     }
 
     @Transactional
@@ -118,6 +153,15 @@ public class AdminDirectoryService {
         byte[] randomBytes = new byte[18];
         SECURE_RANDOM.nextBytes(randomBytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+    }
+
+    private static String normalizeOptional(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String normalized = value.trim();
+        return normalized.isBlank() ? null : normalized;
     }
 
     public record ResetPasswordResult(AppUser user, String temporaryPassword) {

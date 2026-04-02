@@ -10,6 +10,13 @@ export const roleOptions = [
 ] as const
 
 export const lspStatusOptions = ['ACTIVE', 'INACTIVE'] as const
+export const webhookEventTypeOptions = [
+  'LOAN_CREATED',
+  'LOAN_STATUS_CHANGED',
+  'LOAN_DISBURSEMENT_UPDATED',
+  'LOAN_REPAYMENT_RECORDED',
+  'LOAN_FORECLOSURE_COMPLETED',
+] as const
 
 export const userStatusOptions = ['ACTIVE', 'INACTIVE'] as const
 export const apiClientStatusOptions = ['ACTIVE', 'INACTIVE'] as const
@@ -53,6 +60,7 @@ export const loanApplicationDocumentPlaceholderStatusOptions = [
 
 export type RoleCode = (typeof roleOptions)[number]
 export type LspStatus = (typeof lspStatusOptions)[number]
+export type WebhookEventType = (typeof webhookEventTypeOptions)[number]
 export type UserStatus = (typeof userStatusOptions)[number]
 export type ApiClientStatus = (typeof apiClientStatusOptions)[number]
 export type LoanProductStatus = (typeof loanProductStatusOptions)[number]
@@ -109,6 +117,14 @@ export type LspRecord = {
   code: string
   name: string
   status: LspStatus
+  webhookSubscription: WebhookSubscriptionRecord | null
+}
+
+export type WebhookSubscriptionRecord = {
+  enabled: boolean
+  endpointUrl: string | null
+  signingSecret: string | null
+  eventTypes: WebhookEventType[]
 }
 
 export type UserRecord = {
@@ -561,6 +577,21 @@ export function createLsp(payload: {
 }) {
   return requestJson<LspRecord>('/api/v1/internal/admin/lsps', {
     method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateLspWebhookSubscription(
+  lspId: string,
+  payload: {
+    enabled: boolean
+    endpointUrl?: string
+    signingSecret?: string
+    eventTypes: WebhookEventType[]
+  },
+) {
+  return requestJson<LspRecord>(`/api/v1/internal/admin/lsps/${lspId}/webhook-subscription`, {
+    method: 'PUT',
     body: JSON.stringify(payload),
   })
 }
