@@ -5,6 +5,7 @@ import com.bhawana.lms.common.web.KycCompletionRequiredException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.LoanAccount;
+import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
@@ -21,6 +22,8 @@ import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
+import com.bhawana.lms.domain.LoanForeclosureQuote;
+import com.bhawana.lms.domain.LoanForeclosureQuoteStatus;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallmentStatus;
@@ -42,6 +45,7 @@ import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
+import com.bhawana.lms.repo.LoanForeclosureQuoteRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -76,6 +80,7 @@ public class LoanApplicationService {
     private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
     private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
+    private final LoanForeclosureQuoteRepository loanForeclosureQuoteRepository;
     private final LoanProductRepository loanProductRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LspRepository lspRepository;
@@ -96,6 +101,7 @@ public class LoanApplicationService {
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
             LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
+            LoanForeclosureQuoteRepository loanForeclosureQuoteRepository,
             LoanProductRepository loanProductRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LspRepository lspRepository,
@@ -115,6 +121,7 @@ public class LoanApplicationService {
         this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
+        this.loanForeclosureQuoteRepository = loanForeclosureQuoteRepository;
         this.loanProductRepository = loanProductRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.lspRepository = lspRepository;
@@ -278,6 +285,12 @@ public class LoanApplicationService {
         return loanPaymentTransactionRepository.findTop50ByLoanAccount_IdOrderByPaymentDateDescCreatedAtDesc(
                 loanAccount.getId()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanForeclosureQuote> listForeclosureQuotes(UUID applicationId) {
+        LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
+        return loanForeclosureQuoteRepository.findByLoanAccount_IdOrderByVersionDesc(loanAccount.getId());
     }
 
     @Transactional(readOnly = true)
@@ -785,6 +798,12 @@ public class LoanApplicationService {
         recomputePaymentAllocation(loanAccount);
         LoanPaymentTransaction savedPaymentTransaction = loanPaymentTransactionRepository.findById(paymentTransaction.getId())
                 .orElse(paymentTransaction);
+        synchronizeLoanAccountClosureState(
+                application,
+                loanAccount,
+                normalizeActorUsername(actorUsername),
+                LoanAccountClosureReason.FULLY_REPAID
+        );
         webhookOutboxService.enqueueIfSubscribed(
                 application.getLsp(),
                 WebhookEventType.LOAN_REPAYMENT_RECORDED,
@@ -793,6 +812,146 @@ public class LoanApplicationService {
                 buildRepaymentPayload(application, loanAccount, savedPaymentTransaction)
         );
         return savedPaymentTransaction;
+    }
+
+    @Transactional
+    public LoanForeclosureQuote requestForeclosureQuote(UUID applicationId, String actorUsername, LocalDate effectiveDate) {
+        LoanApplication application = getApplication(applicationId);
+        if (application.getStatus() != LoanApplicationStatus.APPROVED) {
+            throw new IllegalArgumentException("Foreclosure is only available for approved loan applications.");
+        }
+        if (effectiveDate == null) {
+            throw new IllegalArgumentException("Foreclosure effective date is required.");
+        }
+
+        LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
+        if (loanAccount.getStatus() != LoanAccountStatus.DISBURSED) {
+            throw new IllegalArgumentException("Foreclosure quote can only be requested for an active disbursed loan account.");
+        }
+
+        List<LoanRepaymentScheduleInstallment> installments = loanRepaymentScheduleInstallmentRepository
+                .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId());
+        BigDecimal outstandingPrincipal = installments.stream()
+                .map(installment -> scaleCurrency(installment.getPrincipalDue().subtract(installment.getPaidPrincipal()).max(BigDecimal.ZERO)))
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        // The current servicing model allocates against the full persisted schedule and does not
+        // support waiving future interest accruals. A foreclosure quote therefore settles the
+        // remaining scheduled liability, while still being tied to a specific effective date for execution.
+        BigDecimal outstandingInterest = installments.stream()
+                .map(installment -> scaleCurrency(installment.getInterestDue().subtract(installment.getPaidInterest()).max(BigDecimal.ZERO)))
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        BigDecimal settlementAmount = scaleCurrency(outstandingPrincipal.add(outstandingInterest));
+        if (settlementAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Foreclosure quote is not available because the loan is already fully settled.");
+        }
+
+        List<LoanForeclosureQuote> existingQuotes = loanForeclosureQuoteRepository.findByLoanAccount_IdOrderByVersionDesc(
+                loanAccount.getId()
+        );
+        existingQuotes.stream()
+                .filter(quote -> quote.getStatus() == LoanForeclosureQuoteStatus.ACTIVE)
+                .forEach(LoanForeclosureQuote::supersede);
+        if (!existingQuotes.isEmpty()) {
+            loanForeclosureQuoteRepository.saveAll(existingQuotes);
+        }
+
+        int nextVersion = existingQuotes.stream()
+                .mapToInt(LoanForeclosureQuote::getVersion)
+                .max()
+                .orElse(0) + 1;
+
+        return loanForeclosureQuoteRepository.save(new LoanForeclosureQuote(
+                loanAccount,
+                nextVersion,
+                normalizeActorUsername(actorUsername),
+                effectiveDate,
+                scaleCurrency(outstandingPrincipal),
+                scaleCurrency(outstandingInterest),
+                settlementAmount
+        ));
+    }
+
+    @Transactional
+    public LoanForeclosureQuote executeForeclosureQuote(
+            UUID applicationId,
+            UUID quoteId,
+            String actorUsername,
+            LocalDate settlementDate,
+            String reference,
+            String note
+    ) {
+        if (settlementDate == null) {
+            throw new IllegalArgumentException("Settlement date is required.");
+        }
+
+        LoanApplication application = getApplication(applicationId);
+        LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
+        if (loanAccount.getStatus() != LoanAccountStatus.DISBURSED) {
+            throw new IllegalArgumentException("Foreclosure can only be executed for an active disbursed loan account.");
+        }
+
+        LoanForeclosureQuote quote = loanForeclosureQuoteRepository.findById(quoteId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown foreclosure quote id: " + quoteId));
+        if (!quote.getLoanAccount().getId().equals(loanAccount.getId())) {
+            throw new IllegalArgumentException("Foreclosure quote does not belong to the selected loan account.");
+        }
+        if (quote.getStatus() != LoanForeclosureQuoteStatus.ACTIVE) {
+            throw new IllegalArgumentException("Only an active foreclosure quote can be executed.");
+        }
+        if (!settlementDate.equals(quote.getEffectiveDate())) {
+            throw new IllegalArgumentException("Settlement date must match the foreclosure quote effective date.");
+        }
+
+        loanPaymentTransactionRepository.save(new LoanPaymentTransaction(
+                loanAccount,
+                normalizeActorUsername(actorUsername),
+                quote.getSettlementAmount(),
+                settlementDate,
+                requireReference(reference),
+                LoanPaymentChannel.FORECLOSURE_SETTLEMENT,
+                LoanPaymentStatus.RECEIVED,
+                normalizeNote(note) == null
+                        ? "Foreclosure settlement for quote v" + quote.getVersion()
+                        : normalizeNote(note),
+                CorrelationIdHolder.get()
+        ));
+        recomputePaymentAllocation(loanAccount);
+
+        if (!allInstallmentsSettled(loanAccount)) {
+            throw new IllegalStateException("Foreclosure settlement did not fully settle the repayment schedule.");
+        }
+
+        quote.execute(normalizeActorUsername(actorUsername));
+        loanForeclosureQuoteRepository.save(quote);
+        synchronizeLoanAccountClosureState(
+                application,
+                loanAccount,
+                normalizeActorUsername(actorUsername),
+                LoanAccountClosureReason.FORECLOSURE
+        );
+        recordAuditEvent(
+                application,
+                LoanApplicationAuditAction.FORECLOSURE_EXECUTED,
+                application.getStatus(),
+                application.getStatus(),
+                actorUsername,
+                "Foreclosure executed using quote v"
+                        + quote.getVersion()
+                        + " effective "
+                        + quote.getEffectiveDate()
+                        + " with settlement reference "
+                        + requireReference(reference),
+                null
+        );
+
+        webhookOutboxService.enqueueIfSubscribed(
+                application.getLsp(),
+                WebhookEventType.LOAN_FORECLOSURE_COMPLETED,
+                "LOAN_ACCOUNT",
+                loanAccount.getId().toString(),
+                buildForeclosurePayload(application, loanAccount, quote)
+        );
+        return quote;
     }
 
     @Transactional(readOnly = true)
@@ -976,6 +1135,24 @@ public class LoanApplicationService {
         return payload;
     }
 
+    private static Map<String, Object> buildForeclosurePayload(
+            LoanApplication application,
+            LoanAccount loanAccount,
+            LoanForeclosureQuote quote
+    ) {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("loanApplicationId", application.getId());
+        payload.put("loanAccountId", loanAccount.getId());
+        payload.put("accountNumber", loanAccount.getAccountNumber());
+        payload.put("foreclosureQuoteId", quote.getId());
+        payload.put("quoteVersion", quote.getVersion());
+        payload.put("effectiveDate", quote.getEffectiveDate());
+        payload.put("settlementAmount", quote.getSettlementAmount());
+        payload.put("closureReason", LoanAccountClosureReason.FORECLOSURE.name());
+        payload.put("closedAt", loanAccount.getClosedAt());
+        return payload;
+    }
+
     private static LoanApplicationStatusReasonCode validateTransitionReasonCode(
             LoanApplicationStatus targetStatus,
             LoanApplicationStatusReasonCode reasonCode
@@ -1122,6 +1299,34 @@ public class LoanApplicationService {
 
         loanRepaymentScheduleInstallmentRepository.saveAll(installments);
         loanPaymentTransactionRepository.saveAll(payments);
+    }
+
+    private void synchronizeLoanAccountClosureState(
+            LoanApplication application,
+            LoanAccount loanAccount,
+            String actorUsername,
+            LoanAccountClosureReason closureReason
+    ) {
+        if (!allInstallmentsSettled(loanAccount)) {
+            return;
+        }
+
+        if (closureReason == LoanAccountClosureReason.FORECLOSURE) {
+            loanAccount.close(LoanAccountClosureReason.FORECLOSURE, actorUsername, Instant.now());
+            loanAccountRepository.save(loanAccount);
+            return;
+        }
+
+        if (loanAccount.getStatus() == LoanAccountStatus.DISBURSED) {
+            loanAccount.close(LoanAccountClosureReason.FULLY_REPAID, actorUsername, Instant.now());
+            loanAccountRepository.save(loanAccount);
+        }
+    }
+
+    private boolean allInstallmentsSettled(LoanAccount loanAccount) {
+        return loanRepaymentScheduleInstallmentRepository.findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId())
+                .stream()
+                .allMatch(installment -> installment.getOutstandingAmount().compareTo(BigDecimal.ZERO) <= 0);
     }
 
     private LoanDelinquencySummary buildDelinquencySummary(List<LoanRepaymentScheduleInstallment> installments) {

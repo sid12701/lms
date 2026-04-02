@@ -34,8 +34,17 @@ export const loanAccountStatusOptions = [
   'DISBURSED',
   'DISBURSEMENT_FAILED',
   'DISBURSEMENT_PENDING_RECONCILIATION',
+  'CLOSED',
+  'FORECLOSED',
 ] as const
-export const loanPaymentChannelOptions = ['UPI', 'BANK_TRANSFER', 'NACH', 'CASH', 'CHEQUE'] as const
+export const loanPaymentChannelOptions = [
+  'UPI',
+  'BANK_TRANSFER',
+  'NACH',
+  'CASH',
+  'CHEQUE',
+  'FORECLOSURE_SETTLEMENT',
+] as const
 export const loanPaymentStatusOptions = ['RECEIVED', 'PENDING_RECONCILIATION', 'FAILED'] as const
 export const mockDisbursementOutcomeOptions = [
   'DISBURSED',
@@ -234,6 +243,9 @@ export type LoanAccountSummaryRecord = {
   tenureMonths: number
   approvedAt: string
   createdAt: string
+  closureReason: string | null
+  closedAt: string | null
+  closedByUsername: string | null
   delinquency: LoanDelinquencySummaryRecord | null
   repaymentSchedule: LoanRepaymentScheduleSummaryRecord | null
 }
@@ -304,6 +316,24 @@ export type LoanPaymentTransactionRecord = {
   updatedAt: string
 }
 
+export type LoanForeclosureQuoteStatus = 'ACTIVE' | 'SUPERSEDED' | 'EXECUTED'
+
+export type LoanForeclosureQuoteRecord = {
+  id: string
+  loanAccountId: string
+  version: number
+  requestedByUsername: string
+  executedByUsername: string | null
+  effectiveDate: string
+  outstandingPrincipal: number
+  outstandingInterest: number
+  settlementAmount: number
+  status: LoanForeclosureQuoteStatus
+  executedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export type LoanApplicationDetailRecord = LoanApplicationRecord & {
   updatedAt: string
   loanAccount: LoanAccountSummaryRecord | null
@@ -342,7 +372,10 @@ export type LoanApplicationAssignmentEventRecord = {
   createdAt: string
 }
 
-export type LoanApplicationAuditAction = 'STATUS_TRANSITION' | 'MANUAL_STATUS_OVERRIDE'
+export type LoanApplicationAuditAction =
+  | 'STATUS_TRANSITION'
+  | 'MANUAL_STATUS_OVERRIDE'
+  | 'FORECLOSURE_EXECUTED'
 
 export type LoanApplicationAuditEventRecord = {
   id: string
@@ -800,6 +833,12 @@ export function listLoanApplicationPaymentTransactions(applicationId: string) {
   )
 }
 
+export function listLoanApplicationForeclosureQuotes(applicationId: string) {
+  return requestJson<LoanForeclosureQuoteRecord[]>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/foreclosure-quotes`,
+  )
+}
+
 export function listLoanApplicationAuditEvents(applicationId: string) {
   return requestJson<LoanApplicationAuditEventRecord[]>(
     `/api/v1/internal/ops/loan-applications/${applicationId}/audit-events`,
@@ -921,6 +960,39 @@ export function recordLoanApplicationPaymentTransaction(
 ) {
   return requestJson<LoanPaymentTransactionRecord>(
     `/api/v1/internal/ops/loan-applications/${applicationId}/payments`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
+export function requestLoanApplicationForeclosureQuote(
+  applicationId: string,
+  payload: {
+    effectiveDate: string
+  },
+) {
+  return requestJson<LoanForeclosureQuoteRecord>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/foreclosure-quotes`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
+export function executeLoanApplicationForeclosureQuote(
+  applicationId: string,
+  quoteId: string,
+  payload: {
+    settlementDate: string
+    reference: string
+    note?: string
+  },
+) {
+  return requestJson<LoanForeclosureQuoteRecord>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/foreclosure-quotes/${quoteId}/execute`,
     {
       method: 'POST',
       body: JSON.stringify(payload),

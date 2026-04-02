@@ -16,6 +16,7 @@ import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
+import com.bhawana.lms.repo.LoanForeclosureQuoteRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
@@ -74,6 +75,9 @@ class LoanApplicationOpsControllerTest {
     private LoanPaymentTransactionRepository loanPaymentTransactionRepository;
 
     @Autowired
+    private LoanForeclosureQuoteRepository loanForeclosureQuoteRepository;
+
+    @Autowired
     private BorrowerRepository borrowerRepository;
 
     @Autowired
@@ -117,6 +121,7 @@ class LoanApplicationOpsControllerTest {
 
     @BeforeEach
     void setUp() {
+        loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
         loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
@@ -679,6 +684,238 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[1].paidAmount").value(1000.00))
                 .andExpect(jsonPath("$[1].outstandingAmount").value(3136.32))
                 .andExpect(jsonPath("$[2].status").value("PENDING"));
+    }
+
+    @Test
+    void systemAdminCanQuoteAndExecuteForeclosure() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-974B", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
+                .andExpect(status().isOk());
+
+        LocalDate effectiveDate = LocalDate.now();
+
+        MvcResult quoteResult = mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/foreclosure-quotes", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "effectiveDate", effectiveDate.toString()
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.effectiveDate").value(effectiveDate.toString()))
+                .andReturn();
+
+        JsonNode quote = objectMapper.readTree(quoteResult.getResponse().getContentAsString());
+        String quoteId = quote.get("id").asText();
+        double settlementAmount = quote.get("settlementAmount").asDouble();
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/foreclosure-quotes/{quoteId}/execute", applicationId, quoteId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "settlementDate", effectiveDate.toString(),
+                                "reference", "FC-001",
+                                "note", "Borrower opted for early settlement"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("EXECUTED"))
+                .andExpect(jsonPath("$.executedByUsername").value("ops.admin"))
+                .andExpect(jsonPath("$.executedAt").exists());
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.loanAccount.status").value("FORECLOSED"))
+                .andExpect(jsonPath("$.loanAccount.closureReason").value("FORECLOSURE"))
+                .andExpect(jsonPath("$.loanAccount.closedAt").exists())
+                .andExpect(jsonPath("$.loanAccount.closedByUsername").value("ops.admin"));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/foreclosure-quotes", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].status").value("EXECUTED"))
+                .andExpect(jsonPath("$[0].effectiveDate").value(effectiveDate.toString()))
+                .andExpect(jsonPath("$[0].settlementAmount").value(settlementAmount));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/audit-events", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].action").value("FORECLOSURE_EXECUTED"))
+                .andExpect(jsonPath("$[0].note", containsString("quote v1")))
+                .andExpect(jsonPath("$[0].actorUsername").value("ops.admin"));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].reference").value("FC-001"))
+                .andExpect(jsonPath("$[0].channel").value("FORECLOSURE_SETTLEMENT"))
+                .andExpect(jsonPath("$[0].allocatedAmount").value(settlementAmount))
+                .andExpect(jsonPath("$[0].unallocatedAmount").value(0.00));
+    }
+
+    @Test
+    void fullRepaymentClosesLoanAccount() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-974A", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        disburseLoan(applicationId);
+
+        UUID loanAccountId = loanAccountRepository.findByLoanApplication_Id(UUID.fromString(applicationId))
+                .orElseThrow()
+                .getId();
+        BigDecimal settlementAmount = jdbcTemplate.queryForObject(
+                "select sum(outstanding_amount) from loan_repayment_schedule_installment where loan_account_id = ?",
+                BigDecimal.class,
+                loanAccountId
+        );
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "amount", settlementAmount,
+                                "paymentDate", LocalDate.now().minusDays(1).toString(),
+                                "reference", "PAY-CLOSE-001",
+                                "channel", "BANK_TRANSFER",
+                                "status", "RECEIVED"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.allocatedAmount").value(settlementAmount.doubleValue()))
+                .andExpect(jsonPath("$.unallocatedAmount").value(0.00));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.loanAccount.status").value("CLOSED"))
+                .andExpect(jsonPath("$.loanAccount.closureReason").value("FULLY_REPAID"))
+                .andExpect(jsonPath("$.loanAccount.closedByUsername").value("ops.admin"))
+                .andExpect(jsonPath("$.loanAccount.closedAt").exists());
+    }
+
+    @Test
+    void systemAdminCanVersionAndExecuteForeclosureQuotes() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-974B", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        disburseLoan(applicationId);
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "amount", new BigDecimal("1000.00"),
+                                "paymentDate", LocalDate.now().minusDays(2).toString(),
+                                "reference", "PAY-PARTIAL-001",
+                                "channel", "UPI",
+                                "status", "RECEIVED"
+                        ))))
+                .andExpect(status().isOk());
+
+        LocalDate firstEffectiveDate = LocalDate.now().minusDays(1);
+        LocalDate secondEffectiveDate = LocalDate.now();
+
+        MvcResult firstQuoteResult = mockMvc.perform(
+                        post("/api/v1/internal/ops/loan-applications/{applicationId}/foreclosure-quotes", applicationId)
+                                .with(systemAdmin())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(Map.of(
+                                        "effectiveDate", firstEffectiveDate.toString()
+                                ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.effectiveDate").value(firstEffectiveDate.toString()))
+                .andReturn();
+
+        String firstQuoteId = objectMapper.readTree(firstQuoteResult.getResponse().getContentAsString())
+                .get("id").asText();
+
+        MvcResult secondQuoteResult = mockMvc.perform(
+                        post("/api/v1/internal/ops/loan-applications/{applicationId}/foreclosure-quotes", applicationId)
+                                .with(systemAdmin())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(Map.of(
+                                        "effectiveDate", secondEffectiveDate.toString()
+                                ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(2))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.effectiveDate").value(secondEffectiveDate.toString()))
+                .andReturn();
+
+        JsonNode secondQuote = objectMapper.readTree(secondQuoteResult.getResponse().getContentAsString());
+        String secondQuoteId = secondQuote.get("id").asText();
+
+        mockMvc.perform(
+                        post("/api/v1/internal/ops/loan-applications/{applicationId}/foreclosure-quotes/{quoteId}/execute",
+                                applicationId,
+                                secondQuoteId)
+                                .with(systemAdmin())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(Map.of(
+                                        "settlementDate", secondEffectiveDate.toString(),
+                                        "reference", "FC-001",
+                                        "note", "Customer requested early settlement"
+                                ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(secondQuoteId))
+                .andExpect(jsonPath("$.status").value("EXECUTED"))
+                .andExpect(jsonPath("$.executedByUsername").value("ops.admin"))
+                .andExpect(jsonPath("$.executedAt").exists());
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.loanAccount.status").value("FORECLOSED"))
+                .andExpect(jsonPath("$.loanAccount.closureReason").value("FORECLOSURE"))
+                .andExpect(jsonPath("$.loanAccount.closedByUsername").value("ops.admin"));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/foreclosure-quotes", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(secondQuoteId))
+                .andExpect(jsonPath("$[0].status").value("EXECUTED"))
+                .andExpect(jsonPath("$[0].effectiveDate").value(secondEffectiveDate.toString()))
+                .andExpect(jsonPath("$[1].id").value(firstQuoteId))
+                .andExpect(jsonPath("$[1].status").value("SUPERSEDED"))
+                .andExpect(jsonPath("$[1].effectiveDate").value(firstEffectiveDate.toString()));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].reference").value("FC-001"))
+                .andExpect(jsonPath("$[0].channel").value("FORECLOSURE_SETTLEMENT"));
     }
 
     @Test
@@ -1409,6 +1646,18 @@ class LoanApplicationOpsControllerTest {
                 .andReturn();
 
         return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private void disburseLoan(String applicationId) throws Exception {
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
+                .andExpect(status().isOk());
     }
 
     private JsonNode transitionApplication(String applicationId, String targetStatus, String note) throws Exception {

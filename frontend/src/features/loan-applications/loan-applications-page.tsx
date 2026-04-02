@@ -11,7 +11,9 @@ import {
   assignLoanApplication,
   createLoanApplication,
   getLoanApplication,
+  executeLoanApplicationForeclosureQuote,
   initiateLoanApplicationDisbursement,
+  listLoanApplicationForeclosureQuotes,
   listLoanApplicationPaymentTransactions,
   listLoanApplicationAuditEvents,
   listLoanApplicationAssignmentEvents,
@@ -28,6 +30,7 @@ import {
   loanApplicationDocumentPlaceholderStatusOptions,
   loanPaymentChannelOptions,
   loanPaymentStatusOptions,
+  requestLoanApplicationForeclosureQuote,
   recordLoanApplicationPaymentTransaction,
   transitionLoanApplicationStatus,
   manuallyOverrideLoanApplicationStatus,
@@ -46,6 +49,7 @@ import {
   type LoanRepaymentScheduleInstallmentRecord,
   type LoanAccountStatus,
   type LoanPaymentChannel,
+  type LoanForeclosureQuoteRecord,
   type LoanPaymentStatus,
   type LoanPaymentTransactionRecord,
   type LoanApplicationStatus,
@@ -87,6 +91,12 @@ type PaymentCaptureState = {
   reference: string
   channel: LoanPaymentChannel
   status: LoanPaymentStatus
+  note: string
+}
+
+type ForeclosureQuoteExecutionState = {
+  settlementDate: string
+  reference: string
   note: string
 }
 
@@ -140,6 +150,14 @@ function buildInitialPaymentCaptureState(): PaymentCaptureState {
     reference: '',
     channel: 'UPI',
     status: 'RECEIVED',
+    note: '',
+  }
+}
+
+function buildInitialForeclosureQuoteExecutionState(): ForeclosureQuoteExecutionState {
+  return {
+    settlementDate: todayDateValue(),
+    reference: '',
     note: '',
   }
 }
@@ -422,6 +440,8 @@ function loanStatusReasonCodeLabel(code?: LoanApplicationStatusReasonCode | null
 
 function loanAuditActionLabel(action: LoanApplicationAuditAction) {
   switch (action) {
+    case 'FORECLOSURE_EXECUTED':
+      return 'Foreclosure executed'
     case 'MANUAL_STATUS_OVERRIDE':
       return 'Manual admin override'
     case 'STATUS_TRANSITION':
@@ -442,8 +462,45 @@ function loanAccountStatusLabel(status?: LoanAccountStatus | null) {
       return 'Disbursement requested'
     case 'PENDING_DISBURSEMENT':
       return 'Pending disbursement'
+    case 'CLOSED':
+      return 'Closed'
+    case 'FORECLOSED':
+      return 'Foreclosed'
     default:
       return 'Account not created'
+  }
+}
+
+function loanAccountStatusVariant(
+  status?: LoanAccountStatus | null,
+): 'default' | 'success' | 'warning' | 'destructive' {
+  switch (status) {
+    case 'DISBURSED':
+      return 'success'
+    case 'DISBURSEMENT_PENDING_RECONCILIATION':
+      return 'warning'
+    case 'DISBURSEMENT_FAILED':
+      return 'destructive'
+    case 'DISBURSEMENT_REQUESTED':
+    case 'PENDING_DISBURSEMENT':
+      return 'default'
+    case 'CLOSED':
+      return 'success'
+    case 'FORECLOSED':
+      return 'warning'
+    default:
+      return 'default'
+  }
+}
+
+function loanClosureReasonLabel(reason?: string | null) {
+  switch ((reason ?? '').toUpperCase()) {
+    case 'FULLY_REPAID':
+      return 'Fully repaid'
+    case 'FORECLOSURE':
+      return 'Foreclosure'
+    default:
+      return reason ? reason.replace(/_/g, ' ').toLowerCase() : 'Not closed'
   }
 }
 
@@ -457,6 +514,8 @@ function loanPaymentChannelLabel(channel: LoanPaymentChannel) {
       return 'Cash'
     case 'CHEQUE':
       return 'Cheque'
+    case 'FORECLOSURE_SETTLEMENT':
+      return 'Foreclosure settlement'
     case 'UPI':
     default:
       return 'UPI'
@@ -486,6 +545,34 @@ function loanPaymentStatusVariant(
     case 'RECEIVED':
     default:
       return 'success'
+  }
+}
+
+function loanForeclosureQuoteStatusLabel(status: string) {
+  switch (status) {
+    case 'ACTIVE':
+      return 'Active'
+    case 'SUPERSEDED':
+      return 'Superseded'
+    case 'EXECUTED':
+      return 'Executed'
+    default:
+      return status
+  }
+}
+
+function loanForeclosureQuoteStatusVariant(
+  status: string,
+): 'default' | 'success' | 'warning' | 'destructive' {
+  switch (status) {
+    case 'ACTIVE':
+      return 'warning'
+    case 'EXECUTED':
+      return 'success'
+    case 'SUPERSEDED':
+      return 'default'
+    default:
+      return 'default'
   }
 }
 
@@ -798,6 +885,7 @@ export function LoanApplicationsPage() {
   const [disbursementRequests, setDisbursementRequests] = useState<LoanDisbursementRequestLogRecord[]>([])
   const [repaymentSchedule, setRepaymentSchedule] = useState<LoanRepaymentScheduleInstallmentRecord[]>([])
   const [paymentTransactions, setPaymentTransactions] = useState<LoanPaymentTransactionRecord[]>([])
+  const [foreclosureQuotes, setForeclosureQuotes] = useState<LoanForeclosureQuoteRecord[]>([])
   const [intakeAudits, setIntakeAudits] = useState<LoanApplicationIntakeAuditRecord[]>([])
   const [lsps, setLsps] = useState<LspRecord[]>([])
   const [products, setProducts] = useState<LoanProductRecord[]>([])
@@ -811,6 +899,7 @@ export function LoanApplicationsPage() {
   const [disbursementRequestsLoading, setDisbursementRequestsLoading] = useState(false)
   const [repaymentScheduleLoading, setRepaymentScheduleLoading] = useState(false)
   const [paymentTransactionsLoading, setPaymentTransactionsLoading] = useState(false)
+  const [foreclosureQuotesLoading, setForeclosureQuotesLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [transitioning, setTransitioning] = useState(false)
   const [assigning, setAssigning] = useState(false)
@@ -824,6 +913,7 @@ export function LoanApplicationsPage() {
   const [disbursementRequestsError, setDisbursementRequestsError] = useState('')
   const [repaymentScheduleError, setRepaymentScheduleError] = useState('')
   const [paymentTransactionsError, setPaymentTransactionsError] = useState('')
+  const [foreclosureQuotesError, setForeclosureQuotesError] = useState('')
   const [assignmentError, setAssignmentError] = useState('')
   const [documentPlaceholders, setDocumentPlaceholders] = useState<
     LoanApplicationDocumentPlaceholderRecord[]
@@ -858,6 +948,12 @@ export function LoanApplicationsPage() {
   const [manualStatusError, setManualStatusError] = useState('')
   const [assignmentNote, setAssignmentNote] = useState('')
   const [paymentCapture, setPaymentCapture] = useState<PaymentCaptureState>(buildInitialPaymentCaptureState)
+  const [foreclosureExecution, setForeclosureExecution] = useState<ForeclosureQuoteExecutionState>(
+    buildInitialForeclosureQuoteExecutionState,
+  )
+  const [requestingForeclosureQuote, setRequestingForeclosureQuote] = useState(false)
+  const [executingForeclosureQuoteId, setExecutingForeclosureQuoteId] = useState('')
+  const [foreclosureQuoteActionError, setForeclosureQuoteActionError] = useState('')
 
   const activeLsps = useMemo(() => lsps.filter((item) => item.status === 'ACTIVE'), [lsps])
   const activeProducts = useMemo(
@@ -890,6 +986,16 @@ export function LoanApplicationsPage() {
   const selectedPaymentTransactions = useMemo(
     () => sortPaymentTransactions(paymentTransactions),
     [paymentTransactions],
+  )
+  const selectedForeclosureQuotes = useMemo(
+    () => [...foreclosureQuotes].sort((left, right) => {
+      const versionComparison = right.version - left.version
+      if (versionComparison !== 0) {
+        return versionComparison
+      }
+      return Date.parse(right.createdAt) - Date.parse(left.createdAt)
+    }),
+    [foreclosureQuotes],
   )
   const selectedAuditTrail = useMemo(() => sortByCreatedAtDesc(auditTrail), [auditTrail])
   const availableStatusHistoryReasonCodes = useMemo(
@@ -955,6 +1061,12 @@ export function LoanApplicationsPage() {
       selectedLoan?.loanAccount?.status === 'DISBURSEMENT_REQUESTED',
   )
   const canRecordPayments = Boolean(
+    user?.roles?.includes('SYSTEM_ADMIN') && selectedLoan?.loanAccount?.status === 'DISBURSED',
+  )
+  const canRequestForeclosureQuote = Boolean(
+    user?.roles?.includes('SYSTEM_ADMIN') && selectedLoan?.loanAccount?.status === 'DISBURSED',
+  )
+  const canExecuteForeclosureQuote = Boolean(
     user?.roles?.includes('SYSTEM_ADMIN') && selectedLoan?.loanAccount?.status === 'DISBURSED',
   )
   const borrowerProfileCompleteness = countBorrowerProfileSignals(visibleSelectedApplication)
@@ -1037,6 +1149,11 @@ export function LoanApplicationsPage() {
     setPaymentTransactionsError('')
   }, [selectedApplicationId])
 
+  useEffect(() => {
+    setForeclosureExecution(buildInitialForeclosureQuoteExecutionState())
+    setForeclosureQuoteActionError('')
+  }, [selectedApplicationId])
+
   async function loadApplications(nextFilters: ListFilterState) {
     const response = await listLoanApplications({
       lspId: nextFilters.lspId || undefined,
@@ -1068,6 +1185,7 @@ export function LoanApplicationsPage() {
     await refreshDisbursementRequests(applicationId)
     await refreshRepaymentSchedule(applicationId)
     await refreshPaymentTransactions(applicationId)
+    await refreshForeclosureQuotes(applicationId)
   }
 
   async function refreshAuditTrail(applicationId: string, showLoading = false) {
@@ -1153,6 +1271,27 @@ export function LoanApplicationsPage() {
     }
   }
 
+  async function refreshForeclosureQuotes(applicationId: string, showLoading = false) {
+    if (showLoading) {
+      setForeclosureQuotesLoading(true)
+    }
+
+    try {
+      const response = await listLoanApplicationForeclosureQuotes(applicationId)
+      setForeclosureQuotes(response)
+      setForeclosureQuotesError('')
+    } catch (loadError) {
+      const message =
+        loadError instanceof Error ? loadError.message : 'Unable to load foreclosure quotes.'
+      setForeclosureQuotes([])
+      setForeclosureQuotesError(message)
+    } finally {
+      if (showLoading) {
+        setForeclosureQuotesLoading(false)
+      }
+    }
+  }
+
   async function refreshDocumentPlaceholders(applicationId: string) {
     try {
       const response = await listLoanApplicationDocumentPlaceholders(applicationId)
@@ -1227,19 +1366,21 @@ export function LoanApplicationsPage() {
 
     async function loadSelectedLoan() {
         if (!selectedApplicationId) {
-          setSelectedLoan(null)
-          setAssignmentHistory([])
-          setStatusHistory([])
-          setAuditTrail([])
-          setDisbursementRequests([])
-          setRepaymentSchedule([])
-          setPaymentTransactions([])
-          setWorkflowError('')
-          setApprovalBlocker(null)
-          setAssignmentError('')
-          setPaymentTransactionsError('')
-          return
-        }
+        setSelectedLoan(null)
+        setAssignmentHistory([])
+        setStatusHistory([])
+        setAuditTrail([])
+        setDisbursementRequests([])
+        setRepaymentSchedule([])
+        setPaymentTransactions([])
+        setForeclosureQuotes([])
+        setWorkflowError('')
+        setApprovalBlocker(null)
+        setAssignmentError('')
+        setPaymentTransactionsError('')
+        setForeclosureQuotesError('')
+        return
+      }
 
         setSelectedLoan(null)
         setAssignmentHistory([])
@@ -1248,11 +1389,13 @@ export function LoanApplicationsPage() {
         setDisbursementRequests([])
         setRepaymentSchedule([])
         setPaymentTransactions([])
+        setForeclosureQuotes([])
         setDetailLoading(true)
         setWorkflowError('')
         setApprovalBlocker(null)
         setAssignmentError('')
         setPaymentTransactionsError('')
+        setForeclosureQuotesError('')
 
       try {
         const [detailResponse, historyResponse, assignmentResponse] = await Promise.all([
@@ -1324,6 +1467,46 @@ export function LoanApplicationsPage() {
     }
 
     void loadPaymentTransactions()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedApplicationId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadForeclosureQuotes() {
+      if (!selectedApplicationId) {
+        setForeclosureQuotes([])
+        setForeclosureQuotesError('')
+        setForeclosureQuotesLoading(false)
+        return
+      }
+
+      setForeclosureQuotesLoading(true)
+      setForeclosureQuotesError('')
+
+      try {
+        const response = await listLoanApplicationForeclosureQuotes(selectedApplicationId)
+        if (!cancelled) {
+          setForeclosureQuotes(response)
+        }
+      } catch (loadError) {
+        const message =
+          loadError instanceof Error ? loadError.message : 'Unable to load foreclosure quotes.'
+        if (!cancelled) {
+          setForeclosureQuotes([])
+          setForeclosureQuotesError(message)
+        }
+      } finally {
+        if (!cancelled) {
+          setForeclosureQuotesLoading(false)
+        }
+      }
+    }
+
+    void loadForeclosureQuotes()
 
     return () => {
       cancelled = true
@@ -1772,6 +1955,55 @@ export function LoanApplicationsPage() {
       setPaymentTransactionsError(message)
     } finally {
       setRecordingPayment(false)
+    }
+  }
+
+  async function handleRequestForeclosureQuote() {
+    if (!selectedApplicationId) {
+      return
+    }
+
+    setRequestingForeclosureQuote(true)
+    setForeclosureQuoteActionError('')
+
+    try {
+      await requestLoanApplicationForeclosureQuote(selectedApplicationId, {
+        effectiveDate: foreclosureExecution.settlementDate,
+      })
+      await refreshSelectedLoan(selectedApplicationId)
+      await loadApplications(filters)
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : 'Unable to request foreclosure quote.'
+      setForeclosureQuoteActionError(message)
+    } finally {
+      setRequestingForeclosureQuote(false)
+    }
+  }
+
+  async function handleExecuteForeclosureQuote(quoteId: string) {
+    if (!selectedApplicationId) {
+      return
+    }
+
+    setExecutingForeclosureQuoteId(quoteId)
+    setForeclosureQuoteActionError('')
+
+    try {
+      await executeLoanApplicationForeclosureQuote(selectedApplicationId, quoteId, {
+        settlementDate: foreclosureExecution.settlementDate,
+        reference: foreclosureExecution.reference.trim(),
+        note: foreclosureExecution.note.trim() || undefined,
+      })
+      setForeclosureExecution(buildInitialForeclosureQuoteExecutionState())
+      await refreshSelectedLoan(selectedApplicationId)
+      await loadApplications(filters)
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : 'Unable to execute foreclosure quote.'
+      setForeclosureQuoteActionError(message)
+    } finally {
+      setExecutingForeclosureQuoteId('')
     }
   }
 
@@ -2732,7 +2964,9 @@ export function LoanApplicationsPage() {
                           </p>
                         </div>
                         <div className="inline-actions">
-                          <Badge>{loanAccountStatusLabel(selectedLoan.loanAccount.status)}</Badge>
+                          <Badge variant={loanAccountStatusVariant(selectedLoan.loanAccount.status)}>
+                            {loanAccountStatusLabel(selectedLoan.loanAccount.status)}
+                          </Badge>
                           {user?.roles?.includes('SYSTEM_ADMIN') ? (
                             <Button
                               disabled={!canInitiateDisbursement || requestingDisbursement}
@@ -2773,6 +3007,22 @@ export function LoanApplicationsPage() {
                           </Button>
                         </div>
                       ) : null}
+                      {(selectedLoan.loanAccount.closureReason ||
+                        selectedLoan.loanAccount.closedAt ||
+                        selectedLoan.loanAccount.closedByUsername) ? (
+                        <div className="loan-alert loan-alert--warning">
+                          <div className="loan-alert__title">Closure metadata</div>
+                          <p className="helper-copy">
+                            Reason: {loanClosureReasonLabel(selectedLoan.loanAccount.closureReason)}
+                          </p>
+                          <p className="helper-copy">
+                            Closed at: {selectedLoan.loanAccount.closedAt ? formatTimestamp(selectedLoan.loanAccount.closedAt) : 'Not closed'}
+                          </p>
+                          <p className="helper-copy">
+                            Closed by: {selectedLoan.loanAccount.closedByUsername ?? 'Not captured'}
+                          </p>
+                        </div>
+                      ) : null}
                       <div className="loan-detail-grid">
                         <div className="loan-detail-field">
                           <span>Account number</span>
@@ -2789,6 +3039,22 @@ export function LoanApplicationsPage() {
                         <div className="loan-detail-field">
                           <span>Approved at</span>
                           <strong>{formatTimestamp(selectedLoan.loanAccount.approvedAt)}</strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>Closure reason</span>
+                          <strong>{loanClosureReasonLabel(selectedLoan.loanAccount.closureReason)}</strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>Closed at</span>
+                          <strong>
+                            {selectedLoan.loanAccount.closedAt
+                              ? formatTimestamp(selectedLoan.loanAccount.closedAt)
+                              : 'Not closed'}
+                          </strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>Closed by</span>
+                          <strong>{selectedLoan.loanAccount.closedByUsername ?? 'Not captured'}</strong>
                         </div>
                         <div className="loan-detail-field">
                           <span>Scheduled installments</span>
@@ -2841,6 +3107,149 @@ export function LoanApplicationsPage() {
                           </strong>
                         </div>
                       </div>
+                      {canRequestForeclosureQuote ? (
+                        <div className="loan-transition-panel" style={{ marginTop: '1.5rem' }}>
+                          <div className="loan-transition-panel__header">
+                            <div>
+                              <h4>Foreclosure quotes</h4>
+                              <p className="helper-copy">
+                                Request payoff quotes tied to a specific settlement date, then execute the matching settlement.
+                              </p>
+                            </div>
+                            <Badge variant="warning">Admin only</Badge>
+                          </div>
+                          <div className="field-stack">
+                            <label htmlFor="foreclosure-settlement-date">Settlement date</label>
+                            <Input
+                              id="foreclosure-settlement-date"
+                              type="date"
+                              value={foreclosureExecution.settlementDate}
+                              onChange={(event) =>
+                                setForeclosureExecution((current) => ({
+                                  ...current,
+                                  settlementDate: event.target.value,
+                                }))
+                              }
+                            />
+                            <p className="helper-copy">
+                              The quote is locked to this effective settlement date for execution.
+                            </p>
+                          </div>
+                          <div className="field-stack">
+                            <label htmlFor="foreclosure-reference">Settlement reference</label>
+                            <Input
+                              id="foreclosure-reference"
+                              value={foreclosureExecution.reference}
+                              onChange={(event) =>
+                                setForeclosureExecution((current) => ({
+                                  ...current,
+                                  reference: event.target.value,
+                                }))
+                              }
+                              placeholder="e.g. FC-SETTLE-001"
+                            />
+                          </div>
+                          <div className="field-stack">
+                            <label htmlFor="foreclosure-note">Settlement note</label>
+                            <textarea
+                              id="foreclosure-note"
+                              className="ui-textarea"
+                              value={foreclosureExecution.note}
+                              onChange={(event) =>
+                                setForeclosureExecution((current) => ({
+                                  ...current,
+                                  note: event.target.value,
+                                }))
+                              }
+                              placeholder="Optional context for the foreclosure settlement."
+                              rows={3}
+                            />
+                          </div>
+                          {foreclosureQuoteActionError ? (
+                            <div className="empty-state">{foreclosureQuoteActionError}</div>
+                          ) : null}
+                          <div className="loan-transition-actions">
+                            <Button
+                              disabled={requestingForeclosureQuote || !canRequestForeclosureQuote}
+                              onClick={() => void handleRequestForeclosureQuote()}
+                              type="button"
+                              variant="secondary"
+                            >
+                              {requestingForeclosureQuote ? 'Requesting...' : 'Request foreclosure quote'}
+                            </Button>
+                          </div>
+                          {foreclosureQuotesLoading ? (
+                            <div className="empty-state">Loading foreclosure quotes...</div>
+                          ) : null}
+                          {!foreclosureQuotesLoading && foreclosureQuotesError ? (
+                            <div className="empty-state">{foreclosureQuotesError}</div>
+                          ) : null}
+                          {!foreclosureQuotesLoading && !foreclosureQuotesError && !selectedForeclosureQuotes.length ? (
+                            <div className="empty-state">
+                              No foreclosure quotes have been requested for this loan account yet.
+                            </div>
+                          ) : null}
+                          {!foreclosureQuotesLoading && !foreclosureQuotesError && selectedForeclosureQuotes.length ? (
+                            <div className="loan-history" style={{ marginTop: '1rem' }}>
+                              <div className="loan-history__header">
+                                <div className="section-eyebrow">Quote history</div>
+                                <Badge>{selectedForeclosureQuotes.length} quotes</Badge>
+                              </div>
+                              <div className="loan-history__list">
+                                {selectedForeclosureQuotes.map((quote) => (
+                                  <div className="loan-history__item" key={quote.id}>
+                                    <div>
+                                      <strong>
+                                        Quote v{quote.version} - {currencyLabel(quote.settlementAmount)}
+                                      </strong>
+                                      <p className="helper-copy">
+                                        Requested by {quote.requestedByUsername} on {formatTimestamp(quote.createdAt)}
+                                      </p>
+                                      <p className="helper-copy">
+                                        Effective date: {formatDateLabel(quote.effectiveDate)}
+                                      </p>
+                                      <p className="helper-copy">
+                                        Principal: {currencyLabel(quote.outstandingPrincipal)} / Interest:{' '}
+                                        {currencyLabel(quote.outstandingInterest)}
+                                      </p>
+                                      <p className="helper-copy">
+                                        Executed: {quote.executedAt ? formatTimestamp(quote.executedAt) : 'Not executed'}
+                                      </p>
+                                    </div>
+                                    <div className="inline-actions">
+                                      <Badge variant={loanForeclosureQuoteStatusVariant(quote.status)}>
+                                        {loanForeclosureQuoteStatusLabel(quote.status)}
+                                      </Badge>
+                                      <Badge>{quote.executedByUsername || 'Pending execution'}</Badge>
+                                      {quote.status === 'ACTIVE' ? (
+                                        <Button
+                                          disabled={
+                                            executingForeclosureQuoteId === quote.id ||
+                                            !canExecuteForeclosureQuote ||
+                                            !foreclosureExecution.settlementDate ||
+                                            !foreclosureExecution.reference.trim() ||
+                                            foreclosureExecution.settlementDate !== quote.effectiveDate
+                                          }
+                                          onClick={() => void handleExecuteForeclosureQuote(quote.id)}
+                                          type="button"
+                                          variant="secondary"
+                                        >
+                                          {executingForeclosureQuoteId === quote.id
+                                            ? 'Executing...'
+                                            : 'Execute quote'}
+                                        </Button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <p className="helper-copy" style={{ marginTop: '0.75rem' }}>
+                                Active quotes can only be executed using their quoted effective date.
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                       {repaymentScheduleError ? (
                         <div className="empty-state">{repaymentScheduleError}</div>
                       ) : null}

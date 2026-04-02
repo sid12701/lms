@@ -5,5 +5,6 @@ public enum LoanPaymentChannel {
     BANK_TRANSFER,
     NACH,
     CASH,
-    CHEQUE
+    CHEQUE,
+    FORECLOSURE_SETTLEMENT
 }

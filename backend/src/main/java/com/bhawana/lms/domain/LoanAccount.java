@@ -55,6 +55,16 @@ public class LoanAccount {
     @Column(name = "approved_at", nullable = false)
     private Instant approvedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "closure_reason", length = 32)
+    private LoanAccountClosureReason closureReason;
+
+    @Column(name = "closed_at")
+    private Instant closedAt;
+
+    @Column(name = "closed_by_username", length = 255)
+    private String closedByUsername;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -147,11 +157,32 @@ public class LoanAccount {
         return approvedAt;
     }
 
+    public LoanAccountClosureReason getClosureReason() {
+        return closureReason;
+    }
+
+    public Instant getClosedAt() {
+        return closedAt;
+    }
+
+    public String getClosedByUsername() {
+        return closedByUsername;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public void close(LoanAccountClosureReason reason, String actorUsername, Instant occurredAt) {
+        this.status = reason == LoanAccountClosureReason.FORECLOSURE
+                ? LoanAccountStatus.FORECLOSED
+                : LoanAccountStatus.CLOSED;
+        this.closureReason = reason;
+        this.closedByUsername = actorUsername;
+        this.closedAt = occurredAt;
     }
 }

@@ -12,6 +12,7 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanDisbursementRequestLog;
+import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
@@ -129,6 +130,14 @@ public class LoanApplicationOpsController {
     public List<LoanPaymentTransactionResponse> listPaymentTransactions(@PathVariable UUID applicationId) {
         return loanApplicationService.listPaymentTransactions(applicationId).stream()
                 .map(LoanApplicationOpsController::toPaymentTransactionResponse)
+                .toList();
+    }
+
+    @GetMapping("/{applicationId}/foreclosure-quotes")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public List<LoanForeclosureQuoteResponse> listForeclosureQuotes(@PathVariable UUID applicationId) {
+        return loanApplicationService.listForeclosureQuotes(applicationId).stream()
+                .map(LoanApplicationOpsController::toForeclosureQuoteResponse)
                 .toList();
     }
 
@@ -344,6 +353,38 @@ public class LoanApplicationOpsController {
         ));
     }
 
+    @PostMapping("/{applicationId}/foreclosure-quotes")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public LoanForeclosureQuoteResponse requestForeclosureQuote(
+            Authentication authentication,
+            @PathVariable UUID applicationId,
+            @Valid @RequestBody LoanForeclosureQuoteRequest request
+    ) {
+        return toForeclosureQuoteResponse(loanApplicationService.requestForeclosureQuote(
+                applicationId,
+                authentication.getName(),
+                request.effectiveDate()
+        ));
+    }
+
+    @PostMapping("/{applicationId}/foreclosure-quotes/{quoteId}/execute")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public LoanForeclosureQuoteResponse executeForeclosureQuote(
+            Authentication authentication,
+            @PathVariable UUID applicationId,
+            @PathVariable UUID quoteId,
+            @Valid @RequestBody LoanForeclosureExecutionRequest request
+    ) {
+        return toForeclosureQuoteResponse(loanApplicationService.executeForeclosureQuote(
+                applicationId,
+                quoteId,
+                authentication.getName(),
+                request.settlementDate(),
+                request.reference(),
+                request.note()
+        ));
+    }
+
     private static LoanApplicationResponse toResponse(LoanApplication application) {
         return new LoanApplicationResponse(
                 application.getId().toString(),
@@ -418,6 +459,9 @@ public class LoanApplicationOpsController {
                         loanAccount.getTenureMonths(),
                         loanAccount.getApprovedAt().toString(),
                         loanAccount.getCreatedAt().toString(),
+                        loanAccount.getClosureReason() == null ? null : loanAccount.getClosureReason().name(),
+                        loanAccount.getClosedAt() == null ? null : loanAccount.getClosedAt().toString(),
+                        loanAccount.getClosedByUsername(),
                         delinquencySummary == null ? null : new LoanDelinquencySummaryResponse(
                                 delinquencySummary.maxDaysPastDue(),
                                 delinquencySummary.bucket().name(),
@@ -556,6 +600,24 @@ public class LoanApplicationOpsController {
         );
     }
 
+    private static LoanForeclosureQuoteResponse toForeclosureQuoteResponse(LoanForeclosureQuote quote) {
+        return new LoanForeclosureQuoteResponse(
+                quote.getId().toString(),
+                quote.getLoanAccount().getId().toString(),
+                quote.getVersion(),
+                quote.getRequestedByUsername(),
+                quote.getExecutedByUsername(),
+                quote.getEffectiveDate(),
+                quote.getOutstandingPrincipal(),
+                quote.getOutstandingInterest(),
+                quote.getSettlementAmount(),
+                quote.getStatus().name(),
+                quote.getExecutedAt() == null ? null : quote.getExecutedAt().toString(),
+                quote.getCreatedAt().toString(),
+                quote.getUpdatedAt().toString()
+        );
+    }
+
     private static LoanApplicationDocumentChecklistResponse toDocumentChecklistResponse(
             LoanApplicationDocumentChecklist checklistItem
     ) {
@@ -671,6 +733,9 @@ public class LoanApplicationOpsController {
             Integer tenureMonths,
             String approvedAt,
             String createdAt,
+            String closureReason,
+            String closedAt,
+            String closedByUsername,
             LoanDelinquencySummaryResponse delinquency,
             LoanRepaymentScheduleSummaryResponse repaymentSchedule
     ) {
@@ -744,6 +809,18 @@ public class LoanApplicationOpsController {
             @NotNull LoanPaymentChannel channel,
             @NotNull LoanPaymentStatus status,
             @Size(max = 500) String note
+    ) {
+    }
+
+    public record LoanForeclosureExecutionRequest(
+            @NotNull @PastOrPresent LocalDate settlementDate,
+            @NotBlank @Size(max = 128) String reference,
+            @Size(max = 500) String note
+    ) {
+    }
+
+    public record LoanForeclosureQuoteRequest(
+            @NotNull LocalDate effectiveDate
     ) {
     }
 
@@ -848,6 +925,23 @@ public class LoanApplicationOpsController {
             BigDecimal unallocatedAmount,
             String note,
             String correlationId,
+            String createdAt,
+            String updatedAt
+    ) {
+    }
+
+    public record LoanForeclosureQuoteResponse(
+            String id,
+            String loanAccountId,
+            Integer version,
+            String requestedByUsername,
+            String executedByUsername,
+            LocalDate effectiveDate,
+            BigDecimal outstandingPrincipal,
+            BigDecimal outstandingInterest,
+            BigDecimal settlementAmount,
+            String status,
+            String executedAt,
             String createdAt,
             String updatedAt
     ) {
