@@ -31,6 +31,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.AccessDeniedException;
@@ -77,7 +78,8 @@ public class LoanApplicationOpsController {
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
                 loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null)
+                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
+                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
         );
     }
 
@@ -182,7 +184,8 @@ public class LoanApplicationOpsController {
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
                 loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null)
+                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
+                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
         );
     }
 
@@ -204,7 +207,8 @@ public class LoanApplicationOpsController {
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
                 loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null)
+                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
+                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
         );
     }
 
@@ -254,7 +258,8 @@ public class LoanApplicationOpsController {
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
                 loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null)
+                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
+                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
         );
     }
 
@@ -294,7 +299,8 @@ public class LoanApplicationOpsController {
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
                 loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null)
+                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
+                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
         );
     }
 
@@ -314,7 +320,8 @@ public class LoanApplicationOpsController {
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
                 loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null)
+                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
+                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
         );
     }
 
@@ -372,7 +379,8 @@ public class LoanApplicationOpsController {
             LoanApplication application,
             LoanApplicationService.LoanApplicationLastActivity lastActivity,
             LoanAccount loanAccount,
-            LoanApplicationService.LoanRepaymentScheduleSummary repaymentScheduleSummary
+            LoanApplicationService.LoanRepaymentScheduleSummary repaymentScheduleSummary,
+            LoanApplicationService.LoanDelinquencySummary delinquencySummary
     ) {
         return new LoanApplicationDetailResponse(
                 application.getId().toString(),
@@ -410,6 +418,12 @@ public class LoanApplicationOpsController {
                         loanAccount.getTenureMonths(),
                         loanAccount.getApprovedAt().toString(),
                         loanAccount.getCreatedAt().toString(),
+                        delinquencySummary == null ? null : new LoanDelinquencySummaryResponse(
+                                delinquencySummary.maxDaysPastDue(),
+                                delinquencySummary.bucket().name(),
+                                delinquencySummary.overdueInstallmentCount(),
+                                delinquencySummary.overdueAmount()
+                        ),
                         repaymentScheduleSummary == null ? null : new LoanRepaymentScheduleSummaryResponse(
                                 repaymentScheduleSummary.installmentCount(),
                                 repaymentScheduleSummary.installmentAmount(),
@@ -501,6 +515,7 @@ public class LoanApplicationOpsController {
     private static LoanRepaymentScheduleInstallmentResponse toRepaymentScheduleInstallmentResponse(
             LoanRepaymentScheduleInstallment installment
     ) {
+        int daysPastDue = LoanApplicationService.calculateDaysPastDue(installment, LocalDate.now(ZoneOffset.UTC));
         return new LoanRepaymentScheduleInstallmentResponse(
                 installment.getId().toString(),
                 installment.getLoanAccount().getId().toString(),
@@ -516,6 +531,8 @@ public class LoanApplicationOpsController {
                 installment.getPaidInterest(),
                 installment.getPaidAmount(),
                 installment.getOutstandingAmount(),
+                daysPastDue,
+                LoanApplicationService.resolveDelinquencyBucket(daysPastDue).name(),
                 installment.getCreatedAt().toString()
         );
     }
@@ -654,7 +671,16 @@ public class LoanApplicationOpsController {
             Integer tenureMonths,
             String approvedAt,
             String createdAt,
+            LoanDelinquencySummaryResponse delinquency,
             LoanRepaymentScheduleSummaryResponse repaymentSchedule
+    ) {
+    }
+
+    public record LoanDelinquencySummaryResponse(
+            Integer maxDaysPastDue,
+            String bucket,
+            Integer overdueInstallmentCount,
+            BigDecimal overdueAmount
     ) {
     }
 
@@ -803,6 +829,8 @@ public class LoanApplicationOpsController {
             BigDecimal paidInterest,
             BigDecimal paidAmount,
             BigDecimal outstandingAmount,
+            Integer daysPastDue,
+            String delinquencyBucket,
             String createdAt
     ) {
     }

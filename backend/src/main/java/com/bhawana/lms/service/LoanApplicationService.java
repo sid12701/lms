@@ -3,6 +3,7 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.KycCompletionRequiredException;
 import com.bhawana.lms.domain.Borrower;
+import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
@@ -242,6 +243,14 @@ public class LoanApplicationService {
                         installments.getFirst().getDueDate(),
                         installments.getLast().getDueDate()
                 ));
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<LoanDelinquencySummary> getLoanDelinquencySummary(UUID applicationId) {
+        return getLoanAccount(applicationId)
+                .map(account -> loanRepaymentScheduleInstallmentRepository.findByLoanAccount_IdOrderByInstallmentNumberAsc(account.getId()))
+                .filter(installments -> !installments.isEmpty())
+                .map(this::buildDelinquencySummary);
     }
 
     @Transactional(readOnly = true)
@@ -1012,6 +1021,27 @@ public class LoanApplicationService {
         loanPaymentTransactionRepository.saveAll(payments);
     }
 
+    private LoanDelinquencySummary buildDelinquencySummary(List<LoanRepaymentScheduleInstallment> installments) {
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        int maxDaysPastDue = installments.stream()
+                .mapToInt(installment -> calculateDaysPastDue(installment, today))
+                .max()
+                .orElse(0);
+        BigDecimal overdueAmount = installments.stream()
+                .filter(installment -> calculateDaysPastDue(installment, today) > 0)
+                .map(LoanRepaymentScheduleInstallment::getOutstandingAmount)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        long overdueInstallmentCount = installments.stream()
+                .filter(installment -> calculateDaysPastDue(installment, today) > 0)
+                .count();
+        return new LoanDelinquencySummary(
+                maxDaysPastDue,
+                resolveDelinquencyBucket(maxDaysPastDue),
+                Math.toIntExact(overdueInstallmentCount),
+                scaleCurrency(overdueAmount)
+        );
+    }
+
     private LoanAccount getRequiredLoanAccount(UUID applicationId) {
         return loanAccountRepository.findByLoanApplication_Id(applicationId)
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -1047,6 +1077,30 @@ public class LoanApplicationService {
 
     private static BigDecimal scaleCurrency(BigDecimal value) {
         return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public static int calculateDaysPastDue(LoanRepaymentScheduleInstallment installment, LocalDate today) {
+        if (installment.getOutstandingAmount().compareTo(BigDecimal.ZERO) <= 0
+                || !installment.getDueDate().isBefore(today)) {
+            return 0;
+        }
+        return Math.toIntExact(java.time.temporal.ChronoUnit.DAYS.between(installment.getDueDate(), today));
+    }
+
+    public static LoanDelinquencyBucket resolveDelinquencyBucket(int daysPastDue) {
+        if (daysPastDue <= 0) {
+            return LoanDelinquencyBucket.CURRENT;
+        }
+        if (daysPastDue <= 30) {
+            return LoanDelinquencyBucket.DPD_1_30;
+        }
+        if (daysPastDue <= 60) {
+            return LoanDelinquencyBucket.DPD_31_60;
+        }
+        if (daysPastDue <= 90) {
+            return LoanDelinquencyBucket.DPD_61_90;
+        }
+        return LoanDelinquencyBucket.DPD_90_PLUS;
     }
 
     private boolean hasMeaningfulDocumentActivity(LoanApplicationDocumentChecklist checklistItem) {
@@ -1211,6 +1265,14 @@ public class LoanApplicationService {
             BigDecimal installmentAmount,
             LocalDate firstDueDate,
             LocalDate finalDueDate
+    ) {
+    }
+
+    public record LoanDelinquencySummary(
+            int maxDaysPastDue,
+            LoanDelinquencyBucket bucket,
+            int overdueInstallmentCount,
+            BigDecimal overdueAmount
     ) {
     }
 }

@@ -41,6 +41,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -110,6 +111,9 @@ class LoanApplicationOpsControllerTest {
 
     @Autowired
     private LspRepository lspRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
@@ -701,6 +705,56 @@ class LoanApplicationOpsControllerTest {
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void loanDetailAndRepaymentScheduleExposeDelinquencyBuckets() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-975A", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
+                .andExpect(status().isOk());
+
+        UUID loanAccountId = loanAccountRepository.findByLoanApplication_Id(UUID.fromString(applicationId))
+                .orElseThrow()
+                .getId();
+        LocalDate overdueDate = LocalDate.now().minusDays(45);
+        jdbcTemplate.update(
+                "update loan_repayment_schedule_installment set due_date = ?, updated_at = current_timestamp where loan_account_id = ? and installment_number = 1",
+                overdueDate,
+                loanAccountId
+        );
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.loanAccount.delinquency.maxDaysPastDue").value(45))
+                .andExpect(jsonPath("$.loanAccount.delinquency.bucket").value("DPD_31_60"))
+                .andExpect(jsonPath("$.loanAccount.delinquency.overdueInstallmentCount").value(1))
+                .andExpect(jsonPath("$.loanAccount.delinquency.overdueAmount").value(4136.32));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/repayment-schedule", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].daysPastDue").value(45))
+                .andExpect(jsonPath("$[0].delinquencyBucket").value("DPD_31_60"))
+                .andExpect(jsonPath("$[0].status").value("PENDING"))
+                .andExpect(jsonPath("$[1].daysPastDue").value(0))
+                .andExpect(jsonPath("$[1].delinquencyBucket").value("CURRENT"));
     }
 
     @Test

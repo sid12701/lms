@@ -218,7 +218,15 @@ export type LoanAccountSummaryRecord = {
   tenureMonths: number
   approvedAt: string
   createdAt: string
+  delinquency: LoanDelinquencySummaryRecord | null
   repaymentSchedule: LoanRepaymentScheduleSummaryRecord | null
+}
+
+export type LoanDelinquencySummaryRecord = {
+  maxDaysPastDue: number
+  bucket: string
+  overdueInstallmentCount: number
+  overdueAmount: number
 }
 
 export type LoanRepaymentScheduleSummaryRecord = {
@@ -243,6 +251,8 @@ export type LoanRepaymentScheduleInstallmentRecord = {
   paidInterest: number
   paidAmount: number
   outstandingAmount: number
+  daysPastDue: number
+  delinquencyBucket: string
   createdAt: string
 }
 

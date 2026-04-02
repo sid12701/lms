@@ -520,6 +520,38 @@ function loanRepaymentInstallmentStatusVariant(
   }
 }
 
+function loanDelinquencyBucketLabel(bucket?: string | null) {
+  switch ((bucket ?? '').toUpperCase()) {
+    case 'DPD_1_30':
+      return '1-30 DPD'
+    case 'DPD_31_60':
+      return '31-60 DPD'
+    case 'DPD_61_90':
+      return '61-90 DPD'
+    case 'DPD_90_PLUS':
+      return '90+ DPD'
+    case 'CURRENT':
+    default:
+      return 'Current'
+  }
+}
+
+function loanDelinquencyBucketVariant(
+  bucket?: string | null,
+): 'default' | 'success' | 'warning' | 'destructive' {
+  switch ((bucket ?? '').toUpperCase()) {
+    case 'DPD_61_90':
+    case 'DPD_90_PLUS':
+      return 'destructive'
+    case 'DPD_1_30':
+    case 'DPD_31_60':
+      return 'warning'
+    case 'CURRENT':
+    default:
+      return 'success'
+  }
+}
+
 function sortByCreatedAtDesc<T extends { createdAt: string }>(records: T[]) {
   return [...records].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
 }
@@ -2788,6 +2820,26 @@ export function LoanApplicationsPage() {
                               : 'Not generated'}
                           </strong>
                         </div>
+                        <div className="loan-detail-field">
+                          <span>Delinquency bucket</span>
+                          <strong>
+                            {loanDelinquencyBucketLabel(selectedLoan.loanAccount.delinquency?.bucket)}
+                          </strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>Max DPD</span>
+                          <strong>{selectedLoan.loanAccount.delinquency?.maxDaysPastDue ?? 0} days</strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>Overdue installments</span>
+                          <strong>{selectedLoan.loanAccount.delinquency?.overdueInstallmentCount ?? 0}</strong>
+                        </div>
+                        <div className="loan-detail-field">
+                          <span>Overdue amount</span>
+                          <strong>
+                            {currencyLabel(selectedLoan.loanAccount.delinquency?.overdueAmount ?? 0)}
+                          </strong>
+                        </div>
                       </div>
                       {repaymentScheduleError ? (
                         <div className="empty-state">{repaymentScheduleError}</div>
@@ -2838,6 +2890,10 @@ export function LoanApplicationsPage() {
                                     {currencyLabel(installment.outstandingAmount)}
                                   </p>
                                   <p className="helper-copy">
+                                    DPD: {installment.daysPastDue} days / Bucket:{' '}
+                                    {loanDelinquencyBucketLabel(installment.delinquencyBucket)}
+                                  </p>
+                                  <p className="helper-copy">
                                     Paid principal: {currencyLabel(installment.paidPrincipal)} / Paid interest:{' '}
                                     {currencyLabel(installment.paidInterest)}
                                   </p>
@@ -2849,6 +2905,9 @@ export function LoanApplicationsPage() {
                                   <Badge>{currencyLabel(installment.installmentAmount)}</Badge>
                                   <Badge variant={loanRepaymentInstallmentStatusVariant(installment.status)}>
                                     {loanRepaymentInstallmentStatusLabel(installment.status)}
+                                  </Badge>
+                                  <Badge variant={loanDelinquencyBucketVariant(installment.delinquencyBucket)}>
+                                    {loanDelinquencyBucketLabel(installment.delinquencyBucket)}
                                   </Badge>
                                 </div>
                               </div>
