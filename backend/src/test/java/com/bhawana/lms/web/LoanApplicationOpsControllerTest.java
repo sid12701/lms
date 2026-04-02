@@ -301,7 +301,10 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].loanApplicationId").value(created.get("id").asText()))
                 .andExpect(jsonPath("$[0].actorUsername").value("ops.user"))
                 .andExpect(jsonPath("$[0].payloadJson", containsString("\"externalLoanId\":\"EXT-901\"")))
-                .andExpect(jsonPath("$[0].payloadJson", containsString("\"sourceChannel\":\"API\"")));
+                .andExpect(jsonPath("$[0].payloadJson", containsString("\"sourceChannel\":\"API\"")))
+                .andExpect(jsonPath("$[0].payloadJson", containsString("\"borrowerPan\":\"ABC*****4F\"")))
+                .andExpect(jsonPath("$[0].payloadJson", containsString("\"borrowerMobile\":\"******9999\"")))
+                .andExpect(jsonPath("$[0].payloadJson", containsString("\"borrowerEmail\":\"a****@example.com\"")));
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/document-access-audits", created.get("id").asText())
                         .with(opsUser()))

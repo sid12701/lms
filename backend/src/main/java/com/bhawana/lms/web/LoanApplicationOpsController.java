@@ -20,6 +20,10 @@ import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.service.LoanApplicationService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Email;
@@ -54,6 +58,7 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','OPS_USER')")
 public class LoanApplicationOpsController {
 
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
     private final LoanApplicationService loanApplicationService;
 
     public LoanApplicationOpsController(LoanApplicationService loanApplicationService) {
@@ -506,9 +511,85 @@ public class LoanApplicationOpsController {
                 audit.getLoanApplication().getId().toString(),
                 audit.getActorUsername(),
                 audit.getCorrelationId(),
-                audit.getPayloadJson(),
+                maskSensitivePayloadJson(audit.getPayloadJson()),
                 audit.getCreatedAt()
         );
+    }
+
+    private static String maskSensitivePayloadJson(String payloadJson) {
+        try {
+            JsonNode root = JSON_MAPPER.readTree(payloadJson);
+            JsonNode masked = maskSensitiveNode(root);
+            return JSON_MAPPER.writeValueAsString(masked);
+        } catch (JsonProcessingException exception) {
+            return payloadJson;
+        }
+    }
+
+    private static JsonNode maskSensitiveNode(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return node;
+        }
+
+        if (node.isArray()) {
+            for (JsonNode child : node) {
+                maskSensitiveNode(child);
+            }
+            return node;
+        }
+
+        if (!node.isObject()) {
+            return node;
+        }
+
+        ObjectNode objectNode = (ObjectNode) node;
+        objectNode.fieldNames().forEachRemaining(fieldName -> {
+            JsonNode child = objectNode.get(fieldName);
+            if (child != null && child.isTextual()) {
+                objectNode.put(fieldName, switch (fieldName) {
+                    case "borrowerPan", "pan" -> maskPan(child.asText());
+                    case "borrowerMobile", "mobile" -> maskMobile(child.asText());
+                    case "borrowerEmail", "email" -> maskEmail(child.asText());
+                    default -> child.asText();
+                });
+            } else {
+                maskSensitiveNode(child);
+            }
+        });
+        return objectNode;
+    }
+
+    private static String maskPan(String value) {
+        return maskMiddle(value, 3, 2);
+    }
+
+    private static String maskMobile(String value) {
+        return maskMiddle(value, 0, 4);
+    }
+
+    private static String maskEmail(String value) {
+        int atIndex = value.indexOf('@');
+        if (atIndex <= 0 || atIndex == value.length() - 1) {
+            return maskMiddle(value, 1, 0);
+        }
+        String localPart = value.substring(0, atIndex);
+        String domain = value.substring(atIndex + 1);
+        String maskedLocalPart = localPart.length() <= 1
+                ? "*"
+                : localPart.substring(0, 1) + "*".repeat(Math.max(localPart.length() - 1, 2));
+        return maskedLocalPart + "@" + domain;
+    }
+
+    private static String maskMiddle(String value, int visibleStart, int visibleEnd) {
+        if (value == null || value.isBlank()) {
+            return value;
+        }
+        if (value.length() <= visibleStart + visibleEnd) {
+            return "*".repeat(value.length());
+        }
+        return value.substring(0, visibleStart)
+                + "*".repeat(value.length() - visibleStart - visibleEnd)
+                + value.substring(value.length() - visibleEnd);
     }
 
     private static LoanApplicationStatusTransitionResponse toTransitionResponse(LoanApplicationStatusTransition transition) {
