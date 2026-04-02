@@ -8,8 +8,25 @@ import { LoginPage } from './features/auth/login-page'
 import { LspAdminPage } from './features/admin/lsp-admin-page'
 import { ApiClientsPage } from './features/api-clients/api-clients-page'
 import { LoanApplicationsPage } from './features/loan-applications/loan-applications-page'
+import { LspLoansPage } from './features/lsp-loans/lsp-loans-page'
 import { UsersPage } from './features/users/users-page'
 import { ProductConfigurationPage } from './features/products/product-configuration-page'
+
+function isLspUiUser(roles: string[]) {
+  return roles.includes('LSP_UI_READ') || roles.includes('LSP_UI_WRITE')
+}
+
+function defaultLandingPath(user: { roles: string[] } | null, mustChangePassword: boolean) {
+  if (!user) {
+    return '/login'
+  }
+
+  if (mustChangePassword) {
+    return '/change-password'
+  }
+
+  return isLspUiUser(user.roles) ? '/my-loans' : '/dashboard'
+}
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
   const { user, mustChangePassword } = useAuth()
@@ -33,7 +50,7 @@ function PasswordChangeRoute({ children }: { children: ReactElement }) {
   }
 
   if (!mustChangePassword) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to={defaultLandingPath(user, false)} replace />
   }
 
   return children
@@ -43,13 +60,35 @@ function LoginRoute() {
   const { user, mustChangePassword } = useAuth()
 
   if (user) {
-    return <Navigate to={mustChangePassword ? '/change-password' : '/dashboard'} replace />
+    return <Navigate to={defaultLandingPath(user, mustChangePassword)} replace />
   }
 
   return <LoginPage />
 }
 
+function InternalOnlyRoute({ children }: { children: ReactElement }) {
+  const { user } = useAuth()
+
+  if (user && isLspUiUser(user.roles)) {
+    return <Navigate to="/my-loans" replace />
+  }
+
+  return children
+}
+
+function LspOnlyRoute({ children }: { children: ReactElement }) {
+  const { user } = useAuth()
+
+  if (user && !isLspUiUser(user.roles)) {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  return children
+}
+
 export function AppRouter() {
+  const { user, mustChangePassword } = useAuth()
+
   return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
@@ -61,7 +100,7 @@ export function AppRouter() {
           </PasswordChangeRoute>
         }
       />
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<Navigate to={defaultLandingPath(user, mustChangePassword)} replace />} />
       <Route
         path="/*"
         element={
@@ -70,12 +109,62 @@ export function AppRouter() {
           </ProtectedRoute>
         }
       >
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="lsps" element={<LspAdminPage />} />
-        <Route path="api-clients" element={<ApiClientsPage />} />
-        <Route path="users" element={<UsersPage />} />
-        <Route path="products" element={<ProductConfigurationPage />} />
-        <Route path="loan-applications" element={<LoanApplicationsPage />} />
+        <Route
+          path="dashboard"
+          element={
+            <InternalOnlyRoute>
+              <DashboardPage />
+            </InternalOnlyRoute>
+          }
+        />
+        <Route
+          path="my-loans"
+          element={
+            <LspOnlyRoute>
+              <LspLoansPage />
+            </LspOnlyRoute>
+          }
+        />
+        <Route
+          path="lsps"
+          element={
+            <InternalOnlyRoute>
+              <LspAdminPage />
+            </InternalOnlyRoute>
+          }
+        />
+        <Route
+          path="api-clients"
+          element={
+            <InternalOnlyRoute>
+              <ApiClientsPage />
+            </InternalOnlyRoute>
+          }
+        />
+        <Route
+          path="users"
+          element={
+            <InternalOnlyRoute>
+              <UsersPage />
+            </InternalOnlyRoute>
+          }
+        />
+        <Route
+          path="products"
+          element={
+            <InternalOnlyRoute>
+              <ProductConfigurationPage />
+            </InternalOnlyRoute>
+          }
+        />
+        <Route
+          path="loan-applications"
+          element={
+            <InternalOnlyRoute>
+              <LoanApplicationsPage />
+            </InternalOnlyRoute>
+          }
+        />
       </Route>
     </Routes>
   )

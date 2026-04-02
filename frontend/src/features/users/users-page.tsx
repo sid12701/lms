@@ -12,9 +12,11 @@ import { Input } from '../../components/ui/input'
 import {
   createUser,
   getAdminMetadata,
+  listLsps,
   listUsers,
   resetUserPassword,
   type AdminMetadata,
+  type LspRecord,
   type RoleCode,
   type ResetPasswordResponse,
   type UserRecord,
@@ -31,11 +33,13 @@ function statusVariant(status: UserStatus): 'success' | 'warning' {
 
 export function UsersPage() {
   const [users, setUsers] = useState<UserRecord[]>([])
+  const [lsps, setLsps] = useState<LspRecord[]>([])
   const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('TempPass123!')
   const [role, setRole] = useState<RoleCode | ''>('')
+  const [lspId, setLspId] = useState('')
   const [status, setStatus] = useState<UserStatus | ''>('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -51,9 +55,14 @@ export function UsersPage() {
       setError('')
 
       try {
-        const [metadataResponse, response] = await Promise.all([getAdminMetadata(), listUsers()])
+        const [metadataResponse, lspResponse, response] = await Promise.all([
+          getAdminMetadata(),
+          listLsps(),
+          listUsers(),
+        ])
         if (!cancelled) {
           setMetadata(metadataResponse)
+          setLsps(lspResponse)
           setUsers(response)
           setRole((current) => current || (metadataResponse.roleCodes[0] as RoleCode | ''))
           setStatus((current) => current || (metadataResponse.userStatuses[0] as UserStatus | ''))
@@ -77,6 +86,8 @@ export function UsersPage() {
     }
   }, [])
 
+  const requiresLsp = role === 'LSP_UI_READ' || role === 'LSP_UI_WRITE'
+
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!username.trim() || !email.trim() || !password.trim()) {
@@ -85,6 +96,12 @@ export function UsersPage() {
 
     const nextRole = role || (metadata?.roleCodes[0] as RoleCode | undefined) || 'OPS_USER'
     const nextStatus = status || (metadata?.userStatuses[0] as UserStatus | undefined) || 'ACTIVE'
+    const nextLspId = requiresLsp ? lspId || lsps[0]?.id || '' : ''
+
+    if (requiresLsp && !nextLspId) {
+      setError('An LSP must be selected for tenant UI users.')
+      return
+    }
 
     setSubmitting(true)
     setError('')
@@ -95,6 +112,7 @@ export function UsersPage() {
         email,
         password,
         status: nextStatus,
+        lspId: nextLspId || null,
         roles: [nextRole],
       })
 
@@ -103,6 +121,7 @@ export function UsersPage() {
       setEmail('')
       setPassword('TempPass123!')
       setRole(nextRole)
+      setLspId(nextLspId)
       setStatus(nextStatus)
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : 'Unable to create user.'
@@ -267,6 +286,23 @@ export function UsersPage() {
                 {(metadata?.userStatuses ?? []).map((option) => (
                   <option key={option} value={option}>
                     {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field-stack">
+              <label htmlFor="lspId">Tenant scope</label>
+              <select
+                id="lspId"
+                className="ui-input"
+                value={lspId}
+                onChange={(event) => setLspId(event.target.value)}
+                disabled={!lsps.length || !requiresLsp}
+              >
+                <option value="">{requiresLsp ? 'Select an LSP' : 'Not required for this role'}</option>
+                {lsps.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
                   </option>
                 ))}
               </select>

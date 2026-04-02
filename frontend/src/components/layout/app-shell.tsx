@@ -15,7 +15,7 @@ import { Badge } from '../ui/badge'
 import { useAuth } from '../../features/auth/auth-context'
 import { cn } from '../../lib/cn'
 
-const navigation = [
+const internalNavigation = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/lsps', label: 'LSP Administration', icon: Building2 },
   { to: '/api-clients', label: 'API Clients', icon: KeyRound },
@@ -25,8 +25,14 @@ const navigation = [
   { to: '/dashboard', label: 'Alerts & Monitoring', icon: BellRing },
 ]
 
+const lspNavigation = [
+  { to: '/my-loans', label: 'My Loans', icon: NotebookPen },
+]
+
 export function AppShell() {
   const { user, logout } = useAuth()
+  const isLspUiUser = user?.roles.some((role) => role === 'LSP_UI_READ' || role === 'LSP_UI_WRITE') ?? false
+  const navigation = isLspUiUser ? lspNavigation : internalNavigation
 
   return (
     <div className="app-shell">
@@ -34,7 +40,7 @@ export function AppShell() {
         <div className="brand-block">
           <div className="section-eyebrow">Bhawana Capital</div>
           <h1>Sovereign Ledger</h1>
-          <p>Multi-tenant loan operations and lender controls.</p>
+          <p>{isLspUiUser ? 'Tenant-scoped loan visibility and reporting.' : 'Multi-tenant loan operations and lender controls.'}</p>
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary">
@@ -73,8 +79,8 @@ export function AppShell() {
       <main className="content-area">
         <header className="content-header">
           <div>
-            <div className="section-eyebrow">Operations Console</div>
-            <h2>Admin and Product Control</h2>
+            <div className="section-eyebrow">{isLspUiUser ? 'LSP Workspace' : 'Operations Console'}</div>
+            <h2>{isLspUiUser ? 'Loan Visibility and Reports' : 'Admin and Product Control'}</h2>
           </div>
           <div className="header-meta">
             <Badge variant="success">

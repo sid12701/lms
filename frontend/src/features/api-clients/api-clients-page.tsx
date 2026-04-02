@@ -153,6 +153,33 @@ export function ApiClientsPage() {
       </Card>
 
       <div className="form-stack">
+        <Card className="content-card">
+          <CardHeader>
+            <div className="section-eyebrow">External LSP API</div>
+            <CardTitle>First live partner contract</CardTitle>
+            <CardDescription>
+              Newly created clients can now mint partner tokens and call the first LSP-scoped loan intake APIs.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="helper-copy" style={{ marginBottom: '0.75rem' }}>
+              Token: <code>POST /api/v1/auth/token</code> with <code>grantType=client_credentials</code>
+            </div>
+            <div className="helper-copy" style={{ marginBottom: '0.75rem' }}>
+              Endpoints: <code>POST /api/v1/lsp/loan-applications</code>,{' '}
+              <code>GET /api/v1/lsp/loan-applications</code>,{' '}
+              <code>GET /api/v1/lsp/loan-applications/external/{'{externalLoanId}'}</code>
+            </div>
+            <pre className="secret-panel" style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
+{`{
+  "grantType": "client_credentials",
+  "clientId": "cli_xxx",
+  "clientSecret": "issued-once-secret"
+}`}
+            </pre>
+          </CardContent>
+        </Card>
+
         {createdSecret ? (
           <Card className="content-card">
             <CardHeader>

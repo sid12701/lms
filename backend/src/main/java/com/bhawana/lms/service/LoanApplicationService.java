@@ -160,9 +160,41 @@ public class LoanApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public List<LoanApplication> listApplicationsForLsp(
+            UUID lspId,
+            UUID productId,
+            String status,
+            String sourceChannel,
+            String query
+    ) {
+        return listApplications(lspId, productId, status, sourceChannel, query);
+    }
+
+    @Transactional(readOnly = true)
     public LoanApplication getApplication(UUID applicationId) {
         return loanApplicationRepository.findById(applicationId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown loan application id: " + applicationId));
+    }
+
+    @Transactional(readOnly = true)
+    public LoanApplication getApplicationForLsp(UUID lspId, UUID applicationId) {
+        LoanApplication application = getApplication(applicationId);
+        if (!application.getLsp().getId().equals(lspId)) {
+            throw new IllegalArgumentException("Unknown loan application id: " + applicationId);
+        }
+        return application;
+    }
+
+    @Transactional(readOnly = true)
+    public LoanApplication getApplicationForLspByExternalLoanId(UUID lspId, String externalLoanId) {
+        String normalizedExternalLoanId = normalizeOptional(externalLoanId);
+        if (normalizedExternalLoanId == null) {
+            throw new IllegalArgumentException("externalLoanId is required.");
+        }
+        return loanApplicationRepository.findByLsp_IdAndExternalLoanIdIgnoreCase(lspId, normalizedExternalLoanId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Unknown external loan id for the authenticated LSP: " + normalizedExternalLoanId
+                ));
     }
 
     @Transactional(readOnly = true)

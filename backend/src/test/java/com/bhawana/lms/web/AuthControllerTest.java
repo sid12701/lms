@@ -9,13 +9,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
+import com.bhawana.lms.domain.Lsp;
+import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
+import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
+import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.service.ApiClientManagementService;
 import com.bhawana.lms.service.AdminDirectoryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,9 +57,20 @@ class AuthControllerTest {
     @Autowired
     private AdminDirectoryService adminDirectoryService;
 
+    @Autowired
+    private ApiClientManagementService apiClientManagementService;
+
+    @Autowired
+    private ApiClientRepository apiClientRepository;
+
+    @Autowired
+    private LspRepository lspRepository;
+
     @BeforeEach
     void setUpManagedUser() {
         appUserRepository.deleteAll();
+        apiClientRepository.deleteAll();
+        lspRepository.deleteAll();
 
         AppRole opsUserRole = appRoleRepository.findByCodeIn(List.of(RoleCode.OPS_USER)).stream()
                 .findFirst()
@@ -240,5 +257,69 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("ops.user"))
                 .andExpect(jsonPath("$.roles[0]").value("OPS_USER"));
+    }
+
+    @Test
+    void tokenEndpointReturnsJwtForApiClientCredentials() throws Exception {
+        Lsp lsp = lspRepository.save(new Lsp("APEX-PARTNER", "Apex Partner", LspStatus.ACTIVE));
+        ApiClientManagementService.CreatedApiClient createdApiClient = apiClientManagementService.createClient(
+                "Apex Machine Client",
+                null,
+                lsp.getId(),
+                com.bhawana.lms.domain.ApiClientStatus.ACTIVE
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "grantType", "client_credentials",
+                                "clientId", createdApiClient.client().getClientId(),
+                                "clientSecret", createdApiClient.rawSecret()
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isString())
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.passwordChangeRequired").value(false))
+                .andReturn();
+
+        String accessToken = objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void tenantUiUserReceivesLspContextInSystemSession() throws Exception {
+        Lsp lsp = lspRepository.save(new Lsp("APEX-UI", "Apex UI Tenant", LspStatus.ACTIVE));
+        AppRole lspUiReadRole = appRoleRepository.findByCodeIn(List.of(RoleCode.LSP_UI_READ)).stream()
+                .findFirst()
+                .orElseThrow();
+
+        appUserRepository.save(new AppUser(
+                "tenant.viewer",
+                "tenant.viewer@bhawana.local",
+                passwordEncoder.encode("TestPassword123!"),
+                UserStatus.ACTIVE,
+                lsp,
+                Set.of(lspUiReadRole)
+        ));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new AuthController.LoginRequest("tenant.viewer", "TestPassword123!"))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String accessToken = objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
+
+        mockMvc.perform(get("/api/v1/internal/system/context")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("tenant.viewer"))
+                .andExpect(jsonPath("$.roles[0]").value("LSP_UI_READ"))
+                .andExpect(jsonPath("$.lspId").value(lsp.getId().toString()))
+                .andExpect(jsonPath("$.lspName").value("Apex UI Tenant"));
     }
 }

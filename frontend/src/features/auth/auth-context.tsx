@@ -34,13 +34,17 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-function scopeForRoles(roles: string[]) {
+function scopeForRoles(roles: string[], lspName: string | null) {
   if (roles.includes('SYSTEM_ADMIN')) {
     return 'All LSPs'
   }
 
   if (roles.includes('OPS_USER')) {
     return 'Operations'
+  }
+
+  if ((roles.includes('LSP_UI_READ') || roles.includes('LSP_UI_WRITE')) && lspName) {
+    return lspName
   }
 
   return 'Tenant scope'
@@ -74,7 +78,9 @@ async function buildSessionFromToken(
       username: context.username,
       roles: context.roles,
       primaryRole: context.roles[0] ?? 'UNKNOWN',
-      scope: scopeForRoles(context.roles),
+      scope: scopeForRoles(context.roles, context.lspName),
+      lspId: context.lspId,
+      lspName: context.lspName,
       application: context.application,
       activeProfiles: context.activeProfiles,
       correlationId: context.correlationId,

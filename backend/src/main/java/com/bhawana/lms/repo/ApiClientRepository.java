@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ApiClientRepository extends JpaRepository<ApiClient, UUID> {
 
     boolean existsByClientIdIgnoreCase(String clientId);
+
+    java.util.Optional<ApiClient> findByClientIdIgnoreCase(String clientId);
 }

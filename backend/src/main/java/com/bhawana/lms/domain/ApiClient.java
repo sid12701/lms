@@ -105,11 +105,23 @@ public class ApiClient {
         return status;
     }
 
+    public String getSecretHash() {
+        return secretHash;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
 
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
     public Instant getLastUsedAt() {
         return lastUsedAt;
+    }
+
+    public void markUsed() {
+        this.lastUsedAt = Instant.now();
     }
 }

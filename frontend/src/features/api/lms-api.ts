@@ -89,6 +89,8 @@ export type AuthTokenResponse = {
   passwordChangeRequired?: boolean
 }
 
+export type ApiClientTokenResponse = AuthTokenResponse
+
 export type AdminMetadata = {
   roleCodes: string[]
   lspStatuses: string[]
@@ -103,6 +105,8 @@ export type SystemContext = {
   username: string
   roles: string[]
   correlationId: string | null
+  lspId: string | null
+  lspName: string | null
 }
 
 export type AuthSession = {
@@ -116,6 +120,8 @@ export type AuthUser = {
   roles: string[]
   primaryRole: string
   scope: string
+  lspId: string | null
+  lspName: string | null
   application: string
   activeProfiles: string[]
   correlationId: string | null
@@ -563,6 +569,21 @@ export function loginWithPassword(username: string, password: string) {
   )
 }
 
+export function loginWithApiClientCredentials(clientId: string, clientSecret: string) {
+  return requestJson<ApiClientTokenResponse>(
+    '/api/v1/auth/token',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        grantType: 'client_credentials',
+        clientId,
+        clientSecret,
+      }),
+    },
+    { authenticated: false },
+  )
+}
+
 export function completePasswordChange(payload: { newPassword: string }) {
   return requestJson<AuthTokenResponse>(
     '/api/v1/auth/password',
@@ -800,6 +821,70 @@ export function createLoanApplication(payload: {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+}
+
+export function listExternalLspLoanApplications(filters?: {
+  productId?: string
+  status?: string
+  sourceChannel?: string
+  query?: string
+}) {
+  const params = new URLSearchParams()
+
+  if (filters?.productId) {
+    params.set('productId', filters.productId)
+  }
+
+  if (filters?.status) {
+    params.set('status', filters.status)
+  }
+
+  if (filters?.sourceChannel) {
+    params.set('sourceChannel', filters.sourceChannel)
+  }
+
+  if (filters?.query) {
+    params.set('q', filters.query)
+  }
+
+  const queryString = params.toString()
+  const path = queryString
+    ? `/api/v1/lsp/loan-applications?${queryString}`
+    : '/api/v1/lsp/loan-applications'
+
+  return requestJson<LoanApplicationRecord[]>(path)
+}
+
+export function createExternalLspLoanApplication(payload: {
+  productId: string
+  externalLoanId: string
+  sourceChannel: string
+  borrowerPan: string
+  borrowerFullName: string
+  borrowerMobile: string
+  borrowerEmail?: string
+  borrowerDateOfBirth?: string
+  borrowerCity?: string
+  borrowerState?: string
+  borrowerEmploymentType?: string
+  borrowerMonthlyIncome?: number
+  requestedAmount: number
+  tenureMonths: number
+}) {
+  return requestJson<LoanApplicationRecord>('/api/v1/lsp/loan-applications', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getExternalLspLoanApplication(applicationId: string) {
+  return requestJson<LoanApplicationDetailRecord>(`/api/v1/lsp/loan-applications/${applicationId}`)
+}
+
+export function getExternalLspLoanApplicationByExternalLoanId(externalLoanId: string) {
+  return requestJson<LoanApplicationDetailRecord>(
+    `/api/v1/lsp/loan-applications/external/${encodeURIComponent(externalLoanId)}`,
+  )
 }
 
 export function listLoanApplicationIntakeAudits(applicationId: string) {
