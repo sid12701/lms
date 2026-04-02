@@ -511,6 +511,11 @@ public class LoanApplicationOpsController {
                 installment.getInterestDue(),
                 installment.getInstallmentAmount(),
                 installment.getClosingPrincipal(),
+                installment.getStatus().name(),
+                installment.getPaidPrincipal(),
+                installment.getPaidInterest(),
+                installment.getPaidAmount(),
+                installment.getOutstandingAmount(),
                 installment.getCreatedAt().toString()
         );
     }
@@ -525,6 +530,8 @@ public class LoanApplicationOpsController {
                 paymentTransaction.getReference(),
                 paymentTransaction.getChannel().name(),
                 paymentTransaction.getStatus().name(),
+                paymentTransaction.getAllocatedAmount(),
+                paymentTransaction.getUnallocatedAmount(),
                 paymentTransaction.getNote(),
                 paymentTransaction.getCorrelationId(),
                 paymentTransaction.getCreatedAt().toString(),
@@ -791,6 +798,11 @@ public class LoanApplicationOpsController {
             BigDecimal interestDue,
             BigDecimal installmentAmount,
             BigDecimal closingPrincipal,
+            String status,
+            BigDecimal paidPrincipal,
+            BigDecimal paidInterest,
+            BigDecimal paidAmount,
+            BigDecimal outstandingAmount,
             String createdAt
     ) {
     }
@@ -804,6 +816,8 @@ public class LoanApplicationOpsController {
             String reference,
             String channel,
             String status,
+            BigDecimal allocatedAmount,
+            BigDecimal unallocatedAmount,
             String note,
             String correlationId,
             String createdAt,

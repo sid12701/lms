@@ -2,11 +2,14 @@ package com.bhawana.lms.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -45,8 +48,27 @@ public class LoanRepaymentScheduleInstallment {
     @Column(name = "closing_principal", nullable = false, precision = 19, scale = 2)
     private BigDecimal closingPrincipal;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 64)
+    private LoanRepaymentScheduleInstallmentStatus status;
+
+    @Column(name = "paid_principal", nullable = false, precision = 19, scale = 2)
+    private BigDecimal paidPrincipal;
+
+    @Column(name = "paid_interest", nullable = false, precision = 19, scale = 2)
+    private BigDecimal paidInterest;
+
+    @Column(name = "paid_amount", nullable = false, precision = 19, scale = 2)
+    private BigDecimal paidAmount;
+
+    @Column(name = "outstanding_amount", nullable = false, precision = 19, scale = 2)
+    private BigDecimal outstandingAmount;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 
     protected LoanRepaymentScheduleInstallment() {
     }
@@ -70,11 +92,23 @@ public class LoanRepaymentScheduleInstallment {
         this.interestDue = interestDue;
         this.installmentAmount = installmentAmount;
         this.closingPrincipal = closingPrincipal;
+        this.status = LoanRepaymentScheduleInstallmentStatus.PENDING;
+        this.paidPrincipal = BigDecimal.ZERO.setScale(2);
+        this.paidInterest = BigDecimal.ZERO.setScale(2);
+        this.paidAmount = BigDecimal.ZERO.setScale(2);
+        this.outstandingAmount = installmentAmount;
     }
 
     @PrePersist
     void onCreate() {
-        createdAt = Instant.now();
+        Instant now = Instant.now();
+        createdAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
     }
 
     public UUID getId() {
@@ -113,7 +147,65 @@ public class LoanRepaymentScheduleInstallment {
         return closingPrincipal;
     }
 
+    public LoanRepaymentScheduleInstallmentStatus getStatus() {
+        return status;
+    }
+
+    public BigDecimal getPaidPrincipal() {
+        return paidPrincipal;
+    }
+
+    public BigDecimal getPaidInterest() {
+        return paidInterest;
+    }
+
+    public BigDecimal getPaidAmount() {
+        return paidAmount;
+    }
+
+    public BigDecimal getOutstandingAmount() {
+        return outstandingAmount;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void resetAllocation() {
+        this.status = LoanRepaymentScheduleInstallmentStatus.PENDING;
+        this.paidPrincipal = BigDecimal.ZERO.setScale(2);
+        this.paidInterest = BigDecimal.ZERO.setScale(2);
+        this.paidAmount = BigDecimal.ZERO.setScale(2);
+        this.outstandingAmount = installmentAmount;
+    }
+
+    public BigDecimal applyPayment(BigDecimal amount) {
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO.setScale(2);
+        }
+
+        BigDecimal interestOutstanding = interestDue.subtract(paidInterest).max(BigDecimal.ZERO);
+        BigDecimal interestApplied = amount.min(interestOutstanding);
+        paidInterest = paidInterest.add(interestApplied);
+        BigDecimal remaining = amount.subtract(interestApplied);
+
+        BigDecimal principalOutstanding = principalDue.subtract(paidPrincipal).max(BigDecimal.ZERO);
+        BigDecimal principalApplied = remaining.min(principalOutstanding);
+        paidPrincipal = paidPrincipal.add(principalApplied);
+
+        BigDecimal appliedAmount = interestApplied.add(principalApplied);
+        paidAmount = paidInterest.add(paidPrincipal);
+        outstandingAmount = installmentAmount.subtract(paidAmount).max(BigDecimal.ZERO).setScale(2);
+        status = outstandingAmount.compareTo(BigDecimal.ZERO) == 0
+                ? LoanRepaymentScheduleInstallmentStatus.PAID
+                : paidAmount.compareTo(BigDecimal.ZERO) > 0
+                ? LoanRepaymentScheduleInstallmentStatus.PARTIALLY_PAID
+                : LoanRepaymentScheduleInstallmentStatus.PENDING;
+
+        return appliedAmount.setScale(2);
     }
 }

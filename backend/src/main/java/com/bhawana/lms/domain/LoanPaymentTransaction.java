@@ -47,6 +47,12 @@ public class LoanPaymentTransaction {
     @Column(nullable = false, length = 64)
     private LoanPaymentStatus status;
 
+    @Column(name = "allocated_amount", nullable = false, precision = 19, scale = 2)
+    private BigDecimal allocatedAmount;
+
+    @Column(name = "unallocated_amount", nullable = false, precision = 19, scale = 2)
+    private BigDecimal unallocatedAmount;
+
     @Column(length = 500)
     private String note;
 
@@ -81,6 +87,8 @@ public class LoanPaymentTransaction {
         this.reference = reference;
         this.channel = channel;
         this.status = status;
+        this.allocatedAmount = BigDecimal.ZERO.setScale(2);
+        this.unallocatedAmount = amount;
         this.note = note;
         this.correlationId = correlationId;
     }
@@ -133,6 +141,14 @@ public class LoanPaymentTransaction {
         return note;
     }
 
+    public BigDecimal getAllocatedAmount() {
+        return allocatedAmount;
+    }
+
+    public BigDecimal getUnallocatedAmount() {
+        return unallocatedAmount;
+    }
+
     public String getCorrelationId() {
         return correlationId;
     }
@@ -143,5 +159,10 @@ public class LoanPaymentTransaction {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public void updateAllocation(BigDecimal allocatedAmount, BigDecimal unallocatedAmount) {
+        this.allocatedAmount = allocatedAmount;
+        this.unallocatedAmount = unallocatedAmount;
     }
 }

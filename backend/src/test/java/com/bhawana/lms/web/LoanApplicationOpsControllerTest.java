@@ -611,6 +611,7 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(status().isOk());
 
         String paymentDate = LocalDate.now().minusDays(2).toString();
+        String secondPaymentDate = LocalDate.now().minusDays(1).toString();
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
                         .with(systemAdmin())
@@ -630,17 +631,50 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.reference").value("PAY-001"))
                 .andExpect(jsonPath("$.channel").value("UPI"))
                 .andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.allocatedAmount").value(4136.32))
+                .andExpect(jsonPath("$.unallocatedAmount").value(0.00))
                 .andExpect(jsonPath("$.correlationId").exists());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "amount", new BigDecimal("1000.00"),
+                                "paymentDate", secondPaymentDate,
+                                "reference", "PAY-002",
+                                "channel", "BANK_TRANSFER",
+                                "status", "RECEIVED",
+                                "note", "Partial second EMI collection"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reference").value("PAY-002"))
+                .andExpect(jsonPath("$.allocatedAmount").value(1000.00))
+                .andExpect(jsonPath("$.unallocatedAmount").value(0.00));
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
                         .with(opsUser()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].reference").value("PAY-001"))
-                .andExpect(jsonPath("$[0].channel").value("UPI"))
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].reference").value("PAY-002"))
+                .andExpect(jsonPath("$[0].channel").value("BANK_TRANSFER"))
                 .andExpect(jsonPath("$[0].status").value("RECEIVED"))
+                .andExpect(jsonPath("$[0].allocatedAmount").value(1000.00))
+                .andExpect(jsonPath("$[0].unallocatedAmount").value(0.00))
                 .andExpect(jsonPath("$[0].createdAt").exists())
-                .andExpect(jsonPath("$[0].updatedAt").exists());
+                .andExpect(jsonPath("$[0].updatedAt").exists())
+                .andExpect(jsonPath("$[1].reference").value("PAY-001"))
+                .andExpect(jsonPath("$[1].allocatedAmount").value(4136.32));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/repayment-schedule", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("PAID"))
+                .andExpect(jsonPath("$[0].paidAmount").value(4136.32))
+                .andExpect(jsonPath("$[0].outstandingAmount").value(0.00))
+                .andExpect(jsonPath("$[1].status").value("PARTIALLY_PAID"))
+                .andExpect(jsonPath("$[1].paidAmount").value(1000.00))
+                .andExpect(jsonPath("$[1].outstandingAmount").value(3136.32))
+                .andExpect(jsonPath("$[2].status").value("PENDING"));
     }
 
     @Test

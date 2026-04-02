@@ -232,12 +232,17 @@ export type LoanRepaymentScheduleInstallmentRecord = {
   id: string
   loanAccountId: string
   installmentNumber: number
+  status: string
   dueDate: string
   openingPrincipal: number
   principalDue: number
   interestDue: number
   installmentAmount: number
   closingPrincipal: number
+  paidPrincipal: number
+  paidInterest: number
+  paidAmount: number
+  outstandingAmount: number
   createdAt: string
 }
 
@@ -261,6 +266,8 @@ export type LoanPaymentTransactionRecord = {
   loanAccountId: string
   actorUsername: string
   amount: number
+  allocatedAmount: number
+  unallocatedAmount: number
   paymentDate: string
   reference: string
   channel: LoanPaymentChannel

@@ -22,6 +22,7 @@ import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
+import com.bhawana.lms.domain.LoanRepaymentScheduleInstallmentStatus;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.UserStatus;
@@ -721,7 +722,7 @@ public class LoanApplicationService {
             throw new IllegalArgumentException("Payments can only be recorded after the loan account is disbursed.");
         }
 
-        return loanPaymentTransactionRepository.save(new LoanPaymentTransaction(
+        LoanPaymentTransaction paymentTransaction = loanPaymentTransactionRepository.save(new LoanPaymentTransaction(
                 loanAccount,
                 normalizeActorUsername(actorUsername),
                 scaleCurrency(amount),
@@ -732,6 +733,8 @@ public class LoanApplicationService {
                 normalizeNote(note),
                 CorrelationIdHolder.get()
         ));
+        recomputePaymentAllocation(loanAccount);
+        return loanPaymentTransactionRepository.findById(paymentTransaction.getId()).orElse(paymentTransaction);
     }
 
     @Transactional(readOnly = true)
@@ -970,6 +973,43 @@ public class LoanApplicationService {
         }
 
         loanRepaymentScheduleInstallmentRepository.saveAll(installments);
+    }
+
+    private void recomputePaymentAllocation(LoanAccount loanAccount) {
+        List<LoanRepaymentScheduleInstallment> installments = loanRepaymentScheduleInstallmentRepository
+                .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId());
+        installments.forEach(LoanRepaymentScheduleInstallment::resetAllocation);
+
+        List<LoanPaymentTransaction> payments = loanPaymentTransactionRepository
+                .findByLoanAccount_IdOrderByPaymentDateAscCreatedAtAsc(loanAccount.getId());
+
+        for (LoanPaymentTransaction payment : payments) {
+            if (payment.getStatus() != LoanPaymentStatus.RECEIVED) {
+                payment.updateAllocation(BigDecimal.ZERO.setScale(2), scaleCurrency(payment.getAmount()));
+                continue;
+            }
+
+            BigDecimal remainingAmount = scaleCurrency(payment.getAmount());
+            BigDecimal allocatedAmount = BigDecimal.ZERO.setScale(2);
+
+            for (LoanRepaymentScheduleInstallment installment : installments) {
+                if (remainingAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                    break;
+                }
+                if (installment.getStatus() == LoanRepaymentScheduleInstallmentStatus.PAID) {
+                    continue;
+                }
+
+                BigDecimal appliedAmount = installment.applyPayment(remainingAmount);
+                remainingAmount = scaleCurrency(remainingAmount.subtract(appliedAmount));
+                allocatedAmount = scaleCurrency(allocatedAmount.add(appliedAmount));
+            }
+
+            payment.updateAllocation(allocatedAmount, remainingAmount);
+        }
+
+        loanRepaymentScheduleInstallmentRepository.saveAll(installments);
+        loanPaymentTransactionRepository.saveAll(payments);
     }
 
     private LoanAccount getRequiredLoanAccount(UUID applicationId) {

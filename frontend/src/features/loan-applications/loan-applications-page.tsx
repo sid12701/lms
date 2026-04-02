@@ -489,6 +489,37 @@ function loanPaymentStatusVariant(
   }
 }
 
+function loanRepaymentInstallmentStatusLabel(status?: string | null) {
+  if (!status) {
+    return 'Unknown'
+  }
+
+  return status
+    .toLowerCase()
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ')
+}
+
+function loanRepaymentInstallmentStatusVariant(
+  status?: string | null,
+): 'default' | 'success' | 'warning' | 'destructive' {
+  switch ((status ?? '').toUpperCase()) {
+    case 'PAID':
+    case 'CLOSED':
+      return 'success'
+    case 'PARTIALLY_PAID':
+    case 'DUE':
+    case 'PARTIAL':
+      return 'warning'
+    case 'OVERDUE':
+    case 'BILLED':
+      return 'destructive'
+    default:
+      return 'default'
+  }
+}
+
 function sortByCreatedAtDesc<T extends { createdAt: string }>(records: T[]) {
   return [...records].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
 }
@@ -2793,6 +2824,9 @@ export function LoanApplicationsPage() {
                                     {formatDateLabel(installment.dueDate)}
                                   </strong>
                                   <p className="helper-copy">
+                                    Status: {loanRepaymentInstallmentStatusLabel(installment.status)}
+                                  </p>
+                                  <p className="helper-copy">
                                     Opening principal: {currencyLabel(installment.openingPrincipal)}
                                   </p>
                                   <p className="helper-copy">
@@ -2800,11 +2834,22 @@ export function LoanApplicationsPage() {
                                     {currencyLabel(installment.interestDue)}
                                   </p>
                                   <p className="helper-copy">
+                                    Paid: {currencyLabel(installment.paidAmount)} / Outstanding:{' '}
+                                    {currencyLabel(installment.outstandingAmount)}
+                                  </p>
+                                  <p className="helper-copy">
+                                    Paid principal: {currencyLabel(installment.paidPrincipal)} / Paid interest:{' '}
+                                    {currencyLabel(installment.paidInterest)}
+                                  </p>
+                                  <p className="helper-copy">
                                     Closing principal: {currencyLabel(installment.closingPrincipal)}
                                   </p>
                                 </div>
                                 <div className="inline-actions">
                                   <Badge>{currencyLabel(installment.installmentAmount)}</Badge>
+                                  <Badge variant={loanRepaymentInstallmentStatusVariant(installment.status)}>
+                                    {loanRepaymentInstallmentStatusLabel(installment.status)}
+                                  </Badge>
                                 </div>
                               </div>
                             ))}
@@ -3032,6 +3077,10 @@ export function LoanApplicationsPage() {
                                   </p>
                                   <p className="helper-copy">
                                     Channel: {loanPaymentChannelLabel(payment.channel)}
+                                  </p>
+                                  <p className="helper-copy">
+                                    Allocated: {currencyLabel(payment.allocatedAmount)} / Unallocated:{' '}
+                                    {currencyLabel(payment.unallocatedAmount)}
                                   </p>
                                   <p className="helper-copy">{formatNote(payment.note)}</p>
                                   <p className="helper-copy">
