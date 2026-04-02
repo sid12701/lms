@@ -4,6 +4,7 @@ import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditEvent;
 import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
+import com.bhawana.lms.domain.LoanApplicationDocumentAccessAudit;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
@@ -85,8 +86,11 @@ public class LoanApplicationOpsController {
     }
 
     @GetMapping("/{applicationId}/intake-audits")
-    public List<LoanApplicationIntakeAuditResponse> listIntakeAudits(@PathVariable UUID applicationId) {
-        return loanApplicationService.listIntakeAudits(applicationId).stream()
+    public List<LoanApplicationIntakeAuditResponse> listIntakeAudits(
+            Authentication authentication,
+            @PathVariable UUID applicationId
+    ) {
+        return loanApplicationService.listIntakeAudits(applicationId, authentication.getName()).stream()
                 .map(LoanApplicationOpsController::toAuditResponse)
                 .toList();
     }
@@ -109,6 +113,13 @@ public class LoanApplicationOpsController {
     public List<LoanApplicationAuditEventResponse> listAuditEvents(@PathVariable UUID applicationId) {
         return loanApplicationService.listAuditEvents(applicationId).stream()
                 .map(LoanApplicationOpsController::toAuditEventResponse)
+                .toList();
+    }
+
+    @GetMapping("/{applicationId}/document-access-audits")
+    public List<LoanApplicationDocumentAccessAuditResponse> listDocumentAccessAudits(@PathVariable UUID applicationId) {
+        return loanApplicationService.listDocumentAccessAudits(applicationId).stream()
+                .map(LoanApplicationOpsController::toDocumentAccessAuditResponse)
                 .toList();
     }
 
@@ -142,8 +153,11 @@ public class LoanApplicationOpsController {
     }
 
     @GetMapping("/{applicationId}/kyc-documents")
-    public List<LoanApplicationDocumentChecklistResponse> listDocumentChecklist(@PathVariable UUID applicationId) {
-        return loanApplicationService.listDocumentChecklist(applicationId).stream()
+    public List<LoanApplicationDocumentChecklistResponse> listDocumentChecklist(
+            Authentication authentication,
+            @PathVariable UUID applicationId
+    ) {
+        return loanApplicationService.listDocumentChecklist(applicationId, authentication.getName()).stream()
                 .map(LoanApplicationOpsController::toDocumentChecklistResponse)
                 .toList();
     }
@@ -643,6 +657,21 @@ public class LoanApplicationOpsController {
         );
     }
 
+    private static LoanApplicationDocumentAccessAuditResponse toDocumentAccessAuditResponse(
+            LoanApplicationDocumentAccessAudit audit
+    ) {
+        return new LoanApplicationDocumentAccessAuditResponse(
+                audit.getId().toString(),
+                audit.getLoanApplication().getId().toString(),
+                audit.getAction().name(),
+                audit.getActorUsername(),
+                audit.getSummary(),
+                audit.getDocumentTypes().stream().map(Enum::name).toList(),
+                audit.getCorrelationId(),
+                audit.getCreatedAt().toString()
+        );
+    }
+
     public record LoanApplicationRequest(
             @NotNull UUID lspId,
             @NotNull UUID productId,
@@ -966,6 +995,18 @@ public class LoanApplicationOpsController {
             String updatedByUsername,
             String createdAt,
             String updatedAt
+    ) {
+    }
+
+    public record LoanApplicationDocumentAccessAuditResponse(
+            String id,
+            String loanApplicationId,
+            String action,
+            String actorUsername,
+            String summary,
+            List<String> documentTypes,
+            String correlationId,
+            String createdAt
     ) {
     }
 }

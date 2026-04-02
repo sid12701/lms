@@ -390,6 +390,17 @@ export type LoanApplicationAuditEventRecord = {
   createdAt: string
 }
 
+export type LoanApplicationDocumentAccessAuditRecord = {
+  id: string
+  loanApplicationId: string
+  action: 'CHECKLIST_VIEWED' | 'INTAKE_AUDITS_VIEWED'
+  actorUsername: string
+  summary: string
+  documentTypes: string[]
+  correlationId: string | null
+  createdAt: string
+}
+
 export type LoanApplicationDocumentPlaceholderRecord = {
   id: string
   loanApplicationId: string
@@ -842,6 +853,12 @@ export function listLoanApplicationForeclosureQuotes(applicationId: string) {
 export function listLoanApplicationAuditEvents(applicationId: string) {
   return requestJson<LoanApplicationAuditEventRecord[]>(
     `/api/v1/internal/ops/loan-applications/${applicationId}/audit-events`,
+  )
+}
+
+export function listLoanApplicationDocumentAccessAudits(applicationId: string) {
+  return requestJson<LoanApplicationDocumentAccessAuditRecord[]>(
+    `/api/v1/internal/ops/loan-applications/${applicationId}/document-access-audits`,
   )
 }
 

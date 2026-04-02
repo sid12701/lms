@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
+import com.bhawana.lms.repo.LoanApplicationDocumentAccessAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
@@ -87,6 +88,9 @@ class LoanApplicationOpsControllerTest {
     private LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
 
     @Autowired
+    private LoanApplicationDocumentAccessAuditRepository loanApplicationDocumentAccessAuditRepository;
+
+    @Autowired
     private LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository;
 
     @Autowired
@@ -127,6 +131,7 @@ class LoanApplicationOpsControllerTest {
         loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
         loanAccountRepository.deleteAllInBatch();
         loanApplicationAuditEventRepository.deleteAllInBatch();
+        loanApplicationDocumentAccessAuditRepository.deleteAllInBatch();
         loanApplicationAssignmentEventRepository.deleteAllInBatch();
         loanApplicationDocumentChecklistRepository.deleteAllInBatch();
         loanApplicationStatusTransitionRepository.deleteAllInBatch();
@@ -297,6 +302,16 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].actorUsername").value("ops.user"))
                 .andExpect(jsonPath("$[0].payloadJson", containsString("\"externalLoanId\":\"EXT-901\"")))
                 .andExpect(jsonPath("$[0].payloadJson", containsString("\"sourceChannel\":\"API\"")));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/document-access-audits", created.get("id").asText())
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].action").value("INTAKE_AUDITS_VIEWED"))
+                .andExpect(jsonPath("$[0].actorUsername").value("ops.user"))
+                .andExpect(jsonPath("$[0].summary").value("Viewed intake audit payloads"))
+                .andExpect(jsonPath("$[0].documentTypes.length()").value(0))
+                .andExpect(jsonPath("$[0].correlationId").isNotEmpty());
     }
 
     @Test
@@ -505,6 +520,34 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.status").value("REJECTED"))
                 .andExpect(jsonPath("$.rejectionReason").value("Image is blurred and does not show the applicant clearly"))
                 .andExpect(jsonPath("$.reviewReason").doesNotExist());
+    }
+
+    @Test
+    void documentChecklistReadsAreRecordedInDocumentAccessAudit() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-993", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+
+        transitionApplication(applicationId, "UNDER_REVIEW", "Ready for document review");
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/document-access-audits", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].action").value("CHECKLIST_VIEWED"))
+                .andExpect(jsonPath("$[0].actorUsername").value("ops.user"))
+                .andExpect(jsonPath("$[0].summary").value("Viewed 5 KYC document placeholders"))
+                .andExpect(jsonPath("$[0].documentTypes.length()").value(5))
+                .andExpect(jsonPath("$[0].documentTypes[0]").value("PAN_CARD"))
+                .andExpect(jsonPath("$[0].correlationId").isNotEmpty());
     }
 
     @Test

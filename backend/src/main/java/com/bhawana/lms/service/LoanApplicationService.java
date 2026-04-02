@@ -11,6 +11,8 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationAuditEvent;
 import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
+import com.bhawana.lms.domain.LoanApplicationDocumentAccessAudit;
+import com.bhawana.lms.domain.LoanApplicationDocumentAccessAuditAction;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
@@ -37,6 +39,7 @@ import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
+import com.bhawana.lms.repo.LoanApplicationDocumentAccessAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
@@ -74,6 +77,7 @@ public class LoanApplicationService {
     private final LoanAccountRepository loanAccountRepository;
     private final LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
     private final LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository;
+    private final LoanApplicationDocumentAccessAuditRepository loanApplicationDocumentAccessAuditRepository;
     private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     private final LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
     private final LoanApplicationRepository loanApplicationRepository;
@@ -95,6 +99,7 @@ public class LoanApplicationService {
             LoanAccountRepository loanAccountRepository,
             LoanApplicationAuditEventRepository loanApplicationAuditEventRepository,
             LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository,
+            LoanApplicationDocumentAccessAuditRepository loanApplicationDocumentAccessAuditRepository,
             LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
             LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository,
             LoanApplicationRepository loanApplicationRepository,
@@ -115,6 +120,7 @@ public class LoanApplicationService {
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationAuditEventRepository = loanApplicationAuditEventRepository;
         this.loanApplicationAssignmentEventRepository = loanApplicationAssignmentEventRepository;
+        this.loanApplicationDocumentAccessAuditRepository = loanApplicationDocumentAccessAuditRepository;
         this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
         this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
         this.loanApplicationRepository = loanApplicationRepository;
@@ -300,10 +306,26 @@ public class LoanApplicationService {
     }
 
     @Transactional
-    public List<LoanApplicationDocumentChecklist> listDocumentChecklist(UUID applicationId) {
+    public List<LoanApplicationDocumentChecklist> listDocumentChecklist(UUID applicationId, String actorUsername) {
         LoanApplication application = getApplication(applicationId);
         ensureDocumentChecklist(application);
-        return loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(applicationId);
+        List<LoanApplicationDocumentChecklist> checklist =
+                loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(applicationId);
+        loanApplicationDocumentAccessAuditRepository.save(new LoanApplicationDocumentAccessAudit(
+                application,
+                LoanApplicationDocumentAccessAuditAction.CHECKLIST_VIEWED,
+                normalizeActorUsername(actorUsername),
+                "Viewed " + checklist.size() + " KYC document placeholders",
+                checklist.stream().map(LoanApplicationDocumentChecklist::getDocumentType).toList(),
+                CorrelationIdHolder.get()
+        ));
+        return checklist;
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanApplicationDocumentAccessAudit> listDocumentAccessAudits(UUID applicationId) {
+        getApplication(applicationId);
+        return loanApplicationDocumentAccessAuditRepository.findTop20ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
     }
 
     @Transactional
@@ -954,9 +976,17 @@ public class LoanApplicationService {
         return quote;
     }
 
-    @Transactional(readOnly = true)
-    public List<LoanApplicationIntakeAudit> listIntakeAudits(UUID applicationId) {
-        getApplication(applicationId);
+    @Transactional
+    public List<LoanApplicationIntakeAudit> listIntakeAudits(UUID applicationId, String actorUsername) {
+        LoanApplication application = getApplication(applicationId);
+        loanApplicationDocumentAccessAuditRepository.save(new LoanApplicationDocumentAccessAudit(
+                application,
+                LoanApplicationDocumentAccessAuditAction.INTAKE_AUDITS_VIEWED,
+                normalizeActorUsername(actorUsername),
+                "Viewed intake audit payloads",
+                List.of(),
+                CorrelationIdHolder.get()
+        ));
         return loanApplicationIntakeAuditRepository.findTop10ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
     }
 

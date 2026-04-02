@@ -13,6 +13,7 @@ import {
   getLoanApplication,
   executeLoanApplicationForeclosureQuote,
   initiateLoanApplicationDisbursement,
+  listLoanApplicationDocumentAccessAudits,
   listLoanApplicationForeclosureQuotes,
   listLoanApplicationPaymentTransactions,
   listLoanApplicationAuditEvents,
@@ -38,6 +39,7 @@ import {
   type MockDisbursementOutcome,
   type LoanApplicationAuditAction,
   type LoanApplicationAuditEventRecord,
+  type LoanApplicationDocumentAccessAuditRecord,
   type LoanApplicationIntakeAuditRecord,
   type LoanApplicationAssignmentEventRecord,
   type LoanDisbursementRequestLogRecord,
@@ -967,6 +969,7 @@ export function LoanApplicationsPage() {
   const [assignmentHistory, setAssignmentHistory] = useState<LoanApplicationAssignmentEventRecord[]>([])
   const [statusHistory, setStatusHistory] = useState<LoanApplicationStatusTransitionRecord[]>([])
   const [auditTrail, setAuditTrail] = useState<LoanApplicationAuditEventRecord[]>([])
+  const [documentAccessAudits, setDocumentAccessAudits] = useState<LoanApplicationDocumentAccessAuditRecord[]>([])
   const [disbursementRequests, setDisbursementRequests] = useState<LoanDisbursementRequestLogRecord[]>([])
   const [repaymentSchedule, setRepaymentSchedule] = useState<LoanRepaymentScheduleInstallmentRecord[]>([])
   const [paymentTransactions, setPaymentTransactions] = useState<LoanPaymentTransactionRecord[]>([])
@@ -981,6 +984,7 @@ export function LoanApplicationsPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditTrailLoading, setAuditTrailLoading] = useState(false)
+  const [documentAccessAuditsLoading, setDocumentAccessAuditsLoading] = useState(false)
   const [disbursementRequestsLoading, setDisbursementRequestsLoading] = useState(false)
   const [repaymentScheduleLoading, setRepaymentScheduleLoading] = useState(false)
   const [paymentTransactionsLoading, setPaymentTransactionsLoading] = useState(false)
@@ -995,6 +999,7 @@ export function LoanApplicationsPage() {
   const [workflowError, setWorkflowError] = useState('')
   const [auditError, setAuditError] = useState('')
   const [auditTrailError, setAuditTrailError] = useState('')
+  const [documentAccessAuditsError, setDocumentAccessAuditsError] = useState('')
   const [disbursementRequestsError, setDisbursementRequestsError] = useState('')
   const [repaymentScheduleError, setRepaymentScheduleError] = useState('')
   const [paymentTransactionsError, setPaymentTransactionsError] = useState('')
@@ -1084,6 +1089,10 @@ export function LoanApplicationsPage() {
     [foreclosureQuotes],
   )
   const selectedAuditTrail = useMemo(() => sortByCreatedAtDesc(auditTrail), [auditTrail])
+  const selectedDocumentAccessAudits = useMemo(
+    () => sortByCreatedAtDesc(documentAccessAudits),
+    [documentAccessAudits],
+  )
   const availableStatusHistoryReasonCodes = useMemo(
     () =>
       Array.from(
@@ -1270,6 +1279,7 @@ export function LoanApplicationsPage() {
     setStatusHistory(sortByCreatedAtDesc(historyResponse))
     setAssignmentHistory(sortByCreatedAtDesc(assignmentResponse))
     await refreshAuditTrail(applicationId)
+    await refreshDocumentAccessAudits(applicationId)
     await refreshDisbursementRequests(applicationId)
     await refreshRepaymentSchedule(applicationId)
     await refreshPaymentTransactions(applicationId)
@@ -1292,6 +1302,27 @@ export function LoanApplicationsPage() {
     } finally {
       if (showLoading) {
         setAuditTrailLoading(false)
+      }
+    }
+  }
+
+  async function refreshDocumentAccessAudits(applicationId: string, showLoading = false) {
+    if (showLoading) {
+      setDocumentAccessAuditsLoading(true)
+    }
+
+    try {
+      const response = await listLoanApplicationDocumentAccessAudits(applicationId)
+      setDocumentAccessAudits(sortByCreatedAtDesc(response))
+      setDocumentAccessAuditsError('')
+    } catch (loadError) {
+      const message =
+        loadError instanceof Error ? loadError.message : 'Unable to load document access audit.'
+      setDocumentAccessAudits([])
+      setDocumentAccessAuditsError(message)
+    } finally {
+      if (showLoading) {
+        setDocumentAccessAuditsLoading(false)
       }
     }
   }
@@ -1715,6 +1746,46 @@ export function LoanApplicationsPage() {
     }
 
     void loadAuditTrail()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedApplicationId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadDocumentAccessAudits() {
+      if (!selectedApplicationId) {
+        setDocumentAccessAudits([])
+        setDocumentAccessAuditsError('')
+        setDocumentAccessAuditsLoading(false)
+        return
+      }
+
+      setDocumentAccessAuditsLoading(true)
+      setDocumentAccessAuditsError('')
+
+      try {
+        const response = await listLoanApplicationDocumentAccessAudits(selectedApplicationId)
+        if (!cancelled) {
+          setDocumentAccessAudits(sortByCreatedAtDesc(response))
+        }
+      } catch (loadError) {
+        const message =
+          loadError instanceof Error ? loadError.message : 'Unable to load document access audit.'
+        if (!cancelled) {
+          setDocumentAccessAudits([])
+          setDocumentAccessAuditsError(message)
+        }
+      } finally {
+        if (!cancelled) {
+          setDocumentAccessAuditsLoading(false)
+        }
+      }
+    }
+
+    void loadDocumentAccessAudits()
 
     return () => {
       cancelled = true
@@ -4035,6 +4106,54 @@ export function LoanApplicationsPage() {
                 <div className="helper-copy">
                   Product: {visibleSelectedApplication.productCode} - Source:{' '}
                   {visibleSelectedApplication.sourceChannel}
+                </div>
+                <div className="loan-history">
+                  <div className="loan-history__header">
+                    <div>
+                      <div className="section-eyebrow">Document access audit</div>
+                      <p className="helper-copy">
+                        Recorded whenever intake payloads or KYC document metadata are opened for this application.
+                      </p>
+                    </div>
+                    <Badge>{selectedDocumentAccessAudits.length} events</Badge>
+                  </div>
+                  {documentAccessAuditsLoading ? (
+                    <div className="empty-state">Loading document access audit...</div>
+                  ) : null}
+                  {!documentAccessAuditsLoading && documentAccessAuditsError ? (
+                    <div className="empty-state">{documentAccessAuditsError}</div>
+                  ) : null}
+                  {!documentAccessAuditsLoading &&
+                  !documentAccessAuditsError &&
+                  !selectedDocumentAccessAudits.length ? (
+                    <div className="empty-state">
+                      No document access audit events are available for the selected application.
+                    </div>
+                  ) : null}
+                  {!documentAccessAuditsLoading &&
+                  !documentAccessAuditsError &&
+                  selectedDocumentAccessAudits.length ? (
+                    <div className="loan-history__list">
+                      {selectedDocumentAccessAudits.map((event) => (
+                        <div className="loan-history__item" key={event.id}>
+                          <div>
+                            <strong>{event.summary}</strong>
+                            <p className="helper-copy">{formatTimestamp(event.createdAt)}</p>
+                            <p className="helper-copy">
+                              Documents: {event.documentTypes.join(', ') || 'None captured'}
+                            </p>
+                            <p className="helper-copy">
+                              Correlation ID: {event.correlationId ?? 'Not captured'}
+                            </p>
+                          </div>
+                          <div className="inline-actions">
+                            <Badge>{event.action.replace(/_/g, ' ')}</Badge>
+                            <Badge variant="warning">{event.actorUsername}</Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="loan-history">
                   <div className="loan-history__header">
