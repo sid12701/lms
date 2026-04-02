@@ -2107,7 +2107,8 @@ export function LoanApplicationsPage() {
         note: paymentCapture.note.trim() || undefined,
       })
       setPaymentCapture(buildInitialPaymentCaptureState())
-      await refreshPaymentTransactions(selectedApplicationId)
+      await refreshSelectedLoan(selectedApplicationId)
+      await loadApplications(filters)
     } catch (submitError) {
       const message =
         submitError instanceof Error ? submitError.message : 'Unable to record payment transaction.'
@@ -3711,7 +3712,7 @@ export function LoanApplicationsPage() {
                               </Button>
                               {!canRecordPayments ? (
                                 <p className="helper-copy">
-                                  Payments can be recorded once disbursement is marked complete.
+                                  Payments can only be recorded while the loan account is actively disbursed.
                                 </p>
                               ) : null}
                             </div>
