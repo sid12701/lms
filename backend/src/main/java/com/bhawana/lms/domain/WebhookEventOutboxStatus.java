@@ -1,5 +1,8 @@
 package com.bhawana.lms.domain;
 
 public enum WebhookEventOutboxStatus {
-    PENDING
+    PENDING,
+    RETRYABLE_FAILURE,
+    PERMANENT_FAILURE,
+    DELIVERED
 }

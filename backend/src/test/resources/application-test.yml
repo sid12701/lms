@@ -28,3 +28,6 @@ app:
   seed:
     sample-data:
       enabled: false
+  webhooks:
+    delivery:
+      enabled: false

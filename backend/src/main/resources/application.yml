@@ -38,3 +38,8 @@ app:
   seed:
     sample-data:
       enabled: false
+  webhooks:
+    delivery:
+      enabled: true
+      fixed-delay-ms: 60000
+      batch-size: 20

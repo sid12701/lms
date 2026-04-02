@@ -1,5 +1,9 @@
 package com.bhawana.lms.web;
 
+import static org.mockito.BDDMockito.given;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -23,7 +27,9 @@ import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
 import com.bhawana.lms.repo.WebhookEventOutboxRepository;
+import com.bhawana.lms.service.WebhookDeliveryClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -39,6 +45,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -55,6 +62,12 @@ class WebhookOutboxAdminControllerTest {
 
     @Autowired
     private WebhookEventOutboxRepository webhookEventOutboxRepository;
+
+    @Autowired
+    private WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
+
+    @MockitoBean
+    private WebhookDeliveryClient webhookDeliveryClient;
 
     @Autowired
     private LoanPaymentTransactionRepository loanPaymentTransactionRepository;
@@ -103,6 +116,7 @@ class WebhookOutboxAdminControllerTest {
 
     @BeforeEach
     void setUp() {
+        webhookEventDeliveryAttemptRepository.deleteAllInBatch();
         webhookEventOutboxRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
@@ -174,6 +188,102 @@ class WebhookOutboxAdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].eventType").value("LOAN_CREATED"));
+    }
+
+    @Test
+    void dispatchMarksDeliveredAndStoresAttempt() throws Exception {
+        LspFixture lsp = createLsp("EAST");
+        ProductFixture product = createProduct();
+        mapProductToLsp(product.id(), lsp.id());
+        updateWebhookSubscription(lsp.id(), List.of("LOAN_CREATED"));
+        createApplication(lsp.id(), product.id(), "EXT-OUT-003");
+
+        given(webhookDeliveryClient.deliver(
+                eq("https://partner.example.com/webhooks/lms"),
+                anyString(),
+                any()
+        )).willReturn(new WebhookDeliveryClient.WebhookDeliveryResponse(202, "accepted"));
+
+        mockMvc.perform(post("/api/v1/internal/admin/webhook-outbox/dispatch")
+                        .with(systemAdmin())
+                        .queryParam("batchSize", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.processed").value(1))
+                .andExpect(jsonPath("$.delivered").value(1))
+                .andExpect(jsonPath("$.retryableFailures").value(0))
+                .andExpect(jsonPath("$.permanentFailures").value(0));
+
+        mockMvc.perform(get("/api/v1/internal/admin/webhook-outbox")
+                        .with(systemAdmin())
+                        .queryParam("lspId", lsp.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].status").value("DELIVERED"))
+                .andExpect(jsonPath("$[0].attemptCount").value(1))
+                .andExpect(jsonPath("$[0].deliveredAt").isNotEmpty());
+    }
+
+    @Test
+    void dispatchMarksRetryableFailureAndStoresAttempt() throws Exception {
+        LspFixture lsp = createLsp("WEST");
+        ProductFixture product = createProduct();
+        mapProductToLsp(product.id(), lsp.id());
+        updateWebhookSubscription(lsp.id(), List.of("LOAN_CREATED"));
+        createApplication(lsp.id(), product.id(), "EXT-OUT-004");
+
+        given(webhookDeliveryClient.deliver(
+                eq("https://partner.example.com/webhooks/lms"),
+                anyString(),
+                any()
+        )).willReturn(new WebhookDeliveryClient.WebhookDeliveryResponse(503, "partner unavailable"));
+
+        mockMvc.perform(post("/api/v1/internal/admin/webhook-outbox/dispatch")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.processed").value(1))
+                .andExpect(jsonPath("$.delivered").value(0))
+                .andExpect(jsonPath("$.retryableFailures").value(1))
+                .andExpect(jsonPath("$.permanentFailures").value(0));
+
+        mockMvc.perform(get("/api/v1/internal/admin/webhook-outbox")
+                        .with(systemAdmin())
+                        .queryParam("lspId", lsp.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("RETRYABLE_FAILURE"))
+                .andExpect(jsonPath("$[0].attemptCount").value(1))
+                .andExpect(jsonPath("$[0].nextAttemptAt").isNotEmpty())
+                .andExpect(jsonPath("$[0].lastError", containsString("503")));
+    }
+
+    @Test
+    void dispatchMarksPermanentFailureForClientErrors() throws Exception {
+        LspFixture lsp = createLsp("SOUTH");
+        ProductFixture product = createProduct();
+        mapProductToLsp(product.id(), lsp.id());
+        updateWebhookSubscription(lsp.id(), List.of("LOAN_CREATED"));
+        createApplication(lsp.id(), product.id(), "EXT-OUT-005");
+
+        given(webhookDeliveryClient.deliver(
+                eq("https://partner.example.com/webhooks/lms"),
+                anyString(),
+                any()
+        )).willReturn(new WebhookDeliveryClient.WebhookDeliveryResponse(400, "invalid payload"));
+
+        mockMvc.perform(post("/api/v1/internal/admin/webhook-outbox/dispatch")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.processed").value(1))
+                .andExpect(jsonPath("$.delivered").value(0))
+                .andExpect(jsonPath("$.retryableFailures").value(0))
+                .andExpect(jsonPath("$.permanentFailures").value(1));
+
+        mockMvc.perform(get("/api/v1/internal/admin/webhook-outbox")
+                        .with(systemAdmin())
+                        .queryParam("lspId", lsp.id()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].status").value("PERMANENT_FAILURE"))
+                .andExpect(jsonPath("$[0].attemptCount").value(1))
+                .andExpect(jsonPath("$[0].lastError", containsString("400")));
     }
 
     private LspFixture createLsp(String codePrefix) throws Exception {
