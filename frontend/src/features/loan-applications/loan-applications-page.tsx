@@ -219,6 +219,57 @@ function formatDateLabel(value?: string | null) {
   }).format(parsed)
 }
 
+function maskMiddle(value: string, visibleStart: number, visibleEnd: number) {
+  if (!value) {
+    return value
+  }
+
+  if (value.length <= visibleStart + visibleEnd) {
+    return '•'.repeat(value.length)
+  }
+
+  return (
+    value.slice(0, visibleStart) +
+    '•'.repeat(value.length - visibleStart - visibleEnd) +
+    value.slice(value.length - visibleEnd)
+  )
+}
+
+function formatBorrowerPan(value?: string | null, reveal = false) {
+  if (!value) {
+    return 'Not provided'
+  }
+
+  return reveal ? value : maskMiddle(value, 3, 2)
+}
+
+function formatBorrowerMobile(value?: string | null, reveal = false) {
+  if (!value) {
+    return 'Not provided'
+  }
+
+  return reveal ? value : maskMiddle(value, 0, 4)
+}
+
+function formatBorrowerEmail(value?: string | null, reveal = false) {
+  if (!value) {
+    return 'Not provided'
+  }
+
+  if (reveal) {
+    return value
+  }
+
+  const [localPart, domain] = value.split('@')
+  if (!domain) {
+    return maskMiddle(value, 1, 0)
+  }
+
+  const maskedLocalPart =
+    localPart.length <= 1 ? '•' : localPart.charAt(0) + '•'.repeat(Math.max(localPart.length - 1, 2))
+  return `${maskedLocalPart}@${domain}`
+}
+
 function formatAgeLabel(value?: string | null) {
   if (!value) {
     return 'Age not provided'
@@ -654,9 +705,43 @@ function sortPaymentTransactions(records: LoanPaymentTransactionRecord[]) {
   })
 }
 
-function formatPayloadJson(payloadJson: string) {
+function maskSensitivePayload(payload: unknown): unknown {
+  if (Array.isArray(payload)) {
+    return payload.map((item) => maskSensitivePayload(item))
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return payload
+  }
+
+  return Object.entries(payload).reduce<Record<string, unknown>>((masked, [key, value]) => {
+    if (typeof value === 'string') {
+      if (key === 'borrowerPan' || key === 'pan') {
+        masked[key] = formatBorrowerPan(value, false)
+        return masked
+      }
+
+      if (key === 'borrowerMobile' || key === 'mobile') {
+        masked[key] = formatBorrowerMobile(value, false)
+        return masked
+      }
+
+      if (key === 'borrowerEmail' || key === 'email') {
+        masked[key] = formatBorrowerEmail(value, false)
+        return masked
+      }
+    }
+
+    masked[key] = maskSensitivePayload(value)
+    return masked
+  }, {})
+}
+
+function formatPayloadJson(payloadJson: string, revealSensitiveData = false) {
   try {
-    return JSON.stringify(JSON.parse(payloadJson), null, 2)
+    const parsed = JSON.parse(payloadJson)
+    const visiblePayload = revealSensitiveData ? parsed : maskSensitivePayload(parsed)
+    return JSON.stringify(visiblePayload, null, 2)
   } catch {
     return payloadJson
   }
@@ -954,6 +1039,7 @@ export function LoanApplicationsPage() {
   const [requestingForeclosureQuote, setRequestingForeclosureQuote] = useState(false)
   const [executingForeclosureQuoteId, setExecutingForeclosureQuoteId] = useState('')
   const [foreclosureQuoteActionError, setForeclosureQuoteActionError] = useState('')
+  const [showSensitiveData, setShowSensitiveData] = useState(false)
 
   const activeLsps = useMemo(() => lsps.filter((item) => item.status === 'ACTIVE'), [lsps])
   const activeProducts = useMemo(
@@ -1069,6 +1155,8 @@ export function LoanApplicationsPage() {
   const canExecuteForeclosureQuote = Boolean(
     user?.roles?.includes('SYSTEM_ADMIN') && selectedLoan?.loanAccount?.status === 'DISBURSED',
   )
+  const canRevealSensitiveData = Boolean(user?.roles?.includes('SYSTEM_ADMIN'))
+  const revealSensitiveData = canRevealSensitiveData && showSensitiveData
   const borrowerProfileCompleteness = countBorrowerProfileSignals(visibleSelectedApplication)
   const borrowerLocation = visibleSelectedApplication
     ? [visibleSelectedApplication.borrowerCity, visibleSelectedApplication.borrowerState]
@@ -2058,6 +2146,19 @@ export function LoanApplicationsPage() {
             <Badge>{applications.length} applications</Badge>
             <Badge variant="warning">{activeLsps.length} active LSPs</Badge>
             <Badge variant="success">{activeProducts.length} active products</Badge>
+            <Badge variant={revealSensitiveData ? 'destructive' : 'warning'}>
+              {revealSensitiveData ? 'Sensitive data visible' : 'Sensitive data masked'}
+            </Badge>
+            {canRevealSensitiveData ? (
+              <Button
+                onClick={() => setShowSensitiveData((current) => !current)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {revealSensitiveData ? 'Hide sensitive data' : 'Show sensitive data'}
+              </Button>
+            ) : null}
           </div>
           <div className="form-grid" style={{ marginBottom: '1rem' }}>
             <div className="field-stack">
@@ -2171,7 +2272,8 @@ export function LoanApplicationsPage() {
                   <div>
                     <strong>{application.borrowerFullName}</strong>
                     <p className="helper-copy">
-                      {application.borrowerPan} - {application.borrowerMobile}
+                      {formatBorrowerPan(application.borrowerPan, revealSensitiveData)} -{' '}
+                      {formatBorrowerMobile(application.borrowerMobile, revealSensitiveData)}
                     </p>
                   </div>
                   <Badge variant={loanStatusVariant(application.status as LoanApplicationStatus)}>
@@ -2458,8 +2560,15 @@ export function LoanApplicationsPage() {
                     </div>
                     <h3>{visibleSelectedApplication.borrowerFullName}</h3>
                     <p className="helper-copy">
-                      {visibleSelectedApplication.borrowerPan} - {visibleSelectedApplication.borrowerMobile}
-                      {' '}| {visibleSelectedApplication.borrowerEmail || 'No email provided'}
+                      {formatBorrowerPan(visibleSelectedApplication.borrowerPan, revealSensitiveData)} -{' '}
+                      {formatBorrowerMobile(
+                        visibleSelectedApplication.borrowerMobile,
+                        revealSensitiveData,
+                      )}
+                      {' '}| {formatBorrowerEmail(
+                        visibleSelectedApplication.borrowerEmail,
+                        revealSensitiveData,
+                      )}
                     </p>
                     <div className="borrower-summary__meta">
                       <span>{formatDateLabel(visibleSelectedApplication.borrowerDateOfBirth)} / {formatAgeLabel(visibleSelectedApplication.borrowerDateOfBirth)}</span>
@@ -2526,6 +2635,21 @@ export function LoanApplicationsPage() {
                       <strong>{formatDateLabel(visibleSelectedApplication.borrowerDateOfBirth)}</strong>
                     </div>
                     <div className="loan-detail-field">
+                      <span>Borrower PAN</span>
+                      <strong>
+                        {formatBorrowerPan(visibleSelectedApplication.borrowerPan, revealSensitiveData)}
+                      </strong>
+                    </div>
+                    <div className="loan-detail-field">
+                      <span>Borrower mobile</span>
+                      <strong>
+                        {formatBorrowerMobile(
+                          visibleSelectedApplication.borrowerMobile,
+                          revealSensitiveData,
+                        )}
+                      </strong>
+                    </div>
+                    <div className="loan-detail-field">
                       <span>Employment type</span>
                       <strong>{borrowerEmployment}</strong>
                     </div>
@@ -2543,7 +2667,9 @@ export function LoanApplicationsPage() {
                     </div>
                     <div className="loan-detail-field">
                       <span>Borrower email</span>
-                      <strong>{visibleSelectedApplication.borrowerEmail || 'Not provided'}</strong>
+                      <strong>
+                        {formatBorrowerEmail(visibleSelectedApplication.borrowerEmail, revealSensitiveData)}
+                      </strong>
                     </div>
                   </div>
                 </div>
@@ -3904,7 +4030,7 @@ export function LoanApplicationsPage() {
                 </div>
                 <div className="helper-copy">
                   Borrower: {visibleSelectedApplication.borrowerFullName} -{' '}
-                  {visibleSelectedApplication.borrowerPan}
+                  {formatBorrowerPan(visibleSelectedApplication.borrowerPan, revealSensitiveData)}
                 </div>
                 <div className="helper-copy">
                   Product: {visibleSelectedApplication.productCode} - Source:{' '}
@@ -3981,7 +4107,7 @@ export function LoanApplicationsPage() {
                         wordBreak: 'break-word',
                       }}
                     >
-                      {formatPayloadJson(latestAudit.payloadJson)}
+                      {formatPayloadJson(latestAudit.payloadJson, revealSensitiveData)}
                     </pre>
                   </>
                 ) : null}
