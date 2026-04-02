@@ -441,6 +441,9 @@ export type ReportRequestRecord = {
   lspName: string | null
   disbursalDateFrom: string | null
   disbursalDateTo: string | null
+  notificationEmail: string | null
+  notificationSentAt: string | null
+  notificationErrorMessage: string | null
   fileName: string | null
   mediaType: string | null
   errorMessage: string | null
@@ -1204,6 +1207,7 @@ export function requestPortfolioMisReport(payload: {
   lspId?: string
   disbursalDateFrom?: string
   disbursalDateTo?: string
+  recipientEmail?: string
 }) {
   return requestJson<ReportRequestRecord>('/api/v1/internal/reports/portfolio-mis/requests', {
     method: 'POST',

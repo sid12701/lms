@@ -3,6 +3,7 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.domain.ReportRequest;
 import com.bhawana.lms.domain.ReportRequestStatus;
 import com.bhawana.lms.domain.ReportType;
+import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.ReportRequestRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -18,13 +19,19 @@ public class ReportRequestService {
 
     private final ReportRequestRepository reportRequestRepository;
     private final AdminReportingService adminReportingService;
+    private final AppUserRepository appUserRepository;
+    private final ReportNotificationService reportNotificationService;
 
     public ReportRequestService(
             ReportRequestRepository reportRequestRepository,
-            AdminReportingService adminReportingService
+            AdminReportingService adminReportingService,
+            AppUserRepository appUserRepository,
+            ReportNotificationService reportNotificationService
     ) {
         this.reportRequestRepository = reportRequestRepository;
         this.adminReportingService = adminReportingService;
+        this.appUserRepository = appUserRepository;
+        this.reportNotificationService = reportNotificationService;
     }
 
     @Transactional
@@ -32,6 +39,7 @@ public class ReportRequestService {
             UUID lspId,
             LocalDate disbursalDateFrom,
             LocalDate disbursalDateTo,
+            String recipientEmail,
             String requestedByUsername
     ) {
         validateDateRange(disbursalDateFrom, disbursalDateTo);
@@ -40,7 +48,8 @@ public class ReportRequestService {
                 adminReportingService.getOptionalLsp(lspId),
                 disbursalDateFrom,
                 disbursalDateTo,
-                requestedByUsername
+                requestedByUsername,
+                resolveNotificationEmail(recipientEmail, requestedByUsername)
         );
         return reportRequestRepository.save(reportRequest);
     }
@@ -100,6 +109,16 @@ public class ReportRequestService {
                 failed += 1;
             }
 
+            ReportNotificationService.NotificationResult notificationResult =
+                    reportNotificationService.sendTerminalStatusNotification(reportRequest);
+            if (notificationResult.attempted()) {
+                if (notificationResult.errorMessage() == null) {
+                    reportRequest.markNotificationSent(notificationResult.sentAt());
+                } else {
+                    reportRequest.markNotificationFailed(notificationResult.errorMessage());
+                }
+            }
+
             reportRequestRepository.save(reportRequest);
         }
 
@@ -110,6 +129,16 @@ public class ReportRequestService {
         if (disbursalDateFrom != null && disbursalDateTo != null && disbursalDateFrom.isAfter(disbursalDateTo)) {
             throw new IllegalArgumentException("disbursalDateFrom cannot be after disbursalDateTo.");
         }
+    }
+
+    private String resolveNotificationEmail(String recipientEmail, String requestedByUsername) {
+        if (recipientEmail != null && !recipientEmail.isBlank()) {
+            return recipientEmail.trim();
+        }
+        return appUserRepository.findByUsernameIgnoreCase(requestedByUsername)
+                .map(appUser -> appUser.getEmail() == null ? null : appUser.getEmail().trim())
+                .filter(email -> !email.isBlank())
+                .orElse(null);
     }
 
     public record GeneratedStoredReport(

@@ -19,6 +19,15 @@ spring:
     port: ${LMS_RABBITMQ_PORT:5672}
     username: ${LMS_RABBITMQ_USERNAME:lms}
     password: ${LMS_RABBITMQ_PASSWORD:lms}
+  mail:
+    host: ${LMS_MAIL_HOST:localhost}
+    port: ${LMS_MAIL_PORT:1025}
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
 
 app:
   security:

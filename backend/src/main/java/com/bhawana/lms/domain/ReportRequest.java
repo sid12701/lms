@@ -43,6 +43,15 @@ public class ReportRequest {
     @Column(name = "requested_by_username", nullable = false, length = 255)
     private String requestedByUsername;
 
+    @Column(name = "notification_email", length = 255)
+    private String notificationEmail;
+
+    @Column(name = "notification_sent_at")
+    private Instant notificationSentAt;
+
+    @Column(name = "notification_error_message", length = 1000)
+    private String notificationErrorMessage;
+
     @Column(name = "file_name", length = 255)
     private String fileName;
 
@@ -72,7 +81,8 @@ public class ReportRequest {
             Lsp lsp,
             LocalDate disbursalDateFrom,
             LocalDate disbursalDateTo,
-            String requestedByUsername
+            String requestedByUsername,
+            String notificationEmail
     ) {
         this.id = UUID.randomUUID();
         this.reportType = reportType;
@@ -81,6 +91,7 @@ public class ReportRequest {
         this.disbursalDateFrom = disbursalDateFrom;
         this.disbursalDateTo = disbursalDateTo;
         this.requestedByUsername = requestedByUsername;
+        this.notificationEmail = normalize(notificationEmail);
     }
 
     @PrePersist
@@ -121,6 +132,18 @@ public class ReportRequest {
 
     public String getRequestedByUsername() {
         return requestedByUsername;
+    }
+
+    public String getNotificationEmail() {
+        return notificationEmail;
+    }
+
+    public Instant getNotificationSentAt() {
+        return notificationSentAt;
+    }
+
+    public String getNotificationErrorMessage() {
+        return notificationErrorMessage;
     }
 
     public String getFileName() {
@@ -174,10 +197,27 @@ public class ReportRequest {
         this.completedAt = null;
     }
 
+    public void markNotificationSent(Instant sentAt) {
+        this.notificationSentAt = sentAt;
+        this.notificationErrorMessage = null;
+    }
+
+    public void markNotificationFailed(String errorMessage) {
+        this.notificationSentAt = null;
+        this.notificationErrorMessage = truncate(errorMessage);
+    }
+
     private static String truncate(String value) {
         if (value == null || value.isBlank()) {
             return null;
         }
         return value.length() <= 1000 ? value : value.substring(0, 1000);
+    }
+
+    private static String normalize(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }

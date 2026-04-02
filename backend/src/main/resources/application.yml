@@ -48,3 +48,7 @@ app:
       enabled: true
       fixed-delay-ms: 15000
       batch-size: 10
+    notifications:
+      enabled: true
+      from-address: ${APP_REPORTS_NOTIFICATIONS_FROM_ADDRESS:no-reply@bhawanalms.local}
+      reports-page-url: ${APP_REPORTS_NOTIFICATIONS_REPORTS_PAGE_URL:http://127.0.0.1:5173/reports}

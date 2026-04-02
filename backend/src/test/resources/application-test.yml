@@ -34,3 +34,5 @@ app:
   reports:
     processing:
       enabled: false
+    notifications:
+      enabled: false

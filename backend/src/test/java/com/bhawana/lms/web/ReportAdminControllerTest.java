@@ -2,6 +2,8 @@ package com.bhawana.lms.web;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -47,11 +49,14 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-@SpringBootTest
+@SpringBootTest(properties = "app.reports.notifications.enabled=true")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class ReportAdminControllerTest {
@@ -121,6 +126,9 @@ class ReportAdminControllerTest {
 
     @Autowired
     private ReportRequestRepository reportRequestRepository;
+
+    @MockitoBean
+    private JavaMailSender javaMailSender;
 
     @BeforeEach
     void setUp() {
@@ -223,12 +231,14 @@ class ReportAdminControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "lspId", apex.id(),
                                 "disbursalDateFrom", "2026-03-01",
-                                "disbursalDateTo", "2026-03-31"
+                                "disbursalDateTo", "2026-03-31",
+                                "recipientEmail", "reports@example.com"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.requestedByUsername").value("ops.admin"))
                 .andExpect(jsonPath("$.lspId").value(apex.id()))
+                .andExpect(jsonPath("$.notificationEmail").value("reports@example.com"))
                 .andReturn();
 
         String requestId = objectMapper.readTree(createResult.getResponse().getContentAsString()).get("id").asText();
@@ -246,6 +256,8 @@ class ReportAdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(requestId))
                 .andExpect(jsonPath("$[0].status").value("COMPLETED"))
+                .andExpect(jsonPath("$[0].notificationEmail").value("reports@example.com"))
+                .andExpect(jsonPath("$[0].notificationSentAt").isNotEmpty())
                 .andExpect(jsonPath("$[0].fileName").value(org.hamcrest.Matchers.containsString("portfolio-mis-")));
 
         mockMvc.perform(get("/api/v1/internal/reports/requests/{requestId}/download", requestId)
@@ -254,6 +266,8 @@ class ReportAdminControllerTest {
                 .andExpect(header().string("Content-Type", org.hamcrest.Matchers.containsString("text/csv")))
                 .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("portfolio-mis-")))
                 .andExpect(result -> assertTrue(result.getResponse().getContentAsString().contains("APEX-ASYNC-001")));
+
+        verify(javaMailSender).send(any(SimpleMailMessage.class));
     }
 
     private ProductFixture createProduct() throws Exception {

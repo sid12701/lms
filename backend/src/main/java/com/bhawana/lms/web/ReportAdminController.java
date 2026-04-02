@@ -3,6 +3,8 @@ package com.bhawana.lms.web;
 import com.bhawana.lms.domain.ReportRequest;
 import com.bhawana.lms.service.AdminReportingService;
 import com.bhawana.lms.service.ReportRequestService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -53,12 +55,13 @@ public class ReportAdminController {
     @PostMapping("/portfolio-mis/requests")
     public ReportRequestResponse createPortfolioMisRequest(
             Authentication authentication,
-            @RequestBody PortfolioMisReportRequest request
+            @Valid @RequestBody PortfolioMisReportRequest request
     ) {
         return toResponse(reportRequestService.createPortfolioMisRequest(
                 request.lspId(),
                 request.disbursalDateFrom(),
                 request.disbursalDateTo(),
+                request.recipientEmail(),
                 authentication.getName()
         ));
     }
@@ -95,6 +98,9 @@ public class ReportAdminController {
                 reportRequest.getLsp() == null ? null : reportRequest.getLsp().getName(),
                 reportRequest.getDisbursalDateFrom(),
                 reportRequest.getDisbursalDateTo(),
+                reportRequest.getNotificationEmail(),
+                reportRequest.getNotificationSentAt() == null ? null : reportRequest.getNotificationSentAt().toString(),
+                reportRequest.getNotificationErrorMessage(),
                 reportRequest.getFileName(),
                 reportRequest.getMediaType(),
                 reportRequest.getErrorMessage(),
@@ -107,7 +113,8 @@ public class ReportAdminController {
     public record PortfolioMisReportRequest(
             UUID lspId,
             LocalDate disbursalDateFrom,
-            LocalDate disbursalDateTo
+            LocalDate disbursalDateTo,
+            @Email String recipientEmail
     ) {
     }
 
@@ -121,6 +128,9 @@ public class ReportAdminController {
             String lspName,
             LocalDate disbursalDateFrom,
             LocalDate disbursalDateTo,
+            String notificationEmail,
+            String notificationSentAt,
+            String notificationErrorMessage,
             String fileName,
             String mediaType,
             String errorMessage,

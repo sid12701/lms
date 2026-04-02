@@ -29,6 +29,7 @@ export function ReportsPage() {
   const [selectedLspId, setSelectedLspId] = useState('')
   const [disbursalDateFrom, setDisbursalDateFrom] = useState('')
   const [disbursalDateTo, setDisbursalDateTo] = useState('')
+  const [recipientEmail, setRecipientEmail] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [refreshingRequests, setRefreshingRequests] = useState(false)
@@ -117,9 +118,14 @@ export function ReportsPage() {
         lspId: selectedLspId || undefined,
         disbursalDateFrom: disbursalDateFrom || undefined,
         disbursalDateTo: disbursalDateTo || undefined,
+        recipientEmail: recipientEmail.trim() || undefined,
       })
       setRequests((current) => [reportRequest, ...current.filter((item) => item.id !== reportRequest.id)])
-      setSuccess('Report request queued. The file will appear in history once processing completes.')
+      setSuccess(
+        reportRequest.notificationEmail
+          ? 'Report request queued. A completion email will be sent once processing finishes.'
+          : 'Report request queued. The file will appear in history once processing completes.',
+      )
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to queue the MIS report.')
     } finally {
@@ -147,6 +153,26 @@ export function ReportsPage() {
       default:
         return 'default'
     }
+  }
+
+  function notificationSummary(request: ReportRequestRecord) {
+    if (!request.notificationEmail) {
+      return 'No email notification requested.'
+    }
+
+    if (request.notificationSentAt) {
+      return `Email sent to ${request.notificationEmail} on ${new Date(request.notificationSentAt).toLocaleString()}.`
+    }
+
+    if (request.notificationErrorMessage) {
+      return `Notification to ${request.notificationEmail} failed: ${request.notificationErrorMessage}`
+    }
+
+    if (request.status === 'PENDING' || request.status === 'PROCESSING') {
+      return `Email will be sent to ${request.notificationEmail} when processing finishes.`
+    }
+
+    return `Notification pending for ${request.notificationEmail}.`
   }
 
   return (
@@ -203,11 +229,23 @@ export function ReportsPage() {
                   onChange={(event) => setDisbursalDateTo(event.target.value)}
                 />
               </div>
+              <div className="field-stack">
+                <label htmlFor="report-recipient-email">Notification email</label>
+                <input
+                  id="report-recipient-email"
+                  className="ui-input"
+                  type="email"
+                  placeholder="ops.reporting@example.com"
+                  value={recipientEmail}
+                  onChange={(event) => setRecipientEmail(event.target.value)}
+                />
+              </div>
               <div className="field-stack" style={{ gridColumn: '1 / -1' }}>
                 <div className="helper-copy">
                   Queue the day-one MIS export for background processing. CSV columns include LSP, application id,
                   external loan id, borrower, product, account status, disbursal date, delinquency bucket, overdue
-                  amount, and closure state.
+                  amount, and closure state. Add an optional notification email if the requester should get a
+                  completion update.
                 </div>
               </div>
               {error ? <div className="empty-state">{error}</div> : null}
@@ -246,9 +284,10 @@ export function ReportsPage() {
                       Requested by {request.requestedByUsername} · {new Date(request.createdAt).toLocaleString()}
                     </p>
                     <p className="helper-copy">
-                      {request.lspName ?? 'All LSPs'} ·{' '}
-                      {request.disbursalDateFrom || 'Start'} to {request.disbursalDateTo || 'End'}
+                      {request.lspName ?? 'All LSPs'} · {request.disbursalDateFrom || 'Start'} to{' '}
+                      {request.disbursalDateTo || 'End'}
                     </p>
+                    <p className="helper-copy">{notificationSummary(request)}</p>
                     {request.errorMessage ? <p className="helper-copy">{request.errorMessage}</p> : null}
                   </div>
                   <Badge variant={statusVariant(request.status)}>{request.status}</Badge>
