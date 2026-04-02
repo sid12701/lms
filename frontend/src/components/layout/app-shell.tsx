@@ -1,30 +1,20 @@
 import {
-  BellRing,
-  KeyRound,
-  LayoutDashboard,
-  NotebookPen,
+  ChevronDown,
+  ChevronRight,
   FileText,
   LogOut,
   Settings2,
   ShieldCheck,
   Building2,
+  NotebookPen,
   Users,
 } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { useAuth } from '../../features/auth/auth-context'
 import { cn } from '../../lib/cn'
-
-const internalNavigation = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/lsps', label: 'LSP Administration', icon: Building2 },
-  { to: '/api-clients', label: 'API Clients', icon: KeyRound },
-  { to: '/users', label: 'User Administration', icon: Users },
-  { to: '/products', label: 'Product Configuration', icon: Settings2 },
-  { to: '/loan-applications', label: 'Loan Intake', icon: NotebookPen },
-  { to: '/dashboard', label: 'Alerts & Monitoring', icon: BellRing },
-]
 
 const lspNavigation = [
   { to: '/my-loans', label: 'My Loans', icon: NotebookPen },
@@ -32,13 +22,31 @@ const lspNavigation = [
 
 export function AppShell() {
   const { user, logout } = useAuth()
+  const location = useLocation()
   const isLspUiUser = user?.roles.some((role) => role === 'LSP_UI_READ' || role === 'LSP_UI_WRITE') ?? false
   const canAccessReports = user?.roles.includes('SYSTEM_ADMIN') ?? false
-  const navigation = isLspUiUser
-    ? lspNavigation
-    : canAccessReports
-      ? [...internalNavigation, { to: '/reports', label: 'Reports', icon: FileText }]
-      : internalNavigation
+  const canManageLsps = user?.roles.includes('SYSTEM_ADMIN') ?? false
+  const canManageProducts =
+    user?.roles.includes('SYSTEM_ADMIN') || user?.roles.includes('PRODUCT_ADMIN') || false
+  const canManageUsers = user?.roles.includes('SYSTEM_ADMIN') ?? false
+  const [reportsOpen, setReportsOpen] = useState(location.pathname.startsWith('/reports'))
+
+  const internalNavigation = useMemo(
+    () =>
+      [
+        { to: '/loan-applications', label: 'Loan applications', icon: NotebookPen, visible: true },
+        { to: '/lsps', label: 'LSPs', icon: Building2, visible: canManageLsps },
+        { to: '/products', label: 'Loan products', icon: Settings2, visible: canManageProducts },
+        { to: '/users', label: 'Users', icon: Users, visible: canManageUsers },
+      ].filter((item) => item.visible),
+    [canManageLsps, canManageProducts, canManageUsers],
+  )
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/reports')) {
+      setReportsOpen(true)
+    }
+  }, [location.pathname])
 
   return (
     <div className="app-shell">
@@ -50,7 +58,7 @@ export function AppShell() {
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary">
-          {navigation.map((item) => {
+          {(isLspUiUser ? lspNavigation : internalNavigation).map((item) => {
             const Icon = item.icon
             return (
               <NavLink
@@ -65,6 +73,31 @@ export function AppShell() {
               </NavLink>
             )
           })}
+          {!isLspUiUser && canAccessReports ? (
+            <div className="sidebar-group">
+              <button
+                type="button"
+                className={cn('sidebar-link', location.pathname.startsWith('/reports') && 'sidebar-link--active')}
+                onClick={() => setReportsOpen((current) => !current)}
+              >
+                <FileText size={18} />
+                <span>Reports</span>
+                {reportsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
+              {reportsOpen ? (
+                <div className="sidebar-subnav">
+                  <NavLink
+                    to="/reports"
+                    className={({ isActive }) =>
+                      cn('sidebar-link', 'sidebar-link--subnav', isActive && 'sidebar-link--active')
+                    }
+                  >
+                    <span>MIS</span>
+                  </NavLink>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </nav>
 
         <div className="sidebar-footer">
@@ -86,7 +119,7 @@ export function AppShell() {
         <header className="content-header">
           <div>
             <div className="section-eyebrow">{isLspUiUser ? 'LSP Workspace' : 'Operations Console'}</div>
-            <h2>{isLspUiUser ? 'Loan Visibility and Reports' : 'Admin and Product Control'}</h2>
+            <h2>{isLspUiUser ? 'Loan Visibility and Reports' : 'Loan operations, tenants, and reporting'}</h2>
           </div>
           <div className="header-meta">
             <Badge variant="success">

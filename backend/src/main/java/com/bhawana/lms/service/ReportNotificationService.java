@@ -8,6 +8,7 @@ import java.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -26,19 +27,19 @@ public class ReportNotificationService {
     private final String reportsPageUrl;
 
     public ReportNotificationService(
-            JavaMailSender mailSender,
+            ObjectProvider<JavaMailSender> mailSenderProvider,
             @Value("${app.reports.notifications.enabled:true}") boolean notificationsEnabled,
             @Value("${app.reports.notifications.from-address:}") String fromAddress,
             @Value("${app.reports.notifications.reports-page-url:}") String reportsPageUrl
     ) {
-        this.mailSender = mailSender;
+        this.mailSender = mailSenderProvider.getIfAvailable();
         this.notificationsEnabled = notificationsEnabled;
         this.fromAddress = fromAddress == null ? "" : fromAddress.trim();
         this.reportsPageUrl = reportsPageUrl == null ? "" : reportsPageUrl.trim();
     }
 
     public NotificationResult sendTerminalStatusNotification(ReportRequest reportRequest) {
-        if (!notificationsEnabled || reportRequest.getNotificationEmail() == null) {
+        if (!notificationsEnabled || reportRequest.getNotificationEmail() == null || mailSender == null) {
             return NotificationResult.skipped();
         }
 

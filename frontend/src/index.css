@@ -180,6 +180,19 @@
     padding: 0.5rem 0;
   }
 
+  .sidebar-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .sidebar-subnav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding-left: 1.25rem;
+  }
+
   .sidebar-link {
     display: flex;
     align-items: center;
@@ -216,6 +229,11 @@
       opacity: 1;
       color: var(--color-accent-warm);
     }
+  }
+
+  .sidebar-link--subnav {
+    font-size: 0.85rem;
+    padding-left: 2.8rem;
   }
 
   .sidebar-footer {

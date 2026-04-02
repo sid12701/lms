@@ -65,6 +65,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -143,11 +144,21 @@ public class LoanApplicationService {
             UUID productId,
             String status,
             String sourceChannel,
-            String query
+            String query,
+            LocalDate disbursalDateFrom,
+            LocalDate disbursalDateTo
     ) {
         String normalizedQuery = normalizeQuery(query);
         String normalizedStatus = normalizeOptional(status);
         String normalizedSourceChannel = normalizeOptional(sourceChannel);
+        validateDateRange(disbursalDateFrom, disbursalDateTo);
+        Map<UUID, LocalDate> disbursedDatesByApplicationId = loanAccountRepository.findAll().stream()
+                .filter(account -> account.getLoanApplication() != null && account.getDisbursedAt() != null)
+                .collect(Collectors.toMap(
+                        account -> account.getLoanApplication().getId(),
+                        account -> account.getDisbursedAt().atZone(ZoneOffset.UTC).toLocalDate(),
+                        (left, right) -> right
+                ));
         return loanApplicationRepository.findAllByOrderByCreatedAtDesc().stream()
                 .filter(application -> lspId == null || application.getLsp().getId().equals(lspId))
                 .filter(application -> productId == null || application.getLoanProduct().getId().equals(productId))
@@ -156,6 +167,11 @@ public class LoanApplicationService {
                 .filter(application -> normalizedSourceChannel == null
                         || application.getSourceChannel().equalsIgnoreCase(normalizedSourceChannel))
                 .filter(application -> normalizedQuery == null || matchesQuery(application, normalizedQuery))
+                .filter(application -> isWithinDisbursalRange(
+                        disbursedDatesByApplicationId.get(application.getId()),
+                        disbursalDateFrom,
+                        disbursalDateTo
+                ))
                 .toList();
     }
 
@@ -167,7 +183,7 @@ public class LoanApplicationService {
             String sourceChannel,
             String query
     ) {
-        return listApplications(lspId, productId, status, sourceChannel, query);
+        return listApplications(lspId, productId, status, sourceChannel, query, null, null);
     }
 
     @Transactional(readOnly = true)
@@ -1067,6 +1083,25 @@ public class LoanApplicationService {
 
         String normalized = query.trim().toLowerCase();
         return normalized.isBlank() ? null : normalized;
+    }
+
+    private static void validateDateRange(LocalDate from, LocalDate to) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new IllegalArgumentException("disbursalDateFrom cannot be after disbursalDateTo.");
+        }
+    }
+
+    private static boolean isWithinDisbursalRange(LocalDate disbursalDate, LocalDate from, LocalDate to) {
+        if (from == null && to == null) {
+            return true;
+        }
+        if (disbursalDate == null) {
+            return false;
+        }
+        if (from != null && disbursalDate.isBefore(from)) {
+            return false;
+        }
+        return to == null || !disbursalDate.isAfter(to);
     }
 
     private static boolean matchesQuery(LoanApplication application, String normalizedQuery) {

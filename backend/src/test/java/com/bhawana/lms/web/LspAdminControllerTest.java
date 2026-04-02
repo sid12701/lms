@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,8 +38,12 @@ class LspAdminControllerTest {
     @Autowired
     private LspRepository lspRepository;
 
+    @Autowired
+    private AppUserRepository appUserRepository;
+
     @BeforeEach
     void setUp() {
+        appUserRepository.deleteAllInBatch();
         lspRepository.deleteAll();
     }
 
@@ -104,6 +109,33 @@ class LspAdminControllerTest {
     void opsUserCannotAccessLspAdminEndpoints() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/lsps").with(opsUser()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void systemAdminCanViewLspDetailWithUsersAndPortfolioSummary() throws Exception {
+        String lspId = createLsp();
+
+        mockMvc.perform(post("/api/v1/internal/admin/users")
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "username", "north.viewer",
+                                "email", "north.viewer@example.com",
+                                "password", "TempPass123!",
+                                "status", "ACTIVE",
+                                "lspId", lspId,
+                                "roles", List.of("LSP_UI_READ")
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/internal/admin/lsps/{lspId}", lspId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(lspId))
+                .andExpect(jsonPath("$.userCount").value(1))
+                .andExpect(jsonPath("$.portfolioSummary.loanApplicationCount").value(0))
+                .andExpect(jsonPath("$.users[0].username").value("north.viewer"))
+                .andExpect(jsonPath("$.users[0].roles[0]").value("LSP_UI_READ"));
     }
 
     private String createLsp() throws Exception {

@@ -30,7 +30,9 @@ import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -48,6 +50,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import static org.hamcrest.Matchers.containsString;
+import java.time.ZoneOffset;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -231,6 +234,38 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].externalLoanId").value("NORTH-200"))
                 .andExpect(jsonPath("$[0].borrowerFullName").value("Rahul Shah"));
+    }
+
+    @Test
+    void opsUserCanFilterLoanApplicationsByDisbursalDate() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        String marchApplicationId = createApplication(lsp.id(), product.id(), "EXT-MARCH", "API", "ABCDE1234F")
+                .get("id").asText();
+        String aprilApplicationId = createApplication(lsp.id(), product.id(), "EXT-APRIL", "API", "ZXCVB1234N")
+                .get("id").asText();
+
+        transitionApplication(marchApplicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(marchApplicationId);
+        transitionApplication(marchApplicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        disburseLoan(marchApplicationId);
+        setDisbursedAt(marchApplicationId, LocalDate.of(2026, 3, 10));
+
+        transitionApplication(aprilApplicationId, "UNDER_REVIEW", "Started review");
+        markAllRequiredKycDocumentsVerified(aprilApplicationId);
+        transitionApplication(aprilApplicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        disburseLoan(aprilApplicationId);
+        setDisbursedAt(aprilApplicationId, LocalDate.of(2026, 4, 5));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("disbursalDateFrom", "2026-03-01")
+                        .queryParam("disbursalDateTo", "2026-03-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].externalLoanId").value("EXT-MARCH"));
     }
 
     @Test
@@ -1704,6 +1739,14 @@ class LoanApplicationOpsControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
                 .andExpect(status().isOk());
+    }
+
+    private void setDisbursedAt(String applicationId, LocalDate disbursedDate) {
+        jdbcTemplate.update(
+                "update loan_account set disbursed_at = ? where loan_application_id = ?",
+                Timestamp.from(OffsetDateTime.of(disbursedDate.atStartOfDay(), ZoneOffset.UTC).toInstant()),
+                UUID.fromString(applicationId)
+        );
     }
 
     private JsonNode transitionApplication(String applicationId, String targetStatus, String note) throws Exception {

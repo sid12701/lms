@@ -3,7 +3,6 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/layout/app-shell'
 import { useAuth } from './features/auth/auth-context'
 import { ChangePasswordPage } from './features/auth/change-password-page'
-import { DashboardPage } from './features/dashboard/dashboard-page'
 import { LoginPage } from './features/auth/login-page'
 import { LspAdminPage } from './features/admin/lsp-admin-page'
 import { ApiClientsPage } from './features/api-clients/api-clients-page'
@@ -30,7 +29,7 @@ function defaultLandingPath(user: { roles: string[] } | null, mustChangePassword
     return '/change-password'
   }
 
-  return isLspUiUser(user.roles) ? '/my-loans' : '/dashboard'
+  return isLspUiUser(user.roles) ? '/my-loans' : '/loan-applications'
 }
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
@@ -85,7 +84,7 @@ function LspOnlyRoute({ children }: { children: ReactElement }) {
   const { user } = useAuth()
 
   if (user && !isLspUiUser(user.roles)) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to="/loan-applications" replace />
   }
 
   return children
@@ -128,7 +127,7 @@ export function AppRouter() {
           path="dashboard"
           element={
             <InternalOnlyRoute>
-              <DashboardPage />
+              <Navigate to="/loan-applications" replace />
             </InternalOnlyRoute>
           }
         />

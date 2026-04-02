@@ -31,9 +31,14 @@ public class LspAdminController {
 
     @GetMapping
     public List<LspResponse> listLsps() {
-        return adminDirectoryService.listLsps().stream()
+        return adminDirectoryService.listLspDirectoryViews().stream()
                 .map(LspAdminController::toResponse)
                 .toList();
+    }
+
+    @GetMapping("/{lspId}")
+    public LspDetailResponse getLspDetail(@PathVariable UUID lspId) {
+        return toDetailResponse(adminDirectoryService.getLspDetail(lspId));
     }
 
     @PostMapping
@@ -68,7 +73,64 @@ public class LspAdminController {
                         lsp.getWebhookEndpointUrl(),
                         lsp.getWebhookSigningSecret(),
                         lsp.getWebhookEventTypes().stream().map(Enum::name).toList()
-                )
+                ),
+                0,
+                new PortfolioSummaryResponse(0, 0, 0, java.math.BigDecimal.ZERO, null)
+        );
+    }
+
+    private static LspResponse toResponse(AdminDirectoryService.LspDirectoryView view) {
+        Lsp lsp = view.lsp();
+        return new LspResponse(
+                lsp.getId().toString(),
+                lsp.getCode(),
+                lsp.getName(),
+                lsp.getStatus().name(),
+                new WebhookSubscriptionResponse(
+                        lsp.isWebhookEnabled(),
+                        lsp.getWebhookEndpointUrl(),
+                        lsp.getWebhookSigningSecret(),
+                        lsp.getWebhookEventTypes().stream().map(Enum::name).toList()
+                ),
+                view.userCount(),
+                toPortfolioSummaryResponse(view.portfolioSummary())
+        );
+    }
+
+    private static LspDetailResponse toDetailResponse(AdminDirectoryService.LspDetailView view) {
+        Lsp lsp = view.lsp();
+        return new LspDetailResponse(
+                lsp.getId().toString(),
+                lsp.getCode(),
+                lsp.getName(),
+                lsp.getStatus().name(),
+                new WebhookSubscriptionResponse(
+                        lsp.isWebhookEnabled(),
+                        lsp.getWebhookEndpointUrl(),
+                        lsp.getWebhookSigningSecret(),
+                        lsp.getWebhookEventTypes().stream().map(Enum::name).toList()
+                ),
+                view.users().size(),
+                toPortfolioSummaryResponse(view.portfolioSummary()),
+                view.users().stream()
+                        .map(user -> new LspUserResponse(
+                                user.id().toString(),
+                                user.username(),
+                                user.email(),
+                                user.status().name(),
+                                user.roles().stream().map(Enum::name).toList()
+                        ))
+                        .toList()
+        );
+    }
+
+    private static PortfolioSummaryResponse toPortfolioSummaryResponse(AdminDirectoryService.LspPortfolioSummary summary) {
+        return new PortfolioSummaryResponse(
+                summary.loanApplicationCount(),
+                summary.approvedLoanCount(),
+                summary.disbursedLoanCount(),
+                summary.totalDisbursedAmount(),
+                summary.latestDisbursalDate()
         );
     }
 
@@ -105,7 +167,39 @@ public class LspAdminController {
             String code,
             String name,
             String status,
-            WebhookSubscriptionResponse webhookSubscription
+            WebhookSubscriptionResponse webhookSubscription,
+            int userCount,
+            PortfolioSummaryResponse portfolioSummary
+    ) {
+    }
+
+    public record LspDetailResponse(
+            String id,
+            String code,
+            String name,
+            String status,
+            WebhookSubscriptionResponse webhookSubscription,
+            int userCount,
+            PortfolioSummaryResponse portfolioSummary,
+            List<LspUserResponse> users
+    ) {
+    }
+
+    public record PortfolioSummaryResponse(
+            int loanApplicationCount,
+            int approvedLoanCount,
+            int disbursedLoanCount,
+            java.math.BigDecimal totalDisbursedAmount,
+            java.time.LocalDate latestDisbursalDate
+    ) {
+    }
+
+    public record LspUserResponse(
+            String id,
+            String username,
+            String email,
+            String status,
+            List<String> roles
     ) {
     }
 }

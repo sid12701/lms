@@ -85,6 +85,8 @@ type ListFilterState = {
   status: string
   sourceChannel: string
   query: string
+  disbursalDateFrom: string
+  disbursalDateTo: string
 }
 
 type PaymentCaptureState = {
@@ -143,6 +145,8 @@ const initialFilterState: ListFilterState = {
   status: '',
   sourceChannel: '',
   query: '',
+  disbursalDateFrom: '',
+  disbursalDateTo: '',
 }
 
 function buildInitialPaymentCaptureState(): PaymentCaptureState {
@@ -1258,6 +1262,8 @@ export function LoanApplicationsPage() {
       status: nextFilters.status || undefined,
       sourceChannel: nextFilters.sourceChannel || undefined,
       query: nextFilters.query.trim() || undefined,
+      disbursalDateFrom: nextFilters.disbursalDateFrom || undefined,
+      disbursalDateTo: nextFilters.disbursalDateTo || undefined,
     })
 
     setApplications(response)
@@ -1858,6 +1864,8 @@ export function LoanApplicationsPage() {
           status: filters.status || undefined,
           sourceChannel: filters.sourceChannel || undefined,
           query: filters.query.trim() || undefined,
+          disbursalDateFrom: filters.disbursalDateFrom || undefined,
+          disbursalDateTo: filters.disbursalDateTo || undefined,
         })
         if (!cancelled) {
           setApplications(response)
@@ -2315,6 +2323,30 @@ export function LoanApplicationsPage() {
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="field-stack">
+              <label htmlFor="filter-disbursal-date-from">Disbursal date from</label>
+              <input
+                id="filter-disbursal-date-from"
+                className="ui-input"
+                type="date"
+                value={filters.disbursalDateFrom}
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, disbursalDateFrom: event.target.value }))
+                }
+              />
+            </div>
+            <div className="field-stack">
+              <label htmlFor="filter-disbursal-date-to">Disbursal date to</label>
+              <input
+                id="filter-disbursal-date-to"
+                className="ui-input"
+                type="date"
+                value={filters.disbursalDateTo}
+                onChange={(event) =>
+                  setFilters((current) => ({ ...current, disbursalDateTo: event.target.value }))
+                }
+              />
             </div>
           </div>
           {loading ? <div className="empty-state">Loading loan applications...</div> : null}

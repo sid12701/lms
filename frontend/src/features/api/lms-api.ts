@@ -133,6 +133,28 @@ export type LspRecord = {
   name: string
   status: LspStatus
   webhookSubscription: WebhookSubscriptionRecord | null
+  userCount: number
+  portfolioSummary: LspPortfolioSummaryRecord
+}
+
+export type LspPortfolioSummaryRecord = {
+  loanApplicationCount: number
+  approvedLoanCount: number
+  disbursedLoanCount: number
+  totalDisbursedAmount: number
+  latestDisbursalDate: string | null
+}
+
+export type LspUserSummaryRecord = {
+  id: string
+  username: string
+  email: string | null
+  status: UserStatus
+  roles: string[]
+}
+
+export type LspDetailRecord = LspRecord & {
+  users: LspUserSummaryRecord[]
 }
 
 export type WebhookSubscriptionRecord = {
@@ -709,6 +731,10 @@ export function listLsps() {
   return requestJson<LspRecord[]>('/api/v1/internal/admin/lsps')
 }
 
+export function getLspDetail(lspId: string) {
+  return requestJson<LspDetailRecord>(`/api/v1/internal/admin/lsps/${lspId}`)
+}
+
 export function createLsp(payload: {
   code: string
   name: string
@@ -843,6 +869,8 @@ export function listLoanApplications(filters?: {
   status?: string
   sourceChannel?: string
   query?: string
+  disbursalDateFrom?: string
+  disbursalDateTo?: string
 }) {
   const params = new URLSearchParams()
 
@@ -864,6 +892,14 @@ export function listLoanApplications(filters?: {
 
   if (filters?.query) {
     params.set('q', filters.query)
+  }
+
+  if (filters?.disbursalDateFrom) {
+    params.set('disbursalDateFrom', filters.disbursalDateFrom)
+  }
+
+  if (filters?.disbursalDateTo) {
+    params.set('disbursalDateTo', filters.disbursalDateTo)
   }
 
   const queryString = params.toString()

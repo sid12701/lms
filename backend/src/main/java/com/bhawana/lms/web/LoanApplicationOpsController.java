@@ -71,9 +71,19 @@ public class LoanApplicationOpsController {
             @RequestParam(required = false) UUID productId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String sourceChannel,
-            @RequestParam(required = false, name = "q") String query
+            @RequestParam(required = false, name = "q") String query,
+            @RequestParam(required = false) LocalDate disbursalDateFrom,
+            @RequestParam(required = false) LocalDate disbursalDateTo
     ) {
-        return loanApplicationService.listApplications(lspId, productId, status, sourceChannel, query).stream()
+        return loanApplicationService.listApplications(
+                        lspId,
+                        productId,
+                        status,
+                        sourceChannel,
+                        query,
+                        disbursalDateFrom,
+                        disbursalDateTo
+                ).stream()
                 .map(LoanApplicationOpsController::toResponse)
                 .toList();
     }

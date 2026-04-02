@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
@@ -6,9 +6,12 @@ import { Input } from '../../components/ui/input'
 import {
   createLsp,
   getAdminMetadata,
+  getLspDetail,
   listLsps,
   updateLspWebhookSubscription,
   type AdminMetadata,
+  type LspDetailRecord,
+  type LspPortfolioSummaryRecord,
   type LspRecord,
   type LspStatus,
   type WebhookEventType,
@@ -16,11 +19,23 @@ import {
 } from '../api/lms-api'
 
 function statusVariant(status: LspStatus): 'success' | 'warning' {
-  if (status === 'ACTIVE') {
-    return 'success'
+  return status === 'ACTIVE' ? 'success' : 'warning'
+}
+
+function currencyLabel(value: number) {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+function formatDateLabel(value?: string | null) {
+  if (!value) {
+    return 'No disbursal yet'
   }
 
-  return 'warning'
+  return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium' }).format(new Date(value))
 }
 
 function webhookEventTypeLabel(eventType: WebhookEventType) {
@@ -38,10 +53,21 @@ function webhookEventTypeLabel(eventType: WebhookEventType) {
   }
 }
 
+function renderSummaryBadges(summary: LspPortfolioSummaryRecord) {
+  return (
+    <div className="inline-actions">
+      <Badge>{summary.loanApplicationCount} loans</Badge>
+      <Badge variant="success">{summary.disbursedLoanCount} disbursed</Badge>
+      <Badge variant="warning">{currencyLabel(summary.totalDisbursedAmount)}</Badge>
+    </div>
+  )
+}
+
 export function LspAdminPage() {
   const [lsps, setLsps] = useState<LspRecord[]>([])
   const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
   const [selectedLspId, setSelectedLspId] = useState('')
+  const [selectedLsp, setSelectedLsp] = useState<LspDetailRecord | null>(null)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [status, setStatus] = useState<LspStatus | ''>('')
@@ -50,14 +76,18 @@ export function LspAdminPage() {
   const [webhookSigningSecret, setWebhookSigningSecret] = useState('')
   const [webhookEventTypes, setWebhookEventTypes] = useState<WebhookEventType[]>([])
   const [loading, setLoading] = useState(true)
+  const [detailLoading, setDetailLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [webhookSaving, setWebhookSaving] = useState(false)
   const [error, setError] = useState('')
+  const [detailError, setDetailError] = useState('')
   const [webhookError, setWebhookError] = useState('')
   const [webhookSuccess, setWebhookSuccess] = useState('')
 
-  const selectedLsp = lsps.find((item) => item.id === selectedLspId) ?? null
-  const selectedWebhookSubscription = selectedLsp?.webhookSubscription ?? null
+  const selectedListRecord = useMemo(
+    () => lsps.find((item) => item.id === selectedLspId) ?? null,
+    [lsps, selectedLspId],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -75,9 +105,8 @@ export function LspAdminPage() {
           setSelectedLspId((current) => current || response[0]?.id || '')
         }
       } catch (loadError) {
-        const message = loadError instanceof Error ? loadError.message : 'Unable to load LSPs.'
         if (!cancelled) {
-          setError(message)
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load LSPs.')
         }
       } finally {
         if (!cancelled) {
@@ -94,33 +123,49 @@ export function LspAdminPage() {
   }, [])
 
   useEffect(() => {
-    if (!lsps.length) {
-      setSelectedLspId('')
+    if (!selectedLspId) {
+      setSelectedLsp(null)
       return
     }
 
-    setSelectedLspId((current) => (lsps.some((item) => item.id === current) ? current : lsps[0].id))
-  }, [lsps])
+    let cancelled = false
+
+    async function loadDetail() {
+      setDetailLoading(true)
+      setDetailError('')
+
+      try {
+        const response = await getLspDetail(selectedLspId)
+        if (!cancelled) {
+          setSelectedLsp(response)
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setDetailError(loadError instanceof Error ? loadError.message : 'Unable to load LSP detail.')
+        }
+      } finally {
+        if (!cancelled) {
+          setDetailLoading(false)
+        }
+      }
+    }
+
+    void loadDetail()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedLspId])
 
   useEffect(() => {
-    const currentSelectedLsp = lsps.find((item) => item.id === selectedLspId) ?? null
-
-    if (!currentSelectedLsp) {
-      setWebhookEnabled(false)
-      setWebhookEndpointUrl('')
-      setWebhookSigningSecret('')
-      setWebhookEventTypes([])
-      return
-    }
-
-    const subscription = currentSelectedLsp.webhookSubscription
+    const subscription = selectedLsp?.webhookSubscription ?? selectedListRecord?.webhookSubscription ?? null
     setWebhookEnabled(subscription?.enabled ?? false)
     setWebhookEndpointUrl(subscription?.endpointUrl ?? '')
     setWebhookSigningSecret(subscription?.signingSecret ?? '')
     setWebhookEventTypes(subscription?.eventTypes ?? [])
     setWebhookError('')
     setWebhookSuccess('')
-  }, [selectedLspId])
+  }, [selectedLsp, selectedListRecord])
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -146,8 +191,7 @@ export function LspAdminPage() {
       setStatus(nextStatus)
       setSelectedLspId(created.id)
     } catch (createError) {
-      const message = createError instanceof Error ? createError.message : 'Unable to create LSP.'
-      setError(message)
+      setError(createError instanceof Error ? createError.message : 'Unable to create LSP.')
     } finally {
       setSubmitting(false)
     }
@@ -155,23 +199,13 @@ export function LspAdminPage() {
 
   function toggleWebhookEventType(eventType: WebhookEventType) {
     setWebhookEventTypes((current) =>
-      current.includes(eventType)
-        ? current.filter((item) => item !== eventType)
-        : [...current, eventType],
+      current.includes(eventType) ? current.filter((item) => item !== eventType) : [...current, eventType],
     )
-  }
-
-  function selectAllWebhookEventTypes() {
-    setWebhookEventTypes([...webhookEventTypeOptions])
-  }
-
-  function clearWebhookEventTypes() {
-    setWebhookEventTypes([])
   }
 
   async function handleWebhookSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!selectedLsp) {
+    if (!selectedLspId) {
       return
     }
 
@@ -185,7 +219,6 @@ export function LspAdminPage() {
 
     if (webhookEnabled) {
       try {
-        // Validate URL format before sending it to the server.
         new URL(trimmedEndpoint)
       } catch {
         setWebhookError('Endpoint URL must be a valid absolute URL.')
@@ -208,18 +241,19 @@ export function LspAdminPage() {
     setWebhookSuccess('')
 
     try {
-      const updated = await updateLspWebhookSubscription(selectedLsp.id, {
+      await updateLspWebhookSubscription(selectedLspId, {
         enabled: webhookEnabled,
         endpointUrl: webhookEnabled ? trimmedEndpoint : undefined,
         signingSecret: webhookEnabled ? trimmedSecret : undefined,
         eventTypes: webhookEventTypes,
       })
 
-      setLsps((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+      const [lspList, detail] = await Promise.all([listLsps(), getLspDetail(selectedLspId)])
+      setLsps(lspList)
+      setSelectedLsp(detail)
       setWebhookSuccess('Webhook subscription saved.')
     } catch (saveError) {
-      const message = saveError instanceof Error ? saveError.message : 'Unable to save webhook settings.'
-      setWebhookError(message)
+      setWebhookError(saveError instanceof Error ? saveError.message : 'Unable to save webhook settings.')
     } finally {
       setWebhookSaving(false)
     }
@@ -229,10 +263,11 @@ export function LspAdminPage() {
     <div className="users-layout">
       <Card className="list-card">
         <CardHeader>
-          <div className="section-eyebrow">LSP administration</div>
+          <div className="section-eyebrow">LSPs</div>
           <CardTitle>Tenant registry</CardTitle>
           <CardDescription>
-            Phase 2 target: manage onboarding state and the tenant list from the same console.
+            Review every LSP in collapsed form, then open one tenant to inspect users, loan count, and disbursal
+            summary.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -245,23 +280,28 @@ export function LspAdminPage() {
           {!loading && !error ? (
             <div className="table-grid">
               {lsps.map((lsp) => (
-                <div className="table-row" key={lsp.id}>
+                <button
+                  key={lsp.id}
+                  type="button"
+                  className="table-row"
+                  onClick={() => setSelectedLspId(lsp.id)}
+                  style={{
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    border:
+                      selectedLspId === lsp.id ? '1px solid rgba(180, 142, 75, 0.5)' : '1px solid transparent',
+                  }}
+                >
                   <div>
                     <strong>{lsp.name}</strong>
                     <p className="helper-copy">{lsp.code}</p>
+                    <p className="helper-copy">{formatDateLabel(lsp.portfolioSummary.latestDisbursalDate)}</p>
                   </div>
-                  <div className="inline-actions">
+                  <div style={{ display: 'grid', gap: '0.5rem', justifyItems: 'end' }}>
                     <Badge variant={statusVariant(lsp.status)}>{lsp.status}</Badge>
-                    <Badge variant={lsp.webhookSubscription?.enabled ? 'success' : 'warning'}>
-                      {lsp.webhookSubscription?.enabled ? 'Webhook on' : 'Webhook off'}
-                    </Badge>
+                    {renderSummaryBadges(lsp.portfolioSummary)}
                   </div>
-                  <span className="helper-copy">
-                    {lsp.webhookSubscription?.eventTypes.length
-                      ? `${lsp.webhookSubscription.eventTypes.length} events`
-                      : 'Ready for webhook setup'}
-                  </span>
-                </div>
+                </button>
               ))}
               {!lsps.length ? <div className="empty-state">No LSPs found.</div> : null}
             </div>
@@ -271,121 +311,132 @@ export function LspAdminPage() {
 
       <Card>
         <CardHeader>
-          <div className="section-eyebrow">Webhook subscriptions</div>
-          <CardTitle>Per-tenant delivery config</CardTitle>
+          <div className="section-eyebrow">Selected LSP</div>
+          <CardTitle>{selectedLsp?.name ?? selectedListRecord?.name ?? 'Choose a tenant'}</CardTitle>
           <CardDescription>
-            Configure which LSP events are delivered and where they should be posted.
+            View the sanctioned users, loan portfolio summary, and webhook configuration for the selected LSP.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!lsps.length ? <div className="empty-state">Create an LSP before configuring webhooks.</div> : null}
-          {lsps.length ? (
-            <form className="form-grid" onSubmit={handleWebhookSave}>
-              <div className="field-stack">
-                <label htmlFor="webhook-lsp">Tenant</label>
-                <select
-                  id="webhook-lsp"
-                  className="ui-input"
-                  value={selectedLspId}
-                  onChange={(event) => setSelectedLspId(event.target.value)}
-                >
-                  {lsps.map((lsp) => (
-                    <option key={lsp.id} value={lsp.id}>
-                      {lsp.code} - {lsp.name}
-                    </option>
-                  ))}
-                </select>
+          {!selectedLspId ? <div className="empty-state">Select an LSP to inspect its details.</div> : null}
+          {detailLoading ? <div className="empty-state">Loading tenant details...</div> : null}
+          {detailError ? <div className="empty-state">{detailError}</div> : null}
+          {selectedLsp && !detailLoading ? (
+            <div className="form-grid">
+              <div className="table-row">
+                <div>
+                  <strong>{selectedLsp.code}</strong>
+                  <p className="helper-copy">{selectedLsp.status}</p>
+                </div>
+                <div className="inline-actions">
+                  <Badge>{selectedLsp.userCount} users</Badge>
+                  <Badge variant={selectedLsp.webhookSubscription?.enabled ? 'success' : 'warning'}>
+                    {selectedLsp.webhookSubscription?.enabled ? 'Webhook on' : 'Webhook off'}
+                  </Badge>
+                </div>
               </div>
-              <div className="inline-actions">
-                <Badge variant={selectedWebhookSubscription?.enabled ? 'success' : 'warning'}>
-                  {selectedWebhookSubscription?.enabled ? 'Enabled' : 'Disabled'}
-                </Badge>
-                <Badge>{selectedWebhookSubscription?.eventTypes.length ?? 0} events</Badge>
-              </div>
-              <div className="field-stack">
-                <label htmlFor="webhook-enabled">Delivery enabled</label>
-                <select
-                  id="webhook-enabled"
-                  className="ui-input"
-                  value={webhookEnabled ? 'enabled' : 'disabled'}
-                  onChange={(event) => setWebhookEnabled(event.target.value === 'enabled')}
-                >
-                  <option value="disabled">Disabled</option>
-                  <option value="enabled">Enabled</option>
-                </select>
-              </div>
-              <div className="field-stack">
-                <label htmlFor="webhook-endpoint">Endpoint URL</label>
-                <Input
-                  id="webhook-endpoint"
-                  value={webhookEndpointUrl}
-                  onChange={(event) => setWebhookEndpointUrl(event.target.value)}
-                  placeholder="https://hooks.example.com/lms"
-                />
-                <p className="helper-copy">Required when delivery is enabled.</p>
-              </div>
-              <div className="field-stack">
-                <label htmlFor="webhook-secret">Signing secret</label>
-                <Input
-                  id="webhook-secret"
-                  value={webhookSigningSecret}
-                  onChange={(event) => setWebhookSigningSecret(event.target.value)}
-                  placeholder="Shared signing secret"
-                />
-                <p className="helper-copy">Store the secret used to verify outbound requests.</p>
-              </div>
-              <div className="field-stack" style={{ gridColumn: '1 / -1' }}>
-                <div className="inline-actions" style={{ justifyContent: 'space-between' }}>
-                  <label>Event types</label>
-                  <div className="inline-actions">
-                    <Button type="button" variant="outline" onClick={selectAllWebhookEventTypes}>
-                      Select all
-                    </Button>
-                    <Button type="button" variant="outline" onClick={clearWebhookEventTypes}>
-                      Clear
-                    </Button>
+
+              <div className="table-grid" style={{ gridColumn: '1 / -1' }}>
+                <div className="table-row">
+                  <div>
+                    <strong>{selectedLsp.portfolioSummary.loanApplicationCount}</strong>
+                    <p className="helper-copy">Loans captured</p>
+                  </div>
+                  <div>
+                    <strong>{selectedLsp.portfolioSummary.approvedLoanCount}</strong>
+                    <p className="helper-copy">Approved</p>
+                  </div>
+                  <div>
+                    <strong>{selectedLsp.portfolioSummary.disbursedLoanCount}</strong>
+                    <p className="helper-copy">Disbursed</p>
+                  </div>
+                  <div>
+                    <strong>{currencyLabel(selectedLsp.portfolioSummary.totalDisbursedAmount)}</strong>
+                    <p className="helper-copy">Amount disbursed</p>
                   </div>
                 </div>
-                <div className="table-grid" style={{ gap: '0.75rem', marginTop: '0.5rem' }}>
-                  {webhookEventTypeOptions.map((eventType) => (
-                    <label
-                      key={eventType}
-                      className="table-row"
-                      style={{ justifyContent: 'flex-start', gap: '0.75rem' }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={webhookEventTypes.includes(eventType)}
-                        onChange={() => toggleWebhookEventType(eventType)}
-                      />
-                      <div>
-                        <strong>{webhookEventTypeLabel(eventType)}</strong>
-                        <p className="helper-copy">{eventType}</p>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-                <p className="helper-copy">
-                  Keep the list tight. These events define the outbound webhook contract for this tenant.
-                </p>
               </div>
-              {webhookError ? <div className="empty-state">{webhookError}</div> : null}
-              {webhookSuccess ? <div className="empty-state">{webhookSuccess}</div> : null}
-              <Button
-                disabled={
-                  webhookSaving ||
-                  !selectedLsp ||
-                  (webhookEnabled && !webhookEventTypes.length) ||
-                  (webhookEnabled &&
-                    (!webhookEndpointUrl.trim() ||
-                      !webhookSigningSecret.trim() ||
-                      !selectedLspId))
-                }
-                type="submit"
-              >
-                {webhookSaving ? 'Saving...' : 'Save webhook subscription'}
-              </Button>
-            </form>
+
+              <div className="field-stack" style={{ gridColumn: '1 / -1' }}>
+                <label>Users sanctioned in the system</label>
+                {!selectedLsp.users.length ? (
+                  <div className="empty-state">No users are assigned to this LSP yet.</div>
+                ) : (
+                  <div className="table-grid">
+                    {selectedLsp.users.map((user) => (
+                      <div className="table-row" key={user.id}>
+                        <div>
+                          <strong>{user.username}</strong>
+                          <p className="helper-copy">{user.email ?? 'No email'}</p>
+                        </div>
+                        <Badge>{user.roles.join(', ')}</Badge>
+                        <span className="helper-copy">{user.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <form className="form-grid" style={{ gridColumn: '1 / -1' }} onSubmit={handleWebhookSave}>
+                <div className="field-stack">
+                  <label htmlFor="webhook-enabled">Webhook delivery</label>
+                  <select
+                    id="webhook-enabled"
+                    className="ui-input"
+                    value={webhookEnabled ? 'enabled' : 'disabled'}
+                    onChange={(event) => setWebhookEnabled(event.target.value === 'enabled')}
+                  >
+                    <option value="disabled">Disabled</option>
+                    <option value="enabled">Enabled</option>
+                  </select>
+                </div>
+                <div className="field-stack">
+                  <label htmlFor="webhook-endpoint">Endpoint URL</label>
+                  <Input
+                    id="webhook-endpoint"
+                    value={webhookEndpointUrl}
+                    onChange={(event) => setWebhookEndpointUrl(event.target.value)}
+                    placeholder="https://hooks.example.com/lms"
+                  />
+                </div>
+                <div className="field-stack">
+                  <label htmlFor="webhook-secret">Signing secret</label>
+                  <Input
+                    id="webhook-secret"
+                    value={webhookSigningSecret}
+                    onChange={(event) => setWebhookSigningSecret(event.target.value)}
+                    placeholder="Shared signing secret"
+                  />
+                </div>
+                <div className="field-stack" style={{ gridColumn: '1 / -1' }}>
+                  <label>Event types</label>
+                  <div className="table-grid" style={{ gap: '0.75rem', marginTop: '0.5rem' }}>
+                    {webhookEventTypeOptions.map((eventType) => (
+                      <label
+                        key={eventType}
+                        className="table-row"
+                        style={{ justifyContent: 'flex-start', gap: '0.75rem' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={webhookEventTypes.includes(eventType)}
+                          onChange={() => toggleWebhookEventType(eventType)}
+                        />
+                        <div>
+                          <strong>{webhookEventTypeLabel(eventType)}</strong>
+                          <p className="helper-copy">{eventType}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {webhookError ? <div className="empty-state">{webhookError}</div> : null}
+                {webhookSuccess ? <div className="empty-state">{webhookSuccess}</div> : null}
+                <Button disabled={webhookSaving} type="submit">
+                  {webhookSaving ? 'Saving...' : 'Save webhook subscription'}
+                </Button>
+              </form>
+            </div>
           ) : null}
         </CardContent>
       </Card>
@@ -394,27 +445,17 @@ export function LspAdminPage() {
         <CardHeader>
           <div className="section-eyebrow">Create LSP</div>
           <CardTitle>Add tenant</CardTitle>
-          <CardDescription>Bind this form directly to the admin tenant creation API.</CardDescription>
+          <CardDescription>Admins retain full write access to add and configure new tenants.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="form-grid" onSubmit={handleCreate}>
             <div className="field-stack">
               <label htmlFor="code">Tenant code</label>
-              <Input
-                id="code"
-                value={code}
-                onChange={(event) => setCode(event.target.value.toUpperCase())}
-                placeholder="APEX"
-              />
+              <Input id="code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} />
             </div>
             <div className="field-stack">
               <label htmlFor="name">Tenant name</label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Apex Finance"
-              />
+              <Input id="name" value={name} onChange={(event) => setName(event.target.value)} />
             </div>
             <div className="field-stack">
               <label htmlFor="status">Status</label>
@@ -433,7 +474,6 @@ export function LspAdminPage() {
                 ))}
               </select>
             </div>
-            {error ? <div className="empty-state">{error}</div> : null}
             <Button disabled={submitting} type="submit">
               {submitting ? 'Creating...' : 'Create tenant'}
             </Button>
