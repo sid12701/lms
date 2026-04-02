@@ -17,13 +17,17 @@ public class HttpWebhookDeliveryClient implements WebhookDeliveryClient {
     }
 
     @Override
-    public WebhookDeliveryResponse deliver(String endpointUrl, String payloadJson, String correlationId) {
+    public WebhookDeliveryResponse deliver(WebhookDeliveryRequest request) {
         return restClient.post()
-                .uri(endpointUrl)
+                .uri(request.endpointUrl())
                 .contentType(MediaType.APPLICATION_JSON)
-                .header("X-Correlation-Id", correlationId == null ? "" : correlationId)
-                .body(payloadJson)
-                .exchange((request, response) -> {
+                .header("X-Correlation-Id", request.correlationId() == null ? "" : request.correlationId())
+                .header("X-Webhook-Event", request.eventType())
+                .header("X-Webhook-Delivery-Id", request.deliveryId())
+                .header("X-Webhook-Timestamp", request.timestamp())
+                .header("X-Webhook-Signature", request.signature())
+                .body(request.payloadJson())
+                .exchange((httpRequest, response) -> {
                     try {
                         String responseBody = response.getBody() == null
                                 ? null

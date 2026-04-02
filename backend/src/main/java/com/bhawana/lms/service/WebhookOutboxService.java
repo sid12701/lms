@@ -12,11 +12,15 @@ import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
 import com.bhawana.lms.repo.WebhookEventOutboxRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -126,18 +130,19 @@ public class WebhookOutboxService {
         Instant attemptedAt = Instant.now();
         int attemptNumber = event.getAttemptCount() + 1;
         String endpointUrl = event.getLsp().getWebhookEndpointUrl();
+        WebhookDeliveryClient.WebhookDeliveryRequest request = buildDeliveryRequest(event, attemptedAt);
 
         try {
-            WebhookDeliveryClient.WebhookDeliveryResponse response = webhookDeliveryClient.deliver(
-                    endpointUrl,
-                    event.getPayloadJson(),
-                    event.getCorrelationId()
-            );
+            WebhookDeliveryClient.WebhookDeliveryResponse response = webhookDeliveryClient.deliver(request);
             WebhookEventDeliveryAttemptStatus attemptStatus = classify(response.statusCode());
             webhookEventDeliveryAttemptRepository.save(new WebhookEventDeliveryAttempt(
                     event,
                     attemptNumber,
-                    endpointUrl,
+                    request.endpointUrl(),
+                    request.eventType(),
+                    request.deliveryId(),
+                    request.timestamp(),
+                    request.signature(),
                     response.statusCode(),
                     response.responseBody(),
                     null,
@@ -164,7 +169,11 @@ public class WebhookOutboxService {
             webhookEventDeliveryAttemptRepository.save(new WebhookEventDeliveryAttempt(
                     event,
                     attemptNumber,
-                    endpointUrl,
+                    request.endpointUrl(),
+                    request.eventType(),
+                    request.deliveryId(),
+                    request.timestamp(),
+                    request.signature(),
                     null,
                     null,
                     exception.getMessage(),
@@ -177,6 +186,35 @@ public class WebhookOutboxService {
             );
             webhookEventOutboxRepository.save(event);
             return DeliveryOutcome.RETRYABLE_FAILURE;
+        }
+    }
+
+    private WebhookDeliveryClient.WebhookDeliveryRequest buildDeliveryRequest(WebhookEventOutbox event, Instant attemptedAt) {
+        String timestamp = String.valueOf(attemptedAt.getEpochSecond());
+        String signature = signPayload(event.getLsp().getWebhookSigningSecret(), timestamp, event.getPayloadJson());
+        return new WebhookDeliveryClient.WebhookDeliveryRequest(
+                event.getLsp().getWebhookEndpointUrl(),
+                event.getPayloadJson(),
+                event.getCorrelationId(),
+                event.getEventType().name(),
+                event.getId().toString(),
+                timestamp,
+                "v1=" + signature
+        );
+    }
+
+    private static String signPayload(String signingSecret, String timestamp, String payloadJson) {
+        if (signingSecret == null || signingSecret.isBlank()) {
+            throw new IllegalStateException("Webhook signing secret is not configured.");
+        }
+
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(signingSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] signature = mac.doFinal((timestamp + "." + payloadJson).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(signature);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to sign webhook payload.", exception);
         }
     }
 

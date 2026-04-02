@@ -30,6 +30,18 @@ public class WebhookEventDeliveryAttempt {
     @Column(name = "request_url", nullable = false, length = 500)
     private String requestUrl;
 
+    @Column(name = "request_event_type", nullable = false, length = 64)
+    private String requestEventType;
+
+    @Column(name = "request_delivery_id", nullable = false, length = 64)
+    private String requestDeliveryId;
+
+    @Column(name = "request_timestamp", nullable = false, length = 64)
+    private String requestTimestamp;
+
+    @Column(name = "request_signature", nullable = false, length = 255)
+    private String requestSignature;
+
     @Column(name = "response_status_code")
     private Integer responseStatusCode;
 
@@ -53,6 +65,10 @@ public class WebhookEventDeliveryAttempt {
             WebhookEventOutbox outboxEvent,
             int attemptNumber,
             String requestUrl,
+            String requestEventType,
+            String requestDeliveryId,
+            String requestTimestamp,
+            String requestSignature,
             Integer responseStatusCode,
             String responseBody,
             String errorMessage,
@@ -62,6 +78,10 @@ public class WebhookEventDeliveryAttempt {
         this.outboxEvent = outboxEvent;
         this.attemptNumber = attemptNumber;
         this.requestUrl = requestUrl;
+        this.requestEventType = requestEventType;
+        this.requestDeliveryId = requestDeliveryId;
+        this.requestTimestamp = requestTimestamp;
+        this.requestSignature = requestSignature;
         this.responseStatusCode = responseStatusCode;
         this.responseBody = responseBody;
         this.errorMessage = errorMessage;
@@ -87,6 +107,22 @@ public class WebhookEventDeliveryAttempt {
 
     public String getRequestUrl() {
         return requestUrl;
+    }
+
+    public String getRequestEventType() {
+        return requestEventType;
+    }
+
+    public String getRequestDeliveryId() {
+        return requestDeliveryId;
+    }
+
+    public String getRequestTimestamp() {
+        return requestTimestamp;
+    }
+
+    public String getRequestSignature() {
+        return requestSignature;
     }
 
     public Integer getResponseStatusCode() {
