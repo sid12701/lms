@@ -13,7 +13,11 @@ import {
 import { Link } from 'react-router-dom'
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
-import { getHomeOverview, type HomeOverviewLspBreakdownRecord, type HomeOverviewResponse } from '../api/lms-api'
+import {
+  getHomeOverview,
+  type HomeOverviewLspBreakdownRecord,
+  type HomeOverviewResponse,
+} from '../api/lms-api'
 import { useAuth } from '../auth/auth-context'
 
 type HomeLink = {
@@ -42,6 +46,40 @@ function countLabel(value: number) {
 
 function percentLabel(value: number) {
   return `${percentFormatter.format(value)}%`
+}
+
+function bucketLabel(bucket: string) {
+  switch (bucket) {
+    case 'CURRENT':
+      return 'Current'
+    case 'DPD_1_30':
+      return '1-30 DPD'
+    case 'DPD_31_60':
+      return '31-60 DPD'
+    case 'DPD_61_90':
+      return '61-90 DPD'
+    case 'DPD_90_PLUS':
+      return '90+ DPD'
+    default:
+      return bucket.replace(/_/g, ' ')
+  }
+}
+
+function bucketTone(bucket: string) {
+  switch (bucket) {
+    case 'CURRENT':
+      return '#137b56'
+    case 'DPD_1_30':
+      return '#b48e4b'
+    case 'DPD_31_60':
+      return '#d27a2f'
+    case 'DPD_61_90':
+      return '#c05a2b'
+    case 'DPD_90_PLUS':
+      return '#b23a48'
+    default:
+      return '#5e6680'
+  }
 }
 
 function barWidth(value: number, maxValue: number) {
@@ -130,6 +168,15 @@ function AdminHomeDashboard({ overview }: { overview: HomeOverviewResponse }) {
   )
   const maxDpdAmount = useMemo(
     () => breakdown.reduce((max, item) => Math.max(max, item.dpd90PlusAmount), 0),
+    [breakdown],
+  )
+  const maxBucketAmount = useMemo(
+    () =>
+      breakdown.reduce(
+        (max, item) =>
+          Math.max(max, ...(item.bucketBreakdown ?? []).map((bucket) => bucket.outstandingAmount)),
+        0,
+      ),
     [breakdown],
   )
 
@@ -332,6 +379,117 @@ function AdminHomeDashboard({ overview }: { overview: HomeOverviewResponse }) {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="content-card">
+        <CardHeader>
+          <div className="section-eyebrow">DPD buckets by LSP</div>
+          <CardTitle>Delinquency distribution</CardTitle>
+          <CardDescription>
+            Each LSP shows loan count and outstanding amount split across the full DPD ladder.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!breakdown.length ? (
+            <div className="empty-state">No LSP delinquency breakdown is available.</div>
+          ) : (
+            <div style={{ display: 'grid', gap: '1rem' }}>
+              {breakdown.map((item) => (
+                <div
+                  key={`${item.lspId}-bucket-breakdown`}
+                  style={{
+                    display: 'grid',
+                    gap: '0.9rem',
+                    padding: '1rem',
+                    borderRadius: 'var(--radius-lg)',
+                    background: 'var(--color-surface-alt)',
+                    boxShadow: 'inset 0 0 0 1px rgba(0, 6, 102, 0.06)',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: '1rem',
+                      alignItems: 'flex-start',
+                    }}
+                  >
+                    <div>
+                      <strong>{item.lspName}</strong>
+                      <div className="helper-copy">{item.lspCode}</div>
+                    </div>
+                    <div className="inline-actions">
+                      <Badge>{currencyLabel(item.outstandingAmount)} outstanding</Badge>
+                      <Badge variant={item.dpd90PlusLoanCount > 0 ? 'warning' : 'success'}>
+                        {countLabel(item.dpd90PlusLoanCount)} DPD 90+ loans
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="table-grid">
+                    <div
+                      className="table-row"
+                      style={{ gridTemplateColumns: '1fr 0.9fr 1.2fr 1.6fr' }}
+                    >
+                      <span>Bucket</span>
+                      <span>Loans</span>
+                      <span>Outstanding</span>
+                      <span>Visual</span>
+                    </div>
+                    {(item.bucketBreakdown ?? []).map((bucket) => (
+                      <div
+                        key={`${item.lspId}-${bucket.bucket}`}
+                        className="table-row"
+                        style={{ gridTemplateColumns: '1fr 0.9fr 1.2fr 1.6fr' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              width: '0.65rem',
+                              height: '0.65rem',
+                              borderRadius: '999px',
+                              background: bucketTone(bucket.bucket),
+                              flexShrink: 0,
+                            }}
+                          />
+                          <strong>{bucketLabel(bucket.bucket)}</strong>
+                        </div>
+                        <div>
+                          <Badge variant={bucket.loanCount > 0 ? 'default' : 'success'}>
+                            {countLabel(bucket.loanCount)}
+                          </Badge>
+                        </div>
+                        <div>
+                          <strong>{currencyLabel(bucket.outstandingAmount)}</strong>
+                        </div>
+                        <div>
+                          <div
+                            style={{
+                              height: '0.65rem',
+                              borderRadius: '999px',
+                              background: 'rgba(0, 6, 102, 0.08)',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: barWidth(bucket.outstandingAmount, maxBucketAmount),
+                                height: '100%',
+                                borderRadius: 'inherit',
+                                background: bucketTone(bucket.bucket),
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

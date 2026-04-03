@@ -15,7 +15,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +38,13 @@ public class HomeDashboardService {
 
     @Transactional(readOnly = true)
     public HomeDashboardSummary getSummary() {
+        List<LoanDelinquencyBucket> bucketOrder = List.of(
+                LoanDelinquencyBucket.CURRENT,
+                LoanDelinquencyBucket.DPD_1_30,
+                LoanDelinquencyBucket.DPD_31_60,
+                LoanDelinquencyBucket.DPD_61_90,
+                LoanDelinquencyBucket.DPD_90_PLUS
+        );
         List<Lsp> lsps = lspRepository.findAll().stream()
                 .sorted(Comparator.comparing(Lsp::getName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
@@ -61,11 +67,11 @@ public class HomeDashboardService {
                 .map(AccountSnapshot::outstandingAmount)
                 .reduce(zeroCurrency(), BigDecimal::add);
         BigDecimal dpd90PlusAmount = accountSnapshots.stream()
-                .filter(AccountSnapshot::dpd90Plus)
+                .filter(snapshot -> snapshot.bucket() == LoanDelinquencyBucket.DPD_90_PLUS)
                 .map(AccountSnapshot::outstandingAmount)
                 .reduce(zeroCurrency(), BigDecimal::add);
         long dpd90PlusLoanCount = accountSnapshots.stream()
-                .filter(AccountSnapshot::dpd90Plus)
+                .filter(snapshot -> snapshot.bucket() == LoanDelinquencyBucket.DPD_90_PLUS)
                 .count();
 
         List<LspBreakdown> lspBreakdown = lsps.stream()
@@ -75,7 +81,8 @@ public class HomeDashboardService {
                                 .filter(snapshot -> snapshot.lspId().equals(lsp.getId()))
                                 .toList(),
                         totalDisbursedAmount,
-                        dpd90PlusAmount
+                        dpd90PlusAmount,
+                        bucketOrder
                 ))
                 .toList();
 
@@ -105,11 +112,10 @@ public class HomeDashboardService {
         LoanDelinquencyBucket bucket = LoanApplicationService.resolveDelinquencyBucket(maxDaysPastDue);
 
         return new AccountSnapshot(
-                loanAccount.getId(),
                 loanAccount.getLsp().getId(),
                 scaleCurrency(disbursedAmount),
                 scaleCurrency(outstandingAmount),
-                bucket == LoanDelinquencyBucket.DPD_90_PLUS
+                bucket
         );
     }
 
@@ -117,7 +123,8 @@ public class HomeDashboardService {
             Lsp lsp,
             List<AccountSnapshot> snapshots,
             BigDecimal totalDisbursedAmount,
-            BigDecimal totalDpd90PlusAmount
+            BigDecimal totalDpd90PlusAmount,
+            List<LoanDelinquencyBucket> bucketOrder
     ) {
         BigDecimal disbursedAmount = snapshots.stream()
                 .map(AccountSnapshot::disbursedAmount)
@@ -126,12 +133,15 @@ public class HomeDashboardService {
                 .map(AccountSnapshot::outstandingAmount)
                 .reduce(zeroCurrency(), BigDecimal::add);
         BigDecimal dpd90PlusAmount = snapshots.stream()
-                .filter(AccountSnapshot::dpd90Plus)
+                .filter(snapshot -> snapshot.bucket() == LoanDelinquencyBucket.DPD_90_PLUS)
                 .map(AccountSnapshot::outstandingAmount)
                 .reduce(zeroCurrency(), BigDecimal::add);
         long dpd90PlusLoanCount = snapshots.stream()
-                .filter(AccountSnapshot::dpd90Plus)
+                .filter(snapshot -> snapshot.bucket() == LoanDelinquencyBucket.DPD_90_PLUS)
                 .count();
+        List<LspBucketBreakdown> bucketBreakdown = bucketOrder.stream()
+                .map(bucket -> toBucketBreakdown(bucket, snapshots))
+                .toList();
 
         return new LspBreakdown(
                 lsp.getId().toString(),
@@ -142,7 +152,27 @@ public class HomeDashboardService {
                 scaleCurrency(dpd90PlusAmount),
                 dpd90PlusLoanCount,
                 percentage(disbursedAmount, totalDisbursedAmount),
-                percentage(dpd90PlusAmount, totalDpd90PlusAmount)
+                percentage(dpd90PlusAmount, totalDpd90PlusAmount),
+                bucketBreakdown
+        );
+    }
+
+    private LspBucketBreakdown toBucketBreakdown(
+            LoanDelinquencyBucket bucket,
+            List<AccountSnapshot> snapshots
+    ) {
+        BigDecimal outstandingAmount = snapshots.stream()
+                .filter(snapshot -> snapshot.bucket() == bucket)
+                .map(AccountSnapshot::outstandingAmount)
+                .reduce(zeroCurrency(), BigDecimal::add);
+        long loanCount = snapshots.stream()
+                .filter(snapshot -> snapshot.bucket() == bucket)
+                .count();
+
+        return new LspBucketBreakdown(
+                bucket.name(),
+                scaleCurrency(outstandingAmount),
+                loanCount
         );
     }
 
@@ -163,11 +193,10 @@ public class HomeDashboardService {
     }
 
     private record AccountSnapshot(
-            UUID loanAccountId,
             UUID lspId,
             BigDecimal disbursedAmount,
             BigDecimal outstandingAmount,
-            boolean dpd90Plus
+            LoanDelinquencyBucket bucket
     ) {
     }
 
@@ -189,7 +218,15 @@ public class HomeDashboardService {
             BigDecimal dpd90PlusAmount,
             long dpd90PlusLoanCount,
             BigDecimal shareOfDisbursedPercent,
-            BigDecimal shareOfDpd90PlusPercent
+            BigDecimal shareOfDpd90PlusPercent,
+            List<LspBucketBreakdown> bucketBreakdown
+    ) {
+    }
+
+    public record LspBucketBreakdown(
+            String bucket,
+            BigDecimal outstandingAmount,
+            long loanCount
     ) {
     }
 }

@@ -155,6 +155,13 @@ export type HomeOverviewLspBreakdownRecord = {
   dpd90PlusLoanCount: number
   shareOfDisbursedPercent: number
   shareOfDpd90PlusPercent: number
+  bucketBreakdown: HomeOverviewLspBucketBreakdownRecord[]
+}
+
+export type HomeOverviewLspBucketBreakdownRecord = {
+  bucket: string
+  outstandingAmount: number
+  loanCount: number
 }
 
 export type HomeOverviewResponse = {

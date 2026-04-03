@@ -163,12 +163,21 @@ class HomeDashboardControllerTest {
                 .andExpect(jsonPath("$.lspBreakdown[0].dpd90PlusAmount", closeTo(49635.79, 0.01)))
                 .andExpect(jsonPath("$.lspBreakdown[0].shareOfDisbursedPercent").value(50.00))
                 .andExpect(jsonPath("$.lspBreakdown[0].shareOfDpd90PlusPercent").value(100.00))
+                .andExpect(jsonPath("$.lspBreakdown[0].bucketBreakdown", hasSize(5)))
+                .andExpect(jsonPath("$.lspBreakdown[0].bucketBreakdown[0].bucket").value("CURRENT"))
+                .andExpect(jsonPath("$.lspBreakdown[0].bucketBreakdown[0].loanCount").value(0))
+                .andExpect(jsonPath("$.lspBreakdown[0].bucketBreakdown[4].bucket").value("DPD_90_PLUS"))
+                .andExpect(jsonPath("$.lspBreakdown[0].bucketBreakdown[4].loanCount").value(1))
+                .andExpect(jsonPath("$.lspBreakdown[0].bucketBreakdown[4].outstandingAmount", closeTo(49635.79, 0.01)))
                 .andExpect(jsonPath("$.lspBreakdown[1].lspCode").value("NORTH"))
                 .andExpect(jsonPath("$.lspBreakdown[1].disbursedAmount").value(45000.00))
                 .andExpect(jsonPath("$.lspBreakdown[1].dpd90PlusLoanCount").value(0))
                 .andExpect(jsonPath("$.lspBreakdown[1].dpd90PlusAmount").value(0.00))
                 .andExpect(jsonPath("$.lspBreakdown[1].shareOfDisbursedPercent").value(50.00))
-                .andExpect(jsonPath("$.lspBreakdown[1].shareOfDpd90PlusPercent").value(0.00));
+                .andExpect(jsonPath("$.lspBreakdown[1].shareOfDpd90PlusPercent").value(0.00))
+                .andExpect(jsonPath("$.lspBreakdown[1].bucketBreakdown[0].bucket").value("CURRENT"))
+                .andExpect(jsonPath("$.lspBreakdown[1].bucketBreakdown[0].loanCount").value(1))
+                .andExpect(jsonPath("$.lspBreakdown[1].bucketBreakdown[0].outstandingAmount", closeTo(49635.79, 0.01)));
     }
 
     @Test
