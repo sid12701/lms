@@ -6,6 +6,7 @@ import {
   Settings2,
   ShieldCheck,
   Building2,
+  House,
   NotebookPen,
   Users,
 } from 'lucide-react'
@@ -17,6 +18,7 @@ import { useAuth } from '../../features/auth/auth-context'
 import { cn } from '../../lib/cn'
 
 const lspNavigation = [
+  { to: '/home', label: 'Home', icon: House },
   { to: '/my-loans', label: 'My Loans', icon: NotebookPen },
 ]
 
@@ -34,6 +36,7 @@ export function AppShell() {
   const internalNavigation = useMemo(
     () =>
       [
+        { to: '/home', label: 'Home', icon: House, visible: true },
         { to: '/loan-applications', label: 'Loan applications', icon: NotebookPen, visible: true },
         { to: '/lsps', label: 'LSPs', icon: Building2, visible: canManageLsps },
         { to: '/products', label: 'Loan products', icon: Settings2, visible: canManageProducts },

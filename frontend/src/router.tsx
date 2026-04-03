@@ -6,6 +6,7 @@ import { ChangePasswordPage } from './features/auth/change-password-page'
 import { LoginPage } from './features/auth/login-page'
 import { LspAdminPage } from './features/admin/lsp-admin-page'
 import { ApiClientsPage } from './features/api-clients/api-clients-page'
+import { HomePage } from './features/home/home-page'
 import { LoanApplicationsPage } from './features/loan-applications/loan-applications-page'
 import { LspLoansPage } from './features/lsp-loans/lsp-loans-page'
 import { ReportsPage } from './features/reports/reports-page'
@@ -29,7 +30,7 @@ function defaultLandingPath(user: { roles: string[] } | null, mustChangePassword
     return '/change-password'
   }
 
-  return isLspUiUser(user.roles) ? '/my-loans' : '/loan-applications'
+  return isLspUiUser(user.roles) ? '/my-loans' : '/home'
 }
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
@@ -126,11 +127,10 @@ export function AppRouter() {
         <Route
           path="dashboard"
           element={
-            <InternalOnlyRoute>
-              <Navigate to="/loan-applications" replace />
-            </InternalOnlyRoute>
+            <Navigate to="/home" replace />
           }
         />
+        <Route path="home" element={<HomePage />} />
         <Route
           path="my-loans"
           element={

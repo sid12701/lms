@@ -2211,7 +2211,7 @@ export function LoanApplicationsPage() {
   }
 
   return (
-    <div className="users-layout">
+    <div className="users-layout" style={{ gridTemplateColumns: '1fr' }}>
       <Card className="list-card">
         <CardHeader>
           <div className="section-eyebrow">Loan intake</div>
@@ -2404,7 +2404,7 @@ export function LoanApplicationsPage() {
         </CardContent>
       </Card>
 
-      <div className="form-stack">
+      <div className="form-stack" style={{ display: 'none' }}>
         <Card>
           <CardHeader>
             <div className="section-eyebrow">Create intake</div>

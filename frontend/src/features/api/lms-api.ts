@@ -145,6 +145,26 @@ export type LspPortfolioSummaryRecord = {
   latestDisbursalDate: string | null
 }
 
+export type HomeOverviewLspBreakdownRecord = {
+  lspId: string
+  lspCode: string
+  lspName: string
+  disbursedAmount: number
+  outstandingAmount: number
+  dpd90PlusAmount: number
+  dpd90PlusLoanCount: number
+  shareOfDisbursedPercent: number
+  shareOfDpd90PlusPercent: number
+}
+
+export type HomeOverviewResponse = {
+  totalDisbursedAmount: number
+  totalOutstandingAmount: number
+  dpd90PlusAmount: number
+  dpd90PlusLoanCount: number
+  lspBreakdown: HomeOverviewLspBreakdownRecord[]
+}
+
 export type LspUserSummaryRecord = {
   id: string
   username: string
@@ -489,6 +509,7 @@ export class ApiError extends Error {
 }
 
 const SESSION_STORAGE_KEY = 'lms.auth.session'
+let sessionCache: AuthSession | null = null
 
 function buildUrl(path: string) {
   return `${API_BASE_URL}${path}`
@@ -539,26 +560,44 @@ function readResponseError(body: string): { message: string; code: string | null
 
 export function loadStoredSession() {
   if (typeof window === 'undefined') {
-    return null
+    return sessionCache
   }
 
-  return readJson<AuthSession>(window.localStorage.getItem(SESSION_STORAGE_KEY))
+  try {
+    const session = readJson<AuthSession>(window.localStorage.getItem(SESSION_STORAGE_KEY))
+    sessionCache = session
+    return session
+  } catch {
+    return sessionCache
+  }
 }
 
 export function saveStoredSession(session: AuthSession) {
+  sessionCache = session
+
   if (typeof window === 'undefined') {
     return
   }
 
-  window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+  try {
+    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+  } catch {
+    // Storage can be unavailable in restricted browser contexts; keep the in-memory session.
+  }
 }
 
 export function clearStoredSession() {
+  sessionCache = null
+
   if (typeof window === 'undefined') {
     return
   }
 
-  window.localStorage.removeItem(SESSION_STORAGE_KEY)
+  try {
+    window.localStorage.removeItem(SESSION_STORAGE_KEY)
+  } catch {
+    // Ignore storage cleanup errors when storage is blocked.
+  }
 }
 
 export function getStoredAccessToken() {
@@ -721,6 +760,10 @@ export function getSystemContext(accessToken?: string) {
     {},
     accessToken ? { accessToken } : {},
   )
+}
+
+export function getHomeOverview() {
+  return requestJson<HomeOverviewResponse>('/api/v1/internal/home/overview')
 }
 
 export function getAdminMetadata() {
