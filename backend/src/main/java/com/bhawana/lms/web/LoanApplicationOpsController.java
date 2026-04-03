@@ -445,7 +445,7 @@ public class LoanApplicationOpsController {
         );
     }
 
-    private static LoanApplicationDetailResponse toDetailResponse(
+    static LoanApplicationDetailResponse toDetailResponse(
             LoanApplication application,
             LoanApplicationService.LoanApplicationLastActivity lastActivity,
             LoanAccount loanAccount,
@@ -644,7 +644,7 @@ public class LoanApplicationOpsController {
         );
     }
 
-    private static LoanDisbursementRequestResponse toDisbursementRequestResponse(LoanDisbursementRequestLog request) {
+    static LoanDisbursementRequestResponse toDisbursementRequestResponse(LoanDisbursementRequestLog request) {
         return new LoanDisbursementRequestResponse(
                 request.getId().toString(),
                 request.getLoanAccount().getId().toString(),
@@ -661,7 +661,7 @@ public class LoanApplicationOpsController {
         );
     }
 
-    private static LoanRepaymentScheduleInstallmentResponse toRepaymentScheduleInstallmentResponse(
+    static LoanRepaymentScheduleInstallmentResponse toRepaymentScheduleInstallmentResponse(
             LoanRepaymentScheduleInstallment installment
     ) {
         int daysPastDue = LoanApplicationService.calculateDaysPastDue(installment, LocalDate.now(ZoneOffset.UTC));
@@ -686,7 +686,7 @@ public class LoanApplicationOpsController {
         );
     }
 
-    private static LoanPaymentTransactionResponse toPaymentTransactionResponse(LoanPaymentTransaction paymentTransaction) {
+    static LoanPaymentTransactionResponse toPaymentTransactionResponse(LoanPaymentTransaction paymentTransaction) {
         return new LoanPaymentTransactionResponse(
                 paymentTransaction.getId().toString(),
                 paymentTransaction.getLoanAccount().getId().toString(),
@@ -705,7 +705,7 @@ public class LoanApplicationOpsController {
         );
     }
 
-    private static LoanForeclosureQuoteResponse toForeclosureQuoteResponse(LoanForeclosureQuote quote) {
+    static LoanForeclosureQuoteResponse toForeclosureQuoteResponse(LoanForeclosureQuote quote) {
         return new LoanForeclosureQuoteResponse(
                 quote.getId().toString(),
                 quote.getLoanAccount().getId().toString(),
@@ -723,7 +723,7 @@ public class LoanApplicationOpsController {
         );
     }
 
-    private static LoanApplicationDocumentChecklistResponse toDocumentChecklistResponse(
+    static LoanApplicationDocumentChecklistResponse toDocumentChecklistResponse(
             LoanApplicationDocumentChecklist checklistItem
     ) {
         return new LoanApplicationDocumentChecklistResponse(

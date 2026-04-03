@@ -276,6 +276,123 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void apiClientCanSubmitDocumentsAndReadLoanServicingEndpointsWithinScope() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Integration");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-SERV-001");
+        String applicationId = createdApplication.get("id").asText();
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "documentType", "PAN_CARD",
+                                "note", "PAN uploaded from partner LOS",
+                                "fileName", "pan-card.pdf",
+                                "fileReference", "minio://tenant-apex/pan-card.pdf",
+                                "sourceReference", "los-doc-001",
+                                "contentType", "application/pdf"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentType").value("PAN_CARD"))
+                .andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.fileName").value("pan-card.pdf"));
+
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "UNDER_REVIEW");
+        transitionApplication(applicationId, "APPROVED", systemAdmin());
+        requestDisbursement(applicationId);
+        resolveDisbursement(applicationId);
+        recordPayment(applicationId);
+
+        JsonNode externalDetail = getApplicationDetail(accessToken, applicationId);
+        String loanId = externalDetail.get("loanAccount").get("id").asText();
+
+        mockMvc.perform(get("/api/v1/lsp/loans/{loanId}", loanId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(applicationId))
+                .andExpect(jsonPath("$.loanAccount.id").value(loanId))
+                .andExpect(jsonPath("$.loanAccount.status").value("DISBURSED"));
+
+        mockMvc.perform(get("/api/v1/lsp/loans/{loanId}/repayment-schedule", loanId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(12))
+                .andExpect(jsonPath("$[0].loanAccountId").value(loanId));
+
+        mockMvc.perform(get("/api/v1/lsp/loans/{loanId}/payments", loanId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].loanAccountId").value(loanId))
+                .andExpect(jsonPath("$[0].reference").value("PAY-LSP-001"));
+
+        mockMvc.perform(post("/api/v1/lsp/loans/{loanId}/foreclosure-quote", loanId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "effectiveDate", LocalDate.now().toString()
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.loanAccountId").value(loanId))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @Test
+    void apiClientCannotAccessAnotherLspLoanEndpoints() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        LspFixture north = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        ProductFixture northProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        mapProductToLsp(northProduct.id(), north.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Integration");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode northApplication = createInternalApplication(
+                north.id(),
+                northProduct.id(),
+                "NORTH-LOAN-001",
+                "ZXCVB1234N"
+        );
+        markAllRequiredKycDocumentsVerified(northApplication.get("id").asText());
+        transitionApplication(northApplication.get("id").asText(), "UNDER_REVIEW");
+        transitionApplication(northApplication.get("id").asText(), "APPROVED", systemAdmin());
+
+        JsonNode northDetail = getInternalApplicationDetail(northApplication.get("id").asText());
+        String northLoanId = northDetail.get("loanAccount").get("id").asText();
+
+        mockMvc.perform(get("/api/v1/lsp/loans/{loanId}", northLoanId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/documents", northApplication.get("id").asText())
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "documentType", "PAN_CARD",
+                                "fileName", "blocked.pdf"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
     private JsonNode createInternalApplication(
             String lspId,
             String productId,
@@ -305,6 +422,111 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private JsonNode createExternalApplication(String accessToken, String productId, String externalLoanId) throws Exception {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("productId", productId);
+        payload.put("externalLoanId", externalLoanId);
+        payload.put("sourceChannel", "API");
+        payload.put("borrowerPan", "ABCDE1234F");
+        payload.put("borrowerFullName", "Anika Sharma");
+        payload.put("borrowerMobile", "9999999999");
+        payload.put("borrowerEmail", "anika@example.com");
+        payload.put("borrowerDateOfBirth", "1992-03-10");
+        payload.put("borrowerCity", "Mumbai");
+        payload.put("borrowerState", "Maharashtra");
+        payload.put("borrowerEmploymentType", "SALARIED");
+        payload.put("borrowerMonthlyIncome", new BigDecimal("78000.00"));
+        payload.put("requestedAmount", new BigDecimal("45000.00"));
+        payload.put("tenureMonths", 12);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private JsonNode getApplicationDetail(String accessToken, String applicationId) throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private JsonNode getInternalApplicationDetail(String applicationId) throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private void transitionApplication(String applicationId, String targetStatus) throws Exception {
+        transitionApplication(applicationId, targetStatus, opsUser());
+    }
+
+    private void transitionApplication(
+            String applicationId,
+            String targetStatus,
+            org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor actor
+    ) throws Exception {
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
+                        .with(actor)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", targetStatus,
+                                "note", "Transition to " + targetStatus
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    private void markAllRequiredKycDocumentsVerified(String applicationId) throws Exception {
+        for (String documentType : List.of("PAN_CARD", "ADDRESS_PROOF", "INCOME_PROOF", "BANK_STATEMENT")) {
+            mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
+                            applicationId,
+                            documentType)
+                            .with(opsUser())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "status", "VERIFIED",
+                                    "note", "Verified",
+                                    "reviewReason", "Checked"
+                            ))))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    private void requestDisbursement(String applicationId) throws Exception {
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk());
+    }
+
+    private void resolveDisbursement(String applicationId) throws Exception {
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
+                .andExpect(status().isOk());
+    }
+
+    private void recordPayment(String applicationId) throws Exception {
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "amount", new BigDecimal("4136.32"),
+                                "paymentDate", LocalDate.now().minusDays(1).toString(),
+                                "reference", "PAY-LSP-001",
+                                "channel", "UPI",
+                                "status", "RECEIVED"
+                        ))))
+                .andExpect(status().isOk());
     }
 
     private JsonNode createApiClient(String lspId, String name) throws Exception {

@@ -2,6 +2,8 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanApplication;
+import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
+import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.service.LoanApplicationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -101,6 +103,27 @@ public class LspLoanApplicationApiController {
                 request.tenureMonths()
         );
         return toResponse(application);
+    }
+
+    @PostMapping("/{applicationId}/documents")
+    @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_WRITE')")
+    public LoanApplicationOpsController.LoanApplicationDocumentChecklistResponse submitDocument(
+            Authentication authentication,
+            @PathVariable UUID applicationId,
+            @Valid @RequestBody LspLoanApplicationDocumentRequest request
+    ) {
+        LoanApplicationDocumentChecklist checklistItem = loanApplicationService.submitDocumentForLsp(
+                authenticatedLspId(authentication),
+                applicationId,
+                request.documentType(),
+                authentication.getName(),
+                request.note(),
+                request.fileName(),
+                request.fileReference(),
+                request.sourceReference(),
+                request.contentType()
+        );
+        return LoanApplicationOpsController.toDocumentChecklistResponse(checklistItem);
     }
 
     private LoanApplicationOpsController.LoanApplicationDetailResponse toDetailResponse(LoanApplication application) {
@@ -241,6 +264,16 @@ public class LspLoanApplicationApiController {
             @DecimalMin(value = "0.01") BigDecimal borrowerMonthlyIncome,
             @NotNull @DecimalMin("0.01") BigDecimal requestedAmount,
             @NotNull @Min(1) Integer tenureMonths
+    ) {
+    }
+
+    public record LspLoanApplicationDocumentRequest(
+            @NotNull LoanApplicationDocumentType documentType,
+            @Size(max = 500) String note,
+            @Size(max = 255) String fileName,
+            @Size(max = 500) String fileReference,
+            @Size(max = 500) String sourceReference,
+            @Size(max = 128) String contentType
     ) {
     }
 }

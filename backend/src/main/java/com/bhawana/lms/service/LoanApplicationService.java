@@ -214,6 +214,32 @@ public class LoanApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public LoanAccount getLoanAccountForLsp(UUID lspId, UUID loanAccountId) {
+        LoanAccount loanAccount = loanAccountRepository.findById(loanAccountId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown loan id: " + loanAccountId));
+        if (!loanAccount.getLsp().getId().equals(lspId)) {
+            throw new IllegalArgumentException("Unknown loan id: " + loanAccountId);
+        }
+        return loanAccount;
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanRepaymentScheduleInstallment> listRepaymentScheduleForLsp(UUID lspId, UUID loanAccountId) {
+        LoanAccount loanAccount = getLoanAccountForLsp(lspId, loanAccountId);
+        return loanRepaymentScheduleInstallmentRepository.findByLoanAccount_IdOrderByInstallmentNumberAsc(
+                loanAccount.getId()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanPaymentTransaction> listPaymentTransactionsForLsp(UUID lspId, UUID loanAccountId) {
+        LoanAccount loanAccount = getLoanAccountForLsp(lspId, loanAccountId);
+        return loanPaymentTransactionRepository.findTop50ByLoanAccount_IdOrderByPaymentDateDescCreatedAtDesc(
+                loanAccount.getId()
+        );
+    }
+
+    @Transactional(readOnly = true)
     public Optional<LoanApplicationLastActivity> getLatestActivity(UUID applicationId) {
         LoanApplication application = getApplication(applicationId);
 
@@ -374,6 +400,34 @@ public class LoanApplicationService {
     public List<LoanApplicationDocumentAccessAudit> listDocumentAccessAudits(UUID applicationId) {
         getApplication(applicationId);
         return loanApplicationDocumentAccessAuditRepository.findTop20ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
+    }
+
+    @Transactional
+    public LoanApplicationDocumentChecklist submitDocumentForLsp(
+            UUID lspId,
+            UUID applicationId,
+            LoanApplicationDocumentType documentType,
+            String actorUsername,
+            String note,
+            String fileName,
+            String fileReference,
+            String sourceReference,
+            String contentType
+    ) {
+        getApplicationForLsp(lspId, applicationId);
+        return updateDocumentChecklistItem(
+                applicationId,
+                documentType,
+                actorUsername,
+                LoanApplicationDocumentChecklistStatus.RECEIVED,
+                note,
+                fileName,
+                fileReference,
+                sourceReference,
+                contentType,
+                null,
+                null
+        );
     }
 
     @Transactional
@@ -939,6 +993,17 @@ public class LoanApplicationService {
                 scaleCurrency(outstandingInterest),
                 settlementAmount
         ));
+    }
+
+    @Transactional
+    public LoanForeclosureQuote requestForeclosureQuoteForLsp(
+            UUID lspId,
+            UUID loanAccountId,
+            String actorUsername,
+            LocalDate effectiveDate
+    ) {
+        LoanAccount loanAccount = getLoanAccountForLsp(lspId, loanAccountId);
+        return requestForeclosureQuote(loanAccount.getLoanApplication().getId(), actorUsername, effectiveDate);
     }
 
     @Transactional
