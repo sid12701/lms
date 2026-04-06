@@ -33,17 +33,77 @@ public class Borrower {
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
 
+    @Column(length = 32)
+    private String gender;
+
+    @Column(name = "marital_status", length = 32)
+    private String maritalStatus;
+
+    @Column(name = "father_name", length = 255)
+    private String fatherName;
+
+    @Column(name = "aadhar_number", length = 16)
+    private String aadharNumber;
+
     @Column(length = 128)
     private String city;
 
     @Column(length = 128)
     private String state;
 
+    @Column(name = "address_line_1", length = 255)
+    private String addressLine1;
+
+    @Column(name = "address_line_2", length = 255)
+    private String addressLine2;
+
+    @Column(name = "address_zip_code", length = 16)
+    private String addressZipCode;
+
+    @Column(name = "spouse_name", length = 255)
+    private String spouseName;
+
     @Column(name = "employment_type", length = 64)
     private String employmentType;
 
+    @Column(name = "organization_name", length = 255)
+    private String organizationName;
+
+    @Column(name = "employee_id", length = 128)
+    private String employeeId;
+
+    @Column(name = "employment_city", length = 128)
+    private String employmentCity;
+
+    @Column(name = "employment_state", length = 128)
+    private String employmentState;
+
+    @Column(name = "employment_zip", length = 16)
+    private String employmentZip;
+
     @Column(name = "monthly_income", precision = 19, scale = 2)
     private BigDecimal monthlyIncome;
+
+    @Column(name = "annual_income", precision = 19, scale = 2)
+    private BigDecimal annualIncome;
+
+    @Column(name = "bank_account_number", length = 64)
+    private String bankAccountNumber;
+
+    @Column(name = "bank_name", length = 255)
+    private String bankName;
+
+    @Column(name = "ifsc_code", length = 32)
+    private String ifscCode;
+
+    @Column(name = "account_holder_name", length = 255)
+    private String accountHolderName;
+
+    @Column(name = "reference_person_name", length = 255)
+    private String referencePersonName;
+
+    @Column(name = "reference_person_number", length = 32)
+    private String referencePersonNumber;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -64,10 +124,30 @@ public class Borrower {
             String mobile,
             String email,
             LocalDate dateOfBirth,
+            String gender,
+            String maritalStatus,
+            String fatherName,
+            String aadharNumber,
             String city,
             String state,
+            String addressLine1,
+            String addressLine2,
+            String addressZipCode,
+            String spouseName,
             String employmentType,
-            BigDecimal monthlyIncome
+            String organizationName,
+            String employeeId,
+            String employmentCity,
+            String employmentState,
+            String employmentZip,
+            BigDecimal monthlyIncome,
+            BigDecimal annualIncome,
+            String bankAccountNumber,
+            String bankName,
+            String ifscCode,
+            String accountHolderName,
+            String referencePersonName,
+            String referencePersonNumber
     ) {
         this.id = UUID.randomUUID();
         this.fullName = fullName.trim();
@@ -75,10 +155,74 @@ public class Borrower {
         this.mobile = mobile.trim();
         this.email = normalizeEmail(email);
         this.dateOfBirth = dateOfBirth;
+        this.gender = normalizeCodedValue(gender);
+        this.maritalStatus = normalizeCodedValue(maritalStatus);
+        this.fatherName = normalizeOptional(fatherName);
+        this.aadharNumber = normalizeAadharNumber(aadharNumber);
         this.city = normalizeOptional(city);
         this.state = normalizeOptional(state);
+        this.addressLine1 = normalizeOptional(addressLine1);
+        this.addressLine2 = normalizeOptional(addressLine2);
+        this.addressZipCode = normalizeOptional(addressZipCode);
+        this.spouseName = normalizeOptional(spouseName);
         this.employmentType = normalizeEmploymentType(employmentType);
+        this.organizationName = normalizeOptional(organizationName);
+        this.employeeId = normalizeOptional(employeeId);
+        this.employmentCity = normalizeOptional(employmentCity);
+        this.employmentState = normalizeOptional(employmentState);
+        this.employmentZip = normalizeOptional(employmentZip);
         this.monthlyIncome = normalizeMonthlyIncome(monthlyIncome);
+        this.annualIncome = normalizeMonthlyIncome(annualIncome);
+        this.bankAccountNumber = normalizeOptional(bankAccountNumber);
+        this.bankName = normalizeOptional(bankName);
+        this.ifscCode = normalizeCodedValue(ifscCode);
+        this.accountHolderName = normalizeOptional(accountHolderName);
+        this.referencePersonName = normalizeOptional(referencePersonName);
+        this.referencePersonNumber = normalizeOptional(referencePersonNumber);
+    }
+
+    public Borrower(
+            String fullName,
+            String pan,
+            String mobile,
+            String email,
+            LocalDate dateOfBirth,
+            String city,
+            String state,
+            String employmentType,
+            BigDecimal monthlyIncome
+    ) {
+        this(
+                fullName,
+                pan,
+                mobile,
+                email,
+                dateOfBirth,
+                null,
+                null,
+                null,
+                null,
+                city,
+                state,
+                null,
+                null,
+                null,
+                null,
+                employmentType,
+                null,
+                null,
+                null,
+                null,
+                null,
+                monthlyIncome,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
     @PrePersist
@@ -125,12 +269,92 @@ public class Borrower {
         return state;
     }
 
+    public String getGender() {
+        return gender;
+    }
+
+    public String getMaritalStatus() {
+        return maritalStatus;
+    }
+
+    public String getFatherName() {
+        return fatherName;
+    }
+
+    public String getAadharNumber() {
+        return aadharNumber;
+    }
+
+    public String getAddressLine1() {
+        return addressLine1;
+    }
+
+    public String getAddressLine2() {
+        return addressLine2;
+    }
+
+    public String getAddressZipCode() {
+        return addressZipCode;
+    }
+
+    public String getSpouseName() {
+        return spouseName;
+    }
+
     public String getEmploymentType() {
         return employmentType;
     }
 
+    public String getOrganizationName() {
+        return organizationName;
+    }
+
+    public String getEmployeeId() {
+        return employeeId;
+    }
+
+    public String getEmploymentCity() {
+        return employmentCity;
+    }
+
+    public String getEmploymentState() {
+        return employmentState;
+    }
+
+    public String getEmploymentZip() {
+        return employmentZip;
+    }
+
     public BigDecimal getMonthlyIncome() {
         return monthlyIncome;
+    }
+
+    public BigDecimal getAnnualIncome() {
+        return annualIncome;
+    }
+
+    public String getBankAccountNumber() {
+        return bankAccountNumber;
+    }
+
+    public String getBankName() {
+        return bankName;
+    }
+
+    public String getIfscCode() {
+        return ifscCode;
+    }
+
+    public String getAccountHolderName() {
+        return accountHolderName;
+    }
+
+    public String getReferencePersonName() {
+        return referencePersonName;
+    }
+
+    public String getReferencePersonNumber() {
+        return referencePersonNumber;
     }
 
     public void refreshProfile(
@@ -138,7 +362,36 @@ public class Borrower {
             String mobile,
             String email
     ) {
-        refreshProfile(fullName, mobile, email, null, null, null, null, null);
+        refreshProfile(
+                fullName,
+                mobile,
+                email,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
     public void refreshProfile(
@@ -146,19 +399,59 @@ public class Borrower {
             String mobile,
             String email,
             LocalDate dateOfBirth,
+            String gender,
+            String maritalStatus,
+            String fatherName,
+            String aadharNumber,
             String city,
             String state,
+            String addressLine1,
+            String addressLine2,
+            String addressZipCode,
+            String spouseName,
             String employmentType,
-            BigDecimal monthlyIncome
+            String organizationName,
+            String employeeId,
+            String employmentCity,
+            String employmentState,
+            String employmentZip,
+            BigDecimal monthlyIncome,
+            BigDecimal annualIncome,
+            String bankAccountNumber,
+            String bankName,
+            String ifscCode,
+            String accountHolderName,
+            String referencePersonName,
+            String referencePersonNumber
     ) {
         this.fullName = fullName.trim();
         this.mobile = mobile.trim();
         this.email = normalizeEmail(email);
         this.dateOfBirth = dateOfBirth;
+        this.gender = normalizeCodedValue(gender);
+        this.maritalStatus = normalizeCodedValue(maritalStatus);
+        this.fatherName = normalizeOptional(fatherName);
+        this.aadharNumber = normalizeAadharNumber(aadharNumber);
         this.city = normalizeOptional(city);
         this.state = normalizeOptional(state);
+        this.addressLine1 = normalizeOptional(addressLine1);
+        this.addressLine2 = normalizeOptional(addressLine2);
+        this.addressZipCode = normalizeOptional(addressZipCode);
+        this.spouseName = normalizeOptional(spouseName);
         this.employmentType = normalizeEmploymentType(employmentType);
+        this.organizationName = normalizeOptional(organizationName);
+        this.employeeId = normalizeOptional(employeeId);
+        this.employmentCity = normalizeOptional(employmentCity);
+        this.employmentState = normalizeOptional(employmentState);
+        this.employmentZip = normalizeOptional(employmentZip);
         this.monthlyIncome = normalizeMonthlyIncome(monthlyIncome);
+        this.annualIncome = normalizeMonthlyIncome(annualIncome);
+        this.bankAccountNumber = normalizeOptional(bankAccountNumber);
+        this.bankName = normalizeOptional(bankName);
+        this.ifscCode = normalizeCodedValue(ifscCode);
+        this.accountHolderName = normalizeOptional(accountHolderName);
+        this.referencePersonName = normalizeOptional(referencePersonName);
+        this.referencePersonNumber = normalizeOptional(referencePersonNumber);
     }
 
     private static String normalizeEmail(String email) {
@@ -180,6 +473,16 @@ public class Borrower {
     private static String normalizeEmploymentType(String employmentType) {
         String normalized = normalizeOptional(employmentType);
         return normalized == null ? null : normalized.toUpperCase();
+    }
+
+    private static String normalizeCodedValue(String value) {
+        String normalized = normalizeOptional(value);
+        return normalized == null ? null : normalized.toUpperCase();
+    }
+
+    private static String normalizeAadharNumber(String aadharNumber) {
+        String normalized = normalizeOptional(aadharNumber);
+        return normalized == null ? null : normalized.replace(" ", "");
     }
 
     private static BigDecimal normalizeMonthlyIncome(BigDecimal monthlyIncome) {

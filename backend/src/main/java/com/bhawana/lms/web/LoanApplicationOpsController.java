@@ -19,6 +19,7 @@ import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
+import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
 import com.bhawana.lms.service.LoanApplicationService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -184,21 +185,45 @@ public class LoanApplicationOpsController {
     ) {
         LoanApplication application = loanApplicationService.createApplication(
                 authentication.getName(),
-                request.lspId(),
-                request.productId(),
-                request.externalLoanId(),
-                request.sourceChannel(),
-                request.borrowerPan(),
-                request.borrowerFullName(),
-                request.borrowerMobile(),
-                request.borrowerEmail(),
-                request.borrowerDateOfBirth(),
-                request.borrowerCity(),
-                request.borrowerState(),
-                request.borrowerEmploymentType(),
-                request.borrowerMonthlyIncome(),
-                request.requestedAmount(),
-                request.tenureMonths()
+                new LoanApplicationOnboardingCommand(
+                        request.lspId(),
+                        request.productId(),
+                        null,
+                        request.externalLoanId(),
+                        request.sourceChannel(),
+                        request.borrowerFullName(),
+                        request.borrowerEmail(),
+                        request.borrowerMobile(),
+                        request.borrowerDateOfBirth(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        request.borrowerPan(),
+                        request.requestedAmount(),
+                        null,
+                        request.tenureMonths(),
+                        null,
+                        null,
+                        request.borrowerCity(),
+                        request.borrowerState(),
+                        null,
+                        null,
+                        request.borrowerEmploymentType(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        request.borrowerMonthlyIncome(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null
+                )
         );
         return toResponse(application);
     }

@@ -31,19 +31,12 @@ public class LspLoanApiController {
 
     @GetMapping("/{loanId}")
     @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_READ','LSP_UI_WRITE')")
-    public LoanApplicationOpsController.LoanApplicationDetailResponse getLoan(
+    public LspLoanApplicationApiController.LspLoanApplicationDetailResponse getLoan(
             Authentication authentication,
             @PathVariable UUID loanId
     ) {
         LoanAccount loanAccount = loanApplicationService.getLoanAccountForLsp(authenticatedLspId(authentication), loanId);
-        UUID applicationId = loanAccount.getLoanApplication().getId();
-        return LoanApplicationOpsController.toDetailResponse(
-                loanAccount.getLoanApplication(),
-                loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanAccount,
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
-        );
+        return LspLoanApplicationApiController.toDetailResponse(loanAccount.getLoanApplication(), loanApplicationService);
     }
 
     @GetMapping("/{loanId}/repayment-schedule")

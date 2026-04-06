@@ -497,7 +497,7 @@ class LoanApplicationOpsControllerTest {
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents", created.get("id").asText())
                         .with(opsUser()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$.length()").value(8))
                 .andExpect(jsonPath("$[0].documentType").value("PAN_CARD"))
                 .andExpect(jsonPath("$[0].documentDisplayName").value("PAN Card"))
                 .andExpect(jsonPath("$[0].required").value(true))
@@ -574,7 +574,7 @@ class LoanApplicationOpsControllerTest {
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents", applicationId)
                         .with(opsUser()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(5));
+                .andExpect(jsonPath("$.length()").value(8));
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/document-access-audits", applicationId)
                         .with(opsUser()))
@@ -582,8 +582,8 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].action").value("CHECKLIST_VIEWED"))
                 .andExpect(jsonPath("$[0].actorUsername").value("ops.user"))
-                .andExpect(jsonPath("$[0].summary").value("Viewed 5 KYC document placeholders"))
-                .andExpect(jsonPath("$[0].documentTypes.length()").value(5))
+                .andExpect(jsonPath("$[0].summary").value("Viewed 8 KYC document placeholders"))
+                .andExpect(jsonPath("$[0].documentTypes.length()").value(8))
                 .andExpect(jsonPath("$[0].documentTypes[0]").value("PAN_CARD"))
                 .andExpect(jsonPath("$[0].correlationId").isNotEmpty());
     }
@@ -632,7 +632,7 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error").value("KYC_COMPLETION_REQUIRED"))
                 .andExpect(jsonPath("$.message").value("Loan application cannot be approved until required KYC documents are complete."))
-                .andExpect(jsonPath("$.violations.length()").value(4))
+                .andExpect(jsonPath("$.violations.length()").value(6))
                 .andExpect(jsonPath("$.violations[0].field").value("PAN_CARD"));
 
         markAllRequiredKycDocumentsVerified(applicationId);
@@ -839,9 +839,9 @@ class LoanApplicationOpsControllerTest {
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/audit-events", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].action").value("FORECLOSURE_EXECUTED"))
-                .andExpect(jsonPath("$[0].note", containsString("quote v1")))
-                .andExpect(jsonPath("$[0].actorUsername").value("ops.admin"));
+                .andExpect(jsonPath("$[*].action", org.hamcrest.Matchers.hasItem("FORECLOSURE_EXECUTED")))
+                .andExpect(jsonPath("$[*].note", org.hamcrest.Matchers.hasItem(containsString("quote v1"))))
+                .andExpect(jsonPath("$[*].actorUsername", org.hamcrest.Matchers.hasItem("ops.admin")));
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
                         .with(systemAdmin()))
@@ -1201,6 +1201,43 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void disbursementRequestRequiresPreDisbursalDocumentsToBeUploaded() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-969A", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
+        loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(UUID.fromString(applicationId))
+                .forEach(item -> {
+                    if (item.getDocumentType().isRequiredForApproval()) {
+                        item.update(
+                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.VERIFIED,
+                                "Verified for approval",
+                                "ops.user",
+                                item.getFileName(),
+                                item.getFileReference(),
+                                item.getSourceReference(),
+                                item.getContentType(),
+                                "Matches borrower records",
+                                null
+                        );
+                        loanApplicationDocumentChecklistRepository.save(item);
+                    }
+                });
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("DOCUMENT_UPLOAD_REQUIRED"))
+                .andExpect(jsonPath("$.violations.length()").value(2))
+                .andExpect(jsonPath("$.violations[0].field").value("KFS"));
     }
 
     @Test

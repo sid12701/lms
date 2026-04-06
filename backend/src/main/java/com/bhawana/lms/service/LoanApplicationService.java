@@ -1,6 +1,7 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.DocumentUploadRequiredException;
 import com.bhawana.lms.common.web.KycCompletionRequiredException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
@@ -431,37 +432,21 @@ public class LoanApplicationService {
     }
 
     @Transactional
-    public LoanApplication createApplication(
-            String actorUsername,
-            UUID lspId,
-            UUID productId,
-            String externalLoanId,
-            String sourceChannel,
-            String borrowerPan,
-            String borrowerFullName,
-            String borrowerMobile,
-            String borrowerEmail,
-            LocalDate borrowerDateOfBirth,
-            String borrowerCity,
-            String borrowerState,
-            String borrowerEmploymentType,
-            BigDecimal borrowerMonthlyIncome,
-            BigDecimal requestedAmount,
-            int tenureMonths
-    ) {
-        var lsp = lspRepository.findById(lspId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown LSP id: " + lspId));
+    public LoanApplication createApplication(String actorUsername, LoanApplicationOnboardingCommand command) {
+        var lsp = lspRepository.findById(command.lspId())
+                .orElseThrow(() -> new IllegalArgumentException("Unknown LSP id: " + command.lspId()));
         if (lsp.getStatus() != LspStatus.ACTIVE) {
             throw new IllegalArgumentException("Loan applications can only be created for active LSPs.");
         }
 
-        var loanProduct = loanProductRepository.findById(productId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown loan product id: " + productId));
+        var loanProduct = resolveLoanProduct(command);
         if (loanProduct.getStatus() != LoanProductStatus.ACTIVE) {
             throw new IllegalArgumentException("Loan applications can only be created for active loan products.");
         }
 
-        LoanProductLspMapping mapping = loanProductLspMappingRepository.findByLsp_IdAndLoanProduct_Id(lspId, productId)
+        validateInterestRate(command.interestRate(), loanProduct.getInterestRate());
+
+        LoanProductLspMapping mapping = loanProductLspMappingRepository.findByLsp_IdAndLoanProduct_Id(command.lspId(), loanProduct.getId())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Requested product is not mapped to the selected LSP."
                 ));
@@ -469,45 +454,89 @@ public class LoanApplicationService {
             throw new IllegalArgumentException("Requested product mapping is disabled for the selected LSP.");
         }
 
-        String normalizedExternalLoanId = externalLoanId.trim();
-        if (loanApplicationRepository.existsByLsp_IdAndExternalLoanIdIgnoreCase(lspId, normalizedExternalLoanId)) {
+        String normalizedExternalLoanId = requireField(command.lspLoanId(), "LSP loan id");
+        if (loanApplicationRepository.existsByLsp_IdAndExternalLoanIdIgnoreCase(command.lspId(), normalizedExternalLoanId)) {
             throw new IllegalArgumentException("External loan id already exists for the selected LSP.");
         }
 
-        BigDecimal scaledRequestedAmount = requestedAmount.setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal scaledRequestedAmount = scaleCurrency(requireCurrency(command.loanAmount(), "Loan amount"));
         if (scaledRequestedAmount.compareTo(loanProduct.getMinPrincipal()) < 0
                 || scaledRequestedAmount.compareTo(loanProduct.getMaxPrincipal()) > 0) {
             throw new IllegalArgumentException("Requested amount is outside the configured product principal range.");
         }
 
+        int tenureMonths = requireTenure(command.loanTenure());
         if (tenureMonths < loanProduct.getMinTenureMonths() || tenureMonths > loanProduct.getMaxTenureMonths()) {
             throw new IllegalArgumentException("Requested tenure is outside the configured product tenure range.");
         }
 
-        Borrower borrower = borrowerRepository.findByPanIgnoreCase(normalizePan(borrowerPan))
+        BigDecimal monthlyIncome = normalizeMonthlyIncome(command.monthlyIncome(), command.annualIncome());
+        BigDecimal annualIncome = normalizeAnnualIncome(command.monthlyIncome(), command.annualIncome());
+
+        Borrower borrower = borrowerRepository.findByPanIgnoreCase(normalizePan(command.panNumber()))
                 .map(existing -> {
                     existing.refreshProfile(
-                            borrowerFullName.trim(),
-                            borrowerMobile.trim(),
-                            normalizeEmail(borrowerEmail),
-                            borrowerDateOfBirth,
-                            borrowerCity,
-                            borrowerState,
-                            borrowerEmploymentType,
-                            normalizeMonthlyIncome(borrowerMonthlyIncome)
+                            command.fullName().trim(),
+                            command.mobileNumber().trim(),
+                            normalizeEmail(command.emailAddress()),
+                            command.dob(),
+                            command.gender(),
+                            command.maritalStatus(),
+                            command.fatherName(),
+                            command.aadharNumber(),
+                            command.addressCity(),
+                            command.addressState(),
+                            command.addressLine1(),
+                            command.addressLine2(),
+                            command.addressZipcode(),
+                            command.spouseName(),
+                            command.employmentStatus(),
+                            command.organizationName(),
+                            command.empId(),
+                            command.employmentCity(),
+                            command.employmentState(),
+                            command.employmentZip(),
+                            monthlyIncome,
+                            annualIncome,
+                            command.bankAccountNumber(),
+                            command.bankName(),
+                            command.ifscCode(),
+                            command.accountHolderName(),
+                            command.referencePersonName(),
+                            command.referencePersonNumber()
                     );
                     return borrowerRepository.save(existing);
                 })
                 .orElseGet(() -> borrowerRepository.save(new Borrower(
-                        borrowerFullName.trim(),
-                        normalizePan(borrowerPan),
-                        borrowerMobile.trim(),
-                        normalizeEmail(borrowerEmail),
-                        borrowerDateOfBirth,
-                        borrowerCity,
-                        borrowerState,
-                        borrowerEmploymentType,
-                        normalizeMonthlyIncome(borrowerMonthlyIncome)
+                        command.fullName().trim(),
+                        normalizePan(command.panNumber()),
+                        command.mobileNumber().trim(),
+                        normalizeEmail(command.emailAddress()),
+                        command.dob(),
+                        command.gender(),
+                        command.maritalStatus(),
+                        command.fatherName(),
+                        command.aadharNumber(),
+                        command.addressCity(),
+                        command.addressState(),
+                        command.addressLine1(),
+                        command.addressLine2(),
+                        command.addressZipcode(),
+                        command.spouseName(),
+                        command.employmentStatus(),
+                        command.organizationName(),
+                        command.empId(),
+                        command.employmentCity(),
+                        command.employmentState(),
+                        command.employmentZip(),
+                        monthlyIncome,
+                        annualIncome,
+                        command.bankAccountNumber(),
+                        command.bankName(),
+                        command.ifscCode(),
+                        command.accountHolderName(),
+                        command.referencePersonName(),
+                        command.referencePersonNumber()
                 )));
 
         LoanApplication application = new LoanApplication(
@@ -515,7 +544,7 @@ public class LoanApplicationService {
                 lsp,
                 loanProduct,
                 normalizedExternalLoanId,
-                normalizeSourceChannel(sourceChannel),
+                normalizeSourceChannel(command.sourceChannel()),
                 scaledRequestedAmount,
                 tenureMonths,
                 LoanApplicationStatus.INITIALIZED
@@ -797,6 +826,7 @@ public class LoanApplicationService {
                 && application.getStatus() != LoanApplicationStatus.PAYMENT_REINITIATION) {
             throw new IllegalArgumentException("Disbursement can only be requested for applications pending disbursal or payment re-initiation.");
         }
+        validateRequiredDocumentsUploadedBeforeDisbursement(applicationId);
 
         LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
         if (loanAccount.getStatus() != LoanAccountStatus.PENDING_DISBURSEMENT
@@ -1222,6 +1252,73 @@ public class LoanApplicationService {
 
     private static boolean contains(String value, String normalizedQuery) {
         return value != null && value.toLowerCase().contains(normalizedQuery);
+    }
+
+    private com.bhawana.lms.domain.LoanProduct resolveLoanProduct(LoanApplicationOnboardingCommand command) {
+        if (command.productId() != null) {
+            return loanProductRepository.findById(command.productId())
+                    .orElseThrow(() -> new IllegalArgumentException("Unknown loan product id: " + command.productId()));
+        }
+        String loanProductCode = normalizeOptional(command.loanProduct());
+        if (loanProductCode == null) {
+            throw new IllegalArgumentException("Loan product is required.");
+        }
+        return loanProductRepository.findByCodeIgnoreCase(loanProductCode)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown loan product code: " + loanProductCode));
+    }
+
+    private static void validateInterestRate(BigDecimal requestedInterestRate, BigDecimal configuredInterestRate) {
+        if (requestedInterestRate == null) {
+            return;
+        }
+
+        BigDecimal normalizedRequestedRate = requestedInterestRate.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal normalizedConfiguredRate = configuredInterestRate.setScale(2, RoundingMode.HALF_UP);
+        if (normalizedRequestedRate.compareTo(normalizedConfiguredRate) != 0) {
+            throw new IllegalArgumentException("Requested interest rate does not match the configured product interest rate.");
+        }
+    }
+
+    private static BigDecimal normalizeMonthlyIncome(BigDecimal monthlyIncome, BigDecimal annualIncome) {
+        if (monthlyIncome != null) {
+            return scaleCurrency(monthlyIncome);
+        }
+        if (annualIncome == null) {
+            return null;
+        }
+        return scaleCurrency(annualIncome.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP));
+    }
+
+    private static BigDecimal normalizeAnnualIncome(BigDecimal monthlyIncome, BigDecimal annualIncome) {
+        if (annualIncome != null) {
+            return scaleCurrency(annualIncome);
+        }
+        if (monthlyIncome == null) {
+            return null;
+        }
+        return scaleCurrency(monthlyIncome.multiply(BigDecimal.valueOf(12)));
+    }
+
+    private static BigDecimal requireCurrency(BigDecimal value, String fieldName) {
+        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException(fieldName + " must be greater than zero.");
+        }
+        return value;
+    }
+
+    private static int requireTenure(Integer loanTenure) {
+        if (loanTenure == null || loanTenure < 1) {
+            throw new IllegalArgumentException("Loan tenure must be at least 1 month.");
+        }
+        return loanTenure;
+    }
+
+    private static String requireField(String value, String fieldName) {
+        String normalized = normalizeOptional(value);
+        if (normalized == null) {
+            throw new IllegalArgumentException(fieldName + " is required.");
+        }
+        return normalized;
     }
 
     private static String resolveTransitionNote(
@@ -1709,10 +1806,13 @@ public class LoanApplicationService {
     private void seedDocumentChecklist(LoanApplication application, String actorUsername) {
         List<LoanApplicationDocumentChecklist> checklistItems = List.of(
                 buildChecklistItem(application, LoanApplicationDocumentType.PAN_CARD, actorUsername),
+                buildChecklistItem(application, LoanApplicationDocumentType.AADHAAR_FILE, actorUsername),
                 buildChecklistItem(application, LoanApplicationDocumentType.ADDRESS_PROOF, actorUsername),
                 buildChecklistItem(application, LoanApplicationDocumentType.INCOME_PROOF, actorUsername),
                 buildChecklistItem(application, LoanApplicationDocumentType.BANK_STATEMENT, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.SELFIE_PHOTOGRAPH, actorUsername)
+                buildChecklistItem(application, LoanApplicationDocumentType.SELFIE_PHOTOGRAPH, actorUsername),
+                buildChecklistItem(application, LoanApplicationDocumentType.KFS, actorUsername),
+                buildChecklistItem(application, LoanApplicationDocumentType.LOAN_AGREEMENT, actorUsername)
         );
         loanApplicationDocumentChecklistRepository.saveAll(checklistItems);
     }
@@ -1741,7 +1841,7 @@ public class LoanApplicationService {
         List<LoanApplicationDocumentType> blockingDocumentTypes = loanApplicationDocumentChecklistRepository
                 .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
                 .stream()
-                .filter(LoanApplicationDocumentChecklist::isRequired)
+                .filter(item -> item.getDocumentType().isRequiredForApproval())
                 .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.VERIFIED
                         && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
                 .map(LoanApplicationDocumentChecklist::getDocumentType)
@@ -1749,6 +1849,25 @@ public class LoanApplicationService {
 
         if (!blockingDocumentTypes.isEmpty()) {
             throw new KycCompletionRequiredException(blockingDocumentTypes);
+        }
+    }
+
+    private void validateRequiredDocumentsUploadedBeforeDisbursement(UUID applicationId) {
+        LoanApplication application = getApplication(applicationId);
+        ensureDocumentChecklist(application);
+
+        List<LoanApplicationDocumentType> blockingDocumentTypes = loanApplicationDocumentChecklistRepository
+                .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
+                .stream()
+                .filter(item -> item.getDocumentType().isRequiredForDisbursement())
+                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.RECEIVED
+                        && item.getStatus() != LoanApplicationDocumentChecklistStatus.VERIFIED
+                        && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
+                .map(LoanApplicationDocumentChecklist::getDocumentType)
+                .toList();
+
+        if (!blockingDocumentTypes.isEmpty()) {
+            throw new DocumentUploadRequiredException(blockingDocumentTypes);
         }
     }
 
@@ -1768,10 +1887,31 @@ public class LoanApplicationService {
         payload.put("borrowerMobile", application.getBorrower().getMobile());
         payload.put("borrowerEmail", application.getBorrower().getEmail());
         payload.put("borrowerDateOfBirth", application.getBorrower().getDateOfBirth());
+        payload.put("borrowerGender", application.getBorrower().getGender());
+        payload.put("borrowerMaritalStatus", application.getBorrower().getMaritalStatus());
+        payload.put("borrowerFatherName", application.getBorrower().getFatherName());
+        payload.put("borrowerAadharNumber", application.getBorrower().getAadharNumber());
+        payload.put("addressLine1", application.getBorrower().getAddressLine1());
+        payload.put("addressLine2", application.getBorrower().getAddressLine2());
         payload.put("borrowerCity", application.getBorrower().getCity());
         payload.put("borrowerState", application.getBorrower().getState());
+        payload.put("addressZipCode", application.getBorrower().getAddressZipCode());
+        payload.put("spouseName", application.getBorrower().getSpouseName());
         payload.put("borrowerEmploymentType", application.getBorrower().getEmploymentType());
+        payload.put("organizationName", application.getBorrower().getOrganizationName());
+        payload.put("employeeId", application.getBorrower().getEmployeeId());
+        payload.put("employmentCity", application.getBorrower().getEmploymentCity());
+        payload.put("employmentState", application.getBorrower().getEmploymentState());
+        payload.put("employmentZip", application.getBorrower().getEmploymentZip());
         payload.put("borrowerMonthlyIncome", application.getBorrower().getMonthlyIncome());
+        payload.put("borrowerAnnualIncome", application.getBorrower().getAnnualIncome());
+        payload.put("bankAccountNumber", application.getBorrower().getBankAccountNumber());
+        payload.put("bankName", application.getBorrower().getBankName());
+        payload.put("ifscCode", application.getBorrower().getIfscCode());
+        payload.put("accountHolderName", application.getBorrower().getAccountHolderName());
+        payload.put("referencePersonName", application.getBorrower().getReferencePersonName());
+        payload.put("referencePersonNumber", application.getBorrower().getReferencePersonNumber());
+        payload.put("interestRate", application.getLoanProduct().getInterestRate());
         payload.put("status", application.getStatus().name());
 
         try {

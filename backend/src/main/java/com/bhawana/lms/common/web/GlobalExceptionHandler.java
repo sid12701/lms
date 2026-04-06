@@ -56,6 +56,28 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(DocumentUploadRequiredException.class)
+    public ResponseEntity<ApiError> handleDocumentUploadRequired(
+            DocumentUploadRequiredException exception,
+            HttpServletRequest request
+    ) {
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        for (LoanApplicationDocumentType documentType : exception.getBlockingDocumentTypes()) {
+            fieldErrors.put(
+                    documentType.name(),
+                    documentType.getDisplayName() + " must be uploaded before disbursement."
+            );
+        }
+
+        return build(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "DOCUMENT_UPLOAD_REQUIRED",
+                exception.getMessage(),
+                request,
+                fieldErrors
+        );
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException exception, HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", exception.getMessage(), request, Map.of());

@@ -1,18 +1,27 @@
 package com.bhawana.lms.domain;
 
 public enum LoanApplicationDocumentType {
-    PAN_CARD("PAN Card", true),
-    ADDRESS_PROOF("Address Proof", true),
-    INCOME_PROOF("Income Proof", true),
-    BANK_STATEMENT("Bank Statement", true),
-    SELFIE_PHOTOGRAPH("Selfie Photograph", false);
+    PAN_CARD("PAN Card", true, true),
+    AADHAAR_FILE("Verified Aadhaar File", true, true),
+    ADDRESS_PROOF("Address Proof", true, true),
+    INCOME_PROOF("Income Proof", true, true),
+    BANK_STATEMENT("Bank Statement", true, true),
+    SELFIE_PHOTOGRAPH("Selfie Photograph", true, true),
+    KFS("KFS", false, true),
+    LOAN_AGREEMENT("Loan Agreement", false, true);
 
     private final String displayName;
-    private final boolean requiredByDefault;
+    private final boolean requiredForApproval;
+    private final boolean requiredForDisbursement;
 
-    LoanApplicationDocumentType(String displayName, boolean requiredByDefault) {
+    LoanApplicationDocumentType(
+            String displayName,
+            boolean requiredForApproval,
+            boolean requiredForDisbursement
+    ) {
         this.displayName = displayName;
-        this.requiredByDefault = requiredByDefault;
+        this.requiredForApproval = requiredForApproval;
+        this.requiredForDisbursement = requiredForDisbursement;
     }
 
     public String getDisplayName() {
@@ -20,6 +29,14 @@ public enum LoanApplicationDocumentType {
     }
 
     public boolean isRequiredByDefault() {
-        return requiredByDefault;
+        return requiredForApproval || requiredForDisbursement;
+    }
+
+    public boolean isRequiredForApproval() {
+        return requiredForApproval;
+    }
+
+    public boolean isRequiredForDisbursement() {
+        return requiredForDisbursement;
     }
 }

@@ -145,28 +145,49 @@ class LspLoanApplicationApiControllerTest {
                 apiClient.get("clientSecret").asText()
         );
         LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("lspId", apex.id());
         payload.put("productId", apexProduct.id());
-        payload.put("externalLoanId", "APEX-EXT-001");
-        payload.put("sourceChannel", "API");
-        payload.put("borrowerPan", "ABCDE1234F");
-        payload.put("borrowerFullName", "Anika Sharma");
-        payload.put("borrowerMobile", "9999999999");
-        payload.put("borrowerEmail", "anika@example.com");
-        payload.put("borrowerDateOfBirth", "1992-03-10");
-        payload.put("borrowerCity", "Mumbai");
-        payload.put("borrowerState", "Maharashtra");
-        payload.put("borrowerEmploymentType", "SALARIED");
-        payload.put("borrowerMonthlyIncome", new BigDecimal("78000.00"));
-        payload.put("requestedAmount", new BigDecimal("45000.00"));
-        payload.put("tenureMonths", 12);
+        payload.put("lspLoanId", "APEX-EXT-001");
+        payload.put("fullName", "Anika Sharma");
+        payload.put("emailAddress", "anika@example.com");
+        payload.put("mobileNumber", "9999999999");
+        payload.put("dob", "1992-03-10");
+        payload.put("gender", "FEMALE");
+        payload.put("maritalStatus", "SINGLE");
+        payload.put("fatherName", "Ramesh Sharma");
+        payload.put("aadharNumber", "123412341234");
+        payload.put("panNumber", "ABCDE1234F");
+        payload.put("loanAmount", new BigDecimal("45000.00"));
+        payload.put("interestRate", new BigDecimal("18.50"));
+        payload.put("loanTenure", 12);
+        payload.put("addressLine1", "Palm Residency");
+        payload.put("addressLine2", "Andheri East");
+        payload.put("addressCity", "Mumbai");
+        payload.put("addressState", "Maharashtra");
+        payload.put("addressZipcode", "400001");
+        payload.put("employmentStatus", "SALARIED");
+        payload.put("organizationName", "Apex Corp");
+        payload.put("empId", "EMP-001");
+        payload.put("employmentCity", "Mumbai");
+        payload.put("employmentState", "Maharashtra");
+        payload.put("employmentZip", "400001");
+        payload.put("monthlyIncome", new BigDecimal("78000.00"));
+        payload.put("annualIncome", new BigDecimal("936000.00"));
+        payload.put("bankAccountNumber", "123456789012");
+        payload.put("bankName", "Demo Bank");
+        payload.put("ifscCode", "HDFC0001234");
+        payload.put("accountHolderName", "Anika Sharma");
+        payload.put("referencePersonName", "Neha Verma");
+        payload.put("referencePersonNumber", "9888877777");
 
         mockMvc.perform(post("/api/v1/lsp/loan-applications")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(payload)))
+                .content(objectMapper.writeValueAsString(payload)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lspId").value(apex.id()))
-                .andExpect(jsonPath("$.externalLoanId").value("APEX-EXT-001"))
+                .andExpect(jsonPath("$.lspLoanId").value("APEX-EXT-001"))
+                .andExpect(jsonPath("$.aadharNumber").value("123412341234"))
                 .andExpect(jsonPath("$.status").value("INITIALIZED"));
 
         JsonNode northApplication = createInternalApplication(
@@ -180,12 +201,12 @@ class LspLoanApplicationApiControllerTest {
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].externalLoanId").value("APEX-EXT-001"));
+                .andExpect(jsonPath("$[0].lspLoanId").value("APEX-EXT-001"));
 
         mockMvc.perform(get("/api/v1/lsp/loan-applications/external/{externalLoanId}", "APEX-EXT-001")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.externalLoanId").value("APEX-EXT-001"))
+                .andExpect(jsonPath("$.lspLoanId").value("APEX-EXT-001"))
                 .andExpect(jsonPath("$.lastActivity.actorUsername").value(apiClient.get("clientId").asText()))
                 .andExpect(jsonPath("$.loanAccount").doesNotExist());
 
@@ -208,20 +229,23 @@ class LspLoanApplicationApiControllerTest {
                 apiClient.get("clientSecret").asText()
         );
 
+        LinkedHashMap<String, Object> unmappedPayload = new LinkedHashMap<>();
+        unmappedPayload.put("lspId", apex.id());
+        unmappedPayload.put("productId", northProduct.id());
+        unmappedPayload.put("lspLoanId", "APEX-EXT-404");
+        unmappedPayload.put("fullName", "Anika Sharma");
+        unmappedPayload.put("mobileNumber", "9999999999");
+        unmappedPayload.put("emailAddress", "anika@example.com");
+        unmappedPayload.put("aadharNumber", "123412341234");
+        unmappedPayload.put("panNumber", "ABCDE1234F");
+        unmappedPayload.put("loanAmount", new BigDecimal("45000.00"));
+        unmappedPayload.put("loanTenure", 12);
+        unmappedPayload.put("monthlyIncome", new BigDecimal("78000.00"));
+
         mockMvc.perform(post("/api/v1/lsp/loan-applications")
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "productId", northProduct.id(),
-                                "externalLoanId", "APEX-EXT-404",
-                                "sourceChannel", "API",
-                                "borrowerPan", "ABCDE1234F",
-                                "borrowerFullName", "Anika Sharma",
-                                "borrowerMobile", "9999999999",
-                                "borrowerEmail", "anika@example.com",
-                                "requestedAmount", new BigDecimal("45000.00"),
-                                "tenureMonths", 12
-                        ))))
+                        .content(objectMapper.writeValueAsString(unmappedPayload)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
                 .andExpect(jsonPath("$.message").value("Requested product is not mapped to the selected LSP."));
@@ -253,25 +277,27 @@ class LspLoanApplicationApiControllerTest {
                         .with(lspUiUser(apex.id(), "Apex Tenant")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].externalLoanId").value("APEX-UI-001"));
+                .andExpect(jsonPath("$[0].lspLoanId").value("APEX-UI-001"));
 
         mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", apexApplication.get("id").asText())
                         .with(lspUiUser(apex.id(), "Apex Tenant")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.externalLoanId").value("APEX-UI-001"));
+                .andExpect(jsonPath("$.lspLoanId").value("APEX-UI-001"));
 
         mockMvc.perform(post("/api/v1/lsp/loan-applications")
                         .with(lspUiUser(apex.id(), "Apex Tenant"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
+                                "lspId", apex.id(),
                                 "productId", apexProduct.id(),
-                                "externalLoanId", "APEX-UI-002",
-                                "sourceChannel", "API",
-                                "borrowerPan", "QWERT1234Y",
-                                "borrowerFullName", "Blocked Viewer",
-                                "borrowerMobile", "9999999999",
-                                "requestedAmount", new BigDecimal("45000.00"),
-                                "tenureMonths", 12
+                                "lspLoanId", "APEX-UI-002",
+                                "fullName", "Blocked Viewer",
+                                "mobileNumber", "9999999999",
+                                "aadharNumber", "123412341234",
+                                "panNumber", "QWERT1234Y",
+                                "loanAmount", new BigDecimal("45000.00"),
+                                "loanTenure", 12,
+                                "monthlyIncome", new BigDecimal("55000.00")
                         ))))
                 .andExpect(status().isForbidden());
     }
@@ -295,17 +321,33 @@ class LspLoanApplicationApiControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "documentType", "PAN_CARD",
-                                "note", "PAN uploaded from partner LOS",
-                                "fileName", "pan-card.pdf",
-                                "fileReference", "minio://tenant-apex/pan-card.pdf",
+                                "documentType", "AADHAAR_FILE",
+                                "note", "Aadhaar uploaded from partner LOS",
+                                "fileName", "aadhaar.pdf",
+                                "fileReference", "minio://tenant-apex/aadhaar.pdf",
                                 "sourceReference", "los-doc-001",
                                 "contentType", "application/pdf"
                         ))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.documentType").value("PAN_CARD"))
+                .andExpect(jsonPath("$.documentType").value("AADHAAR_FILE"))
                 .andExpect(jsonPath("$.status").value("RECEIVED"))
-                .andExpect(jsonPath("$.fileName").value("pan-card.pdf"));
+                .andExpect(jsonPath("$.fileName").value("aadhaar.pdf"));
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "documentType", "LOAN_AGREEMENT",
+                                "note", "Loan agreement uploaded from partner LOS",
+                                "fileName", "loan-agreement.pdf",
+                                "fileReference", "minio://tenant-apex/loan-agreement.pdf",
+                                "sourceReference", "los-doc-002",
+                                "contentType", "application/pdf"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentType").value("LOAN_AGREEMENT"))
+                .andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.fileName").value("loan-agreement.pdf"));
 
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "AWAITING_APPROVAL");
@@ -426,20 +468,40 @@ class LspLoanApplicationApiControllerTest {
 
     private JsonNode createExternalApplication(String accessToken, String productId, String externalLoanId) throws Exception {
         LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("lspId", extractLspIdFromToken(accessToken));
         payload.put("productId", productId);
-        payload.put("externalLoanId", externalLoanId);
-        payload.put("sourceChannel", "API");
-        payload.put("borrowerPan", "ABCDE1234F");
-        payload.put("borrowerFullName", "Anika Sharma");
-        payload.put("borrowerMobile", "9999999999");
-        payload.put("borrowerEmail", "anika@example.com");
-        payload.put("borrowerDateOfBirth", "1992-03-10");
-        payload.put("borrowerCity", "Mumbai");
-        payload.put("borrowerState", "Maharashtra");
-        payload.put("borrowerEmploymentType", "SALARIED");
-        payload.put("borrowerMonthlyIncome", new BigDecimal("78000.00"));
-        payload.put("requestedAmount", new BigDecimal("45000.00"));
-        payload.put("tenureMonths", 12);
+        payload.put("lspLoanId", externalLoanId);
+        payload.put("fullName", "Anika Sharma");
+        payload.put("emailAddress", "anika@example.com");
+        payload.put("mobileNumber", "9999999999");
+        payload.put("dob", "1992-03-10");
+        payload.put("gender", "FEMALE");
+        payload.put("maritalStatus", "SINGLE");
+        payload.put("fatherName", "Ramesh Sharma");
+        payload.put("aadharNumber", "123412341234");
+        payload.put("panNumber", "ABCDE1234F");
+        payload.put("loanAmount", new BigDecimal("45000.00"));
+        payload.put("interestRate", new BigDecimal("18.50"));
+        payload.put("loanTenure", 12);
+        payload.put("addressLine1", "Palm Residency");
+        payload.put("addressLine2", "Andheri East");
+        payload.put("addressCity", "Mumbai");
+        payload.put("addressState", "Maharashtra");
+        payload.put("addressZipcode", "400001");
+        payload.put("employmentStatus", "SALARIED");
+        payload.put("organizationName", "Apex Corp");
+        payload.put("empId", "EMP-001");
+        payload.put("employmentCity", "Mumbai");
+        payload.put("employmentState", "Maharashtra");
+        payload.put("employmentZip", "400001");
+        payload.put("monthlyIncome", new BigDecimal("78000.00"));
+        payload.put("annualIncome", new BigDecimal("936000.00"));
+        payload.put("bankAccountNumber", "123456789012");
+        payload.put("bankName", "Demo Bank");
+        payload.put("ifscCode", "HDFC0001234");
+        payload.put("accountHolderName", "Anika Sharma");
+        payload.put("referencePersonName", "Neha Verma");
+        payload.put("referencePersonNumber", "9888877777");
 
         MvcResult result = mockMvc.perform(post("/api/v1/lsp/loan-applications")
                         .header("Authorization", "Bearer " + accessToken)
@@ -486,7 +548,16 @@ class LspLoanApplicationApiControllerTest {
     }
 
     private void markAllRequiredKycDocumentsVerified(String applicationId) throws Exception {
-        for (String documentType : List.of("PAN_CARD", "ADDRESS_PROOF", "INCOME_PROOF", "BANK_STATEMENT")) {
+        for (String documentType : List.of(
+                "PAN_CARD",
+                "AADHAAR_FILE",
+                "ADDRESS_PROOF",
+                "INCOME_PROOF",
+                "BANK_STATEMENT",
+                "SELFIE_PHOTOGRAPH",
+                "KFS",
+                "LOAN_AGREEMENT"
+        )) {
             mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
                             applicationId,
                             documentType)
@@ -505,6 +576,16 @@ class LspLoanApplicationApiControllerTest {
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
+    }
+
+    private String extractLspIdFromToken(String token) {
+        String[] parts = token.split("\\.");
+        String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]), java.nio.charset.StandardCharsets.UTF_8);
+        try {
+            return objectMapper.readTree(payload).get("lspId").asText();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to extract lspId from token", exception);
+        }
     }
 
     private void resolveDisbursement(String applicationId) throws Exception {
