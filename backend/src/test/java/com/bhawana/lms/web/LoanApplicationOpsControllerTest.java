@@ -181,7 +181,7 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.borrowerId").value(firstBorrowerId))
                 .andExpect(jsonPath("$.borrowerCity").value("Bengaluru"))
-                .andExpect(jsonPath("$.status").value("RECEIVED"));
+                .andExpect(jsonPath("$.status").value("INITIALIZED"));
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
                         .with(opsUser()))
@@ -247,15 +247,15 @@ class LoanApplicationOpsControllerTest {
         String aprilApplicationId = createApplication(lsp.id(), product.id(), "EXT-APRIL", "API", "ZXCVB1234N")
                 .get("id").asText();
 
-        transitionApplication(marchApplicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(marchApplicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(marchApplicationId);
-        transitionApplication(marchApplicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(marchApplicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
         disburseLoan(marchApplicationId);
         setDisbursedAt(marchApplicationId, LocalDate.of(2026, 3, 10));
 
-        transitionApplication(aprilApplicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(aprilApplicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(aprilApplicationId);
-        transitionApplication(aprilApplicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(aprilApplicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
         disburseLoan(aprilApplicationId);
         setDisbursedAt(aprilApplicationId, LocalDate.of(2026, 4, 5));
 
@@ -313,7 +313,7 @@ class LoanApplicationOpsControllerTest {
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
                         .with(opsUser())
-                        .queryParam("status", "RECEIVED")
+                        .queryParam("status", "INITIALIZED")
                         .queryParam("sourceChannel", "PARTNER_PORTAL"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
@@ -364,7 +364,7 @@ class LoanApplicationOpsControllerTest {
                         .with(opsUser()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(created.get("id").asText()))
-                .andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.status").value("INITIALIZED"))
                 .andExpect(jsonPath("$.lastActivity.activityType").value("INTAKE_CAPTURED"))
                 .andExpect(jsonPath("$.lastActivity.actorUsername").value("ops.user"))
                 .andExpect(jsonPath("$.lastActivity.summary").value("Application captured from API"))
@@ -375,20 +375,20 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.borrowerMonthlyIncome").value(78000.00))
                 .andExpect(jsonPath("$.updatedAt").exists());
 
-        transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Assigned for analyst review");
+        transitionApplication(created.get("id").asText(), "AWAITING_APPROVAL", "Assigned for analyst review");
         markAllRequiredKycDocumentsVerified(created.get("id").asText());
-        transitionApplication(created.get("id").asText(), "APPROVED", "Approved after validation", null, systemAdmin());
+        transitionApplication(created.get("id").asText(), "APPROVED_PENDING_DISBURSAL", "Approved after validation", null, systemAdmin());
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", created.get("id").asText())
                         .with(opsUser()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].fromStatus").value("UNDER_REVIEW"))
-                .andExpect(jsonPath("$[0].toStatus").value("APPROVED"))
+                .andExpect(jsonPath("$[0].fromStatus").value("AWAITING_APPROVAL"))
+                .andExpect(jsonPath("$[0].toStatus").value("APPROVED_PENDING_DISBURSAL"))
                 .andExpect(jsonPath("$[0].reasonCode").doesNotExist())
                 .andExpect(jsonPath("$[0].note").value("Approved after validation"))
-                .andExpect(jsonPath("$[1].fromStatus").value("RECEIVED"))
-                .andExpect(jsonPath("$[1].toStatus").value("UNDER_REVIEW"))
+                .andExpect(jsonPath("$[1].fromStatus").value("INITIALIZED"))
+                .andExpect(jsonPath("$[1].toStatus").value("AWAITING_APPROVAL"))
                 .andExpect(jsonPath("$[1].reasonCode").doesNotExist())
                 .andExpect(jsonPath("$[1].note").value("Assigned for analyst review"));
     }
@@ -403,13 +403,13 @@ class LoanApplicationOpsControllerTest {
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-952", "PARTNER_PORTAL", "ABCDE1234F");
         String applicationId = created.get("id").asText();
 
-        transitionApplication(applicationId, "UNDER_REVIEW", "Ready for queue assignment");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Ready for queue assignment");
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
                         .with(opsUser()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lastActivity.activityType").value("STATUS_TRANSITION"))
-                .andExpect(jsonPath("$.lastActivity.summary").value("Moved from RECEIVED to UNDER_REVIEW"))
+                .andExpect(jsonPath("$.lastActivity.summary").value("Moved from INITIALIZED to AWAITING_APPROVAL"))
                 .andExpect(jsonPath("$.lastActivity.detail").value("Ready for queue assignment"));
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/assignment", applicationId)
@@ -454,13 +454,13 @@ class LoanApplicationOpsControllerTest {
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-953", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
 
-        transitionApplication(applicationId, "UNDER_REVIEW", "Picked up for review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Picked up for review");
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/manual-status", applicationId)
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "HOLD",
+                                "targetStatus", "PAYMENT_REINITIATION",
                                 "note", "Escalating to manual exception queue",
                                 "reasonCode", "MANUAL_ADMIN_OVERRIDE"
                         ))))
@@ -471,14 +471,14 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].action").value("MANUAL_STATUS_OVERRIDE"))
-                .andExpect(jsonPath("$[0].fromStatus").value("UNDER_REVIEW"))
-                .andExpect(jsonPath("$[0].toStatus").value("HOLD"))
+                .andExpect(jsonPath("$[0].fromStatus").value("AWAITING_APPROVAL"))
+                .andExpect(jsonPath("$[0].toStatus").value("PAYMENT_REINITIATION"))
                 .andExpect(jsonPath("$[0].reasonCode").value("MANUAL_ADMIN_OVERRIDE"))
                 .andExpect(jsonPath("$[0].note").value("Manual override: Escalating to manual exception queue"))
                 .andExpect(jsonPath("$[0].actorUsername").value("ops.admin"))
                 .andExpect(jsonPath("$[1].action").value("STATUS_TRANSITION"))
-                .andExpect(jsonPath("$[1].fromStatus").value("RECEIVED"))
-                .andExpect(jsonPath("$[1].toStatus").value("UNDER_REVIEW"))
+                .andExpect(jsonPath("$[1].fromStatus").value("INITIALIZED"))
+                .andExpect(jsonPath("$[1].toStatus").value("AWAITING_APPROVAL"))
                 .andExpect(jsonPath("$[1].reasonCode").doesNotExist())
                 .andExpect(jsonPath("$[1].note").value("Picked up for review"))
                 .andExpect(jsonPath("$[1].actorUsername").value("ops.user"));
@@ -492,7 +492,7 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-990", "API", "ABCDE1234F");
 
-        transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Ready for KYC review");
+        transitionApplication(created.get("id").asText(), "AWAITING_APPROVAL", "Ready for KYC review");
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents", created.get("id").asText())
                         .with(opsUser()))
@@ -569,7 +569,7 @@ class LoanApplicationOpsControllerTest {
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-993", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
 
-        transitionApplication(applicationId, "UNDER_REVIEW", "Ready for document review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Ready for document review");
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents", applicationId)
                         .with(opsUser()))
@@ -596,7 +596,7 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-992", "API", "ABCDE1234F");
 
-        transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Ready for KYC review");
+        transitionApplication(created.get("id").asText(), "AWAITING_APPROVAL", "Ready for KYC review");
 
         mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
                         created.get("id").asText(),
@@ -620,13 +620,13 @@ class LoanApplicationOpsControllerTest {
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-991", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
 
-        transitionApplication(applicationId, "UNDER_REVIEW", "Ready for final approval");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Ready for final approval");
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "APPROVED",
+                                "targetStatus", "APPROVED_PENDING_DISBURSAL",
                                 "note", "Approve after checks"
                         ))))
                 .andExpect(status().isUnprocessableEntity())
@@ -641,11 +641,11 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "APPROVED",
+                                "targetStatus", "APPROVED_PENDING_DISBURSAL",
                                 "note", "Approve after checks"
                         ))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.status").value("APPROVED_PENDING_DISBURSAL"))
                 .andExpect(jsonPath("$.loanAccount.accountNumber", containsString("LMS-LN-")))
                 .andExpect(jsonPath("$.loanAccount.status").value("PENDING_DISBURSEMENT"))
                 .andExpect(jsonPath("$.loanAccount.principalAmount").value(45000.00))
@@ -659,7 +659,7 @@ class LoanApplicationOpsControllerTest {
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.status").value("APPROVED_PENDING_DISBURSAL"))
                 .andExpect(jsonPath("$.loanAccount.accountNumber", containsString("LMS-LN-")))
                 .andExpect(jsonPath("$.loanAccount.status").value("PENDING_DISBURSEMENT"))
                 .andExpect(jsonPath("$.loanAccount.repaymentSchedule.installmentCount").value(12))
@@ -686,9 +686,9 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-974", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
@@ -775,9 +775,9 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-974B", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
@@ -860,9 +860,9 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-974A", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
         disburseLoan(applicationId);
 
         UUID loanAccountId = loanAccountRepository.findByLoanApplication_Id(UUID.fromString(applicationId))
@@ -905,9 +905,9 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-974B", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
         disburseLoan(applicationId);
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
@@ -1007,9 +1007,9 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-975", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
                         .with(systemAdmin())
@@ -1033,9 +1033,9 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-975A", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
@@ -1083,9 +1083,9 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-976", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
@@ -1118,14 +1118,14 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-962", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
                         .with(opsUser())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "APPROVED",
+                                "targetStatus", "APPROVED_PENDING_DISBURSAL",
                                 "note", "Approve after checks"
                         ))))
                 .andExpect(status().isForbidden())
@@ -1151,14 +1151,14 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-968", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.status").value("APPROVED_PENDING_DISBURSAL"))
                 .andExpect(jsonPath("$.loanAccount.status").value("DISBURSEMENT_REQUESTED"));
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
@@ -1188,9 +1188,9 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
 
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
@@ -1211,9 +1211,9 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-970", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
@@ -1243,9 +1243,9 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-971", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
@@ -1259,9 +1259,9 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode secondCreated = createApplication(lsp.id(), product.id(), "EXT-972", "API", "ZXCVB1234N");
         String secondApplicationId = secondCreated.get("id").asText();
-        transitionApplication(secondApplicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(secondApplicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(secondApplicationId);
-        transitionApplication(secondApplicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(secondApplicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", secondApplicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
@@ -1282,9 +1282,9 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-973", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
                         .with(systemAdmin())
@@ -1295,7 +1295,7 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
-    void opsUserCanMoveLoanApplicationsIntoAndOutOfHold() throws Exception {
+    void opsUserCanOnlyMoveLoanApplicationsIntoAwaitingApproval() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
         mapProductToLsp(product.id(), lsp.id());
@@ -1303,35 +1303,26 @@ class LoanApplicationOpsControllerTest {
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-963", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
 
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "AWAITING_APPROVAL",
+                                "note", "Started review"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("AWAITING_APPROVAL"))
+                .andExpect(jsonPath("$.lastActivity.summary").value("Moved from INITIALIZED to AWAITING_APPROVAL"));
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
                         .with(opsUser())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "HOLD",
-                                "note", "Waiting for borrower clarification",
-                                "reasonCode", "BORROWER_CLARIFICATION_REQUIRED"
+                                "targetStatus", "REJECTED",
+                                "note", "Attempting to reject without approval rights",
+                                "reasonCode", "FAILED_VERIFICATION"
                         ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("HOLD"))
-                .andExpect(jsonPath("$.lastActivity.summary").value("Moved from UNDER_REVIEW to HOLD"));
-
-        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
-                        .with(opsUser()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].reasonCode").value("BORROWER_CLARIFICATION_REQUIRED"));
-
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
-                        .with(opsUser())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "UNDER_REVIEW",
-                                "note", "Clarification received"
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("UNDER_REVIEW"))
-                .andExpect(jsonPath("$.lastActivity.summary").value("Moved from HOLD to UNDER_REVIEW"));
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -1343,7 +1334,7 @@ class LoanApplicationOpsControllerTest {
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-964", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
 
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         transitionApplication(
                 applicationId,
                 "REJECTED",
@@ -1356,13 +1347,13 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "HOLD",
+                                "targetStatus", "AWAITING_APPROVAL",
                                 "note", "Reopening after borrower appeal",
                                 "reasonCode", "MANUAL_ADMIN_OVERRIDE"
                         ))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("HOLD"))
-                .andExpect(jsonPath("$.lastActivity.summary").value("Moved from REJECTED to HOLD"))
+                .andExpect(jsonPath("$.status").value("AWAITING_APPROVAL"))
+                .andExpect(jsonPath("$.lastActivity.summary").value("Moved from REJECTED to AWAITING_APPROVAL"))
                 .andExpect(jsonPath("$.lastActivity.detail").value("Manual override: Reopening after borrower appeal [MANUAL_ADMIN_OVERRIDE]"));
     }
 
@@ -1393,13 +1384,13 @@ class LoanApplicationOpsControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-966", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/manual-status", applicationId)
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "APPROVED",
+                                "targetStatus", "APPROVED_PENDING_DISBURSAL",
                                 "note", "Force approve",
                                 "reasonCode", "MANUAL_ADMIN_OVERRIDE"
                         ))))
@@ -1410,7 +1401,7 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "HOLD",
+                                "targetStatus", "PAYMENT_REINITIATION",
                                 "note", "",
                                 "reasonCode", "MANUAL_ADMIN_OVERRIDE"
                         ))))
@@ -1421,7 +1412,7 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "HOLD",
+                                "targetStatus", "PAYMENT_REINITIATION",
                                 "note", "Needs admin override"
                         ))))
                 .andExpect(status().isBadRequest())
@@ -1429,24 +1420,24 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
-    void holdAndRejectTransitionsRequireReasonCode() throws Exception {
+    void paymentReinitiationAndRejectTransitionsRequireReasonCode() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
         mapProductToLsp(product.id(), lsp.id());
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-967", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW", "Started review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
-                        .with(opsUser())
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/manual-status", applicationId)
+                        .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "HOLD",
+                                "targetStatus", "PAYMENT_REINITIATION",
                                 "note", "Waiting for clarification"
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(jsonPath("$.error").value("VALIDATION_FAILED"));
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
                         .with(systemAdmin())
@@ -1471,15 +1462,15 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "APPROVED",
+                                "targetStatus", "APPROVED_PENDING_DISBURSAL",
                                 "note", "Skipping review"
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
 
-        transitionApplication(created.get("id").asText(), "UNDER_REVIEW", "Started review");
+        transitionApplication(created.get("id").asText(), "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(created.get("id").asText());
-        transitionApplication(created.get("id").asText(), "APPROVED", "Approved after checks", null, systemAdmin());
+        transitionApplication(created.get("id").asText(), "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", created.get("id").asText())
                         .with(systemAdmin())

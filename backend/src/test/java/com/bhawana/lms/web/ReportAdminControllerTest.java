@@ -335,9 +335,9 @@ class ReportAdminControllerTest {
     }
 
     private void approveLoan(String applicationId) throws Exception {
-        transitionApplication(applicationId, "UNDER_REVIEW", "Ready for approval", opsUser());
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Ready for approval", opsUser());
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", "Approved for report coverage", systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for report coverage", systemAdmin());
     }
 
     private void disburseLoan(String applicationId) throws Exception {

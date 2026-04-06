@@ -129,6 +129,56 @@ const initialFormState: IntakeFormState = {
   tenureMonths: '12',
 }
 
+const loanApplicationStatusMeta: Record<
+  LoanApplicationStatus,
+  {
+    label: string
+    variant: 'default' | 'success' | 'warning' | 'destructive'
+    progressIndex: number
+  }
+> = {
+  INITIALIZED: {
+    label: 'Initialized',
+    variant: 'warning',
+    progressIndex: 1,
+  },
+  AWAITING_APPROVAL: {
+    label: 'Awaiting approval',
+    variant: 'default',
+    progressIndex: 2,
+  },
+  APPROVED_PENDING_DISBURSAL: {
+    label: 'Application approved - pending for disbursal',
+    variant: 'warning',
+    progressIndex: 3,
+  },
+  REJECTED: {
+    label: 'Rejected',
+    variant: 'destructive',
+    progressIndex: 2,
+  },
+  PAYMENT_REINITIATION: {
+    label: 'Payment re-initiation',
+    variant: 'warning',
+    progressIndex: 3,
+  },
+  DISBURSED: {
+    label: 'Disbursed',
+    variant: 'success',
+    progressIndex: 4,
+  },
+  UNDER_REPAYMENT: {
+    label: 'Under repayment',
+    variant: 'success',
+    progressIndex: 5,
+  },
+  CLOSED: {
+    label: 'Closed',
+    variant: 'default',
+    progressIndex: 6,
+  },
+}
+
 const borrowerEmploymentTypeOptions = [
   'SALARIED',
   'SELF_EMPLOYED',
@@ -169,25 +219,35 @@ function buildInitialForeclosureQuoteExecutionState(): ForeclosureQuoteExecution
 }
 
 const workflowProgression: Array<{
-  status: LoanApplicationStatus | 'DECISION'
+  status: LoanApplicationStatus
   label: string
   description: string
 }> = [
-  { status: 'RECEIVED', label: 'Received', description: 'Captured from intake and ready for review.' },
+  { status: 'INITIALIZED', label: 'Initialized', description: 'Intake is captured and ready for queueing.' },
   {
-    status: 'UNDER_REVIEW',
-    label: 'Under review',
-    description: 'Ops is validating the case and supporting data.',
+    status: 'AWAITING_APPROVAL',
+    label: 'Awaiting approval',
+    description: 'Ops and underwriting are validating the application.',
   },
   {
-    status: 'HOLD',
-    label: 'On hold',
-    description: 'Review is paused while the case waits for clarification or documents.',
+    status: 'APPROVED_PENDING_DISBURSAL',
+    label: 'Pending disbursal',
+    description: 'The application is approved and waiting for disbursal processing.',
   },
   {
-    status: 'DECISION',
-    label: 'Decision',
-    description: 'Approved or rejected after review.',
+    status: 'DISBURSED',
+    label: 'Disbursed',
+    description: 'Funds have been released to the borrower.',
+  },
+  {
+    status: 'UNDER_REPAYMENT',
+    label: 'Under repayment',
+    description: 'The loan is active and repayments are being tracked.',
+  },
+  {
+    status: 'CLOSED',
+    label: 'Closed',
+    description: 'The loan is settled and the account is closed.',
   },
 ]
 
@@ -344,93 +404,50 @@ function formatIncomeCoverage(application: LoanApplicationRecord | null) {
 }
 
 function loanStatusLabel(status: LoanApplicationStatus) {
-  switch (status) {
-    case 'RECEIVED':
-      return 'Received'
-    case 'UNDER_REVIEW':
-      return 'Under review'
-    case 'HOLD':
-      return 'On hold'
-    case 'APPROVED':
-      return 'Approved'
-    case 'REJECTED':
-      return 'Rejected'
-  }
+  return loanApplicationStatusMeta[status].label
 }
 
 function loanStatusVariant(
   status: LoanApplicationStatus,
 ): 'default' | 'success' | 'warning' | 'destructive' {
-  switch (status) {
-    case 'RECEIVED':
-      return 'warning'
-    case 'UNDER_REVIEW':
-      return 'default'
-    case 'HOLD':
-      return 'warning'
-    case 'APPROVED':
-      return 'success'
-    case 'REJECTED':
-      return 'destructive'
-  }
+  return loanApplicationStatusMeta[status].variant
 }
 
 function statusProgressIndex(status: LoanApplicationStatus) {
-  switch (status) {
-    case 'RECEIVED':
-      return 1
-    case 'UNDER_REVIEW':
-      return 2
-    case 'HOLD':
-      return 3
-    case 'APPROVED':
-    case 'REJECTED':
-      return 4
-  }
+  return loanApplicationStatusMeta[status].progressIndex
 }
 
 function getTransitionActions(status: LoanApplicationStatus): TransitionAction[] {
   switch (status) {
-    case 'RECEIVED':
+    case 'INITIALIZED':
       return [
         {
-          targetStatus: 'UNDER_REVIEW',
-          label: 'Move to review',
-          description: 'Promote the case into the review queue.',
+          targetStatus: 'AWAITING_APPROVAL',
+          label: 'Send for approval',
+          description: 'Move the case into the approval queue.',
           variant: 'secondary',
         },
       ]
-    case 'UNDER_REVIEW':
+    case 'AWAITING_APPROVAL':
       return [
         {
-          targetStatus: 'HOLD',
-          label: 'Put on hold',
-          description: 'Pause review while waiting for clarification or missing inputs.',
-          variant: 'secondary',
-        },
-        {
-          targetStatus: 'APPROVED',
+          targetStatus: 'APPROVED_PENDING_DISBURSAL',
           label: 'Approve',
-          description: 'Mark the case as approved and ready for downstream processing.',
+          description: 'Approve the application and queue it for disbursal.',
           variant: 'primary',
         },
         {
           targetStatus: 'REJECTED',
           label: 'Reject',
-          description: 'Close the case and capture the decision note.',
+          description: 'Reject the application and capture the decision note.',
           variant: 'outline',
         },
       ]
-    case 'HOLD':
-      return [
-        {
-          targetStatus: 'UNDER_REVIEW',
-          label: 'Resume review',
-          description: 'Bring the case back into the active review queue.',
-          variant: 'secondary',
-        },
-      ]
-    case 'APPROVED':
+    case 'APPROVED_PENDING_DISBURSAL':
+    case 'PAYMENT_REINITIATION':
+    case 'DISBURSED':
+    case 'UNDER_REPAYMENT':
+    case 'CLOSED':
     case 'REJECTED':
       return []
   }
@@ -449,16 +466,8 @@ function getVisibleTransitionActions(
 
   if (currentRoles.includes('OPS_USER')) {
     return allActions.filter((action) => {
-      if (status === 'RECEIVED') {
-        return action.targetStatus === 'UNDER_REVIEW'
-      }
-
-      if (status === 'UNDER_REVIEW') {
-        return action.targetStatus === 'HOLD'
-      }
-
-      if (status === 'HOLD') {
-        return action.targetStatus === 'UNDER_REVIEW'
+      if (status === 'INITIALIZED') {
+        return action.targetStatus === 'AWAITING_APPROVAL'
       }
 
       return false
@@ -469,11 +478,18 @@ function getVisibleTransitionActions(
 }
 
 function getManualStatusTargets(status: LoanApplicationStatus) {
-  return loanApplicationStatusOptions.filter((option) => option !== 'APPROVED' && option !== status)
+  return loanApplicationStatusOptions.filter(
+    (option) =>
+      option !== status &&
+      option !== 'APPROVED_PENDING_DISBURSAL' &&
+      option !== 'DISBURSED' &&
+      option !== 'UNDER_REPAYMENT' &&
+      option !== 'CLOSED',
+  )
 }
 
 function statusRequiresReasonCode(status: LoanApplicationStatus) {
-  return status === 'HOLD' || status === 'REJECTED'
+  return status === 'PAYMENT_REINITIATION' || status === 'REJECTED'
 }
 
 function loanStatusReasonCodeLabel(code?: LoanApplicationStatusReasonCode | null) {
@@ -1994,7 +2010,7 @@ export function LoanApplicationsPage() {
       const message =
         submitError instanceof Error ? submitError.message : 'Unable to update loan status.'
       setWorkflowError(message)
-      if (targetStatus === 'APPROVED') {
+      if (targetStatus === 'APPROVED_PENDING_DISBURSAL') {
         setApprovalBlocker(extractApprovalBlocker(submitError))
       }
     } finally {
@@ -3803,14 +3819,7 @@ export function LoanApplicationsPage() {
 
                 <div className="loan-status-lane" aria-label="Loan status progression">
                   {workflowProgression.map((step) => {
-                    const stepIndex =
-                      step.status === 'RECEIVED'
-                        ? 1
-                        : step.status === 'UNDER_REVIEW'
-                          ? 2
-                          : step.status === 'HOLD'
-                            ? 3
-                            : 4
+                    const stepIndex = statusProgressIndex(step.status)
                     const isCurrent = currentProgressIndex === stepIndex
                     const isComplete = currentProgressIndex > stepIndex
 
@@ -3824,20 +3833,14 @@ export function LoanApplicationsPage() {
                         ]
                           .filter(Boolean)
                           .join(' ')}
-                      >
+                        >
                         <div className="loan-status-lane__step-number">
-                          {step.status === 'DECISION' ? '4' : statusProgressIndex(step.status)}
+                          {statusProgressIndex(step.status)}
                         </div>
                         <div>
                           <strong>{step.label}</strong>
                           <p className="helper-copy">{step.description}</p>
                         </div>
-                        {step.status === 'DECISION' ? (
-                          <div className="inline-actions">
-                            <Badge variant="success">Approved</Badge>
-                            <Badge variant="destructive">Rejected</Badge>
-                          </div>
-                        ) : null}
                       </div>
                     )
                   })}
@@ -3930,7 +3933,7 @@ export function LoanApplicationsPage() {
                             : undefined
                         }
                       >
-                        {action.targetStatus === 'APPROVED' ? (
+                        {action.targetStatus === 'APPROVED_PENDING_DISBURSAL' ? (
                           <CheckCircle2 size={16} />
                         ) : action.targetStatus === 'REJECTED' ? (
                           <FileText size={16} />

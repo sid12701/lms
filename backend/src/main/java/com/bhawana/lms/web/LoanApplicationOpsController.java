@@ -260,12 +260,8 @@ public class LoanApplicationOpsController {
         }
 
         if (actorRoles.contains("OPS_USER")
-                && ((currentStatus == LoanApplicationStatus.RECEIVED
-                        && targetStatus == LoanApplicationStatus.UNDER_REVIEW)
-                        || (currentStatus == LoanApplicationStatus.UNDER_REVIEW
-                        && targetStatus == LoanApplicationStatus.HOLD)
-                        || (currentStatus == LoanApplicationStatus.HOLD
-                        && targetStatus == LoanApplicationStatus.UNDER_REVIEW))) {
+                && currentStatus == LoanApplicationStatus.INITIALIZED
+                && targetStatus == LoanApplicationStatus.AWAITING_APPROVAL) {
             return;
         }
 

@@ -518,7 +518,7 @@ public class LoanApplicationService {
                 normalizeSourceChannel(sourceChannel),
                 scaledRequestedAmount,
                 tenureMonths,
-                LoanApplicationStatus.RECEIVED
+                LoanApplicationStatus.INITIALIZED
         );
         LoanApplication savedApplication = loanApplicationRepository.save(application);
         loanApplicationIntakeAuditRepository.save(new LoanApplicationIntakeAudit(
@@ -567,8 +567,8 @@ public class LoanApplicationService {
             );
         }
 
-        if (currentStatus == LoanApplicationStatus.UNDER_REVIEW
-                && targetStatus == LoanApplicationStatus.APPROVED) {
+        if (currentStatus == LoanApplicationStatus.AWAITING_APPROVAL
+                && targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL) {
             validateKycCompletionBeforeApproval(applicationId);
         }
 
@@ -594,7 +594,7 @@ public class LoanApplicationService {
                 resolvedNote,
                 resolvedReasonCode
         );
-        if (targetStatus == LoanApplicationStatus.APPROVED) {
+        if (targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL) {
             ensureLoanAccountForApprovedApplication(savedApplication);
         }
         webhookOutboxService.enqueueIfSubscribed(
@@ -626,17 +626,23 @@ public class LoanApplicationService {
             throw new IllegalArgumentException("Loan application is already in status " + currentStatus.name() + ".");
         }
 
-        if (currentStatus == LoanApplicationStatus.APPROVED) {
-            throw new IllegalArgumentException("Approved loan applications cannot be manually overridden.");
+        if (currentStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
+                || currentStatus == LoanApplicationStatus.DISBURSED
+                || currentStatus == LoanApplicationStatus.UNDER_REPAYMENT
+                || currentStatus == LoanApplicationStatus.CLOSED) {
+            throw new IllegalArgumentException("Loan applications that have entered servicing cannot be manually overridden.");
         }
 
-        if (targetStatus == LoanApplicationStatus.APPROVED) {
+        if (targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
+                || targetStatus == LoanApplicationStatus.DISBURSED
+                || targetStatus == LoanApplicationStatus.UNDER_REPAYMENT
+                || targetStatus == LoanApplicationStatus.CLOSED) {
             throw new IllegalArgumentException("Use the standard approval flow instead of a manual status update.");
         }
 
-        if (targetStatus != LoanApplicationStatus.RECEIVED
-                && targetStatus != LoanApplicationStatus.UNDER_REVIEW
-                && targetStatus != LoanApplicationStatus.HOLD
+        if (targetStatus != LoanApplicationStatus.INITIALIZED
+                && targetStatus != LoanApplicationStatus.AWAITING_APPROVAL
+                && targetStatus != LoanApplicationStatus.PAYMENT_REINITIATION
                 && targetStatus != LoanApplicationStatus.REJECTED) {
             throw new IllegalArgumentException("Manual status updates are not supported for " + targetStatus.name() + ".");
         }
@@ -684,8 +690,8 @@ public class LoanApplicationService {
             String note
     ) {
         LoanApplication application = getApplication(applicationId);
-        if (application.getStatus() == LoanApplicationStatus.APPROVED
-                || application.getStatus() == LoanApplicationStatus.REJECTED) {
+        if (application.getStatus() != LoanApplicationStatus.INITIALIZED
+                && application.getStatus() != LoanApplicationStatus.AWAITING_APPROVAL) {
             throw new IllegalArgumentException("Assignment is only available for active review queue items.");
         }
 
@@ -787,12 +793,15 @@ public class LoanApplicationService {
             String actorUsername
     ) {
         LoanApplication application = getApplication(applicationId);
-        if (application.getStatus() != LoanApplicationStatus.APPROVED) {
-            throw new IllegalArgumentException("Disbursement can only be requested for approved loan applications.");
+        if (application.getStatus() != LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
+                && application.getStatus() != LoanApplicationStatus.PAYMENT_REINITIATION) {
+            throw new IllegalArgumentException("Disbursement can only be requested for applications pending disbursal or payment re-initiation.");
         }
 
         LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
-        if (loanAccount.getStatus() != LoanAccountStatus.PENDING_DISBURSEMENT) {
+        if (loanAccount.getStatus() != LoanAccountStatus.PENDING_DISBURSEMENT
+                && loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_FAILED
+                && loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION) {
             throw new IllegalArgumentException("Disbursement has already been requested for this loan account.");
         }
 
@@ -864,6 +873,25 @@ public class LoanApplicationService {
 
         loanAccount.updateDisbursementStatus(resolvedAccountStatus, Instant.now());
         loanAccountRepository.save(loanAccount);
+        if (outcome == MockDisbursementOutcome.DISBURSED) {
+            updateApplicationStatus(
+                    application,
+                    LoanApplicationStatus.DISBURSED,
+                    actorUsername,
+                    "Loan disbursement completed successfully.",
+                    null,
+                    LoanApplicationAuditAction.STATUS_TRANSITION
+            );
+        } else {
+            updateApplicationStatus(
+                    application,
+                    LoanApplicationStatus.PAYMENT_REINITIATION,
+                    actorUsername,
+                    "Loan disbursement requires payment re-initiation.",
+                    LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
+                    LoanApplicationAuditAction.STATUS_TRANSITION
+            );
+        }
         webhookOutboxService.enqueueIfSubscribed(
                 application.getLsp(),
                 WebhookEventType.LOAN_DISBURSEMENT_UPDATED,
@@ -899,8 +927,9 @@ public class LoanApplicationService {
         }
 
         LoanApplication application = getApplication(applicationId);
-        if (application.getStatus() != LoanApplicationStatus.APPROVED) {
-            throw new IllegalArgumentException("Payments can only be recorded for approved loan applications.");
+        if (application.getStatus() != LoanApplicationStatus.DISBURSED
+                && application.getStatus() != LoanApplicationStatus.UNDER_REPAYMENT) {
+            throw new IllegalArgumentException("Payments can only be recorded after a loan has been disbursed.");
         }
 
         LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
@@ -928,6 +957,16 @@ public class LoanApplicationService {
                 normalizeActorUsername(actorUsername),
                 LoanAccountClosureReason.FULLY_REPAID
         );
+        if (application.getStatus() == LoanApplicationStatus.DISBURSED) {
+            updateApplicationStatus(
+                    application,
+                    LoanApplicationStatus.UNDER_REPAYMENT,
+                    actorUsername,
+                    "Loan moved under repayment after the first posted payment.",
+                    null,
+                    LoanApplicationAuditAction.STATUS_TRANSITION
+            );
+        }
         webhookOutboxService.enqueueIfSubscribed(
                 application.getLsp(),
                 WebhookEventType.LOAN_REPAYMENT_RECORDED,
@@ -941,8 +980,9 @@ public class LoanApplicationService {
     @Transactional
     public LoanForeclosureQuote requestForeclosureQuote(UUID applicationId, String actorUsername, LocalDate effectiveDate) {
         LoanApplication application = getApplication(applicationId);
-        if (application.getStatus() != LoanApplicationStatus.APPROVED) {
-            throw new IllegalArgumentException("Foreclosure is only available for approved loan applications.");
+        if (application.getStatus() != LoanApplicationStatus.DISBURSED
+                && application.getStatus() != LoanApplicationStatus.UNDER_REPAYMENT) {
+            throw new IllegalArgumentException("Foreclosure is only available after a loan has been disbursed.");
         }
         if (effectiveDate == null) {
             throw new IllegalArgumentException("Foreclosure effective date is required.");
@@ -1319,7 +1359,8 @@ public class LoanApplicationService {
             LoanApplicationStatus targetStatus,
             LoanApplicationStatusReasonCode reasonCode
     ) {
-        if (targetStatus == LoanApplicationStatus.HOLD || targetStatus == LoanApplicationStatus.REJECTED) {
+        if (targetStatus == LoanApplicationStatus.REJECTED
+                || targetStatus == LoanApplicationStatus.PAYMENT_REINITIATION) {
             return requireReasonCode(
                     reasonCode,
                     "Reason code is required when a loan application is moved to " + targetStatus.name() + "."
@@ -1358,6 +1399,52 @@ public class LoanApplicationService {
                 reasonCode,
                 CorrelationIdHolder.get()
         ));
+    }
+
+    private LoanApplication updateApplicationStatus(
+            LoanApplication application,
+            LoanApplicationStatus targetStatus,
+            String actorUsername,
+            String note,
+            LoanApplicationStatusReasonCode reasonCode,
+            LoanApplicationAuditAction auditAction
+    ) {
+        LoanApplicationStatus currentStatus = application.getStatus();
+        if (currentStatus == targetStatus) {
+            return application;
+        }
+
+        application.transitionTo(targetStatus);
+        LoanApplication savedApplication = loanApplicationRepository.save(application);
+        String resolvedNote = normalizeOptional(note) == null
+                ? defaultTransitionNote(currentStatus, targetStatus)
+                : normalizeOptional(note);
+        loanApplicationStatusTransitionRepository.save(new LoanApplicationStatusTransition(
+                savedApplication,
+                currentStatus,
+                targetStatus,
+                normalizeActorUsername(actorUsername),
+                resolvedNote,
+                reasonCode,
+                CorrelationIdHolder.get()
+        ));
+        recordAuditEvent(
+                savedApplication,
+                auditAction,
+                currentStatus,
+                targetStatus,
+                actorUsername,
+                resolvedNote,
+                reasonCode
+        );
+        webhookOutboxService.enqueueIfSubscribed(
+                savedApplication.getLsp(),
+                WebhookEventType.LOAN_STATUS_CHANGED,
+                "LOAN_APPLICATION",
+                savedApplication.getId().toString(),
+                buildLoanStatusChangedPayload(savedApplication, currentStatus, targetStatus, reasonCode)
+        );
+        return savedApplication;
     }
 
     private LoanAccount ensureLoanAccountForApprovedApplication(LoanApplication application) {
@@ -1476,12 +1563,28 @@ public class LoanApplicationService {
         if (closureReason == LoanAccountClosureReason.FORECLOSURE) {
             loanAccount.close(LoanAccountClosureReason.FORECLOSURE, actorUsername, Instant.now());
             loanAccountRepository.save(loanAccount);
+            updateApplicationStatus(
+                    application,
+                    LoanApplicationStatus.CLOSED,
+                    actorUsername,
+                    "Loan closed after foreclosure settlement.",
+                    null,
+                    LoanApplicationAuditAction.STATUS_TRANSITION
+            );
             return;
         }
 
         if (loanAccount.getStatus() == LoanAccountStatus.DISBURSED) {
             loanAccount.close(LoanAccountClosureReason.FULLY_REPAID, actorUsername, Instant.now());
             loanAccountRepository.save(loanAccount);
+            updateApplicationStatus(
+                    application,
+                    LoanApplicationStatus.CLOSED,
+                    actorUsername,
+                    "Loan closed after all installments were settled.",
+                    null,
+                    LoanApplicationAuditAction.STATUS_TRANSITION
+            );
         }
     }
 

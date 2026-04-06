@@ -22,11 +22,14 @@ export const userStatusOptions = ['ACTIVE', 'INACTIVE'] as const
 export const apiClientStatusOptions = ['ACTIVE', 'INACTIVE'] as const
 export const loanProductStatusOptions = ['DRAFT', 'ACTIVE', 'INACTIVE'] as const
 export const loanApplicationStatusOptions = [
-  'RECEIVED',
-  'UNDER_REVIEW',
-  'HOLD',
-  'APPROVED',
+  'INITIALIZED',
+  'AWAITING_APPROVAL',
+  'APPROVED_PENDING_DISBURSAL',
   'REJECTED',
+  'PAYMENT_REINITIATION',
+  'DISBURSED',
+  'UNDER_REPAYMENT',
+  'CLOSED',
 ] as const
 export const loanAccountStatusOptions = [
   'PENDING_DISBURSEMENT',
@@ -274,7 +277,7 @@ export type LoanApplicationRecord = {
   sourceChannel: string
   requestedAmount: number
   tenureMonths: number
-  status: string
+  status: LoanApplicationStatus
   assignedToUsername?: string | null
   assignedByUsername?: string | null
   assignedAt?: string | null

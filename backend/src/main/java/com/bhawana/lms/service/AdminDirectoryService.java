@@ -251,7 +251,12 @@ public class AdminDirectoryService {
 
         return new LspPortfolioSummary(
                 lspApplications.size(),
-                (int) lspApplications.stream().filter(application -> application.getStatus().name().equals("APPROVED")).count(),
+                (int) lspApplications.stream()
+                        .filter(application -> application.getStatus() == com.bhawana.lms.domain.LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
+                                || application.getStatus() == com.bhawana.lms.domain.LoanApplicationStatus.DISBURSED
+                                || application.getStatus() == com.bhawana.lms.domain.LoanApplicationStatus.UNDER_REPAYMENT
+                                || application.getStatus() == com.bhawana.lms.domain.LoanApplicationStatus.CLOSED)
+                        .count(),
                 (int) lspLoanAccounts.stream().filter(account -> account.getDisbursedAt() != null).count(),
                 totalDisbursedAmount,
                 latestDisbursalDate

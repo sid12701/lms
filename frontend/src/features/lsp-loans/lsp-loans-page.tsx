@@ -6,21 +6,49 @@ import { Input } from '../../components/ui/input'
 import {
   getExternalLspLoanApplication,
   listExternalLspLoanApplications,
+  type LoanApplicationStatus,
   type LoanApplicationDetailRecord,
   type LoanApplicationRecord,
 } from '../api/lms-api'
 import { useAuth } from '../auth/auth-context'
 
-function statusVariant(status: string): 'default' | 'warning' | 'success' {
-  if (status === 'APPROVED') {
-    return 'success'
+function statusLabel(status: LoanApplicationStatus) {
+  switch (status) {
+    case 'INITIALIZED':
+      return 'Initialized'
+    case 'AWAITING_APPROVAL':
+      return 'Awaiting approval'
+    case 'APPROVED_PENDING_DISBURSAL':
+      return 'Application approved - pending for disbursal'
+    case 'REJECTED':
+      return 'Rejected'
+    case 'PAYMENT_REINITIATION':
+      return 'Payment re-initiation'
+    case 'DISBURSED':
+      return 'Disbursed'
+    case 'UNDER_REPAYMENT':
+      return 'Under repayment'
+    case 'CLOSED':
+      return 'Closed'
   }
+}
 
-  if (status === 'HOLD' || status === 'REJECTED') {
-    return 'warning'
+function statusVariant(status: LoanApplicationStatus): 'default' | 'warning' | 'success' | 'destructive' {
+  switch (status) {
+    case 'INITIALIZED':
+    case 'APPROVED_PENDING_DISBURSAL':
+    case 'PAYMENT_REINITIATION':
+      return 'warning'
+    case 'REJECTED':
+      return 'destructive'
+    case 'DISBURSED':
+    case 'UNDER_REPAYMENT':
+      return 'success'
+    case 'AWAITING_APPROVAL':
+    case 'CLOSED':
+    default:
+      return 'default'
   }
-
-  return 'default'
 }
 
 function escapeCsv(value: string | number | null | undefined) {
@@ -212,7 +240,7 @@ export function LspLoansPage() {
                     <strong>{loan.borrowerFullName}</strong>
                     <p className="helper-copy">{loan.externalLoanId}</p>
                   </div>
-                  <Badge variant={statusVariant(loan.status)}>{loan.status}</Badge>
+                  <Badge variant={statusVariant(loan.status)}>{statusLabel(loan.status)}</Badge>
                   <span>{loan.requestedAmount.toLocaleString('en-IN')}</span>
                   <span className="helper-copy">{new Date(loan.createdAt).toLocaleString()}</span>
                 </button>
@@ -246,7 +274,7 @@ export function LspLoansPage() {
               <div className="field-stack">
                 <label>Status</label>
                 <div className="inline-actions">
-                  <Badge variant={statusVariant(selectedLoan.status)}>{selectedLoan.status}</Badge>
+                  <Badge variant={statusVariant(selectedLoan.status)}>{statusLabel(selectedLoan.status)}</Badge>
                   <span className="helper-copy">{selectedLoan.sourceChannel}</span>
                 </div>
               </div>

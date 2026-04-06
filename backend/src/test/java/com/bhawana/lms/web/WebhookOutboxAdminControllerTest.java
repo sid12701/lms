@@ -164,9 +164,9 @@ class WebhookOutboxAdminControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-OUT-001");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW");
+        transitionApplication(applicationId, "AWAITING_APPROVAL");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", systemAdmin());
         requestDisbursement(applicationId);
         resolveDisbursement(applicationId);
         recordPayment(applicationId);
@@ -175,15 +175,17 @@ class WebhookOutboxAdminControllerTest {
                         .with(systemAdmin())
                         .queryParam("lspId", lsp.id()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(6))
+                .andExpect(jsonPath("$.length()").value(8))
                 .andExpect(jsonPath("$[0].eventType").value("LOAN_REPAYMENT_RECORDED"))
                 .andExpect(jsonPath("$[0].payloadJson", containsString("\"paymentTransactionId\"")))
-                .andExpect(jsonPath("$[1].eventType").value("LOAN_DISBURSEMENT_UPDATED"))
+                .andExpect(jsonPath("$[1].eventType").value("LOAN_STATUS_CHANGED"))
                 .andExpect(jsonPath("$[2].eventType").value("LOAN_DISBURSEMENT_UPDATED"))
                 .andExpect(jsonPath("$[3].eventType").value("LOAN_STATUS_CHANGED"))
-                .andExpect(jsonPath("$[4].eventType").value("LOAN_STATUS_CHANGED"))
-                .andExpect(jsonPath("$[5].eventType").value("LOAN_CREATED"))
-                .andExpect(jsonPath("$[5].status").value("PENDING"));
+                .andExpect(jsonPath("$[4].eventType").value("LOAN_DISBURSEMENT_UPDATED"))
+                .andExpect(jsonPath("$[5].eventType").value("LOAN_STATUS_CHANGED"))
+                .andExpect(jsonPath("$[6].eventType").value("LOAN_STATUS_CHANGED"))
+                .andExpect(jsonPath("$[7].eventType").value("LOAN_CREATED"))
+                .andExpect(jsonPath("$[7].status").value("PENDING"));
     }
 
     @Test
@@ -201,9 +203,9 @@ class WebhookOutboxAdminControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-CONTRACT-001");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW");
+        transitionApplication(applicationId, "AWAITING_APPROVAL");
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "APPROVED", systemAdmin());
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", systemAdmin());
         requestDisbursement(applicationId);
         resolveDisbursement(applicationId);
         recordPayment(applicationId);
@@ -212,7 +214,7 @@ class WebhookOutboxAdminControllerTest {
         executeForeclosureQuote(applicationId, quote.get("id").asText(), foreclosureDate);
 
         List<WebhookEventOutbox> events = webhookEventOutboxRepository.findTop50ByLsp_IdOrderByCreatedAtDesc(UUID.fromString(lsp.id()));
-        assertEquals(7, events.size());
+        assertEquals(10, events.size());
 
         JsonNode loanCreatedEnvelope = payloadEnvelope(findFirstEvent(events, WebhookEventType.LOAN_CREATED));
         assertEquals("LOAN_CREATED", loanCreatedEnvelope.get("eventType").asText());
@@ -223,7 +225,7 @@ class WebhookOutboxAdminControllerTest {
         JsonNode loanCreatedPayload = loanCreatedEnvelope.get("payload");
         assertEquals(applicationId, loanCreatedPayload.get("loanApplicationId").asText());
         assertEquals("EXT-CONTRACT-001", loanCreatedPayload.get("externalLoanId").asText());
-        assertEquals("RECEIVED", loanCreatedPayload.get("status").asText());
+        assertEquals("INITIALIZED", loanCreatedPayload.get("status").asText());
         assertFalse(loanCreatedPayload.get("borrowerId").asText().isBlank());
         assertBigDecimalEquals("45000.00", loanCreatedPayload.get("requestedAmount"));
         assertEquals(12, loanCreatedPayload.get("tenureMonths").asInt());
@@ -231,19 +233,34 @@ class WebhookOutboxAdminControllerTest {
         List<WebhookEventOutbox> statusEvents = events.stream()
                 .filter(event -> event.getEventType() == WebhookEventType.LOAN_STATUS_CHANGED)
                 .toList();
-        assertEquals(2, statusEvents.size());
+        assertEquals(5, statusEvents.size());
 
-        JsonNode reviewStatusPayload = payloadEnvelope(findStatusEvent(statusEvents, "RECEIVED", "UNDER_REVIEW")).get("payload");
+        JsonNode reviewStatusPayload = payloadEnvelope(findStatusEvent(statusEvents, "INITIALIZED", "AWAITING_APPROVAL")).get("payload");
         assertEquals(applicationId, reviewStatusPayload.get("loanApplicationId").asText());
         assertEquals("EXT-CONTRACT-001", reviewStatusPayload.get("externalLoanId").asText());
-        assertEquals("RECEIVED", reviewStatusPayload.get("fromStatus").asText());
-        assertEquals("UNDER_REVIEW", reviewStatusPayload.get("toStatus").asText());
+        assertEquals("INITIALIZED", reviewStatusPayload.get("fromStatus").asText());
+        assertEquals("AWAITING_APPROVAL", reviewStatusPayload.get("toStatus").asText());
         assertTrue(reviewStatusPayload.get("reasonCode").isNull());
 
-        JsonNode approvedStatusPayload = payloadEnvelope(findStatusEvent(statusEvents, "UNDER_REVIEW", "APPROVED")).get("payload");
-        assertEquals("UNDER_REVIEW", approvedStatusPayload.get("fromStatus").asText());
-        assertEquals("APPROVED", approvedStatusPayload.get("toStatus").asText());
+        JsonNode approvedStatusPayload = payloadEnvelope(findStatusEvent(statusEvents, "AWAITING_APPROVAL", "APPROVED_PENDING_DISBURSAL")).get("payload");
+        assertEquals("AWAITING_APPROVAL", approvedStatusPayload.get("fromStatus").asText());
+        assertEquals("APPROVED_PENDING_DISBURSAL", approvedStatusPayload.get("toStatus").asText());
         assertTrue(approvedStatusPayload.get("reasonCode").isNull());
+
+        JsonNode disbursedStatusPayload = payloadEnvelope(findStatusEvent(statusEvents, "APPROVED_PENDING_DISBURSAL", "DISBURSED")).get("payload");
+        assertEquals("APPROVED_PENDING_DISBURSAL", disbursedStatusPayload.get("fromStatus").asText());
+        assertEquals("DISBURSED", disbursedStatusPayload.get("toStatus").asText());
+        assertTrue(disbursedStatusPayload.get("reasonCode").isNull());
+
+        JsonNode repaymentStatusPayload = payloadEnvelope(findStatusEvent(statusEvents, "DISBURSED", "UNDER_REPAYMENT")).get("payload");
+        assertEquals("DISBURSED", repaymentStatusPayload.get("fromStatus").asText());
+        assertEquals("UNDER_REPAYMENT", repaymentStatusPayload.get("toStatus").asText());
+        assertTrue(repaymentStatusPayload.get("reasonCode").isNull());
+
+        JsonNode closedStatusPayload = payloadEnvelope(findStatusEvent(statusEvents, "UNDER_REPAYMENT", "CLOSED")).get("payload");
+        assertEquals("UNDER_REPAYMENT", closedStatusPayload.get("fromStatus").asText());
+        assertEquals("CLOSED", closedStatusPayload.get("toStatus").asText());
+        assertTrue(closedStatusPayload.get("reasonCode").isNull());
 
         List<WebhookEventOutbox> disbursementEvents = events.stream()
                 .filter(event -> event.getEventType() == WebhookEventType.LOAN_DISBURSEMENT_UPDATED)
@@ -297,7 +314,7 @@ class WebhookOutboxAdminControllerTest {
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-OUT-002");
         String applicationId = created.get("id").asText();
-        transitionApplication(applicationId, "UNDER_REVIEW");
+        transitionApplication(applicationId, "AWAITING_APPROVAL");
 
         mockMvc.perform(get("/api/v1/internal/admin/webhook-outbox")
                         .with(systemAdmin())

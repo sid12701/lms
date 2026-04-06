@@ -167,7 +167,7 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lspId").value(apex.id()))
                 .andExpect(jsonPath("$.externalLoanId").value("APEX-EXT-001"))
-                .andExpect(jsonPath("$.status").value("RECEIVED"));
+                .andExpect(jsonPath("$.status").value("INITIALIZED"));
 
         JsonNode northApplication = createInternalApplication(
                 north.id(),
@@ -308,8 +308,8 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(jsonPath("$.fileName").value("pan-card.pdf"));
 
         markAllRequiredKycDocumentsVerified(applicationId);
-        transitionApplication(applicationId, "UNDER_REVIEW");
-        transitionApplication(applicationId, "APPROVED", systemAdmin());
+        transitionApplication(applicationId, "AWAITING_APPROVAL");
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", systemAdmin());
         requestDisbursement(applicationId);
         resolveDisbursement(applicationId);
         recordPayment(applicationId);
@@ -371,8 +371,8 @@ class LspLoanApplicationApiControllerTest {
                 "ZXCVB1234N"
         );
         markAllRequiredKycDocumentsVerified(northApplication.get("id").asText());
-        transitionApplication(northApplication.get("id").asText(), "UNDER_REVIEW");
-        transitionApplication(northApplication.get("id").asText(), "APPROVED", systemAdmin());
+        transitionApplication(northApplication.get("id").asText(), "AWAITING_APPROVAL");
+        transitionApplication(northApplication.get("id").asText(), "APPROVED_PENDING_DISBURSAL", systemAdmin());
 
         JsonNode northDetail = getInternalApplicationDetail(northApplication.get("id").asText());
         String northLoanId = northDetail.get("loanAccount").get("id").asText();
