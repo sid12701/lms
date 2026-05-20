@@ -64,6 +64,7 @@
   *::before,
   *::after {
     box-sizing: border-box;
+    border-color: rgba(0, 6, 102, 0.08);
   }
 
   html {
@@ -1088,6 +1089,22 @@
     }
   }
 
+  .ui-button--destructive {
+    background: var(--color-destructive);
+    color: #fff;
+    box-shadow: var(--shadow-md);
+
+    &:hover {
+      filter: brightness(1.05);
+      box-shadow: var(--shadow-lg);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-destructive);
+      outline-offset: 2px;
+    }
+  }
+
   /* Button sizes */
 
   .ui-button--sm {
@@ -1108,6 +1125,13 @@
     padding: 0 1.5rem;
     font-size: 0.95rem;
     border-radius: var(--radius-lg);
+  }
+
+  .ui-button--icon {
+    width: 2.625rem;
+    height: 2.625rem;
+    padding: 0;
+    border-radius: var(--radius-md);
   }
 
 

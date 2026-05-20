@@ -1,8 +1,15 @@
+server:
+  forward-headers-strategy: NATIVE
+
 spring:
   application:
     name: lms-backend
   profiles:
     default: local
+  flyway:
+    placeholders:
+      tenant_app_role: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
+      tenant_app_password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
   jackson:
     serialization:
       write-dates-as-timestamps: false
@@ -20,7 +27,10 @@ management:
         enabled: true
 
 springdoc:
+  api-docs:
+    enabled: false
   swagger-ui:
+    enabled: false
     path: /swagger-ui.html
 
 app:
@@ -35,6 +45,8 @@ app:
       secret: ${APP_SECURITY_JWT_SECRET:}
       issuer: ${APP_SECURITY_JWT_ISSUER:bhawana-lms}
       ttl: ${APP_SECURITY_JWT_TTL:PT30M}
+      refresh-ttl: ${APP_SECURITY_JWT_REFRESH_TTL:P7D}
+      secure-cookies: ${APP_SECURITY_JWT_SECURE_COOKIES:true}
   seed:
     sample-data:
       enabled: false
@@ -52,3 +64,20 @@ app:
       enabled: true
       from-address: ${APP_REPORTS_NOTIFICATIONS_FROM_ADDRESS:no-reply@bhawanalms.local}
       reports-page-url: ${APP_REPORTS_NOTIFICATIONS_REPORTS_PAGE_URL:http://127.0.0.1:5173/reports}
+  storage:
+    documents:
+      provider: ${APP_STORAGE_DOCUMENTS_PROVIDER:R2}
+      root-path: ${APP_STORAGE_DOCUMENTS_ROOT_PATH:${java.io.tmpdir}/lms-documents}
+      r2:
+        endpoint: ${APP_STORAGE_DOCUMENTS_R2_ENDPOINT:}
+        access-key: ${APP_STORAGE_DOCUMENTS_R2_ACCESS_KEY:}
+        secret-key: ${APP_STORAGE_DOCUMENTS_R2_SECRET_KEY:}
+        bucket: ${APP_STORAGE_DOCUMENTS_R2_BUCKET:}
+        region: ${APP_STORAGE_DOCUMENTS_R2_REGION:auto}
+  datasource:
+    tenant:
+      username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
+      password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
+  rate-limit:
+    auth-per-minute: ${APP_RATE_LIMIT_AUTH_PER_MINUTE:10}
+    lsp-write-per-minute: ${APP_RATE_LIMIT_LSP_WRITE_PER_MINUTE:60}

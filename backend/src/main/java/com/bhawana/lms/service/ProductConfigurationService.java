@@ -153,11 +153,14 @@ public class ProductConfigurationService {
 
     @Transactional(readOnly = true)
     public List<ProductLspMappingView> listAllProductMappings() {
-        return loanProductLspMappingRepository.findAll().stream()
+        return loanProductLspMappingRepository.findAllMappingRefs().stream()
                 .collect(java.util.stream.Collectors.groupingBy(
-                        mapping -> mapping.getLoanProduct().getId(),
+                        LoanProductLspMappingRepository.ProductLspMappingRefProjection::getProductId,
                         java.util.TreeMap::new,
-                        java.util.stream.Collectors.mapping(mapping -> mapping.getLsp().getId(), java.util.stream.Collectors.toCollection(java.util.TreeSet::new))
+                        java.util.stream.Collectors.mapping(
+                                LoanProductLspMappingRepository.ProductLspMappingRefProjection::getLspId,
+                                java.util.stream.Collectors.toCollection(java.util.TreeSet::new)
+                        )
                 ))
                 .entrySet().stream()
                 .map(entry -> new ProductLspMappingView(

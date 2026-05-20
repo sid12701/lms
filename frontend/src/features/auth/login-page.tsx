@@ -17,7 +17,7 @@ import { useAuth } from './auth-context'
 export function LoginPage() {
   const navigate = useNavigate()
   const { login } = useAuth()
-  const [username, setUsername] = useState('local.admin')
+  const [username, setUsername] = useState('ops.admin')
   const [password, setPassword] = useState('ChangeMe123!')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -87,7 +87,7 @@ export function LoginPage() {
           </CardContent>
           <CardFooter>
             <div className="helper-copy">
-              Phase 2 target: this form talks directly to the backend auth token flow.
+              Phase 2 target: this form talks directly to the backend password login flow.
             </div>
           </CardFooter>
         </Card>

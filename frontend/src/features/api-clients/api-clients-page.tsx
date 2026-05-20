@@ -1,19 +1,26 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { BlueLoader } from '@/components/app/blue-loader'
+import { queryKeys } from '../api/query-keys'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
+import type {
+  AdminMetadata,
+  ApiClientRecord,
+  ApiClientStatus,
+  LspOptionRecord,
+} from '../api/lms-api'
+import {
+  apiClientStatusOptions,
+} from '../api/lms-api'
 import {
   createApiClient,
   getAdminMetadata,
   listApiClients,
-  listLsps,
-  apiClientStatusOptions,
-  type AdminMetadata,
-  type ApiClientRecord,
-  type ApiClientStatus,
-  type LspRecord,
-} from '../api/lms-api'
+  listLspOptions,
+} from '../api/admin-api'
 
 function statusVariant(status: ApiClientStatus): 'success' | 'warning' {
   return status === 'ACTIVE' ? 'success' : 'warning'
@@ -28,57 +35,42 @@ function shortSecret(secret: string) {
 }
 
 export function ApiClientsPage() {
-  const [clients, setClients] = useState<ApiClientRecord[]>([])
-  const [lsps, setLsps] = useState<LspRecord[]>([])
-  const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
+  const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [lspId, setLspId] = useState('')
   const [status, setStatus] = useState<ApiClientStatus | ''>('')
-  const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
+  const [localError, setLocalError] = useState('')
   const [createdSecret, setCreatedSecret] = useState<{ clientName: string; clientId: string; clientSecret: string } | null>(null)
+
+  const metadataQuery = useQuery({
+    queryKey: queryKeys.adminMetadata,
+    queryFn: getAdminMetadata,
+  })
+  const lspQuery = useQuery({
+    queryKey: queryKeys.lspOptions,
+    queryFn: listLspOptions,
+  })
+  const clientsQuery = useQuery({
+    queryKey: queryKeys.apiClients,
+    queryFn: listApiClients,
+  })
+
+  const metadata: AdminMetadata | null = metadataQuery.data ?? null
+  const lsps: LspOptionRecord[] = lspQuery.data ?? []
+  const clients: ApiClientRecord[] = clientsQuery.data ?? []
+  const loading = metadataQuery.isLoading || lspQuery.isLoading || clientsQuery.isLoading
+  const queryError = metadataQuery.error ?? lspQuery.error ?? clientsQuery.error
+  const error = localError || (queryError instanceof Error ? queryError.message : '')
   const statusOptions = metadata?.apiClientStatuses ?? apiClientStatusOptions
 
   useEffect(() => {
-    let cancelled = false
+    setLspId((current) => current || lsps[0]?.id || '')
+  }, [lsps])
 
-    async function loadClients() {
-      setLoading(true)
-      setError('')
-
-      try {
-        const [metadataResponse, lspResponse, clientResponse] = await Promise.all([
-          getAdminMetadata(),
-          listLsps(),
-          listApiClients(),
-        ])
-
-        if (!cancelled) {
-          setMetadata(metadataResponse)
-          setLsps(lspResponse)
-          setClients(clientResponse)
-          setLspId((current) => current || lspResponse[0]?.id || '')
-          setStatus((current) => current || (metadataResponse.apiClientStatuses?.[0] as ApiClientStatus | '') || 'ACTIVE')
-        }
-      } catch (loadError) {
-        const message = loadError instanceof Error ? loadError.message : 'Unable to load API clients.'
-        if (!cancelled) {
-          setError(message)
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
-    }
-
-    void loadClients()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  useEffect(() => {
+    setStatus((current) => current || (metadata?.apiClientStatuses?.[0] as ApiClientStatus | '') || 'ACTIVE')
+  }, [metadata])
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -90,7 +82,7 @@ export function ApiClientsPage() {
     const nextLspId = lspId || lsps[0]?.id || null
 
     setSubmitting(true)
-    setError('')
+    setLocalError('')
 
     try {
       const created = await createApiClient({
@@ -99,7 +91,10 @@ export function ApiClientsPage() {
         status: nextStatus,
       })
 
-      setClients((current) => [created, ...current.filter((item) => item.id !== created.id)])
+      queryClient.setQueryData<ApiClientRecord[]>(queryKeys.apiClients, (current = []) => [
+        created,
+        ...current.filter((item) => item.id !== created.id),
+      ])
       setCreatedSecret({
         clientName: created.name,
         clientId: created.clientId,
@@ -110,7 +105,7 @@ export function ApiClientsPage() {
       setStatus(nextStatus)
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : 'Unable to create API client.'
-      setError(message)
+      setLocalError(message)
     } finally {
       setSubmitting(false)
     }
@@ -131,7 +126,13 @@ export function ApiClientsPage() {
             <Badge>{clients.length} clients</Badge>
             <Badge variant="warning">{lsps.length} LSPs</Badge>
           </div>
-          {loading ? <div className="empty-state">Loading API clients...</div> : null}
+          {loading ? (
+            <BlueLoader
+              title="Loading API clients"
+              description="Fetching partner credentials and LSP metadata."
+              compact
+            />
+          ) : null}
           {error ? <div className="empty-state">{error}</div> : null}
           {!loading && !error ? (
             <div className="table-grid">

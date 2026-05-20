@@ -83,7 +83,7 @@ class UserAdminControllerTest {
 
         assertNotEquals(oldPasswordHash, appUserRepository.findById(managedUser.getId()).orElseThrow().getPasswordHash());
 
-        mockMvc.perform(post("/api/v1/auth/token")
+        mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new AuthController.LoginRequest("test.user", temporaryPassword))))

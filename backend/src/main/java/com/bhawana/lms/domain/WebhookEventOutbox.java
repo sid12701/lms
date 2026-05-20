@@ -11,6 +11,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -65,6 +66,10 @@ public class WebhookEventOutbox {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Version
+    @Column(name = "entity_version", nullable = false)
+    private long entityVersion;
 
     protected WebhookEventOutbox() {
     }
@@ -158,6 +163,10 @@ public class WebhookEventOutbox {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public long getEntityVersion() {
+        return entityVersion;
     }
 
     public void markDelivered(Instant attemptedAt) {

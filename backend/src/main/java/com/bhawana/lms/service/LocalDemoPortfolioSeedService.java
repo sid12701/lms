@@ -238,10 +238,14 @@ public class LocalDemoPortfolioSeedService {
         moveToApproved(application.getId(), "ops.reviewer2");
         loanApplicationService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
         loanApplicationService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.DISBURSED);
+        BigDecimal firstInstallmentAmount = loanApplicationService.listRepaymentSchedule(application.getId()).stream()
+                .findFirst()
+                .map(installment -> installment.getOutstandingAmount())
+                .orElseThrow();
         loanApplicationService.recordPaymentTransaction(
                 application.getId(),
                 INTERNAL_ACTOR,
-                new BigDecimal("12000.00"),
+                firstInstallmentAmount,
                 LocalDate.now(),
                 "PAY-SUPA-1007",
                 LoanPaymentChannel.UPI,

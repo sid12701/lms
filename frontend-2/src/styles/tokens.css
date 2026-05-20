@@ -1,0 +1,151 @@
+/**
+ * Bhawana LMS — Design Tokens (Tailwind v4 CSS-first)
+ *
+ * Authoritative source: docs/frontend-implementation-plan.md §5.1, §5.3.
+ * Light values are defaults at :root (via @theme). Dark variant is declared
+ * with light-mirrored values for now — Phase 10 will replace with true dark.
+ *
+ * PRESERVED COLORS (do not change):
+ *   --color-brand-700  = #000666  (PRIMARY — navy)
+ *
+ * ACCENT (user-directed override of CLAUDE.md D10 on 2026-05-19):
+ *   --color-accent-500 = #3730a3  (indigo-700)   light
+ *   --color-accent-500 = #a5b4fc  (indigo-300)   dark
+ */
+
+@theme {
+  /* ---------- Type ---------- */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ---------- Brand ---------- */
+  --color-brand-50: #f0f2fb;
+  --color-brand-100: #dde1f4;
+  --color-brand-500: #1f2a8a;
+  --color-brand-700: #000666; /* PRIMARY — preserve */
+  --color-brand-900: #000333;
+  --color-accent-500: #3730a3; /* indigo-700 (user-directed; overrides D10) */
+  --color-accent-700: #2e2783;
+
+  /* ---------- Surface ---------- */
+  --color-background: #f6f7fb;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f6f7fb;
+  --color-surface-raised: #ffffff;
+  --color-border: #e5e8f0;
+  --color-border-strong: #cfd5e3;
+
+  /* ---------- Foreground ---------- */
+  --color-foreground: #0f1729;
+  --color-foreground-muted: #5e6680;
+  --color-foreground-subtle: #8a92a8;
+
+  /* ---------- Roles ---------- */
+  --color-primary: #000666;
+  --color-primary-foreground: #ffffff;
+  --color-ring: #1f2a8a;
+
+  /* ---------- Semantic intents (color + icon + text — never color alone) ---------- */
+  --color-success: #0f7a4a;
+  --color-warning: #a67c1a;
+  --color-danger: #b23a48;
+  --color-info: #1f4ec9;
+  --color-progress: #1f4ec9;
+  --color-revoked: #7a5a18;
+  --color-neutral: #5e6680;
+
+  /* ---------- shadcn-conventional aliases ----------
+     Map shadcn's expected token names onto our system so primitives that
+     reference foreground/background/card/popover/muted/accent/destructive
+     /input/secondary resolve via Tailwind v4 utilities.
+     Note: @theme requires literal values (not var()) for utility generation,
+     so we duplicate values here. Keep in sync with the canonical tokens above. */
+  --color-card: #ffffff;
+  --color-card-foreground: #0f1729;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0f1729;
+  --color-muted: #f6f7fb;
+  --color-muted-foreground: #5e6680;
+  --color-accent: #3730a3;
+  --color-accent-foreground: #ffffff;
+  --color-destructive: #b23a48;
+  --color-destructive-foreground: #ffffff;
+  --color-input: #cfd5e3;
+  --color-secondary: #f6f7fb;
+  --color-secondary-foreground: #0f1729;
+
+  /* ---------- Radius ---------- */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* ---------- Shadows (navy-tinted) ---------- */
+  --shadow-e1: 0 1px 2px rgba(0, 6, 102, 0.06);
+  --shadow-e2: 0 4px 12px rgba(0, 6, 102, 0.08);
+  --shadow-e3: 0 12px 28px rgba(0, 6, 102, 0.14);
+}
+
+/**
+ * Dark variant — Phase 10.
+ *
+ * Banking/NBFC dark: subdued, navy-tinted blacks. The brand navy is
+ * preserved as a scale token but the primary ROLE remaps to a lifted brand
+ * step so it stays readable on dark surfaces. Accent gold is preserved and
+ * lifted slightly for hover/affordances. All foreground/background pairings
+ * are verified WCAG AA in `src/styles/dark-contrast.test.ts`.
+ */
+.dark {
+  /* Brand scale — preserve hues; the deepest steps become unusable on dark
+     but the scale stays consistent for components that reference them. */
+  --color-brand-50: #1a2342;
+  --color-brand-100: #232c47;
+  --color-brand-500: #6b78e0; /* lifted brand — usable on dark */
+  --color-brand-700: #000666; /* PRESERVE */
+  --color-brand-900: #000333; /* PRESERVE */
+  --color-accent-500: #a5b4fc; /* indigo-300 — lifted indigo for dark surfaces */
+  --color-accent-700: #c7d2fe;
+
+  /* Surface — navy-tinted blacks for the enterprise banking feel. */
+  --color-background: #0a0e1c;
+  --color-surface: #0f1729;
+  --color-surface-muted: #161e36;
+  --color-surface-raised: #1a2342;
+  --color-border: #232c47;
+  --color-border-strong: #313b5a;
+
+  /* Foreground */
+  --color-foreground: #e6e9f2;
+  --color-foreground-muted: #9aa3bd;
+  --color-foreground-subtle: #6e7693;
+
+  /* Roles — primary remaps to the lifted brand for dark readability. */
+  --color-primary: #6b78e0;
+  --color-primary-foreground: #ffffff;
+  --color-ring: #6b78e0;
+
+  /* Semantic intents — lifted saturation for dark backgrounds. */
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-info: #60a5fa;
+  --color-progress: #60a5fa;
+  --color-revoked: #d4a574;
+  --color-neutral: #9aa3bd;
+
+  /* shadcn aliases — re-derived for dark. */
+  --color-card: #0f1729;
+  --color-card-foreground: #e6e9f2;
+  --color-popover: #0f1729;
+  --color-popover-foreground: #e6e9f2;
+  --color-muted: #161e36;
+  --color-muted-foreground: #9aa3bd;
+  --color-accent: #a5b4fc;
+  --color-accent-foreground: #0f1729; /* indigo-300 on dark needs dark text */
+  --color-destructive: #f87171;
+  --color-destructive-foreground: #ffffff;
+  --color-input: #313b5a;
+  --color-secondary: #161e36;
+  --color-secondary-foreground: #e6e9f2;
+}

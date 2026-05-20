@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.repo.AppUserRepository;
+import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -41,9 +42,13 @@ class LspAdminControllerTest {
     @Autowired
     private AppUserRepository appUserRepository;
 
+    @Autowired
+    private LoanProductLspMappingRepository loanProductLspMappingRepository;
+
     @BeforeEach
     void setUp() {
         appUserRepository.deleteAllInBatch();
+        loanProductLspMappingRepository.deleteAllInBatch();
         lspRepository.deleteAll();
     }
 
@@ -109,6 +114,21 @@ class LspAdminControllerTest {
     void opsUserCannotAccessLspAdminEndpoints() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/lsps").with(opsUser()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void opsUserCanReadLightweightLspOptions() throws Exception {
+        String lspId = createLsp();
+
+        mockMvc.perform(get("/api/v1/internal/admin/lsp-options")
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(lspId))
+                .andExpect(jsonPath("$[0].code").exists())
+                .andExpect(jsonPath("$[0].name").value("North Finance"))
+                .andExpect(jsonPath("$[0].status").value("ACTIVE"))
+                .andExpect(jsonPath("$[0].portfolioSummary").doesNotExist())
+                .andExpect(jsonPath("$[0].webhookSubscription").doesNotExist());
     }
 
     @Test

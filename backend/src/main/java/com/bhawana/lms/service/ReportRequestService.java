@@ -10,12 +10,15 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.data.domain.PageRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ReportRequestService {
+
+    private static final Logger log = LoggerFactory.getLogger(ReportRequestService.class);
 
     private final ReportRequestRepository reportRequestRepository;
     private final AdminReportingService adminReportingService;
@@ -76,17 +79,19 @@ public class ReportRequestService {
 
     @Transactional
     public ProcessingSummary processPendingRequests(int batchSize) {
-        List<ReportRequest> pendingRequests = reportRequestRepository.findByStatusInOrderByCreatedAtAsc(
+        long startedAt = System.nanoTime();
+        List<ReportRequest> pendingRequests = reportRequestRepository.claimBatchForProcessing(
                 List.of(ReportRequestStatus.PENDING),
-                PageRequest.of(0, batchSize)
+                batchSize
         );
 
         int completed = 0;
         int failed = 0;
 
         for (ReportRequest reportRequest : pendingRequests) {
+            long requestStartedAt = System.nanoTime();
             reportRequest.markProcessing();
-            reportRequestRepository.save(reportRequest);
+            reportRequestRepository.saveAndFlush(reportRequest);
 
             try {
                 AdminReportingService.GeneratedReport generatedReport = switch (reportRequest.getReportType()) {
@@ -120,8 +125,26 @@ public class ReportRequestService {
             }
 
             reportRequestRepository.save(reportRequest);
+            log.info(
+                    "report_request_processed requestId={} reportType={} requestedBy={} lspId={} finalStatus={} notificationAttempted={} notificationErrorPresent={} durationMs={}",
+                    reportRequest.getId(),
+                    reportRequest.getReportType(),
+                    reportRequest.getRequestedByUsername(),
+                    reportRequest.getLsp() == null ? null : reportRequest.getLsp().getId(),
+                    reportRequest.getStatus(),
+                    notificationResult.attempted(),
+                    notificationResult.errorMessage() != null,
+                    elapsedMillis(requestStartedAt)
+            );
         }
 
+        log.info(
+                "report_request_batch_completed processed={} completed={} failed={} durationMs={}",
+                pendingRequests.size(),
+                completed,
+                failed,
+                elapsedMillis(startedAt)
+        );
         return new ProcessingSummary(pendingRequests.size(), completed, failed);
     }
 
@@ -153,5 +176,9 @@ public class ReportRequestService {
             int completed,
             int failed
     ) {
+    }
+
+    private static long elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000L;
     }
 }

@@ -1,31 +1,23 @@
 package com.bhawana.lms.web;
 
-import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanApplication;
-import com.bhawana.lms.domain.LoanApplicationAuditEvent;
-import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
-import com.bhawana.lms.domain.LoanApplicationDocumentAccessAudit;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
-import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
-import com.bhawana.lms.domain.LoanApplicationStatusTransition;
-import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
-import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
+import com.bhawana.lms.common.web.PagedResult;
+import com.bhawana.lms.common.web.PaginationResponseBuilder;
 import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
 import com.bhawana.lms.service.LoanApplicationService;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.bhawana.lms.service.LoanDocumentService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
@@ -38,13 +30,16 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -58,41 +53,58 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/internal/ops/loan-applications")
 @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','OPS_USER')")
 public class LoanApplicationOpsController {
-
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
     private final LoanApplicationService loanApplicationService;
+    private final LoanDocumentService loanDocumentService;
 
-    public LoanApplicationOpsController(LoanApplicationService loanApplicationService) {
+    public LoanApplicationOpsController(
+            LoanApplicationService loanApplicationService,
+            LoanDocumentService loanDocumentService
+    ) {
         this.loanApplicationService = loanApplicationService;
+        this.loanDocumentService = loanDocumentService;
     }
 
     @GetMapping
-    public List<LoanApplicationResponse> listApplications(
+    public ResponseEntity<List<LoanApplicationResponse>> listApplications(
             @RequestParam(required = false) UUID lspId,
             @RequestParam(required = false) UUID productId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String sourceChannel,
             @RequestParam(required = false, name = "q") String query,
             @RequestParam(required = false) LocalDate disbursalDateFrom,
-            @RequestParam(required = false) LocalDate disbursalDateTo
+            @RequestParam(required = false) LocalDate disbursalDateTo,
+            @RequestParam(required = false) @Min(0) Integer offset,
+            @RequestParam(required = false) @Min(1) @Max(1000) Integer limit,
+            @RequestParam(required = false) String paginationDetails
     ) {
-        return loanApplicationService.listApplications(
-                        lspId,
-                        productId,
-                        status,
-                        sourceChannel,
-                        query,
-                        disbursalDateFrom,
-                        disbursalDateTo
-                ).stream()
-                .map(LoanApplicationOpsController::toResponse)
-                .toList();
+        boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
+        PagedResult<LoanApplication> applicationsPage = loanApplicationService.listApplicationsPage(
+                lspId,
+                productId,
+                status,
+                sourceChannel,
+                query,
+                disbursalDateFrom,
+                disbursalDateTo,
+                offset,
+                limit,
+                includePaginationDetails
+        );
+        PagedResult<LoanApplicationResponse> page = new PagedResult<>(
+                applicationsPage.items().stream()
+                .map(LoanApplicationOpsResponses::toResponse)
+                .toList(),
+                applicationsPage.totalCount(),
+                applicationsPage.offset(),
+                applicationsPage.limit()
+        );
+        return PaginationResponseBuilder.toListResponse(page, includePaginationDetails);
     }
 
     @GetMapping("/{applicationId}")
     public LoanApplicationDetailResponse getApplication(@PathVariable UUID applicationId) {
         LoanApplication application = loanApplicationService.getApplication(applicationId);
-        return toDetailResponse(
+        return LoanApplicationOpsResponses.toDetailResponse(
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
                 loanApplicationService.getLoanAccount(applicationId).orElse(null),
@@ -107,56 +119,56 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId
     ) {
         return loanApplicationService.listIntakeAudits(applicationId, authentication.getName()).stream()
-                .map(LoanApplicationOpsController::toAuditResponse)
+                .map(LoanApplicationOpsResponses::toAuditResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/status-transitions")
     public List<LoanApplicationStatusTransitionResponse> listStatusTransitions(@PathVariable UUID applicationId) {
         return loanApplicationService.listStatusTransitions(applicationId).stream()
-                .map(LoanApplicationOpsController::toTransitionResponse)
+                .map(LoanApplicationOpsResponses::toTransitionResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/assignment-events")
     public List<LoanApplicationAssignmentEventResponse> listAssignmentEvents(@PathVariable UUID applicationId) {
         return loanApplicationService.listAssignmentEvents(applicationId).stream()
-                .map(LoanApplicationOpsController::toAssignmentEventResponse)
+                .map(LoanApplicationOpsResponses::toAssignmentEventResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/audit-events")
     public List<LoanApplicationAuditEventResponse> listAuditEvents(@PathVariable UUID applicationId) {
         return loanApplicationService.listAuditEvents(applicationId).stream()
-                .map(LoanApplicationOpsController::toAuditEventResponse)
+                .map(LoanApplicationOpsResponses::toAuditEventResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/document-access-audits")
     public List<LoanApplicationDocumentAccessAuditResponse> listDocumentAccessAudits(@PathVariable UUID applicationId) {
         return loanApplicationService.listDocumentAccessAudits(applicationId).stream()
-                .map(LoanApplicationOpsController::toDocumentAccessAuditResponse)
+                .map(LoanApplicationOpsResponses::toDocumentAccessAuditResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/disbursement-requests")
     public List<LoanDisbursementRequestResponse> listDisbursementRequests(@PathVariable UUID applicationId) {
         return loanApplicationService.listDisbursementRequests(applicationId).stream()
-                .map(LoanApplicationOpsController::toDisbursementRequestResponse)
+                .map(LoanApplicationOpsResponses::toDisbursementRequestResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/repayment-schedule")
     public List<LoanRepaymentScheduleInstallmentResponse> listRepaymentSchedule(@PathVariable UUID applicationId) {
         return loanApplicationService.listRepaymentSchedule(applicationId).stream()
-                .map(LoanApplicationOpsController::toRepaymentScheduleInstallmentResponse)
+                .map(LoanApplicationOpsResponses::toRepaymentScheduleInstallmentResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/payments")
     public List<LoanPaymentTransactionResponse> listPaymentTransactions(@PathVariable UUID applicationId) {
         return loanApplicationService.listPaymentTransactions(applicationId).stream()
-                .map(LoanApplicationOpsController::toPaymentTransactionResponse)
+                .map(LoanApplicationOpsResponses::toPaymentTransactionResponse)
                 .toList();
     }
 
@@ -164,7 +176,7 @@ public class LoanApplicationOpsController {
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public List<LoanForeclosureQuoteResponse> listForeclosureQuotes(@PathVariable UUID applicationId) {
         return loanApplicationService.listForeclosureQuotes(applicationId).stream()
-                .map(LoanApplicationOpsController::toForeclosureQuoteResponse)
+                .map(LoanApplicationOpsResponses::toForeclosureQuoteResponse)
                 .toList();
     }
 
@@ -174,8 +186,50 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId
     ) {
         return loanApplicationService.listDocumentChecklist(applicationId, authentication.getName()).stream()
-                .map(LoanApplicationOpsController::toDocumentChecklistResponse)
+                .map(LoanApplicationOpsResponses::toDocumentChecklistResponse)
                 .toList();
+    }
+
+    @GetMapping("/{applicationId}/kyc-documents/download-all")
+    public ResponseEntity<byte[]> downloadAllDocuments(@PathVariable UUID applicationId) {
+        byte[] zipContent;
+        try {
+            zipContent = loanDocumentService.buildDocumentZip(applicationId);
+        } catch (IllegalStateException exception) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"loan-" + applicationId + "-documents.zip\"")
+                .contentType(MediaType.parseMediaType("application/zip"))
+                .contentLength(zipContent.length)
+                .body(zipContent);
+    }
+
+    @GetMapping("/{applicationId}/kyc-documents/{documentType}/content")
+    public ResponseEntity<byte[]> downloadDocumentContent(
+            @PathVariable UUID applicationId,
+            @PathVariable LoanApplicationDocumentType documentType
+    ) {
+        LoanApplicationDocumentChecklist checklistItem;
+        try {
+            checklistItem = loanApplicationService.getDocumentChecklistItem(applicationId, documentType);
+        } catch (jakarta.persistence.EntityNotFoundException exception) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!checklistItem.isLmsManagedContent() || checklistItem.getStorageKey() == null) {
+            return ResponseEntity.notFound().build();
+        }
+        LoanDocumentService.RetrievedDocumentContent content;
+        try {
+            content = loanDocumentService.retrieveDocumentContent(applicationId, documentType);
+        } catch (IllegalStateException exception) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(content.fileName()).build().toString())
+                .contentType(MediaType.parseMediaType(content.contentType()))
+                .contentLength(content.content().length)
+                .body(content.content());
     }
 
     @PostMapping
@@ -225,7 +279,7 @@ public class LoanApplicationOpsController {
                         null
                 )
         );
-        return toResponse(application);
+        return LoanApplicationOpsResponses.toResponse(application);
     }
 
     @PostMapping("/{applicationId}/status-transitions")
@@ -243,7 +297,7 @@ public class LoanApplicationOpsController {
                 request.note(),
                 request.reasonCode()
         );
-        return toDetailResponse(
+        return LoanApplicationOpsResponses.toDetailResponse(
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
                 loanApplicationService.getLoanAccount(applicationId).orElse(null),
@@ -266,7 +320,7 @@ public class LoanApplicationOpsController {
                 request.note(),
                 request.reasonCode()
         );
-        return toDetailResponse(
+        return LoanApplicationOpsResponses.toDetailResponse(
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
                 loanApplicationService.getLoanAccount(applicationId).orElse(null),
@@ -313,7 +367,7 @@ public class LoanApplicationOpsController {
                 request.assigneeUsername(),
                 request.note()
         );
-        return toDetailResponse(
+        return LoanApplicationOpsResponses.toDetailResponse(
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
                 loanApplicationService.getLoanAccount(applicationId).orElse(null),
@@ -329,7 +383,7 @@ public class LoanApplicationOpsController {
             @PathVariable LoanApplicationDocumentType documentType,
             @Valid @RequestBody LoanApplicationDocumentChecklistUpdateRequest request
     ) {
-        return toDocumentChecklistResponse(loanApplicationService.updateDocumentChecklistItem(
+        return LoanApplicationOpsResponses.toDocumentChecklistResponse(loanApplicationService.updateDocumentChecklistItem(
                 applicationId,
                 documentType,
                 authentication.getName(),
@@ -354,7 +408,7 @@ public class LoanApplicationOpsController {
                 applicationId,
                 authentication.getName()
         );
-        return toDetailResponse(
+        return LoanApplicationOpsResponses.toDetailResponse(
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
                 loanApplicationService.getLoanAccount(applicationId).orElse(null),
@@ -375,7 +429,7 @@ public class LoanApplicationOpsController {
                 authentication.getName(),
                 request.outcome()
         );
-        return toDetailResponse(
+        return LoanApplicationOpsResponses.toDetailResponse(
                 application,
                 loanApplicationService.getLatestActivity(applicationId).orElse(null),
                 loanApplicationService.getLoanAccount(applicationId).orElse(null),
@@ -391,7 +445,7 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @Valid @RequestBody LoanPaymentTransactionRequest request
     ) {
-        return toPaymentTransactionResponse(loanApplicationService.recordPaymentTransaction(
+        return LoanApplicationOpsResponses.toPaymentTransactionResponse(loanApplicationService.recordPaymentTransaction(
                 applicationId,
                 authentication.getName(),
                 request.amount(),
@@ -410,7 +464,7 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @Valid @RequestBody LoanForeclosureQuoteRequest request
     ) {
-        return toForeclosureQuoteResponse(loanApplicationService.requestForeclosureQuote(
+        return LoanApplicationOpsResponses.toForeclosureQuoteResponse(loanApplicationService.requestForeclosureQuote(
                 applicationId,
                 authentication.getName(),
                 request.effectiveDate()
@@ -425,7 +479,7 @@ public class LoanApplicationOpsController {
             @PathVariable UUID quoteId,
             @Valid @RequestBody LoanForeclosureExecutionRequest request
     ) {
-        return toForeclosureQuoteResponse(loanApplicationService.executeForeclosureQuote(
+        return LoanApplicationOpsResponses.toForeclosureQuoteResponse(loanApplicationService.executeForeclosureQuote(
                 applicationId,
                 quoteId,
                 authentication.getName(),
@@ -433,355 +487,6 @@ public class LoanApplicationOpsController {
                 request.reference(),
                 request.note()
         ));
-    }
-
-    private static LoanApplicationResponse toResponse(LoanApplication application) {
-        return new LoanApplicationResponse(
-                application.getId().toString(),
-                application.getBorrower().getId().toString(),
-                application.getBorrower().getFullName(),
-                application.getBorrower().getPan(),
-                application.getBorrower().getMobile(),
-                application.getBorrower().getEmail(),
-                application.getBorrower().getDateOfBirth(),
-                application.getBorrower().getCity(),
-                application.getBorrower().getState(),
-                application.getBorrower().getEmploymentType(),
-                application.getBorrower().getMonthlyIncome(),
-                application.getLsp().getId().toString(),
-                application.getLsp().getCode(),
-                application.getLsp().getName(),
-                application.getLoanProduct().getId().toString(),
-                application.getLoanProduct().getCode(),
-                application.getLoanProduct().getName(),
-                application.getExternalLoanId(),
-                application.getSourceChannel(),
-                application.getRequestedAmount(),
-                application.getRequestedTenureMonths(),
-                application.getStatus().name(),
-                application.getAssignedToUsername(),
-                application.getAssignedByUsername(),
-                application.getAssignedAt(),
-                application.getCreatedAt().toString()
-        );
-    }
-
-    static LoanApplicationDetailResponse toDetailResponse(
-            LoanApplication application,
-            LoanApplicationService.LoanApplicationLastActivity lastActivity,
-            LoanAccount loanAccount,
-            LoanApplicationService.LoanRepaymentScheduleSummary repaymentScheduleSummary,
-            LoanApplicationService.LoanDelinquencySummary delinquencySummary
-    ) {
-        return new LoanApplicationDetailResponse(
-                application.getId().toString(),
-                application.getBorrower().getId().toString(),
-                application.getBorrower().getFullName(),
-                application.getBorrower().getPan(),
-                application.getBorrower().getMobile(),
-                application.getBorrower().getEmail(),
-                application.getBorrower().getDateOfBirth(),
-                application.getBorrower().getCity(),
-                application.getBorrower().getState(),
-                application.getBorrower().getEmploymentType(),
-                application.getBorrower().getMonthlyIncome(),
-                application.getLsp().getId().toString(),
-                application.getLsp().getCode(),
-                application.getLsp().getName(),
-                application.getLoanProduct().getId().toString(),
-                application.getLoanProduct().getCode(),
-                application.getLoanProduct().getName(),
-                application.getExternalLoanId(),
-                application.getSourceChannel(),
-                application.getRequestedAmount(),
-                application.getRequestedTenureMonths(),
-                application.getStatus().name(),
-                application.getAssignedToUsername(),
-                application.getAssignedByUsername(),
-                application.getAssignedAt(),
-                application.getCreatedAt().toString(),
-                application.getUpdatedAt().toString(),
-                loanAccount == null ? null : new LoanAccountSummaryResponse(
-                        loanAccount.getId().toString(),
-                        loanAccount.getAccountNumber(),
-                        loanAccount.getStatus().name(),
-                        loanAccount.getPrincipalAmount(),
-                        loanAccount.getTenureMonths(),
-                        loanAccount.getApprovedAt().toString(),
-                        loanAccount.getCreatedAt().toString(),
-                        loanAccount.getClosureReason() == null ? null : loanAccount.getClosureReason().name(),
-                        loanAccount.getClosedAt() == null ? null : loanAccount.getClosedAt().toString(),
-                        loanAccount.getClosedByUsername(),
-                        delinquencySummary == null ? null : new LoanDelinquencySummaryResponse(
-                                delinquencySummary.maxDaysPastDue(),
-                                delinquencySummary.bucket().name(),
-                                delinquencySummary.overdueInstallmentCount(),
-                                delinquencySummary.overdueAmount()
-                        ),
-                        repaymentScheduleSummary == null ? null : new LoanRepaymentScheduleSummaryResponse(
-                                repaymentScheduleSummary.installmentCount(),
-                                repaymentScheduleSummary.installmentAmount(),
-                                repaymentScheduleSummary.firstDueDate(),
-                                repaymentScheduleSummary.finalDueDate()
-                        )
-                ),
-                lastActivity == null ? null : new LoanApplicationLastActivityResponse(
-                        lastActivity.activityType(),
-                        lastActivity.actorUsername(),
-                        lastActivity.summary(),
-                        lastActivity.detail(),
-                        lastActivity.correlationId(),
-                        lastActivity.occurredAt().toString()
-                )
-        );
-    }
-
-    private static LoanApplicationIntakeAuditResponse toAuditResponse(LoanApplicationIntakeAudit audit) {
-        return new LoanApplicationIntakeAuditResponse(
-                audit.getId().toString(),
-                audit.getLoanApplication().getId().toString(),
-                audit.getActorUsername(),
-                audit.getCorrelationId(),
-                maskSensitivePayloadJson(audit.getPayloadJson()),
-                audit.getCreatedAt()
-        );
-    }
-
-    private static String maskSensitivePayloadJson(String payloadJson) {
-        try {
-            JsonNode root = JSON_MAPPER.readTree(payloadJson);
-            JsonNode masked = maskSensitiveNode(root);
-            return JSON_MAPPER.writeValueAsString(masked);
-        } catch (JsonProcessingException exception) {
-            return payloadJson;
-        }
-    }
-
-    private static JsonNode maskSensitiveNode(JsonNode node) {
-        if (node == null || node.isNull()) {
-            return node;
-        }
-
-        if (node.isArray()) {
-            for (JsonNode child : node) {
-                maskSensitiveNode(child);
-            }
-            return node;
-        }
-
-        if (!node.isObject()) {
-            return node;
-        }
-
-        ObjectNode objectNode = (ObjectNode) node;
-        objectNode.fieldNames().forEachRemaining(fieldName -> {
-            JsonNode child = objectNode.get(fieldName);
-            if (child != null && child.isTextual()) {
-                objectNode.put(fieldName, switch (fieldName) {
-                    case "borrowerPan", "pan" -> maskPan(child.asText());
-                    case "borrowerMobile", "mobile" -> maskMobile(child.asText());
-                    case "borrowerEmail", "email" -> maskEmail(child.asText());
-                    default -> child.asText();
-                });
-            } else {
-                maskSensitiveNode(child);
-            }
-        });
-        return objectNode;
-    }
-
-    private static String maskPan(String value) {
-        return maskMiddle(value, 3, 2);
-    }
-
-    private static String maskMobile(String value) {
-        return maskMiddle(value, 0, 4);
-    }
-
-    private static String maskEmail(String value) {
-        int atIndex = value.indexOf('@');
-        if (atIndex <= 0 || atIndex == value.length() - 1) {
-            return maskMiddle(value, 1, 0);
-        }
-        String localPart = value.substring(0, atIndex);
-        String domain = value.substring(atIndex + 1);
-        String maskedLocalPart = localPart.length() <= 1
-                ? "*"
-                : localPart.substring(0, 1) + "*".repeat(Math.max(localPart.length() - 1, 2));
-        return maskedLocalPart + "@" + domain;
-    }
-
-    private static String maskMiddle(String value, int visibleStart, int visibleEnd) {
-        if (value == null || value.isBlank()) {
-            return value;
-        }
-        if (value.length() <= visibleStart + visibleEnd) {
-            return "*".repeat(value.length());
-        }
-        return value.substring(0, visibleStart)
-                + "*".repeat(value.length() - visibleStart - visibleEnd)
-                + value.substring(value.length() - visibleEnd);
-    }
-
-    private static LoanApplicationStatusTransitionResponse toTransitionResponse(LoanApplicationStatusTransition transition) {
-        return new LoanApplicationStatusTransitionResponse(
-                transition.getId().toString(),
-                transition.getLoanApplication().getId().toString(),
-                transition.getActorUsername(),
-                transition.getFromStatus().name(),
-                transition.getToStatus().name(),
-                transition.getNote(),
-                transition.getReasonCode() == null ? null : transition.getReasonCode().name(),
-                transition.getCorrelationId(),
-                transition.getCreatedAt().toString()
-        );
-    }
-
-    private static LoanApplicationAssignmentEventResponse toAssignmentEventResponse(LoanApplicationAssignmentEvent event) {
-        return new LoanApplicationAssignmentEventResponse(
-                event.getId().toString(),
-                event.getLoanApplication().getId().toString(),
-                event.getFromAssigneeUsername(),
-                event.getToAssigneeUsername(),
-                event.getActorUsername(),
-                event.getNote(),
-                event.getCorrelationId(),
-                event.getCreatedAt().toString()
-        );
-    }
-
-    private static LoanApplicationAuditEventResponse toAuditEventResponse(LoanApplicationAuditEvent event) {
-        return new LoanApplicationAuditEventResponse(
-                event.getId().toString(),
-                event.getLoanApplication().getId().toString(),
-                event.getAction().name(),
-                event.getActorUsername(),
-                event.getFromStatus().name(),
-                event.getToStatus().name(),
-                event.getNote(),
-                event.getReasonCode() == null ? null : event.getReasonCode().name(),
-                event.getCorrelationId(),
-                event.getCreatedAt().toString()
-        );
-    }
-
-    static LoanDisbursementRequestResponse toDisbursementRequestResponse(LoanDisbursementRequestLog request) {
-        return new LoanDisbursementRequestResponse(
-                request.getId().toString(),
-                request.getLoanAccount().getId().toString(),
-                request.getActorUsername(),
-                request.getAmount(),
-                request.getProviderName(),
-                request.getProviderRequestId(),
-                request.getProviderStatus(),
-                request.getRequestPayloadJson(),
-                request.getResponsePayloadJson(),
-                request.getCorrelationId(),
-                request.getCreatedAt().toString(),
-                request.getUpdatedAt().toString()
-        );
-    }
-
-    static LoanRepaymentScheduleInstallmentResponse toRepaymentScheduleInstallmentResponse(
-            LoanRepaymentScheduleInstallment installment
-    ) {
-        int daysPastDue = LoanApplicationService.calculateDaysPastDue(installment, LocalDate.now(ZoneOffset.UTC));
-        return new LoanRepaymentScheduleInstallmentResponse(
-                installment.getId().toString(),
-                installment.getLoanAccount().getId().toString(),
-                installment.getInstallmentNumber(),
-                installment.getDueDate(),
-                installment.getOpeningPrincipal(),
-                installment.getPrincipalDue(),
-                installment.getInterestDue(),
-                installment.getInstallmentAmount(),
-                installment.getClosingPrincipal(),
-                installment.getStatus().name(),
-                installment.getPaidPrincipal(),
-                installment.getPaidInterest(),
-                installment.getPaidAmount(),
-                installment.getOutstandingAmount(),
-                daysPastDue,
-                LoanApplicationService.resolveDelinquencyBucket(daysPastDue).name(),
-                installment.getCreatedAt().toString()
-        );
-    }
-
-    static LoanPaymentTransactionResponse toPaymentTransactionResponse(LoanPaymentTransaction paymentTransaction) {
-        return new LoanPaymentTransactionResponse(
-                paymentTransaction.getId().toString(),
-                paymentTransaction.getLoanAccount().getId().toString(),
-                paymentTransaction.getActorUsername(),
-                paymentTransaction.getAmount(),
-                paymentTransaction.getPaymentDate(),
-                paymentTransaction.getReference(),
-                paymentTransaction.getChannel().name(),
-                paymentTransaction.getStatus().name(),
-                paymentTransaction.getAllocatedAmount(),
-                paymentTransaction.getUnallocatedAmount(),
-                paymentTransaction.getNote(),
-                paymentTransaction.getCorrelationId(),
-                paymentTransaction.getCreatedAt().toString(),
-                paymentTransaction.getUpdatedAt().toString()
-        );
-    }
-
-    static LoanForeclosureQuoteResponse toForeclosureQuoteResponse(LoanForeclosureQuote quote) {
-        return new LoanForeclosureQuoteResponse(
-                quote.getId().toString(),
-                quote.getLoanAccount().getId().toString(),
-                quote.getVersion(),
-                quote.getRequestedByUsername(),
-                quote.getExecutedByUsername(),
-                quote.getEffectiveDate(),
-                quote.getOutstandingPrincipal(),
-                quote.getOutstandingInterest(),
-                quote.getSettlementAmount(),
-                quote.getStatus().name(),
-                quote.getExecutedAt() == null ? null : quote.getExecutedAt().toString(),
-                quote.getCreatedAt().toString(),
-                quote.getUpdatedAt().toString()
-        );
-    }
-
-    static LoanApplicationDocumentChecklistResponse toDocumentChecklistResponse(
-            LoanApplicationDocumentChecklist checklistItem
-    ) {
-        return new LoanApplicationDocumentChecklistResponse(
-                checklistItem.getId().toString(),
-                checklistItem.getLoanApplication().getId().toString(),
-                checklistItem.getDocumentType().name(),
-                checklistItem.getDocumentType().getDisplayName(),
-                checklistItem.isRequired(),
-                checklistItem.getStatus().name(),
-                checklistItem.getNote(),
-                checklistItem.getFileName(),
-                checklistItem.getFileReference(),
-                checklistItem.getContentType(),
-                checklistItem.getSourceReference(),
-                checklistItem.getReviewReason(),
-                checklistItem.getRejectionReason(),
-                checklistItem.getUploadedAt(),
-                checklistItem.getUploadedByUsername(),
-                checklistItem.getUpdatedByUsername(),
-                checklistItem.getCreatedAt().toString(),
-                checklistItem.getUpdatedAt().toString()
-        );
-    }
-
-    private static LoanApplicationDocumentAccessAuditResponse toDocumentAccessAuditResponse(
-            LoanApplicationDocumentAccessAudit audit
-    ) {
-        return new LoanApplicationDocumentAccessAuditResponse(
-                audit.getId().toString(),
-                audit.getLoanApplication().getId().toString(),
-                audit.getAction().name(),
-                audit.getActorUsername(),
-                audit.getSummary(),
-                audit.getDocumentTypes().stream().map(Enum::name).toList(),
-                audit.getCorrelationId(),
-                audit.getCreatedAt().toString()
-        );
     }
 
     public record LoanApplicationRequest(
@@ -856,6 +561,10 @@ public class LoanApplicationOpsController {
             BigDecimal requestedAmount,
             Integer tenureMonths,
             String status,
+            String invalidReasonCode,
+            String invalidReasonText,
+            String invalidatedByUsername,
+            String invalidatedAt,
             String assignedToUsername,
             String assignedByUsername,
             Instant assignedAt,
@@ -1100,6 +809,10 @@ public class LoanApplicationOpsController {
             String fileReference,
             String contentType,
             String sourceReference,
+            boolean lmsManagedContent,
+            String storageKey,
+            String fileChecksum,
+            Long fileSizeBytes,
             String reviewReason,
             String rejectionReason,
             Instant uploadedAt,

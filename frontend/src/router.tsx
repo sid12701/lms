@@ -2,36 +2,25 @@ import type { ReactElement } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/layout/app-shell'
 import { useAuth } from './features/auth/auth-context'
+import { AlertsPage } from './features/alerts/alerts-page'
 import { ChangePasswordPage } from './features/auth/change-password-page'
 import { LoginPage } from './features/auth/login-page'
+import { BorrowerDetailPage } from './features/borrowers/borrower-detail-page'
 import { LspAdminPage } from './features/admin/lsp-admin-page'
 import { ApiClientsPage } from './features/api-clients/api-clients-page'
+import {
+  canAccessAlerts,
+  canAccessReports,
+  isLspUiUser,
+  resolveDefaultLandingPath,
+} from './features/auth/role-utils'
 import { HomePage } from './features/home/home-page'
+import { LoanApplicationDetailPage } from './features/loan-applications/loan-application-detail-page'
 import { LoanApplicationsPage } from './features/loan-applications/loan-applications-page'
 import { LspLoansPage } from './features/lsp-loans/lsp-loans-page'
 import { ReportsPage } from './features/reports/reports-page'
 import { UsersPage } from './features/users/users-page'
 import { ProductConfigurationPage } from './features/products/product-configuration-page'
-
-function isLspUiUser(roles: string[]) {
-  return roles.includes('LSP_UI_READ') || roles.includes('LSP_UI_WRITE')
-}
-
-function canAccessReports(roles: string[]) {
-  return roles.includes('SYSTEM_ADMIN')
-}
-
-function defaultLandingPath(user: { roles: string[] } | null, mustChangePassword: boolean) {
-  if (!user) {
-    return '/login'
-  }
-
-  if (mustChangePassword) {
-    return '/change-password'
-  }
-
-  return isLspUiUser(user.roles) ? '/my-loans' : '/home'
-}
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
   const { user, mustChangePassword } = useAuth()
@@ -55,7 +44,7 @@ function PasswordChangeRoute({ children }: { children: ReactElement }) {
   }
 
   if (!mustChangePassword) {
-    return <Navigate to={defaultLandingPath(user, false)} replace />
+    return <Navigate to={resolveDefaultLandingPath(user, false)} replace />
   }
 
   return children
@@ -65,7 +54,7 @@ function LoginRoute() {
   const { user, mustChangePassword } = useAuth()
 
   if (user) {
-    return <Navigate to={defaultLandingPath(user, mustChangePassword)} replace />
+    return <Navigate to={resolveDefaultLandingPath(user, mustChangePassword)} replace />
   }
 
   return <LoginPage />
@@ -95,7 +84,17 @@ function ReportsOnlyRoute({ children }: { children: ReactElement }) {
   const { user } = useAuth()
 
   if (user && !canAccessReports(user.roles)) {
-    return <Navigate to={defaultLandingPath(user, false)} replace />
+    return <Navigate to={resolveDefaultLandingPath(user, false)} replace />
+  }
+
+  return children
+}
+
+function AlertsOnlyRoute({ children }: { children: ReactElement }) {
+  const { user } = useAuth()
+
+  if (user && !canAccessAlerts(user.roles)) {
+    return <Navigate to={resolveDefaultLandingPath(user, false)} replace />
   }
 
   return children
@@ -115,7 +114,7 @@ export function AppRouter() {
           </PasswordChangeRoute>
         }
       />
-      <Route path="/" element={<Navigate to={defaultLandingPath(user, mustChangePassword)} replace />} />
+      <Route path="/" element={<Navigate to={resolveDefaultLandingPath(user, mustChangePassword)} replace />} />
       <Route
         path="/*"
         element={
@@ -176,6 +175,32 @@ export function AppRouter() {
           element={
             <InternalOnlyRoute>
               <LoanApplicationsPage />
+            </InternalOnlyRoute>
+          }
+        />
+        <Route
+          path="loan-applications/:id"
+          element={
+            <InternalOnlyRoute>
+              <LoanApplicationDetailPage />
+            </InternalOnlyRoute>
+          }
+        />
+        <Route
+          path="borrowers/:id"
+          element={
+            <InternalOnlyRoute>
+              <BorrowerDetailPage />
+            </InternalOnlyRoute>
+          }
+        />
+        <Route
+          path="alerts"
+          element={
+            <InternalOnlyRoute>
+              <AlertsOnlyRoute>
+                <AlertsPage />
+              </AlertsOnlyRoute>
             </InternalOnlyRoute>
           }
         />

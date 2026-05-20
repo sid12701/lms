@@ -1,4 +1,5 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
+const inFlightJsonRequests = new Map<string, Promise<unknown>>()
 
 export const roleOptions = [
   'SYSTEM_ADMIN',
@@ -27,6 +28,7 @@ export const loanApplicationStatusOptions = [
   'APPROVED_PENDING_DISBURSAL',
   'REJECTED',
   'PAYMENT_REINITIATION',
+  'INVALID',
   'DISBURSED',
   'UNDER_REPAYMENT',
   'CLOSED',
@@ -35,10 +37,11 @@ export const loanAccountStatusOptions = [
   'PENDING_DISBURSEMENT',
   'DISBURSEMENT_REQUESTED',
   'DISBURSED',
-  'DISBURSEMENT_FAILED',
-  'DISBURSEMENT_PENDING_RECONCILIATION',
+  'INVALID',
   'CLOSED',
   'FORECLOSED',
+  'DISBURSEMENT_FAILED',
+  'DISBURSEMENT_PENDING_RECONCILIATION',
 ] as const
 export const loanPaymentChannelOptions = [
   'UPI',
@@ -69,6 +72,9 @@ export const loanApplicationDocumentPlaceholderStatusOptions = [
   'REJECTED',
   'NOT_REQUIRED',
 ] as const
+export const loanInvalidationReasonOptions = ['REASON_A', 'REASON_B', 'REASON_C', 'OTHERS'] as const
+export const opsAlertSeverityOptions = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const
+export const opsAlertStatusOptions = ['NEW', 'ACKNOWLEDGED'] as const
 
 export type RoleCode = (typeof roleOptions)[number]
 export type LspStatus = (typeof lspStatusOptions)[number]
@@ -84,6 +90,9 @@ export type MockDisbursementOutcome = (typeof mockDisbursementOutcomeOptions)[nu
 export type LoanApplicationStatusReasonCode = (typeof loanApplicationStatusReasonCodeOptions)[number]
 export type LoanApplicationDocumentPlaceholderStatus =
   (typeof loanApplicationDocumentPlaceholderStatusOptions)[number]
+export type LoanInvalidationReason = (typeof loanInvalidationReasonOptions)[number]
+export type OpsAlertSeverity = (typeof opsAlertSeverityOptions)[number]
+export type OpsAlertStatus = (typeof opsAlertStatusOptions)[number]
 
 export type AuthTokenResponse = {
   accessToken: string
@@ -140,6 +149,13 @@ export type LspRecord = {
   portfolioSummary: LspPortfolioSummaryRecord
 }
 
+export type LspOptionRecord = {
+  id: string
+  code: string
+  name: string
+  status: LspStatus
+}
+
 export type LspPortfolioSummaryRecord = {
   loanApplicationCount: number
   approvedLoanCount: number
@@ -167,12 +183,25 @@ export type HomeOverviewLspBucketBreakdownRecord = {
   loanCount: number
 }
 
+export type HomePriorityAccountRecord = {
+  applicationId: string
+  externalLoanId: string
+  customerName: string
+  lspCode: string
+  principalAmount: number
+  interestRate: number
+  loanStatusDisplay: string
+  overdueAmount: number
+  daysPastDue: number
+}
+
 export type HomeOverviewResponse = {
   totalDisbursedAmount: number
   totalOutstandingAmount: number
   dpd90PlusAmount: number
   dpd90PlusLoanCount: number
   lspBreakdown: HomeOverviewLspBreakdownRecord[]
+  priorityAccounts: HomePriorityAccountRecord[]
 }
 
 export type LspUserSummaryRecord = {
@@ -396,6 +425,10 @@ export type LoanApplicationDetailRecord = LoanApplicationRecord & {
   updatedAt: string
   loanAccount: LoanAccountSummaryRecord | null
   lastActivity: LoanApplicationLastActivityRecord | null
+  invalidReasonCode?: LoanInvalidationReason | null
+  invalidReasonText?: string | null
+  invalidatedAt?: string | null
+  invalidatedByUsername?: string | null
 }
 
 export type LoanApplicationIntakeAuditRecord = {
@@ -433,6 +466,7 @@ export type LoanApplicationAssignmentEventRecord = {
 export type LoanApplicationAuditAction =
   | 'STATUS_TRANSITION'
   | 'MANUAL_STATUS_OVERRIDE'
+  | 'INVALIDATED'
   | 'FORECLOSURE_EXECUTED'
 
 export type LoanApplicationAuditEventRecord = {
@@ -472,11 +506,20 @@ export type LoanApplicationDocumentPlaceholderRecord = {
   fileName: string | null
   contentType: string | null
   sourceReference: string | null
+  storageKey?: string | null
+  lmsManagedContent?: boolean | null
   uploadedAt: string | null
   uploadedByUsername: string | null
   updatedByUsername: string | null
   updatedAt: string | null
   createdAt: string
+}
+
+export type LoanInvalidationReasonOptionRecord = {
+  code: LoanInvalidationReason
+  label: string
+  requiresText: boolean
+  requiresDetail?: boolean
 }
 
 export const reportRequestStatusOptions = ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'] as const
@@ -502,6 +545,88 @@ export type ReportRequestRecord = {
   completedAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+export type MisPortfolioSummary = {
+  totalDisbursed: number
+  activeLoanCount: number
+  weightedAvgInterestRate: number
+  portfolioAtRiskPct: number
+  totalLoanCount: number
+}
+
+export type MisPreviewInstallment = {
+  installmentNumber: number
+  dueDate: string | null
+  installmentAmount: number
+  paidAmount: number
+  received: boolean
+}
+
+export type MisPreviewRow = {
+  lspCode: string
+  lspName: string
+  applicationId: string
+  externalLoanId: string
+  borrowerFullName: string
+  productCode: string
+  productName: string
+  accountNumber: string
+  principalAmount: number
+  accountStatus: string
+  disbursalDate: string | null
+  delinquencyBucket: string
+  overdueAmount: number
+  closureReason: string | null
+  closedDate: string | null
+  applicationCreatedAt: string | null
+  loanYear: number | null
+  processingFeeAmount: number
+  disbursalAmount: number
+  interestRate: number
+  tenureMonths: number
+  borrowerId: string
+  perEmiAmount: number
+  installments: MisPreviewInstallment[]
+  loanStatusDisplay: string
+  foreclosedRepaidAmount: number | null
+  foreclosureDate: string | null
+  normalClosureDate: string | null
+  daysPastDue: number
+  customerName: string
+  address: string | null
+  zipCode: string | null
+  borrowerState: string | null
+  ifscCode: string | null
+  bankAccountNumber: string | null
+  gender: string | null
+  aadharNumber: string | null
+  panNumber: string | null
+  profession: string | null
+  income: number | null
+}
+
+export type MisPreviewPage = {
+  content: MisPreviewRow[]
+  totalElements: number
+  page: number
+  size: number
+}
+
+export type OpsAlertRecord = {
+  id: string
+  type: string
+  severity: OpsAlertSeverity
+  status: OpsAlertStatus
+  title: string
+  message: string
+  subjectType: string
+  subjectId: string | null
+  correlationId: string | null
+  contextJson: string | null
+  createdAt: string
+  acknowledgedAt: string | null
+  acknowledgedByUsername: string | null
 }
 
 export class ApiError extends Error {
@@ -618,7 +743,44 @@ async function requestJson<T>(
   path: string,
   init: RequestInit = {},
   options: { authenticated?: boolean; accessToken?: string } = {},
+): Promise<T> {
+  const dedupeKey = buildJsonDedupeKey(path, init, options)
+  if (dedupeKey) {
+    const existing = inFlightJsonRequests.get(dedupeKey) as Promise<T> | undefined
+    if (existing) {
+      return existing
+    }
+
+    const promise: Promise<T> = performJsonRequest<T>(path, init, options).finally(() => {
+      inFlightJsonRequests.delete(dedupeKey)
+    })
+    inFlightJsonRequests.set(dedupeKey, promise)
+    return promise
+  }
+
+  return performJsonRequest(path, init, options)
+}
+
+function buildJsonDedupeKey(
+  path: string,
+  init: RequestInit,
+  options: { authenticated?: boolean; accessToken?: string },
 ) {
+  const method = (init.method ?? 'GET').toUpperCase()
+  if (method !== 'GET' || init.body) {
+    return null
+  }
+
+  const authenticated = options.authenticated ?? true
+  const accessToken = authenticated ? options.accessToken ?? getStoredAccessToken() : null
+  return `${authenticated ? 'auth' : 'anon'}:${accessToken ?? ''}:${path}`
+}
+
+async function performJsonRequest<T>(
+  path: string,
+  init: RequestInit = {},
+  options: { authenticated?: boolean; accessToken?: string } = {},
+): Promise<T> {
   const authenticated = options.authenticated ?? true
   const headers = new Headers(init.headers)
   const accessToken = authenticated ? options.accessToken ?? getStoredAccessToken() : null
@@ -634,6 +796,7 @@ async function requestJson<T>(
   const response = await fetch(buildUrl(path), {
     ...init,
     headers,
+    credentials: 'include',
   })
 
   if (!response.ok) {
@@ -689,6 +852,7 @@ async function requestBlob(
   const response = await fetch(buildUrl(path), {
     ...init,
     headers,
+    credentials: 'include',
   })
 
   if (!response.ok) {
@@ -705,7 +869,7 @@ async function requestBlob(
 
 export function loginWithPassword(username: string, password: string) {
   return requestJson<AuthTokenResponse>(
-    '/api/v1/auth/token',
+    '/api/v1/auth/login',
     {
       method: 'POST',
       body: JSON.stringify({ username, password }),
@@ -782,6 +946,10 @@ export function getAdminMetadata() {
 
 export function listLsps() {
   return requestJson<LspRecord[]>('/api/v1/internal/admin/lsps')
+}
+
+export function listLspOptions() {
+  return requestJson<LspOptionRecord[]>('/api/v1/internal/admin/lsp-options')
 }
 
 export function getLspDetail(lspId: string) {

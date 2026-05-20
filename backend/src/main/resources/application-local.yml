@@ -1,8 +1,15 @@
 spring:
   datasource:
-    url: jdbc:postgresql://${LMS_DB_HOST:localhost}:${LMS_DB_PORT:5432}/${LMS_DB_NAME:lms}
-    username: ${LMS_DB_USERNAME:lms}
-    password: ${LMS_DB_PASSWORD:lms}
+    url: ${LMS_DB_URL:jdbc:postgresql://db.avvzobksoybnmwjkeelk.supabase.co:5432/postgres?sslmode=require}
+    username: ${LMS_DB_USERNAME:postgres}
+    password: ${LMS_DB_PASSWORD:5hjJa0oRsZOWyGik}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 300000
+      max-lifetime: 600000
+      keepalive-time: 60000
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -29,6 +36,12 @@ spring:
           starttls:
             enable: false
 
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
 app:
   security:
     bootstrap-user:
@@ -39,12 +52,23 @@ app:
         - OPS_USER
     jwt:
       secret: ${APP_SECURITY_JWT_SECRET:change-me-local-dev-secret-change-me-local-dev}
+      secure-cookies: false
   seed:
     sample-data:
-      enabled: true
+      enabled: false
+    demo-portfolio:
+      enabled: false
   storage:
-    minio:
-      endpoint: ${LMS_MINIO_ENDPOINT:http://localhost:9000}
-      access-key: ${LMS_MINIO_ACCESS_KEY:minio}
-      secret-key: ${LMS_MINIO_SECRET_KEY:minio123}
-      bucket: ${LMS_MINIO_BUCKET:lms-documents}
+    documents:
+      provider: ${APP_STORAGE_DOCUMENTS_PROVIDER:R2}
+      root-path: ${APP_STORAGE_DOCUMENTS_ROOT_PATH:${java.io.tmpdir}/lms-documents-local}
+      r2:
+        endpoint: ${APP_STORAGE_DOCUMENTS_R2_ENDPOINT:}
+        access-key: ${APP_STORAGE_DOCUMENTS_R2_ACCESS_KEY:}
+        secret-key: ${APP_STORAGE_DOCUMENTS_R2_SECRET_KEY:}
+        bucket: ${APP_STORAGE_DOCUMENTS_R2_BUCKET:}
+        region: ${APP_STORAGE_DOCUMENTS_R2_REGION:auto}
+  datasource:
+    tenant:
+      username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
+      password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}

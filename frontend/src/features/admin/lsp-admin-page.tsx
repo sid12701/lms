@@ -1,25 +1,47 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Badge } from '../../components/ui/badge'
-import { Button } from '../../components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
-import { Input } from '../../components/ui/input'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { BlueLoader } from '@/components/app/blue-loader'
+import {
+  AdminBadge,
+  AdminButton,
+  AdminContent,
+  AdminDescription,
+  AdminEmptyState,
+  AdminEyebrow,
+  AdminField,
+  AdminFieldLabel,
+  AdminHeader,
+  AdminInput,
+  AdminSelect,
+  AdminSurface,
+  AdminTitle,
+} from '@/components/app/admin-page-ui'
+import { cn } from '@/lib/utils'
+import { queryKeys } from '../api/query-keys'
+import { ApiError } from '../api/http-client'
+import type {
+  AdminMetadata,
+  LspDetailRecord,
+  LspPortfolioSummaryRecord,
+  LspRecord,
+  LspStatus,
+  WebhookEventType,
+} from '../api/lms-api'
+import { webhookEventTypeOptions } from '../api/lms-api'
 import {
   createLsp,
   getAdminMetadata,
   getLspDetail,
   listLsps,
   updateLspWebhookSubscription,
-  type AdminMetadata,
-  type LspDetailRecord,
-  type LspPortfolioSummaryRecord,
-  type LspRecord,
-  type LspStatus,
-  type WebhookEventType,
-  webhookEventTypeOptions,
-} from '../api/lms-api'
+} from '../api/admin-api'
 
 function statusVariant(status: LspStatus): 'success' | 'warning' {
   return status === 'ACTIVE' ? 'success' : 'warning'
+}
+
+function isAccessError(error: unknown) {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403)
 }
 
 function currencyLabel(value: number) {
@@ -55,19 +77,17 @@ function webhookEventTypeLabel(eventType: WebhookEventType) {
 
 function renderSummaryBadges(summary: LspPortfolioSummaryRecord) {
   return (
-    <div className="inline-actions">
-      <Badge>{summary.loanApplicationCount} loans</Badge>
-      <Badge variant="success">{summary.disbursedLoanCount} disbursed</Badge>
-      <Badge variant="warning">{currencyLabel(summary.totalDisbursedAmount)}</Badge>
+    <div className="flex flex-wrap gap-2 md:justify-end">
+      <AdminBadge>{summary.loanApplicationCount} loans</AdminBadge>
+      <AdminBadge variant="success">{summary.disbursedLoanCount} disbursed</AdminBadge>
+      <AdminBadge variant="warning">{currencyLabel(summary.totalDisbursedAmount)}</AdminBadge>
     </div>
   )
 }
 
 export function LspAdminPage() {
-  const [lsps, setLsps] = useState<LspRecord[]>([])
-  const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
+  const queryClient = useQueryClient()
   const [selectedLspId, setSelectedLspId] = useState('')
-  const [selectedLsp, setSelectedLsp] = useState<LspDetailRecord | null>(null)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [status, setStatus] = useState<LspStatus | ''>('')
@@ -75,14 +95,37 @@ export function LspAdminPage() {
   const [webhookEndpointUrl, setWebhookEndpointUrl] = useState('')
   const [webhookSigningSecret, setWebhookSigningSecret] = useState('')
   const [webhookEventTypes, setWebhookEventTypes] = useState<WebhookEventType[]>([])
-  const [loading, setLoading] = useState(true)
-  const [detailLoading, setDetailLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [webhookSaving, setWebhookSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [detailError, setDetailError] = useState('')
+  const [localError, setLocalError] = useState('')
   const [webhookError, setWebhookError] = useState('')
   const [webhookSuccess, setWebhookSuccess] = useState('')
+
+  const metadataQuery = useQuery({
+    queryKey: queryKeys.adminMetadata,
+    queryFn: getAdminMetadata,
+  })
+  const lspQuery = useQuery({
+    queryKey: queryKeys.lspDirectory,
+    queryFn: listLsps,
+  })
+  const detailQuery = useQuery({
+    queryKey: ['admin', 'lsp-detail', selectedLspId],
+    queryFn: () => getLspDetail(selectedLspId),
+    enabled: Boolean(selectedLspId),
+  })
+
+  const metadata: AdminMetadata | null = metadataQuery.data ?? null
+  const lsps: LspRecord[] = lspQuery.data ?? []
+  const selectedLsp: LspDetailRecord | null = detailQuery.data ?? null
+  const loading = metadataQuery.isLoading || lspQuery.isLoading
+  const detailLoading = detailQuery.isFetching
+  const permissionDenied = isAccessError(metadataQuery.error) || isAccessError(lspQuery.error)
+  const queryError = permissionDenied ? null : metadataQuery.error ?? lspQuery.error
+  const error = localError || (queryError instanceof Error ? queryError.message : '')
+  const detailPermissionDenied = isAccessError(detailQuery.error)
+  const detailError = !detailPermissionDenied && detailQuery.error instanceof Error ? detailQuery.error.message : ''
+  const formDisabled = permissionDenied || !metadata
 
   const selectedListRecord = useMemo(
     () => lsps.find((item) => item.id === selectedLspId) ?? null,
@@ -90,72 +133,12 @@ export function LspAdminPage() {
   )
 
   useEffect(() => {
-    let cancelled = false
-
-    async function loadLsps() {
-      setLoading(true)
-      setError('')
-
-      try {
-        const [metadataResponse, response] = await Promise.all([getAdminMetadata(), listLsps()])
-        if (!cancelled) {
-          setMetadata(metadataResponse)
-          setLsps(response)
-          setStatus((current) => current || (metadataResponse.lspStatuses[0] as LspStatus | ''))
-          setSelectedLspId((current) => current || response[0]?.id || '')
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : 'Unable to load LSPs.')
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
-    }
-
-    void loadLsps()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    setStatus((current) => current || (metadata?.lspStatuses[0] as LspStatus | '') || '')
+  }, [metadata])
 
   useEffect(() => {
-    if (!selectedLspId) {
-      setSelectedLsp(null)
-      return
-    }
-
-    let cancelled = false
-
-    async function loadDetail() {
-      setDetailLoading(true)
-      setDetailError('')
-
-      try {
-        const response = await getLspDetail(selectedLspId)
-        if (!cancelled) {
-          setSelectedLsp(response)
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setDetailError(loadError instanceof Error ? loadError.message : 'Unable to load LSP detail.')
-        }
-      } finally {
-        if (!cancelled) {
-          setDetailLoading(false)
-        }
-      }
-    }
-
-    void loadDetail()
-
-    return () => {
-      cancelled = true
-    }
-  }, [selectedLspId])
+    setSelectedLspId((current) => current || lsps[0]?.id || '')
+  }, [lsps])
 
   useEffect(() => {
     const subscription = selectedLsp?.webhookSubscription ?? selectedListRecord?.webhookSubscription ?? null
@@ -169,14 +152,14 @@ export function LspAdminPage() {
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!code.trim() || !name.trim()) {
+    if (formDisabled || !code.trim() || !name.trim()) {
       return
     }
 
     const nextStatus = status || (metadata?.lspStatuses[0] as LspStatus | undefined) || 'ACTIVE'
 
     setSubmitting(true)
-    setError('')
+    setLocalError('')
 
     try {
       const created = await createLsp({
@@ -185,13 +168,17 @@ export function LspAdminPage() {
         status: nextStatus,
       })
 
-      setLsps((current) => [created, ...current.filter((item) => item.id !== created.id)])
+      queryClient.setQueryData<LspRecord[]>(queryKeys.lspDirectory, (current = []) => [
+        created,
+        ...current.filter((item) => item.id !== created.id),
+      ])
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lspOptions })
       setCode('')
       setName('')
       setStatus(nextStatus)
       setSelectedLspId(created.id)
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'Unable to create LSP.')
+      setLocalError(createError instanceof Error ? createError.message : 'Unable to create LSP.')
     } finally {
       setSubmitting(false)
     }
@@ -249,8 +236,9 @@ export function LspAdminPage() {
       })
 
       const [lspList, detail] = await Promise.all([listLsps(), getLspDetail(selectedLspId)])
-      setLsps(lspList)
-      setSelectedLsp(detail)
+      queryClient.setQueryData<LspRecord[]>(queryKeys.lspDirectory, lspList)
+      queryClient.setQueryData<LspDetailRecord>(['admin', 'lsp-detail', selectedLspId], detail)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lspOptions })
       setWebhookSuccess('Webhook subscription saved.')
     } catch (saveError) {
       setWebhookError(saveError instanceof Error ? saveError.message : 'Unable to save webhook settings.')
@@ -260,211 +248,258 @@ export function LspAdminPage() {
   }
 
   return (
-    <div className="users-layout">
-      <Card className="list-card">
-        <CardHeader>
-          <div className="section-eyebrow">LSPs</div>
-          <CardTitle>Tenant registry</CardTitle>
-          <CardDescription>
-            Review every LSP in collapsed form, then open one tenant to inspect users, loan count, and disbursal
-            summary.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="inline-actions" style={{ marginBottom: '1rem' }}>
-            <Badge>{lsps.length} tenants</Badge>
-            <Badge variant="warning">{metadata?.lspStatuses.length ?? 0} statuses</Badge>
+    <div className="grid items-start gap-6 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(320px,0.62fr)_minmax(0,1fr)_minmax(320px,0.52fr)]">
+      <AdminSurface>
+        <AdminHeader>
+          <AdminEyebrow>LSPs</AdminEyebrow>
+          <AdminTitle>Tenant registry</AdminTitle>
+          <AdminDescription>
+            Review tenant status, assigned users, loan count, and disbursal summary.
+          </AdminDescription>
+        </AdminHeader>
+        <AdminContent>
+          <div className="flex flex-wrap items-center gap-2">
+            <AdminBadge>{lsps.length} tenants</AdminBadge>
+            <AdminBadge variant="warning">{metadata?.lspStatuses.length ?? 0} statuses</AdminBadge>
           </div>
-          {loading ? <div className="empty-state">Loading tenant registry...</div> : null}
-          {error ? <div className="empty-state">{error}</div> : null}
-          {!loading && !error ? (
-            <div className="table-grid">
-              {lsps.map((lsp) => (
-                <button
-                  key={lsp.id}
-                  type="button"
-                  className="table-row"
-                  onClick={() => setSelectedLspId(lsp.id)}
-                  style={{
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    border:
-                      selectedLspId === lsp.id ? '1px solid rgba(180, 142, 75, 0.5)' : '1px solid transparent',
-                  }}
-                >
-                  <div>
-                    <strong>{lsp.name}</strong>
-                    <p className="helper-copy">{lsp.code}</p>
-                    <p className="helper-copy">{formatDateLabel(lsp.portfolioSummary.latestDisbursalDate)}</p>
-                  </div>
-                  <div style={{ display: 'grid', gap: '0.5rem', justifyItems: 'end' }}>
-                    <Badge variant={statusVariant(lsp.status)}>{lsp.status}</Badge>
+          {loading ? (
+            <BlueLoader
+              title="Loading tenant registry"
+              description="Fetching LSPs, status metadata, and portfolio summaries."
+              compact
+            />
+          ) : null}
+          {error ? <AdminEmptyState>{error}</AdminEmptyState> : null}
+          {permissionDenied ? (
+            <AdminEmptyState>
+              LSP administration requires an active internal admin session. Sign in again to load tenant data.
+            </AdminEmptyState>
+          ) : null}
+          {!loading && !permissionDenied && !error ? (
+            <div className="grid gap-3">
+              {lsps.map((lsp) => {
+                const selected = selectedLspId === lsp.id
+
+                return (
+                  <button
+                    className={cn(
+                      'grid w-full gap-3 rounded-lg bg-[#f8f9fa] p-4 text-left shadow-[0_8px_24px_rgba(0,6,102,0.045)] transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_16px_34px_rgba(0,6,102,0.08)]',
+                      selected && 'bg-white shadow-[inset_4px_0_0_#000666,0_18px_34px_rgba(0,6,102,0.1)]',
+                    )}
+                    key={lsp.id}
+                    type="button"
+                    onClick={() => setSelectedLspId(lsp.id)}
+                  >
+                    <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+                      <div className="min-w-0">
+                        <strong className="block truncate text-base font-extrabold text-[#0f1729]">
+                          {lsp.name}
+                        </strong>
+                        <p className="mt-1 truncate text-xs font-bold uppercase text-[#5e6680]">
+                          {lsp.code}
+                        </p>
+                        <p className="mt-2 text-xs font-semibold text-[#8a92a8]">
+                          {formatDateLabel(lsp.portfolioSummary.latestDisbursalDate)}
+                        </p>
+                      </div>
+                      <AdminBadge className="justify-self-start md:justify-self-end" variant={statusVariant(lsp.status)}>
+                        {lsp.status}
+                      </AdminBadge>
+                    </div>
                     {renderSummaryBadges(lsp.portfolioSummary)}
-                  </div>
-                </button>
-              ))}
-              {!lsps.length ? <div className="empty-state">No LSPs found.</div> : null}
+                  </button>
+                )
+              })}
+              {!lsps.length ? <AdminEmptyState>No LSPs found.</AdminEmptyState> : null}
             </div>
           ) : null}
-        </CardContent>
-      </Card>
+        </AdminContent>
+      </AdminSurface>
 
-      <Card>
-        <CardHeader>
-          <div className="section-eyebrow">Selected LSP</div>
-          <CardTitle>{selectedLsp?.name ?? selectedListRecord?.name ?? 'Choose a tenant'}</CardTitle>
-          <CardDescription>
-            View the sanctioned users, loan portfolio summary, and webhook configuration for the selected LSP.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!selectedLspId ? <div className="empty-state">Select an LSP to inspect its details.</div> : null}
-          {detailLoading ? <div className="empty-state">Loading tenant details...</div> : null}
-          {detailError ? <div className="empty-state">{detailError}</div> : null}
+      <AdminSurface>
+        <AdminHeader>
+          <AdminEyebrow>Selected LSP</AdminEyebrow>
+          <AdminTitle>{selectedLsp?.name ?? selectedListRecord?.name ?? 'Choose a tenant'}</AdminTitle>
+          <AdminDescription>Inspect sanctioned users, portfolio totals, and webhook delivery.</AdminDescription>
+        </AdminHeader>
+        <AdminContent>
+          {!selectedLspId ? <AdminEmptyState>Select an LSP to inspect its details.</AdminEmptyState> : null}
+          {detailLoading ? (
+            <BlueLoader
+              title="Loading tenant details"
+              description="Preparing users, webhook state, and portfolio totals."
+              compact
+            />
+          ) : null}
+          {detailError ? <AdminEmptyState>{detailError}</AdminEmptyState> : null}
+          {detailPermissionDenied ? (
+            <AdminEmptyState>Sign in again to inspect this tenant.</AdminEmptyState>
+          ) : null}
           {selectedLsp && !detailLoading ? (
-            <div className="form-grid">
-              <div className="table-row">
-                <div>
-                  <strong>{selectedLsp.code}</strong>
-                  <p className="helper-copy">{selectedLsp.status}</p>
+            <>
+              <div className="grid gap-3 rounded-lg bg-[#eef1f8]/70 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                <div className="min-w-0">
+                  <strong className="block truncate text-lg font-extrabold text-[#0f1729]">
+                    {selectedLsp.code}
+                  </strong>
+                  <p className="mt-1 text-sm font-semibold text-[#5e6680]">{selectedLsp.status}</p>
                 </div>
-                <div className="inline-actions">
-                  <Badge>{selectedLsp.userCount} users</Badge>
-                  <Badge variant={selectedLsp.webhookSubscription?.enabled ? 'success' : 'warning'}>
+                <div className="flex flex-wrap gap-2 md:justify-end">
+                  <AdminBadge>{selectedLsp.userCount} users</AdminBadge>
+                  <AdminBadge variant={selectedLsp.webhookSubscription?.enabled ? 'success' : 'warning'}>
                     {selectedLsp.webhookSubscription?.enabled ? 'Webhook on' : 'Webhook off'}
-                  </Badge>
+                  </AdminBadge>
                 </div>
               </div>
 
-              <div className="table-grid" style={{ gridColumn: '1 / -1' }}>
-                <div className="table-row">
-                  <div>
-                    <strong>{selectedLsp.portfolioSummary.loanApplicationCount}</strong>
-                    <p className="helper-copy">Loans captured</p>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ['Loans captured', selectedLsp.portfolioSummary.loanApplicationCount],
+                  ['Approved', selectedLsp.portfolioSummary.approvedLoanCount],
+                  ['Disbursed', selectedLsp.portfolioSummary.disbursedLoanCount],
+                  ['Amount disbursed', currencyLabel(selectedLsp.portfolioSummary.totalDisbursedAmount)],
+                ].map(([label, value]) => (
+                  <div
+                    className="rounded-lg bg-[#f8f9fa] p-4 shadow-[0_8px_22px_rgba(0,6,102,0.04)]"
+                    key={label}
+                  >
+                    <strong className="block truncate text-xl font-extrabold text-[#0f1729]">{value}</strong>
+                    <p className="mt-1 text-xs font-bold uppercase text-[#8a92a8]">{label}</p>
                   </div>
-                  <div>
-                    <strong>{selectedLsp.portfolioSummary.approvedLoanCount}</strong>
-                    <p className="helper-copy">Approved</p>
-                  </div>
-                  <div>
-                    <strong>{selectedLsp.portfolioSummary.disbursedLoanCount}</strong>
-                    <p className="helper-copy">Disbursed</p>
-                  </div>
-                  <div>
-                    <strong>{currencyLabel(selectedLsp.portfolioSummary.totalDisbursedAmount)}</strong>
-                    <p className="helper-copy">Amount disbursed</p>
-                  </div>
-                </div>
+                ))}
               </div>
 
-              <div className="field-stack" style={{ gridColumn: '1 / -1' }}>
-                <label>Users sanctioned in the system</label>
+              <div className="grid gap-3">
+                <AdminFieldLabel>Users sanctioned in the system</AdminFieldLabel>
                 {!selectedLsp.users.length ? (
-                  <div className="empty-state">No users are assigned to this LSP yet.</div>
+                  <AdminEmptyState>No users are assigned to this LSP yet.</AdminEmptyState>
                 ) : (
-                  <div className="table-grid">
+                  <div className="grid gap-2">
                     {selectedLsp.users.map((user) => (
-                      <div className="table-row" key={user.id}>
-                        <div>
-                          <strong>{user.username}</strong>
-                          <p className="helper-copy">{user.email ?? 'No email'}</p>
+                      <article
+                        className="grid gap-3 rounded-lg bg-[#f8f9fa] px-3 py-3 shadow-[0_6px_18px_rgba(0,6,102,0.04)] sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center"
+                        key={user.id}
+                      >
+                        <div className="min-w-0">
+                          <strong className="block truncate text-sm font-extrabold text-[#0f1729]">
+                            {user.username}
+                          </strong>
+                          <p className="truncate text-xs font-semibold text-[#5e6680]">{user.email ?? 'No email'}</p>
                         </div>
-                        <Badge>{user.roles.join(', ')}</Badge>
-                        <span className="helper-copy">{user.status}</span>
-                      </div>
+                        <AdminBadge>{user.roles.join(', ')}</AdminBadge>
+                        <span className="text-xs font-bold uppercase text-[#8a92a8]">
+                          {user.status}
+                        </span>
+                      </article>
                     ))}
                   </div>
                 )}
               </div>
 
-              <form className="form-grid" style={{ gridColumn: '1 / -1' }} onSubmit={handleWebhookSave}>
-                <div className="field-stack">
-                  <label htmlFor="webhook-enabled">Webhook delivery</label>
-                  <select
+              <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleWebhookSave}>
+                <AdminField>
+                  <AdminFieldLabel htmlFor="webhook-enabled">Webhook delivery</AdminFieldLabel>
+                  <AdminSelect
                     id="webhook-enabled"
-                    className="ui-input"
                     value={webhookEnabled ? 'enabled' : 'disabled'}
                     onChange={(event) => setWebhookEnabled(event.target.value === 'enabled')}
                   >
                     <option value="disabled">Disabled</option>
                     <option value="enabled">Enabled</option>
-                  </select>
-                </div>
-                <div className="field-stack">
-                  <label htmlFor="webhook-endpoint">Endpoint URL</label>
-                  <Input
+                  </AdminSelect>
+                </AdminField>
+                <AdminField>
+                  <AdminFieldLabel htmlFor="webhook-endpoint">Endpoint URL</AdminFieldLabel>
+                  <AdminInput
                     id="webhook-endpoint"
+                    placeholder="https://hooks.example.com/lms"
                     value={webhookEndpointUrl}
                     onChange={(event) => setWebhookEndpointUrl(event.target.value)}
-                    placeholder="https://hooks.example.com/lms"
                   />
-                </div>
-                <div className="field-stack">
-                  <label htmlFor="webhook-secret">Signing secret</label>
-                  <Input
+                </AdminField>
+                <AdminField className="sm:col-span-2">
+                  <AdminFieldLabel htmlFor="webhook-secret">Signing secret</AdminFieldLabel>
+                  <AdminInput
                     id="webhook-secret"
+                    placeholder="Shared signing secret"
                     value={webhookSigningSecret}
                     onChange={(event) => setWebhookSigningSecret(event.target.value)}
-                    placeholder="Shared signing secret"
                   />
-                </div>
-                <div className="field-stack" style={{ gridColumn: '1 / -1' }}>
-                  <label>Event types</label>
-                  <div className="table-grid" style={{ gap: '0.75rem', marginTop: '0.5rem' }}>
+                </AdminField>
+                <AdminField className="sm:col-span-2">
+                  <AdminFieldLabel>Event types</AdminFieldLabel>
+                  <div className="grid gap-2">
                     {webhookEventTypeOptions.map((eventType) => (
                       <label
+                        className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-lg bg-[#f8f9fa] px-3 py-3 shadow-[0_6px_18px_rgba(0,6,102,0.04)] transition hover:bg-white"
                         key={eventType}
-                        className="table-row"
-                        style={{ justifyContent: 'flex-start', gap: '0.75rem' }}
                       >
                         <input
-                          type="checkbox"
                           checked={webhookEventTypes.includes(eventType)}
+                          className="size-4 accent-[#000666]"
+                          type="checkbox"
                           onChange={() => toggleWebhookEventType(eventType)}
                         />
-                        <div>
-                          <strong>{webhookEventTypeLabel(eventType)}</strong>
-                          <p className="helper-copy">{eventType}</p>
-                        </div>
+                        <span className="min-w-0">
+                          <strong className="block truncate text-sm font-extrabold text-[#0f1729]">
+                            {webhookEventTypeLabel(eventType)}
+                          </strong>
+                          <span className="block truncate text-xs font-bold uppercase text-[#5e6680]">
+                            {eventType}
+                          </span>
+                        </span>
                       </label>
                     ))}
                   </div>
-                </div>
-                {webhookError ? <div className="empty-state">{webhookError}</div> : null}
-                {webhookSuccess ? <div className="empty-state">{webhookSuccess}</div> : null}
-                <Button disabled={webhookSaving} type="submit">
+                </AdminField>
+                {webhookError ? <AdminEmptyState className="sm:col-span-2">{webhookError}</AdminEmptyState> : null}
+                {webhookSuccess ? (
+                  <AdminEmptyState className="bg-[#dceee7] text-[#167a54] sm:col-span-2">
+                    {webhookSuccess}
+                  </AdminEmptyState>
+                ) : null}
+                <AdminButton className="sm:col-span-2" disabled={webhookSaving} type="submit">
                   {webhookSaving ? 'Saving...' : 'Save webhook subscription'}
-                </Button>
+                </AdminButton>
               </form>
-            </div>
+            </>
           ) : null}
-        </CardContent>
-      </Card>
+        </AdminContent>
+      </AdminSurface>
 
-      <Card>
-        <CardHeader>
-          <div className="section-eyebrow">Create LSP</div>
-          <CardTitle>Add tenant</CardTitle>
-          <CardDescription>Admins retain full write access to add and configure new tenants.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="form-grid" onSubmit={handleCreate}>
-            <div className="field-stack">
-              <label htmlFor="code">Tenant code</label>
-              <Input id="code" value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="name">Tenant name</label>
-              <Input id="name" value={name} onChange={(event) => setName(event.target.value)} />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="status">Status</label>
-              <select
+      <AdminSurface className="xl:col-span-2 2xl:col-span-1">
+        <AdminHeader>
+          <AdminEyebrow>Create LSP</AdminEyebrow>
+          <AdminTitle>Add tenant</AdminTitle>
+          <AdminDescription>Register a tenant before assigning users, products, or API access.</AdminDescription>
+        </AdminHeader>
+        <AdminContent>
+          <form className="grid gap-4" onSubmit={handleCreate}>
+            <AdminField>
+              <AdminFieldLabel htmlFor="code">Tenant code</AdminFieldLabel>
+              <AdminInput
+                disabled={formDisabled}
+                id="code"
+                value={code}
+                onChange={(event) => setCode(event.target.value.toUpperCase())}
+              />
+            </AdminField>
+            <AdminField>
+              <AdminFieldLabel htmlFor="name">Tenant name</AdminFieldLabel>
+              <AdminInput
+                disabled={formDisabled}
+                id="name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </AdminField>
+            <AdminField>
+              <AdminFieldLabel htmlFor="status">Status</AdminFieldLabel>
+              <AdminSelect
+                disabled={formDisabled || !metadata?.lspStatuses.length}
                 id="status"
-                className="ui-input"
                 value={status}
                 onChange={(event) => setStatus(event.target.value as LspStatus)}
-                disabled={!metadata?.lspStatuses.length}
               >
                 <option value="">Select a status</option>
                 {(metadata?.lspStatuses ?? []).map((option) => (
@@ -472,14 +507,14 @@ export function LspAdminPage() {
                     {option}
                   </option>
                 ))}
-              </select>
-            </div>
-            <Button disabled={submitting} type="submit">
+              </AdminSelect>
+            </AdminField>
+            <AdminButton disabled={formDisabled || submitting} type="submit">
               {submitting ? 'Creating...' : 'Create tenant'}
-            </Button>
+            </AdminButton>
           </form>
-        </CardContent>
-      </Card>
+        </AdminContent>
+      </AdminSurface>
     </div>
   )
 }

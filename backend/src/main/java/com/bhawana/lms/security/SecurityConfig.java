@@ -1,9 +1,13 @@
 package com.bhawana.lms.security;
 
+import com.bhawana.lms.common.api.ApiError;
+import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.PaginationResponseBuilder;
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.repo.AppUserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -11,6 +15,7 @@ import java.util.Collection;
 import java.util.List;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
@@ -26,6 +31,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.web.header.writers.XXssProtectionHeaderWriter;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -69,13 +75,14 @@ public class SecurityConfig {
         UserDetails bootstrapUserDetails = bootstrapUserDetails(bootstrapUser, passwordEncoder);
 
         return username -> {
-            if (bootstrapUser.getUsername().equalsIgnoreCase(username)) {
-                return bootstrapUserDetails;
-            }
-
-            AppUser appUser = appUserRepository.findByUsernameIgnoreCase(username)
-                    .orElseThrow(() -> new UsernameNotFoundException(username));
-            return appUserDetails(appUser);
+            return appUserRepository.findByUsernameIgnoreCase(username)
+                    .map(SecurityConfig::appUserDetails)
+                    .orElseGet(() -> {
+                        if (bootstrapUser.getUsername().equalsIgnoreCase(username)) {
+                            return bootstrapUserDetails;
+                        }
+                        throw new UsernameNotFoundException(username);
+                    });
         };
     }
 
@@ -99,12 +106,12 @@ public class SecurityConfig {
     }
 
     @Bean
-    JwtDecoder jwtDecoder(SecretKey jwtSigningKey, AppUserRepository appUserRepository) {
+    JwtDecoder jwtDecoder(SecretKey jwtSigningKey, AppUserRepository appUserRepository, SecurityProperties securityProperties) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(jwtSigningKey)
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-                JwtValidators.createDefault(),
+                JwtValidators.createDefaultWithIssuer(securityProperties.getJwt().getIssuer()),
                 managedUserPasswordVersionValidator(appUserRepository)
         ));
         return decoder;
@@ -113,11 +120,25 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            Converter<Jwt, ? extends AbstractAuthenticationToken> jwtAuthenticationConverter
+            Converter<Jwt, ? extends AbstractAuthenticationToken> jwtAuthenticationConverter,
+            ObjectMapper objectMapper,
+            ObjectProvider<RateLimitFilter> rateLimitFilterProvider,
+            LspIpAllowlistFilter lspIpAllowlistFilter
     ) throws Exception {
+        RateLimitFilter rateLimitFilter = rateLimitFilterProvider.getIfAvailable();
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
+                .headers(headers -> headers
+                        .frameOptions(frame -> frame.deny())
+                        .contentTypeOptions(Customizer.withDefaults())
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .maxAgeInSeconds(31536000)
+                                .includeSubDomains(true))
+                        .xssProtection(xss -> xss
+                                .headerValue(XXssProtectionHeaderWriter.HeaderValue.ENABLED_MODE_BLOCK))
+                        .contentSecurityPolicy(csp -> csp
+                                .policyDirectives("default-src 'none'; frame-ancestors 'none'")))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
@@ -126,7 +147,10 @@ public class SecurityConfig {
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",
-                                "/api/v1/auth/token"
+                                "/api/v1/auth/login",
+                                "/api/v1/auth/token",
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout"
                         ).permitAll()
                         .requestMatchers("/api/v1/auth/password").authenticated()
                         .requestMatchers("/api/v1/**").access((authentication, context) -> {
@@ -143,25 +167,34 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
-                .exceptionHandling(ex -> ex.accessDeniedHandler((request, response, accessDeniedException) -> {
-                    boolean passwordChangeRequired = SecurityContextHolder.getContext().getAuthentication() != null
-                            && SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
-                            .anyMatch(authority -> "ROLE_PASSWORD_CHANGE_REQUIRED".equals(authority.getAuthority()));
-                    int status = passwordChangeRequired ? 428 : 403;
-                    String code = passwordChangeRequired ? "PASSWORD_CHANGE_REQUIRED" : "ACCESS_DENIED";
-                    String message = passwordChangeRequired
-                            ? "Password change is required before accessing internal routes"
-                            : "Access denied";
+                .exceptionHandling(ex -> ex
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            boolean passwordChangeRequired = SecurityContextHolder.getContext().getAuthentication() != null
+                                    && SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
+                                    .anyMatch(authority -> "ROLE_PASSWORD_CHANGE_REQUIRED".equals(authority.getAuthority()));
+                            int status = passwordChangeRequired ? 428 : 403;
+                            String code = passwordChangeRequired ? "PASSWORD_CHANGE_REQUIRED" : "ACCESS_DENIED";
+                            String message = passwordChangeRequired
+                                    ? "Password change is required before accessing internal routes"
+                                    : "Access denied";
 
-                    response.setStatus(status);
-                    response.setContentType("application/json");
-                    response.getWriter().write(
-                            "{\"status\":" + status + ",\"code\":\"" + code + "\",\"message\":\"" + message
-                                    + "\",\"path\":\"" + request.getRequestURI() + "\"}"
-                    );
-                }))
+                            writeApiError(response, objectMapper, status, code, message, request.getRequestURI());
+                        })
+                        .authenticationEntryPoint((request, response, authenticationException) -> writeApiError(
+                                response,
+                                objectMapper,
+                                401,
+                                "UNAUTHORIZED",
+                                "Authentication is required to access this resource.",
+                                request.getRequestURI()
+                        )))
                 .httpBasic(AbstractHttpConfigurer::disable)
-                .formLogin(AbstractHttpConfigurer::disable);
+                .formLogin(AbstractHttpConfigurer::disable)
+                .addFilterAfter(lspIpAllowlistFilter, org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class);
+
+        if (rateLimitFilter != null) {
+            http.addFilterAfter(rateLimitFilter, org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class);
+        }
 
         return http.build();
     }
@@ -176,7 +209,13 @@ public class SecurityConfig {
                 "http://127.0.0.1:4200"
         ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key"));
+        configuration.setExposedHeaders(List.of(
+                "X-Correlation-Id",
+                PaginationResponseBuilder.TOTAL_COUNT_HEADER,
+                PaginationResponseBuilder.LIMIT_HEADER,
+                PaginationResponseBuilder.OFFSET_HEADER
+        ));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -267,5 +306,25 @@ public class SecurityConfig {
                 .accountLocked(false)
                 .credentialsExpired(false)
                 .build();
+    }
+
+    private static void writeApiError(
+            jakarta.servlet.http.HttpServletResponse response,
+            ObjectMapper objectMapper,
+            int status,
+            String code,
+            String message,
+            String path
+    ) throws java.io.IOException {
+        response.setStatus(status);
+        response.setContentType("application/json");
+        objectMapper.writeValue(response.getWriter(), ApiError.of(
+                status,
+                code,
+                message,
+                path,
+                CorrelationIdHolder.get(),
+                java.util.Map.of()
+        ));
     }
 }

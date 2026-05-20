@@ -11,6 +11,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -72,6 +73,10 @@ public class ReportRequest {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Version
+    @Column(name = "entity_version", nullable = false)
+    private long entityVersion;
 
     protected ReportRequest() {
     }
@@ -172,6 +177,10 @@ public class ReportRequest {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public long getEntityVersion() {
+        return entityVersion;
     }
 
     public void markProcessing() {

@@ -1,9 +1,13 @@
 package com.bhawana.lms.web;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -15,6 +19,7 @@ import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentAccessAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
+import com.bhawana.lms.repo.LoanApplicationPiiRevealAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
@@ -25,14 +30,19 @@ import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
+import com.bhawana.lms.repo.OpsAlertRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,8 +50,10 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -94,6 +106,9 @@ class LspLoanApplicationApiControllerTest {
     private LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
 
     @Autowired
+    private LoanApplicationPiiRevealAuditRepository loanApplicationPiiRevealAuditRepository;
+
+    @Autowired
     private ApiClientRepository apiClientRepository;
 
     @Autowired
@@ -108,6 +123,12 @@ class LspLoanApplicationApiControllerTest {
     @Autowired
     private LspRepository lspRepository;
 
+    @Autowired
+    private LspApiIdempotencyRecordRepository lspApiIdempotencyRecordRepository;
+
+    @Autowired
+    private OpsAlertRepository opsAlertRepository;
+
     @BeforeEach
     void setUp() {
         loanForeclosureQuoteRepository.deleteAllInBatch();
@@ -120,6 +141,9 @@ class LspLoanApplicationApiControllerTest {
         loanApplicationAssignmentEventRepository.deleteAllInBatch();
         loanApplicationDocumentChecklistRepository.deleteAllInBatch();
         loanApplicationStatusTransitionRepository.deleteAllInBatch();
+        loanApplicationPiiRevealAuditRepository.deleteAllInBatch();
+        lspApiIdempotencyRecordRepository.deleteAllInBatch();
+        opsAlertRepository.deleteAllInBatch();
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
@@ -187,7 +211,14 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lspId").value(apex.id()))
                 .andExpect(jsonPath("$.lspLoanId").value("APEX-EXT-001"))
-                .andExpect(jsonPath("$.aadharNumber").value("123412341234"))
+                .andExpect(jsonPath("$.aadharNumber").value("XXXXXXXX1234"))
+                .andExpect(jsonPath("$.panNumber").value("ABXXXXX34F"))
+                .andExpect(jsonPath("$.empId").value("***"))
+                .andExpect(jsonPath("$.bankAccountNumber").value("XXXX9012"))
+                .andExpect(jsonPath("$.ifscCode").value("HDFC******"))
+                .andExpect(jsonPath("$.accountHolderName").value("***"))
+                .andExpect(jsonPath("$.referencePersonName").value("***"))
+                .andExpect(jsonPath("$.referencePersonNumber").value("***"))
                 .andExpect(jsonPath("$.status").value("INITIALIZED"));
 
         JsonNode northApplication = createInternalApplication(
@@ -201,12 +232,20 @@ class LspLoanApplicationApiControllerTest {
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].lspLoanId").value("APEX-EXT-001"));
+                .andExpect(jsonPath("$[0].lspLoanId").value("APEX-EXT-001"))
+                .andExpect(jsonPath("$[0].aadharNumber").value("XXXXXXXX1234"))
+                .andExpect(jsonPath("$[0].panNumber").value("ABXXXXX34F"))
+                .andExpect(jsonPath("$[0].bankAccountNumber").value("XXXX9012"));
 
         mockMvc.perform(get("/api/v1/lsp/loan-applications/external/{externalLoanId}", "APEX-EXT-001")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lspLoanId").value("APEX-EXT-001"))
+                .andExpect(jsonPath("$.aadharNumber").value("XXXXXXXX1234"))
+                .andExpect(jsonPath("$.panNumber").value("ABXXXXX34F"))
+                .andExpect(jsonPath("$.empId").value("***"))
+                .andExpect(jsonPath("$.bankAccountNumber").value("XXXX9012"))
+                .andExpect(jsonPath("$.ifscCode").value("HDFC******"))
                 .andExpect(jsonPath("$.lastActivity.actorUsername").value(apiClient.get("clientId").asText()))
                 .andExpect(jsonPath("$.loanAccount").doesNotExist());
 
@@ -282,7 +321,9 @@ class LspLoanApplicationApiControllerTest {
         mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", apexApplication.get("id").asText())
                         .with(lspUiUser(apex.id(), "Apex Tenant")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.lspLoanId").value("APEX-UI-001"));
+                .andExpect(jsonPath("$.lspLoanId").value("APEX-UI-001"))
+                .andExpect(jsonPath("$.aadharNumber").isEmpty())
+                .andExpect(jsonPath("$.panNumber").value("ABXXXXX34F"));
 
         mockMvc.perform(post("/api/v1/lsp/loan-applications")
                         .with(lspUiUser(apex.id(), "Apex Tenant"))
@@ -300,6 +341,427 @@ class LspLoanApplicationApiControllerTest {
                                 "monthlyIncome", new BigDecimal("55000.00")
                         ))))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void borrowerPiiRevealIsMaskedByDefaultAuditedOnRevealAndForbiddenForReadOnlyUsers() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Integration");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-PII-001");
+        String applicationId = createdApplication.get("id").asText();
+        String borrowerId = createdApplication.get("borrowerId").asText();
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.aadharNumber").value("XXXXXXXX1234"))
+                .andExpect(jsonPath("$.panNumber").value("ABXXXXX34F"))
+                .andExpect(jsonPath("$.bankAccountNumber").value("XXXX9012"))
+                .andExpect(jsonPath("$.ifscCode").value("HDFC******"))
+                .andExpect(jsonPath("$.accountHolderName").value("***"))
+                .andExpect(jsonPath("$.referencePersonName").value("***"))
+                .andExpect(jsonPath("$.referencePersonNumber").value("***"));
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}/borrower-pii", applicationId)
+                        .with(lspUiUser(apex.id(), "Apex Tenant")))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}/borrower-pii", applicationId)
+                        .with(lspUiWriteUser(apex.id(), "Apex Tenant")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.applicationId").value(applicationId))
+                .andExpect(jsonPath("$.borrowerId").value(borrowerId))
+                .andExpect(jsonPath("$.aadharNumber").value("123412341234"))
+                .andExpect(jsonPath("$.panNumber").value("ABCDE1234F"))
+                .andExpect(jsonPath("$.bankAccountNumber").value("123456789012"))
+                .andExpect(jsonPath("$.ifscCode").value("HDFC0001234"))
+                .andExpect(jsonPath("$.accountHolderName").value("Anika Sharma"))
+                .andExpect(jsonPath("$.employeeId").value("EMP-001"))
+                .andExpect(jsonPath("$.referencePersonName").value("Neha Verma"))
+                .andExpect(jsonPath("$.referencePersonNumber").value("9888877777"));
+
+        assertEquals(1L, loanApplicationPiiRevealAuditRepository.count());
+        assertEquals(
+                apex.id(),
+                loanApplicationPiiRevealAuditRepository.findAll().getFirst().getLspId().toString()
+        );
+    }
+
+    @Test
+    void onboardingReusesGlobalBorrowerByPanUpdatesLatestProfileAndExpandsLspVisibility() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        LspFixture north = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        ProductFixture northProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        mapProductToLsp(northProduct.id(), north.id());
+
+        JsonNode apexClient = createApiClient(apex.id(), "Apex Integration");
+        JsonNode northClient = createApiClient(north.id(), "North Integration");
+        String apexAccessToken = issueClientCredentialsToken(
+                apexClient.get("clientId").asText(),
+                apexClient.get("clientSecret").asText()
+        );
+        String northAccessToken = issueClientCredentialsToken(
+                northClient.get("clientId").asText(),
+                northClient.get("clientSecret").asText()
+        );
+
+        JsonNode firstApplication = createExternalApplication(apexAccessToken, apexProduct.id(), "APEX-DEDUPE-001");
+        LinkedHashMap<String, Object> updatedPayload = defaultExternalApplicationPayload(
+                extractLspIdFromToken(northAccessToken),
+                northProduct.id(),
+                "NORTH-DEDUPE-001"
+        );
+        updatedPayload.put("fullName", "Anika Rao");
+        updatedPayload.put("emailAddress", "anika.rao@example.com");
+        updatedPayload.put("addressCity", "Pune");
+        updatedPayload.put("organizationName", "North Corp");
+        updatedPayload.put("empId", "EMP-999");
+        updatedPayload.put("referencePersonName", "Priya Kapoor");
+        updatedPayload.put("referencePersonNumber", "9777766666");
+
+        JsonNode secondApplication = createExternalApplication(northAccessToken, updatedPayload);
+
+        assertEquals(firstApplication.get("borrowerId").asText(), secondApplication.get("borrowerId").asText());
+        assertEquals(1L, borrowerRepository.count());
+
+        com.bhawana.lms.domain.Borrower borrower = borrowerRepository.findById(
+                        UUID.fromString(firstApplication.get("borrowerId").asText()))
+                .orElseThrow();
+        assertEquals("Anika Rao", borrower.getFullName());
+        assertEquals("anika.rao@example.com", borrower.getEmail());
+        assertEquals("Pune", borrower.getCity());
+        assertEquals("North Corp", borrower.getOrganizationName());
+        assertEquals("EMP-999", borrower.getEmployeeId());
+        assertEquals("Priya Kapoor", borrower.getReferencePersonName());
+        assertEquals("9777766666", borrower.getReferencePersonNumber());
+        assertEquals(
+                Set.of(UUID.fromString(apex.id()), UUID.fromString(north.id())),
+                borrower.getVisibleLspIds()
+        );
+    }
+
+    @Test
+    void onboardingConflictOnExistingMobileWithDifferentPanCreatesOpsAlert() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        LspFixture north = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        ProductFixture northProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        mapProductToLsp(northProduct.id(), north.id());
+
+        JsonNode apexClient = createApiClient(apex.id(), "Apex Integration");
+        JsonNode northClient = createApiClient(north.id(), "North Integration");
+        String apexAccessToken = issueClientCredentialsToken(
+                apexClient.get("clientId").asText(),
+                apexClient.get("clientSecret").asText()
+        );
+        String northAccessToken = issueClientCredentialsToken(
+                northClient.get("clientId").asText(),
+                northClient.get("clientSecret").asText()
+        );
+
+        createExternalApplication(apexAccessToken, apexProduct.id(), "APEX-CONFLICT-001");
+
+        LinkedHashMap<String, Object> conflictingPayload = defaultExternalApplicationPayload(
+                extractLspIdFromToken(northAccessToken),
+                northProduct.id(),
+                "NORTH-CONFLICT-001"
+        );
+        conflictingPayload.put("fullName", "Anika Sharma");
+        conflictingPayload.put("panNumber", "ZXCVB1234N");
+        conflictingPayload.put("aadharNumber", "987698769876");
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + northAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(conflictingPayload)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("BORROWER_IDENTITY_CONFLICT"))
+                .andExpect(jsonPath("$.message").value("Borrower identity conflict detected. Internal ops has been alerted."));
+
+        assertEquals(1L, opsAlertRepository.count());
+
+        mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].type").value("BORROWER_IDENTITY_CONFLICT"))
+                .andExpect(jsonPath("$[0].severity").value("HIGH"))
+                .andExpect(jsonPath("$[0].status").value("NEW"));
+    }
+
+    @Test
+    void apiClientCanReadInvalidLoanReasonsInvalidateApplicationAndReplayIdempotentResponse() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Integration");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-INVALID-001");
+        String applicationId = createdApplication.get("id").asText();
+        String idempotencyKey = UUID.randomUUID().toString();
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/invalid-reasons")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(4))
+                .andExpect(jsonPath("$[0].code").value("REASON_A"))
+                .andExpect(jsonPath("$[3].code").value("OTHERS"))
+                .andExpect(jsonPath("$[3].requiresText").value(true));
+
+        MvcResult firstInvalidation = mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/invalid", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "reasonCode", "REASON_A"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("INVALID"))
+                .andExpect(jsonPath("$.invalidReasonCode").value("REASON_A"))
+                .andExpect(jsonPath("$.invalidReasonText").doesNotExist())
+                .andExpect(jsonPath("$.invalidatedByUsername").value(apiClient.get("clientId").asText()))
+                .andExpect(jsonPath("$.invalidatedAt").exists())
+                .andExpect(jsonPath("$.loanAccount").doesNotExist())
+                .andReturn();
+
+        MvcResult replayedInvalidation = mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/invalid", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "reasonCode", "REASON_A"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("INVALID"))
+                .andExpect(jsonPath("$.invalidReasonCode").value("REASON_A"))
+                .andReturn();
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("INVALID"))
+                .andExpect(jsonPath("$.invalidReasonCode").value("REASON_A"));
+
+        assertEquals(
+                firstInvalidation.getResponse().getContentAsString(),
+                replayedInvalidation.getResponse().getContentAsString()
+        );
+        assertEquals(1L, lspApiIdempotencyRecordRepository.count());
+        assertEquals(
+                1L,
+                loanApplicationStatusTransitionRepository
+                        .findTop20ByLoanApplication_IdOrderByCreatedAtDesc(UUID.fromString(applicationId))
+                        .stream()
+                        .filter(transition -> transition.getToStatus().name().equals("INVALID"))
+                        .count()
+        );
+        assertTrue(loanApplicationStatusTransitionRepository
+                .findTop20ByLoanApplication_IdOrderByCreatedAtDesc(UUID.fromString(applicationId))
+                .stream()
+                .anyMatch(transition -> transition.getToStatus().name().equals("INVALID")
+                        && transition.getNote().contains("Reason A")));
+    }
+
+    @Test
+    void apiClientCanPaginateScopedLoanListingsAndReadPaginationHeaders() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Pagination");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        createExternalApplication(accessToken, apexProduct.id(), "APEX-PAGE-001");
+        createExternalApplication(accessToken, apexProduct.id(), "APEX-PAGE-002");
+        createExternalApplication(accessToken, apexProduct.id(), "APEX-PAGE-003");
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .queryParam("offset", "1")
+                        .queryParam("limit", "1")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].lspLoanId").value("APEX-PAGE-002"))
+                .andExpect(header().string("X-Total-Count", "3"))
+                .andExpect(header().string("X-Limit", "1"))
+                .andExpect(header().string("X-Offset", "1"));
+    }
+
+    @Test
+    void apiClientCanInvalidateApprovedApplicationAndLoanAccountIsAlsoMarkedInvalid() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Integration");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-INVALID-LOAN-001");
+        String applicationId = createdApplication.get("id").asText();
+        String idempotencyKey = UUID.randomUUID().toString();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        JsonNode approvedLoan = getApplicationDetail(accessToken, applicationId);
+        String loanId = approvedLoan.get("loanAccount").get("id").asText();
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/invalid", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "reasonCode", "OTHERS",
+                                "reasonText", "Duplicate onboarding from partner LOS"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("INVALID"))
+                .andExpect(jsonPath("$.invalidReasonCode").value("OTHERS"))
+                .andExpect(jsonPath("$.invalidReasonText").value("Duplicate onboarding from partner LOS"))
+                .andExpect(jsonPath("$.loanAccount.id").value(loanId))
+                .andExpect(jsonPath("$.loanAccount.status").value("INVALID"));
+    }
+
+    @Test
+    void invalidLoanIdempotencyAndReasonValidationRulesAreEnforced() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Integration");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-INVALID-002");
+        String applicationId = createdApplication.get("id").asText();
+        String validIdempotencyKey = UUID.randomUUID().toString();
+        String reusedIdempotencyKey = UUID.randomUUID().toString();
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/invalid", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "reasonCode", "REASON_A"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Idempotency-Key header is required."));
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/invalid", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", "not-a-uuid")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "reasonCode", "REASON_A"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Idempotency-Key must be a UUID v4 value."));
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/invalid", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", validIdempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "reasonCode", "OTHERS"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value(
+                        "Other invalid loan reason text is required when reason is OTHERS."
+                ));
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/invalid", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "reasonCode", "REASON_B",
+                                "reasonText", "Should not be accepted"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value(
+                        "Other invalid loan reason text is only allowed when reason is OTHERS."
+                ));
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/invalid", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", reusedIdempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "reasonCode", "REASON_A"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("INVALID"));
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/invalid", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", reusedIdempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "reasonCode", "REASON_C"
+                        ))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("IDEMPOTENCY_CONFLICT"))
+                .andExpect(jsonPath("$.message").value(
+                        "Idempotency-Key has already been used for a different request."
+                ));
+    }
+
+    @Test
+    void postDisbursalInvalidationIsRejected() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Integration");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-INVALID-003");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+        requestDisbursement(applicationId);
+        resolveDisbursement(applicationId);
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/invalid", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "reasonCode", "REASON_B"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value(
+                        "Loan applications that have entered servicing cannot be marked invalid."
+                ));
     }
 
     @Test
@@ -435,6 +897,157 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
     }
 
+    @Test
+    void apiClientCanListOnlyProvisionedActiveProducts() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        LspFixture north = createLsp("ACTIVE");
+        ProductFixture visible = createProduct("ACTIVE");
+        ProductFixture disabled = createProduct("ACTIVE");
+        ProductFixture inactive = createProduct("INACTIVE");
+        ProductFixture northOnly = createProduct("ACTIVE");
+        mapProductToLsp(visible.id(), apex.id());
+        mapProductToLsp(disabled.id(), apex.id());
+        mapProductToLsp(inactive.id(), apex.id());
+        mapProductToLsp(northOnly.id(), north.id());
+
+        loanProductLspMappingRepository.findByLsp_IdAndLoanProduct_Id(UUID.fromString(apex.id()), UUID.fromString(disabled.id()))
+                .ifPresent(mapping -> {
+                    mapping.update(false);
+                    loanProductLspMappingRepository.save(mapping);
+                });
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Product Reader");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        mockMvc.perform(get("/api/v1/lsp/products")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(visible.id()))
+                .andExpect(jsonPath("$[0].status").value("ACTIVE"));
+    }
+
+    @Test
+    void multipartDocumentUploadsAutoApproveAndCreateLoanAccount() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex STP");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-STP-001");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        JsonNode detail = getApplicationDetail(accessToken, applicationId);
+        String loanAccountId = detail.get("loanAccount").get("id").asText();
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED_PENDING_DISBURSAL"))
+                .andExpect(jsonPath("$.loanAccount.id").value(loanAccountId))
+                .andExpect(jsonPath("$.loanAccount.status").value("PENDING_DISBURSEMENT"));
+    }
+
+    @Test
+    void opsZipDownloadUsesChecklistBackedStoredDocuments() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Zip Download");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-ZIP-001");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        MvcResult result = mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/download-all", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        byte[] zipBytes = result.getResponse().getContentAsByteArray();
+        assertTrue(zipBytes.length > 0);
+        assertTrue("application/zip".equals(result.getResponse().getContentType()));
+
+        Set<String> entryNames = new java.util.LinkedHashSet<>();
+        try (ZipInputStream zipInputStream = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zipInputStream.getNextEntry()) != null) {
+                entryNames.add(entry.getName());
+            }
+        }
+
+        assertTrue(entryNames.contains("pan_card/pan_card.pdf"));
+        assertTrue(entryNames.contains("loan_agreement/loan_agreement.pdf"));
+    }
+
+    @Test
+    void lspScheduleValidationAndDisbursementComplianceAreEnforced() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Compliance");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-CHECK-001");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        mockMvc.perform(put("/api/v1/lsp/loan-applications/{applicationId}/repayment-schedule", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "mode", "LSP_PROVIDED",
+                                "installments", List.of(Map.of(
+                                        "installmentNumber", 1,
+                                        "dueDate", LocalDate.now().plusMonths(1).toString(),
+                                        "openingPrincipal", "45000.00",
+                                        "principalDue", "1000.00",
+                                        "interestDue", "100.00",
+                                        "installmentAmount", "1000.00",
+                                        "closingPrincipal", "44000.00"
+                                ))
+                        ))))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("REPAYMENT_SCHEDULE_INVALID"));
+
+        mockMvc.perform(put("/api/v1/lsp/loan-applications/{applicationId}/repayment-schedule", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("mode", "GENERATED"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(12));
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/disbursement", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "disbursalAmount", new BigDecimal("43000.00"),
+                                "bankAccountNumber", "123456789012",
+                                "ifscCode", "HDFC0001234"
+                        ))))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("DISBURSEMENT_VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.violations[0].field").value("disbursalAmount"));
+    }
+
     private JsonNode createInternalApplication(
             String lspId,
             String productId,
@@ -451,8 +1064,8 @@ class LspLoanApplicationApiControllerTest {
                                 "API",
                                 borrowerPan,
                                 "Internal Borrower",
-                                "9898989898",
-                                "internal@example.com",
+                                testMobileFor(externalLoanId),
+                                "internal+" + externalLoanId.toLowerCase() + "@example.com",
                                 LocalDate.of(1991, 4, 12),
                                 "Delhi",
                                 "Delhi",
@@ -466,9 +1079,35 @@ class LspLoanApplicationApiControllerTest {
         return objectMapper.readTree(result.getResponse().getContentAsString());
     }
 
+    private String testMobileFor(String seed) {
+        int numeric = Math.abs(seed.hashCode());
+        return String.format("9%09d", numeric % 1_000_000_000);
+    }
+
     private JsonNode createExternalApplication(String accessToken, String productId, String externalLoanId) throws Exception {
+        return createExternalApplication(
+                accessToken,
+                defaultExternalApplicationPayload(extractLspIdFromToken(accessToken), productId, externalLoanId)
+        );
+    }
+
+    private JsonNode createExternalApplication(String accessToken, Map<String, Object> payload) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private LinkedHashMap<String, Object> defaultExternalApplicationPayload(
+            String lspId,
+            String productId,
+            String externalLoanId
+    ) {
         LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("lspId", extractLspIdFromToken(accessToken));
+        payload.put("lspId", lspId);
         payload.put("productId", productId);
         payload.put("lspLoanId", externalLoanId);
         payload.put("fullName", "Anika Sharma");
@@ -502,18 +1141,19 @@ class LspLoanApplicationApiControllerTest {
         payload.put("accountHolderName", "Anika Sharma");
         payload.put("referencePersonName", "Neha Verma");
         payload.put("referencePersonNumber", "9888877777");
+        return payload;
+    }
 
-        MvcResult result = mockMvc.perform(post("/api/v1/lsp/loan-applications")
-                        .header("Authorization", "Bearer " + accessToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(payload)))
+    private JsonNode getApplicationDetail(String accessToken, String applicationId) throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
+                        .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString());
     }
 
-    private JsonNode getApplicationDetail(String accessToken, String applicationId) throws Exception {
-        MvcResult result = mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
+    private JsonNode getRepaymentSchedule(String accessToken, String loanId) throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/lsp/loans/{loanId}/repayment-schedule", loanId)
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -578,6 +1218,47 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(status().isOk());
     }
 
+    private void uploadAllRequiredDocuments(String accessToken, String applicationId) throws Exception {
+        List<Map<String, Object>> documentMetadata = new java.util.ArrayList<>();
+        org.springframework.test.web.servlet.request.MockMultipartHttpServletRequestBuilder requestBuilder =
+                multipart("/api/v1/lsp/loan-applications/{applicationId}/documents/batch", applicationId);
+        requestBuilder.header("Authorization", "Bearer " + accessToken);
+
+        for (String documentType : List.of(
+                "PAN_CARD",
+                "AADHAAR_FILE",
+                "ADDRESS_PROOF",
+                "INCOME_PROOF",
+                "BANK_STATEMENT",
+                "SELFIE_PHOTOGRAPH",
+                "KFS",
+                "LOAN_AGREEMENT"
+        )) {
+            documentMetadata.add(Map.of(
+                    "documentType", documentType,
+                    "note", "Uploaded " + documentType,
+                    "sourceReference", "src-" + documentType
+            ));
+            requestBuilder.file(new MockMultipartFile(
+                    "files",
+                    documentType.toLowerCase() + ".pdf",
+                    "application/pdf",
+                    ("content-" + documentType).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+            ));
+        }
+        requestBuilder.file(new MockMultipartFile(
+                "documents",
+                "",
+                "application/json",
+                objectMapper.writeValueAsBytes(documentMetadata)
+        ));
+
+        mockMvc.perform(requestBuilder)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(8))
+                .andExpect(jsonPath("$[0].lmsManagedContent").value(true));
+    }
+
     private String extractLspIdFromToken(String token) {
         String[] parts = token.split("\\.");
         String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]), java.nio.charset.StandardCharsets.UTF_8);
@@ -627,10 +1308,9 @@ class LspLoanApplicationApiControllerTest {
     private String issueClientCredentialsToken(String clientId, String clientSecret) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "grantType", "client_credentials",
-                                "clientId", clientId,
-                                "clientSecret", clientSecret
+                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                                clientId,
+                                clientSecret
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
@@ -753,5 +1433,17 @@ class LspLoanApplicationApiControllerTest {
                         .claim("lspId", lspId)
                         .claim("lspName", lspName))
                 .authorities(() -> "ROLE_LSP_UI_READ");
+    }
+
+    private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor lspUiWriteUser(
+            String lspId,
+            String lspName
+    ) {
+        return jwt().jwt(jwt -> jwt
+                        .subject("tenant.writer")
+                        .claim("roles", List.of("LSP_UI_WRITE"))
+                        .claim("lspId", lspId)
+                        .claim("lspName", lspName))
+                .authorities(() -> "ROLE_LSP_UI_WRITE");
     }
 }

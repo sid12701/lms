@@ -24,7 +24,7 @@ The default profile is `local`, which expects:
 
 ## Bootstrap auth
 
-The service exposes `POST /api/v1/auth/token` for initial local auth bootstrapping.
+The service exposes `POST /api/v1/auth/login` for local user sign-in and `POST /api/v1/auth/token` for API client token issuance.
 
 Default local credentials:
 

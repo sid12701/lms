@@ -8,10 +8,8 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,8 +33,11 @@ public class LspLoanApiController {
             Authentication authentication,
             @PathVariable UUID loanId
     ) {
-        LoanAccount loanAccount = loanApplicationService.getLoanAccountForLsp(authenticatedLspId(authentication), loanId);
-        return LspLoanApplicationApiController.toDetailResponse(loanAccount.getLoanApplication(), loanApplicationService);
+        LoanAccount loanAccount = loanApplicationService.getLoanAccountForLsp(
+                LspAuthenticationSupport.authenticatedLspId(authentication),
+                loanId
+        );
+        return LspLoanApplicationResponses.toDetailResponse(loanAccount.getLoanApplication(), loanApplicationService);
     }
 
     @GetMapping("/{loanId}/repayment-schedule")
@@ -45,8 +46,11 @@ public class LspLoanApiController {
             Authentication authentication,
             @PathVariable UUID loanId
     ) {
-        return loanApplicationService.listRepaymentScheduleForLsp(authenticatedLspId(authentication), loanId).stream()
-                .map(LoanApplicationOpsController::toRepaymentScheduleInstallmentResponse)
+        return loanApplicationService.listRepaymentScheduleForLsp(
+                        LspAuthenticationSupport.authenticatedLspId(authentication),
+                        loanId
+                ).stream()
+                .map(LoanApplicationOpsResponses::toRepaymentScheduleInstallmentResponse)
                 .toList();
     }
 
@@ -56,8 +60,11 @@ public class LspLoanApiController {
             Authentication authentication,
             @PathVariable UUID loanId
     ) {
-        return loanApplicationService.listPaymentTransactionsForLsp(authenticatedLspId(authentication), loanId).stream()
-                .map(LoanApplicationOpsController::toPaymentTransactionResponse)
+        return loanApplicationService.listPaymentTransactionsForLsp(
+                        LspAuthenticationSupport.authenticatedLspId(authentication),
+                        loanId
+                ).stream()
+                .map(LoanApplicationOpsResponses::toPaymentTransactionResponse)
                 .toList();
     }
 
@@ -69,22 +76,12 @@ public class LspLoanApiController {
             @Valid @RequestBody LspLoanForeclosureQuoteRequest request
     ) {
         LoanForeclosureQuote quote = loanApplicationService.requestForeclosureQuoteForLsp(
-                authenticatedLspId(authentication),
+                LspAuthenticationSupport.authenticatedLspId(authentication),
                 loanId,
                 authentication.getName(),
                 request.effectiveDate()
         );
-        return LoanApplicationOpsController.toForeclosureQuoteResponse(quote);
-    }
-
-    private static UUID authenticatedLspId(Authentication authentication) {
-        if (authentication.getPrincipal() instanceof Jwt jwt) {
-            String rawLspId = jwt.getClaimAsString("lspId");
-            if (rawLspId != null && !rawLspId.isBlank()) {
-                return UUID.fromString(rawLspId);
-            }
-        }
-        throw new AccessDeniedException("Authenticated LSP context is missing.");
+        return LoanApplicationOpsResponses.toForeclosureQuoteResponse(quote);
     }
 
     public record LspLoanForeclosureQuoteRequest(@NotNull LocalDate effectiveDate) {

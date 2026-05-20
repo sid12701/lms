@@ -30,3 +30,24 @@ frontend/coverage/
 infra/data/
 infra/volumes/
 infra/.env
+
+# Maven local repository (dependency cache, must not be committed)
+.m2/
+
+# IDE / editor local state
+.classpath
+.project
+.settings/
+.obsidian/
+
+# Local tooling state
+.playwright-mcp/
+.claude/settings.local.json
+
+# Compiled class files
+*.class
+
+# graphify generated output and caches
+graphify-out/
+.graphify_*
+_COMMUNITY_*.md

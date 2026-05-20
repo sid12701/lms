@@ -4,15 +4,14 @@ import com.bhawana.lms.common.api.ApiError;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import jakarta.servlet.http.HttpServletRequest;
-import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -78,6 +77,28 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(BusinessRuleViolationException.class)
+    public ResponseEntity<ApiError> handleBusinessRuleViolation(
+            BusinessRuleViolationException exception,
+            HttpServletRequest request
+    ) {
+        return build(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                exception.getErrorCode(),
+                exception.getMessage(),
+                request,
+                exception.getFieldErrors()
+        );
+    }
+
+    @ExceptionHandler(ApiConflictException.class)
+    public ResponseEntity<ApiError> handleConflict(
+            ApiConflictException exception,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.CONFLICT, exception.getErrorCode(), exception.getMessage(), request, Map.of());
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException exception, HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", exception.getMessage(), request, Map.of());
@@ -91,6 +112,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiError> handleAccessDenied(AccessDeniedException exception, HttpServletRequest request) {
         return build(HttpStatus.FORBIDDEN, "ACCESS_DENIED", exception.getMessage(), request, Map.of());
+    }
+
+    @ExceptionHandler(AuthorizationDeniedException.class)
+    public ResponseEntity<ApiError> handleAuthorizationDenied(
+            AuthorizationDeniedException exception,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Access denied", request, Map.of());
     }
 
     @ExceptionHandler(Exception.class)
@@ -112,19 +141,13 @@ public class GlobalExceptionHandler {
             HttpServletRequest request,
             Map<String, String> fieldErrors
     ) {
-        List<ApiError.FieldViolation> violations = fieldErrors.entrySet().stream()
-                .map(entry -> new ApiError.FieldViolation(entry.getKey(), entry.getValue()))
-                .toList();
-
-        ApiError error = new ApiError(
-                Instant.now(),
+        return ResponseEntity.status(status).body(ApiError.of(
                 status.value(),
                 code,
                 message,
                 request.getRequestURI(),
                 CorrelationIdHolder.get(),
-                violations
-        );
-        return ResponseEntity.status(status).body(error);
+                fieldErrors
+        ));
     }
 }

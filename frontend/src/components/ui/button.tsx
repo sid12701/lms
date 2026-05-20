@@ -3,24 +3,24 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { forwardRef } from 'react'
 import { cn } from '../../lib/cn'
 
-const buttonVariants = cva('ui-button', {
+export const buttonVariants = cva('ui-button', {
   variants: {
     variant: {
+      default: 'ui-button--primary',
       primary: 'ui-button--primary',
       secondary: 'ui-button--secondary',
       outline: 'ui-button--outline',
       ghost: 'ui-button--ghost',
+      destructive: 'ui-button--destructive',
     },
     size: {
       sm: 'ui-button--sm',
       default: 'ui-button--default',
       lg: 'ui-button--lg',
+      icon: 'ui-button--icon',
     },
   },
-  defaultVariants: {
-    variant: 'primary',
-    size: 'default',
-  },
+  defaultVariants: { variant: 'primary', size: 'default' },
 })
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &

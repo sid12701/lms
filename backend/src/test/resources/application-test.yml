@@ -5,6 +5,9 @@ spring:
     username: sa
     password:
   flyway:
+    placeholders:
+      tenant_app_role: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
+      tenant_app_password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
     enabled: false
   jpa:
     open-in-view: false
@@ -25,6 +28,7 @@ app:
         - SYSTEM_ADMIN
     jwt:
       secret: change-me-test-secret-change-me-test-secret
+      secure-cookies: false
   seed:
     sample-data:
       enabled: false
@@ -36,3 +40,25 @@ app:
       enabled: false
     notifications:
       enabled: false
+  rate-limit:
+    enabled: false
+  storage:
+    documents:
+      provider: LOCAL
+      root-path: ${java.io.tmpdir}/lms-documents-test
+      r2:
+        endpoint:
+        access-key:
+        secret-key:
+        bucket:
+        region: auto
+  datasource:
+    tenant:
+      username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
+      password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

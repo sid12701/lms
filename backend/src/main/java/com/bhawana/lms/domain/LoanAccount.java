@@ -12,6 +12,7 @@ import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -27,15 +28,15 @@ public class LoanAccount {
     @JoinColumn(name = "loan_application_id", nullable = false, unique = true)
     private LoanApplication loanApplication;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "borrower_id", nullable = false)
     private Borrower borrower;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "lsp_id", nullable = false)
     private Lsp lsp;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "loan_product_id", nullable = false)
     private LoanProduct loanProduct;
 
@@ -73,6 +74,10 @@ public class LoanAccount {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Version
+    @Column(name = "entity_version", nullable = false)
+    private long entityVersion;
 
     protected LoanAccount() {
     }
@@ -148,6 +153,10 @@ public class LoanAccount {
         return status;
     }
 
+    public void markInvalid() {
+        this.status = LoanAccountStatus.INVALID;
+    }
+
     public void markDisbursementRequested() {
         this.status = LoanAccountStatus.DISBURSEMENT_REQUESTED;
     }
@@ -185,6 +194,10 @@ public class LoanAccount {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public long getEntityVersion() {
+        return entityVersion;
     }
 
     public void close(LoanAccountClosureReason reason, String actorUsername, Instant occurredAt) {

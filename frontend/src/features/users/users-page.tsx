@@ -1,96 +1,90 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Badge } from '../../components/ui/badge'
-import { Button } from '../../components/ui/button'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { BlueLoader } from '@/components/app/blue-loader'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '../../components/ui/card'
-import { Input } from '../../components/ui/input'
-import {
-  createUser,
-  getAdminMetadata,
-  listLsps,
-  listUsers,
-  resetUserPassword,
-  type AdminMetadata,
-  type LspRecord,
-  type RoleCode,
-  type ResetPasswordResponse,
-  type UserRecord,
-  type UserStatus,
+  AdminBadge,
+  AdminButton,
+  AdminContent,
+  AdminDescription,
+  AdminEmptyState,
+  AdminEyebrow,
+  AdminField,
+  AdminFieldLabel,
+  AdminHeader,
+  AdminInput,
+  AdminSelect,
+  AdminSurface,
+  AdminTitle,
+} from '@/components/app/admin-page-ui'
+import { queryKeys } from '../api/query-keys'
+import { ApiError } from '../api/http-client'
+import type {
+  AdminMetadata,
+  LspOptionRecord,
+  ResetPasswordResponse,
+  RoleCode,
+  UserRecord,
+  UserStatus,
 } from '../api/lms-api'
+import { createUser, getAdminMetadata, listLspOptions, listUsers, resetUserPassword } from '../api/admin-api'
 
 function statusVariant(status: UserStatus): 'success' | 'warning' {
-  if (status === 'ACTIVE') {
-    return 'success'
-  }
+  return status === 'ACTIVE' ? 'success' : 'warning'
+}
 
-  return 'warning'
+function isAccessError(error: unknown) {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403)
 }
 
 export function UsersPage() {
-  const [users, setUsers] = useState<UserRecord[]>([])
-  const [lsps, setLsps] = useState<LspRecord[]>([])
-  const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
+  const queryClient = useQueryClient()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('TempPass123!')
   const [role, setRole] = useState<RoleCode | ''>('')
   const [lspId, setLspId] = useState('')
   const [status, setStatus] = useState<UserStatus | ''>('')
-  const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [resettingUserId, setResettingUserId] = useState('')
   const [resetResult, setResetResult] = useState<ResetPasswordResponse | null>(null)
-  const [error, setError] = useState('')
+  const [localError, setLocalError] = useState('')
+
+  const metadataQuery = useQuery({
+    queryKey: queryKeys.adminMetadata,
+    queryFn: getAdminMetadata,
+  })
+  const lspQuery = useQuery({
+    queryKey: queryKeys.lspOptions,
+    queryFn: listLspOptions,
+  })
+  const usersQuery = useQuery({
+    queryKey: queryKeys.users,
+    queryFn: listUsers,
+  })
+
+  const metadata: AdminMetadata | null = metadataQuery.data ?? null
+  const lsps: LspOptionRecord[] = lspQuery.data ?? []
+  const users: UserRecord[] = usersQuery.data ?? []
+  const loading = metadataQuery.isLoading || lspQuery.isLoading || usersQuery.isLoading
+  const permissionDenied =
+    isAccessError(metadataQuery.error) || isAccessError(lspQuery.error) || isAccessError(usersQuery.error)
+  const queryError = permissionDenied ? null : metadataQuery.error ?? lspQuery.error ?? usersQuery.error
+  const error = localError || (queryError instanceof Error ? queryError.message : '')
 
   useEffect(() => {
-    let cancelled = false
-
-    async function loadUsers() {
-      setLoading(true)
-      setError('')
-
-      try {
-        const [metadataResponse, lspResponse, response] = await Promise.all([
-          getAdminMetadata(),
-          listLsps(),
-          listUsers(),
-        ])
-        if (!cancelled) {
-          setMetadata(metadataResponse)
-          setLsps(lspResponse)
-          setUsers(response)
-          setRole((current) => current || (metadataResponse.roleCodes[0] as RoleCode | ''))
-          setStatus((current) => current || (metadataResponse.userStatuses[0] as UserStatus | ''))
-        }
-      } catch (loadError) {
-        const message = loadError instanceof Error ? loadError.message : 'Unable to load users.'
-        if (!cancelled) {
-          setError(message)
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
+    if (!metadata) {
+      return
     }
-
-    void loadUsers()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    setRole((current) => current || (metadata.roleCodes[0] as RoleCode | ''))
+    setStatus((current) => current || (metadata.userStatuses[0] as UserStatus | ''))
+  }, [metadata])
 
   const requiresLsp = role === 'LSP_UI_READ' || role === 'LSP_UI_WRITE'
+  const formDisabled = permissionDenied || !metadata
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!username.trim() || !email.trim() || !password.trim()) {
+    if (formDisabled || !username.trim() || !email.trim() || !password.trim()) {
       return
     }
 
@@ -99,12 +93,12 @@ export function UsersPage() {
     const nextLspId = requiresLsp ? lspId || lsps[0]?.id || '' : ''
 
     if (requiresLsp && !nextLspId) {
-      setError('An LSP must be selected for tenant UI users.')
+      setLocalError('An LSP must be selected for tenant UI users.')
       return
     }
 
     setSubmitting(true)
-    setError('')
+    setLocalError('')
 
     try {
       const created = await createUser({
@@ -116,7 +110,10 @@ export function UsersPage() {
         roles: [nextRole],
       })
 
-      setUsers((current) => [created, ...current.filter((item) => item.id !== created.id)])
+      queryClient.setQueryData<UserRecord[]>(queryKeys.users, (current = []) => [
+        created,
+        ...current.filter((item) => item.id !== created.id),
+      ])
       setUsername('')
       setEmail('')
       setPassword('TempPass123!')
@@ -125,7 +122,7 @@ export function UsersPage() {
       setStatus(nextStatus)
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : 'Unable to create user.'
-      setError(message)
+      setLocalError(message)
     } finally {
       setSubmitting(false)
     }
@@ -133,7 +130,7 @@ export function UsersPage() {
 
   async function handleResetPassword(userId: string) {
     setResettingUserId(userId)
-    setError('')
+    setLocalError('')
     setResetResult(null)
 
     try {
@@ -141,179 +138,206 @@ export function UsersPage() {
       setResetResult(result)
     } catch (resetError) {
       const message = resetError instanceof Error ? resetError.message : 'Unable to reset password.'
-      setError(message)
+      setLocalError(message)
     } finally {
       setResettingUserId('')
     }
   }
 
   return (
-    <div className="users-layout">
-      <Card className="list-card">
-        <CardHeader>
-          <div className="section-eyebrow">User administration</div>
-          <CardTitle>Internal and tenant-scoped users</CardTitle>
-          <CardDescription>
-            Phase 2 target: manage internal users, role assignment, and tenant scope from a single console.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="inline-actions" style={{ marginBottom: '1rem' }}>
-            <Badge>{users.length} users</Badge>
-            <Badge variant="warning">{metadata?.roleCodes.length ?? 0} role codes</Badge>
+    <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.48fr)]">
+      <AdminSurface>
+        <AdminHeader>
+          <AdminEyebrow>User administration</AdminEyebrow>
+          <AdminTitle>Internal and tenant-scoped users</AdminTitle>
+          <AdminDescription>
+            Manage internal operators, role assignment, and tenant scope from one registry.
+          </AdminDescription>
+        </AdminHeader>
+        <AdminContent>
+          <div className="flex flex-wrap items-center gap-2">
+            <AdminBadge>{users.length} users</AdminBadge>
+            <AdminBadge variant="warning">{metadata?.roleCodes.length ?? 0} role codes</AdminBadge>
           </div>
-          {loading ? <div className="empty-state">Loading user registry...</div> : null}
-          {error ? <div className="empty-state">{error}</div> : null}
-          {!loading && !error ? (
-            <div className="table-grid">
+          {loading ? (
+            <BlueLoader
+              title="Loading user registry"
+              description="Fetching internal users, tenant scopes, and role metadata."
+              compact
+            />
+          ) : null}
+          {permissionDenied ? (
+            <AdminEmptyState>
+              System-admin access is required to manage users. Sign in with an account that includes user
+              administration permissions.
+            </AdminEmptyState>
+          ) : null}
+          {error ? <AdminEmptyState>{error}</AdminEmptyState> : null}
+          {!loading && !permissionDenied && !error ? (
+            <div className="grid gap-3">
               {users.map((user) => (
-                <div className="table-row" key={user.id}>
-                  <div>
-                    <strong>{user.username}</strong>
-                    <p className="helper-copy">{user.email}</p>
+                <article
+                  className="grid gap-4 rounded-lg bg-[#f8f9fa] p-4 shadow-[0_8px_24px_rgba(0,6,102,0.045)] transition duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_16px_34px_rgba(0,6,102,0.08)] lg:grid-cols-[minmax(180px,1fr)_auto_auto_minmax(120px,0.6fr)_auto] lg:items-center"
+                  key={user.id}
+                >
+                  <div className="min-w-0">
+                    <strong className="block truncate text-base font-extrabold text-[#0f1729]">
+                      {user.username}
+                    </strong>
+                    <p className="mt-1 truncate text-sm font-semibold text-[#5e6680]">{user.email}</p>
                   </div>
-                  <Badge variant={statusVariant(user.status)}>{user.status}</Badge>
-                  <Badge>{user.roles[0] ?? 'UNASSIGNED'}</Badge>
-                  <span>{user.lspName}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
+                  <AdminBadge variant={statusVariant(user.status)}>{user.status}</AdminBadge>
+                  <AdminBadge>{user.roles[0] ?? 'UNASSIGNED'}</AdminBadge>
+                  <span className="min-w-0 truncate text-sm font-semibold text-[#5e6680]">
+                    {user.lspName || 'All tenants'}
+                  </span>
+                  <AdminButton
                     disabled={resettingUserId === user.id}
+                    size="sm"
+                    variant="secondary"
                     onClick={() => handleResetPassword(user.id)}
                   >
                     {resettingUserId === user.id ? 'Resetting...' : 'Reset password'}
-                  </Button>
-                </div>
+                  </AdminButton>
+                </article>
               ))}
-              {!users.length ? <div className="empty-state">No users found.</div> : null}
+              {!users.length ? <AdminEmptyState>No users found.</AdminEmptyState> : null}
             </div>
           ) : null}
-        </CardContent>
-      </Card>
+        </AdminContent>
+      </AdminSurface>
 
-      {resetResult ? (
-        <Card className="content-card">
-          <CardHeader>
-            <div className="section-eyebrow">Temporary password issued</div>
-            <CardTitle>{resetResult.username}</CardTitle>
-            <CardDescription>
-              Copy this password now. It is shown only once after reset.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="secret-panel">
-              <div className="secret-panel__row">
-                <span>User</span>
-                <strong>{resetResult.username}</strong>
+      <div className="grid gap-6">
+        {resetResult ? (
+          <AdminSurface>
+            <AdminHeader>
+              <AdminEyebrow>Temporary password issued</AdminEyebrow>
+              <AdminTitle>{resetResult.username}</AdminTitle>
+              <AdminDescription>This password is shown only once after reset.</AdminDescription>
+            </AdminHeader>
+            <AdminContent>
+              <div className="grid gap-3 rounded-lg bg-[#eef1f8]/80 p-4">
+                <div className="grid gap-1">
+                  <span className="text-xs font-bold uppercase text-[#8a92a8]">User</span>
+                  <strong className="break-all text-sm font-extrabold text-[#0f1729]">{resetResult.username}</strong>
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-xs font-bold uppercase text-[#8a92a8]">
+                    Temporary password
+                  </span>
+                  <strong className="break-all rounded-md bg-white px-3 py-2 text-sm font-extrabold text-[#000666] shadow-[inset_0_0_0_1px_rgba(0,6,102,0.05)]">
+                    {resetResult.temporaryPassword}
+                  </strong>
+                </div>
+                <AdminButton variant="ghost" onClick={() => setResetResult(null)}>
+                  Acknowledge and hide password
+                </AdminButton>
               </div>
-              <div className="secret-panel__row">
-                <span>Temporary password</span>
-                <strong>{resetResult.temporaryPassword}</strong>
-              </div>
-              <Button type="button" variant="ghost" onClick={() => setResetResult(null)}>
-                Acknowledge and hide password
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
+            </AdminContent>
+          </AdminSurface>
+        ) : null}
 
-      <Card>
-        <CardHeader>
-          <div className="section-eyebrow">Create user</div>
-          <CardTitle>Add operator</CardTitle>
-          <CardDescription>
-            This shell form is wired to the backend user creation API.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="form-grid" onSubmit={handleCreate}>
-            <div className="field-stack">
-              <label htmlFor="username">Username</label>
-              <Input
-                id="username"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="ananya.ops"
-              />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="email">Email</label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="ananya.ops@bhawana.local"
-              />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="password">Temporary password</label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </div>
-            <div className="field-stack">
-              <label htmlFor="role">Role code</label>
-              <select
-                id="role"
-                className="ui-input"
-                value={role}
-                onChange={(event) => setRole(event.target.value as RoleCode)}
-                disabled={!metadata?.roleCodes.length}
-              >
-                <option value="">Select a role</option>
-                {(metadata?.roleCodes ?? []).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field-stack">
-              <label htmlFor="status">Status</label>
-              <select
-                id="status"
-                className="ui-input"
-                value={status}
-                onChange={(event) => setStatus(event.target.value as UserStatus)}
-                disabled={!metadata?.userStatuses.length}
-              >
-                <option value="">Select a status</option>
-                {(metadata?.userStatuses ?? []).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field-stack">
-              <label htmlFor="lspId">Tenant scope</label>
-              <select
-                id="lspId"
-                className="ui-input"
-                value={lspId}
-                onChange={(event) => setLspId(event.target.value)}
-                disabled={!lsps.length || !requiresLsp}
-              >
-                <option value="">{requiresLsp ? 'Select an LSP' : 'Not required for this role'}</option>
-                {lsps.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {error ? <div className="empty-state">{error}</div> : null}
-            <Button disabled={submitting} type="submit">
-              {submitting ? 'Creating...' : 'Create user'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+        <AdminSurface>
+          <AdminHeader>
+            <AdminEyebrow>Create user</AdminEyebrow>
+            <AdminTitle>Add operator</AdminTitle>
+            <AdminDescription>Issue a temporary password and assign the role needed for console access.</AdminDescription>
+          </AdminHeader>
+          <AdminContent>
+            {permissionDenied ? (
+              <AdminEmptyState>
+                User creation is disabled for this session because the active token lacks user administration
+                permissions.
+              </AdminEmptyState>
+            ) : null}
+            <form className="grid gap-4" onSubmit={handleCreate}>
+              <AdminField>
+                <AdminFieldLabel htmlFor="username">Username</AdminFieldLabel>
+                <AdminInput
+                  disabled={formDisabled}
+                  id="username"
+                  placeholder="ananya.ops"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                />
+              </AdminField>
+              <AdminField>
+                <AdminFieldLabel htmlFor="email">Email</AdminFieldLabel>
+                <AdminInput
+                  disabled={formDisabled}
+                  id="email"
+                  placeholder="ananya.ops@bhawana.local"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </AdminField>
+              <AdminField>
+                <AdminFieldLabel htmlFor="password">Temporary password</AdminFieldLabel>
+                <AdminInput
+                  disabled={formDisabled}
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </AdminField>
+              <AdminField>
+                <AdminFieldLabel htmlFor="role">Role code</AdminFieldLabel>
+                <AdminSelect
+                  disabled={formDisabled || !metadata?.roleCodes.length}
+                  id="role"
+                  value={role}
+                  onChange={(event) => setRole(event.target.value as RoleCode)}
+                >
+                  <option value="">Select a role</option>
+                  {(metadata?.roleCodes ?? []).map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </AdminSelect>
+              </AdminField>
+              <AdminField>
+                <AdminFieldLabel htmlFor="status">Status</AdminFieldLabel>
+                <AdminSelect
+                  disabled={formDisabled || !metadata?.userStatuses.length}
+                  id="status"
+                  value={status}
+                  onChange={(event) => setStatus(event.target.value as UserStatus)}
+                >
+                  <option value="">Select a status</option>
+                  {(metadata?.userStatuses ?? []).map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </AdminSelect>
+              </AdminField>
+              <AdminField>
+                <AdminFieldLabel htmlFor="lspId">Tenant scope</AdminFieldLabel>
+                <AdminSelect
+                  disabled={formDisabled || !lsps.length || !requiresLsp}
+                  id="lspId"
+                  value={lspId}
+                  onChange={(event) => setLspId(event.target.value)}
+                >
+                  <option value="">{requiresLsp ? 'Select an LSP' : 'Not required for this role'}</option>
+                  {lsps.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
+                  ))}
+                </AdminSelect>
+              </AdminField>
+              {error ? <AdminEmptyState>{error}</AdminEmptyState> : null}
+              <AdminButton disabled={formDisabled || submitting} type="submit">
+                {submitting ? 'Creating...' : 'Create user'}
+              </AdminButton>
+            </form>
+          </AdminContent>
+        </AdminSurface>
+      </div>
     </div>
   )
 }

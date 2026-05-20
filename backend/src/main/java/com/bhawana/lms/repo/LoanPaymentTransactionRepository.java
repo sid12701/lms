@@ -10,4 +10,6 @@ public interface LoanPaymentTransactionRepository extends JpaRepository<LoanPaym
     List<LoanPaymentTransaction> findTop50ByLoanAccount_IdOrderByPaymentDateDescCreatedAtDesc(UUID loanAccountId);
 
     List<LoanPaymentTransaction> findByLoanAccount_IdOrderByPaymentDateAscCreatedAtAsc(UUID loanAccountId);
+
+    boolean existsByLoanAccount_Id(UUID loanAccountId);
 }

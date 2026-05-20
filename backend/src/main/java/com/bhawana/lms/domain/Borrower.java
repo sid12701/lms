@@ -1,7 +1,10 @@
 package com.bhawana.lms.domain;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Entity;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -9,6 +12,9 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -18,10 +24,15 @@ public class Borrower {
     @Id
     private UUID id;
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "borrower_lsp_access", joinColumns = @jakarta.persistence.JoinColumn(name = "borrower_id"))
+    @Column(name = "lsp_id", nullable = false)
+    private Set<UUID> visibleLspIds = new LinkedHashSet<>();
+
     @Column(name = "full_name", nullable = false, length = 255)
     private String fullName;
 
-    @Column(nullable = false, unique = true, length = 10)
+    @Column(nullable = false, length = 10)
     private String pan;
 
     @Column(nullable = false, length = 32)
@@ -115,7 +126,42 @@ public class Borrower {
     }
 
     public Borrower(String fullName, String pan, String mobile, String email) {
-        this(fullName, pan, mobile, email, null, null, null, null, null);
+        this(
+                fullName,
+                pan,
+                mobile,
+                email,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    public Borrower(Lsp lsp, String fullName, String pan, String mobile, String email) {
+        this(fullName, pan, mobile, email);
+        grantVisibilityTo(lsp);
     }
 
     public Borrower(
@@ -182,6 +228,73 @@ public class Borrower {
     }
 
     public Borrower(
+            Lsp lsp,
+            String fullName,
+            String pan,
+            String mobile,
+            String email,
+            LocalDate dateOfBirth,
+            String gender,
+            String maritalStatus,
+            String fatherName,
+            String aadharNumber,
+            String city,
+            String state,
+            String addressLine1,
+            String addressLine2,
+            String addressZipCode,
+            String spouseName,
+            String employmentType,
+            String organizationName,
+            String employeeId,
+            String employmentCity,
+            String employmentState,
+            String employmentZip,
+            BigDecimal monthlyIncome,
+            BigDecimal annualIncome,
+            String bankAccountNumber,
+            String bankName,
+            String ifscCode,
+            String accountHolderName,
+            String referencePersonName,
+            String referencePersonNumber
+    ) {
+        this(
+                fullName,
+                pan,
+                mobile,
+                email,
+                dateOfBirth,
+                gender,
+                maritalStatus,
+                fatherName,
+                aadharNumber,
+                city,
+                state,
+                addressLine1,
+                addressLine2,
+                addressZipCode,
+                spouseName,
+                employmentType,
+                organizationName,
+                employeeId,
+                employmentCity,
+                employmentState,
+                employmentZip,
+                monthlyIncome,
+                annualIncome,
+                bankAccountNumber,
+                bankName,
+                ifscCode,
+                accountHolderName,
+                referencePersonName,
+                referencePersonNumber
+        );
+        grantVisibilityTo(lsp);
+    }
+
+    public Borrower(
+            Lsp lsp,
             String fullName,
             String pan,
             String mobile,
@@ -193,6 +306,7 @@ public class Borrower {
             BigDecimal monthlyIncome
     ) {
         this(
+                lsp,
                 fullName,
                 pan,
                 mobile,
@@ -239,6 +353,26 @@ public class Borrower {
 
     public UUID getId() {
         return id;
+    }
+
+    public Set<UUID> getVisibleLspIds() {
+        return Collections.unmodifiableSet(visibleLspIds);
+    }
+
+    public boolean hasVisibilityFor(UUID lspId) {
+        return lspId != null && visibleLspIds.contains(lspId);
+    }
+
+    public void grantVisibilityTo(Lsp lsp) {
+        if (lsp != null) {
+            grantVisibilityTo(lsp.getId());
+        }
+    }
+
+    public void grantVisibilityTo(UUID lspId) {
+        if (lspId != null) {
+            visibleLspIds.add(lspId);
+        }
     }
 
     public String getFullName() {
@@ -452,6 +586,68 @@ public class Borrower {
         this.accountHolderName = normalizeOptional(accountHolderName);
         this.referencePersonName = normalizeOptional(referencePersonName);
         this.referencePersonNumber = normalizeOptional(referencePersonNumber);
+    }
+
+    public void mergeLatestProfile(
+            String fullName,
+            String mobile,
+            String email,
+            LocalDate dateOfBirth,
+            String gender,
+            String maritalStatus,
+            String fatherName,
+            String aadharNumber,
+            String city,
+            String state,
+            String addressLine1,
+            String addressLine2,
+            String addressZipCode,
+            String spouseName,
+            String employmentType,
+            String organizationName,
+            String employeeId,
+            String employmentCity,
+            String employmentState,
+            String employmentZip,
+            BigDecimal monthlyIncome,
+            BigDecimal annualIncome,
+            String bankAccountNumber,
+            String bankName,
+            String ifscCode,
+            String accountHolderName,
+            String referencePersonName,
+            String referencePersonNumber
+    ) {
+        refreshProfile(
+                fullName,
+                mobile,
+                email,
+                dateOfBirth,
+                gender,
+                maritalStatus,
+                fatherName,
+                this.aadharNumber == null ? aadharNumber : this.aadharNumber,
+                city,
+                state,
+                addressLine1,
+                addressLine2,
+                addressZipCode,
+                spouseName,
+                employmentType,
+                organizationName,
+                employeeId,
+                employmentCity,
+                employmentState,
+                employmentZip,
+                monthlyIncome,
+                annualIncome,
+                bankAccountNumber,
+                bankName,
+                ifscCode,
+                accountHolderName,
+                referencePersonName,
+                referencePersonNumber
+        );
     }
 
     private static String normalizeEmail(String email) {

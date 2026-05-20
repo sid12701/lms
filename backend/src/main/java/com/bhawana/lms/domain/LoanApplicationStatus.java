@@ -6,6 +6,7 @@ public enum LoanApplicationStatus {
     APPROVED_PENDING_DISBURSAL,
     REJECTED,
     PAYMENT_REINITIATION,
+    INVALID,
     DISBURSED,
     UNDER_REPAYMENT,
     CLOSED;
@@ -17,6 +18,7 @@ public enum LoanApplicationStatus {
             case APPROVED_PENDING_DISBURSAL,
                     REJECTED,
                     PAYMENT_REINITIATION,
+                    INVALID,
                     DISBURSED,
                     UNDER_REPAYMENT,
                     CLOSED -> false;

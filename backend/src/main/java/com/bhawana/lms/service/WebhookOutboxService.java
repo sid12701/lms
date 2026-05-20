@@ -21,12 +21,15 @@ import java.util.Map;
 import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import org.springframework.data.domain.PageRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class WebhookOutboxService {
+
+    private static final Logger log = LoggerFactory.getLogger(WebhookOutboxService.class);
 
     private final WebhookEventOutboxRepository webhookEventOutboxRepository;
     private final WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
@@ -91,14 +94,16 @@ public class WebhookOutboxService {
         return webhookEventOutboxRepository.findTop50ByLsp_IdOrderByCreatedAtDesc(lspId);
     }
 
+    @Transactional
     public DispatchSummary dispatchPending(int batchSize) {
         if (batchSize < 1 || batchSize > 100) {
             throw new IllegalArgumentException("Batch size must be between 1 and 100.");
         }
 
-        List<WebhookEventOutbox> batch = webhookEventOutboxRepository.findDispatchBatch(
+        long startedAt = System.nanoTime();
+        List<WebhookEventOutbox> batch = webhookEventOutboxRepository.claimDispatchBatch(
                 Instant.now(),
-                PageRequest.of(0, batchSize)
+                batchSize
         );
         int delivered = 0;
         int retryableFailures = 0;
@@ -115,6 +120,14 @@ public class WebhookOutboxService {
             }
         }
 
+        log.info(
+                "webhook_outbox_batch_completed processed={} delivered={} retryableFailures={} permanentFailures={} durationMs={}",
+                batch.size(),
+                delivered,
+                retryableFailures,
+                permanentFailures,
+                elapsedMillis(startedAt)
+        );
         return new DispatchSummary(batch.size(), delivered, retryableFailures, permanentFailures);
     }
 
@@ -129,7 +142,6 @@ public class WebhookOutboxService {
     private DeliveryOutcome dispatchEvent(WebhookEventOutbox event) {
         Instant attemptedAt = Instant.now();
         int attemptNumber = event.getAttemptCount() + 1;
-        String endpointUrl = event.getLsp().getWebhookEndpointUrl();
         WebhookDeliveryClient.WebhookDeliveryRequest request = buildDeliveryRequest(event, attemptedAt);
 
         try {
@@ -152,6 +164,18 @@ public class WebhookOutboxService {
             if (attemptStatus == WebhookEventDeliveryAttemptStatus.SUCCESS) {
                 event.markDelivered(attemptedAt);
                 webhookEventOutboxRepository.save(event);
+                log.info(
+                        "webhook_outbox_event_processed eventId={} lspId={} eventType={} aggregateType={} aggregateId={} correlationId={} outcome={} attemptNumber={} httpStatus={}",
+                        event.getId(),
+                        event.getLsp().getId(),
+                        event.getEventType(),
+                        event.getAggregateType(),
+                        event.getAggregateId(),
+                        event.getCorrelationId(),
+                        DeliveryOutcome.DELIVERED,
+                        attemptNumber,
+                        response.statusCode()
+                );
                 return DeliveryOutcome.DELIVERED;
             }
 
@@ -159,11 +183,35 @@ public class WebhookOutboxService {
             if (attemptStatus == WebhookEventDeliveryAttemptStatus.RETRYABLE_FAILURE) {
                 event.markRetryableFailure(attemptedAt, attemptedAt.plusSeconds(calculateBackoffSeconds(attemptNumber)), errorMessage);
                 webhookEventOutboxRepository.save(event);
+                log.info(
+                        "webhook_outbox_event_processed eventId={} lspId={} eventType={} aggregateType={} aggregateId={} correlationId={} outcome={} attemptNumber={} httpStatus={}",
+                        event.getId(),
+                        event.getLsp().getId(),
+                        event.getEventType(),
+                        event.getAggregateType(),
+                        event.getAggregateId(),
+                        event.getCorrelationId(),
+                        DeliveryOutcome.RETRYABLE_FAILURE,
+                        attemptNumber,
+                        response.statusCode()
+                );
                 return DeliveryOutcome.RETRYABLE_FAILURE;
             }
 
             event.markPermanentFailure(attemptedAt, errorMessage);
             webhookEventOutboxRepository.save(event);
+            log.info(
+                    "webhook_outbox_event_processed eventId={} lspId={} eventType={} aggregateType={} aggregateId={} correlationId={} outcome={} attemptNumber={} httpStatus={}",
+                    event.getId(),
+                    event.getLsp().getId(),
+                    event.getEventType(),
+                    event.getAggregateType(),
+                    event.getAggregateId(),
+                    event.getCorrelationId(),
+                    DeliveryOutcome.PERMANENT_FAILURE,
+                    attemptNumber,
+                    response.statusCode()
+            );
             return DeliveryOutcome.PERMANENT_FAILURE;
         } catch (RuntimeException exception) {
             webhookEventDeliveryAttemptRepository.save(new WebhookEventDeliveryAttempt(
@@ -185,6 +233,18 @@ public class WebhookOutboxService {
                     exception.getMessage()
             );
             webhookEventOutboxRepository.save(event);
+            log.warn(
+                    "webhook_outbox_event_processed eventId={} lspId={} eventType={} aggregateType={} aggregateId={} correlationId={} outcome={} attemptNumber={} errorMessage={}",
+                    event.getId(),
+                    event.getLsp().getId(),
+                    event.getEventType(),
+                    event.getAggregateType(),
+                    event.getAggregateId(),
+                    event.getCorrelationId(),
+                    DeliveryOutcome.RETRYABLE_FAILURE,
+                    attemptNumber,
+                    exception.getMessage()
+            );
             return DeliveryOutcome.RETRYABLE_FAILURE;
         }
     }
@@ -245,5 +305,9 @@ public class WebhookOutboxService {
             int retryableFailures,
             int permanentFailures
     ) {
+    }
+
+    private static long elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000L;
     }
 }

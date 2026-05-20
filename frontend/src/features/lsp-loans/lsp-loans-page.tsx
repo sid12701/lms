@@ -1,15 +1,22 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { BlueLoader } from '@/components/app/blue-loader'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Input } from '../../components/ui/input'
 import {
-  getExternalLspLoanApplication,
-  listExternalLspLoanApplications,
   type LoanApplicationStatus,
   type LoanApplicationDetailRecord,
   type LoanApplicationRecord,
+  type LoanInvalidationReason,
+  type LoanInvalidationReasonOptionRecord,
 } from '../api/lms-api'
+import {
+  getExternalLspLoanApplication,
+  invalidateExternalLspLoanApplication,
+  listExternalLspLoanApplications,
+  listExternalLspLoanInvalidationReasons,
+} from '../api/loan-applications-api'
 import { useAuth } from '../auth/auth-context'
 
 function statusLabel(status: LoanApplicationStatus) {
@@ -24,6 +31,8 @@ function statusLabel(status: LoanApplicationStatus) {
       return 'Rejected'
     case 'PAYMENT_REINITIATION':
       return 'Payment re-initiation'
+    case 'INVALID':
+      return 'Invalid'
     case 'DISBURSED':
       return 'Disbursed'
     case 'UNDER_REPAYMENT':
@@ -39,6 +48,7 @@ function statusVariant(status: LoanApplicationStatus): 'default' | 'warning' | '
     case 'APPROVED_PENDING_DISBURSAL':
     case 'PAYMENT_REINITIATION':
       return 'warning'
+    case 'INVALID':
     case 'REJECTED':
       return 'destructive'
     case 'DISBURSED':
@@ -77,14 +87,57 @@ function downloadCsv(filename: string, rows: Array<Array<string | number>>) {
 
 export function LspLoansPage() {
   const { user } = useAuth()
+  const canInvalidate = user?.roles.includes('LSP_UI_WRITE') ?? false
   const [query, setQuery] = useState('')
   const [submittedQuery, setSubmittedQuery] = useState('')
   const [loans, setLoans] = useState<LoanApplicationRecord[]>([])
   const [selectedLoanId, setSelectedLoanId] = useState('')
   const [selectedLoan, setSelectedLoan] = useState<LoanApplicationDetailRecord | null>(null)
+  const [invalidationReasons, setInvalidationReasons] = useState<LoanInvalidationReasonOptionRecord[]>([])
+  const [selectedReasonCode, setSelectedReasonCode] = useState<LoanInvalidationReason | ''>('')
+  const [reasonText, setReasonText] = useState('')
+  const [loadingReasons, setLoadingReasons] = useState(false)
+  const [invalidating, setInvalidating] = useState(false)
   const [loadingList, setLoadingList] = useState(true)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [error, setError] = useState('')
+  const [invalidationError, setInvalidationError] = useState('')
+
+  useEffect(() => {
+    if (!canInvalidate) {
+      setInvalidationReasons([])
+      return
+    }
+
+    let cancelled = false
+
+    async function loadInvalidationReasons() {
+      setLoadingReasons(true)
+
+      try {
+        const response = await listExternalLspLoanInvalidationReasons()
+        if (!cancelled) {
+          setInvalidationReasons(response)
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setInvalidationError(
+            loadError instanceof Error ? loadError.message : 'Unable to load invalidation reasons.',
+          )
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingReasons(false)
+        }
+      }
+    }
+
+    void loadInvalidationReasons()
+
+    return () => {
+      cancelled = true
+    }
+  }, [canInvalidate])
 
   useEffect(() => {
     let cancelled = false
@@ -162,9 +215,58 @@ export function LspLoansPage() {
     }
   }, [selectedLoanId])
 
+  useEffect(() => {
+    setSelectedReasonCode('')
+    setReasonText('')
+    setInvalidationError('')
+  }, [selectedLoanId])
+
   function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmittedQuery(query.trim())
+  }
+
+  const selectedReason = invalidationReasons.find((reason) => reason.code === selectedReasonCode)
+  const requiresReasonText = Boolean(selectedReason?.requiresText || selectedReason?.requiresDetail)
+
+  async function handleInvalidate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!selectedLoan || !selectedReasonCode) {
+      setInvalidationError('Select an invalidation reason to continue.')
+      return
+    }
+
+    const normalizedReasonText = reasonText.trim()
+    if (requiresReasonText && !normalizedReasonText) {
+      setInvalidationError('Reason details are required for the selected option.')
+      return
+    }
+
+    setInvalidationError('')
+    setInvalidating(true)
+
+    try {
+      const updatedLoan = await invalidateExternalLspLoanApplication(
+        selectedLoan.id,
+        {
+          reasonCode: selectedReasonCode,
+          reasonText: requiresReasonText ? normalizedReasonText || undefined : undefined,
+        },
+        globalThis.crypto.randomUUID(),
+      )
+
+      setSelectedLoan(updatedLoan)
+      setLoans((current) =>
+        current.map((loan) => (loan.id === updatedLoan.id ? { ...loan, status: updatedLoan.status } : loan)),
+      )
+    } catch (requestError) {
+      setInvalidationError(
+        requestError instanceof Error ? requestError.message : 'Unable to mark the loan invalid.',
+      )
+    } finally {
+      setInvalidating(false)
+    }
   }
 
   function handleExport() {
@@ -220,7 +322,13 @@ export function LspLoansPage() {
             <Badge>{loans.length} loans</Badge>
             {user?.lspName ? <Badge variant="warning">{user.lspName}</Badge> : null}
           </div>
-          {loadingList ? <div className="empty-state">Loading my loans...</div> : null}
+          {loadingList ? (
+            <BlueLoader
+              title="Loading my loans"
+              description="Fetching tenant-scoped applications and latest servicing state."
+              compact
+            />
+          ) : null}
           {error ? <div className="empty-state">{error}</div> : null}
           {!loadingList && !error ? (
             <div className="table-grid">
@@ -260,7 +368,13 @@ export function LspLoansPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {loadingDetail ? <div className="empty-state">Loading loan detail...</div> : null}
+          {loadingDetail ? (
+            <BlueLoader
+              title="Loading loan detail"
+              description="Preparing borrower, repayment, and activity details."
+              compact
+            />
+          ) : null}
           {!loadingDetail && !selectedLoan ? (
             <div className="empty-state">Choose a loan from the list to inspect its current state.</div>
           ) : null}
@@ -319,6 +433,71 @@ export function LspLoansPage() {
                     : 'Activity appears after intake, review, or servicing events.'}
                 </div>
               </div>
+
+              {selectedLoan.invalidatedAt ? (
+                <div className="field-stack">
+                  <label>Invalidation</label>
+                  <div>
+                    {selectedLoan.invalidReasonText
+                      ? `${selectedLoan.invalidReasonCode} - ${selectedLoan.invalidReasonText}`
+                      : selectedLoan.invalidReasonCode ?? 'Invalidated'}
+                  </div>
+                  <div className="helper-copy">
+                    {(selectedLoan.invalidatedByUsername ?? 'system') +
+                      ' | ' +
+                      new Date(selectedLoan.invalidatedAt).toLocaleString()}
+                  </div>
+                </div>
+              ) : null}
+
+              {canInvalidate && selectedLoan.status !== 'INVALID' ? (
+                <form
+                  className="field-stack"
+                  style={{ gridColumn: '1 / -1' }}
+                  onSubmit={(event) => void handleInvalidate(event)}
+                >
+                  <label htmlFor="loan-invalidation-reason">Reason</label>
+                  <select
+                    id="loan-invalidation-reason"
+                    className="ui-input"
+                    value={selectedReasonCode}
+                    onChange={(event) =>
+                      setSelectedReasonCode(event.target.value as LoanInvalidationReason | '')
+                    }
+                    disabled={loadingReasons || invalidating}
+                  >
+                    <option value="">Select a reason</option>
+                    {invalidationReasons.map((reason) => (
+                      <option key={reason.code} value={reason.code}>
+                        {reason.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  {requiresReasonText ? (
+                    <>
+                      <label htmlFor="loan-invalidation-reason-text">Reason details</label>
+                      <textarea
+                        id="loan-invalidation-reason-text"
+                        className="ui-input"
+                        rows={4}
+                        value={reasonText}
+                        onChange={(event) => setReasonText(event.target.value)}
+                        placeholder="Capture the invalidation detail."
+                        disabled={invalidating}
+                      />
+                    </>
+                  ) : null}
+
+                  {invalidationError ? <div className="helper-copy">{invalidationError}</div> : null}
+
+                  <div className="inline-actions">
+                    <Button type="submit" disabled={loadingReasons || invalidating || !selectedReasonCode}>
+                      {invalidating ? 'Marking invalid...' : 'Mark invalid'}
+                    </Button>
+                  </div>
+                </form>
+              ) : null}
             </div>
           ) : null}
         </CardContent>

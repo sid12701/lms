@@ -5,9 +5,11 @@ import com.bhawana.lms.service.AdminReportingService;
 import com.bhawana.lms.service.ReportRequestService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -35,6 +37,31 @@ public class ReportAdminController {
     ) {
         this.adminReportingService = adminReportingService;
         this.reportRequestService = reportRequestService;
+    }
+
+    @GetMapping("/portfolio-mis/preview")
+    public PortfolioMisPreviewPage previewPortfolioMisReport(
+            @RequestParam(required = false) UUID lspId,
+            @RequestParam(required = false) LocalDate disbursalDateFrom,
+            @RequestParam(required = false) LocalDate disbursalDateTo,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "50") int size
+    ) {
+        AdminReportingService.PortfolioMisPage result = adminReportingService.getPortfolioMisPage(
+                lspId, disbursalDateFrom, disbursalDateTo, page, size);
+        List<PortfolioMisPreviewRow> content = result.content().stream()
+                .map(ReportAdminController::toPreviewRow)
+                .toList();
+        return new PortfolioMisPreviewPage(content, result.totalElements(), result.page(), result.size());
+    }
+
+    @GetMapping("/portfolio-mis/summary")
+    public AdminReportingService.PortfolioMisSummary getPortfolioMisSummary(
+            @RequestParam(required = false) UUID lspId,
+            @RequestParam(required = false) LocalDate disbursalDateFrom,
+            @RequestParam(required = false) LocalDate disbursalDateTo
+    ) {
+        return adminReportingService.getPortfolioMisSummary(lspId, disbursalDateFrom, disbursalDateTo);
     }
 
     @GetMapping(value = "/portfolio-mis", produces = "text/csv")
@@ -82,7 +109,7 @@ public class ReportAdminController {
     private static ResponseEntity<byte[]> downloadResponse(String fileName, String mediaType, byte[] content) {
         MediaType contentType = MediaType.parseMediaType(mediaType);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(fileName).build().toString())
                 .contentType(contentType)
                 .body(content);
     }
@@ -138,5 +165,123 @@ public class ReportAdminController {
             String createdAt,
             String updatedAt
     ) {
+    }
+
+    public record InstallmentPreviewRow(
+            int installmentNumber,
+            LocalDate dueDate,
+            BigDecimal installmentAmount,
+            BigDecimal paidAmount,
+            boolean received
+    ) {
+    }
+
+    public record PortfolioMisPreviewPage(
+            List<PortfolioMisPreviewRow> content,
+            int totalElements,
+            int page,
+            int size
+    ) {
+    }
+
+    public record PortfolioMisPreviewRow(
+            String lspCode,
+            String lspName,
+            String applicationId,
+            String externalLoanId,
+            String borrowerFullName,
+            String productCode,
+            String productName,
+            String accountNumber,
+            BigDecimal principalAmount,
+            String accountStatus,
+            LocalDate disbursalDate,
+            String delinquencyBucket,
+            BigDecimal overdueAmount,
+            String closureReason,
+            LocalDate closedDate,
+            LocalDate applicationCreatedAt,
+            Integer loanYear,
+            BigDecimal processingFeeAmount,
+            BigDecimal disbursalAmount,
+            BigDecimal interestRate,
+            int tenureMonths,
+            String borrowerId,
+            BigDecimal perEmiAmount,
+            List<InstallmentPreviewRow> installments,
+            String loanStatusDisplay,
+            BigDecimal foreclosedRepaidAmount,
+            LocalDate foreclosureDate,
+            LocalDate normalClosureDate,
+            int daysPastDue,
+            String customerName,
+            String address,
+            String zipCode,
+            String borrowerState,
+            String ifscCode,
+            String bankAccountNumber,
+            String gender,
+            String aadharNumber,
+            String panNumber,
+            String profession,
+            BigDecimal income
+    ) {
+    }
+
+    private static PortfolioMisPreviewRow toPreviewRow(AdminReportingService.PortfolioMisRow row) {
+        List<InstallmentPreviewRow> installmentPreviews = row.installments() == null
+                ? List.of()
+                : row.installments().stream()
+                        .map(snap -> new InstallmentPreviewRow(
+                                snap.installmentNumber(),
+                                snap.dueDate(),
+                                snap.installmentAmount(),
+                                snap.paidAmount(),
+                                snap.received()
+                        ))
+                        .toList();
+
+        return new PortfolioMisPreviewRow(
+                row.lspCode(),
+                row.lspName(),
+                row.applicationId(),
+                row.externalLoanId(),
+                row.borrowerFullName(),
+                row.productCode(),
+                row.productName(),
+                row.accountNumber(),
+                row.principalAmount(),
+                row.accountStatus(),
+                row.disbursalDate(),
+                row.delinquencyBucket(),
+                row.overdueAmount(),
+                row.closureReason(),
+                row.closedDate(),
+                row.applicationCreatedAt(),
+                row.loanYear(),
+                row.processingFeeAmount(),
+                row.disbursalAmount(),
+                row.interestRate(),
+                row.tenureMonths(),
+                row.borrowerId(),
+                row.perEmiAmount(),
+                installmentPreviews,
+                row.loanStatusDisplay(),
+                row.foreclosedRepaidAmount(),
+                row.foreclosureDate(),
+                row.normalClosureDate(),
+                row.daysPastDue(),
+                row.customerName(),
+                row.address(),
+                row.zipCode(),
+                row.borrowerState(),
+                row.ifscCode(),
+                row.bankAccountNumber(),
+                row.gender(),
+                row.aadharNumber(),
+                row.panNumber(),
+                row.profession(),
+                row.income()
+        );
     }
 }

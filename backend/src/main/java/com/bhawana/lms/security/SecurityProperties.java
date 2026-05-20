@@ -3,6 +3,7 @@ package com.bhawana.lms.security;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -79,12 +80,17 @@ public class SecurityProperties {
     public static class Jwt {
 
         @NotBlank
+        @Size(min = 32, message = "JWT secret must be at least 32 characters (256 bits) for HMAC-SHA256")
         private String secret;
 
         @NotBlank
         private String issuer = "bhawana-lms";
 
         private Duration ttl = Duration.ofMinutes(30);
+
+        private Duration refreshTtl = Duration.ofDays(7);
+
+        private boolean secureCookies = true;
 
         public String getSecret() {
             return secret;
@@ -108,6 +114,22 @@ public class SecurityProperties {
 
         public void setTtl(Duration ttl) {
             this.ttl = ttl;
+        }
+
+        public Duration getRefreshTtl() {
+            return refreshTtl;
+        }
+
+        public void setRefreshTtl(Duration refreshTtl) {
+            this.refreshTtl = refreshTtl;
+        }
+
+        public boolean isSecureCookies() {
+            return secureCookies;
+        }
+
+        public void setSecureCookies(boolean secureCookies) {
+            this.secureCookies = secureCookies;
         }
     }
 }

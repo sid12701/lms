@@ -2,8 +2,11 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
+import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanAccount;
+import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
+import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.RoleCode;
@@ -11,9 +14,11 @@ import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
+import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.security.SsrfSafeUrlValidator;
 import java.security.SecureRandom;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -22,8 +27,11 @@ import java.util.Base64;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +40,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdminDirectoryService {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final List<LoanApplicationStatus> APPROVED_PORTFOLIO_STATUSES = List.of(
+            LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
+            LoanApplicationStatus.DISBURSED,
+            LoanApplicationStatus.UNDER_REPAYMENT,
+            LoanApplicationStatus.CLOSED
+    );
 
     private final LspRepository lspRepository;
     private final AppRoleRepository appRoleRepository;
@@ -39,6 +53,7 @@ public class AdminDirectoryService {
     private final PasswordEncoder passwordEncoder;
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanAccountRepository loanAccountRepository;
+    private final BorrowerRepository borrowerRepository;
 
     public AdminDirectoryService(
             LspRepository lspRepository,
@@ -46,7 +61,8 @@ public class AdminDirectoryService {
             AppUserRepository appUserRepository,
             PasswordEncoder passwordEncoder,
             LoanApplicationRepository loanApplicationRepository,
-            LoanAccountRepository loanAccountRepository
+            LoanAccountRepository loanAccountRepository,
+            BorrowerRepository borrowerRepository
     ) {
         this.lspRepository = lspRepository;
         this.appRoleRepository = appRoleRepository;
@@ -54,6 +70,7 @@ public class AdminDirectoryService {
         this.passwordEncoder = passwordEncoder;
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanAccountRepository = loanAccountRepository;
+        this.borrowerRepository = borrowerRepository;
     }
 
     @Transactional
@@ -66,22 +83,37 @@ public class AdminDirectoryService {
 
     @Transactional(readOnly = true)
     public List<Lsp> listLsps() {
-        return lspRepository.findAll().stream()
-                .sorted(java.util.Comparator.comparing(Lsp::getCode))
-                .toList();
+        return lspRepository.findAllByOrderByCodeAsc();
     }
 
     @Transactional(readOnly = true)
     public List<LspDirectoryView> listLspDirectoryViews() {
-        List<AppUser> users = appUserRepository.findAll();
-        List<LoanApplication> applications = loanApplicationRepository.findAllByOrderByCreatedAtDesc();
-        List<LoanAccount> loanAccounts = loanAccountRepository.findAll();
+        Map<UUID, Long> userCounts = appUserRepository.countUsersByLsp().stream()
+                .collect(Collectors.toMap(
+                        AppUserRepository.LspUserCountProjection::getLspId,
+                        AppUserRepository.LspUserCountProjection::getUserCount
+                ));
+        Map<UUID, LoanApplicationRepository.LspApplicationSummaryProjection> applicationSummaries =
+                loanApplicationRepository.summarizeApplicationsByLsp(APPROVED_PORTFOLIO_STATUSES).stream()
+                        .collect(Collectors.toMap(
+                                LoanApplicationRepository.LspApplicationSummaryProjection::getLspId,
+                                Function.identity()
+                        ));
+        Map<UUID, LoanAccountRepository.LspAccountSummaryProjection> accountSummaries =
+                loanAccountRepository.summarizeAccountsByLsp().stream()
+                        .collect(Collectors.toMap(
+                                LoanAccountRepository.LspAccountSummaryProjection::getLspId,
+                                Function.identity()
+                        ));
 
         return listLsps().stream()
                 .map(lsp -> new LspDirectoryView(
                         lsp,
-                        countUsers(lsp.getId(), users),
-                        buildPortfolioSummary(lsp.getId(), applications, loanAccounts)
+                        Math.toIntExact(userCounts.getOrDefault(lsp.getId(), 0L)),
+                        buildPortfolioSummary(
+                                applicationSummaries.get(lsp.getId()),
+                                accountSummaries.get(lsp.getId())
+                        )
                 ))
                 .toList();
     }
@@ -91,12 +123,13 @@ public class AdminDirectoryService {
         Lsp lsp = lspRepository.findById(lspId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown LSP id: " + lspId));
 
-        List<AppUser> users = appUserRepository.findAll().stream()
-                .filter(user -> user.getLsp() != null && user.getLsp().getId().equals(lspId))
-                .sorted(Comparator.comparing(AppUser::getUsername, String.CASE_INSENSITIVE_ORDER))
-                .toList();
-        List<LoanApplication> applications = loanApplicationRepository.findAllByOrderByCreatedAtDesc();
-        List<LoanAccount> loanAccounts = loanAccountRepository.findAll();
+        List<AppUser> users = appUserRepository.findByLsp_IdOrderByUsernameAsc(lspId);
+        AdminDirectoryService.LspPortfolioSummary portfolioSummary = buildPortfolioSummary(
+                loanApplicationRepository
+                        .summarizeApplicationsForLsp(lspId, APPROVED_PORTFOLIO_STATUSES)
+                        .orElse(null),
+                loanAccountRepository.summarizeAccountsForLsp(lspId).orElse(null)
+        );
 
         return new LspDetailView(
                 lsp,
@@ -109,7 +142,7 @@ public class AdminDirectoryService {
                                 user.getRoles().stream().map(AppRole::getCode).sorted().toList()
                         ))
                         .toList(),
-                buildPortfolioSummary(lspId, applications, loanAccounts)
+                portfolioSummary
         );
     }
 
@@ -135,6 +168,7 @@ public class AdminDirectoryService {
             if (!normalizedEndpointUrl.startsWith("http://") && !normalizedEndpointUrl.startsWith("https://")) {
                 throw new IllegalArgumentException("Webhook endpoint URL must start with http:// or https://.");
             }
+            SsrfSafeUrlValidator.validate(normalizedEndpointUrl);
             if (normalizedSigningSecret == null) {
                 throw new IllegalArgumentException("Webhook signing secret is required when the subscription is enabled.");
             }
@@ -188,9 +222,7 @@ public class AdminDirectoryService {
 
     @Transactional(readOnly = true)
     public List<AppUser> listUsers() {
-        return appUserRepository.findAll().stream()
-                .sorted(java.util.Comparator.comparing(AppUser::getUsername))
-                .toList();
+        return appUserRepository.findAllByOrderByUsernameAsc();
     }
 
     @Transactional
@@ -220,50 +252,86 @@ public class AdminDirectoryService {
         return normalized.isBlank() ? null : normalized;
     }
 
-    private static int countUsers(UUID lspId, List<AppUser> users) {
-        return (int) users.stream()
-                .filter(user -> user.getLsp() != null && user.getLsp().getId().equals(lspId))
-                .count();
-    }
-
     private static LspPortfolioSummary buildPortfolioSummary(
-            UUID lspId,
-            List<LoanApplication> applications,
-            List<LoanAccount> loanAccounts
+            LoanApplicationRepository.LspApplicationSummaryProjection applicationSummary,
+            LoanAccountRepository.LspAccountSummaryProjection accountSummary
     ) {
-        List<LoanApplication> lspApplications = applications.stream()
-                .filter(application -> application.getLsp().getId().equals(lspId))
-                .toList();
-        List<LoanAccount> lspLoanAccounts = loanAccounts.stream()
-                .filter(account -> account.getLsp().getId().equals(lspId))
-                .toList();
-
-        BigDecimal totalDisbursedAmount = lspLoanAccounts.stream()
-                .filter(account -> account.getDisbursedAt() != null)
-                .map(LoanAccount::getPrincipalAmount)
-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        LocalDate latestDisbursalDate = lspLoanAccounts.stream()
-                .map(LoanAccount::getDisbursedAt)
-                .filter(java.util.Objects::nonNull)
-                .map(instant -> instant.atZone(ZoneOffset.UTC).toLocalDate())
-                .max(LocalDate::compareTo)
-                .orElse(null);
+        BigDecimal totalDisbursedAmount = accountSummary == null || accountSummary.getTotalDisbursedAmount() == null
+                ? BigDecimal.ZERO.setScale(2)
+                : accountSummary.getTotalDisbursedAmount();
+        LocalDate latestDisbursalDate = accountSummary == null || accountSummary.getLatestDisbursalAt() == null
+                ? null
+                : accountSummary.getLatestDisbursalAt().atZone(ZoneOffset.UTC).toLocalDate();
 
         return new LspPortfolioSummary(
-                lspApplications.size(),
-                (int) lspApplications.stream()
-                        .filter(application -> application.getStatus() == com.bhawana.lms.domain.LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
-                                || application.getStatus() == com.bhawana.lms.domain.LoanApplicationStatus.DISBURSED
-                                || application.getStatus() == com.bhawana.lms.domain.LoanApplicationStatus.UNDER_REPAYMENT
-                                || application.getStatus() == com.bhawana.lms.domain.LoanApplicationStatus.CLOSED)
-                        .count(),
-                (int) lspLoanAccounts.stream().filter(account -> account.getDisbursedAt() != null).count(),
+                applicationSummary == null ? 0 : Math.toIntExact(applicationSummary.getLoanApplicationCount()),
+                applicationSummary == null ? 0 : Math.toIntExact(applicationSummary.getApprovedLoanCount()),
+                accountSummary == null ? 0 : Math.toIntExact(accountSummary.getDisbursedLoanCount()),
                 totalDisbursedAmount,
                 latestDisbursalDate
         );
     }
 
+    @Transactional(readOnly = true)
+    public BorrowerDetailView getBorrowerDetail(UUID borrowerId) {
+        Borrower borrower = borrowerRepository.findById(borrowerId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown borrower id: " + borrowerId));
+
+        List<LoanAccount> loans = loanAccountRepository.findDetailedByBorrower_Id(borrowerId).stream()
+                .sorted(Comparator.comparing(LoanAccount::getCreatedAt).reversed())
+                .toList();
+
+        List<BorrowerLoanView> loanViews = loans.stream()
+                .map(account -> new BorrowerLoanView(
+                        account.getId(),
+                        account.getLoanApplication() == null ? null : account.getLoanApplication().getId(),
+                        account.getAccountNumber(),
+                        account.getLsp() == null ? null : account.getLsp().getId(),
+                        account.getLsp() == null ? null : account.getLsp().getCode(),
+                        account.getLsp() == null ? null : account.getLsp().getName(),
+                        account.getLoanProduct() == null ? null : account.getLoanProduct().getCode(),
+                        account.getStatus(),
+                        account.getPrincipalAmount(),
+                        account.getTenureMonths(),
+                        account.getApprovedAt(),
+                        account.getDisbursedAt(),
+                        account.getClosureReason() == null ? null : account.getClosureReason().name(),
+                        account.getClosedAt(),
+                        account.getClosedByUsername(),
+                        account.getCreatedAt()
+                ))
+                .toList();
+
+        return new BorrowerDetailView(borrower, loanViews);
+    }
+
     public record ResetPasswordResult(AppUser user, String temporaryPassword) {
+    }
+
+    public record BorrowerDetailView(
+            Borrower borrower,
+            List<BorrowerLoanView> loans
+    ) {
+    }
+
+    public record BorrowerLoanView(
+            UUID loanAccountId,
+            UUID applicationId,
+            String accountNumber,
+            UUID lspId,
+            String lspCode,
+            String lspName,
+            String loanProductCode,
+            LoanAccountStatus status,
+            BigDecimal principalAmount,
+            int tenureMonths,
+            java.time.Instant approvedAt,
+            java.time.Instant disbursedAt,
+            String closureReason,
+            java.time.Instant closedAt,
+            String closedByUsername,
+            java.time.Instant createdAt
+    ) {
     }
 
     public record LspDirectoryView(

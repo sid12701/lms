@@ -46,6 +46,18 @@ public class ApiClientAuthenticationService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public AuthenticatedApiClient lookupByClientId(String clientId) {
+        ApiClient apiClient = apiClientRepository.findByClientIdIgnoreCase(clientId)
+                .orElseThrow(() -> new BadCredentialsException("Unknown API client: " + clientId));
+        return new AuthenticatedApiClient(
+                apiClient.getClientId(),
+                apiClient.getName(),
+                apiClient.getLsp().getId(),
+                apiClient.getLsp().getCode()
+        );
+    }
+
     private static String requireField(String value, String fieldName) {
         if (value == null || value.trim().isBlank()) {
             throw new IllegalArgumentException(fieldName + " is required.");

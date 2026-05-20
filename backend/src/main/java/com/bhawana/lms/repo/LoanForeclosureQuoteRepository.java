@@ -1,6 +1,8 @@
 package com.bhawana.lms.repo;
 
 import com.bhawana.lms.domain.LoanForeclosureQuote;
+import com.bhawana.lms.domain.LoanForeclosureQuoteStatus;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -11,4 +13,9 @@ public interface LoanForeclosureQuoteRepository extends JpaRepository<LoanForecl
     List<LoanForeclosureQuote> findByLoanAccount_IdOrderByVersionDesc(UUID loanAccountId);
 
     Optional<LoanForeclosureQuote> findTopByLoanAccount_IdOrderByVersionDesc(UUID loanAccountId);
+
+    List<LoanForeclosureQuote> findByStatusAndLoanAccount_IdIn(
+            LoanForeclosureQuoteStatus status,
+            Collection<UUID> loanAccountIds
+    );
 }

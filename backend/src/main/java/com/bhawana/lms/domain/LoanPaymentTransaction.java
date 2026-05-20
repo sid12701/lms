@@ -27,6 +27,10 @@ public class LoanPaymentTransaction {
     @JoinColumn(name = "loan_account_id", nullable = false)
     private LoanAccount loanAccount;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "repayment_installment_id")
+    private LoanRepaymentScheduleInstallment repaymentInstallment;
+
     @Column(name = "actor_username", nullable = false, length = 255)
     private String actorUsername;
 
@@ -79,8 +83,35 @@ public class LoanPaymentTransaction {
             String note,
             String correlationId
     ) {
+        this(
+                loanAccount,
+                null,
+                actorUsername,
+                amount,
+                paymentDate,
+                reference,
+                channel,
+                status,
+                note,
+                correlationId
+        );
+    }
+
+    public LoanPaymentTransaction(
+            LoanAccount loanAccount,
+            LoanRepaymentScheduleInstallment repaymentInstallment,
+            String actorUsername,
+            BigDecimal amount,
+            LocalDate paymentDate,
+            String reference,
+            LoanPaymentChannel channel,
+            LoanPaymentStatus status,
+            String note,
+            String correlationId
+    ) {
         this.id = UUID.randomUUID();
         this.loanAccount = loanAccount;
+        this.repaymentInstallment = repaymentInstallment;
         this.actorUsername = actorUsername;
         this.amount = amount;
         this.paymentDate = paymentDate;
@@ -111,6 +142,10 @@ public class LoanPaymentTransaction {
 
     public LoanAccount getLoanAccount() {
         return loanAccount;
+    }
+
+    public LoanRepaymentScheduleInstallment getRepaymentInstallment() {
+        return repaymentInstallment;
     }
 
     public String getActorUsername() {

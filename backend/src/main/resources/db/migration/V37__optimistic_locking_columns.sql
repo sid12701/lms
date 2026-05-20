@@ -1,0 +1,11 @@
+ALTER TABLE loan_application
+    ADD COLUMN IF NOT EXISTS entity_version BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE loan_account
+    ADD COLUMN IF NOT EXISTS entity_version BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE report_request
+    ADD COLUMN IF NOT EXISTS entity_version BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE webhook_event_outbox
+    ADD COLUMN IF NOT EXISTS entity_version BIGINT NOT NULL DEFAULT 0;

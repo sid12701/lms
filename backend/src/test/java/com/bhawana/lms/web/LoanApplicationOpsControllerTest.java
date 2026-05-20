@@ -4,6 +4,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -237,6 +238,29 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
+    void opsUserCanPaginateLoanApplicationListingsAndReadPaginationHeaders() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        createApplication(lsp.id(), product.id(), "EXT-001", "API", "ABCDE1234F");
+        createApplication(lsp.id(), product.id(), "EXT-002", "API", "ZXCVB1234N");
+        createApplication(lsp.id(), product.id(), "EXT-003", "API", "LMNOP1234Q");
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("offset", "1")
+                        .queryParam("limit", "1")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].externalLoanId").value("EXT-002"))
+                .andExpect(header().string("X-Total-Count", "3"))
+                .andExpect(header().string("X-Limit", "1"))
+                .andExpect(header().string("X-Offset", "1"));
+    }
+
+    @Test
     void opsUserCanFilterLoanApplicationsByDisbursalDate() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
@@ -338,8 +362,8 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].payloadJson", containsString("\"externalLoanId\":\"EXT-901\"")))
                 .andExpect(jsonPath("$[0].payloadJson", containsString("\"sourceChannel\":\"API\"")))
                 .andExpect(jsonPath("$[0].payloadJson", containsString("\"borrowerPan\":\"ABC*****4F\"")))
-                .andExpect(jsonPath("$[0].payloadJson", containsString("\"borrowerMobile\":\"******9999\"")))
-                .andExpect(jsonPath("$[0].payloadJson", containsString("\"borrowerEmail\":\"a****@example.com\"")));
+                .andExpect(jsonPath("$[0].payloadJson", containsString("\"borrowerMobile\":\"******" + mobileForPan("ABCDE1234F").substring(6) + "\"")))
+                .andExpect(jsonPath("$[0].payloadJson", containsString("@example.com")));
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/document-access-audits", created.get("id").asText())
                         .with(opsUser()))
@@ -632,6 +656,10 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error").value("KYC_COMPLETION_REQUIRED"))
                 .andExpect(jsonPath("$.message").value("Loan application cannot be approved until required KYC documents are complete."))
+                .andExpect(jsonPath("$.errorReason").value("KYC_COMPLETION_REQUIRED"))
+                .andExpect(jsonPath("$.errorSource").value("Loan application cannot be approved until required KYC documents are complete."))
+                .andExpect(jsonPath("$.errors[0].errorReason").value("KYC_COMPLETION_REQUIRED"))
+                .andExpect(jsonPath("$.errors[0].field").value("PAN_CARD"))
                 .andExpect(jsonPath("$.violations.length()").value(6))
                 .andExpect(jsonPath("$.violations[0].field").value("PAN_CARD"));
 
@@ -729,16 +757,16 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "amount", new BigDecimal("1000.00"),
+                                "amount", new BigDecimal("4136.32"),
                                 "paymentDate", secondPaymentDate,
                                 "reference", "PAY-002",
                                 "channel", "BANK_TRANSFER",
                                 "status", "RECEIVED",
-                                "note", "Partial second EMI collection"
+                                "note", "Collected second EMI in full"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reference").value("PAY-002"))
-                .andExpect(jsonPath("$.allocatedAmount").value(1000.00))
+                .andExpect(jsonPath("$.allocatedAmount").value(4136.32))
                 .andExpect(jsonPath("$.unallocatedAmount").value(0.00));
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
@@ -748,7 +776,7 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].reference").value("PAY-002"))
                 .andExpect(jsonPath("$[0].channel").value("BANK_TRANSFER"))
                 .andExpect(jsonPath("$[0].status").value("RECEIVED"))
-                .andExpect(jsonPath("$[0].allocatedAmount").value(1000.00))
+                .andExpect(jsonPath("$[0].allocatedAmount").value(4136.32))
                 .andExpect(jsonPath("$[0].unallocatedAmount").value(0.00))
                 .andExpect(jsonPath("$[0].createdAt").exists())
                 .andExpect(jsonPath("$[0].updatedAt").exists())
@@ -761,10 +789,44 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].status").value("PAID"))
                 .andExpect(jsonPath("$[0].paidAmount").value(4136.32))
                 .andExpect(jsonPath("$[0].outstandingAmount").value(0.00))
-                .andExpect(jsonPath("$[1].status").value("PARTIALLY_PAID"))
-                .andExpect(jsonPath("$[1].paidAmount").value(1000.00))
-                .andExpect(jsonPath("$[1].outstandingAmount").value(3136.32))
+                .andExpect(jsonPath("$[1].status").value("PAID"))
+                .andExpect(jsonPath("$[1].paidAmount").value(4136.32))
+                .andExpect(jsonPath("$[1].outstandingAmount").value(0.00))
                 .andExpect(jsonPath("$[2].status").value("PENDING"));
+    }
+
+    @Test
+    void partialInstallmentPaymentIsRejected() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-974P", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
+        disburseLoan(applicationId);
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "amount", new BigDecimal("1000.00"),
+                                "paymentDate", LocalDate.now().minusDays(1).toString(),
+                                "reference", "PAY-PARTIAL-REJECT",
+                                "channel", "UPI",
+                                "status", "RECEIVED",
+                                "note", "Attempted partial EMI payment"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value(containsString("full outstanding amount of installment 1")));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test
@@ -868,25 +930,28 @@ class LoanApplicationOpsControllerTest {
         UUID loanAccountId = loanAccountRepository.findByLoanApplication_Id(UUID.fromString(applicationId))
                 .orElseThrow()
                 .getId();
-        BigDecimal settlementAmount = jdbcTemplate.queryForObject(
-                "select sum(outstanding_amount) from loan_repayment_schedule_installment where loan_account_id = ?",
-                BigDecimal.class,
-                loanAccountId
-        );
+        List<BigDecimal> installmentAmounts = loanRepaymentScheduleInstallmentRepository
+                .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccountId)
+                .stream()
+                .map(installment -> installment.getOutstandingAmount())
+                .toList();
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "amount", settlementAmount,
-                                "paymentDate", LocalDate.now().minusDays(1).toString(),
-                                "reference", "PAY-CLOSE-001",
-                                "channel", "BANK_TRANSFER",
-                                "status", "RECEIVED"
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.allocatedAmount").value(settlementAmount.doubleValue()))
-                .andExpect(jsonPath("$.unallocatedAmount").value(0.00));
+        for (int index = 0; index < installmentAmounts.size(); index++) {
+            BigDecimal installmentAmount = installmentAmounts.get(index);
+            mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                            .with(systemAdmin())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "amount", installmentAmount,
+                                    "paymentDate", LocalDate.now().minusDays(installmentAmounts.size() - index).toString(),
+                                    "reference", "PAY-CLOSE-" + String.format("%03d", index + 1),
+                                    "channel", "BANK_TRANSFER",
+                                    "status", "RECEIVED"
+                            ))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.allocatedAmount").value(installmentAmount.doubleValue()))
+                    .andExpect(jsonPath("$.unallocatedAmount").value(0.00));
+        }
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
                         .with(systemAdmin()))
@@ -914,9 +979,9 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "amount", new BigDecimal("1000.00"),
+                                "amount", new BigDecimal("4136.32"),
                                 "paymentDate", LocalDate.now().minusDays(2).toString(),
-                                "reference", "PAY-PARTIAL-001",
+                                "reference", "PAY-INSTALLMENT-001",
                                 "channel", "UPI",
                                 "status", "RECEIVED"
                         ))))
@@ -1731,6 +1796,8 @@ class LoanApplicationOpsControllerTest {
             String sourceChannel,
             String borrowerPan
     ) throws Exception {
+        String mobile = mobileForPan(borrowerPan);
+        String email = "anika+" + borrowerPan.toLowerCase() + "@example.com";
         MvcResult result = mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
                         .with(opsUser())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -1741,8 +1808,8 @@ class LoanApplicationOpsControllerTest {
                                 sourceChannel,
                                 borrowerPan,
                                 "Anika Sharma",
-                                "9999999999",
-                                "anika@example.com",
+                                mobile,
+                                email,
                                 LocalDate.of(1992, 3, 10),
                                 "Mumbai",
                                 "Maharashtra",
@@ -1755,6 +1822,12 @@ class LoanApplicationOpsControllerTest {
                 .andReturn();
 
         return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private static String mobileForPan(String pan) {
+        int hash = Math.abs(pan.hashCode());
+        String suffix = String.format("%09d", hash % 1_000_000_000);
+        return "9" + suffix;
     }
 
     private void disburseLoan(String applicationId) throws Exception {

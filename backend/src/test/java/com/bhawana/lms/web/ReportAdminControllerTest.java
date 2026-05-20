@@ -410,8 +410,8 @@ class ReportAdminControllerTest {
         payload.put("sourceChannel", "API");
         payload.put("borrowerPan", borrowerPan);
         payload.put("borrowerFullName", "Anika Sharma");
-        payload.put("borrowerMobile", "9999999999");
-        payload.put("borrowerEmail", "anika@example.com");
+        payload.put("borrowerMobile", mobileForPan(borrowerPan));
+        payload.put("borrowerEmail", "anika+" + borrowerPan.toLowerCase() + "@example.com");
         payload.put("borrowerDateOfBirth", LocalDate.of(1992, 3, 10));
         payload.put("borrowerCity", "Mumbai");
         payload.put("borrowerState", "Maharashtra");
@@ -420,6 +420,12 @@ class ReportAdminControllerTest {
         payload.put("requestedAmount", new BigDecimal("45000.00"));
         payload.put("tenureMonths", 12);
         return payload;
+    }
+
+    private static String mobileForPan(String pan) {
+        int hash = Math.abs(pan.hashCode());
+        String suffix = String.format("%09d", hash % 1_000_000_000);
+        return "9" + suffix;
     }
 
     private record ProductFixture(String id) {

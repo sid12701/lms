@@ -1,21 +1,17 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
-import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.repo.LoanAccountRepository;
-import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,16 +20,13 @@ public class HomeDashboardService {
 
     private final LspRepository lspRepository;
     private final LoanAccountRepository loanAccountRepository;
-    private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
 
     public HomeDashboardService(
             LspRepository lspRepository,
-            LoanAccountRepository loanAccountRepository,
-            LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository
+            LoanAccountRepository loanAccountRepository
     ) {
         this.lspRepository = lspRepository;
         this.loanAccountRepository = loanAccountRepository;
-        this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
     }
 
     @Transactional(readOnly = true)
@@ -45,19 +38,17 @@ public class HomeDashboardService {
                 LoanDelinquencyBucket.DPD_61_90,
                 LoanDelinquencyBucket.DPD_90_PLUS
         );
-        List<Lsp> lsps = lspRepository.findAll().stream()
+        List<Lsp> lsps = lspRepository.findAllByOrderByNameAsc().stream()
                 .sorted(Comparator.comparing(Lsp::getName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
-        List<LoanAccount> loanAccounts = loanAccountRepository.findAll();
-        Map<UUID, List<LoanRepaymentScheduleInstallment>> installmentsByLoanAccountId =
-                loanRepaymentScheduleInstallmentRepository.findAll().stream()
-                        .collect(Collectors.groupingBy(installment -> installment.getLoanAccount().getId()));
-
-        List<AccountSnapshot> accountSnapshots = loanAccounts.stream()
-                .map(loanAccount -> toAccountSnapshot(
-                        loanAccount,
-                        installmentsByLoanAccountId.getOrDefault(loanAccount.getId(), List.of())
-                ))
+        LocalDate today = LoanApplicationService.currentBusinessDate();
+        List<AccountSnapshot> accountSnapshots = loanAccountRepository.findHomeDashboardAccountSnapshots(today).stream()
+                .map(snapshot -> toAccountSnapshot(snapshot, today))
+                .toList();
+        List<PriorityAccount> priorityAccounts = loanAccountRepository
+                .findHomeDashboardPriorityAccounts(today, PageRequest.of(0, 8))
+                .stream()
+                .map(snapshot -> toPriorityAccount(snapshot, today))
                 .toList();
 
         BigDecimal totalDisbursedAmount = accountSnapshots.stream()
@@ -91,31 +82,49 @@ public class HomeDashboardService {
                 scaleCurrency(totalOutstandingAmount),
                 scaleCurrency(dpd90PlusAmount),
                 dpd90PlusLoanCount,
-                lspBreakdown
+                lspBreakdown,
+                priorityAccounts
         );
     }
 
     private AccountSnapshot toAccountSnapshot(
-            LoanAccount loanAccount,
-            List<LoanRepaymentScheduleInstallment> installments
+            LoanAccountRepository.HomeDashboardAccountSnapshotProjection snapshot,
+            LocalDate today
     ) {
-        BigDecimal disbursedAmount = loanAccount.getDisbursedAt() == null
-                ? zeroCurrency()
-                : scaleCurrency(loanAccount.getPrincipalAmount());
-        BigDecimal outstandingAmount = installments.stream()
-                .map(LoanRepaymentScheduleInstallment::getOutstandingAmount)
-                .reduce(zeroCurrency(), BigDecimal::add);
-        int maxDaysPastDue = installments.stream()
-                .mapToInt(installment -> LoanApplicationService.calculateDaysPastDue(installment, LocalDate.now(ZoneOffset.UTC)))
-                .max()
-                .orElse(0);
+        BigDecimal disbursedAmount = defaultCurrency(snapshot.getDisbursedAmount());
+        BigDecimal outstandingAmount = defaultCurrency(snapshot.getOutstandingAmount());
+        int maxDaysPastDue = snapshot.getOldestOverdueDueDate() == null
+                ? 0
+                : Math.toIntExact(ChronoUnit.DAYS.between(snapshot.getOldestOverdueDueDate(), today));
         LoanDelinquencyBucket bucket = LoanApplicationService.resolveDelinquencyBucket(maxDaysPastDue);
 
         return new AccountSnapshot(
-                loanAccount.getLsp().getId(),
+                snapshot.getLspId(),
                 scaleCurrency(disbursedAmount),
                 scaleCurrency(outstandingAmount),
                 bucket
+        );
+    }
+
+    private PriorityAccount toPriorityAccount(
+            LoanAccountRepository.HomeDashboardPriorityAccountProjection snapshot,
+            LocalDate today
+    ) {
+        LocalDate oldestOverdueDueDate = snapshot.getOldestOverdueDueDate();
+        int daysPastDue = oldestOverdueDueDate == null
+                ? 0
+                : Math.max(0, Math.toIntExact(ChronoUnit.DAYS.between(oldestOverdueDueDate, today)));
+
+        return new PriorityAccount(
+                snapshot.getApplicationId().toString(),
+                snapshot.getExternalLoanId(),
+                snapshot.getCustomerName(),
+                snapshot.getLspCode(),
+                scaleCurrency(defaultCurrency(snapshot.getPrincipalAmount())),
+                scaleCurrency(defaultCurrency(snapshot.getInterestRate())),
+                snapshot.getLoanStatus().name(),
+                scaleCurrency(defaultCurrency(snapshot.getOverdueAmount())),
+                daysPastDue
         );
     }
 
@@ -180,6 +189,10 @@ public class HomeDashboardService {
         return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
     }
 
+    private static BigDecimal defaultCurrency(BigDecimal value) {
+        return value == null ? zeroCurrency() : value;
+    }
+
     private static BigDecimal scaleCurrency(BigDecimal value) {
         return value.setScale(2, RoundingMode.HALF_UP);
     }
@@ -205,7 +218,21 @@ public class HomeDashboardService {
             BigDecimal totalOutstandingAmount,
             BigDecimal dpd90PlusAmount,
             long dpd90PlusLoanCount,
-            List<LspBreakdown> lspBreakdown
+            List<LspBreakdown> lspBreakdown,
+            List<PriorityAccount> priorityAccounts
+    ) {
+    }
+
+    public record PriorityAccount(
+            String applicationId,
+            String externalLoanId,
+            String customerName,
+            String lspCode,
+            BigDecimal principalAmount,
+            BigDecimal interestRate,
+            String loanStatusDisplay,
+            BigDecimal overdueAmount,
+            int daysPastDue
     ) {
     }
 

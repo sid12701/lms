@@ -140,4 +140,16 @@ public class AppUser {
         this.passwordChangeRequired = false;
         this.passwordChangedAt = Instant.now();
     }
+
+    public void synchronizeBootstrapAccount(String email, String newPasswordHash, Set<AppRole> roles) {
+        this.email = email;
+        if (newPasswordHash != null) {
+            this.passwordHash = newPasswordHash;
+            this.passwordChangedAt = Instant.now();
+        }
+        this.passwordChangeRequired = false;
+        this.status = UserStatus.ACTIVE;
+        this.lsp = null;
+        this.roles = new LinkedHashSet<>(roles);
+    }
 }

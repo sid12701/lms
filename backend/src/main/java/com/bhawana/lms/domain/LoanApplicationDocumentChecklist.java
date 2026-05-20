@@ -57,6 +57,18 @@ public class LoanApplicationDocumentChecklist {
     @Column(name = "content_type", length = 128)
     private String contentType;
 
+    @Column(name = "lms_managed_content", nullable = false)
+    private boolean lmsManagedContent;
+
+    @Column(name = "storage_key", length = 500)
+    private String storageKey;
+
+    @Column(name = "file_checksum", length = 128)
+    private String fileChecksum;
+
+    @Column(name = "file_size_bytes")
+    private Long fileSizeBytes;
+
     @Column(name = "uploaded_at")
     private Instant uploadedAt;
 
@@ -152,6 +164,22 @@ public class LoanApplicationDocumentChecklist {
         return contentType;
     }
 
+    public boolean isLmsManagedContent() {
+        return lmsManagedContent;
+    }
+
+    public String getStorageKey() {
+        return storageKey;
+    }
+
+    public String getFileChecksum() {
+        return fileChecksum;
+    }
+
+    public Long getFileSizeBytes() {
+        return fileSizeBytes;
+    }
+
     public Instant getUploadedAt() {
         return uploadedAt;
     }
@@ -183,6 +211,38 @@ public class LoanApplicationDocumentChecklist {
             String reviewReason,
             String rejectionReason
     ) {
+        update(
+                status,
+                note,
+                updatedByUsername,
+                fileName,
+                fileReference,
+                sourceReference,
+                contentType,
+                reviewReason,
+                rejectionReason,
+                null,
+                null,
+                null,
+                false
+        );
+    }
+
+    public void update(
+            LoanApplicationDocumentChecklistStatus status,
+            String note,
+            String updatedByUsername,
+            String fileName,
+            String fileReference,
+            String sourceReference,
+            String contentType,
+            String reviewReason,
+            String rejectionReason,
+            Long fileSizeBytes,
+            String fileChecksum,
+            String storageKey,
+            boolean lmsManagedContent
+    ) {
         this.status = status;
         this.note = normalizeOptional(note);
         this.fileName = normalizeOptional(fileName);
@@ -192,12 +252,20 @@ public class LoanApplicationDocumentChecklist {
         this.reviewReason = normalizeOptional(reviewReason);
         this.rejectionReason = normalizeOptional(rejectionReason);
         this.updatedByUsername = normalizeOptional(updatedByUsername);
+        this.fileSizeBytes = fileSizeBytes;
+        this.fileChecksum = normalizeOptional(fileChecksum);
+        this.storageKey = normalizeOptional(storageKey);
+        this.lmsManagedContent = lmsManagedContent;
         if (hasUploadMetadata()) {
             this.uploadedAt = Instant.now();
             this.uploadedByUsername = this.updatedByUsername;
         } else {
             this.uploadedAt = null;
             this.uploadedByUsername = null;
+            this.fileSizeBytes = null;
+            this.fileChecksum = null;
+            this.storageKey = null;
+            this.lmsManagedContent = false;
         }
     }
 

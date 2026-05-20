@@ -1,0 +1,55 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+@import "./tokens.css";
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  /* Tabular numerics for amounts, IDs, dates, table numeric columns. */
+  [data-tabular],
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+  }
+
+  /*
+   * Loan Applications typography polish — scoped via [data-page] on the
+   * page wrapper. Tabular numerics on every cell so amounts/IDs/dates
+   * line up; tighter line-height for dense rows; crisper Inter glyphs
+   * via stylistic alternates.
+   */
+  [data-page="loan-applications"] {
+    font-feature-settings:
+      "cv11",
+      "ss01";
+  }
+
+  [data-page="loan-applications"] th,
+  [data-page="loan-applications"] td {
+    font-variant-numeric: tabular-nums;
+  }
+
+  [data-page="loan-applications"] tbody tr {
+    line-height: 1.4;
+  }
+}

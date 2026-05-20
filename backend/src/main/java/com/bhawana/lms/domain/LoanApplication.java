@@ -11,6 +11,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -22,15 +23,15 @@ public class LoanApplication {
     @Id
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "borrower_id", nullable = false)
     private Borrower borrower;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "lsp_id", nullable = false)
     private Lsp lsp;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "loan_product_id", nullable = false)
     private LoanProduct loanProduct;
 
@@ -50,6 +51,19 @@ public class LoanApplication {
     @Column(nullable = false, length = 32)
     private LoanApplicationStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "invalid_reason_code", length = 64)
+    private LoanInvalidationReason invalidReasonCode;
+
+    @Column(name = "invalid_reason_text", length = 500)
+    private String invalidReasonText;
+
+    @Column(name = "invalidated_by_username", length = 255)
+    private String invalidatedByUsername;
+
+    @Column(name = "invalidated_at")
+    private Instant invalidatedAt;
+
     @Column(name = "assigned_to_username", length = 128)
     private String assignedToUsername;
 
@@ -64,6 +78,10 @@ public class LoanApplication {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Version
+    @Column(name = "entity_version", nullable = false)
+    private long entityVersion;
 
     protected LoanApplication() {
     }
@@ -141,6 +159,22 @@ public class LoanApplication {
         return status;
     }
 
+    public LoanInvalidationReason getInvalidReasonCode() {
+        return invalidReasonCode;
+    }
+
+    public String getInvalidReasonText() {
+        return invalidReasonText;
+    }
+
+    public String getInvalidatedByUsername() {
+        return invalidatedByUsername;
+    }
+
+    public Instant getInvalidatedAt() {
+        return invalidatedAt;
+    }
+
     public String getAssignedToUsername() {
         return assignedToUsername;
     }
@@ -161,8 +195,25 @@ public class LoanApplication {
         return updatedAt;
     }
 
+    public long getEntityVersion() {
+        return entityVersion;
+    }
+
     public void transitionTo(LoanApplicationStatus status) {
         this.status = status;
+    }
+
+    public void markInvalid(
+            LoanInvalidationReason invalidReasonCode,
+            String invalidReasonText,
+            String invalidatedByUsername,
+            Instant invalidatedAt
+    ) {
+        this.status = LoanApplicationStatus.INVALID;
+        this.invalidReasonCode = invalidReasonCode;
+        this.invalidReasonText = invalidReasonText;
+        this.invalidatedByUsername = invalidatedByUsername;
+        this.invalidatedAt = invalidatedAt;
     }
 
     public void assignTo(String assignedToUsername, String assignedByUsername) {
