@@ -661,7 +661,7 @@ function buildHeaders(opts: RequestOptions = {}): Record<string, string> {
   return headers;
 }
 
-function buildQuery(filters: Record<string, unknown> = {}): Record<string, string> {
+function buildQuery(filters: object = {}): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(filters)) {
     if (value === undefined || value === null || value === "") continue;
@@ -698,7 +698,7 @@ export async function misSummary(
     {
       method: "GET",
       path: "/api/v1/reports/mis-summary",
-      query: buildQuery(filters as Record<string, unknown>),
+      query: buildQuery(filters),
       headers: buildHeaders(opts),
     },
     MisSummarySchema,
@@ -713,7 +713,7 @@ export async function misPreview(
     {
       method: "GET",
       path: "/api/v1/reports/mis-preview",
-      query: buildQuery(filters as Record<string, unknown>),
+      query: buildQuery(filters),
       headers: buildHeaders(opts),
     },
     MisPreviewResponseSchema,

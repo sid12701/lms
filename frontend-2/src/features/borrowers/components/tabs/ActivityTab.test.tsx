@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { screen } from "@testing-library/react";
 import { renderWithProviders } from "@/test/utils";
 import type { UseQueryResult } from "@tanstack/react-query";
-import type { BorrowerActivityResponse } from "../../types";
+import type { BorrowerActivityEntry, BorrowerActivityResponse } from "../../types";
 
 const useActivityMock =
   vi.fn<(id: string) => UseQueryResult<BorrowerActivityResponse, Error>>();
@@ -51,14 +51,14 @@ const APPLICATION_ENTRY = {
     reason: null,
     createdAt: "2026-05-10T11:30:00.000Z",
   },
-} as const;
+} as const satisfies BorrowerActivityEntry;
 
 const PII_REVEAL_ENTRY = {
   kind: "PII_REVEAL",
   event: {
     id: "evt-pii-1",
-    subjectBorrowerId: "b-1",
-    subjectApplicationId: null,
+    subjectType: "BORROWER",
+    subjectId: "b-1",
     fieldName: "PAN",
     reason: "Verification before disbursement",
     actorId: "user-1",
@@ -66,7 +66,7 @@ const PII_REVEAL_ENTRY = {
     correlationId: "corr-pii-1",
     revealedAt: "2026-05-09T11:30:00.000Z",
   },
-} as const;
+} as const satisfies BorrowerActivityEntry;
 
 const DOCUMENT_ACCESS_ENTRY = {
   kind: "DOCUMENT_ACCESS",
@@ -74,13 +74,13 @@ const DOCUMENT_ACCESS_ENTRY = {
     id: "evt-doc-1",
     documentId: "doc-1",
     applicationId: "app-1",
-    action: "PREVIEW",
+    action: "VIEWED",
     actorId: "user-1",
     actorRole: "OPS_USER",
     correlationId: "corr-doc-1",
     accessedAt: "2026-05-08T11:30:00.000Z",
   },
-} as const;
+} as const satisfies BorrowerActivityEntry;
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -122,7 +122,7 @@ describe("ActivityTab", () => {
         isSuccess: true,
         data: {
           entries: [APPLICATION_ENTRY, PII_REVEAL_ENTRY, DOCUMENT_ACCESS_ENTRY],
-        } as unknown as BorrowerActivityResponse,
+        } satisfies BorrowerActivityResponse,
       }),
     );
     const { container } = renderWithProviders(<ActivityTab borrowerId="b-1" />);
@@ -141,7 +141,7 @@ describe("ActivityTab", () => {
     useActivityMock.mockReturnValue(
       buildResult({
         isSuccess: true,
-        data: { entries: [PII_REVEAL_ENTRY] } as unknown as BorrowerActivityResponse,
+        data: { entries: [PII_REVEAL_ENTRY] } satisfies BorrowerActivityResponse,
       }),
     );
     renderWithProviders(<ActivityTab borrowerId="b-1" />);
@@ -154,7 +154,7 @@ describe("ActivityTab", () => {
     useActivityMock.mockReturnValue(
       buildResult({
         isSuccess: true,
-        data: { entries: [APPLICATION_ENTRY] } as unknown as BorrowerActivityResponse,
+        data: { entries: [APPLICATION_ENTRY] } satisfies BorrowerActivityResponse,
       }),
     );
     const { getAllByText } = renderWithProviders(
@@ -171,7 +171,7 @@ describe("ActivityTab", () => {
         isSuccess: true,
         data: {
           entries: [APPLICATION_ENTRY, PII_REVEAL_ENTRY, DOCUMENT_ACCESS_ENTRY],
-        } as unknown as BorrowerActivityResponse,
+        } satisfies BorrowerActivityResponse,
       }),
     );
     const { container } = renderWithProviders(<ActivityTab borrowerId="b-1" />);

@@ -6,11 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import type { ReactNode } from "react";
+import type { PostRepaymentInput } from "../types";
 
-const postRepaymentMock = vi.fn<(id: string, input: unknown) => Promise<void>>();
+const postRepaymentMock =
+  vi.fn<(id: string, input: PostRepaymentInput) => Promise<void>>();
 
 vi.mock("../api-tabs", () => ({
-  postRepayment: (id: string, input: unknown) => postRepaymentMock(id, input),
+  postRepayment: (id: string, input: PostRepaymentInput) =>
+    postRepaymentMock(id, input),
 }));
 
 // Import AFTER vi.mock so the hook picks up the mocked module.
@@ -63,9 +66,9 @@ describe("usePostRepayment", () => {
     expect(postRepaymentMock).toHaveBeenCalledTimes(1);
     const [calledId, calledInput] = postRepaymentMock.mock.calls[0] ?? [];
     expect(calledId).toBe(APPLICATION_ID);
-    const input = calledInput as unknown as { idempotencyKey: string };
-    expect(typeof input.idempotencyKey).toBe("string");
-    expect(input.idempotencyKey.length).toBeGreaterThan(0);
+    expect(calledInput).toBeDefined();
+    expect(typeof calledInput!.idempotencyKey).toBe("string");
+    expect(calledInput!.idempotencyKey.length).toBeGreaterThan(0);
   });
 
   it("invalidates schedule, repayments, detail, and list keys on success", async () => {

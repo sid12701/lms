@@ -72,7 +72,7 @@ export interface AuditRow {
   raw?: unknown;
 }
 
-export const AuditRowSchema = z.object({
+export const AuditRowSchema: z.ZodType<AuditRow> = z.object({
   id: z.string().min(1),
   stream: AuditStreamSchema,
   createdAt: Iso8601,
@@ -93,7 +93,7 @@ export interface AuditEventsResponse {
   pageSize: number;
 }
 
-export const AuditEventsResponseSchema = z.object({
+export const AuditEventsResponseSchema: z.ZodType<AuditEventsResponse> = z.object({
   items: z.array(AuditRowSchema).readonly(),
   total: z.number().int().nonnegative(),
   page: z.number().int().nonnegative(),
