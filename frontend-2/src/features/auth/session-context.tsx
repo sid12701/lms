@@ -11,10 +11,14 @@ import {
   type ReactNode,
 } from "react";
 import type { Session } from "@/mocks/api/auth";
-import { auth } from "@/mocks/api";
-import { bootstrapMockApi } from "@/mocks/api";
+import { setRefreshCallback } from "@/lib/api/http-client";
+import { clearStoredSession, loadStoredSession } from "@/lib/api/session-storage";
+import {
+  logout as serviceLogout,
+  refreshSession as serviceRefresh,
+} from "@/features/auth/auth-service";
 
-export const SESSION_STORAGE_KEY = "bhawana-lms-session";
+export { SESSION_STORAGE_KEY } from "@/lib/api/session-storage";
 
 export interface SessionContextValue {
   session: Session | null;
@@ -26,31 +30,9 @@ export interface SessionContextValue {
 
 export const SessionContext = createContext<SessionContextValue | null>(null);
 
-function readPersistedToken(): string | null {
-  try {
-    if (typeof window === "undefined") return null;
-    return window.localStorage.getItem(SESSION_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writePersistedToken(token: string | null): void {
-  try {
-    if (typeof window === "undefined") return;
-    if (token) {
-      window.localStorage.setItem(SESSION_STORAGE_KEY, token);
-    } else {
-      window.localStorage.removeItem(SESSION_STORAGE_KEY);
-    }
-  } catch {
-    // Ignore — degrades to in-memory only.
-  }
-}
-
 interface SessionProviderProps {
   children: ReactNode;
-  /** Test seam: skip the initial auth.session() call. */
+  /** Test seam: skip the initial refresh / persisted-session bootstrap. */
   skipBootstrap?: boolean;
   /** Test seam: pre-populate the session. */
   initialSession?: Session | null;
@@ -61,19 +43,34 @@ export function SessionProvider({
   skipBootstrap = false,
   initialSession = null,
 }: SessionProviderProps): ReactElement {
-  const [session, setSession] = useState<Session | null>(initialSession);
-  const [isLoading, setIsLoading] = useState<boolean>(!skipBootstrap && initialSession === null);
+  const [session, setSession] = useState<Session | null>(() => initialSession ?? loadStoredSession());
+  const [isLoading, setIsLoading] = useState<boolean>(
+    !skipBootstrap && initialSession === null && loadStoredSession() === null,
+  );
   const didBootstrap = useRef<boolean>(false);
+  const sessionRef = useRef<Session | null>(session);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  // Register the 401-refresh hook for the live HTTP transport.
+  useEffect(() => {
+    setRefreshCallback(async () => {
+      const refreshed = await serviceRefresh();
+      if (refreshed) {
+        setSession(refreshed);
+        return refreshed.accessToken;
+      }
+      setSession(null);
+      return null;
+    });
+    return () => setRefreshCallback(null);
+  }, []);
 
   const refresh = useCallback(async () => {
-    try {
-      const next = await auth.session();
-      setSession(next);
-      writePersistedToken(next?.accessToken ?? null);
-    } catch {
-      setSession(null);
-      writePersistedToken(null);
-    }
+    const next = await serviceRefresh();
+    setSession(next);
   }, []);
 
   useEffect(() => {
@@ -81,25 +78,31 @@ export function SessionProvider({
     if (didBootstrap.current) return;
     didBootstrap.current = true;
 
-    bootstrapMockApi();
-    // Touch persisted token so we know whether to call session().
-    readPersistedToken();
-    void refresh().finally(() => setIsLoading(false));
-  }, [refresh, skipBootstrap]);
+    const persisted = loadStoredSession();
+    if (!persisted) {
+      setIsLoading(false);
+      return;
+    }
+    // Attempt a silent refresh; if the backend rejects, persisted session is cleared.
+    void serviceRefresh()
+      .then((next) => {
+        if (next) {
+          setSession(next);
+        } else {
+          clearStoredSession();
+          setSession(null);
+        }
+      })
+      .finally(() => setIsLoading(false));
+  }, [skipBootstrap]);
 
   const signIn = useCallback((next: Session) => {
     setSession(next);
-    writePersistedToken(next.accessToken);
   }, []);
 
   const signOut = useCallback(async () => {
-    try {
-      await auth.logout();
-    } catch {
-      // Ignore — clear locally regardless.
-    }
+    await serviceLogout();
     setSession(null);
-    writePersistedToken(null);
   }, []);
 
   const value = useMemo<SessionContextValue>(

@@ -15,7 +15,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { auth } from "@/mocks/api";
+import { completePasswordChange } from "@/features/auth/auth-service";
 import { useSession } from "@/features/auth/session-context";
 import { defaultLandingFor } from "@/lib/role-gates";
 import { PageEyebrow } from "@/components/app/layout/PageEyebrow";
@@ -38,7 +38,7 @@ type ChangePasswordValues = z.infer<typeof ChangePasswordSchema>;
  * role's default landing surface.
  */
 export function ChangePasswordPage() {
-  const { session, isLoading, refresh } = useSession();
+  const { session, isLoading, signIn } = useSession();
   const navigate = useNavigate();
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -68,12 +68,9 @@ export function ChangePasswordPage() {
   async function onSubmit(values: ChangePasswordValues): Promise<void> {
     setSubmitError(null);
     try {
-      await auth.completePasswordChange({ newPassword: values.newPassword });
-      await refresh();
-      // After refresh, mustChangePassword should be false. Navigate to landing.
-      if (session) {
-        navigate(defaultLandingFor(session.user.role), { replace: true });
-      }
+      const next = await completePasswordChange({ newPassword: values.newPassword });
+      signIn(next);
+      navigate(defaultLandingFor(next.user.role), { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not update password";
       setSubmitError(message);

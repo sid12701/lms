@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
+import { ShieldCheck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { auth } from "@/mocks/api";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useSession } from "@/features/auth/session-context";
+import { login } from "@/features/auth/auth-service";
 import { defaultLandingFor } from "@/lib/role-gates";
 import { SEED_USERS, type SeedUser } from "@/mocks/db/seed";
 import { cn } from "@/lib/utils";
 import { PageEyebrow } from "@/components/app/layout/PageEyebrow";
+import { ApiError } from "@/lib/api/http-client";
 
 interface RoleCardCopy {
   title: string;
@@ -38,15 +41,20 @@ function copyFor(role: SeedUser["role"], mustChange: boolean): RoleCardCopy {
 }
 
 /**
- * Mock-only sign-in surface. Renders a card per seed user; a click invokes
- * `auth.login()`, hydrates the session via `signIn`, and routes to the role's
- * default landing (`/home` or `/my-loans`). No password is required because
- * the mock router does not validate credentials (CLAUDE.md mock discipline).
+ * Live sign-in surface plus a dev-mode role preview.
+ *
+ * The top half is the real form that POSTs `/api/v1/auth/login` against the
+ * Spring backend. The bottom half lists the seeded backend accounts so a
+ * developer can pick one and prefill the form — the password is not
+ * auto-filled (the backend validates it), but the typed username matches a
+ * known bootstrap user.
  */
 export function LoginPage() {
   const { session, isLoading, signIn } = useSession();
   const navigate = useNavigate();
-  const [pending, setPending] = useState<string | null>(null);
+  const [username, setUsername] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+  const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   if (isLoading) {
@@ -65,26 +73,40 @@ export function LoginPage() {
     return <Navigate to={target} replace />;
   }
 
-  async function handleSelect(user: SeedUser): Promise<void> {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
     setError(null);
-    setPending(user.username);
+    setSubmitting(true);
     try {
-      const next = await auth.login({ username: user.username, password: user.password });
+      const next = await login({ username, password });
       signIn(next);
       const target = next.user.mustChangePassword
         ? "/change-password"
         : defaultLandingFor(next.user.role);
       navigate(target, { replace: true });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Sign-in failed";
+      const message =
+        err instanceof ApiError
+          ? err.status === 401
+            ? "Invalid username or password."
+            : (err.message ?? "Sign-in failed.")
+          : err instanceof Error
+            ? err.message
+            : "Sign-in failed.";
       setError(message);
-      setPending(null);
+      setSubmitting(false);
     }
+  }
+
+  function handlePrefill(user: SeedUser): void {
+    setUsername(user.username);
+    setPassword("");
+    setError(null);
   }
 
   return (
     <main className="bg-background flex min-h-screen flex-col items-center justify-center p-6">
-      <div className="flex w-full max-w-3xl flex-col gap-8">
+      <div className="flex w-full max-w-3xl flex-col gap-10">
         <header className="flex flex-col items-center gap-3 text-center">
           <span
             aria-hidden="true"
@@ -98,66 +120,116 @@ export function LoginPage() {
               Bhawana Capital — Loan Management
             </h1>
             <p className="text-foreground-muted mt-1 text-sm">
-              Sign in as one of the seeded demo accounts. The mock router does not validate
-              passwords.
+              Sign in with your backend credentials.
             </p>
           </div>
         </header>
 
-        {error ? (
-          <div
-            role="alert"
-            className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-4 py-3 text-sm"
-          >
-            {error}
-          </div>
-        ) : null}
-
-        <ul
-          aria-label="Demo accounts"
-          className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        <form
+          onSubmit={handleSubmit}
+          aria-label="Sign in"
+          className="border-border bg-card mx-auto flex w-full max-w-md flex-col gap-4 rounded-md border p-6 shadow-sm"
         >
-          {SEED_USERS.map((user) => {
-            const copy = copyFor(user.role, user.mustChangePassword);
-            const isPending = pending === user.username;
-            return (
-              <li key={user.id}>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void handleSelect(user)}
-                  disabled={pending !== null}
-                  aria-label={`Sign in as ${user.username} — ${copy.title}`}
-                  className={cn(
-                    "h-auto w-full flex-col items-start justify-start gap-2 px-4 py-4 text-left whitespace-normal",
-                  )}
-                >
-                  <span className="flex w-full items-start justify-between gap-2">
-                    <span className="text-foreground text-sm font-semibold">{copy.title}</span>
-                    {isPending ? (
-                      <Loader2
-                        aria-hidden="true"
-                        className="text-foreground-muted h-3.5 w-3.5 animate-spin"
-                      />
-                    ) : (
-                      <ArrowRight
-                        aria-hidden="true"
-                        className="text-foreground-muted h-3.5 w-3.5"
-                      />
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="username">Username</Label>
+            <Input
+              id="username"
+              name="username"
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              disabled={submitting}
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              disabled={submitting}
+              required
+            />
+          </div>
+
+          {error ? (
+            <div
+              role="alert"
+              className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-3 py-2 text-sm"
+            >
+              {error}
+            </div>
+          ) : null}
+
+          <Button type="submit" disabled={submitting} className="w-full">
+            {submitting ? (
+              <>
+                <Loader2 aria-hidden="true" className="mr-2 h-3.5 w-3.5 animate-spin" />
+                Signing in…
+              </>
+            ) : (
+              "Authenticate session"
+            )}
+          </Button>
+        </form>
+
+        <section
+          aria-labelledby="dev-role-preview-title"
+          className="border-border bg-muted/30 flex flex-col gap-4 rounded-md border p-5"
+        >
+          <header className="flex flex-col gap-1">
+            <PageEyebrow>Dev-mode preview</PageEyebrow>
+            <h2
+              id="dev-role-preview-title"
+              className="text-foreground text-base font-semibold tracking-tight"
+            >
+              Available system roles
+            </h2>
+            <p className="text-foreground-muted text-xs leading-5">
+              These are the bootstrap accounts the backend seeds in dev mode. Click one to
+              prefill its username — then enter the matching password to sign in. The role
+              column shows where each account lands after authentication.
+            </p>
+          </header>
+
+          <ul
+            aria-label="Seeded backend accounts"
+            className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {SEED_USERS.map((user) => {
+              const copy = copyFor(user.role, user.mustChangePassword);
+              return (
+                <li key={user.id}>
+                  <button
+                    type="button"
+                    onClick={() => handlePrefill(user)}
+                    disabled={submitting}
+                    aria-label={`Prefill ${user.username} — ${copy.title}`}
+                    className={cn(
+                      "border-border bg-background hover:border-brand-500 hover:bg-brand-50/30 dark:hover:bg-brand-950/20 flex h-full w-full flex-col items-start gap-1 rounded-md border px-4 py-3 text-left text-sm transition",
+                      "disabled:cursor-not-allowed disabled:opacity-50",
                     )}
-                  </span>
-                  <span className="text-foreground-muted text-xs leading-5">{copy.blurb}</span>
-                  <span className="text-foreground-subtle font-mono text-[11px]">
-                    {user.username} · {user.role}
-                  </span>
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
+                  >
+                    <span className="text-foreground font-semibold">{copy.title}</span>
+                    <span className="text-foreground-muted text-xs leading-5">{copy.blurb}</span>
+                    <span className="text-foreground-subtle font-mono text-[11px]">
+                      {user.username} · {user.role}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
 
         <p className="text-foreground-subtle text-center text-xs">
-          UI-only build — every API call is in-process, every payload is mocked.
+          The frontend calls the live Spring backend at{" "}
+          <code className="font-mono">VITE_API_BASE_URL</code>. Override in{" "}
+          <code className="font-mono">.env.local</code> if needed.
         </p>
       </div>
     </main>
