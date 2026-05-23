@@ -45,20 +45,6 @@ function makeSessionValue(session: Session | null): SessionContextValue {
   };
 }
 
-function makeLocalSession(role: Session["user"]["role"], userId: string): Session {
-  return {
-    user: {
-      id: userId,
-      username: role === "SYSTEM_ADMIN" ? "ops.admin" : "ops.user",
-      role,
-      lspId: null,
-      mustChangePassword: false,
-    },
-    accessToken: "mock.token",
-    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-  };
-}
-
 function LocationProbe() {
   const location = useLocation();
   return (

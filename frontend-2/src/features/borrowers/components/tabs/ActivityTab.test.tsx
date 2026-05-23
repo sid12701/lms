@@ -11,7 +11,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import type { BorrowerActivityResponse } from "../../types";
 
 const useActivityMock =
-  vi.fn<[string], UseQueryResult<BorrowerActivityResponse, Error>>();
+  vi.fn<(id: string) => UseQueryResult<BorrowerActivityResponse, Error>>();
 
 vi.mock("../../hooks/useBorrowerActivity", () => ({
   useBorrowerActivity: (id: string) => useActivityMock(id),
@@ -122,7 +122,7 @@ describe("ActivityTab", () => {
         isSuccess: true,
         data: {
           entries: [APPLICATION_ENTRY, PII_REVEAL_ENTRY, DOCUMENT_ACCESS_ENTRY],
-        } as BorrowerActivityResponse,
+        } as unknown as BorrowerActivityResponse,
       }),
     );
     const { container } = renderWithProviders(<ActivityTab borrowerId="b-1" />);
@@ -141,7 +141,7 @@ describe("ActivityTab", () => {
     useActivityMock.mockReturnValue(
       buildResult({
         isSuccess: true,
-        data: { entries: [PII_REVEAL_ENTRY] } as BorrowerActivityResponse,
+        data: { entries: [PII_REVEAL_ENTRY] } as unknown as BorrowerActivityResponse,
       }),
     );
     renderWithProviders(<ActivityTab borrowerId="b-1" />);
@@ -154,7 +154,7 @@ describe("ActivityTab", () => {
     useActivityMock.mockReturnValue(
       buildResult({
         isSuccess: true,
-        data: { entries: [APPLICATION_ENTRY] } as BorrowerActivityResponse,
+        data: { entries: [APPLICATION_ENTRY] } as unknown as BorrowerActivityResponse,
       }),
     );
     const { getAllByText } = renderWithProviders(
@@ -171,7 +171,7 @@ describe("ActivityTab", () => {
         isSuccess: true,
         data: {
           entries: [APPLICATION_ENTRY, PII_REVEAL_ENTRY, DOCUMENT_ACCESS_ENTRY],
-        } as BorrowerActivityResponse,
+        } as unknown as BorrowerActivityResponse,
       }),
     );
     const { container } = renderWithProviders(<ActivityTab borrowerId="b-1" />);

@@ -32,7 +32,7 @@ const FIXTURE: HomeKpis = {
   },
 };
 
-const fetchHomeKpisMock = vi.fn<[], Promise<HomeKpis>>();
+const fetchHomeKpisMock = vi.fn<() => Promise<HomeKpis>>();
 
 vi.mock("../api", () => ({
   fetchHomeKpis: () => fetchHomeKpisMock(),

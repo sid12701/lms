@@ -698,7 +698,7 @@ export async function misSummary(
     {
       method: "GET",
       path: "/api/v1/reports/mis-summary",
-      query: buildQuery(filters),
+      query: buildQuery(filters as Record<string, unknown>),
       headers: buildHeaders(opts),
     },
     MisSummarySchema,
@@ -713,7 +713,7 @@ export async function misPreview(
     {
       method: "GET",
       path: "/api/v1/reports/mis-preview",
-      query: buildQuery(filters),
+      query: buildQuery(filters as Record<string, unknown>),
       headers: buildHeaders(opts),
     },
     MisPreviewResponseSchema,

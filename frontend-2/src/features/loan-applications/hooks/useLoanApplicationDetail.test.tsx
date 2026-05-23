@@ -14,9 +14,9 @@ import type {
   LoanApplicationWebhooksResponse,
 } from "../types";
 
-const detailMock = vi.fn<[string], Promise<LoanApplicationDetail>>();
-const activityMock = vi.fn<[string], Promise<LoanApplicationActivityResponse>>();
-const webhooksMock = vi.fn<[string], Promise<LoanApplicationWebhooksResponse>>();
+const detailMock = vi.fn<(id: string) => Promise<LoanApplicationDetail>>();
+const activityMock = vi.fn<(id: string) => Promise<LoanApplicationActivityResponse>>();
+const webhooksMock = vi.fn<(id: string) => Promise<LoanApplicationWebhooksResponse>>();
 
 vi.mock("../api-detail", () => ({
   fetchLoanApplicationDetail: (id: string) => detailMock(id),

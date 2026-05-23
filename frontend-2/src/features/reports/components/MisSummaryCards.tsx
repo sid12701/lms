@@ -14,7 +14,6 @@ import type { ReactNode } from "react";
 import {
   Activity,
   AlertTriangle,
-  Briefcase,
   Layers,
   Percent,
   TrendingUp,

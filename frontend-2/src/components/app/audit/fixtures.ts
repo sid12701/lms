@@ -24,7 +24,7 @@ const CORR_ID = "99999999-9999-4000-8000-999999999999";
 
 export const FIXTURE_NOW = new Date("2026-05-10T12:00:00.000Z");
 
-export const FIXTURE_APPLICATION: AuditEvent = {
+export const FIXTURE_APPLICATION = {
   kind: "APPLICATION",
   event: {
     id: ID_APP,
@@ -39,9 +39,9 @@ export const FIXTURE_APPLICATION: AuditEvent = {
     reason: null,
     createdAt: "2026-05-10T11:55:00.000Z",
   },
-};
+} as const satisfies AuditEvent;
 
-export const FIXTURE_INTAKE: AuditEvent = {
+export const FIXTURE_INTAKE = {
   kind: "INTAKE",
   event: {
     id: ID_INTAKE,
@@ -52,12 +52,12 @@ export const FIXTURE_INTAKE: AuditEvent = {
     correlationId: CORR_ID,
     createdAt: "2026-05-10T10:00:00.000Z",
   },
-};
+} as const satisfies AuditEvent;
 
 const LONG_REASON =
   "Verifying borrower identity ahead of disbursement; PAN cross-check required by ops standing order BCO-2026-04-18 and the operations runbook updated last quarter.";
 
-export const FIXTURE_PII_LONG_REASON: AuditEvent = {
+export const FIXTURE_PII_LONG_REASON = {
   kind: "PII_REVEAL",
   event: {
     id: ID_PII,
@@ -70,9 +70,9 @@ export const FIXTURE_PII_LONG_REASON: AuditEvent = {
     correlationId: CORR_ID,
     revealedAt: "2026-05-10T09:00:00.000Z",
   },
-};
+} as const satisfies AuditEvent;
 
-export const FIXTURE_PII_SHORT_REASON: AuditEvent = {
+export const FIXTURE_PII_SHORT_REASON = {
   kind: "PII_REVEAL",
   event: {
     id: "00000000-0000-4000-8000-00000000000a",
@@ -85,9 +85,9 @@ export const FIXTURE_PII_SHORT_REASON: AuditEvent = {
     correlationId: CORR_ID,
     revealedAt: "2026-05-10T08:30:00.000Z",
   },
-};
+} as const satisfies AuditEvent;
 
-export const FIXTURE_DOCUMENT: AuditEvent = {
+export const FIXTURE_DOCUMENT = {
   kind: "DOCUMENT_ACCESS",
   event: {
     id: ID_DOC,
@@ -99,9 +99,9 @@ export const FIXTURE_DOCUMENT: AuditEvent = {
     correlationId: CORR_ID,
     accessedAt: "2026-05-10T08:00:00.000Z",
   },
-};
+} as const satisfies AuditEvent;
 
-export const FIXTURE_PRODUCT: AuditEvent = {
+export const FIXTURE_PRODUCT = {
   kind: "PRODUCT",
   event: {
     id: ID_PRODUCT,
@@ -114,7 +114,7 @@ export const FIXTURE_PRODUCT: AuditEvent = {
     correlationId: CORR_ID,
     createdAt: "2026-05-10T07:00:00.000Z",
   },
-};
+} as const satisfies AuditEvent;
 
 export const ALL_FIXTURES: AuditEvent[] = [
   FIXTURE_APPLICATION,

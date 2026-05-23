@@ -27,7 +27,7 @@
  * written by the other handlers (loan-applications, borrowers, …).
  */
 import { z } from "zod";
-import { Iso8601, IsoDate, Uuid } from "@/schemas/common";
+import { IsoDate, Uuid } from "@/schemas/common";
 import type {
   ApplicationAuditEvent,
   DocumentAccessEvent,
@@ -42,7 +42,6 @@ import {
   type AuditEventsResponse,
   type AuditRow,
   type AuditStream,
-  type AuditSubjectType,
 } from "@/features/audit/types";
 import { dispatch, registerRoute, type MockRequest } from "../router";
 import { BadRequestError, UnauthorizedError, newCorrelationId } from "../errors";

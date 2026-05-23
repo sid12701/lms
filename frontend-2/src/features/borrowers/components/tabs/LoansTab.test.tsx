@@ -15,7 +15,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import type { BorrowerLoanRow, BorrowerLoansResponse } from "../../types";
 
-const useLoansMock = vi.fn<[string], UseQueryResult<BorrowerLoansResponse, Error>>();
+const useLoansMock = vi.fn<(id: string) => UseQueryResult<BorrowerLoansResponse, Error>>();
 
 vi.mock("../../hooks/useBorrowerLoans", () => ({
   useBorrowerLoans: (id: string) => useLoansMock(id),

@@ -69,10 +69,10 @@ export interface AuditRow {
   /** Short human-readable headline e.g. "Approved", "PAN revealed". */
   headline: string;
   /** Original event payload — surfaced in the detail sheet as JSON. */
-  raw: unknown;
+  raw?: unknown;
 }
 
-export const AuditRowSchema: z.ZodType<AuditRow> = z.object({
+export const AuditRowSchema = z.object({
   id: z.string().min(1),
   stream: AuditStreamSchema,
   createdAt: Iso8601,
@@ -93,7 +93,7 @@ export interface AuditEventsResponse {
   pageSize: number;
 }
 
-export const AuditEventsResponseSchema: z.ZodType<AuditEventsResponse> = z.object({
+export const AuditEventsResponseSchema = z.object({
   items: z.array(AuditRowSchema).readonly(),
   total: z.number().int().nonnegative(),
   page: z.number().int().nonnegative(),

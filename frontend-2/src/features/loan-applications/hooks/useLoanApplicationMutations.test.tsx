@@ -15,13 +15,17 @@ import type {
 
 const postTransitionMock =
   vi.fn<
-    [string, { to: string; reason: string | null; idempotencyKey: string }],
-    Promise<TransitionResponse>
+    (
+      id: string,
+      input: { to: string; reason: string | null; idempotencyKey: string },
+    ) => Promise<TransitionResponse>
   >();
 const postDisbursementMock =
   vi.fn<
-    [string, { note: string | null; idempotencyKey: string }],
-    Promise<DisbursementResponse>
+    (
+      id: string,
+      input: { note: string | null; idempotencyKey: string },
+    ) => Promise<DisbursementResponse>
   >();
 
 vi.mock("../api-detail", () => ({

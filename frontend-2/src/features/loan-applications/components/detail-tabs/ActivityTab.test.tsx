@@ -10,7 +10,7 @@ import { renderWithProviders } from "@/test/utils";
 import type { LoanApplicationActivityResponse } from "../../types";
 
 const activityHookMock =
-  vi.fn<[string], UseQueryResult<LoanApplicationActivityResponse, Error>>();
+  vi.fn<(id: string) => UseQueryResult<LoanApplicationActivityResponse, Error>>();
 
 vi.mock("../../hooks/useLoanApplicationActivity", () => ({
   useLoanApplicationActivity: (id: string) => activityHookMock(id),

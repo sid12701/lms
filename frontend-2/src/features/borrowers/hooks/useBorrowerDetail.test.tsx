@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { BorrowerDetail } from "../types";
 
-const detailMock = vi.fn<[string], Promise<BorrowerDetail>>();
+const detailMock = vi.fn<(id: string) => Promise<BorrowerDetail>>();
 
 vi.mock("../api", () => ({
   fetchBorrowerDetail: (id: string) => detailMock(id),

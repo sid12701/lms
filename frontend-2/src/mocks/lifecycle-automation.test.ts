@@ -105,7 +105,7 @@ describe("runFullLifecycle", () => {
     expect(result.finalStatus).toBe("CLOSED");
     expect(vi.mocked(loanApi.submitSchedule)).toHaveBeenCalledTimes(1);
     const submitCall = vi.mocked(loanApi.submitSchedule).mock.calls[0]!;
-    const payload = submitCall[1] as { installments: unknown[] };
+    const payload = submitCall[1] as unknown as { installments: unknown[] };
     expect(payload.installments).toHaveLength(4);
     expect(vi.mocked(loanApi.initiateDisbursement)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(loanApi.postRepayment)).toHaveBeenCalledTimes(4);
@@ -193,7 +193,7 @@ describe("runFullLifecycle", () => {
 
     await submitGeneratedSchedule("app-1");
 
-    const captured = vi.mocked(loanApi.submitSchedule).mock.calls[0]![1] as {
+    const captured = vi.mocked(loanApi.submitSchedule).mock.calls[0]![1] as unknown as {
       installments: unknown[];
     };
     const parsed = LspProvidedSchedule.safeParse({

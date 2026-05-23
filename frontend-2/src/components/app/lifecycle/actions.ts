@@ -110,10 +110,15 @@ const ACTION_OVERRIDES: Partial<
  * Default copy when a target status is not present in `ACTION_OVERRIDES`.
  * Origination + servicing transitions tend to be neutral progress steps.
  */
-const DEFAULT_OVERRIDE = {
-  tone: "default" as LifecycleActionTone,
+const DEFAULT_OVERRIDE: {
+  tone: LifecycleActionTone;
+  requiresReason: boolean;
+  permission: Permission;
+  labelOverride?: string;
+} = {
+  tone: "default",
   requiresReason: false,
-  permission: "LOAN_STATUS_UPDATE" as Permission,
+  permission: "LOAN_STATUS_UPDATE",
 };
 
 function makeId(from: LoanStatus, to: LoanStatus): string {

@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import type { ReactNode } from "react";
 
-const postRepaymentMock = vi.fn<[string, unknown], Promise<void>>();
+const postRepaymentMock = vi.fn<(id: string, input: unknown) => Promise<void>>();
 
 vi.mock("../api-tabs", () => ({
   postRepayment: (id: string, input: unknown) => postRepaymentMock(id, input),
@@ -63,7 +63,7 @@ describe("usePostRepayment", () => {
     expect(postRepaymentMock).toHaveBeenCalledTimes(1);
     const [calledId, calledInput] = postRepaymentMock.mock.calls[0] ?? [];
     expect(calledId).toBe(APPLICATION_ID);
-    const input = calledInput as { idempotencyKey: string };
+    const input = calledInput as unknown as { idempotencyKey: string };
     expect(typeof input.idempotencyKey).toBe("string");
     expect(input.idempotencyKey.length).toBeGreaterThan(0);
   });
