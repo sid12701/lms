@@ -30,6 +30,7 @@ features without a backend counterpart stay on mocks until one ships.
 | Reports / Portfolio MIS | `GET /api/v1/internal/reports/portfolio-mis/{summary,preview}`, `POST .../requests`, `GET .../requests`, blob download | Field-name translation between backend + frontend MIS shapes. |
 | LSP my-loans list | `GET /api/v1/lsp/loan-applications` | Replaces the Phase-6 placeholder; renders the LSP-scoped list. |
 | LSP my-loan detail + write actions | `GET /api/v1/lsp/loan-applications/{id}`, `/invalid-reasons`, `POST .../{id}/invalid`, `GET .../{id}/borrower-pii` | Renders the LSP-scoped loan detail (terms, contact, loan account). Mark-invalid posts to the audited LSP endpoint with an Idempotency-Key header; `reasonText` is only forwarded when the catalog row says `requiresText`. The PII reveal card calls the audited `/borrower-pii` endpoint — every reveal is recorded server-side. |
+| LSP document upload (per-row + batch) | `POST .../{id}/documents` (single), `POST .../{id}/documents/batch` (batch) | Multipart upload from the my-loan detail page. The checklist is a best-effort projection over the standard document types because the LSP API does not yet expose a GET-documents endpoint; uploaded rows are tracked in component state for the duration of the session. Uploads are disabled in terminal states. |
 
 The HTTP transport lives at `frontend-2/src/lib/api/http-client.ts`. It
 handles base URL, `Authorization: Bearer` injection, error-envelope
@@ -52,12 +53,8 @@ mock db via `features/auth/mock-session-bridge.ts`.
   `PUT .../kyc-documents/{type}` is wired in `updateDocumentChecklistItem`
   but the DocumentsTab UI is still read-only (`canManage: false`). A
   manage-enabled variant would consume the helper as-is.
-- **LSP document checklist + upload UI** (issue #19) — the helper
-  functions (`uploadLspDocument`, `uploadLspDocumentsBatch`) are wired
-  against the LSP multipart endpoints, but the my-loan detail page does
-  not yet surface a checklist + uploader. The LSP API has no GET
-  documents endpoint, so any checklist UI is best-effort over the
-  standard required document types.
+- _Nothing currently — see the gaps below for limitations on shipped
+  surfaces._
 
 ## Known partial-integration gaps
 
@@ -117,6 +114,11 @@ mock db via `features/auth/mock-session-bridge.ts`.
   APPLICATION stream and the most recent 50 applications (per the #15
   decision). For complete cross-domain audit search, a backend unified
   endpoint is still needed.
+- LSP document checklist is built locally over the standard document
+  types because the LSP API exposes no GET endpoint for previously
+  uploaded documents. After a page reload the checklist resets to its
+  empty state until the user uploads again. A `GET .../{id}/documents`
+  endpoint on the backend would close this gap.
 
 ## Running it locally
 
