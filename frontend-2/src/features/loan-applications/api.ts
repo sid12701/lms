@@ -36,7 +36,7 @@ const STATUS_PASS_THROUGH = new Set<LoanApplicationListItem["status"]>([
   "INVALIDATED",
 ]);
 
-function mapBackendStatus(status: string | null | undefined): LoanApplicationListItem["status"] {
+export function mapBackendStatus(status: string | null | undefined): LoanApplicationListItem["status"] {
   if (!status) return "INITIATED";
   if (STATUS_PASS_THROUGH.has(status as LoanApplicationListItem["status"])) {
     return status as LoanApplicationListItem["status"];
