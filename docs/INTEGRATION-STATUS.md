@@ -144,6 +144,11 @@ mock db via `features/auth/mock-session-bridge.ts`.
 
 ## Roadmap
 
-The remaining gaps map to issues #5–#8, #15, #16, #18, and #19 on
-`sid12701/lms`. Each follow-up commit should land a single feature and
-update the wired vs. mocked tables above.
+Issues #5, #6, #7, #8, #15, #18, and #19 from `sid12701/lms` are
+shipped — each table row above maps to one commit on `main`. Issue #16
+(retiring the legacy `frontend/` and renaming `frontend-2/` to
+`frontend/`) is deferred while both surfaces are still useful for
+side-by-side comparison; pick that up once the team is comfortable
+running everything on `frontend-2/` end-to-end. Backend gaps called out
+above are tracked separately and will land per-endpoint as the backend
+team picks them up.
