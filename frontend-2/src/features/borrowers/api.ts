@@ -1,18 +1,23 @@
 /**
- * Borrower-detail API client — thin transport wrapper around the mock
- * router for the Phase 6 borrower-detail surface.
+ * Borrower-detail API client.
  *
- * The contract is owned by `./types.ts`; this module registers permissive
- * Zod parsers that mirror the response shapes so the router's drift
- * detection fires when the upstream mock handler (`mocks/api/borrowers.ts`)
- * returns something unexpected.
+ * For internal sessions (SYSTEM_ADMIN / OPS_USER) the read endpoint calls
+ * the live backend at `/api/v1/internal/admin/borrowers/{id}` and
+ * translates the flat backend `BorrowerDetailResponse` into the nested
+ * `BorrowerDetail` projection. High-risk PII (Aadhaar, bank account) is
+ * masked server-side by the backend before it reaches the wire, so the
+ * frontend never holds the cleartext on the read path.
  *
- * BR-5: `recordPiiReveal` always forwards the supplied idempotency key in
- * both the request body and the `Idempotency-Key` header so the router's
- * 30s dedupe cache catches duplicate submits.
+ * The audited PII reveal call (`recordPiiReveal`) still routes through
+ * the mock router: the backend exposes an audited reveal endpoint only
+ * on the LSP path (`/api/v1/lsp/loan-applications/{id}/borrower-pii`),
+ * not on the internal-admin borrower controller. This gap is captured
+ * in `docs/INTEGRATION-STATUS.md` and on issue #8.
  */
 import { z } from "zod";
+import { ApiError, requestJson } from "@/lib/api/http-client";
 import { dispatch } from "@/mocks/router";
+import { loadStoredSession } from "@/lib/api/session-storage";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { PiiFieldName } from "@/schemas/audit";
 import type {
@@ -21,11 +26,14 @@ import type {
   RecordPiiRevealResponse,
 } from "./types";
 
-// ─── Runtime parsers ─────────────────────────────────────────────────────────
-//
-// The detail payload includes a deeply-nested `Borrower` which already
-// passed Zod when seeded upstream. We assert the top-level shape only and
-// let TypeScript narrow nested fields — mirrors the Phase 5 pattern.
+const BACKEND_BASE = "/api/v1/internal/admin/borrowers";
+
+function isInternalSession(): boolean {
+  const role = loadStoredSession()?.user.role;
+  return role === "SYSTEM_ADMIN" || role === "OPS_USER";
+}
+
+// ─── Runtime parsers (mock fallback) ─────────────────────────────────────────
 
 const Permissive = z.unknown();
 
@@ -51,10 +59,193 @@ export const RecordPiiRevealResponseSchema: z.ZodType<RecordPiiRevealResponse> =
     auditId: z.string().min(1),
   });
 
+// ─── Backend response shape ──────────────────────────────────────────────────
+
+interface BackendBorrowerLoanRow {
+  loanAccountId: string | null;
+  applicationId: string | null;
+  accountNumber: string | null;
+  lspId: string | null;
+  lspCode: string | null;
+  lspName: string | null;
+  loanProductCode: string | null;
+  status: string | null;
+  principalAmount: number | string | null;
+  tenureMonths: number;
+  approvedAt: string | null;
+  disbursedAt: string | null;
+  closureReason: string | null;
+  closedAt: string | null;
+  closedByUsername: string | null;
+  createdAt: string;
+}
+
+interface BackendBorrowerDetail {
+  id: string;
+  fullName: string;
+  pan: string | null;
+  mobile: string | null;
+  email: string | null;
+  dateOfBirth: string | null;
+  gender: string | null;
+  maritalStatus: string | null;
+  fatherName: string | null;
+  aadharNumberMasked: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  addressZipCode: string | null;
+  spouseName: string | null;
+  employmentType: string | null;
+  organizationName: string | null;
+  employeeId: string | null;
+  employmentCity: string | null;
+  employmentState: string | null;
+  employmentZip: string | null;
+  monthlyIncome: number | string | null;
+  annualIncome: number | string | null;
+  bankAccountNumberMasked: string | null;
+  bankName: string | null;
+  ifscCode: string | null;
+  accountHolderName: string | null;
+  referencePersonName: string | null;
+  referencePersonNumber: string | null;
+  visibleLspIds: string[];
+  loans: BackendBorrowerLoanRow[];
+}
+
+function toNumber(value: number | string | null | undefined): number {
+  if (value == null) return 0;
+  const parsed = typeof value === "string" ? Number(value) : value;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+const OPEN_STATUSES = new Set([
+  "INITIALIZED",
+  "AWAITING_APPROVAL",
+  "APPROVED_PENDING_DISBURSAL",
+  "PAYMENT_REINITIATION",
+  "DISBURSED",
+  "UNDER_REPAYMENT",
+]);
+
+const CLOSED_STATUSES = new Set(["CLOSED", "REJECTED", "INVALID"]);
+
+function backendToDetail(payload: BackendBorrowerDetail): BorrowerDetail {
+  // Project visibleLsps from the loans collection (the backend gives us
+  // only ids on the borrower; loan rows carry the human-readable name).
+  const visibleLsps = (() => {
+    const map = new Map<string, string>();
+    for (const loan of payload.loans) {
+      if (loan.lspId && loan.lspName) map.set(loan.lspId, loan.lspName);
+    }
+    // Backfill any ids that don't have a loan-row name yet.
+    for (const id of payload.visibleLspIds ?? []) {
+      if (!map.has(id)) map.set(id, id.slice(0, 8));
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  })();
+
+  let openCount = 0;
+  let closedCount = 0;
+  let lifetimeDisbursed = 0;
+  for (const loan of payload.loans) {
+    const status = loan.status ?? "";
+    const isOpen = OPEN_STATUSES.has(status);
+    if (isOpen) openCount += 1;
+    else if (CLOSED_STATUSES.has(status)) closedCount += 1;
+    if (loan.disbursedAt) lifetimeDisbursed += toNumber(loan.principalAmount);
+  }
+
+  const borrower = {
+    id: payload.id,
+    fullName: payload.fullName,
+    pan: payload.pan ?? "",
+    aadhaar: payload.aadharNumberMasked ?? "",
+    mobile: payload.mobile ?? "",
+    email: payload.email,
+    dob: payload.dateOfBirth ?? "",
+    gender: (payload.gender ?? "M") as "M" | "F" | "O",
+    maritalStatus: (payload.maritalStatus ?? "SINGLE") as
+      | "SINGLE"
+      | "MARRIED"
+      | "DIVORCED"
+      | "WIDOWED",
+    fathersName: payload.fatherName ?? "",
+    spouseName: payload.spouseName,
+    address: {
+      residential:
+        [payload.addressLine1, payload.addressLine2].filter(Boolean).join(", ") || "",
+      city: payload.city ?? "",
+      state: payload.state ?? "",
+      zip: payload.addressZipCode ?? "",
+    },
+    employment: {
+      type: (payload.employmentType ?? "SALARIED") as
+        | "SALARIED"
+        | "SELF_EMPLOYED"
+        | "BUSINESS"
+        | "RETIRED"
+        | "STUDENT"
+        | "UNEMPLOYED",
+      organization: payload.organizationName,
+      employeeId: payload.employeeId,
+      location:
+        [payload.employmentCity, payload.employmentState].filter(Boolean).join(", ") ||
+        null,
+      monthlyIncome: toNumber(payload.monthlyIncome),
+      annualIncome: toNumber(payload.annualIncome),
+    },
+    banking: {
+      bank: payload.bankName ?? "",
+      accountHolder: payload.accountHolderName ?? "",
+      accountNumber: payload.bankAccountNumberMasked ?? "",
+      ifsc: payload.ifscCode ?? "",
+    },
+    references:
+      payload.referencePersonName && payload.referencePersonNumber
+        ? [
+            {
+              name: payload.referencePersonName,
+              contact: payload.referencePersonNumber,
+            },
+          ]
+        : [],
+    kycComplete: !!payload.pan && !!payload.aadharNumberMasked,
+    visibleLspIds: payload.visibleLspIds ?? [],
+  };
+
+  return {
+    borrower: borrower as unknown as BorrowerDetail["borrower"],
+    visibleLsps,
+    totals: {
+      openApplicationsCount: openCount,
+      closedApplicationsCount: closedCount,
+      lifetimeDisbursedAmount: lifetimeDisbursed,
+      // No DPD/overdue data on the borrower admin endpoint; the Profile
+      // tab's "active overdue" tile renders zero until a backend
+      // aggregation surfaces it.
+      activeOverdueAmount: 0,
+    },
+  };
+}
+
 // ─── Public surface ──────────────────────────────────────────────────────────
 
 /** Fetch the joined borrower-detail payload for `/borrowers/:id`. */
 export async function fetchBorrowerDetail(id: string): Promise<BorrowerDetail> {
+  if (isInternalSession()) {
+    try {
+      const payload = await requestJson<BackendBorrowerDetail>(
+        `${BACKEND_BASE}/${encodeURIComponent(id)}`,
+      );
+      return backendToDetail(payload);
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status >= 500) throw error;
+    }
+  }
+
   return dispatch(
     {
       method: "GET",
@@ -65,18 +256,17 @@ export async function fetchBorrowerDetail(id: string): Promise<BorrowerDetail> {
 }
 
 /**
- * Append a PII-reveal audit row (BR-7) and return the unmasked value.
+ * Append a PII-reveal audit row and return the unmasked value.
  *
- * The caller is responsible for minting the idempotency key (a fresh one
- * per attempt — `useRecordPiiReveal` does this) but we defensively fall
- * back to `newIdempotencyKey()` when the input is empty so the BR-5 cache
- * always has a key to work with.
+ * GAP: the backend exposes an audited reveal endpoint only on the LSP
+ * path; the internal admin borrower controller has no equivalent. Until
+ * an internal endpoint ships, the reveal flows through the mock router
+ * so the UX is preserved — but no audit row hits the database. Tracked
+ * in docs/INTEGRATION-STATUS.md and on GitHub issue #8.
  */
 export async function recordPiiReveal(
   input: RecordPiiRevealInput,
 ): Promise<RecordPiiRevealResponse> {
-  // Validate `field` value at runtime so a typo in the caller surfaces here
-  // rather than as an opaque 400 from the mock handler.
   PiiFieldName.parse(input.field);
 
   const idempotencyKey =

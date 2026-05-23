@@ -20,6 +20,7 @@ features without a backend counterpart stay on mocks until one ships.
 | Loan-applications list (internal) | `GET /api/v1/internal/ops/loan-applications` | Page/pageSize translated to offset/limit. |
 | Loan-application detail + read-only tabs | `GET /api/v1/internal/ops/loan-applications/{id}`, `/audit-events`, `/repayment-schedule`, `/kyc-documents`, `/payments` | Flat backend payload translated into the nested `LoanApplicationDetail` projection in the api layer. Borrower/LSP/product fill what's available; banking/aadhaar/references are empty pending issue #7. Webhooks tab filters `/admin/webhook-outbox` by `aggregateId` for SYSTEM_ADMIN and returns empty for OPS_USER. |
 | Loan-application lifecycle write actions | `POST .../status-transitions`, `POST .../manual-status` (admin fallback), `POST .../disbursement-requests`, `POST .../payments` | Frontend status mapped to backend `LoanApplicationStatus`. SYSTEM_ADMIN automatically falls back to `manual-status` if the simple state machine on `status-transitions` rejects the target. Idempotency-Key forwarded as header on every mutation. Repayment posting maps `mode` → backend channel + uses idempotency key as the reference. |
+| Borrower 360 profile + Loans tab | `GET /api/v1/internal/admin/borrowers/{id}` | Backend returns borrower master + loans projection in one envelope. Aadhaar / bank account masked server-side. Loans tab reuses the same payload (no second request). Visible LSPs derived from the loans collection's lspId/lspName join. |
 | LSPs admin | `GET/POST/PUT /api/v1/internal/admin/lsps[…]` | Webhook event-type enum bridged backend↔frontend. |
 | Products admin | `GET/POST/PUT /api/v1/internal/admin/products[…]` | List + create + update + mappings all live. |
 | Users admin | `GET/POST /api/v1/internal/admin/users[…]` | List + create + reset-password live; update endpoint pending on backend. |
@@ -39,7 +40,9 @@ These surfaces still rely on `frontend-2/src/mocks/api/*`. They render
 real-looking data because the live login mirrors the session into the
 mock db via `features/auth/mock-session-bridge.ts`.
 
-- **Borrower 360 profile** + sub-tabs.
+- **Borrower 360 Activity tab** — no borrower-scoped audit endpoint
+  exists on the backend (audit streams are per-application). Stays on
+  the mock router until a backend aggregation lands.
 - **Borrower documents + audited PII reveal**.
 - **Audit explorer** (the audit streams come from per-application
   endpoints; the unified explorer needs a backend aggregation that
@@ -95,6 +98,13 @@ mock db via `features/auth/mock-session-bridge.ts`.
   key doubles as the backend `reference`.
 - Loan-application assignment: not wired yet; backend endpoint exists
   (`POST .../assignment`) but the frontend has no UI for it.
+- Borrower 360 audited PII reveal: the backend exposes an audited PII
+  reveal endpoint only on the LSP path
+  (`/api/v1/lsp/loan-applications/{id}/borrower-pii`). Internal
+  borrower reveal flows through the mock router — no audit row hits
+  the database. Backend needs an internal admin equivalent (issue #8).
+- Borrower 360 `activeOverdueAmount` tile is hardcoded to 0; the
+  borrower admin endpoint does not surface DPD aggregates.
 
 ## Running it locally
 
