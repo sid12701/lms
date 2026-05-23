@@ -56,6 +56,17 @@ export function mapBackendStatus(status: string | null | undefined): LoanApplica
 }
 
 function mapFrontendStatus(value: LoanApplicationListItem["status"]): string {
+  return mapFrontendStatusToBackend(value);
+}
+
+/**
+ * Reverse-map a frontend LoanStatus value into the backend
+ * `LoanApplicationStatus` enum (a strict subset of the frontend's). Used
+ * by both the list filter and the lifecycle transition mutations.
+ */
+export function mapFrontendStatusToBackend(
+  value: LoanApplicationListItem["status"],
+): string {
   switch (value) {
     case "INITIATED":
       return "INITIALIZED";
@@ -63,6 +74,8 @@ function mapFrontendStatus(value: LoanApplicationListItem["status"]): string {
       return "INVALID";
     case "DISBURSEMENT_IN_PROGRESS":
       return "PAYMENT_REINITIATION";
+    case "APPROVED":
+      return "APPROVED_PENDING_DISBURSAL";
     default:
       return value;
   }

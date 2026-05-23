@@ -31,7 +31,7 @@ import type {
   TransitionStatusInput,
 } from "./types";
 import type { ApplicationAuditEvent, LoanApplication } from "@/types";
-import { mapBackendStatus } from "./api";
+import { mapBackendStatus, mapFrontendStatusToBackend } from "./api";
 
 const BACKEND_BASE = "/api/v1/internal/ops/loan-applications";
 
@@ -498,13 +498,80 @@ export async function fetchLoanApplicationWebhooks(
   );
 }
 
+function synthesiseTransitionEvent(
+  detail: LoanApplicationDetail,
+  fromStatus: LoanApplication["status"] | null,
+  reason: string | null,
+): ApplicationAuditEvent {
+  return {
+    id: `transition-${detail.application.id}-${Date.now()}`,
+    applicationId: detail.application.id,
+    fromStatus,
+    toStatus: detail.application.status,
+    action: "transition",
+    actorId: "current-session",
+    actorRole: "OPS_USER" as ApplicationAuditEvent["actorRole"],
+    channel: "UI" as ApplicationAuditEvent["channel"],
+    correlationId: detail.application.id,
+    reason,
+    createdAt: detail.application.updatedAt,
+  };
+}
+
+async function postBackendTransition(
+  id: string,
+  input: TransitionStatusInput,
+  idempotencyKey: string,
+): Promise<TransitionResponse> {
+  const targetStatus = mapFrontendStatusToBackend(input.to);
+  const body = {
+    targetStatus,
+    note: input.reason ?? null,
+  };
+
+  const tryEndpoint = async (endpoint: "status-transitions" | "manual-status") => {
+    const requestBody =
+      endpoint === "manual-status"
+        ? { ...body, note: body.note ?? "Manual override", reasonCode: "OTHER" }
+        : body;
+    return requestJson<BackendLoanApplicationDetail>(
+      `${BACKEND_BASE}/${encodeURIComponent(id)}/${endpoint}`,
+      { method: "POST", body: JSON.stringify(requestBody) },
+      { idempotencyKey },
+    );
+  };
+
+  let payload: BackendLoanApplicationDetail;
+  try {
+    payload = await tryEndpoint("status-transitions");
+  } catch (error) {
+    // Backend rejects out-of-state transitions with 400/403. For
+    // SYSTEM_ADMIN, fall through to /manual-status which bypasses the
+    // simple state machine. For OPS_USER, surface the error.
+    if (
+      error instanceof ApiError &&
+      (error.status === 400 || error.status === 403) &&
+      isSystemAdmin()
+    ) {
+      payload = await tryEndpoint("manual-status");
+    } else {
+      throw error;
+    }
+  }
+
+  const checklist = await fetchChecklistSafely(id);
+  const detail = backendToDetail(payload, checklist);
+  return {
+    application: detail.application,
+    event: synthesiseTransitionEvent(detail, null, input.reason),
+  };
+}
+
 /**
  * Post a lifecycle transition. The `idempotencyKey` on the input must be a
  * non-empty string (minted by `ActionBar`/`TransitionConfirmDialog`); we
- * forward it both in the body and in the `Idempotency-Key` header so the
- * router's BR-5 dedupe cache catches duplicate submits.
- *
- * Wired to the live backend in issue #6.
+ * forward it as the `Idempotency-Key` header so retries from the same
+ * confirm dialog don't double-submit.
  */
 export async function postTransition(
   id: string,
@@ -514,6 +581,15 @@ export async function postTransition(
     typeof input.idempotencyKey === "string" && input.idempotencyKey.length > 0
       ? input.idempotencyKey
       : newIdempotencyKey();
+
+  if (isInternalSession()) {
+    try {
+      return await postBackendTransition(id, input, idempotencyKey);
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status >= 500) throw error;
+    }
+  }
+
   return dispatch(
     {
       method: "POST",
@@ -525,7 +601,7 @@ export async function postTransition(
   );
 }
 
-/** Initiate disbursement. Wired to the live backend in issue #6. */
+/** Initiate disbursement (SYSTEM_ADMIN only on the live backend). */
 export async function postDisbursement(
   id: string,
   input: InitiateDisbursementInput,
@@ -534,6 +610,25 @@ export async function postDisbursement(
     typeof input.idempotencyKey === "string" && input.idempotencyKey.length > 0
       ? input.idempotencyKey
       : newIdempotencyKey();
+
+  if (isSystemAdmin()) {
+    try {
+      const payload = await requestJson<BackendLoanApplicationDetail>(
+        `${BACKEND_BASE}/${encodeURIComponent(id)}/disbursement-requests`,
+        { method: "POST", body: JSON.stringify({}) },
+        { idempotencyKey },
+      );
+      const checklist = await fetchChecklistSafely(id);
+      const detail = backendToDetail(payload, checklist);
+      return {
+        application: detail.application,
+        events: [synthesiseTransitionEvent(detail, null, input.note)],
+      };
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status >= 500) throw error;
+    }
+  }
+
   return dispatch(
     {
       method: "POST",

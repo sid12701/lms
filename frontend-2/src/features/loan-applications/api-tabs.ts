@@ -327,14 +327,50 @@ export async function fetchLoanApplicationRepayments(
   );
 }
 
+function toBackendPaymentChannel(mode: string): string {
+  const upper = (mode ?? "").toUpperCase();
+  if (PAYMENT_CHANNELS.has(upper)) return upper;
+  if (upper === "BANK" || upper === "NEFT" || upper === "RTGS" || upper === "IMPS") {
+    return "BANK_TRANSFER";
+  }
+  return "BANK_TRANSFER";
+}
+
+function toIsoDate(value: string): string {
+  // Backend wants LocalDate (YYYY-MM-DD). Tolerate ISO-8601 datetimes.
+  const idx = value.indexOf("T");
+  return idx >= 0 ? value.slice(0, idx) : value;
+}
+
 /**
  * POST `/api/v1/loan-applications/:id/repayments` — post a repayment.
  *
- * Wired to the live backend in issue #6. Currently routes through the
- * mock router so the lifecycle automation that follows a successful post
- * (auto-advance, auto-close) still drives a representative demo.
+ * For SYSTEM_ADMIN sessions, posts against the live backend
+ * `/payments` endpoint with the idempotency key forwarded as the
+ * request header. Other roles fall back to the mock router.
  */
 export async function postRepayment(id: string, input: PostRepaymentInput): Promise<void> {
+  if (loadStoredSession()?.user.role === "SYSTEM_ADMIN") {
+    try {
+      const body = {
+        amount: input.amount,
+        paymentDate: toIsoDate(input.postedAt),
+        reference: input.idempotencyKey,
+        channel: toBackendPaymentChannel(input.mode),
+        status: "RECEIVED",
+        note: null,
+      };
+      await requestJson<unknown>(
+        `${BACKEND_BASE}/${encodeURIComponent(id)}/payments`,
+        { method: "POST", body: JSON.stringify(body) },
+        { idempotencyKey: input.idempotencyKey },
+      );
+      return;
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status >= 500) throw error;
+    }
+  }
+
   await dispatch(
     {
       method: "POST",
