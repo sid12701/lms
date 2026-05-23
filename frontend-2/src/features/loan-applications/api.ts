@@ -1,23 +1,139 @@
 /**
- * Loan applications API client — thin wrapper around the mock router.
+ * Loan-applications list, wired to the live backend.
  *
- * The contract is owned by `./types.ts`; this module registers a runtime
- * Zod parser that mirrors `LoanApplicationListResponse` so the router's
- * drift detection fires when agent A's handler returns an unexpected
- * shape. The wrapper only owns shape + transport — the actual data
- * lives in `@/mocks/api/loan-applications.ts` (agent A).
+ * Backend contract: `LoanApplicationOpsController` (SYSTEM_ADMIN /
+ * OPS_USER) under `/api/v1/internal/ops/loan-applications`. The detail
+ * and per-tab endpoints exist on the same controller but are not yet
+ * adapted onto the frontend's projection — see
+ * docs/INTEGRATION-STATUS.md.
+ *
+ * Pagination is translated from the frontend's page/pageSize to the
+ * backend's offset/limit. The backend's status enum is a superset of
+ * the older statuses surfaced by the frontend; unknown values fall
+ * through to `INITIATED` so the table keeps rendering.
  */
-import { z } from "zod";
+import { ApiError, buildQueryPath, requestJson } from "@/lib/api/http-client";
 import { dispatch } from "@/mocks/router";
+import { z } from "zod";
+import { loadStoredSession } from "@/lib/api/session-storage";
 import { LoanStatus } from "@/schemas/loan-application";
 import type {
   LoanApplicationListFilters,
+  LoanApplicationListItem,
   LoanApplicationListResponse,
 } from "./types";
 
-// ─── Runtime parsers (mirror `types.ts` exactly) ────────────────────────────
+const BACKEND_BASE = "/api/v1/internal/ops/loan-applications";
 
-const LoanApplicationListItemSchema = z.object({
+const STATUS_PASS_THROUGH = new Set<LoanApplicationListItem["status"]>([
+  "AWAITING_APPROVAL",
+  "APPROVED",
+  "APPROVED_PENDING_DISBURSAL",
+  "REJECTED",
+  "DISBURSED",
+  "CLOSED",
+  "FORECLOSED",
+  "INVALIDATED",
+]);
+
+function mapBackendStatus(status: string | null | undefined): LoanApplicationListItem["status"] {
+  if (!status) return "INITIATED";
+  if (STATUS_PASS_THROUGH.has(status as LoanApplicationListItem["status"])) {
+    return status as LoanApplicationListItem["status"];
+  }
+  switch (status) {
+    case "INITIALIZED":
+      return "INITIATED";
+    case "INVALID":
+      return "INVALIDATED";
+    case "UNDER_REPAYMENT":
+      return "DISBURSED";
+    case "PAYMENT_REINITIATION":
+      return "DISBURSEMENT_IN_PROGRESS";
+    default:
+      return "INITIATED";
+  }
+}
+
+function mapFrontendStatus(value: LoanApplicationListItem["status"]): string {
+  switch (value) {
+    case "INITIATED":
+      return "INITIALIZED";
+    case "INVALIDATED":
+      return "INVALID";
+    case "DISBURSEMENT_IN_PROGRESS":
+      return "PAYMENT_REINITIATION";
+    default:
+      return value;
+  }
+}
+
+interface BackendApplicationResponse {
+  id: string;
+  borrowerId: string;
+  borrowerFullName: string;
+  lspId: string;
+  lspCode: string;
+  lspName: string;
+  productId: string;
+  productCode: string;
+  productName: string;
+  externalLoanId: string | null;
+  sourceChannel: string | null;
+  requestedAmount: number | null;
+  tenureMonths: number | null;
+  status: string;
+  assignedToUsername: string | null;
+  createdAt: string | null;
+}
+
+interface BackendListEnvelope {
+  items?: BackendApplicationResponse[];
+  totalCount?: number;
+  offset?: number;
+  limit?: number;
+}
+
+function toListItem(payload: BackendApplicationResponse): LoanApplicationListItem {
+  return {
+    id: payload.id,
+    externalLoanId: payload.externalLoanId,
+    borrowerId: payload.borrowerId,
+    borrowerNameMasked: payload.borrowerFullName,
+    lspId: payload.lspId,
+    lspName: payload.lspName,
+    productId: payload.productId,
+    productName: payload.productName,
+    requestedAmount: Number(payload.requestedAmount ?? 0),
+    tenureMonths: Number(payload.tenureMonths ?? 0),
+    status: mapBackendStatus(payload.status),
+    assignedTo: null,
+    assignedToName: payload.assignedToUsername,
+    createdAt: payload.createdAt ?? new Date().toISOString(),
+    updatedAt: payload.createdAt ?? new Date().toISOString(),
+  };
+}
+
+function backendQueryFromFilters(
+  filters: LoanApplicationListFilters,
+): Record<string, string | number | undefined> {
+  const pageSize = filters.pageSize ?? 25;
+  const offset = (filters.page ?? 0) * pageSize;
+  // The backend takes a single status, not a comma list — pick the first.
+  const firstStatus = filters.status && filters.status.length > 0 ? filters.status[0] : undefined;
+  const status = firstStatus ? mapFrontendStatus(firstStatus) : undefined;
+  return {
+    lspId: filters.lspId,
+    productId: filters.productId,
+    status,
+    q: filters.q,
+    offset,
+    limit: pageSize,
+    paginationDetails: "true",
+  };
+}
+
+const FALLBACK_ITEM_SCHEMA = z.object({
   id: z.string().min(1),
   externalLoanId: z.string().nullable(),
   borrowerId: z.string().min(1),
@@ -35,26 +151,15 @@ const LoanApplicationListItemSchema = z.object({
   updatedAt: z.string().min(1),
 });
 
-export const LoanApplicationListResponseSchema: z.ZodType<LoanApplicationListResponse> = z.object({
-  items: z.array(LoanApplicationListItemSchema).readonly(),
-  total: z.number().int().nonnegative(),
-  page: z.number().int().nonnegative(),
-  pageSize: z.number().int().positive(),
-});
+export const LoanApplicationListResponseSchema: z.ZodType<LoanApplicationListResponse> = z.object(
+  {
+    items: z.array(FALLBACK_ITEM_SCHEMA).readonly(),
+    total: z.number().int().nonnegative(),
+    page: z.number().int().nonnegative(),
+    pageSize: z.number().int().positive(),
+  },
+);
 
-// ─── Public surface ─────────────────────────────────────────────────────────
-
-/**
- * Serialise filters into a stable wire-format query string.
- *
- * - Scalar values use `set(...)`.
- * - Arrays (e.g. `status`) are comma-joined into a single param so the
- *   resulting URL stays short even when many statuses are selected.
- * - `undefined`, `null`, and empty values are omitted.
- *
- * The wire format is independent of `useUrlFilters` (which uses repeated
- * params) — agent A's handler is responsible for parsing both forms.
- */
 export function buildLoanApplicationsQuery(filters: LoanApplicationListFilters): string {
   const params = new URLSearchParams();
   if (filters.q && filters.q.trim() !== "") params.set("q", filters.q);
@@ -65,29 +170,39 @@ export function buildLoanApplicationsQuery(filters: LoanApplicationListFilters):
   if (filters.productId) params.set("productId", filters.productId);
   if (filters.assignedTo) params.set("assignedTo", filters.assignedTo);
   if (typeof filters.page === "number") params.set("page", String(filters.page));
-  if (typeof filters.pageSize === "number") {
-    params.set("pageSize", String(filters.pageSize));
-  }
+  if (typeof filters.pageSize === "number") params.set("pageSize", String(filters.pageSize));
   if (filters.sortBy) params.set("sortBy", filters.sortBy);
   if (filters.sortDir) params.set("sortDir", filters.sortDir);
   return params.toString();
 }
 
-/**
- * Fetch the loan-applications list for the active session, filtered + paged
- * server-side. The handler enforces tenant scoping (LSP_UI sees its own
- * applications; SYSTEM_ADMIN / OPS_USER see all).
- */
 export async function fetchLoanApplications(
   filters: LoanApplicationListFilters,
 ): Promise<LoanApplicationListResponse> {
+  const session = loadStoredSession();
+  const role = session?.user.role;
+  const isInternal =
+    role === "SYSTEM_ADMIN" || role === "OPS_USER" || role === "PRODUCT_ADMIN";
+
+  if (isInternal) {
+    try {
+      const path = buildQueryPath(BACKEND_BASE, backendQueryFromFilters(filters));
+      const payload = await requestJson<BackendApplicationResponse[] | BackendListEnvelope>(path);
+      const items = Array.isArray(payload)
+        ? payload.map(toListItem)
+        : (payload.items ?? []).map(toListItem);
+      const total = Array.isArray(payload) ? items.length : payload.totalCount ?? items.length;
+      const pageSize = filters.pageSize ?? 25;
+      const page = filters.page ?? 0;
+      return { items, total, page, pageSize };
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status >= 500) throw error;
+      // Fall through to mock on 4xx — typically backend down in dev.
+    }
+  }
+
+  // LSP roles and unauthenticated dev sessions still go to the mock.
   const query = buildLoanApplicationsQuery(filters);
   const path = `/api/v1/loan-applications${query ? `?${query}` : ""}`;
-  return dispatch(
-    {
-      method: "GET",
-      path,
-    },
-    LoanApplicationListResponseSchema,
-  );
+  return dispatch({ method: "GET", path }, LoanApplicationListResponseSchema);
 }
