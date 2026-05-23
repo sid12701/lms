@@ -11,56 +11,76 @@ features without a backend counterpart stay on mocks until one ships.
 
 | Surface | Backend endpoint(s) | Notes |
 | --- | --- | --- |
-| Login / sign-in form | `POST /api/v1/auth/login` | Real form lives at the top of `LoginPage`; dev-mode role preview lists the seeded backend accounts and prefills the username field. |
+| Login / sign-in form | `POST /api/v1/auth/login` | Real form at the top of `LoginPage`; dev-mode role preview lists the seeded backend accounts and prefills the username. |
 | Forced password change | `POST /api/v1/auth/password` | Triggered when the backend sets `passwordChangeRequired: true`. |
 | Silent refresh + 401 retry | `POST /api/v1/auth/refresh` (uses `lms-refresh` httpOnly cookie) | Registered into the HTTP transport — any `401` retries once after a successful refresh. |
 | Logout | `POST /api/v1/auth/logout` | Clears both persisted session + mirrored mock session. |
 | Session bootstrap | `GET /api/v1/internal/system/context` | Resolves username / roles / lspId from the active access token. |
-| Home overview (SYSTEM_ADMIN) | `GET /api/v1/internal/home/overview` | Best-effort projection onto `InternalHomeKpis` — see *Gaps* below. |
+| Home overview (SYSTEM_ADMIN) | `GET /api/v1/internal/home/overview` | Best-effort projection onto `InternalHomeKpis` — gaps default to 0 / []. |
+| Loan-applications list (internal) | `GET /api/v1/internal/ops/loan-applications` | Page/pageSize translated to offset/limit. Detail + per-tab endpoints remain on mock. |
+| LSPs admin | `GET/POST/PUT /api/v1/internal/admin/lsps[…]` | Webhook event-type enum bridged backend↔frontend. |
+| Products admin | `GET/POST/PUT /api/v1/internal/admin/products[…]` | List + create + update + mappings all live. |
+| Users admin | `GET/POST /api/v1/internal/admin/users[…]` | List + create + reset-password live; update endpoint pending on backend. |
+| API clients admin | `GET/POST /api/v1/internal/admin/api-clients` | Create returns one-shot clientSecret; rotate is local-only until backend ships. |
+| Alerts inbox | `GET /api/v1/internal/alerts`, `POST .../acknowledge` | Ack-note is preserved client-side only. |
+| Reports / Portfolio MIS | `GET /api/v1/internal/reports/portfolio-mis/{summary,preview}`, `POST .../requests`, `GET .../requests`, blob download | Field-name translation between backend + frontend MIS shapes. |
+| LSP my-loans list | `GET /api/v1/lsp/loan-applications` | Replaces the Phase-6 placeholder; renders the LSP-scoped list. |
 
 The HTTP transport lives at `frontend-2/src/lib/api/http-client.ts`. It
 handles base URL, `Authorization: Bearer` injection, error-envelope
-normalisation into `ApiError`, in-flight GET de-duplication, and refresh-
-on-401.
+normalisation into `ApiError`, in-flight GET de-duplication, refresh-
+on-401, and `Content-Disposition`-aware blob downloads.
 
-## Not yet wired — falls back to mock data
+## Still on the mock layer
 
 These surfaces still rely on `frontend-2/src/mocks/api/*`. They render
 real-looking data because the live login mirrors the session into the
 mock db via `features/auth/mock-session-bridge.ts`.
 
-- **Loan applications** list, detail, lifecycle write actions
-- **Borrowers** profile, documents, audited PII reveal
-- **Products** admin catalogue + create form
-- **LSPs** admin registry + webhook subscriptions
-- **Users** admin
-- **API clients** admin (incl. one-time secret reveal)
-- **Alerts** inbox
-- **Reports / MIS** previews + history
-- **Audit** explorer
-- **LSP self-service workspace** (`/my-loans`)
-- **Home** for OPS_USER / PRODUCT_ADMIN / LSP roles
-  *(SYSTEM_ADMIN home is wired — see above.)*
+- **Loan-application detail page** (tabs: overview, schedule, documents,
+  repayments, activity, webhooks). The list is wired; the detail
+  payload uses a richer mock shape that the backend does not yet
+  expose 1:1.
+- **Loan-application lifecycle write actions** (approve / reject /
+  disburse / post repayment / manual status / assignment).
+- **Borrower 360 profile** + sub-tabs.
+- **Borrower documents + audited PII reveal**.
+- **Audit explorer** (the audit streams come from per-application
+  endpoints; the unified explorer needs a backend aggregation that
+  doesn't exist yet — explicit gap per issue #15).
+- **LSP my-loans detail + write actions** (mark-invalid with the
+  `/invalid-reasons` catalog, document upload, audited PII reveal).
+  Scaffolded under issues #18 and #19.
 
-Each of those features has a corresponding GitHub issue under
-`sid12701/lms` (#3 – #19) describing the contract delta.
+## Known partial-integration gaps
 
-## Gaps when calling the real backend today
-
-- `GET /api/v1/internal/home/overview` returns six KPIs
-  (`totalDisbursed`, `totalOutstanding`, `dpd90PlusAmount`,
-  `dpd90PlusLoanCount`, `lspBreakdown`, `priorityAccounts`). The
-  frontend's `InternalHomeKpis` projection asks for additional values
-  (`applicationsAwaitingApproval`, `applicationsInDisbursement`,
-  `avgApprovalTatHours`, `applicationsByStatus`, `dpdBuckets`,
-  `openAlerts`). Until those land in the backend the adapter defaults
-  them to `0` / `[]`.
-- The backend currently restricts `/internal/home/overview` to
-  `SYSTEM_ADMIN`. OPS_USER and PRODUCT_ADMIN sessions remain on the mock.
-- The session shape requires a user UUID; the backend's
-  `system/context` does not surface one, so we synthesise a stable UUID
-  per browser via `crypto.randomUUID()` (persisted in localStorage).
-- LSP_API_CLIENT logins are not exercised in the UI — that role is API-only.
+- `GET /api/v1/internal/home/overview` returns six KPIs; the frontend
+  `InternalHomeKpis` shape asks for more (`applicationsAwaitingApproval`,
+  `applicationsInDisbursement`, `avgApprovalTatHours`,
+  `applicationsByStatus`, `dpdBuckets`, `openAlerts`). Until those land
+  on the backend, the adapter defaults them to `0` / `[]`.
+- Home is restricted to `SYSTEM_ADMIN`; OPS_USER / PRODUCT_ADMIN /
+  LSP roles still see the mock home.
+- The Session shape requires a user UUID; the backend's
+  `system/context` does not surface one, so we synthesise a stable
+  UUID per browser via `crypto.randomUUID()` (persisted in
+  localStorage).
+- Webhook event types on the LSP admin endpoint are not 1:1: the
+  frontend's `loan.disbursement.failed` and
+  `loan.foreclosure.quote.generated` events collapse onto the closest
+  backend enum value or are dropped on the read path.
+- Users admin: backend has no PUT update endpoint — `updateUser`
+  applies the change locally but cannot persist.
+- API clients admin: backend has no update + no rotate-secret
+  endpoint — those mutations stay local-only.
+- Alerts: backend acknowledge endpoint does not accept a note payload.
+- Reports: backend MIS preview row shape is wider than the frontend's
+  `MisPreviewRow`; unused columns are dropped silently.
+- Loan-applications list: backend status enum is a subset of the
+  frontend's; values without a direct equivalent fold onto
+  `INITIATED` / `DISBURSEMENT_IN_PROGRESS`.
+- LSP_API_CLIENT logins are not exercised by the UI — that role is
+  API-only.
 
 ## Running it locally
 
@@ -86,5 +106,6 @@ Each of those features has a corresponding GitHub issue under
 
 ## Roadmap
 
-Wiring proceeds feature-by-feature in line with GitHub issues #3 – #19.
-Each feature lands in its own commit and updates this table.
+The remaining gaps map to issues #5–#8, #15, #16, #18, and #19 on
+`sid12701/lms`. Each follow-up commit should land a single feature and
+update the wired vs. mocked tables above.
