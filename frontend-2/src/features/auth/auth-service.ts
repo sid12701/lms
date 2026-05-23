@@ -15,6 +15,7 @@ import {
 } from "@/lib/api/auth-api";
 import { clearStoredSession, saveStoredSession } from "@/lib/api/session-storage";
 import { Session, SessionUser, type Session as SessionType } from "@/mocks/api/auth";
+import { clearMockSession, syncMockSession } from "@/features/auth/mock-session-bridge";
 import type { Role } from "@/types";
 
 const ROLE_PRIORITY: Role[] = [
@@ -102,6 +103,7 @@ export async function login(input: LoginInput): Promise<SessionType> {
   const token = await backendLogin(input.username.trim(), input.password);
   const session = await buildSessionFromToken(token);
   saveStoredSession(session);
+  syncMockSession(session);
   return session;
 }
 
@@ -112,6 +114,7 @@ export async function logout(): Promise<void> {
     // Local cleanup runs regardless of backend response.
   }
   clearStoredSession();
+  clearMockSession();
   writePersistedUserId(null);
 }
 
@@ -126,9 +129,11 @@ export async function refreshSession(): Promise<SessionType | null> {
     const token = await backendRefresh();
     const session = await buildSessionFromToken(token);
     saveStoredSession(session);
+    syncMockSession(session);
     return session;
   } catch {
     clearStoredSession();
+    clearMockSession();
     return null;
   }
 }
@@ -139,5 +144,6 @@ export async function completePasswordChange(input: {
   const token = await backendCompletePassword(input.newPassword);
   const session = await buildSessionFromToken(token);
   saveStoredSession(session);
+  syncMockSession(session);
   return session;
 }

@@ -13,7 +13,9 @@ import { dispatch } from "@/mocks/router";
 import { AlertSeverity, AlertSubjectType } from "@/schemas/alert";
 import { LoanStatus } from "@/schemas/loan-application";
 import { DelinquencyBucket } from "@/schemas/loan-account";
-import type { HomeKpis } from "./types";
+import { ApiError, requestJson } from "@/lib/api/http-client";
+import { loadStoredSession } from "@/lib/api/session-storage";
+import type { HomeKpis, InternalHomeKpis } from "./types";
 
 // ─── Runtime parsers (mirror `types.ts` exactly) ────────────────────────────
 
@@ -82,12 +84,82 @@ export const HomeKpisSchema: z.ZodType<HomeKpis> = z.discriminatedUnion("kind", 
 // ─── Public surface ─────────────────────────────────────────────────────────
 
 /**
- * Fetch the home dashboard payload for the active session. The handler
- * branches on the caller's role and returns either the internal-user shape
- * or the LSP-user shape; the discriminated union forces consumers to handle
- * both.
+ * Backend home-dashboard response shape (matches
+ * `HomeDashboardService.HomeDashboardSummary`). The backend only exposes the
+ * SYSTEM_ADMIN-scoped overview today; LSP-scoped + PRODUCT_ADMIN-scoped home
+ * views fall back to the mock for now (see docs/INTEGRATION-STATUS.md).
+ */
+interface BackendHomeOverview {
+  totalDisbursedAmount: number;
+  totalOutstandingAmount: number;
+  dpd90PlusAmount: number;
+  dpd90PlusLoanCount: number;
+  lspBreakdown: Array<{ lspId: string; lspCode: string; lspName: string }>;
+  priorityAccounts: Array<{
+    applicationId: string;
+    externalLoanId: string | null;
+    customerName: string;
+    lspCode: string;
+    principalAmount: number;
+    overdueAmount: number;
+    daysPastDue: number;
+    loanStatusDisplay: string;
+  }>;
+}
+
+function backendToInternalHomeKpis(overview: BackendHomeOverview): InternalHomeKpis {
+  const recentApplications = overview.priorityAccounts.map((account) => ({
+    id: account.applicationId,
+    externalLoanId: account.externalLoanId,
+    borrowerNameMasked: account.customerName,
+    lspName: account.lspCode,
+    productName: account.loanStatusDisplay,
+    status: "DISBURSED" as const,
+    requestedAmount: account.principalAmount,
+    createdAt: new Date().toISOString(),
+    assignedToName: null,
+  }));
+  return {
+    applicationsAwaitingApproval: 0,
+    applicationsInDisbursement: 0,
+    mtdDisbursedAmount: overview.totalDisbursedAmount,
+    overdueLoansCount: overview.dpd90PlusLoanCount,
+    overdueAmount: overview.dpd90PlusAmount,
+    avgApprovalTatHours: null,
+    applicationsByStatus: [],
+    dpdBuckets: [],
+    recentApplications,
+    openAlerts: [],
+  };
+}
+
+/**
+ * Fetch the home dashboard payload for the active session.
+ *
+ * For SYSTEM_ADMIN sessions the backend's
+ * `/api/v1/internal/home/overview` is queried and mapped onto the
+ * `InternalHomeKpis` projection (gap fields default to 0/empty — see
+ * docs/INTEGRATION-STATUS.md).
+ *
+ * Other roles fall back to the in-process mock because the backend does
+ * not expose a per-role home aggregate yet.
  */
 export async function fetchHomeKpis(): Promise<HomeKpis> {
+  const session = loadStoredSession();
+  if (session?.user.role === "SYSTEM_ADMIN") {
+    try {
+      const overview = await requestJson<BackendHomeOverview>(
+        "/api/v1/internal/home/overview",
+      );
+      return { kind: "internal", data: backendToInternalHomeKpis(overview) };
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status >= 500) {
+        throw error;
+      }
+      // Fall through to mock on 4xx — most often when the backend isn't running
+      // in this dev session. Lets the rest of the surface stay clickable.
+    }
+  }
   return dispatch(
     {
       method: "GET",
