@@ -43,7 +43,13 @@ mock db via `features/auth/mock-session-bridge.ts`.
 - **Borrower 360 Activity tab** — no borrower-scoped audit endpoint
   exists on the backend (audit streams are per-application). Stays on
   the mock router until a backend aggregation lands.
-- **Borrower documents + audited PII reveal**.
+- **Audited PII reveal (internal ops)** — backend has no internal
+  endpoint; reveal flows through the mock router so no audit row hits
+  the database on ops reveals. Tracked in issue #8.
+- **Document checklist write surface (internal)** — backend
+  `PUT .../kyc-documents/{type}` is wired in `updateDocumentChecklistItem`
+  but the DocumentsTab UI is still read-only (`canManage: false`). A
+  manage-enabled variant would consume the helper as-is.
 - **Audit explorer** (the audit streams come from per-application
   endpoints; the unified explorer needs a backend aggregation that
   doesn't exist yet — explicit gap per issue #15).

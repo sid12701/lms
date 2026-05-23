@@ -327,6 +327,56 @@ export async function fetchLoanApplicationRepayments(
   );
 }
 
+/**
+ * PUT `/api/v1/internal/ops/loan-applications/:id/kyc-documents/:type` —
+ * update a document checklist item (verify/reject/attach metadata).
+ *
+ * Backend endpoint exists but the existing DocumentsTab UI is read-only
+ * (`canManage: false`). The helper is exported so a future write-enabled
+ * tab variant can adopt it without a second adapter pass.
+ */
+export interface UpdateChecklistItemInput {
+  documentType: string;
+  status: "PENDING" | "UPLOADED" | "VERIFIED" | "REJECTED";
+  note?: string | null;
+  fileName?: string | null;
+  fileReference?: string | null;
+  sourceReference?: string | null;
+  contentType?: string | null;
+  reviewReason?: string | null;
+  rejectionReason?: string | null;
+  idempotencyKey?: string;
+}
+
+export async function updateDocumentChecklistItem(
+  applicationId: string,
+  input: UpdateChecklistItemInput,
+): Promise<void> {
+  if (!isInternalSession()) {
+    throw new ApiError(
+      "Document checklist updates require an internal session.",
+      403,
+      "",
+      "FORBIDDEN",
+    );
+  }
+  const body = {
+    status: input.status,
+    note: input.note ?? null,
+    fileName: input.fileName ?? null,
+    fileReference: input.fileReference ?? null,
+    sourceReference: input.sourceReference ?? null,
+    contentType: input.contentType ?? null,
+    reviewReason: input.reviewReason ?? null,
+    rejectionReason: input.rejectionReason ?? null,
+  };
+  await requestJson<unknown>(
+    `${BACKEND_BASE}/${encodeURIComponent(applicationId)}/kyc-documents/${encodeURIComponent(input.documentType)}`,
+    { method: "PUT", body: JSON.stringify(body) },
+    input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {},
+  );
+}
+
 function toBackendPaymentChannel(mode: string): string {
   const upper = (mode ?? "").toUpperCase();
   if (PAYMENT_CHANNELS.has(upper)) return upper;
