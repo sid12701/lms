@@ -21,6 +21,7 @@ features without a backend counterpart stay on mocks until one ships.
 | Loan-application detail + read-only tabs | `GET /api/v1/internal/ops/loan-applications/{id}`, `/audit-events`, `/repayment-schedule`, `/kyc-documents`, `/payments` | Flat backend payload translated into the nested `LoanApplicationDetail` projection in the api layer. Borrower/LSP/product fill what's available; banking/aadhaar/references are empty pending issue #7. Webhooks tab filters `/admin/webhook-outbox` by `aggregateId` for SYSTEM_ADMIN and returns empty for OPS_USER. |
 | Loan-application lifecycle write actions | `POST .../status-transitions`, `POST .../manual-status` (admin fallback), `POST .../disbursement-requests`, `POST .../payments` | Frontend status mapped to backend `LoanApplicationStatus`. SYSTEM_ADMIN automatically falls back to `manual-status` if the simple state machine on `status-transitions` rejects the target. Idempotency-Key forwarded as header on every mutation. Repayment posting maps `mode` → backend channel + uses idempotency key as the reference. |
 | Borrower 360 profile + Loans tab | `GET /api/v1/internal/admin/borrowers/{id}` | Backend returns borrower master + loans projection in one envelope. Aadhaar / bank account masked server-side. Loans tab reuses the same payload (no second request). Visible LSPs derived from the loans collection's lspId/lspName join. |
+| Audit explorer (SYSTEM_ADMIN) | `GET /api/v1/internal/ops/loan-applications` + per-app `/audit-events` | Composed client-side from the most recent 50 loan applications. Only the APPLICATION stream is surfaced today; INTAKE / PII_REVEAL / DOCUMENT_ACCESS / PRODUCT streams require additional fan-out and are deferred until a backend unified endpoint ships. Filters operate over the composition window only. |
 | LSPs admin | `GET/POST/PUT /api/v1/internal/admin/lsps[…]` | Webhook event-type enum bridged backend↔frontend. |
 | Products admin | `GET/POST/PUT /api/v1/internal/admin/products[…]` | List + create + update + mappings all live. |
 | Users admin | `GET/POST /api/v1/internal/admin/users[…]` | List + create + reset-password live; update endpoint pending on backend. |
@@ -50,9 +51,6 @@ mock db via `features/auth/mock-session-bridge.ts`.
   `PUT .../kyc-documents/{type}` is wired in `updateDocumentChecklistItem`
   but the DocumentsTab UI is still read-only (`canManage: false`). A
   manage-enabled variant would consume the helper as-is.
-- **Audit explorer** (the audit streams come from per-application
-  endpoints; the unified explorer needs a backend aggregation that
-  doesn't exist yet — explicit gap per issue #15).
 - **LSP my-loans detail + write actions** (mark-invalid with the
   `/invalid-reasons` catalog, document upload, audited PII reveal).
   Scaffolded under issues #18 and #19.
@@ -111,6 +109,10 @@ mock db via `features/auth/mock-session-bridge.ts`.
   the database. Backend needs an internal admin equivalent (issue #8).
 - Borrower 360 `activeOverdueAmount` tile is hardcoded to 0; the
   borrower admin endpoint does not surface DPD aggregates.
+- Audit explorer client-side composition is limited to the
+  APPLICATION stream and the most recent 50 applications (per the #15
+  decision). For complete cross-domain audit search, a backend unified
+  endpoint is still needed.
 
 ## Running it locally
 
