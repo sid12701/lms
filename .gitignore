@@ -43,6 +43,12 @@ infra/.env
 # Local tooling state
 .playwright-mcp/
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Local scratch + transient outputs
+scratch/
+test-artifacts/
+blank.pdf
 
 # Compiled class files
 *.class
