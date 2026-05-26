@@ -3,6 +3,7 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.ApiClientStatus;
 import com.bhawana.lms.repo.ApiClientRepository;
+import java.time.Instant;
 import java.util.UUID;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -31,8 +32,13 @@ public class ApiClientAuthenticationService {
         ApiClient apiClient = apiClientRepository.findByClientIdIgnoreCase(normalizedClientId)
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
 
-        if (apiClient.getStatus() != ApiClientStatus.ACTIVE
-                || !passwordEncoder.matches(normalizedClientSecret, apiClient.getSecretHash())) {
+        if (apiClient.getStatus() != ApiClientStatus.ACTIVE) {
+            throw new BadCredentialsException("Invalid credentials");
+        }
+
+        Instant now = Instant.now();
+        apiClient.clearExpiredPreviousSecret(now);
+        if (!matchesAnyActiveSecret(apiClient, normalizedClientSecret)) {
             throw new BadCredentialsException("Invalid credentials");
         }
 
@@ -56,6 +62,22 @@ public class ApiClientAuthenticationService {
                 apiClient.getLsp().getId(),
                 apiClient.getLsp().getCode()
         );
+    }
+
+    private boolean matchesAnyActiveSecret(ApiClient apiClient, String clientSecret) {
+        if (passwordEncoder.matches(clientSecret, apiClient.getSecretHash())) {
+            return true;
+        }
+
+        String previousSecretHash = apiClient.getPreviousSecretHash();
+        Instant previousSecretValidUntil = apiClient.getPreviousSecretValidUntil();
+        if (previousSecretHash == null || previousSecretValidUntil == null) {
+            return false;
+        }
+
+        Instant now = Instant.now();
+        return now.isBefore(previousSecretValidUntil)
+                && passwordEncoder.matches(clientSecret, previousSecretHash);
     }
 
     private static String requireField(String value, String fieldName) {

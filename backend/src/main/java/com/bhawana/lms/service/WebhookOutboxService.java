@@ -23,6 +23,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,19 +37,22 @@ public class WebhookOutboxService {
     private final LspRepository lspRepository;
     private final WebhookDeliveryClient webhookDeliveryClient;
     private final ObjectMapper objectMapper;
+    private final AlertRuleEvaluationService alertRuleEvaluationService;
 
     public WebhookOutboxService(
             WebhookEventOutboxRepository webhookEventOutboxRepository,
             WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
             LspRepository lspRepository,
             WebhookDeliveryClient webhookDeliveryClient,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            @Lazy AlertRuleEvaluationService alertRuleEvaluationService
     ) {
         this.webhookEventOutboxRepository = webhookEventOutboxRepository;
         this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
         this.lspRepository = lspRepository;
         this.webhookDeliveryClient = webhookDeliveryClient;
         this.objectMapper = objectMapper;
+        this.alertRuleEvaluationService = alertRuleEvaluationService;
     }
 
     @Transactional
@@ -57,6 +61,7 @@ public class WebhookOutboxService {
             WebhookEventType eventType,
             String aggregateType,
             String aggregateId,
+            UUID loanApplicationId,
             Map<String, Object> payload
     ) {
         if (lsp == null || !lsp.isWebhookEnabled() || !lsp.getWebhookEventTypes().contains(eventType)) {
@@ -76,10 +81,19 @@ public class WebhookOutboxService {
                 eventType,
                 aggregateType,
                 aggregateId,
+                loanApplicationId,
                 WebhookEventOutboxStatus.PENDING,
                 serializePayload(envelope),
                 CorrelationIdHolder.get()
         ));
+    }
+
+    @Transactional(readOnly = true)
+    public List<WebhookEventOutbox> listOutboxForLoanApplication(UUID loanApplicationId) {
+        if (loanApplicationId == null) {
+            return List.of();
+        }
+        return webhookEventOutboxRepository.findTop200ByLoanApplicationIdOrderByCreatedAtDesc(loanApplicationId);
     }
 
     @Transactional(readOnly = true)
@@ -200,6 +214,7 @@ public class WebhookOutboxService {
 
             event.markPermanentFailure(attemptedAt, errorMessage);
             webhookEventOutboxRepository.save(event);
+            alertRuleEvaluationService.emitWebhookDeadLetter(event, errorMessage);
             log.info(
                     "webhook_outbox_event_processed eventId={} lspId={} eventType={} aggregateType={} aggregateId={} correlationId={} outcome={} attemptNumber={} httpStatus={}",
                     event.getId(),

@@ -13,6 +13,8 @@ import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
+import com.bhawana.lms.repo.ApiClientAuditEventRepository;
+import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
@@ -62,6 +64,12 @@ class AuthControllerTest {
     private ApiClientManagementService apiClientManagementService;
 
     @Autowired
+    private ApiClientAuditEventRepository apiClientAuditEventRepository;
+
+    @Autowired
+    private ApiClientIpAllowlistRepository apiClientIpAllowlistRepository;
+
+    @Autowired
     private ApiClientRepository apiClientRepository;
 
     @Autowired
@@ -70,6 +78,8 @@ class AuthControllerTest {
     @BeforeEach
     void setUpManagedUser() {
         appUserRepository.deleteAll();
+        apiClientIpAllowlistRepository.deleteAll();
+        apiClientAuditEventRepository.deleteAll();
         apiClientRepository.deleteAll();
         lspRepository.deleteAll();
 
@@ -105,6 +115,9 @@ class AuthControllerTest {
         mockMvc.perform(get("/api/v1/internal/system/context")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").isString())
+                .andExpect(jsonPath("$.id").value(org.hamcrest.Matchers.matchesPattern(
+                        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")))
                 .andExpect(jsonPath("$.username").value("test.admin"))
                 .andExpect(jsonPath("$.roles[0]").value("SYSTEM_ADMIN"));
     }
@@ -124,9 +137,11 @@ class AuthControllerTest {
 
         String accessToken = objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
 
+        AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
         mockMvc.perform(get("/api/v1/internal/system/context")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(managedUser.getId().toString()))
                 .andExpect(jsonPath("$.username").value("test.user"))
                 .andExpect(jsonPath("$.roles[0]").value("OPS_USER"));
     }

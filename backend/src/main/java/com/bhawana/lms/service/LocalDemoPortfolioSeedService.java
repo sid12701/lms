@@ -7,7 +7,6 @@ import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanPaymentChannel;
-import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.Lsp;
@@ -174,7 +173,6 @@ public class LocalDemoPortfolioSeedService {
                 "Picked up for review",
                 null
         );
-        loanApplicationService.assignApplication(application.getId(), "ops.supervisor", "ops.reviewer1", "Assigned for first review");
     }
 
     private void createHoldLoan(Lsp lsp, LoanProduct product, String externalId, String name, String pan, String mobile, String email) {
@@ -189,7 +187,6 @@ public class LocalDemoPortfolioSeedService {
                 "Started verification",
                 null
         );
-        loanApplicationService.assignApplication(application.getId(), "ops.supervisor", "ops.reviewer2", "Assigned for clarification follow-up");
     }
 
     private void createRejectedLoan(Lsp lsp, LoanProduct product, String externalId, String name, String pan, String mobile, String email) {
@@ -238,19 +235,18 @@ public class LocalDemoPortfolioSeedService {
         moveToApproved(application.getId(), "ops.reviewer2");
         loanApplicationService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
         loanApplicationService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.DISBURSED);
-        BigDecimal firstInstallmentAmount = loanApplicationService.listRepaymentSchedule(application.getId()).stream()
+        var firstInstallment = loanApplicationService.listRepaymentSchedule(application.getId()).stream()
                 .findFirst()
-                .map(installment -> installment.getOutstandingAmount())
                 .orElseThrow();
         loanApplicationService.recordPaymentTransaction(
                 application.getId(),
                 INTERNAL_ACTOR,
-                firstInstallmentAmount,
+                UUID.randomUUID().toString(),
+                firstInstallment.getId(),
+                firstInstallment.getOutstandingAmount(),
                 LocalDate.now(),
                 "PAY-SUPA-1007",
-                LoanPaymentChannel.UPI,
-                LoanPaymentStatus.RECEIVED,
-                "Initial repayment captured"
+                LoanPaymentChannel.UPI
         );
     }
 
@@ -272,19 +268,18 @@ public class LocalDemoPortfolioSeedService {
         moveToApproved(application.getId(), "ops.reviewer1");
         loanApplicationService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
         loanApplicationService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.DISBURSED);
-        BigDecimal outstanding = loanApplicationService.listRepaymentSchedule(application.getId()).stream()
-                .map(installment -> installment.getOutstandingAmount())
-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        loanApplicationService.recordPaymentTransaction(
-                application.getId(),
-                INTERNAL_ACTOR,
-                outstanding,
-                LocalDate.now(),
-                "PAY-SUPA-1009",
-                LoanPaymentChannel.BANK_TRANSFER,
-                LoanPaymentStatus.RECEIVED,
-                "Full repayment closure"
-        );
+        for (var installment : loanApplicationService.listRepaymentSchedule(application.getId())) {
+            loanApplicationService.recordPaymentTransaction(
+                    application.getId(),
+                    INTERNAL_ACTOR,
+                    UUID.randomUUID().toString(),
+                    installment.getId(),
+                    installment.getOutstandingAmount(),
+                    LocalDate.now(),
+                    "PAY-SUPA-1009-" + installment.getInstallmentNumber(),
+                    LoanPaymentChannel.BANK_TRANSFER
+            );
+        }
     }
 
     private void createForeclosedLoan(Lsp lsp, LoanProduct product, String externalId, String name, String pan, String mobile, String email) {
@@ -406,14 +401,12 @@ public class LocalDemoPortfolioSeedService {
                     applicationId,
                     documentType,
                     actorUsername,
-                    LoanApplicationDocumentChecklistStatus.VERIFIED,
-                    "Verified during demo seed",
+                    LoanApplicationDocumentChecklistStatus.SUBMITTED,
+                    "Uploaded during demo seed",
                     documentType.name().toLowerCase() + ".pdf",
                     "seed://" + documentType.name().toLowerCase(),
                     "seed",
-                    "application/pdf",
-                    "Demo review completed",
-                    null
+                    "application/pdf"
             );
         }
     }
@@ -427,14 +420,12 @@ public class LocalDemoPortfolioSeedService {
                     applicationId,
                     documentType,
                     actorUsername,
-                    LoanApplicationDocumentChecklistStatus.RECEIVED,
+                    LoanApplicationDocumentChecklistStatus.SUBMITTED,
                     "Uploaded during demo seed",
                     documentType.name().toLowerCase() + ".pdf",
                     "seed://" + documentType.name().toLowerCase(),
                     "seed",
-                    "application/pdf",
-                    null,
-                    null
+                    "application/pdf"
             );
         }
     }

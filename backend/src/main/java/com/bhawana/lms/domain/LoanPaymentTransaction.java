@@ -40,8 +40,11 @@ public class LoanPaymentTransaction {
     @Column(name = "payment_date", nullable = false)
     private LocalDate paymentDate;
 
-    @Column(nullable = false, length = 128)
+    @Column(length = 128)
     private String reference;
+
+    @Column(name = "idempotency_key", length = 36)
+    private String idempotencyKey;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 64)
@@ -74,31 +77,6 @@ public class LoanPaymentTransaction {
 
     public LoanPaymentTransaction(
             LoanAccount loanAccount,
-            String actorUsername,
-            BigDecimal amount,
-            LocalDate paymentDate,
-            String reference,
-            LoanPaymentChannel channel,
-            LoanPaymentStatus status,
-            String note,
-            String correlationId
-    ) {
-        this(
-                loanAccount,
-                null,
-                actorUsername,
-                amount,
-                paymentDate,
-                reference,
-                channel,
-                status,
-                note,
-                correlationId
-        );
-    }
-
-    public LoanPaymentTransaction(
-            LoanAccount loanAccount,
             LoanRepaymentScheduleInstallment repaymentInstallment,
             String actorUsername,
             BigDecimal amount,
@@ -107,7 +85,8 @@ public class LoanPaymentTransaction {
             LoanPaymentChannel channel,
             LoanPaymentStatus status,
             String note,
-            String correlationId
+            String correlationId,
+            String idempotencyKey
     ) {
         this.id = UUID.randomUUID();
         this.loanAccount = loanAccount;
@@ -122,6 +101,7 @@ public class LoanPaymentTransaction {
         this.unallocatedAmount = amount;
         this.note = note;
         this.correlationId = correlationId;
+        this.idempotencyKey = idempotencyKey;
     }
 
     @PrePersist
@@ -186,6 +166,10 @@ public class LoanPaymentTransaction {
 
     public String getCorrelationId() {
         return correlationId;
+    }
+
+    public String getIdempotencyKey() {
+        return idempotencyKey;
     }
 
     public Instant getCreatedAt() {

@@ -9,10 +9,14 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
+import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
+import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,17 +25,20 @@ import org.springframework.transaction.annotation.Transactional;
 public class LoanRepaymentCommandService {
 
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
+    private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanServicingSupportService loanServicingSupportService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final WebhookOutboxService webhookOutboxService;
 
     public LoanRepaymentCommandService(
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
+            LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanServicingSupportService loanServicingSupportService,
             LoanApplicationLifecycleService loanApplicationLifecycleService,
             WebhookOutboxService webhookOutboxService
     ) {
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
+        this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanServicingSupportService = loanServicingSupportService;
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.webhookOutboxService = webhookOutboxService;
@@ -41,48 +48,112 @@ public class LoanRepaymentCommandService {
     public LoanPaymentTransaction recordPaymentTransaction(
             UUID applicationId,
             String actorUsername,
+            String idempotencyKey,
+            UUID targetInstallmentId,
             BigDecimal amount,
-            LocalDate paymentDate,
+            LocalDate postedAt,
             String reference,
-            LoanPaymentChannel channel,
-            LoanPaymentStatus status,
-            String note
+            LoanPaymentChannel channel
     ) {
-        loanServicingSupportService.validatePaymentInputs(amount, paymentDate, channel, status);
+        String normalizedIdempotencyKey = loanServicingSupportService.requireIdempotencyKey(idempotencyKey);
+        loanServicingSupportService.validateInstallmentPaymentInputs(amount, postedAt, channel);
 
         LoanApplication application = loanServicingSupportService.getApplication(applicationId);
         LoanAccount loanAccount = loanServicingSupportService.getRequiredLoanAccount(applicationId);
         loanServicingSupportService.validateRepaymentEligibility(application, loanAccount);
-        BigDecimal normalizedAmount = loanServicingSupportService.validateAndResolveInstallmentPaymentAmount(
+
+        return loanPaymentTransactionRepository.findByIdempotencyKey(normalizedIdempotencyKey)
+                .map(existing -> loanServicingSupportService.ensurePaymentBelongsToApplication(existing, applicationId))
+                .orElseGet(() -> createInstallmentPayment(
+                        application,
+                        loanAccount,
+                        actorUsername,
+                        normalizedIdempotencyKey,
+                        targetInstallmentId,
+                        amount,
+                        postedAt,
+                        reference,
+                        channel
+                ));
+    }
+
+    private LoanPaymentTransaction createInstallmentPayment(
+            LoanApplication application,
+            LoanAccount loanAccount,
+            String actorUsername,
+            String idempotencyKey,
+            UUID targetInstallmentId,
+            BigDecimal amount,
+            LocalDate postedAt,
+            String reference,
+            LoanPaymentChannel channel
+    ) {
+        LoanRepaymentScheduleInstallment installment = loanServicingSupportService.resolveTargetInstallment(
                 loanAccount,
-                amount
+                targetInstallmentId
         );
+        BigDecimal normalizedAmount = loanServicingSupportService.validateExactInstallmentAmount(installment, amount);
 
         String normalizedActorUsername = loanServicingSupportService.normalizeActorUsername(actorUsername);
         LoanPaymentTransaction paymentTransaction = loanPaymentTransactionRepository.save(new LoanPaymentTransaction(
                 loanAccount,
+                installment,
                 normalizedActorUsername,
                 normalizedAmount,
-                paymentDate,
-                loanServicingSupportService.requireReference(reference),
+                postedAt,
+                loanServicingSupportService.normalizeReference(reference),
                 channel,
-                status,
-                loanServicingSupportService.normalizeNote(note),
-                CorrelationIdHolder.get()
+                LoanPaymentStatus.RECEIVED,
+                null,
+                CorrelationIdHolder.get(),
+                idempotencyKey
         ));
 
-        loanServicingSupportService.recomputePaymentAllocation(loanAccount);
-        LoanPaymentTransaction savedPaymentTransaction = loanPaymentTransactionRepository.findById(paymentTransaction.getId())
-                .orElse(paymentTransaction);
+        loanServicingSupportService.applyFullInstallmentPayment(installment, normalizedAmount);
+        loanRepaymentScheduleInstallmentRepository.save(installment);
+        paymentTransaction.updateAllocation(normalizedAmount, BigDecimal.ZERO.setScale(2));
+        LoanPaymentTransaction savedPaymentTransaction = loanPaymentTransactionRepository.save(paymentTransaction);
+
         loanServicingSupportService.synchronizeLoanAccountClosureState(
                 application,
                 loanAccount,
                 normalizedActorUsername,
                 LoanAccountClosureReason.FULLY_REPAID
         );
-        transitionToUnderRepaymentIfNeeded(application, actorUsername, "Loan moved under repayment after the first posted payment.");
+        transitionToUnderRepaymentIfNeeded(
+                application,
+                actorUsername,
+                "Loan moved under repayment after the first posted payment."
+        );
+        recordPaymentAudit(application, savedPaymentTransaction, installment, idempotencyKey);
         enqueueRepaymentWebhook(application, loanAccount, savedPaymentTransaction);
         return savedPaymentTransaction;
+    }
+
+    private void recordPaymentAudit(
+            LoanApplication application,
+            LoanPaymentTransaction paymentTransaction,
+            LoanRepaymentScheduleInstallment installment,
+            String idempotencyKey
+    ) {
+        String note = "Installment "
+                + installment.getInstallmentNumber()
+                + " paid via "
+                + paymentTransaction.getChannel().name()
+                + (paymentTransaction.getReference() == null
+                ? " (reference pending)."
+                : " (ref " + paymentTransaction.getReference() + ").")
+                + " [idem=" + idempotencyKey + "]";
+
+        loanApplicationLifecycleService.recordAuditEvent(
+                application,
+                LoanApplicationAuditAction.PAYMENT_RECORDED,
+                application.getStatus(),
+                application.getStatus(),
+                paymentTransaction.getActorUsername(),
+                note,
+                null
+        );
     }
 
     private void transitionToUnderRepaymentIfNeeded(
@@ -112,6 +183,7 @@ public class LoanRepaymentCommandService {
                 WebhookEventType.LOAN_REPAYMENT_RECORDED,
                 "LOAN_PAYMENT_TRANSACTION",
                 paymentTransaction.getId().toString(),
+                application.getId(),
                 loanApplicationLifecycleService.buildRepaymentPayload(application, loanAccount, paymentTransaction)
         );
     }

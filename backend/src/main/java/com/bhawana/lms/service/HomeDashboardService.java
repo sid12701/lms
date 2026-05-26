@@ -1,11 +1,18 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.Lsp;
+import com.bhawana.lms.domain.OpsAlert;
+import com.bhawana.lms.domain.OpsAlertStatus;
 import com.bhawana.lms.repo.LoanAccountRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
+import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.repo.OpsAlertRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
@@ -18,15 +25,29 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class HomeDashboardService {
 
+    private static final List<LoanApplicationStatus> IN_DISBURSEMENT_STATUSES = List.of(
+            LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
+            LoanApplicationStatus.DISBURSEMENT_RETRY
+    );
+
     private final LspRepository lspRepository;
     private final LoanAccountRepository loanAccountRepository;
+    private final LoanApplicationRepository loanApplicationRepository;
+    private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
+    private final OpsAlertRepository opsAlertRepository;
 
     public HomeDashboardService(
             LspRepository lspRepository,
-            LoanAccountRepository loanAccountRepository
+            LoanAccountRepository loanAccountRepository,
+            LoanApplicationRepository loanApplicationRepository,
+            LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
+            OpsAlertRepository opsAlertRepository
     ) {
         this.lspRepository = lspRepository;
         this.loanAccountRepository = loanAccountRepository;
+        this.loanApplicationRepository = loanApplicationRepository;
+        this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
+        this.opsAlertRepository = opsAlertRepository;
     }
 
     @Transactional(readOnly = true)
@@ -77,13 +98,93 @@ public class HomeDashboardService {
                 ))
                 .toList();
 
+        int applicationsAwaitingApproval = Math.toIntExact(
+                loanApplicationRepository.countByStatus(LoanApplicationStatus.AWAITING_APPROVAL));
+        int applicationsInDisbursement = Math.toIntExact(
+                loanApplicationRepository.countByStatusIn(IN_DISBURSEMENT_STATUSES));
+        List<StatusCount> applicationsByStatus = loanApplicationRepository.countGroupByStatus().stream()
+                .map(row -> new StatusCount(row.getStatus().name(), row.getCount()))
+                .sorted(Comparator.comparing(StatusCount::status))
+                .toList();
+        List<DpdBucketCount> dpdBuckets = bucketOrder.stream()
+                .map(bucket -> new DpdBucketCount(
+                        bucket.name(),
+                        accountSnapshots.stream().filter(snapshot -> snapshot.bucket() == bucket).count()
+                ))
+                .toList();
+        long openAlerts = opsAlertRepository.countByStatus(OpsAlertStatus.NEW);
+        List<OpenAlertSummary> openAlertSummaries = opsAlertRepository
+                .findByStatusOrderByCreatedAtDesc(OpsAlertStatus.NEW)
+                .stream()
+                .limit(5)
+                .map(this::toOpenAlertSummary)
+                .toList();
+
         return new HomeDashboardSummary(
                 scaleCurrency(totalDisbursedAmount),
                 scaleCurrency(totalOutstandingAmount),
                 scaleCurrency(dpd90PlusAmount),
                 dpd90PlusLoanCount,
+                applicationsAwaitingApproval,
+                applicationsInDisbursement,
+                computeAvgApprovalTatHours(Instant.now().minus(30, ChronoUnit.DAYS)),
+                applicationsByStatus,
+                dpdBuckets,
+                openAlerts,
+                openAlertSummaries,
                 lspBreakdown,
                 priorityAccounts
+        );
+    }
+
+    private Double computeAvgApprovalTatHours(Instant windowStart) {
+        List<com.bhawana.lms.domain.LoanApplicationStatusTransition> approvals =
+                loanApplicationStatusTransitionRepository.findByToStatusAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
+                        LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
+                        windowStart
+                );
+        if (approvals.isEmpty()) {
+            return null;
+        }
+
+        double totalHours = 0.0;
+        int samples = 0;
+        for (var approval : approvals) {
+            UUID applicationId = approval.getLoanApplication().getId();
+            Instant approvalAt = approval.getCreatedAt();
+            Instant awaitingAt = loanApplicationStatusTransitionRepository
+                    .findByLoanApplication_IdAndToStatusOrderByCreatedAtAsc(
+                            applicationId,
+                            LoanApplicationStatus.AWAITING_APPROVAL
+                    )
+                    .stream()
+                    .map(com.bhawana.lms.domain.LoanApplicationStatusTransition::getCreatedAt)
+                    .filter(createdAt -> !createdAt.isAfter(approvalAt))
+                    .max(Instant::compareTo)
+                    .orElse(null);
+            if (awaitingAt == null || !approvalAt.isAfter(awaitingAt)) {
+                continue;
+            }
+            double hours = ChronoUnit.MINUTES.between(awaitingAt, approvalAt) / 60.0;
+            totalHours += hours;
+            samples += 1;
+        }
+        if (samples == 0) {
+            return null;
+        }
+        return BigDecimal.valueOf(totalHours / samples)
+                .setScale(1, RoundingMode.HALF_UP)
+                .doubleValue();
+    }
+
+    private OpenAlertSummary toOpenAlertSummary(OpsAlert alert) {
+        return new OpenAlertSummary(
+                alert.getId().toString(),
+                alert.getSeverity().name(),
+                alert.getTitle(),
+                alert.getSubjectType() == null ? "UNKNOWN" : alert.getSubjectType(),
+                alert.getSubjectId() == null ? "" : alert.getSubjectId().toString(),
+                alert.getCreatedAt().toString()
         );
     }
 
@@ -218,8 +319,31 @@ public class HomeDashboardService {
             BigDecimal totalOutstandingAmount,
             BigDecimal dpd90PlusAmount,
             long dpd90PlusLoanCount,
+            int applicationsAwaitingApproval,
+            int applicationsInDisbursement,
+            Double avgApprovalTatHours,
+            List<StatusCount> applicationsByStatus,
+            List<DpdBucketCount> dpdBuckets,
+            long openAlerts,
+            List<OpenAlertSummary> openAlertSummaries,
             List<LspBreakdown> lspBreakdown,
             List<PriorityAccount> priorityAccounts
+    ) {
+    }
+
+    public record StatusCount(String status, long count) {
+    }
+
+    public record DpdBucketCount(String bucket, long count) {
+    }
+
+    public record OpenAlertSummary(
+            String id,
+            String severity,
+            String title,
+            String subjectType,
+            String subjectId,
+            String createdAt
     ) {
     }
 

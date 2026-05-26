@@ -3,6 +3,9 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanAccountStatus;
+import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
@@ -19,8 +22,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -71,23 +77,34 @@ public class LoanServicingSupportService {
         return loanAccount;
     }
 
-    public void validatePaymentInputs(
+    public void validateInstallmentPaymentInputs(
             BigDecimal amount,
-            LocalDate paymentDate,
-            LoanPaymentChannel channel,
-            LoanPaymentStatus status
+            LocalDate postedAt,
+            LoanPaymentChannel channel
     ) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Payment amount must be greater than zero.");
         }
-        if (paymentDate == null) {
-            throw new IllegalArgumentException("Payment date is required.");
+        if (postedAt == null) {
+            throw new IllegalArgumentException("postedAt is required.");
         }
         if (channel == null) {
             throw new IllegalArgumentException("Payment channel is required.");
         }
-        if (status == null) {
-            throw new IllegalArgumentException("Payment status is required.");
+    }
+
+    public String requireIdempotencyKey(String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.trim().isBlank()) {
+            throw new IllegalArgumentException("Idempotency-Key header is required.");
+        }
+        try {
+            UUID uuid = UUID.fromString(idempotencyKey.trim());
+            if (uuid.version() != 4) {
+                throw new IllegalArgumentException("Idempotency-Key must be a UUID v4 value.");
+            }
+            return uuid.toString();
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Idempotency-Key must be a UUID v4 value.", exception);
         }
     }
 
@@ -108,26 +125,71 @@ public class LoanServicingSupportService {
     }
 
     @Transactional(readOnly = true)
-    public LoanRepaymentScheduleInstallment getNextRepayableInstallment(LoanAccount loanAccount) {
-        return loanRepaymentScheduleInstallmentRepository.findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId())
-                .stream()
-                .filter(installment -> installment.getOutstandingAmount().compareTo(BigDecimal.ZERO) > 0)
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Loan account does not have any outstanding installments."));
+    public LoanRepaymentScheduleInstallment resolveTargetInstallment(
+            LoanAccount loanAccount,
+            UUID targetInstallmentId
+    ) {
+        LoanRepaymentScheduleInstallment installment = loanRepaymentScheduleInstallmentRepository.findById(targetInstallmentId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Repayment installment not found: " + targetInstallmentId
+                ));
+
+        if (!installment.getLoanAccount().getId().equals(loanAccount.getId())) {
+            throw new AccessDeniedException("Repayment installment does not belong to this loan application.");
+        }
+
+        if (installment.getStatus() == LoanRepaymentScheduleInstallmentStatus.PAID
+                || installment.getOutstandingAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApiConflictException(
+                    "INSTALLMENT_ALREADY_PAID",
+                    "Installment " + installment.getInstallmentNumber() + " is already paid."
+            );
+        }
+
+        return installment;
     }
 
-    public BigDecimal validateAndResolveInstallmentPaymentAmount(LoanAccount loanAccount, BigDecimal amount) {
+    public BigDecimal validateExactInstallmentAmount(
+            LoanRepaymentScheduleInstallment installment,
+            BigDecimal amount
+    ) {
         BigDecimal normalizedAmount = scaleCurrency(amount);
-        LoanRepaymentScheduleInstallment installment = getNextRepayableInstallment(loanAccount);
-        BigDecimal expectedAmount = scaleCurrency(installment.getOutstandingAmount());
-        if (normalizedAmount.compareTo(expectedAmount) != 0) {
-            throw new IllegalArgumentException(
-                    "Payment amount must match the full outstanding amount of installment "
-                            + installment.getInstallmentNumber()
-                            + "."
+        BigDecimal dueAmount = scaleCurrency(installment.getOutstandingAmount());
+        if (normalizedAmount.compareTo(dueAmount) != 0) {
+            Map<String, String> fieldErrors = new LinkedHashMap<>();
+            fieldErrors.put("amount", "Amount must exactly match installment due amount of " + dueAmount + ".");
+            throw new BusinessRuleViolationException(
+                    "PAYMENT_AMOUNT_MISMATCH",
+                    "Payment amount must exactly match the installment due amount.",
+                    fieldErrors
             );
         }
         return normalizedAmount;
+    }
+
+    public void applyFullInstallmentPayment(LoanRepaymentScheduleInstallment installment, BigDecimal amount) {
+        BigDecimal applied = installment.applyPayment(amount);
+        if (installment.getStatus() != LoanRepaymentScheduleInstallmentStatus.PAID
+                || installment.getOutstandingAmount().compareTo(BigDecimal.ZERO) != 0) {
+            throw new IllegalStateException("Installment payment did not fully settle the targeted installment.");
+        }
+        if (applied.compareTo(amount) != 0) {
+            throw new IllegalStateException("Installment payment allocation mismatch.");
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public LoanPaymentTransaction ensurePaymentBelongsToApplication(
+            LoanPaymentTransaction payment,
+            UUID applicationId
+    ) {
+        LoanAccount expectedAccount = getRequiredLoanAccount(applicationId);
+        if (!payment.getLoanAccount().getId().equals(expectedAccount.getId())) {
+            throw new IllegalArgumentException(
+                    "Idempotency-Key has already been used for a different loan application."
+            );
+        }
+        return payment;
     }
 
     public void recomputePaymentAllocation(LoanAccount loanAccount) {
@@ -225,9 +287,17 @@ public class LoanServicingSupportService {
     }
 
     public String requireReference(String reference) {
-        String normalized = normalizeOptional(reference);
+        String normalized = normalizeReference(reference);
         if (normalized == null) {
             throw new IllegalArgumentException("Payment reference is required.");
+        }
+        return normalized;
+    }
+
+    public String normalizeReference(String reference) {
+        String normalized = normalizeOptional(reference);
+        if (normalized != null && normalized.length() > 128) {
+            throw new IllegalArgumentException("Payment reference must be 128 characters or fewer.");
         }
         return normalized;
     }

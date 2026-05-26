@@ -203,7 +203,7 @@ public class AuthController {
             return mintTokenResponse(
                     apiClient.clientId(),
                     List.of("LSP_API_CLIENT"),
-                    new ManagedUserState(false, Instant.EPOCH),
+                    new ManagedUserState(false, Instant.EPOCH, 0L),
                     Map.of(
                             "authType", "API_CLIENT",
                             "clientId", apiClient.clientId(),
@@ -256,7 +256,8 @@ public class AuthController {
                 .id(UUID.randomUUID().toString())
                 .claim("roles", roles)
                 .claim("pwdchg", managedUserState.passwordChangeRequired())
-                .claim("pwdv", managedUserState.passwordChangedAt().toEpochMilli());
+                .claim("pwdv", managedUserState.passwordChangedAt().toEpochMilli())
+                .claim("tv", managedUserState.tokenVersion());
         extraClaims.forEach((key, value) -> {
             if (value != null) {
                 claimsBuilder.claim(key, value);
@@ -290,7 +291,7 @@ public class AuthController {
         return mintTokenResponse(
                 apiClient.clientId(),
                 List.of("LSP_API_CLIENT"),
-                new ManagedUserState(false, Instant.EPOCH),
+                new ManagedUserState(false, Instant.EPOCH, 0L),
                 Map.of(
                         "authType", "API_CLIENT",
                         "clientId", apiClient.clientId(),
@@ -346,8 +347,11 @@ public class AuthController {
 
     private ManagedUserState loadManagedUserState(String username) {
         return appUserRepository.findByUsernameIgnoreCase(username)
-                .map(user -> new ManagedUserState(user.isPasswordChangeRequired(), user.getPasswordChangedAt()))
-                .orElseGet(() -> new ManagedUserState(false, Instant.EPOCH));
+                .map(user -> new ManagedUserState(
+                        user.isPasswordChangeRequired(),
+                        user.getPasswordChangedAt(),
+                        user.getTokenVersion()))
+                .orElseGet(() -> new ManagedUserState(false, Instant.EPOCH, 0L));
     }
 
     private Map<String, Object> loadManagedUserClaims(String username) {
@@ -371,6 +375,6 @@ public class AuthController {
         return value.trim();
     }
 
-    private record ManagedUserState(boolean passwordChangeRequired, Instant passwordChangedAt) {
+    private record ManagedUserState(boolean passwordChangeRequired, Instant passwordChangedAt, long tokenVersion) {
     }
 }

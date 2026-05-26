@@ -371,13 +371,43 @@ public class AdminReportingService {
                 borrower.getAddressZipCode(),
                 borrower.getState(),
                 borrower.getIfscCode(),
-                borrower.getBankAccountNumber(),
+                maskBankAccount(borrower.getBankAccountNumber()),
                 borrower.getGender(),
-                borrower.getAadharNumber(),
+                maskAadhaar(borrower.getAadharNumber()),
                 borrower.getPan(),
                 borrower.getEmploymentType(),
                 borrower.getMonthlyIncome()
         );
+    }
+
+    /**
+     * Gap #1 + Gap #10 — every leaving surface must mask aadhaar. Format:
+     * {@code XXXXXXXX<last4>}. Matches {@code BorrowerAdminController.maskAadhar}
+     * so the MIS preview/CSV emit the same shape as the borrower-admin API.
+     */
+    private static String maskAadhaar(String aadhaar) {
+        if (aadhaar == null) {
+            return null;
+        }
+        String digits = aadhaar.replaceAll("\\s", "");
+        if (digits.length() < 4) {
+            return "XXXXXXXX";
+        }
+        return "XXXXXXXX" + digits.substring(digits.length() - 4);
+    }
+
+    /**
+     * Gap #10 — mask the borrower's bank-account number on the MIS surface
+     * (same shape used by {@code BorrowerAdminController.maskBankAccount}).
+     */
+    private static String maskBankAccount(String account) {
+        if (account == null) {
+            return null;
+        }
+        if (account.length() < 4) {
+            return "XXXX";
+        }
+        return "XXXX" + account.substring(account.length() - 4);
     }
 
     private static String buildAddress(Borrower borrower) {

@@ -2,7 +2,6 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanApplication;
-import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
 import com.bhawana.lms.domain.LoanApplicationAuditEvent;
 import com.bhawana.lms.domain.LoanApplicationDocumentAccessAudit;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
@@ -49,9 +48,6 @@ public final class LoanApplicationOpsResponses {
                 application.getRequestedAmount(),
                 application.getRequestedTenureMonths(),
                 application.getStatus().name(),
-                application.getAssignedToUsername(),
-                application.getAssignedByUsername(),
-                application.getAssignedAt(),
                 application.getCreatedAt().toString()
         );
     }
@@ -90,9 +86,6 @@ public final class LoanApplicationOpsResponses {
                 application.getInvalidReasonText(),
                 application.getInvalidatedByUsername(),
                 application.getInvalidatedAt() == null ? null : application.getInvalidatedAt().toString(),
-                application.getAssignedToUsername(),
-                application.getAssignedByUsername(),
-                application.getAssignedAt(),
                 application.getCreatedAt().toString(),
                 application.getUpdatedAt().toString(),
                 toLoanAccountSummary(loanAccount, repaymentScheduleSummary, delinquencySummary),
@@ -125,24 +118,35 @@ public final class LoanApplicationOpsResponses {
                 transition.getNote(),
                 transition.getReasonCode() == null ? null : transition.getReasonCode().name(),
                 transition.getCorrelationId(),
-                transition.getCreatedAt().toString()
+                transition.getCreatedAt().toString(),
+                parseRejectionReason(transition.getRejectionReasonJson())
         );
     }
 
-    public static LoanApplicationOpsController.LoanApplicationAssignmentEventResponse toAssignmentEventResponse(
-            LoanApplicationAssignmentEvent event
-    ) {
-        return new LoanApplicationOpsController.LoanApplicationAssignmentEventResponse(
-                event.getId().toString(),
-                event.getLoanApplication().getId().toString(),
-                event.getFromAssigneeUsername(),
-                event.getToAssigneeUsername(),
-                event.getActorUsername(),
-                event.getNote(),
-                event.getCorrelationId(),
-                event.getCreatedAt().toString()
-        );
+    private static LoanApplicationOpsController.RejectionReason parseRejectionReason(String rejectionReasonJson) {
+        if (rejectionReasonJson == null || rejectionReasonJson.isBlank()) {
+            return null;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = REJECTION_REASON_MAPPER.readTree(rejectionReasonJson);
+            com.fasterxml.jackson.databind.JsonNode failedRulesNode = root.path("failedRules");
+            if (!failedRulesNode.isArray()) {
+                return null;
+            }
+            java.util.List<String> failedRules = new java.util.ArrayList<>();
+            failedRulesNode.forEach(node -> {
+                if (node.isTextual()) {
+                    failedRules.add(node.asText());
+                }
+            });
+            return new LoanApplicationOpsController.RejectionReason(java.util.List.copyOf(failedRules));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
+            return null;
+        }
     }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper REJECTION_REASON_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     public static LoanApplicationOpsController.LoanApplicationAuditEventResponse toAuditEventResponse(
             LoanApplicationAuditEvent event
@@ -214,6 +218,9 @@ public final class LoanApplicationOpsResponses {
         return new LoanApplicationOpsController.LoanPaymentTransactionResponse(
                 paymentTransaction.getId().toString(),
                 paymentTransaction.getLoanAccount().getId().toString(),
+                paymentTransaction.getRepaymentInstallment() == null
+                        ? null
+                        : paymentTransaction.getRepaymentInstallment().getId().toString(),
                 paymentTransaction.getActorUsername(),
                 paymentTransaction.getAmount(),
                 paymentTransaction.getPaymentDate(),
@@ -268,8 +275,6 @@ public final class LoanApplicationOpsResponses {
                 checklistItem.getStorageKey(),
                 checklistItem.getFileChecksum(),
                 checklistItem.getFileSizeBytes(),
-                checklistItem.getReviewReason(),
-                checklistItem.getRejectionReason(),
                 checklistItem.getUploadedAt(),
                 checklistItem.getUploadedByUsername(),
                 checklistItem.getUpdatedByUsername(),

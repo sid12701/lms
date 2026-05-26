@@ -12,6 +12,8 @@ import com.bhawana.lms.service.LoanDisbursementService;
 import com.bhawana.lms.service.LoanDocumentService;
 import com.bhawana.lms.service.LspApiIdempotencyService;
 import com.bhawana.lms.service.LoanRepaymentScheduleService;
+import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
+import com.bhawana.lms.tenant.TenantDataAccessMode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
@@ -146,21 +148,6 @@ public class LspLoanApplicationApiController {
         return LspLoanApplicationResponses.toDetailResponse(application, loanApplicationService);
     }
 
-    @GetMapping("/{applicationId}/borrower-pii")
-    @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_WRITE')")
-    public LspBorrowerPiiRevealResponse revealBorrowerPii(
-            Authentication authentication,
-            @PathVariable UUID applicationId
-    ) {
-        return LspLoanApplicationResponses.toBorrowerPiiRevealResponse(
-                loanApplicationService.revealBorrowerPiiForLsp(
-                        LspAuthenticationSupport.authenticatedLspId(authentication),
-                        applicationId,
-                        authentication.getName()
-                )
-        );
-    }
-
     @PostMapping("/{applicationId}/invalid")
     @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_WRITE')")
     public LspLoanApplicationDetailResponse invalidateApplication(
@@ -204,49 +191,96 @@ public class LspLoanApplicationApiController {
             throw new AccessDeniedException("Request lspId does not match authenticated LSP context.");
         }
 
-        LoanApplication application = loanApplicationService.createApplication(
-                authentication.getName(),
-                new LoanApplicationOnboardingCommand(
-                        authenticatedLspId,
-                        request.productId(),
-                        request.loanProduct(),
-                        request.lspLoanId(),
-                        DEFAULT_SOURCE_CHANNEL,
-                        request.fullName(),
-                        request.emailAddress(),
-                        request.mobileNumber(),
-                        request.dob(),
-                        request.gender(),
-                        request.maritalStatus(),
-                        request.fatherName(),
-                        request.aadharNumber(),
-                        request.panNumber(),
-                        request.loanAmount(),
-                        request.interestRate(),
-                        request.loanTenure(),
-                        request.addressLine1(),
-                        request.addressLine2(),
-                        request.addressCity(),
-                        request.addressState(),
-                        request.addressZipcode(),
-                        request.spouseName(),
-                        request.employmentStatus(),
-                        request.organizationName(),
-                        request.empId(),
-                        request.employmentCity(),
-                        request.employmentState(),
-                        request.employmentZip(),
-                        request.monthlyIncome(),
-                        request.annualIncome(),
-                        request.bankAccountNumber(),
-                        request.bankName(),
-                        request.ifscCode(),
-                        request.accountHolderName(),
-                        request.referencePersonName(),
-                        request.referencePersonNumber()
-                )
+        TenantDataAccessMode previousMode = TenantDataAccessContextHolder.getMode();
+        UUID previousLspId = TenantDataAccessContextHolder.getCurrentLspId();
+        TenantDataAccessContextHolder.useAdmin();
+        try {
+            LoanApplication application = loanApplicationService.createApplication(
+                    authentication.getName(),
+                    new LoanApplicationOnboardingCommand(
+                            authenticatedLspId,
+                            request.productId(),
+                            request.loanProduct(),
+                            request.lspLoanId(),
+                            DEFAULT_SOURCE_CHANNEL,
+                            request.fullName(),
+                            request.emailAddress(),
+                            request.mobileNumber(),
+                            request.dob(),
+                            request.gender(),
+                            request.maritalStatus(),
+                            request.fatherName(),
+                            request.aadharNumber(),
+                            request.panNumber(),
+                            request.loanAmount(),
+                            request.interestRate(),
+                            request.loanTenure(),
+                            request.addressLine1(),
+                            request.addressLine2(),
+                            request.addressCity(),
+                            request.addressState(),
+                            request.addressZipcode(),
+                            request.spouseName(),
+                            request.employmentStatus(),
+                            request.organizationName(),
+                            request.empId(),
+                            request.employmentCity(),
+                            request.employmentState(),
+                            request.employmentZip(),
+                            request.monthlyIncome(),
+                            request.annualIncome(),
+                            request.bankAccountNumber(),
+                            request.bankName(),
+                            request.ifscCode(),
+                            request.accountHolderName(),
+                            request.referencePersonName(),
+                            request.referencePersonNumber()
+                    )
+            );
+            return LspLoanApplicationResponses.toResponse(application);
+        } finally {
+            restoreTenantContext(previousMode, previousLspId);
+        }
+    }
+
+    private static void restoreTenantContext(TenantDataAccessMode previousMode, UUID previousLspId) {
+        if (previousMode == TenantDataAccessMode.TENANT) {
+            TenantDataAccessContextHolder.useTenant(previousLspId);
+        } else {
+            TenantDataAccessContextHolder.useAdmin();
+        }
+    }
+
+    /**
+     * Gap #4: LSP-scoped, uploads-only document checklist read. Returns every
+     * checklist row for the loan that has a non-PENDING / non-NOT_REQUIRED
+     * status (i.e. something was submitted), with the status folded into the
+     * `PENDING | SUBMITTED` two-value enum the Gap #18 design locks in for
+     * external API consumers. `downloadUrl` and `?includePending=true` are
+     * deferred to post-prod (both purely additive).
+     */
+    @GetMapping("/{applicationId}/documents")
+    @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_READ','LSP_UI_WRITE')")
+    public List<LspDocumentChecklistResponse> listSubmittedDocuments(
+            Authentication authentication,
+            @PathVariable UUID applicationId
+    ) {
+        UUID lspId = LspAuthenticationSupport.authenticatedLspId(authentication);
+        return loanApplicationService.listSubmittedDocumentsForLsp(lspId, applicationId).stream()
+                .map(LspLoanApplicationApiController::toLspDocumentResponse)
+                .toList();
+    }
+
+    private static LspDocumentChecklistResponse toLspDocumentResponse(LoanApplicationDocumentChecklist item) {
+        return new LspDocumentChecklistResponse(
+                item.getDocumentType().name(),
+                "SUBMITTED",
+                item.getFileName(),
+                item.getContentType(),
+                item.getNote(),
+                item.getUpdatedAt() == null ? null : item.getUpdatedAt().toString(),
+                item.getUpdatedByUsername()
         );
-        return LspLoanApplicationResponses.toResponse(application);
     }
 
     @PostMapping(path = "/{applicationId}/documents", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -539,9 +573,6 @@ public class LspLoanApplicationApiController {
             String referencePersonNumber,
             String sourceChannel,
             String status,
-            String assignedToUsername,
-            String assignedByUsername,
-            Instant assignedAt,
             String createdAt
     ) {
     }
@@ -594,9 +625,6 @@ public class LspLoanApplicationApiController {
             String invalidReasonText,
             String invalidatedByUsername,
             String invalidatedAt,
-            String assignedToUsername,
-            String assignedByUsername,
-            Instant assignedAt,
             String createdAt,
             String updatedAt,
             LspLoanAccountSummaryResponse loanAccount,
@@ -636,6 +664,23 @@ public class LspLoanApplicationApiController {
     ) {
     }
 
+    /**
+     * Gap #4: minimum-viable LSP-facing document checklist row.
+     * `status` is one of `PENDING | SUBMITTED` (per Gap #18 lock-in).
+     * Optional fields are nullable so JSON omission keeps the wire shape
+     * tight when not yet populated.
+     */
+    public record LspDocumentChecklistResponse(
+            String documentType,
+            String status,
+            String fileName,
+            String contentType,
+            String note,
+            String uploadedAt,
+            String uploadedByUsername
+    ) {
+    }
+
     public record LoanApplicationLastActivityResponse(
             String activityType,
             String actorUsername,
@@ -643,20 +688,6 @@ public class LspLoanApplicationApiController {
             String detail,
             String correlationId,
             String occurredAt
-    ) {
-    }
-
-    public record LspBorrowerPiiRevealResponse(
-            String applicationId,
-            String borrowerId,
-            String aadharNumber,
-            String panNumber,
-            String bankAccountNumber,
-            String ifscCode,
-            String accountHolderName,
-            String employeeId,
-            String referencePersonName,
-            String referencePersonNumber
     ) {
     }
 

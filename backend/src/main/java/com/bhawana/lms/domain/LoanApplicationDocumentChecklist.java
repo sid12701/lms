@@ -39,12 +39,6 @@ public class LoanApplicationDocumentChecklist {
     @Column(name = "note", length = 500)
     private String note;
 
-    @Column(name = "review_reason", length = 500)
-    private String reviewReason;
-
-    @Column(name = "rejection_reason", length = 500)
-    private String rejectionReason;
-
     @Column(name = "file_name", length = 255)
     private String fileName;
 
@@ -140,14 +134,6 @@ public class LoanApplicationDocumentChecklist {
         return note;
     }
 
-    public String getReviewReason() {
-        return reviewReason;
-    }
-
-    public String getRejectionReason() {
-        return rejectionReason;
-    }
-
     public String getFileName() {
         return fileName;
     }
@@ -207,9 +193,7 @@ public class LoanApplicationDocumentChecklist {
             String fileName,
             String fileReference,
             String sourceReference,
-            String contentType,
-            String reviewReason,
-            String rejectionReason
+            String contentType
     ) {
         update(
                 status,
@@ -219,8 +203,6 @@ public class LoanApplicationDocumentChecklist {
                 fileReference,
                 sourceReference,
                 contentType,
-                reviewReason,
-                rejectionReason,
                 null,
                 null,
                 null,
@@ -236,8 +218,6 @@ public class LoanApplicationDocumentChecklist {
             String fileReference,
             String sourceReference,
             String contentType,
-            String reviewReason,
-            String rejectionReason,
             Long fileSizeBytes,
             String fileChecksum,
             String storageKey,
@@ -249,8 +229,6 @@ public class LoanApplicationDocumentChecklist {
         this.fileReference = normalizeOptional(fileReference);
         this.sourceReference = normalizeOptional(sourceReference);
         this.contentType = normalizeOptional(contentType);
-        this.reviewReason = normalizeOptional(reviewReason);
-        this.rejectionReason = normalizeOptional(rejectionReason);
         this.updatedByUsername = normalizeOptional(updatedByUsername);
         this.fileSizeBytes = fileSizeBytes;
         this.fileChecksum = normalizeOptional(fileChecksum);

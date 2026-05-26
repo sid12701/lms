@@ -56,6 +56,9 @@ public class OpsAlert {
     @Column(name = "acknowledged_by_username", length = 255)
     private String acknowledgedByUsername;
 
+    @Column(name = "acknowledgement_note", length = 500)
+    private String acknowledgementNote;
+
     protected OpsAlert() {
     }
 
@@ -138,10 +141,15 @@ public class OpsAlert {
         return acknowledgedByUsername;
     }
 
-    public void acknowledge(String actorUsername) {
+    public String getAcknowledgementNote() {
+        return acknowledgementNote;
+    }
+
+    public void acknowledge(String actorUsername, String note) {
         this.status = OpsAlertStatus.ACKNOWLEDGED;
         this.acknowledgedAt = Instant.now();
         this.acknowledgedByUsername = normalize(actorUsername);
+        this.acknowledgementNote = normalize(note);
     }
 
     private static String normalize(String value) {

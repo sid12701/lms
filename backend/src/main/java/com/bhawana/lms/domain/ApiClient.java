@@ -49,6 +49,15 @@ public class ApiClient {
     @Column(name = "last_used_at")
     private Instant lastUsedAt;
 
+    @Column(name = "previous_secret_hash")
+    private String previousSecretHash;
+
+    @Column(name = "previous_secret_valid_until")
+    private Instant previousSecretValidUntil;
+
+    @Column(name = "last_rotated_at")
+    private Instant lastRotatedAt;
+
     protected ApiClient() {
     }
 
@@ -123,5 +132,43 @@ public class ApiClient {
 
     public void markUsed() {
         this.lastUsedAt = Instant.now();
+    }
+
+    public Instant getLastRotatedAt() {
+        return lastRotatedAt;
+    }
+
+    public String getPreviousSecretHash() {
+        return previousSecretHash;
+    }
+
+    public Instant getPreviousSecretValidUntil() {
+        return previousSecretValidUntil;
+    }
+
+    public void updateManagedProfile(String name, String description, ApiClientStatus status) {
+        if (name != null) {
+            this.name = name.trim();
+        }
+        if (description != null) {
+            this.description = description;
+        }
+        if (status != null) {
+            this.status = status;
+        }
+    }
+
+    public void rotateSecret(String newSecretHash, String previousSecretHash, Instant previousSecretValidUntil) {
+        this.previousSecretHash = previousSecretHash;
+        this.previousSecretValidUntil = previousSecretValidUntil;
+        this.secretHash = newSecretHash;
+        this.lastRotatedAt = Instant.now();
+    }
+
+    public void clearExpiredPreviousSecret(Instant now) {
+        if (previousSecretValidUntil != null && !now.isBefore(previousSecretValidUntil)) {
+            this.previousSecretHash = null;
+            this.previousSecretValidUntil = null;
+        }
     }
 }

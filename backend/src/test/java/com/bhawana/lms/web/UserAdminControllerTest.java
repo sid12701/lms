@@ -1,8 +1,12 @@
 package com.bhawana.lms.web;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -11,9 +15,13 @@ import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.repo.AppRoleRepository;
+import com.bhawana.lms.repo.AppUserAuditEventRepository;
 import com.bhawana.lms.repo.AppUserRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,8 +54,12 @@ class UserAdminControllerTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private AppUserAuditEventRepository appUserAuditEventRepository;
+
     @BeforeEach
     void setUpManagedUser() {
+        appUserAuditEventRepository.deleteAll();
         appUserRepository.deleteAll();
 
         AppRole opsUserRole = appRoleRepository.findByCodeIn(List.of(RoleCode.OPS_USER)).stream()
@@ -94,6 +106,94 @@ class UserAdminControllerTest {
     }
 
     @Test
+    void systemAdminCanUpdateManagedUserEmail() throws Exception {
+        AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
+
+        mockMvc.perform(put("/api/v1/internal/admin/users/{userId}", managedUser.getId())
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", "updated.user@bhawana.local"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("updated.user@bhawana.local"));
+
+        assertEquals(
+                "updated.user@bhawana.local",
+                appUserRepository.findById(managedUser.getId()).orElseThrow().getEmail()
+        );
+        assertEquals(1, appUserAuditEventRepository.count());
+    }
+
+    @Test
+    void roleChangeInvalidatesExistingAccessToken() throws Exception {
+        AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
+        String accessToken = loginAccessToken("test.user", "TestPassword123!");
+
+        AppRole productAdminRole = appRoleRepository.findByCodeIn(List.of(RoleCode.PRODUCT_ADMIN)).stream()
+                .findFirst()
+                .orElseThrow();
+
+        mockMvc.perform(put("/api/v1/internal/admin/users/{userId}", managedUser.getId())
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("roles", List.of("PRODUCT_ADMIN")))))
+                .andExpect(status().isOk());
+
+        assertTrue(appUserRepository.findById(managedUser.getId()).orElseThrow().getTokenVersion() > 0L);
+
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void systemAdminCannotDisableOwnAccount() throws Exception {
+        AppRole systemAdminRole = appRoleRepository.findByCodeIn(List.of(RoleCode.SYSTEM_ADMIN)).stream()
+                .findFirst()
+                .orElseThrow();
+        AppUser self = appUserRepository.save(new AppUser(
+                "self.admin",
+                "self.admin@bhawana.local",
+                passwordEncoder.encode("SelfAdmin123!"),
+                UserStatus.ACTIVE,
+                null,
+                Set.of(systemAdminRole)
+        ));
+
+        mockMvc.perform(put("/api/v1/internal/admin/users/{userId}", self.getId())
+                        .with(jwt().jwt(jwt -> jwt.subject("self.admin").claim("roles", List.of("SYSTEM_ADMIN")))
+                                .authorities(() -> "ROLE_SYSTEM_ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("status", "DISABLED"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("You cannot disable your own account."));
+    }
+
+    @Test
+    void lastSystemAdminCannotRemoveOwnSystemAdminRole() throws Exception {
+        AppRole systemAdminRole = appRoleRepository.findByCodeIn(List.of(RoleCode.SYSTEM_ADMIN)).stream()
+                .findFirst()
+                .orElseThrow();
+        AppUser self = appUserRepository.save(new AppUser(
+                "solo.admin",
+                "solo.admin@bhawana.local",
+                passwordEncoder.encode("SoloAdmin123!"),
+                UserStatus.ACTIVE,
+                null,
+                Set.of(systemAdminRole)
+        ));
+
+        mockMvc.perform(put("/api/v1/internal/admin/users/{userId}", self.getId())
+                        .with(jwt().jwt(jwt -> jwt.subject("solo.admin").claim("roles", List.of("SYSTEM_ADMIN")))
+                                .authorities(() -> "ROLE_SYSTEM_ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("roles", List.of("OPS_USER")))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(
+                        "You cannot remove the SYSTEM_ADMIN role while you are the last active system administrator."
+                ));
+    }
+
+    @Test
     void nonSystemAdminCannotResetManagedUserPassword() throws Exception {
         AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
 
@@ -110,5 +210,20 @@ class UserAdminControllerTest {
     private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor opsUser() {
         return jwt().jwt(jwt -> jwt.subject("ops.user").claim("roles", List.of("OPS_USER")))
                 .authorities(() -> "ROLE_OPS_USER");
+    }
+
+    private String loginAccessToken(String username, String password) throws Exception {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("username", username);
+        body.put("password", password);
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.toString()))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode tokenResponse = objectMapper.readTree(loginResult.getResponse().getContentAsString());
+        return tokenResponse.get("accessToken").asText();
     }
 }

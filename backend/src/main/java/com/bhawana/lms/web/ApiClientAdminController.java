@@ -10,8 +10,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -42,10 +46,52 @@ public class ApiClientAdminController {
                 request.lspId(),
                 request.status()
         );
-        return toCreatedResponse(created.client(), created.rawSecret());
+        return toCreatedResponse(created);
     }
 
-    private static ApiClientResponse toResponse(ApiClient apiClient) {
+    @PutMapping("/{id}")
+    public ApiClientResponse updateApiClient(
+            @PathVariable UUID id,
+            @Valid @RequestBody UpdateApiClientRequest request,
+            @AuthenticationPrincipal Jwt principal
+    ) {
+        String actorUsername = principal == null ? "unknown" : principal.getSubject();
+        ApiClientManagementService.ApiClientView updated = apiClientManagementService.updateClient(
+                id,
+                actorUsername,
+                request.name(),
+                request.description(),
+                request.resolvedStatus(),
+                request.ipAllowlist()
+        );
+        return toResponse(updated);
+    }
+
+    @PostMapping("/{id}/rotate-secret")
+    public RotateSecretResponse rotateSecret(
+            @PathVariable UUID id,
+            @RequestBody(required = false) RotateSecretRequest request,
+            @AuthenticationPrincipal Jwt principal
+    ) {
+        String actorUsername = principal == null ? "unknown" : principal.getSubject();
+        Integer graceSeconds = request == null ? null : request.graceSeconds();
+        ApiClientManagementService.RotatedApiClient rotated = apiClientManagementService.rotateSecret(
+                id,
+                actorUsername,
+                graceSeconds
+        );
+        return new RotateSecretResponse(
+                rotated.clientView().client().getClientId(),
+                rotated.rawSecret(),
+                rotated.oldSecretValidUntil()
+        );
+    }
+
+    private static ApiClientResponse toResponse(ApiClientManagementService.ApiClientView view) {
+        return toResponse(view.client(), view.ipAllowlist());
+    }
+
+    private static ApiClientResponse toResponse(ApiClient apiClient, List<String> ipAllowlist) {
         return new ApiClientResponse(
                 apiClient.getId().toString(),
                 apiClient.getClientId(),
@@ -55,23 +101,27 @@ public class ApiClientAdminController {
                 apiClient.getLsp().getId().toString(),
                 apiClient.getLsp().getName(),
                 apiClient.getCreatedAt(),
-                apiClient.getLastUsedAt()
+                apiClient.getLastUsedAt(),
+                apiClient.getLastRotatedAt(),
+                ipAllowlist
         );
     }
 
-    private static CreatedApiClientResponse toCreatedResponse(ApiClient apiClient, String rawSecret) {
-        ApiClientResponse base = toResponse(apiClient);
+    private static CreatedApiClientResponse toCreatedResponse(ApiClientManagementService.CreatedApiClient created) {
+        ApiClientResponse base = toResponse(created.client(), created.ipAllowlist());
         return new CreatedApiClientResponse(
                 base.id(),
                 base.clientId(),
-                rawSecret,
+                created.rawSecret(),
                 base.name(),
                 base.description(),
                 base.status(),
                 base.lspId(),
                 base.lspName(),
                 base.createdAt(),
-                base.lastUsedAt()
+                base.lastUsedAt(),
+                base.lastRotatedAt(),
+                base.ipAllowlist()
         );
     }
 
@@ -88,6 +138,27 @@ public class ApiClientAdminController {
         }
     }
 
+    public record UpdateApiClientRequest(
+            String name,
+            String description,
+            String status,
+            List<String> ipAllowlist
+    ) {
+        public ApiClientStatus resolvedStatus() {
+            if (status == null || status.isBlank()) {
+                return null;
+            }
+            return switch (status.trim().toUpperCase()) {
+                case "ACTIVE" -> ApiClientStatus.ACTIVE;
+                case "INACTIVE", "DISABLED" -> ApiClientStatus.INACTIVE;
+                default -> throw new IllegalArgumentException("Unknown status: " + status);
+            };
+        }
+    }
+
+    public record RotateSecretRequest(Integer graceSeconds) {
+    }
+
     public record ApiClientResponse(
             String id,
             String clientId,
@@ -97,7 +168,9 @@ public class ApiClientAdminController {
             String lspId,
             String lspName,
             Instant createdAt,
-            Instant lastUsedAt
+            Instant lastUsedAt,
+            Instant lastRotatedAt,
+            List<String> ipAllowlist
     ) {
     }
 
@@ -111,7 +184,16 @@ public class ApiClientAdminController {
             String lspId,
             String lspName,
             Instant createdAt,
-            Instant lastUsedAt
+            Instant lastUsedAt,
+            Instant lastRotatedAt,
+            List<String> ipAllowlist
+    ) {
+    }
+
+    public record RotateSecretResponse(
+            String clientId,
+            String clientSecret,
+            Instant oldSecretValidUntil
     ) {
     }
 }

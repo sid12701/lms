@@ -2,19 +2,18 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
-import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.domain.LoanPaymentChannel;
-import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.common.web.PagedResult;
 import com.bhawana.lms.common.web.PaginationResponseBuilder;
 import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
 import com.bhawana.lms.service.LoanApplicationService;
+import com.bhawana.lms.service.LoanApplicationWebhookEventProjection;
 import com.bhawana.lms.service.LoanDocumentService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -130,13 +129,6 @@ public class LoanApplicationOpsController {
                 .toList();
     }
 
-    @GetMapping("/{applicationId}/assignment-events")
-    public List<LoanApplicationAssignmentEventResponse> listAssignmentEvents(@PathVariable UUID applicationId) {
-        return loanApplicationService.listAssignmentEvents(applicationId).stream()
-                .map(LoanApplicationOpsResponses::toAssignmentEventResponse)
-                .toList();
-    }
-
     @GetMapping("/{applicationId}/audit-events")
     public List<LoanApplicationAuditEventResponse> listAuditEvents(@PathVariable UUID applicationId) {
         return loanApplicationService.listAuditEvents(applicationId).stream()
@@ -169,6 +161,13 @@ public class LoanApplicationOpsController {
     public List<LoanPaymentTransactionResponse> listPaymentTransactions(@PathVariable UUID applicationId) {
         return loanApplicationService.listPaymentTransactions(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toPaymentTransactionResponse)
+                .toList();
+    }
+
+    @GetMapping("/{applicationId}/webhook-events")
+    public List<WebhookEventDeliveryResponse> listWebhookEvents(@PathVariable UUID applicationId) {
+        return loanApplicationService.listWebhookEventsForApplication(applicationId).stream()
+                .map(WebhookEventDeliveryResponse::from)
                 .toList();
     }
 
@@ -355,49 +354,6 @@ public class LoanApplicationOpsController {
                 .toList();
     }
 
-    @PostMapping("/{applicationId}/assignment")
-    public LoanApplicationDetailResponse assignApplication(
-            Authentication authentication,
-            @PathVariable UUID applicationId,
-            @Valid @RequestBody LoanApplicationAssignmentRequest request
-    ) {
-        LoanApplication application = loanApplicationService.assignApplication(
-                applicationId,
-                authentication.getName(),
-                request.assigneeUsername(),
-                request.note()
-        );
-        return LoanApplicationOpsResponses.toDetailResponse(
-                application,
-                loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
-        );
-    }
-
-    @PutMapping("/{applicationId}/kyc-documents/{documentType}")
-    public LoanApplicationDocumentChecklistResponse updateDocumentChecklistItem(
-            Authentication authentication,
-            @PathVariable UUID applicationId,
-            @PathVariable LoanApplicationDocumentType documentType,
-            @Valid @RequestBody LoanApplicationDocumentChecklistUpdateRequest request
-    ) {
-        return LoanApplicationOpsResponses.toDocumentChecklistResponse(loanApplicationService.updateDocumentChecklistItem(
-                applicationId,
-                documentType,
-                authentication.getName(),
-                request.status(),
-                request.note(),
-                request.fileName(),
-                request.fileReference(),
-                request.sourceReference(),
-                request.contentType(),
-                request.reviewReason(),
-                request.rejectionReason()
-        ));
-    }
-
     @PostMapping("/{applicationId}/disbursement-requests")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public LoanApplicationDetailResponse initiateDisbursement(
@@ -443,17 +399,18 @@ public class LoanApplicationOpsController {
     public LoanPaymentTransactionResponse recordPaymentTransaction(
             Authentication authentication,
             @PathVariable UUID applicationId,
+            @org.springframework.web.bind.annotation.RequestHeader(name = "Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody LoanPaymentTransactionRequest request
     ) {
         return LoanApplicationOpsResponses.toPaymentTransactionResponse(loanApplicationService.recordPaymentTransaction(
                 applicationId,
                 authentication.getName(),
+                idempotencyKey,
+                request.targetInstallmentId(),
                 request.amount(),
-                request.paymentDate(),
+                request.postedAt(),
                 request.reference(),
-                request.channel(),
-                request.status(),
-                request.note()
+                request.channel()
         ));
     }
 
@@ -531,9 +488,6 @@ public class LoanApplicationOpsController {
             BigDecimal requestedAmount,
             Integer tenureMonths,
             String status,
-            String assignedToUsername,
-            String assignedByUsername,
-            Instant assignedAt,
             String createdAt
     ) {
     }
@@ -565,9 +519,6 @@ public class LoanApplicationOpsController {
             String invalidReasonText,
             String invalidatedByUsername,
             String invalidatedAt,
-            String assignedToUsername,
-            String assignedByUsername,
-            Instant assignedAt,
             String createdAt,
             String updatedAt,
             LoanAccountSummaryResponse loanAccount,
@@ -641,24 +592,17 @@ public class LoanApplicationOpsController {
     ) {
     }
 
-    public record LoanApplicationAssignmentRequest(
-            String assigneeUsername,
-            @Size(max = 500) String note
-    ) {
-    }
-
     public record MockDisbursementOutcomeRequest(
             @NotNull MockDisbursementOutcome outcome
     ) {
     }
 
     public record LoanPaymentTransactionRequest(
+            @NotNull UUID targetInstallmentId,
             @NotNull @DecimalMin("0.01") BigDecimal amount,
-            @NotNull @PastOrPresent LocalDate paymentDate,
-            @NotBlank @Size(max = 128) String reference,
+            @NotNull @PastOrPresent LocalDate postedAt,
             @NotNull LoanPaymentChannel channel,
-            @NotNull LoanPaymentStatus status,
-            @Size(max = 500) String note
+            @Size(max = 128) String reference
     ) {
     }
 
@@ -674,18 +618,6 @@ public class LoanApplicationOpsController {
     ) {
     }
 
-    public record LoanApplicationDocumentChecklistUpdateRequest(
-            @NotNull LoanApplicationDocumentChecklistStatus status,
-            @Size(max = 500) String note,
-            @Size(max = 255) String fileName,
-            @Size(max = 500) String fileReference,
-            @Size(max = 500) String sourceReference,
-            @Size(max = 128) String contentType,
-            @Size(max = 500) String reviewReason,
-            @Size(max = 500) String rejectionReason
-    ) {
-    }
-
     public record LoanApplicationStatusTransitionResponse(
             String id,
             String loanApplicationId,
@@ -695,20 +627,12 @@ public class LoanApplicationOpsController {
             String note,
             String reasonCode,
             String correlationId,
-            String createdAt
+            String createdAt,
+            RejectionReason rejectionReason
     ) {
     }
 
-    public record LoanApplicationAssignmentEventResponse(
-            String id,
-            String loanApplicationId,
-            String fromAssigneeUsername,
-            String toAssigneeUsername,
-            String actorUsername,
-            String note,
-            String correlationId,
-            String createdAt
-    ) {
+    public record RejectionReason(java.util.List<String> failedRules) {
     }
 
     public record LoanApplicationAuditEventResponse(
@@ -765,6 +689,7 @@ public class LoanApplicationOpsController {
     public record LoanPaymentTransactionResponse(
             String id,
             String loanAccountId,
+            String targetInstallmentId,
             String actorUsername,
             BigDecimal amount,
             LocalDate paymentDate,
@@ -813,14 +738,38 @@ public class LoanApplicationOpsController {
             String storageKey,
             String fileChecksum,
             Long fileSizeBytes,
-            String reviewReason,
-            String rejectionReason,
             Instant uploadedAt,
             String uploadedByUsername,
             String updatedByUsername,
             String createdAt,
             String updatedAt
     ) {
+    }
+
+    public record WebhookEventDeliveryResponse(
+            String eventId,
+            String eventType,
+            String targetUrl,
+            String status,
+            int attempts,
+            String lastAttemptAt,
+            Integer lastResponseCode,
+            String lastError,
+            String createdAt
+    ) {
+        static WebhookEventDeliveryResponse from(LoanApplicationWebhookEventProjection projection) {
+            return new WebhookEventDeliveryResponse(
+                    projection.eventId(),
+                    projection.eventType(),
+                    projection.targetUrl(),
+                    projection.status(),
+                    projection.attempts(),
+                    projection.lastAttemptAt() == null ? null : projection.lastAttemptAt().toString(),
+                    projection.lastResponseCode(),
+                    projection.lastError(),
+                    projection.createdAt() == null ? null : projection.createdAt().toString()
+            );
+        }
     }
 
     public record LoanApplicationDocumentAccessAuditResponse(

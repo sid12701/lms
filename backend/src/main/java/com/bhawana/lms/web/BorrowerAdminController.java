@@ -2,6 +2,7 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.service.AdminDirectoryService;
+import com.bhawana.lms.service.AdminDirectoryService.BorrowerDelinquencyAggregate;
 import com.bhawana.lms.service.AdminDirectoryService.BorrowerDetailView;
 import com.bhawana.lms.service.AdminDirectoryService.BorrowerLoanView;
 import java.math.BigDecimal;
@@ -71,7 +72,22 @@ public class BorrowerAdminController {
                         .collect(Collectors.toUnmodifiableSet()),
                 view.loans().stream()
                         .map(BorrowerAdminController::toLoanResponse)
-                        .toList()
+                        .toList(),
+                toDelinquencyResponse(view.delinquency())
+        );
+    }
+
+    private static BorrowerDelinquencyResponse toDelinquencyResponse(BorrowerDelinquencyAggregate aggregate) {
+        if (aggregate == null) {
+            return new BorrowerDelinquencyResponse(BigDecimal.ZERO.setScale(2), 0, 0, null);
+        }
+        return new BorrowerDelinquencyResponse(
+                aggregate.activeOverdueAmount(),
+                aggregate.maxDaysPastDue(),
+                aggregate.overdueLoanCount(),
+                aggregate.overdueLoanCount() > 0 && aggregate.bucket() != null
+                        ? aggregate.bucket().name()
+                        : null
         );
     }
 
@@ -142,7 +158,22 @@ public class BorrowerAdminController {
             String referencePersonName,
             String referencePersonNumber,
             Set<String> visibleLspIds,
-            List<BorrowerLoanResponse> loans
+            List<BorrowerLoanResponse> loans,
+            BorrowerDelinquencyResponse delinquency
+    ) {
+    }
+
+    /**
+     * Gap #6: aggregate delinquency block on the borrower-admin response.
+     * `bucket` is null when the borrower has no overdue installments
+     * (collapses the "CURRENT" sentinel — keeps the response shape honest
+     * about whether the borrower is in trouble).
+     */
+    public record BorrowerDelinquencyResponse(
+            BigDecimal activeOverdueAmount,
+            int maxDaysPastDue,
+            int overdueLoanCount,
+            String bucket
     ) {
     }
 

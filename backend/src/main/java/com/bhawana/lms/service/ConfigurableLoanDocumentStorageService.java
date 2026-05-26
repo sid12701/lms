@@ -1,11 +1,13 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -63,11 +65,21 @@ public class ConfigurableLoanDocumentStorageService implements LoanDocumentStora
             MultipartFile file
     ) {
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("Document file is required.");
+            throw new BusinessRuleViolationException(
+                    "DOCUMENT_FILE_EMPTY",
+                    "Document file is required.",
+                    Map.of("file", "A non-empty file is required.")
+            );
         }
+
+        DocumentUploadPolicy.validate(documentType, file);
 
         try {
             byte[] content = file.getBytes();
+            long maxBytes = DocumentUploadPolicy.maxBytesFor(documentType);
+            if (content.length > maxBytes) {
+                throw fileTooLarge(documentType, content.length, maxBytes);
+            }
             DocumentStorageDescriptor descriptor = new DocumentStorageDescriptor(
                     sanitizeFileName(file.getOriginalFilename()),
                     resolveContentType(file.getContentType()),
@@ -81,6 +93,24 @@ public class ConfigurableLoanDocumentStorageService implements LoanDocumentStora
         } catch (java.io.IOException exception) {
             throw new IllegalStateException("Unable to read multipart document content.", exception);
         }
+    }
+
+    private static BusinessRuleViolationException fileTooLarge(
+            LoanApplicationDocumentType documentType,
+            long actualBytes,
+            long maxBytes
+    ) {
+        return new BusinessRuleViolationException(
+                "DOCUMENT_FILE_TOO_LARGE",
+                "Document exceeds the maximum permitted size of "
+                        + maxBytes + " bytes for " + documentType.name()
+                        + " (got " + actualBytes + ").",
+                Map.of(
+                        "documentType", documentType.name(),
+                        "fileSizeBytes", String.valueOf(actualBytes),
+                        "maxFileSizeBytes", String.valueOf(maxBytes)
+                )
+        );
     }
 
     private StoredDocument storeToR2OrFail(DocumentStorageDescriptor descriptor, byte[] content) {

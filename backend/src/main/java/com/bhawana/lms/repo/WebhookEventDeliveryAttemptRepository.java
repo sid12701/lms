@@ -8,4 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface WebhookEventDeliveryAttemptRepository extends JpaRepository<WebhookEventDeliveryAttempt, UUID> {
 
     List<WebhookEventDeliveryAttempt> findByOutboxEvent_IdOrderByCreatedAtDesc(UUID outboxEventId);
+
+    java.util.Optional<WebhookEventDeliveryAttempt> findFirstByOutboxEvent_IdOrderByCreatedAtDesc(UUID outboxEventId);
 }

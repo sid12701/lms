@@ -62,6 +62,9 @@ public class AppUser {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "token_version", nullable = false)
+    private long tokenVersion;
+
     protected AppUser() {
     }
 
@@ -75,6 +78,7 @@ public class AppUser {
         this.status = status;
         this.lsp = lsp;
         this.roles = new LinkedHashSet<>(roles);
+        this.tokenVersion = 0L;
     }
 
     @PrePersist
@@ -125,6 +129,10 @@ public class AppUser {
         return roles;
     }
 
+    public long getTokenVersion() {
+        return tokenVersion;
+    }
+
     public void updatePasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
     }
@@ -151,5 +159,21 @@ public class AppUser {
         this.status = UserStatus.ACTIVE;
         this.lsp = null;
         this.roles = new LinkedHashSet<>(roles);
+    }
+
+    public void updateManagedProfile(
+            String email,
+            UserStatus status,
+            Lsp lsp,
+            Set<AppRole> roles,
+            boolean rolesChanged
+    ) {
+        this.email = email;
+        this.status = status;
+        this.lsp = lsp;
+        this.roles = new LinkedHashSet<>(roles);
+        if (rolesChanged) {
+            this.tokenVersion++;
+        }
     }
 }

@@ -42,6 +42,8 @@ app:
       enabled: false
   rate-limit:
     enabled: false
+  alert-rules:
+    scheduler-enabled: false
   storage:
     documents:
       provider: LOCAL

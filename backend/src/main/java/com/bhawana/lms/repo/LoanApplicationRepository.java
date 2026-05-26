@@ -3,6 +3,7 @@ package com.bhawana.lms.repo;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import java.util.Collection;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,6 +28,23 @@ public interface LoanApplicationRepository extends JpaRepository<LoanApplication
     List<LoanApplication> findDetailedByOrderByCreatedAtDesc();
 
     List<LoanApplication> findAllByOrderByCreatedAtDesc();
+
+    long countByStatus(LoanApplicationStatus status);
+
+    long countByStatusIn(Collection<LoanApplicationStatus> statuses);
+
+    @Query("""
+            select application.status as status, count(application) as count
+            from LoanApplication application
+            group by application.status
+            """)
+    List<ApplicationStatusCountProjection> countGroupByStatus();
+
+    interface ApplicationStatusCountProjection {
+        LoanApplicationStatus getStatus();
+
+        long getCount();
+    }
 
     @Query("""
             select application.lsp.id as lspId,
@@ -59,4 +77,13 @@ public interface LoanApplicationRepository extends JpaRepository<LoanApplication
 
         long getApprovedLoanCount();
     }
+
+    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
+    List<LoanApplication> findByStatusAndCreatedAtBefore(
+            LoanApplicationStatus status,
+            Instant createdAtBefore
+    );
+
+    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
+    List<LoanApplication> findByStatus(LoanApplicationStatus status);
 }

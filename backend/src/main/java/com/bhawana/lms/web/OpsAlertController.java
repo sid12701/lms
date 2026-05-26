@@ -1,8 +1,16 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.OpsAlert;
+import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertStatus;
+import com.bhawana.lms.domain.OpsAlertType;
+import com.bhawana.lms.domain.AlertRule;
+import com.bhawana.lms.service.AlertRuleEvaluationService;
 import com.bhawana.lms.service.OpsAlertService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -10,6 +18,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,9 +29,22 @@ import org.springframework.web.bind.annotation.RestController;
 public class OpsAlertController {
 
     private final OpsAlertService opsAlertService;
+    private final AlertRuleEvaluationService alertRuleEvaluationService;
 
-    public OpsAlertController(OpsAlertService opsAlertService) {
+    public OpsAlertController(
+            OpsAlertService opsAlertService,
+            AlertRuleEvaluationService alertRuleEvaluationService
+    ) {
         this.opsAlertService = opsAlertService;
+        this.alertRuleEvaluationService = alertRuleEvaluationService;
+    }
+
+    @GetMapping("/rules")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public List<AlertRuleResponse> listAlertRules() {
+        return alertRuleEvaluationService.listRules().stream()
+                .map(OpsAlertController::toRuleResponse)
+                .toList();
     }
 
     @GetMapping
@@ -33,8 +55,64 @@ public class OpsAlertController {
     }
 
     @PostMapping("/{alertId}/acknowledge")
-    public OpsAlertResponse acknowledge(Authentication authentication, @PathVariable UUID alertId) {
-        return toResponse(opsAlertService.acknowledge(alertId, authentication == null ? "system" : authentication.getName()));
+    public OpsAlertResponse acknowledge(
+            Authentication authentication,
+            @PathVariable UUID alertId,
+            @Valid @RequestBody(required = false) AcknowledgeAlertRequest body
+    ) {
+        String actor = authentication == null ? "system" : authentication.getName();
+        String note = body == null ? null : body.note();
+        return toResponse(opsAlertService.acknowledge(alertId, actor, note));
+    }
+
+    @PostMapping("/escalate")
+    public OpsAlertResponse escalate(
+            Authentication authentication,
+            @Valid @RequestBody EscalateAlertRequest body
+    ) {
+        String actor = authentication == null ? "system" : authentication.getName();
+        String trimmedTitle = body.title() == null ? "" : body.title().trim();
+        String trimmedMessage = body.message() == null ? "" : body.message().trim();
+        if (trimmedTitle.isEmpty() || trimmedMessage.isEmpty()) {
+            throw new IllegalArgumentException("Escalation title and message are required.");
+        }
+        String trimmedSubjectType = body.subjectType() == null ? "" : body.subjectType().trim();
+        String subjectType = trimmedSubjectType.isEmpty() ? "SYSTEM" : trimmedSubjectType.toUpperCase();
+        UUID subjectId = parseOptionalUuid(body.subjectId());
+        String contextJson = "{\"escalatedByUsername\":\"" + escapeJson(actor) + "\"}";
+        OpsAlert created = opsAlertService.createAlert(
+                OpsAlertType.OPS_USER_ESCALATION,
+                OpsAlertSeverity.HIGH,
+                trimmedTitle,
+                trimmedMessage,
+                subjectType,
+                subjectId,
+                CorrelationIdHolder.get(),
+                contextJson
+        );
+        return toResponse(created);
+    }
+
+    private static UUID parseOptionalUuid(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(trimmed);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Invalid subjectId: must be a UUID.", ex);
+        }
+    }
+
+    private static String escapeJson(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private static OpsAlertResponse toResponse(OpsAlert alert) {
@@ -51,7 +129,50 @@ public class OpsAlertController {
                 alert.getContextJson(),
                 alert.getCreatedAt().toString(),
                 alert.getAcknowledgedAt() == null ? null : alert.getAcknowledgedAt().toString(),
-                alert.getAcknowledgedByUsername()
+                alert.getAcknowledgedByUsername(),
+                alert.getAcknowledgementNote()
+        );
+    }
+
+    public record AcknowledgeAlertRequest(
+            @Size(max = 500, message = "note must be 500 characters or fewer") String note
+    ) {
+    }
+
+    public record EscalateAlertRequest(
+            @Size(max = 64, message = "subjectType must be 64 characters or fewer") String subjectType,
+            @Size(max = 64, message = "subjectId must be 64 characters or fewer") String subjectId,
+            @NotBlank(message = "title is required")
+            @Size(max = 255, message = "title must be 255 characters or fewer") String title,
+            @NotBlank(message = "message is required")
+            @Size(max = 1000, message = "message must be 1000 characters or fewer") String message
+    ) {
+    }
+
+    public record AlertRuleResponse(
+            String id,
+            String code,
+            String name,
+            String description,
+            boolean enabled,
+            String audience,
+            String triggerKind,
+            String configJson,
+            String lastEvaluatedAt
+    ) {
+    }
+
+    private static AlertRuleResponse toRuleResponse(AlertRule rule) {
+        return new AlertRuleResponse(
+                rule.getId().toString(),
+                rule.getCode(),
+                rule.getName(),
+                rule.getDescription(),
+                rule.isEnabled(),
+                rule.getAudience().name(),
+                rule.getTriggerKind().name(),
+                rule.getConfigJson(),
+                rule.getLastEvaluatedAt() == null ? null : rule.getLastEvaluatedAt().toString()
         );
     }
 
@@ -68,7 +189,8 @@ public class OpsAlertController {
             String contextJson,
             String createdAt,
             String acknowledgedAt,
-            String acknowledgedByUsername
+            String acknowledgedByUsername,
+            String acknowledgementNote
     ) {
     }
 }

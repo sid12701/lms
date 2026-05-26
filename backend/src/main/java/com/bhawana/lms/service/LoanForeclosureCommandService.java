@@ -156,6 +156,7 @@ public class LoanForeclosureCommandService {
         String resolvedNote = loanServicingSupportService.normalizeNote(note);
         loanPaymentTransactionRepository.save(new LoanPaymentTransaction(
                 loanAccount,
+                null,
                 normalizedActorUsername,
                 quote.getSettlementAmount(),
                 settlementDate,
@@ -163,7 +164,8 @@ public class LoanForeclosureCommandService {
                 LoanPaymentChannel.FORECLOSURE_SETTLEMENT,
                 LoanPaymentStatus.RECEIVED,
                 resolvedNote == null ? "Foreclosure settlement for quote v" + quote.getVersion() : resolvedNote,
-                CorrelationIdHolder.get()
+                CorrelationIdHolder.get(),
+                null
         ));
         loanServicingSupportService.recomputePaymentAllocation(loanAccount);
 
@@ -199,6 +201,7 @@ public class LoanForeclosureCommandService {
                 WebhookEventType.LOAN_FORECLOSURE_COMPLETED,
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
+                application.getId(),
                 loanApplicationLifecycleService.buildForeclosurePayload(application, loanAccount, quote)
         );
         return quote;

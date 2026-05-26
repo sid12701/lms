@@ -11,7 +11,6 @@ import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationAuditEvent;
-import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
@@ -28,14 +27,12 @@ import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
-import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
-import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
@@ -66,7 +63,6 @@ public class LoanApplicationLifecycleService {
     private final BorrowerRepository borrowerRepository;
     private final LoanAccountRepository loanAccountRepository;
     private final LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
-    private final LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository;
     private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     private final LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
     private final LoanApplicationRepository loanApplicationRepository;
@@ -78,6 +74,7 @@ public class LoanApplicationLifecycleService {
     private final OpsAlertService opsAlertService;
     private final BorrowerActiveLoanChecker borrowerActiveLoanChecker;
     private final WebhookOutboxService webhookOutboxService;
+    private final LoanAutoApprovalRuleEngine loanAutoApprovalRuleEngine;
     private final ObjectMapper objectMapper;
 
     public LoanApplicationLifecycleService(
@@ -85,7 +82,6 @@ public class LoanApplicationLifecycleService {
             BorrowerRepository borrowerRepository,
             LoanAccountRepository loanAccountRepository,
             LoanApplicationAuditEventRepository loanApplicationAuditEventRepository,
-            LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository,
             LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
             LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository,
             LoanApplicationRepository loanApplicationRepository,
@@ -97,13 +93,13 @@ public class LoanApplicationLifecycleService {
             OpsAlertService opsAlertService,
             BorrowerActiveLoanChecker borrowerActiveLoanChecker,
             WebhookOutboxService webhookOutboxService,
+            LoanAutoApprovalRuleEngine loanAutoApprovalRuleEngine,
             ObjectMapper objectMapper
     ) {
         this.appUserRepository = appUserRepository;
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationAuditEventRepository = loanApplicationAuditEventRepository;
-        this.loanApplicationAssignmentEventRepository = loanApplicationAssignmentEventRepository;
         this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
         this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
         this.loanApplicationRepository = loanApplicationRepository;
@@ -115,6 +111,7 @@ public class LoanApplicationLifecycleService {
         this.opsAlertService = opsAlertService;
         this.borrowerActiveLoanChecker = borrowerActiveLoanChecker;
         this.webhookOutboxService = webhookOutboxService;
+        this.loanAutoApprovalRuleEngine = loanAutoApprovalRuleEngine;
         this.objectMapper = objectMapper;
     }
 
@@ -188,6 +185,7 @@ public class LoanApplicationLifecycleService {
                 WebhookEventType.LOAN_CREATED,
                 "LOAN_APPLICATION",
                 savedApplication.getId().toString(),
+                savedApplication.getId(),
                 buildLoanCreatedPayload(savedApplication)
         );
         return savedApplication;
@@ -269,7 +267,7 @@ public class LoanApplicationLifecycleService {
         }
         if (targetStatus != LoanApplicationStatus.INITIALIZED
                 && targetStatus != LoanApplicationStatus.AWAITING_APPROVAL
-                && targetStatus != LoanApplicationStatus.PAYMENT_REINITIATION
+                && targetStatus != LoanApplicationStatus.DISBURSEMENT_RETRY
                 && targetStatus != LoanApplicationStatus.REJECTED) {
             throw new IllegalArgumentException("Manual status updates are not supported for " + targetStatus.name() + ".");
         }
@@ -286,64 +284,6 @@ public class LoanApplicationLifecycleService {
                 resolvedReasonCode,
                 LoanApplicationAuditAction.MANUAL_STATUS_OVERRIDE
         );
-    }
-
-    @Transactional
-    public LoanApplication assignApplication(
-            UUID applicationId,
-            String actorUsername,
-            String assigneeUsername,
-            String note
-    ) {
-        LoanApplication application = getApplication(applicationId);
-        if (application.getStatus() != LoanApplicationStatus.INITIALIZED
-                && application.getStatus() != LoanApplicationStatus.AWAITING_APPROVAL) {
-            throw new IllegalArgumentException("Assignment is only available for active review queue items.");
-        }
-
-        String normalizedActor = normalizeActorUsername(actorUsername);
-        String normalizedAssignee = normalizeAssigneeUsername(assigneeUsername);
-        String normalizedNote = normalizeOptional(note);
-        String currentAssignee = application.getAssignedToUsername();
-
-        if (normalizedAssignee == null) {
-            if (currentAssignee == null) {
-                throw new IllegalArgumentException("Loan application is not currently assigned.");
-            }
-
-            application.releaseAssignment();
-            LoanApplication savedApplication = loanApplicationRepository.save(application);
-            loanApplicationAssignmentEventRepository.save(new LoanApplicationAssignmentEvent(
-                    savedApplication,
-                    currentAssignee,
-                    null,
-                    normalizedActor,
-                    normalizedNote == null ? "Released assignment" : normalizedNote,
-                    CorrelationIdHolder.get()
-            ));
-            return savedApplication;
-        }
-
-        var assignee = appUserRepository.findByUsernameIgnoreCase(normalizedAssignee)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown assignee username: " + normalizedAssignee));
-        if (assignee.getStatus() != UserStatus.ACTIVE) {
-            throw new IllegalArgumentException("Loan applications can only be assigned to active users.");
-        }
-        if (normalizedAssignee.equalsIgnoreCase(currentAssignee)) {
-            throw new IllegalArgumentException("Loan application is already assigned to " + normalizedAssignee + ".");
-        }
-
-        application.assignTo(assignee.getUsername(), normalizedActor);
-        LoanApplication savedApplication = loanApplicationRepository.save(application);
-        loanApplicationAssignmentEventRepository.save(new LoanApplicationAssignmentEvent(
-                savedApplication,
-                currentAssignee,
-                assignee.getUsername(),
-                normalizedActor,
-                normalizedNote == null ? "Assigned application to " + assignee.getUsername() : normalizedNote,
-                CorrelationIdHolder.get()
-        ));
-        return savedApplication;
     }
 
     @Transactional
@@ -370,8 +310,6 @@ public class LoanApplicationLifecycleService {
             String fileReference,
             String sourceReference,
             String contentType,
-            String reviewReason,
-            String rejectionReason,
             Long fileSizeBytes,
             String fileChecksum,
             String storageKey,
@@ -384,15 +322,6 @@ public class LoanApplicationLifecycleService {
                 .findByLoanApplication_IdAndDocumentType(applicationId, documentType)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document checklist item: " + documentType.name()));
 
-        String normalizedReviewReason = normalizeOptional(reviewReason);
-        String normalizedRejectionReason = normalizeOptional(rejectionReason);
-        if (status == LoanApplicationDocumentChecklistStatus.VERIFIED && normalizedReviewReason == null) {
-            throw new IllegalArgumentException("Review reason is required when a document is marked VERIFIED.");
-        }
-        if (status == LoanApplicationDocumentChecklistStatus.REJECTED && normalizedRejectionReason == null) {
-            throw new IllegalArgumentException("Rejection reason is required when a document is marked REJECTED.");
-        }
-
         checklistItem.update(
                 status,
                 note,
@@ -401,8 +330,6 @@ public class LoanApplicationLifecycleService {
                 fileReference,
                 sourceReference,
                 contentType,
-                normalizedReviewReason,
-                normalizedRejectionReason,
                 fileSizeBytes,
                 fileChecksum,
                 storageKey,
@@ -411,15 +338,32 @@ public class LoanApplicationLifecycleService {
         return loanApplicationDocumentChecklistRepository.save(checklistItem);
     }
 
+    /**
+     * Gap #11 + Follow-up #1 — re-evaluates the auto-approval rule set on
+     * every doc upload / field update. On success: moves the application
+     * forward through {@code INITIALIZED → AWAITING_APPROVAL →
+     * APPROVED_PENDING_DISBURSAL}. On failure from {@code AWAITING_APPROVAL}:
+     * transitions to {@code REJECTED} with a structured
+     * {@code rejection_reason_json} listing the failed rule codes. Callers
+     * outside the {@code INITIALIZED | AWAITING_APPROVAL} window short-circuit
+     * to a no-op for backward compatibility (the disbursement service still
+     * calls this method even after approval).
+     */
     @Transactional
     public LoanApplication autoApproveIfEligibleForLsp(UUID applicationId, String actorUsername) {
         LoanApplication application = getApplication(applicationId);
-        if (application.getStatus() != LoanApplicationStatus.INITIALIZED
-                && application.getStatus() != LoanApplicationStatus.AWAITING_APPROVAL
-                && application.getStatus() != LoanApplicationStatus.APPROVED_PENDING_DISBURSAL) {
+        LoanApplicationStatus currentStatus = application.getStatus();
+        if (currentStatus != LoanApplicationStatus.INITIALIZED
+                && currentStatus != LoanApplicationStatus.AWAITING_APPROVAL) {
             return application;
         }
-        if (!hasAllRequiredLmsManagedDocuments(applicationId, true)) {
+
+        LoanAutoApprovalRuleEngine.Evaluation evaluation = loanAutoApprovalRuleEngine.evaluate(application);
+
+        if (!evaluation.approved()) {
+            if (currentStatus == LoanApplicationStatus.AWAITING_APPROVAL) {
+                return autoRejectApplication(application, actorUsername, evaluation);
+            }
             return application;
         }
 
@@ -429,7 +373,7 @@ public class LoanApplicationLifecycleService {
                     savedApplication,
                     LoanApplicationStatus.AWAITING_APPROVAL,
                     actorUsername,
-                    "Application moved to approval after required LMS-managed documents were uploaded.",
+                    "Application moved to approval after all auto-approval rules passed.",
                     null,
                     LoanApplicationAuditAction.STATUS_TRANSITION
             );
@@ -439,13 +383,45 @@ public class LoanApplicationLifecycleService {
                     savedApplication,
                     LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
                     actorUsername,
-                    "Loan auto-approved after all required LMS-managed documents were uploaded.",
+                    "Loan auto-approved by the rule engine after all eligibility checks passed.",
                     null,
                     LoanApplicationAuditAction.STATUS_TRANSITION
             );
             ensureLoanAccountForApprovedApplication(savedApplication);
         }
         return savedApplication;
+    }
+
+    private LoanApplication autoRejectApplication(
+            LoanApplication application,
+            String actorUsername,
+            LoanAutoApprovalRuleEngine.Evaluation evaluation
+    ) {
+        String rejectionJson = serializeRejectionReason(evaluation);
+        String failedRuleList = evaluation.failedRules().stream()
+                .map(Enum::name)
+                .reduce((a, b) -> a + "," + b)
+                .orElse("");
+        String note = "Auto-rejected by rule engine. Failed rules: " + failedRuleList;
+        return updateApplicationStatus(
+                application,
+                LoanApplicationStatus.REJECTED,
+                actorUsername,
+                note,
+                LoanApplicationStatusReasonCode.FAILED_VERIFICATION,
+                LoanApplicationAuditAction.STATUS_TRANSITION,
+                rejectionJson
+        );
+    }
+
+    private String serializeRejectionReason(LoanAutoApprovalRuleEngine.Evaluation evaluation) {
+        try {
+            LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+            payload.put("failedRules", evaluation.failedRules().stream().map(Enum::name).toList());
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize auto-rejection reason payload.", exception);
+        }
     }
 
     public void ensureDocumentChecklist(LoanApplication application) {
@@ -463,8 +439,7 @@ public class LoanApplicationLifecycleService {
                 .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
                 .stream()
                 .filter(item -> item.getDocumentType().isRequiredForDisbursement())
-                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.RECEIVED
-                        && item.getStatus() != LoanApplicationDocumentChecklistStatus.VERIFIED
+                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.SUBMITTED
                         && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
                 .map(LoanApplicationDocumentChecklist::getDocumentType)
                 .toList();
@@ -482,10 +457,10 @@ public class LoanApplicationLifecycleService {
                 .filter(item -> requireForApprovalOnly
                         ? item.getDocumentType().isRequiredForApproval()
                         : item.getDocumentType().isRequiredForDisbursement())
-                .allMatch(item -> (item.getStatus() == LoanApplicationDocumentChecklistStatus.RECEIVED
-                        || item.getStatus() == LoanApplicationDocumentChecklistStatus.VERIFIED
+                .allMatch(item -> (item.getStatus() == LoanApplicationDocumentChecklistStatus.SUBMITTED
                         || item.getStatus() == LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
-                        && item.isLmsManagedContent());
+                        && (item.getStatus() == LoanApplicationDocumentChecklistStatus.NOT_REQUIRED
+                                || item.isLmsManagedContent()));
     }
 
     public LoanApplication updateApplicationStatus(
@@ -495,6 +470,18 @@ public class LoanApplicationLifecycleService {
             String note,
             LoanApplicationStatusReasonCode reasonCode,
             LoanApplicationAuditAction auditAction
+    ) {
+        return updateApplicationStatus(application, targetStatus, actorUsername, note, reasonCode, auditAction, null);
+    }
+
+    public LoanApplication updateApplicationStatus(
+            LoanApplication application,
+            LoanApplicationStatus targetStatus,
+            String actorUsername,
+            String note,
+            LoanApplicationStatusReasonCode reasonCode,
+            LoanApplicationAuditAction auditAction,
+            String rejectionReasonJson
     ) {
         LoanApplicationStatus currentStatus = application.getStatus();
         if (currentStatus == targetStatus) {
@@ -513,7 +500,8 @@ public class LoanApplicationLifecycleService {
                 normalizeActorUsername(actorUsername),
                 resolvedNote,
                 reasonCode,
-                CorrelationIdHolder.get()
+                CorrelationIdHolder.get(),
+                rejectionReasonJson
         ));
         recordAuditEvent(
                 savedApplication,
@@ -529,6 +517,7 @@ public class LoanApplicationLifecycleService {
                 WebhookEventType.LOAN_STATUS_CHANGED,
                 "LOAN_APPLICATION",
                 savedApplication.getId().toString(),
+                savedApplication.getId(),
                 buildLoanStatusChangedPayload(savedApplication, currentStatus, targetStatus, reasonCode)
         );
         return savedApplication;
@@ -661,7 +650,6 @@ public class LoanApplicationLifecycleService {
                 normalizedActor,
                 invalidatedAt
         );
-        application.releaseAssignment();
 
         if (loanAccount != null) {
             loanAccount.markInvalid();
@@ -692,6 +680,7 @@ public class LoanApplicationLifecycleService {
                 WebhookEventType.LOAN_STATUS_CHANGED,
                 "LOAN_APPLICATION",
                 savedApplication.getId().toString(),
+                savedApplication.getId(),
                 buildLoanStatusChangedPayload(
                         savedApplication,
                         currentStatus,
@@ -971,7 +960,7 @@ public class LoanApplicationLifecycleService {
                 .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
                 .stream()
                 .filter(item -> item.getDocumentType().isRequiredForApproval())
-                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.VERIFIED
+                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.SUBMITTED
                         && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
                 .map(LoanApplicationDocumentChecklist::getDocumentType)
                 .toList();
@@ -1161,11 +1150,6 @@ public class LoanApplicationLifecycleService {
         return normalized.isBlank() ? "system" : normalized;
     }
 
-    private static String normalizeAssigneeUsername(String assigneeUsername) {
-        String normalized = normalizeOptional(assigneeUsername);
-        return normalized == null ? null : normalized.toLowerCase();
-    }
-
     private static String requireNote(String note) {
         String normalized = normalizeOptional(note);
         if (normalized == null) {
@@ -1179,7 +1163,7 @@ public class LoanApplicationLifecycleService {
             LoanApplicationStatusReasonCode reasonCode
     ) {
         if (targetStatus == LoanApplicationStatus.REJECTED
-                || targetStatus == LoanApplicationStatus.PAYMENT_REINITIATION) {
+                || targetStatus == LoanApplicationStatus.DISBURSEMENT_RETRY) {
             return requireReasonCode(
                     reasonCode,
                     "Reason code is required when a loan application is moved to " + targetStatus.name() + "."

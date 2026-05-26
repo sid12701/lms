@@ -22,6 +22,33 @@ public class OpsAlertService {
         this.opsAlertRepository = opsAlertRepository;
     }
 
+    /**
+     * Creates an alert only when no open (NEW) alert already exists for the same
+     * type + subject — prevents scheduled rules from spamming the inbox.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public OpsAlert createAlertIfAbsent(
+            OpsAlertType type,
+            OpsAlertSeverity severity,
+            String title,
+            String message,
+            String subjectType,
+            UUID subjectId,
+            String correlationId,
+            String contextJson
+    ) {
+        if (subjectId != null
+                && opsAlertRepository.existsByTypeAndSubjectIdAndStatus(type, subjectId, OpsAlertStatus.NEW)) {
+            return null;
+        }
+        if (subjectId == null
+                && correlationId != null
+                && opsAlertRepository.existsByTypeAndCorrelationIdAndStatus(type, correlationId, OpsAlertStatus.NEW)) {
+            return null;
+        }
+        return createAlert(type, severity, title, message, subjectType, subjectId, correlationId, contextJson);
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public OpsAlert createAlert(
             OpsAlertType type,
@@ -68,10 +95,15 @@ public class OpsAlertService {
     }
 
     @Transactional
-    public OpsAlert acknowledge(UUID alertId, String actorUsername) {
+    public OpsAlert acknowledge(UUID alertId, String actorUsername, String note) {
+        if (note != null && note.length() > 500) {
+            throw new IllegalArgumentException(
+                    "Acknowledgement note must be 500 characters or fewer."
+            );
+        }
         OpsAlert alert = opsAlertRepository.findById(alertId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown ops alert id: " + alertId));
-        alert.acknowledge(actorUsername);
+        alert.acknowledge(actorUsername, note);
         return opsAlertRepository.save(alert);
     }
 }

@@ -64,12 +64,18 @@ public class LoanApplication {
     @Column(name = "invalidated_at")
     private Instant invalidatedAt;
 
+    /** @deprecated Gap #19 — assignment retired; column retained for forensic continuity. */
+    @Deprecated
     @Column(name = "assigned_to_username", length = 128)
     private String assignedToUsername;
 
+    /** @deprecated Gap #19 — assignment retired; column retained for forensic continuity. */
+    @Deprecated
     @Column(name = "assigned_by_username", length = 128)
     private String assignedByUsername;
 
+    /** @deprecated Gap #19 — assignment retired; column retained for forensic continuity. */
+    @Deprecated
     @Column(name = "assigned_at")
     private Instant assignedAt;
 
@@ -175,18 +181,6 @@ public class LoanApplication {
         return invalidatedAt;
     }
 
-    public String getAssignedToUsername() {
-        return assignedToUsername;
-    }
-
-    public String getAssignedByUsername() {
-        return assignedByUsername;
-    }
-
-    public Instant getAssignedAt() {
-        return assignedAt;
-    }
-
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -216,15 +210,4 @@ public class LoanApplication {
         this.invalidatedAt = invalidatedAt;
     }
 
-    public void assignTo(String assignedToUsername, String assignedByUsername) {
-        this.assignedToUsername = assignedToUsername;
-        this.assignedByUsername = assignedByUsername;
-        this.assignedAt = Instant.now();
-    }
-
-    public void releaseAssignment() {
-        this.assignedToUsername = null;
-        this.assignedByUsername = null;
-        this.assignedAt = null;
-    }
 }

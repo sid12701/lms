@@ -14,9 +14,13 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.FieldError;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -42,7 +46,7 @@ public class GlobalExceptionHandler {
         for (LoanApplicationDocumentType documentType : exception.getBlockingDocumentTypes()) {
             fieldErrors.put(
                     documentType.name(),
-                    documentType.getDisplayName() + " must be VERIFIED before approval."
+                    documentType.getDisplayName() + " must be uploaded before approval."
             );
         }
 
@@ -99,6 +103,14 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, exception.getErrorCode(), exception.getMessage(), request, Map.of());
     }
 
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiError> handleResourceNotFound(
+            ResourceNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.NOT_FOUND, "NOT_FOUND", exception.getMessage(), request, Map.of());
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException exception, HttpServletRequest request) {
         return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", exception.getMessage(), request, Map.of());
@@ -120,6 +132,91 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         return build(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Access denied", request, Map.of());
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiError> handleNoResourceFound(NoResourceFoundException exception, HttpServletRequest request) {
+        return build(
+                HttpStatus.NOT_FOUND,
+                "NOT_FOUND",
+                "Resource not found: " + request.getRequestURI(),
+                request,
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(
+            MethodArgumentTypeMismatchException exception,
+            HttpServletRequest request
+    ) {
+        String parameterName = exception.getName();
+        Object rejectedValue = exception.getValue();
+        Class<?> targetType = exception.getRequiredType();
+        String message;
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        if (targetType != null && targetType.isEnum()) {
+            Object[] allowed = targetType.getEnumConstants();
+            StringBuilder allowedList = new StringBuilder();
+            for (int i = 0; i < allowed.length; i++) {
+                if (i > 0) allowedList.append(", ");
+                allowedList.append(((Enum<?>) allowed[i]).name());
+            }
+            message = "Invalid value '" + rejectedValue + "' for parameter '" + parameterName
+                    + "'. Allowed values: " + allowedList + ".";
+            fieldErrors.put(parameterName, message);
+        } else {
+            message = "Invalid value '" + rejectedValue + "' for parameter '" + parameterName + "'.";
+            fieldErrors.put(parameterName, message);
+        }
+        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, request, fieldErrors);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleUnreadableBody(
+            HttpMessageNotReadableException exception,
+            HttpServletRequest request
+    ) {
+        Throwable cause = exception.getMostSpecificCause();
+        String message;
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        if (cause instanceof com.fasterxml.jackson.databind.exc.InvalidFormatException invalidFormat) {
+            Class<?> targetType = invalidFormat.getTargetType();
+            String field = invalidFormat.getPath().isEmpty()
+                    ? "body"
+                    : invalidFormat.getPath().get(invalidFormat.getPath().size() - 1).getFieldName();
+            if (targetType != null && targetType.isEnum()) {
+                Object[] allowed = targetType.getEnumConstants();
+                StringBuilder allowedList = new StringBuilder();
+                for (int i = 0; i < allowed.length; i++) {
+                    if (i > 0) allowedList.append(", ");
+                    allowedList.append(((Enum<?>) allowed[i]).name());
+                }
+                message = "Invalid value '" + invalidFormat.getValue() + "' for field '" + field
+                        + "'. Allowed values: " + allowedList + ".";
+            } else {
+                message = "Invalid value '" + invalidFormat.getValue() + "' for field '" + field + "'.";
+            }
+            fieldErrors.put(field, message);
+        } else {
+            message = "Request body is malformed or could not be parsed.";
+        }
+        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, request, fieldErrors);
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiError> handleMissingPart(
+            MissingServletRequestPartException exception,
+            HttpServletRequest request
+    ) {
+        String message = "Required multipart part '" + exception.getRequestPartName() + "' is missing.";
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "INVALID_REQUEST",
+                message,
+                request,
+                Map.of(exception.getRequestPartName(), message)
+        );
     }
 
     @ExceptionHandler(Exception.class)

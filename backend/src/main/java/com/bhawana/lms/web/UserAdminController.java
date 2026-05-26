@@ -12,8 +12,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -49,8 +53,26 @@ public class UserAdminController {
         return toResponse(user);
     }
 
+    @PutMapping("/{userId}")
+    public UserResponse updateUser(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UpdateUserRequest request,
+            @AuthenticationPrincipal Jwt principal
+    ) {
+        String actorUsername = principal == null ? "unknown" : principal.getSubject();
+        AppUser user = adminDirectoryService.updateUser(
+                userId,
+                actorUsername,
+                request.email(),
+                request.resolvedStatus(),
+                request.lspId(),
+                request.roles()
+        );
+        return toResponse(user);
+    }
+
     @PostMapping("/{userId}/reset-password")
-    public ResetPasswordResponse resetPassword(@org.springframework.web.bind.annotation.PathVariable UUID userId) {
+    public ResetPasswordResponse resetPassword(@PathVariable UUID userId) {
         AdminDirectoryService.ResetPasswordResult result = adminDirectoryService.resetUserPassword(userId);
         return new ResetPasswordResponse(
                 result.user().getId().toString(),
@@ -69,6 +91,24 @@ public class UserAdminController {
                 user.getLsp() == null ? "All LSPs" : user.getLsp().getName(),
                 user.getRoles().stream().map(role -> role.getCode().name()).sorted().toList()
         );
+    }
+
+    public record UpdateUserRequest(
+            @Email String email,
+            Set<RoleCode> roles,
+            String status,
+            UUID lspId
+    ) {
+        public UserStatus resolvedStatus() {
+            if (status == null || status.isBlank()) {
+                return null;
+            }
+            return switch (status.trim().toUpperCase()) {
+                case "ACTIVE" -> UserStatus.ACTIVE;
+                case "INACTIVE", "DISABLED" -> UserStatus.INACTIVE;
+                default -> throw new IllegalArgumentException("Unknown status: " + status);
+            };
+        }
     }
 
     public record CreateUserRequest(

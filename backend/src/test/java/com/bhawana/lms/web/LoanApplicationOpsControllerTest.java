@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -24,10 +25,14 @@ import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
+import com.bhawana.lms.repo.ApiClientAuditEventRepository;
+import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
+import com.bhawana.lms.repo.WebhookEventOutboxRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -113,6 +118,12 @@ class LoanApplicationOpsControllerTest {
     private LoanProductRepository loanProductRepository;
 
     @Autowired
+    private ApiClientAuditEventRepository apiClientAuditEventRepository;
+
+    @Autowired
+    private ApiClientIpAllowlistRepository apiClientIpAllowlistRepository;
+
+    @Autowired
     private ApiClientRepository apiClientRepository;
 
     @Autowired
@@ -125,10 +136,18 @@ class LoanApplicationOpsControllerTest {
     private LspRepository lspRepository;
 
     @Autowired
+    private WebhookEventOutboxRepository webhookEventOutboxRepository;
+
+    @Autowired
+    private WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
+        webhookEventDeliveryAttemptRepository.deleteAllInBatch();
+        webhookEventOutboxRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
@@ -142,6 +161,8 @@ class LoanApplicationOpsControllerTest {
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
+        apiClientIpAllowlistRepository.deleteAllInBatch();
+        apiClientAuditEventRepository.deleteAllInBatch();
         apiClientRepository.deleteAllInBatch();
         appUserRepository.deleteAllInBatch();
         loanProductAuditEventRepository.deleteAllInBatch();
@@ -422,8 +443,6 @@ class LoanApplicationOpsControllerTest {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
         mapProductToLsp(product.id(), lsp.id());
-        createManagedOpsUser("queue.owner");
-
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-952", "PARTNER_PORTAL", "ABCDE1234F");
         String applicationId = created.get("id").asText();
 
@@ -436,37 +455,31 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.lastActivity.summary").value("Moved from INITIALIZED to AWAITING_APPROVAL"))
                 .andExpect(jsonPath("$.lastActivity.detail").value("Ready for queue assignment"));
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/assignment", applicationId)
-                        .with(opsUser())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "assigneeUsername", "queue.owner",
-                                "note", "Assigned to queue owner"
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.lastActivity.activityType").value("ASSIGNMENT_UPDATED"))
-                .andExpect(jsonPath("$.lastActivity.summary").value("Assigned to queue.owner"))
-                .andExpect(jsonPath("$.lastActivity.detail").value("Assigned to queue owner"));
-
-        mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
-                        applicationId,
-                        "PAN_CARD")
-                        .with(opsUser())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "status", "VERIFIED",
-                                "note", "PAN validated against OCR",
-                                "reviewReason", "PAN matches borrower records"
-                        ))))
-                .andExpect(status().isOk());
+        loanApplicationDocumentChecklistRepository
+                .findByLoanApplication_IdOrderByCreatedAtAsc(UUID.fromString(applicationId))
+                .stream()
+                .filter(item -> item.getDocumentType() == com.bhawana.lms.domain.LoanApplicationDocumentType.PAN_CARD)
+                .findFirst()
+                .ifPresent(item -> {
+                    item.update(
+                            com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.SUBMITTED,
+                            "PAN validated against OCR",
+                            "ops.user",
+                            "pan.pdf",
+                            "seed://pan",
+                            "seed",
+                            "application/pdf"
+                    );
+                    loanApplicationDocumentChecklistRepository.save(item);
+                });
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
                         .with(opsUser()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lastActivity.activityType").value("DOCUMENT_REVIEW_UPDATED"))
                 .andExpect(jsonPath("$.lastActivity.actorUsername").value("ops.user"))
-                .andExpect(jsonPath("$.lastActivity.summary").value("Updated PAN Card to VERIFIED"))
-                .andExpect(jsonPath("$.lastActivity.detail").value("PAN matches borrower records"));
+                .andExpect(jsonPath("$.lastActivity.summary").value("Updated PAN Card to SUBMITTED"))
+                .andExpect(jsonPath("$.lastActivity.detail").value("PAN validated against OCR"));
     }
 
     @Test
@@ -484,7 +497,7 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "PAYMENT_REINITIATION",
+                                "targetStatus", "DISBURSEMENT_RETRY",
                                 "note", "Escalating to manual exception queue",
                                 "reasonCode", "MANUAL_ADMIN_OVERRIDE"
                         ))))
@@ -496,7 +509,7 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].action").value("MANUAL_STATUS_OVERRIDE"))
                 .andExpect(jsonPath("$[0].fromStatus").value("AWAITING_APPROVAL"))
-                .andExpect(jsonPath("$[0].toStatus").value("PAYMENT_REINITIATION"))
+                .andExpect(jsonPath("$[0].toStatus").value("DISBURSEMENT_RETRY"))
                 .andExpect(jsonPath("$[0].reasonCode").value("MANUAL_ADMIN_OVERRIDE"))
                 .andExpect(jsonPath("$[0].note").value("Manual override: Escalating to manual exception queue"))
                 .andExpect(jsonPath("$[0].actorUsername").value("ops.admin"))
@@ -509,16 +522,18 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
-    void opsUserCanInspectAndUpdateLoanApplicationDocumentChecklist() throws Exception {
+    void opsUserCanInspectChecklistAndPutVerifyRejectEndpointIsRemoved() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
         mapProductToLsp(product.id(), lsp.id());
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-990", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
 
-        transitionApplication(created.get("id").asText(), "AWAITING_APPROVAL", "Ready for KYC review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Ready for KYC review");
 
-        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents", created.get("id").asText())
+        // Read remains supported (view-only checklist).
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents", applicationId)
                         .with(opsUser()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(8))
@@ -526,62 +541,24 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].documentDisplayName").value("PAN Card"))
                 .andExpect(jsonPath("$[0].required").value(true))
                 .andExpect(jsonPath("$[0].status").value("PENDING"))
-                .andExpect(jsonPath("$[0].updatedByUsername").value("ops.user"))
-                .andExpect(jsonPath("$[0].uploadedAt").doesNotExist());
+                .andExpect(jsonPath("$[0].uploadedAt").doesNotExist())
+                .andExpect(jsonPath("$[0].reviewReason").doesNotExist())
+                .andExpect(jsonPath("$[0].rejectionReason").doesNotExist());
 
+        // Gap #18: the verify/reject PUT is permanently removed (status collapses to PENDING|SUBMITTED|NOT_REQUIRED).
         mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
-                        created.get("id").asText(),
+                        applicationId,
                         "BANK_STATEMENT")
                         .with(opsUser())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "status", "RECEIVED",
+                                "status", "SUBMITTED",
                                 "note", "Bank statement attached",
                                 "fileName", "bank-statement-2026-03.pdf",
-                                "contentType", "application/pdf",
-                                "sourceReference", "s3://loan-docs/EXT-990/bank-statement-2026-03.pdf"
+                                "contentType", "application/pdf"
                         ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.documentType").value("BANK_STATEMENT"))
-                .andExpect(jsonPath("$.status").value("RECEIVED"))
-                .andExpect(jsonPath("$.note").value("Bank statement attached"))
-                .andExpect(jsonPath("$.fileName").value("bank-statement-2026-03.pdf"))
-                .andExpect(jsonPath("$.contentType").value("application/pdf"))
-                .andExpect(jsonPath("$.sourceReference").value("s3://loan-docs/EXT-990/bank-statement-2026-03.pdf"))
-                .andExpect(jsonPath("$.uploadedAt").exists())
-                .andExpect(jsonPath("$.uploadedByUsername").value("ops.user"))
-                .andExpect(jsonPath("$.updatedByUsername").value("ops.user"))
-                .andExpect(jsonPath("$.updatedAt").exists());
-
-        mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
-                        created.get("id").asText(),
-                        "PAN_CARD")
-                        .with(opsUser())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "status", "VERIFIED",
-                                "note", "PAN validated against OCR",
-                                "reviewReason", "PAN matches the applicant details"
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("VERIFIED"))
-                .andExpect(jsonPath("$.reviewReason").value("PAN matches the applicant details"))
-                .andExpect(jsonPath("$.rejectionReason").doesNotExist());
-
-        mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
-                        created.get("id").asText(),
-                        "SELFIE_PHOTOGRAPH")
-                        .with(opsUser())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "status", "REJECTED",
-                                "note", "Selfie unusable",
-                                "rejectionReason", "Image is blurred and does not show the applicant clearly"
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("REJECTED"))
-                .andExpect(jsonPath("$.rejectionReason").value("Image is blurred and does not show the applicant clearly"))
-                .andExpect(jsonPath("$.reviewReason").doesNotExist());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
 
     @Test
@@ -613,26 +590,22 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
-    void missingDocumentReviewReasonIsRejected() throws Exception {
+    void documentChecklistResponseNoLongerSurfacesReviewOrRejectionReasonFields() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
         mapProductToLsp(product.id(), lsp.id());
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-992", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
 
-        transitionApplication(created.get("id").asText(), "AWAITING_APPROVAL", "Ready for KYC review");
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Ready for KYC review");
 
-        mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
-                        created.get("id").asText(),
-                        "PAN_CARD")
-                        .with(opsUser())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "status", "VERIFIED",
-                                "note", "PAN validated"
-                        ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].reviewReason").doesNotExist())
+                .andExpect(jsonPath("$[*].rejectionReason").doesNotExist())
+                .andExpect(jsonPath("$[0].status").value("PENDING"));
     }
 
     @Test
@@ -728,20 +701,19 @@ class LoanApplicationOpsControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
                 .andExpect(status().isOk());
 
+        String installment1Id = installmentIdAt(applicationId, 1);
+        String installment2Id = installmentIdAt(applicationId, 2);
         String paymentDate = LocalDate.now().minusDays(2).toString();
         String secondPaymentDate = LocalDate.now().minusDays(1).toString();
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "amount", new BigDecimal("4136.32"),
-                                "paymentDate", paymentDate,
-                                "reference", "PAY-001",
-                                "channel", "UPI",
-                                "status", "RECEIVED",
-                                "note", "Collected from borrower via UPI"
-                        ))))
+        mockMvc.perform(postInstallmentPayment(
+                        applicationId,
+                        installment1Id,
+                        new BigDecimal("4136.32"),
+                        "PAY-001",
+                        "UPI",
+                        UUID.randomUUID().toString(),
+                        LocalDate.parse(paymentDate)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.actorUsername").value("ops.admin"))
                 .andExpect(jsonPath("$.amount").value(4136.32))
@@ -749,21 +721,19 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.reference").value("PAY-001"))
                 .andExpect(jsonPath("$.channel").value("UPI"))
                 .andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.targetInstallmentId").value(installment1Id))
                 .andExpect(jsonPath("$.allocatedAmount").value(4136.32))
                 .andExpect(jsonPath("$.unallocatedAmount").value(0.00))
                 .andExpect(jsonPath("$.correlationId").exists());
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "amount", new BigDecimal("4136.32"),
-                                "paymentDate", secondPaymentDate,
-                                "reference", "PAY-002",
-                                "channel", "BANK_TRANSFER",
-                                "status", "RECEIVED",
-                                "note", "Collected second EMI in full"
-                        ))))
+        mockMvc.perform(postInstallmentPayment(
+                        applicationId,
+                        installment2Id,
+                        new BigDecimal("4136.32"),
+                        "PAY-002",
+                        "BANK_TRANSFER",
+                        UUID.randomUUID().toString(),
+                        LocalDate.parse(secondPaymentDate)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reference").value("PAY-002"))
                 .andExpect(jsonPath("$.allocatedAmount").value(4136.32))
@@ -808,20 +778,18 @@ class LoanApplicationOpsControllerTest {
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
         disburseLoan(applicationId);
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "amount", new BigDecimal("1000.00"),
-                                "paymentDate", LocalDate.now().minusDays(1).toString(),
-                                "reference", "PAY-PARTIAL-REJECT",
-                                "channel", "UPI",
-                                "status", "RECEIVED",
-                                "note", "Attempted partial EMI payment"
-                        ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
-                .andExpect(jsonPath("$.message").value(containsString("full outstanding amount of installment 1")));
+        String installment1Id = installmentIdAt(applicationId, 1);
+
+        mockMvc.perform(postInstallmentPayment(
+                        applicationId,
+                        installment1Id,
+                        new BigDecimal("1000.00"),
+                        "PAY-PARTIAL-REJECT",
+                        "UPI",
+                        UUID.randomUUID().toString(),
+                        LocalDate.now().minusDays(1)))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("PAYMENT_AMOUNT_MISMATCH"));
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
                         .with(systemAdmin()))
@@ -936,18 +904,18 @@ class LoanApplicationOpsControllerTest {
                 .map(installment -> installment.getOutstandingAmount())
                 .toList();
 
+        JsonNode schedule = fetchRepaymentSchedule(applicationId);
         for (int index = 0; index < installmentAmounts.size(); index++) {
             BigDecimal installmentAmount = installmentAmounts.get(index);
-            mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
-                            .with(systemAdmin())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(Map.of(
-                                    "amount", installmentAmount,
-                                    "paymentDate", LocalDate.now().minusDays(installmentAmounts.size() - index).toString(),
-                                    "reference", "PAY-CLOSE-" + String.format("%03d", index + 1),
-                                    "channel", "BANK_TRANSFER",
-                                    "status", "RECEIVED"
-                            ))))
+            String installmentId = schedule.get(index).get("id").asText();
+            mockMvc.perform(postInstallmentPayment(
+                            applicationId,
+                            installmentId,
+                            installmentAmount,
+                            "PAY-CLOSE-" + String.format("%03d", index + 1),
+                            "BANK_TRANSFER",
+                            UUID.randomUUID().toString(),
+                            LocalDate.now().minusDays(installmentAmounts.size() - index)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.allocatedAmount").value(installmentAmount.doubleValue()))
                     .andExpect(jsonPath("$.unallocatedAmount").value(0.00));
@@ -975,16 +943,14 @@ class LoanApplicationOpsControllerTest {
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
         disburseLoan(applicationId);
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "amount", new BigDecimal("4136.32"),
-                                "paymentDate", LocalDate.now().minusDays(2).toString(),
-                                "reference", "PAY-INSTALLMENT-001",
-                                "channel", "UPI",
-                                "status", "RECEIVED"
-                        ))))
+        mockMvc.perform(postInstallmentPayment(
+                        applicationId,
+                        installmentIdAt(applicationId, 1),
+                        new BigDecimal("4136.32"),
+                        "PAY-INSTALLMENT-001",
+                        "UPI",
+                        UUID.randomUUID().toString(),
+                        LocalDate.now().minusDays(2)))
                 .andExpect(status().isOk());
 
         LocalDate firstEffectiveDate = LocalDate.now().minusDays(1);
@@ -1076,16 +1042,14 @@ class LoanApplicationOpsControllerTest {
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "amount", new BigDecimal("4136.32"),
-                                "paymentDate", LocalDate.now().minusDays(1).toString(),
-                                "reference", "PAY-002",
-                                "channel", "BANK_TRANSFER",
-                                "status", "RECEIVED"
-                        ))))
+        mockMvc.perform(postInstallmentPayment(
+                        applicationId,
+                        installmentIdAt(applicationId, 1),
+                        new BigDecimal("4136.32"),
+                        "PAY-002",
+                        "BANK_TRANSFER",
+                        UUID.randomUUID().toString(),
+                        LocalDate.now().minusDays(1)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
     }
@@ -1138,6 +1102,44 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].status").value("PENDING"))
                 .andExpect(jsonPath("$[1].daysPastDue").value(0))
                 .andExpect(jsonPath("$[1].delinquencyBucket").value("CURRENT"));
+
+        // Gap #6: borrower-admin response surfaces the aggregate delinquency
+        // computed across every active loan for this borrower. Here it's a
+        // single active loan with one 45-day overdue installment.
+        UUID borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId))
+                .orElseThrow()
+                .getBorrower()
+                .getId();
+        mockMvc.perform(get("/api/v1/internal/admin/borrowers/{borrowerId}", borrowerId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delinquency.maxDaysPastDue").value(45))
+                .andExpect(jsonPath("$.delinquency.bucket").value("DPD_31_60"))
+                .andExpect(jsonPath("$.delinquency.overdueLoanCount").value(1))
+                .andExpect(jsonPath("$.delinquency.activeOverdueAmount").value(4136.32));
+    }
+
+    @Test
+    void borrowerAdminDelinquencyIsZeroForBorrowersWithNoActiveLoans() throws Exception {
+        // Gap #6: a borrower with only a pre-disbursement application (no loan
+        // account active yet) reports zero overdue and a null bucket.
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-DPD-AGG-EMPTY", "API", "ABCDE1234F");
+        UUID borrowerId = loanApplicationRepository.findById(UUID.fromString(created.get("id").asText()))
+                .orElseThrow()
+                .getBorrower()
+                .getId();
+
+        mockMvc.perform(get("/api/v1/internal/admin/borrowers/{borrowerId}", borrowerId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.delinquency.maxDaysPastDue").value(0))
+                .andExpect(jsonPath("$.delinquency.overdueLoanCount").value(0))
+                .andExpect(jsonPath("$.delinquency.activeOverdueAmount").value(0))
+                .andExpect(jsonPath("$.delinquency.bucket").doesNotExist());
     }
 
     @Test
@@ -1162,16 +1164,15 @@ class LoanApplicationOpsControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
-                        .with(opsUser())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "amount", new BigDecimal("4136.32"),
-                                "paymentDate", LocalDate.now().minusDays(1).toString(),
-                                "reference", "PAY-003",
-                                "channel", "UPI",
-                                "status", "RECEIVED"
-                        ))))
+        mockMvc.perform(postInstallmentPayment(
+                        applicationId,
+                        installmentIdAt(applicationId, 1),
+                        new BigDecimal("4136.32"),
+                        "PAY-003",
+                        "UPI",
+                        UUID.randomUUID().toString(),
+                        LocalDate.now().minusDays(1),
+                        opsUser()))
                 .andExpect(status().isForbidden());
     }
 
@@ -1282,15 +1283,13 @@ class LoanApplicationOpsControllerTest {
                 .forEach(item -> {
                     if (item.getDocumentType().isRequiredForApproval()) {
                         item.update(
-                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.VERIFIED,
-                                "Verified for approval",
+                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.SUBMITTED,
+                                "Uploaded for approval",
                                 "ops.user",
                                 item.getFileName(),
                                 item.getFileReference(),
                                 item.getSourceReference(),
-                                item.getContentType(),
-                                "Matches borrower records",
-                                null
+                                item.getContentType()
                         );
                         loanApplicationDocumentChecklistRepository.save(item);
                     }
@@ -1503,7 +1502,7 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "PAYMENT_REINITIATION",
+                                "targetStatus", "DISBURSEMENT_RETRY",
                                 "note", "",
                                 "reasonCode", "MANUAL_ADMIN_OVERRIDE"
                         ))))
@@ -1514,7 +1513,7 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "PAYMENT_REINITIATION",
+                                "targetStatus", "DISBURSEMENT_RETRY",
                                 "note", "Needs admin override"
                         ))))
                 .andExpect(status().isBadRequest())
@@ -1522,7 +1521,7 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
-    void paymentReinitiationAndRejectTransitionsRequireReasonCode() throws Exception {
+    void disbursementRetryAndRejectTransitionsRequireReasonCode() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
         mapProductToLsp(product.id(), lsp.id());
@@ -1535,7 +1534,7 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "targetStatus", "PAYMENT_REINITIATION",
+                                "targetStatus", "DISBURSEMENT_RETRY",
                                 "note", "Waiting for clarification"
                         ))))
                 .andExpect(status().isBadRequest())
@@ -1721,11 +1720,10 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
-    void opsUserCanAssignAndReleaseLoanApplications() throws Exception {
+    void loanApplicationAssignmentEndpointsAreRemoved() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
         mapProductToLsp(product.id(), lsp.id());
-        createManagedOpsUser("queue.owner");
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-120", "API", "ABCDE1234F");
         String applicationId = created.get("id").asText();
@@ -1734,59 +1732,252 @@ class LoanApplicationOpsControllerTest {
                         .with(opsUser())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "assigneeUsername", "queue.owner",
-                                "note", "Picked for document review"
+                                "assigneeUsername", "ops.user",
+                                "note", "retired endpoint"
                         ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assignedToUsername").value("queue.owner"))
-                .andExpect(jsonPath("$.assignedByUsername").value("ops.user"))
-                .andExpect(jsonPath("$.assignedAt").exists());
+                .andExpect(status().isNotFound());
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/assignment-events", applicationId)
                         .with(opsUser()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].toAssigneeUsername").value("queue.owner"))
-                .andExpect(jsonPath("$[0].note").value("Picked for document review"));
-
-        Map<String, Object> releasePayload = new LinkedHashMap<>();
-        releasePayload.put("assigneeUsername", null);
-        releasePayload.put("note", "Released back to shared queue");
-
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/assignment", applicationId)
-                        .with(opsUser())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(releasePayload)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.assignedToUsername").doesNotExist())
-                .andExpect(jsonPath("$.assignedAt").doesNotExist());
-
-        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/assignment-events", applicationId)
-                        .with(opsUser()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].fromAssigneeUsername").value("queue.owner"))
-                .andExpect(jsonPath("$[0].toAssigneeUsername").doesNotExist())
-                .andExpect(jsonPath("$[0].note").value("Released back to shared queue"));
+                .andExpect(status().isNotFound());
     }
 
     @Test
-    void assignmentToUnknownUserIsRejected() throws Exception {
+    void loanApplicationResponsesOmitAssignmentFields() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
         mapProductToLsp(product.id(), lsp.id());
 
         JsonNode created = createApplication(lsp.id(), product.id(), "EXT-121", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/assignment", created.get("id").asText())
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assignedToUsername").doesNotExist())
+                .andExpect(jsonPath("$.assignedByUsername").doesNotExist())
+                .andExpect(jsonPath("$.assignedAt").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
                         .with(opsUser())
+                        .param("page", "0")
+                        .param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].assignedToUsername").doesNotExist())
+                .andExpect(jsonPath("$.items[0].assignedByUsername").doesNotExist())
+                .andExpect(jsonPath("$.items[0].assignedAt").doesNotExist());
+    }
+
+    @Test
+    void perLoanWebhookEventsEndpointReturnsScopedRowsWithStatusMapping() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+        enableLspWebhookSubscription(lsp.id(), List.of("LOAN_CREATED", "LOAN_STATUS_CHANGED"));
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-WH-001", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
+
+        JsonNode otherCreated = createApplication(lsp.id(), product.id(), "EXT-WH-002", "API", "ZXCVB1234N");
+        String otherApplicationId = otherCreated.get("id").asText();
+
+        // Drive multi-status outcomes by mutating the persisted outbox rows
+        // directly — this gives us deterministic PENDING / DELIVERED /
+        // RETRYABLE_FAILURE / PERMANENT_FAILURE coverage without leaning on
+        // the dispatch worker, and is the cleanest way to assert the
+        // status-mapping contract.
+        java.util.List<com.bhawana.lms.domain.WebhookEventOutbox> events =
+                webhookEventOutboxRepository.findTop200ByLoanApplicationIdOrderByCreatedAtDesc(
+                        UUID.fromString(applicationId));
+        assertThat(events.size()).isEqualTo(2);
+
+        // events are returned newest-first; createApplication enqueued
+        // LOAN_CREATED first, then transition enqueued LOAN_STATUS_CHANGED.
+        com.bhawana.lms.domain.WebhookEventOutbox statusChangedEvent = events.get(0);
+        com.bhawana.lms.domain.WebhookEventOutbox createdEvent = events.get(1);
+
+        // Mark the LOAN_CREATED row delivered with a 202 attempt
+        java.time.Instant deliveredAt = java.time.Instant.now().minusSeconds(120);
+        createdEvent.markDelivered(deliveredAt);
+        webhookEventOutboxRepository.save(createdEvent);
+        webhookEventDeliveryAttemptRepository.save(new com.bhawana.lms.domain.WebhookEventDeliveryAttempt(
+                createdEvent,
+                1,
+                "https://partner.example.com/webhooks/lms",
+                createdEvent.getEventType().name(),
+                createdEvent.getId().toString(),
+                String.valueOf(deliveredAt.getEpochSecond()),
+                "v1=signature",
+                202,
+                "accepted",
+                null,
+                com.bhawana.lms.domain.WebhookEventDeliveryAttemptStatus.SUCCESS
+        ));
+
+        // Mark the LOAN_STATUS_CHANGED row retryable failure with a 503 attempt
+        java.time.Instant retryAttemptAt = java.time.Instant.now().minusSeconds(60);
+        statusChangedEvent.markRetryableFailure(retryAttemptAt, retryAttemptAt.plusSeconds(60), "503 partner unavailable");
+        webhookEventOutboxRepository.save(statusChangedEvent);
+        webhookEventDeliveryAttemptRepository.save(new com.bhawana.lms.domain.WebhookEventDeliveryAttempt(
+                statusChangedEvent,
+                1,
+                "https://partner.example.com/webhooks/lms",
+                statusChangedEvent.getEventType().name(),
+                statusChangedEvent.getId().toString(),
+                String.valueOf(retryAttemptAt.getEpochSecond()),
+                "v1=signature",
+                503,
+                "partner unavailable",
+                null,
+                com.bhawana.lms.domain.WebhookEventDeliveryAttemptStatus.RETRYABLE_FAILURE
+        ));
+
+        // Manually persist two additional rows to cover DELIVERED-only,
+        // PERMANENT_FAILURE, and PENDING (no attempt) cases. These rows are
+        // scoped to the same loan but emitted by a different aggregate.
+        com.bhawana.lms.domain.Lsp lspEntity = lspRepository.findById(UUID.fromString(lsp.id())).orElseThrow();
+        com.bhawana.lms.domain.WebhookEventOutbox permanentFailureEvent = webhookEventOutboxRepository.save(
+                new com.bhawana.lms.domain.WebhookEventOutbox(
+                        lspEntity,
+                        com.bhawana.lms.domain.WebhookEventType.LOAN_DISBURSEMENT_UPDATED,
+                        "LOAN_ACCOUNT",
+                        UUID.randomUUID().toString(),
+                        UUID.fromString(applicationId),
+                        com.bhawana.lms.domain.WebhookEventOutboxStatus.PENDING,
+                        "{\"payload\":\"perm\"}",
+                        null
+                ));
+        java.time.Instant permanentAt = java.time.Instant.now().minusSeconds(30);
+        permanentFailureEvent.markPermanentFailure(permanentAt, "400 invalid payload");
+        webhookEventOutboxRepository.save(permanentFailureEvent);
+        webhookEventDeliveryAttemptRepository.save(new com.bhawana.lms.domain.WebhookEventDeliveryAttempt(
+                permanentFailureEvent,
+                1,
+                "https://partner.example.com/webhooks/lms",
+                permanentFailureEvent.getEventType().name(),
+                permanentFailureEvent.getId().toString(),
+                String.valueOf(permanentAt.getEpochSecond()),
+                "v1=signature",
+                400,
+                "invalid payload",
+                null,
+                com.bhawana.lms.domain.WebhookEventDeliveryAttemptStatus.PERMANENT_FAILURE
+        ));
+
+        webhookEventOutboxRepository.save(new com.bhawana.lms.domain.WebhookEventOutbox(
+                lspEntity,
+                com.bhawana.lms.domain.WebhookEventType.LOAN_REPAYMENT_RECORDED,
+                "LOAN_PAYMENT_TRANSACTION",
+                UUID.randomUUID().toString(),
+                UUID.fromString(applicationId),
+                com.bhawana.lms.domain.WebhookEventOutboxStatus.PENDING,
+                "{\"payload\":\"pending\"}",
+                null
+        ));
+
+        // A row belonging to a different loan must NOT appear in the response.
+        webhookEventOutboxRepository.save(new com.bhawana.lms.domain.WebhookEventOutbox(
+                lspEntity,
+                com.bhawana.lms.domain.WebhookEventType.LOAN_CREATED,
+                "LOAN_APPLICATION",
+                otherApplicationId,
+                UUID.fromString(otherApplicationId),
+                com.bhawana.lms.domain.WebhookEventOutboxStatus.PENDING,
+                "{\"payload\":\"other\"}",
+                null
+        ));
+
+        // OPS_USER reads the per-loan view
+        MvcResult result = mockMvc.perform(get(
+                        "/api/v1/internal/ops/loan-applications/{applicationId}/webhook-events",
+                        applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(4))
+                .andReturn();
+
+        JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+        java.util.Map<String, JsonNode> byEventType = new java.util.HashMap<>();
+        for (JsonNode row : body) {
+            byEventType.put(row.get("eventType").asText() + ":" + row.get("status").asText(), row);
+        }
+
+        JsonNode deliveredRow = byEventType.get("LOAN_CREATED:DELIVERED");
+        assertThat(deliveredRow).as("delivered row").isNotNull();
+        assertThat(deliveredRow.get("eventId").asText()).isEqualTo(createdEvent.getId().toString());
+        assertThat(deliveredRow.get("targetUrl").asText()).isEqualTo("https://partner.example.com/webhooks/lms");
+        assertThat(deliveredRow.get("attempts").asInt()).isEqualTo(1);
+        assertThat(deliveredRow.get("lastResponseCode").asInt()).isEqualTo(202);
+
+        JsonNode failedRow = byEventType.get("LOAN_STATUS_CHANGED:FAILED");
+        assertThat(failedRow).as("failed row (retryable failure)").isNotNull();
+        assertThat(failedRow.get("lastResponseCode").asInt()).isEqualTo(503);
+        assertThat(failedRow.get("lastError").asText()).contains("503");
+
+        JsonNode deadLetteredRow = byEventType.get("LOAN_DISBURSEMENT_UPDATED:DEAD_LETTERED");
+        assertThat(deadLetteredRow).as("dead-lettered row (permanent failure)").isNotNull();
+        assertThat(deadLetteredRow.get("lastResponseCode").asInt()).isEqualTo(400);
+
+        JsonNode pendingRow = byEventType.get("LOAN_REPAYMENT_RECORDED:PENDING");
+        assertThat(pendingRow).as("pending row").isNotNull();
+        assertThat(pendingRow.get("attempts").asInt()).isEqualTo(0);
+        assertThat(pendingRow.get("lastResponseCode").isNull()).isTrue();
+        assertThat(pendingRow.get("lastError").isNull()).isTrue();
+        assertThat(pendingRow.get("lastAttemptAt").isNull()).isTrue();
+
+        // SYSTEM_ADMIN sees the same view.
+        mockMvc.perform(get(
+                        "/api/v1/internal/ops/loan-applications/{applicationId}/webhook-events",
+                        applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(4));
+    }
+
+    @Test
+    void perLoanWebhookEventsEndpointReturns404ForUnknownLoanApplication() throws Exception {
+        mockMvc.perform(get(
+                        "/api/v1/internal/ops/loan-applications/{applicationId}/webhook-events",
+                        UUID.randomUUID())
+                        .with(opsUser()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void perLoanWebhookEventsEndpointIsForbiddenForLspRoles() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-WH-LSP", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+
+        mockMvc.perform(get(
+                        "/api/v1/internal/ops/loan-applications/{applicationId}/webhook-events",
+                        applicationId)
+                        .with(lspApiClient(lsp.id())))
+                .andExpect(status().isForbidden());
+    }
+
+    private void enableLspWebhookSubscription(String lspId, List<String> eventTypes) throws Exception {
+        mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
+                        .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "assigneeUsername", "missing.user",
-                                "note", "Assign"
+                                "enabled", true,
+                                "endpointUrl", "https://partner.example.com/webhooks/lms",
+                                "signingSecret", "whsec_loan_ops_test",
+                                "eventTypes", eventTypes
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isOk());
+    }
+
+    private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor lspApiClient(String lspId) {
+        return jwt().jwt(jwt -> jwt.subject("lsp.api")
+                        .claim("roles", List.of("LSP_API_CLIENT"))
+                        .claim("lspId", lspId))
+                .authorities(() -> "ROLE_LSP_API_CLIENT");
     }
 
     private JsonNode createApplication(
@@ -1828,6 +2019,72 @@ class LoanApplicationOpsControllerTest {
         int hash = Math.abs(pan.hashCode());
         String suffix = String.format("%09d", hash % 1_000_000_000);
         return "9" + suffix;
+    }
+
+    private JsonNode fetchRepaymentSchedule(String applicationId) throws Exception {
+        MvcResult result = mockMvc.perform(get(
+                        "/api/v1/internal/ops/loan-applications/{applicationId}/repayment-schedule",
+                        applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private String installmentIdAt(String applicationId, int installmentNumber) throws Exception {
+        for (JsonNode installment : fetchRepaymentSchedule(applicationId)) {
+            if (installment.get("installmentNumber").asInt() == installmentNumber) {
+                return installment.get("id").asText();
+            }
+        }
+        throw new IllegalStateException("Installment " + installmentNumber + " not found for " + applicationId);
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder postInstallmentPayment(
+            String applicationId,
+            String installmentId,
+            BigDecimal amount,
+            String reference,
+            String channel,
+            String idempotencyKey,
+            LocalDate postedAt
+    ) throws Exception {
+        return postInstallmentPayment(
+                applicationId,
+                installmentId,
+                amount,
+                reference,
+                channel,
+                idempotencyKey,
+                postedAt,
+                systemAdmin()
+        );
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder postInstallmentPayment(
+            String applicationId,
+            String installmentId,
+            BigDecimal amount,
+            String reference,
+            String channel,
+            String idempotencyKey,
+            LocalDate postedAt,
+            org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor actor
+    ) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("targetInstallmentId", installmentId);
+        body.put("amount", amount);
+        body.put("postedAt", postedAt.toString());
+        body.put("channel", channel);
+        if (reference != null) {
+            body.put("reference", reference);
+        }
+
+        return post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                .with(actor)
+                .header("Idempotency-Key", idempotencyKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body));
     }
 
     private void disburseLoan(String applicationId) throws Exception {
@@ -1967,15 +2224,13 @@ class LoanApplicationOpsControllerTest {
                 .forEach(item -> {
                     if (item.isRequired()) {
                         item.update(
-                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.VERIFIED,
-                                "Verified for approval",
+                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.SUBMITTED,
+                                "Uploaded for approval",
                                 "ops.user",
                                 item.getFileName(),
                                 item.getFileReference(),
                                 item.getSourceReference(),
-                                item.getContentType(),
-                                "Matches borrower records",
-                                null
+                                item.getContentType()
                         );
                         loanApplicationDocumentChecklistRepository.save(item);
                     }

@@ -21,6 +21,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @DataJpaTest
@@ -38,6 +40,7 @@ class WebhookEventOutboxRepositoryPostgresTest extends PostgresDataJpaTestSuppor
     private TransactionTemplate transactionTemplate;
 
     @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void claimDispatchBatchSkipsRowsLockedByAnotherWorker() throws Exception {
         Lsp lsp = lspRepository.save(new Lsp("WEBHOOK-PG", "Webhook Finance", LspStatus.ACTIVE));
         webhookEventOutboxRepository.saveAllAndFlush(List.of(
@@ -87,6 +90,7 @@ class WebhookEventOutboxRepositoryPostgresTest extends PostgresDataJpaTestSuppor
                 WebhookEventType.LOAN_CREATED,
                 "LOAN_APPLICATION",
                 aggregateId,
+                java.util.UUID.nameUUIDFromBytes(("outbox-test:" + aggregateId).getBytes()),
                 WebhookEventOutboxStatus.PENDING,
                 "{\"aggregateId\":\"" + aggregateId + "\"}",
                 "correlation-" + aggregateId

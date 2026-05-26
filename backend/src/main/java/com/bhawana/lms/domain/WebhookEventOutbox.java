@@ -36,6 +36,9 @@ public class WebhookEventOutbox {
     @Column(name = "aggregate_id", nullable = false, length = 64)
     private String aggregateId;
 
+    @Column(name = "loan_application_id")
+    private UUID loanApplicationId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private WebhookEventOutboxStatus status;
@@ -79,6 +82,7 @@ public class WebhookEventOutbox {
             WebhookEventType eventType,
             String aggregateType,
             String aggregateId,
+            UUID loanApplicationId,
             WebhookEventOutboxStatus status,
             String payloadJson,
             String correlationId
@@ -88,6 +92,7 @@ public class WebhookEventOutbox {
         this.eventType = eventType;
         this.aggregateType = aggregateType;
         this.aggregateId = aggregateId;
+        this.loanApplicationId = loanApplicationId;
         this.status = status;
         this.payloadJson = payloadJson;
         this.correlationId = correlationId;
@@ -123,6 +128,10 @@ public class WebhookEventOutbox {
 
     public String getAggregateId() {
         return aggregateId;
+    }
+
+    public UUID getLoanApplicationId() {
+        return loanApplicationId;
     }
 
     public WebhookEventOutboxStatus getStatus() {

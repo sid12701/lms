@@ -81,3 +81,11 @@ app:
   rate-limit:
     auth-per-minute: ${APP_RATE_LIMIT_AUTH_PER_MINUTE:10}
     lsp-write-per-minute: ${APP_RATE_LIMIT_LSP_WRITE_PER_MINUTE:60}
+  alert-rules:
+    scheduler-enabled: ${APP_ALERT_RULES_SCHEDULER_ENABLED:true}
+    scheduler-fixed-delay-ms: ${APP_ALERT_RULES_SCHEDULER_FIXED_DELAY_MS:300000}
+    stale-intake-hours: ${APP_ALERT_RULES_STALE_INTAKE_HOURS:24}
+    stuck-disbursement-hours: ${APP_ALERT_RULES_STUCK_DISBURSEMENT_HOURS:2}
+    lsp-reject-window-days: ${APP_ALERT_RULES_LSP_REJECT_WINDOW_DAYS:7}
+    lsp-reject-min-samples: ${APP_ALERT_RULES_LSP_REJECT_MIN_SAMPLES:10}
+    lsp-reject-rate-pct: ${APP_ALERT_RULES_LSP_REJECT_RATE_PCT:40}

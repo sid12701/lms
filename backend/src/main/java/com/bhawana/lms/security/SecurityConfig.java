@@ -19,6 +19,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
@@ -112,7 +113,7 @@ public class SecurityConfig {
                 .build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                 JwtValidators.createDefaultWithIssuer(securityProperties.getJwt().getIssuer()),
-                managedUserPasswordVersionValidator(appUserRepository)
+                managedUserSessionValidator(appUserRepository)
         ));
         return decoder;
     }
@@ -212,6 +213,7 @@ public class SecurityConfig {
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key"));
         configuration.setExposedHeaders(List.of(
                 "X-Correlation-Id",
+                HttpHeaders.CONTENT_DISPOSITION,
                 PaginationResponseBuilder.TOTAL_COUNT_HEADER,
                 PaginationResponseBuilder.LIMIT_HEADER,
                 PaginationResponseBuilder.OFFSET_HEADER
@@ -230,7 +232,7 @@ public class SecurityConfig {
         return converter;
     }
 
-    private OAuth2TokenValidator<Jwt> managedUserPasswordVersionValidator(AppUserRepository appUserRepository) {
+    private OAuth2TokenValidator<Jwt> managedUserSessionValidator(AppUserRepository appUserRepository) {
         return jwt -> {
             String username = jwt.getSubject();
             if (username == null || username.isBlank()) {
@@ -248,6 +250,18 @@ public class SecurityConfig {
                                     null
                             ));
                         }
+
+                        Long tokenSessionVersion = jwt.getClaim("tv");
+                        long currentSessionVersion = appUser.getTokenVersion();
+                        long effectiveTokenSessionVersion = tokenSessionVersion == null ? 0L : tokenSessionVersion.longValue();
+                        if (effectiveTokenSessionVersion != currentSessionVersion) {
+                            return OAuth2TokenValidatorResult.failure(new OAuth2Error(
+                                    "invalid_token",
+                                    "Session is no longer valid",
+                                    null
+                            ));
+                        }
+
                         return OAuth2TokenValidatorResult.success();
                     })
                     .orElseGet(OAuth2TokenValidatorResult::success);

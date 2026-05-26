@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.repo.ApiClientAuditEventRepository;
+import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
@@ -109,6 +111,12 @@ class LspLoanApplicationApiControllerTest {
     private LoanApplicationPiiRevealAuditRepository loanApplicationPiiRevealAuditRepository;
 
     @Autowired
+    private ApiClientAuditEventRepository apiClientAuditEventRepository;
+
+    @Autowired
+    private ApiClientIpAllowlistRepository apiClientIpAllowlistRepository;
+
+    @Autowired
     private ApiClientRepository apiClientRepository;
 
     @Autowired
@@ -147,6 +155,8 @@ class LspLoanApplicationApiControllerTest {
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
+        apiClientIpAllowlistRepository.deleteAllInBatch();
+        apiClientAuditEventRepository.deleteAllInBatch();
         apiClientRepository.deleteAllInBatch();
         loanProductAuditEventRepository.deleteAllInBatch();
         loanProductLspMappingRepository.deleteAllInBatch();
@@ -344,7 +354,7 @@ class LspLoanApplicationApiControllerTest {
     }
 
     @Test
-    void borrowerPiiRevealIsMaskedByDefaultAuditedOnRevealAndForbiddenForReadOnlyUsers() throws Exception {
+    void borrowerPiiIsAlwaysMaskedAndRevealEndpointIsRemoved() throws Exception {
         LspFixture apex = createLsp("ACTIVE");
         ProductFixture apexProduct = createProduct("ACTIVE");
         mapProductToLsp(apexProduct.id(), apex.id());
@@ -357,8 +367,8 @@ class LspLoanApplicationApiControllerTest {
 
         JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-PII-001");
         String applicationId = createdApplication.get("id").asText();
-        String borrowerId = createdApplication.get("borrowerId").asText();
 
+        // Aadhaar/PAN/bank PII is masked on every read site — there is no reveal path.
         mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
@@ -370,29 +380,16 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(jsonPath("$.referencePersonName").value("***"))
                 .andExpect(jsonPath("$.referencePersonNumber").value("***"));
 
-        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}/borrower-pii", applicationId)
-                        .with(lspUiUser(apex.id(), "Apex Tenant")))
-                .andExpect(status().isForbidden());
-
+        // The historical borrower-pii reveal endpoint is removed. Any caller hits 404,
+        // regardless of role. No audit row is written.
         mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}/borrower-pii", applicationId)
                         .with(lspUiWriteUser(apex.id(), "Apex Tenant")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.applicationId").value(applicationId))
-                .andExpect(jsonPath("$.borrowerId").value(borrowerId))
-                .andExpect(jsonPath("$.aadharNumber").value("123412341234"))
-                .andExpect(jsonPath("$.panNumber").value("ABCDE1234F"))
-                .andExpect(jsonPath("$.bankAccountNumber").value("123456789012"))
-                .andExpect(jsonPath("$.ifscCode").value("HDFC0001234"))
-                .andExpect(jsonPath("$.accountHolderName").value("Anika Sharma"))
-                .andExpect(jsonPath("$.employeeId").value("EMP-001"))
-                .andExpect(jsonPath("$.referencePersonName").value("Neha Verma"))
-                .andExpect(jsonPath("$.referencePersonNumber").value("9888877777"));
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}/borrower-pii", applicationId)
+                        .with(lspUiUser(apex.id(), "Apex Tenant")))
+                .andExpect(status().isNotFound());
 
-        assertEquals(1L, loanApplicationPiiRevealAuditRepository.count());
-        assertEquals(
-                apex.id(),
-                loanApplicationPiiRevealAuditRepository.findAll().getFirst().getLspId().toString()
-        );
+        assertEquals(0L, loanApplicationPiiRevealAuditRepository.count());
     }
 
     @Test
@@ -792,7 +789,7 @@ class LspLoanApplicationApiControllerTest {
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.documentType").value("AADHAAR_FILE"))
-                .andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.status").value("SUBMITTED"))
                 .andExpect(jsonPath("$.fileName").value("aadhaar.pdf"));
 
         mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
@@ -808,7 +805,7 @@ class LspLoanApplicationApiControllerTest {
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.documentType").value("LOAN_AGREEMENT"))
-                .andExpect(jsonPath("$.status").value("RECEIVED"))
+                .andExpect(jsonPath("$.status").value("SUBMITTED"))
                 .andExpect(jsonPath("$.fileName").value("loan-agreement.pdf"));
 
         markAllRequiredKycDocumentsVerified(applicationId);
@@ -816,10 +813,10 @@ class LspLoanApplicationApiControllerTest {
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", systemAdmin());
         requestDisbursement(applicationId);
         resolveDisbursement(applicationId);
-        recordPayment(applicationId);
 
         JsonNode externalDetail = getApplicationDetail(accessToken, applicationId);
         String loanId = externalDetail.get("loanAccount").get("id").asText();
+        recordPaymentViaLsp(accessToken, loanId);
 
         mockMvc.perform(get("/api/v1/lsp/loans/{loanId}", loanId)
                         .header("Authorization", "Bearer " + accessToken))
@@ -851,6 +848,148 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(jsonPath("$.loanAccountId").value(loanId))
                 .andExpect(jsonPath("$.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @Test
+    void documentUploadRejectsOversizedFilesAndDisallowedMimeTypesAndReplacesOnReupload() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Integration");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-AUTO-CHECK-001");
+        String applicationId = createdApplication.get("id").asText();
+
+        // 11 MB of bytes — exceeds the 10 MB cap.
+        byte[] oversized = new byte[11 * 1024 * 1024];
+        java.util.Arrays.fill(oversized, (byte) 'A');
+        mockMvc.perform(multipart("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                "huge.pdf",
+                                "application/pdf",
+                                oversized
+                        ))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("documentType", "PAN_CARD")
+                        .param("note", "too large"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_FILE_TOO_LARGE"));
+
+        // Disallowed MIME type (application/zip is not in the allowlist).
+        mockMvc.perform(multipart("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                "archive.zip",
+                                "application/zip",
+                                "PKfake-zip".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                        ))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("documentType", "PAN_CARD")
+                        .param("note", "wrong mime"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_MIME_NOT_ALLOWED"));
+
+        // Happy-path upload: small PDF passes; row transitions to SUBMITTED.
+        mockMvc.perform(multipart("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                "pan-v1.pdf",
+                                "application/pdf",
+                                "%PDF-1.4 v1 content".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                        ))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("documentType", "PAN_CARD")
+                        .param("note", "first upload"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentType").value("PAN_CARD"))
+                .andExpect(jsonPath("$.status").value("SUBMITTED"))
+                .andExpect(jsonPath("$.fileName").value("pan-v1.pdf"))
+                .andExpect(jsonPath("$.lmsManagedContent").value(true))
+                .andExpect(jsonPath("$.reviewReason").doesNotExist())
+                .andExpect(jsonPath("$.rejectionReason").doesNotExist());
+
+        // Re-upload of the same documentType replaces the previous file.
+        mockMvc.perform(multipart("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                "pan-v2.pdf",
+                                "application/pdf",
+                                "%PDF-1.4 v2 content".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                        ))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("documentType", "PAN_CARD")
+                        .param("note", "second upload (replacement)"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentType").value("PAN_CARD"))
+                .andExpect(jsonPath("$.status").value("SUBMITTED"))
+                .andExpect(jsonPath("$.fileName").value("pan-v2.pdf"))
+                .andExpect(jsonPath("$.note").value("second upload (replacement)"));
+    }
+
+    @Test
+    void documentUploadEnforcesPerDocumentTypeConstraints() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Integration");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-TYPE-CHECK-001");
+        String applicationId = createdApplication.get("id").asText();
+
+        mockMvc.perform(multipart("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                "agreement.jpg",
+                                "image/jpeg",
+                                "jpeg-body".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                        ))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("documentType", "LOAN_AGREEMENT")
+                        .param("note", "loan agreement must be pdf"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_MIME_NOT_ALLOWED"))
+                .andExpect(jsonPath("$.violations[?(@.field == 'documentType')].message").value("LOAN_AGREEMENT"));
+
+        byte[] sixMegabytes = new byte[6 * 1024 * 1024];
+        java.util.Arrays.fill(sixMegabytes, (byte) 'P');
+        mockMvc.perform(multipart("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                "pan-large.pdf",
+                                "application/pdf",
+                                sixMegabytes
+                        ))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("documentType", "PAN_CARD")
+                        .param("note", "pan capped at 5mb"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_FILE_TOO_LARGE"))
+                .andExpect(jsonPath("$.violations[?(@.field == 'documentType')].message").value("PAN_CARD"));
+
+        mockMvc.perform(multipart("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                "agreement.pdf",
+                                "application/pdf",
+                                "%PDF-1.4 agreement".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                        ))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("documentType", "LOAN_AGREEMENT")
+                        .param("note", "pdf ok"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentType").value("LOAN_AGREEMENT"))
+                .andExpect(jsonPath("$.status").value("SUBMITTED"));
     }
 
     @Test
@@ -895,6 +1034,80 @@ class LspLoanApplicationApiControllerTest {
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void lspDocumentsListReturnsUploadsOnlyForOwnerWithStatusSubmitted() throws Exception {
+        // Gap #4: GET /api/v1/lsp/loan-applications/{id}/documents returns
+        // every checklist row that has been submitted (PENDING placeholders
+        // hidden), with status folded to SUBMITTED. Cross-tenant access is
+        // refused with 400.
+        LspFixture apex = createLsp("ACTIVE");
+        LspFixture north = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        ProductFixture northProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        mapProductToLsp(northProduct.id(), north.id());
+
+        JsonNode apexClient = createApiClient(apex.id(), "Apex Integration");
+        JsonNode northClient = createApiClient(north.id(), "North Integration");
+        String apexAccessToken = issueClientCredentialsToken(
+                apexClient.get("clientId").asText(),
+                apexClient.get("clientSecret").asText()
+        );
+        String northAccessToken = issueClientCredentialsToken(
+                northClient.get("clientId").asText(),
+                northClient.get("clientSecret").asText()
+        );
+
+        JsonNode apexApplication = createExternalApplication(apexAccessToken, apexProduct.id(), "APEX-DOCS-001");
+        String applicationId = apexApplication.get("id").asText();
+
+        // No docs submitted yet — the read returns an empty list.
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .header("Authorization", "Bearer " + apexAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+
+        // Submit one PAN doc.
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .header("Authorization", "Bearer " + apexAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "documentType", "PAN_CARD",
+                                "note", "PAN uploaded from partner LOS",
+                                "fileName", "pan.pdf",
+                                "fileReference", "minio://tenant-apex/pan.pdf",
+                                "sourceReference", "los-doc-pan",
+                                "contentType", "application/pdf"
+                        ))))
+                .andExpect(status().isOk());
+
+        // The read now surfaces a single row, status folded to SUBMITTED.
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .header("Authorization", "Bearer " + apexAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].documentType").value("PAN_CARD"))
+                .andExpect(jsonPath("$[0].status").value("SUBMITTED"))
+                .andExpect(jsonPath("$[0].fileName").value("pan.pdf"))
+                .andExpect(jsonPath("$[0].contentType").value("application/pdf"))
+                .andExpect(jsonPath("$[0].note").value("PAN uploaded from partner LOS"))
+                .andExpect(jsonPath("$[0].uploadedAt").exists())
+                .andExpect(jsonPath("$[0].uploadedByUsername").exists());
+
+        // North's token cannot read Apex's documents.
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .header("Authorization", "Bearer " + northAccessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+
+        // LSP_UI_READ on the owning tenant can read the documents.
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .with(lspUiUser(apex.id(), "Apex Tenant")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].status").value("SUBMITTED"));
     }
 
     @Test
@@ -1187,29 +1400,23 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(status().isOk());
     }
 
-    private void markAllRequiredKycDocumentsVerified(String applicationId) throws Exception {
-        for (String documentType : List.of(
-                "PAN_CARD",
-                "AADHAAR_FILE",
-                "ADDRESS_PROOF",
-                "INCOME_PROOF",
-                "BANK_STATEMENT",
-                "SELFIE_PHOTOGRAPH",
-                "KFS",
-                "LOAN_AGREEMENT"
-        )) {
-            mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
-                            applicationId,
-                            documentType)
-                            .with(opsUser())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(Map.of(
-                                    "status", "VERIFIED",
-                                    "note", "Verified",
-                                    "reviewReason", "Checked"
-                            ))))
-                    .andExpect(status().isOk());
-        }
+    private void markAllRequiredKycDocumentsVerified(String applicationId) {
+        loanApplicationDocumentChecklistRepository
+                .findByLoanApplication_IdOrderByCreatedAtAsc(UUID.fromString(applicationId))
+                .forEach(item -> {
+                    if (item.isRequired()) {
+                        item.update(
+                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.SUBMITTED,
+                                "Uploaded for approval",
+                                "ops.user",
+                                item.getDocumentType().name().toLowerCase() + ".pdf",
+                                "seed://" + item.getDocumentType().name().toLowerCase(),
+                                "seed",
+                                "application/pdf"
+                        );
+                        loanApplicationDocumentChecklistRepository.save(item);
+                    }
+                });
     }
 
     private void requestDisbursement(String applicationId) throws Exception {
@@ -1278,17 +1485,54 @@ class LspLoanApplicationApiControllerTest {
     }
 
     private void recordPayment(String applicationId) throws Exception {
+        MvcResult scheduleResult = mockMvc.perform(get(
+                        "/api/v1/internal/ops/loan-applications/{applicationId}/repayment-schedule",
+                        applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode schedule = objectMapper.readTree(scheduleResult.getResponse().getContentAsString());
+        String installmentId = schedule.get(0).get("id").asText();
+        BigDecimal amount = schedule.get(0).get("outstandingAmount").decimalValue();
+
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
                         .with(systemAdmin())
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "amount", new BigDecimal("4136.32"),
-                                "paymentDate", LocalDate.now().minusDays(1).toString(),
+                                "targetInstallmentId", installmentId,
+                                "amount", amount,
+                                "postedAt", LocalDate.now().minusDays(1).toString(),
                                 "reference", "PAY-LSP-001",
-                                "channel", "UPI",
-                                "status", "RECEIVED"
+                                "channel", "UPI"
                         ))))
                 .andExpect(status().isOk());
+    }
+
+    private void recordPaymentViaLsp(String accessToken, String loanId) throws Exception {
+        MvcResult scheduleResult = mockMvc.perform(get("/api/v1/lsp/loans/{loanId}/repayment-schedule", loanId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode schedule = objectMapper.readTree(scheduleResult.getResponse().getContentAsString());
+        String installmentId = schedule.get(0).get("id").asText();
+        BigDecimal amount = schedule.get(0).get("outstandingAmount").decimalValue();
+
+        mockMvc.perform(post("/api/v1/lsp/loans/{loanId}/payments", loanId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetInstallmentId", installmentId,
+                                "amount", amount,
+                                "postedAt", LocalDate.now().minusDays(1).toString(),
+                                "reference", "PAY-LSP-001",
+                                "channel", "UPI"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.loanAccountId").value(loanId))
+                .andExpect(jsonPath("$.targetInstallmentId").value(installmentId))
+                .andExpect(jsonPath("$.reference").value("PAY-LSP-001"));
     }
 
     private JsonNode createApiClient(String lspId, String name) throws Exception {

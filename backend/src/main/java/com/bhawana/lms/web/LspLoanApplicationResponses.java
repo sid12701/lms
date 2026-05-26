@@ -63,9 +63,6 @@ public final class LspLoanApplicationResponses {
                 application.getInvalidReasonText(),
                 application.getInvalidatedByUsername(),
                 application.getInvalidatedAt() == null ? null : application.getInvalidatedAt().toString(),
-                application.getAssignedToUsername(),
-                application.getAssignedByUsername(),
-                application.getAssignedAt(),
                 application.getCreatedAt().toString(),
                 application.getUpdatedAt().toString(),
                 toLoanAccountSummary(
@@ -124,9 +121,6 @@ public final class LspLoanApplicationResponses {
                 maskOpaqueValue(application.getBorrower().getReferencePersonNumber()),
                 application.getSourceChannel(),
                 application.getStatus().name(),
-                application.getAssignedToUsername(),
-                application.getAssignedByUsername(),
-                application.getAssignedAt(),
                 application.getCreatedAt().toString()
         );
     }
@@ -175,23 +169,6 @@ public final class LspLoanApplicationResponses {
                 activity.detail(),
                 activity.correlationId(),
                 activity.occurredAt().toString()
-        );
-    }
-
-    public static LspLoanApplicationApiController.LspBorrowerPiiRevealResponse toBorrowerPiiRevealResponse(
-            LoanApplicationService.BorrowerPiiReveal reveal
-    ) {
-        return new LspLoanApplicationApiController.LspBorrowerPiiRevealResponse(
-                reveal.applicationId().toString(),
-                reveal.borrowerId().toString(),
-                reveal.aadharNumber(),
-                reveal.panNumber(),
-                reveal.bankAccountNumber(),
-                reveal.ifscCode(),
-                reveal.accountHolderName(),
-                reveal.employeeId(),
-                reveal.referencePersonName(),
-                reveal.referencePersonNumber()
         );
     }
 

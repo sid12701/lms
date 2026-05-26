@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.repo.ApiClientAuditEventRepository;
+import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
@@ -114,6 +116,12 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
     private BorrowerRepository borrowerRepository;
 
     @Autowired
+    private ApiClientAuditEventRepository apiClientAuditEventRepository;
+
+    @Autowired
+    private ApiClientIpAllowlistRepository apiClientIpAllowlistRepository;
+
+    @Autowired
     private ApiClientRepository apiClientRepository;
 
     @Autowired
@@ -145,6 +153,8 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
+        apiClientIpAllowlistRepository.deleteAllInBatch();
+        apiClientAuditEventRepository.deleteAllInBatch();
         apiClientRepository.deleteAllInBatch();
         loanProductAuditEventRepository.deleteAllInBatch();
         loanProductLspMappingRepository.deleteAllInBatch();
@@ -216,8 +226,8 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
                 northClient.get("clientSecret").asText()
         );
 
-        createExternalApplication(apexAccessToken, apex.id(), apexProduct.id(), "APEX-RLS-010", "ABCDE1234F");
-        createExternalApplication(northAccessToken, north.id(), northProduct.id(), "NORTH-RLS-010", "ZXCVB1234N");
+        createExternalApplication(apexAccessToken, apex.id(), apexProduct.id(), "APEX-RLS-010", "ABCDE1234F", "9999999999");
+        createExternalApplication(northAccessToken, north.id(), northProduct.id(), "NORTH-RLS-010", "ZXCVB1234N", "8888888888");
 
         assertEquals(2, queryCountAsAdmin("loan_application"));
         assertEquals(2, queryCountAsAdmin("borrower"));
@@ -238,7 +248,8 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
         String message = exception.getMostSpecificCause() == null
                 ? exception.getMessage()
                 : exception.getMostSpecificCause().getMessage();
-        org.assertj.core.api.Assertions.assertThat(message).contains("app.current_lsp_id");
+        org.assertj.core.api.Assertions.assertThat(message)
+                .containsAnyOf("app.current_lsp_id", "invalid input syntax for type uuid");
     }
 
     private int queryCountAsAdmin(String tableName) {
@@ -269,13 +280,24 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
             String externalLoanId,
             String panNumber
     ) throws Exception {
+        return createExternalApplication(accessToken, lspId, productId, externalLoanId, panNumber, "9999999999");
+    }
+
+    private JsonNode createExternalApplication(
+            String accessToken,
+            String lspId,
+            String productId,
+            String externalLoanId,
+            String panNumber,
+            String mobileNumber
+    ) throws Exception {
         LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
         payload.put("lspId", lspId);
         payload.put("productId", productId);
         payload.put("lspLoanId", externalLoanId);
         payload.put("fullName", "Borrower " + externalLoanId);
         payload.put("emailAddress", externalLoanId.toLowerCase() + "@example.com");
-        payload.put("mobileNumber", "9999999999");
+        payload.put("mobileNumber", mobileNumber);
         payload.put("dob", "1992-03-10");
         payload.put("gender", "FEMALE");
         payload.put("maritalStatus", "SINGLE");

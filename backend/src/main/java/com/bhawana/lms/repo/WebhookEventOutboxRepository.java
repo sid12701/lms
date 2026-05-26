@@ -11,4 +11,6 @@ public interface WebhookEventOutboxRepository extends JpaRepository<WebhookEvent
     List<WebhookEventOutbox> findTop50ByOrderByCreatedAtDesc();
 
     List<WebhookEventOutbox> findTop50ByLsp_IdOrderByCreatedAtDesc(UUID lspId);
+
+    List<WebhookEventOutbox> findTop200ByLoanApplicationIdOrderByCreatedAtDesc(UUID loanApplicationId);
 }

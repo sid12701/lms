@@ -23,6 +23,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.oauth2.jwt.Jwt;
+import com.bhawana.lms.service.AlertRuleEvaluationService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -38,15 +40,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final ProxyManager<String> proxyManager;
     private final ObjectMapper objectMapper;
     private final RateLimitProperties properties;
+    private final ObjectProvider<AlertRuleEvaluationService> alertRuleEvaluationServiceProvider;
 
     public RateLimitFilter(
             ProxyManager<String> rateLimitProxyManager,
             ObjectMapper objectMapper,
-            RateLimitProperties properties
+            RateLimitProperties properties,
+            ObjectProvider<AlertRuleEvaluationService> alertRuleEvaluationServiceProvider
     ) {
         this.proxyManager = rateLimitProxyManager;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.alertRuleEvaluationServiceProvider = alertRuleEvaluationServiceProvider;
     }
 
     @Override
@@ -71,6 +76,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
         long retryAfterSeconds = Math.max(1L, probe.getNanosToWaitForRefill() / 1_000_000_000L);
         response.setHeader("Retry-After", Long.toString(retryAfterSeconds));
         log.warn("Rate limit exceeded for bucket {} — retry after {}s", target.key(), retryAfterSeconds);
+        AlertRuleEvaluationService alertRules = alertRuleEvaluationServiceProvider.getIfAvailable();
+        if (alertRules != null) {
+            alertRules.emitRateLimitBreach(target.key(), request.getRequestURI(), retryAfterSeconds);
+        }
         writeApiError(
                 response,
                 429,

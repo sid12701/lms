@@ -202,6 +202,50 @@ class ReportAdminControllerTest {
     }
 
     @Test
+    void portfolioMisPreviewMasksAadhaarAndBankAccountForEveryRow() throws Exception {
+        LspFixture apex = createLsp("APEX");
+        ProductFixture product = createProduct();
+        mapProductToLsps(product.id(), apex.id());
+
+        JsonNode loan = createApplication(apex.id(), product.id(), "APEX-PII-001", "ABCDE1234F");
+        approveLoan(loan.get("id").asText());
+        disburseLoan(loan.get("id").asText());
+        setDisbursedAt(loan.get("id").asText(), LocalDate.of(2026, 3, 10));
+
+        // Seed the borrower's aadhaar + bank account directly so the masking
+        // contract has something to mask. The intake flow does not currently
+        // collect these, so we patch via jdbc.
+        jdbcTemplate.update(
+                "update borrower set aadhar_number = ?, bank_account_number = ? "
+                        + "where id = (select borrower_id from loan_application where id = ?)",
+                "987654321012",
+                "9876543210123456",
+                UUID.fromString(loan.get("id").asText())
+        );
+
+        // JSON preview surface
+        MvcResult preview = mockMvc.perform(get("/api/v1/internal/reports/portfolio-mis/preview")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].aadharNumber").value("XXXXXXXX1012"))
+                .andExpect(jsonPath("$.content[0].bankAccountNumber").value("XXXX3456"))
+                .andReturn();
+        String previewBody = preview.getResponse().getContentAsString();
+        assertFalse(previewBody.contains("987654321012"), "raw aadhaar must not leak through the preview");
+        assertFalse(previewBody.contains("9876543210123456"), "raw bank account must not leak through the preview");
+
+        // CSV download surface inherits the same row projection.
+        String csv = mockMvc.perform(get("/api/v1/internal/reports/portfolio-mis")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertTrue(csv.contains("XXXXXXXX1012"), "CSV must carry masked aadhaar");
+        assertTrue(csv.contains("XXXX3456"), "CSV must carry masked bank account");
+        assertFalse(csv.contains("987654321012"), "raw aadhaar must not leak through the CSV");
+        assertFalse(csv.contains("9876543210123456"), "raw bank account must not leak through the CSV");
+    }
+
+    @Test
     void invalidDateRangeAndNonAdminAccessAreRejected() throws Exception {
         mockMvc.perform(get("/api/v1/internal/reports/portfolio-mis")
                         .with(systemAdmin())
@@ -382,15 +426,13 @@ class ReportAdminControllerTest {
                 .forEach(item -> {
                     if (item.isRequired()) {
                         item.update(
-                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.VERIFIED,
-                                "Verified for report flow",
+                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.SUBMITTED,
+                                "Uploaded for report flow",
                                 "ops.user",
                                 item.getFileName(),
                                 item.getFileReference(),
                                 item.getSourceReference(),
-                                item.getContentType(),
-                                "Matches borrower records",
-                                null
+                                item.getContentType()
                         );
                         loanApplicationDocumentChecklistRepository.save(item);
                     }

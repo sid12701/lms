@@ -9,7 +9,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.domain.OpsAlert;
+import com.bhawana.lms.domain.OpsAlertSeverity;
+import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
@@ -110,8 +114,12 @@ class HomeDashboardControllerTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private OpsAlertRepository opsAlertRepository;
+
     @BeforeEach
     void setUp() {
+        opsAlertRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
@@ -140,11 +148,25 @@ class HomeDashboardControllerTest {
 
         JsonNode apexLoan = createApplication(apex.id(), product.id(), "APEX-HOME-001", "ABCDE1234F");
         JsonNode northLoan = createApplication(north.id(), product.id(), "NORTH-HOME-001", "ZXCVB1234N");
+        JsonNode queuedLoan = createApplication(apex.id(), product.id(), "APEX-HOME-002", "PQRST5678K");
+
+        transitionApplication(queuedLoan.get("id").asText(), "AWAITING_APPROVAL", "Queued for approval", opsUser());
 
         approveLoan(apexLoan.get("id").asText());
         approveLoan(northLoan.get("id").asText());
         disburseLoan(apexLoan.get("id").asText());
         disburseLoan(northLoan.get("id").asText());
+
+        opsAlertRepository.save(new OpsAlert(
+                OpsAlertType.BORROWER_IDENTITY_CONFLICT,
+                OpsAlertSeverity.HIGH,
+                "Duplicate PAN detected",
+                "Borrower onboarding conflict for dashboard coverage",
+                "BORROWER",
+                UUID.randomUUID(),
+                "home-dashboard-test",
+                null
+        ));
 
         setInstallmentDueDate(apexLoan.get("id").asText(), 1, LocalDate.now().minusDays(120));
 
@@ -177,7 +199,16 @@ class HomeDashboardControllerTest {
                 .andExpect(jsonPath("$.lspBreakdown[1].shareOfDpd90PlusPercent").value(0.00))
                 .andExpect(jsonPath("$.lspBreakdown[1].bucketBreakdown[0].bucket").value("CURRENT"))
                 .andExpect(jsonPath("$.lspBreakdown[1].bucketBreakdown[0].loanCount").value(1))
-                .andExpect(jsonPath("$.lspBreakdown[1].bucketBreakdown[0].outstandingAmount", closeTo(49635.79, 0.01)));
+                .andExpect(jsonPath("$.lspBreakdown[1].bucketBreakdown[0].outstandingAmount", closeTo(49635.79, 0.01)))
+                .andExpect(jsonPath("$.applicationsAwaitingApproval").value(1))
+                .andExpect(jsonPath("$.applicationsInDisbursement").value(0))
+                .andExpect(jsonPath("$.avgApprovalTatHours").isNumber())
+                .andExpect(jsonPath("$.applicationsByStatus[?(@.status == 'AWAITING_APPROVAL')].count").value(1))
+                .andExpect(jsonPath("$.applicationsByStatus[?(@.status == 'DISBURSED')].count").value(2))
+                .andExpect(jsonPath("$.dpdBuckets[?(@.bucket == 'DPD_90_PLUS')].count").value(1))
+                .andExpect(jsonPath("$.openAlerts").value(1))
+                .andExpect(jsonPath("$.openAlertSummaries", hasSize(1)))
+                .andExpect(jsonPath("$.openAlertSummaries[0].title").value("Duplicate PAN detected"));
     }
 
     @Test
@@ -297,24 +328,23 @@ class HomeDashboardControllerTest {
                 .andExpect(status().isOk());
     }
 
-    private void markAllRequiredKycDocumentsVerified(String applicationId) throws Exception {
-        MvcResult checklistResult = mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents", applicationId)
-                        .with(opsUser()))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        JsonNode checklist = objectMapper.readTree(checklistResult.getResponse().getContentAsString());
-        for (JsonNode item : checklist) {
-            mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}", applicationId, item.get("documentType").asText())
-                            .with(opsUser())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(Map.of(
-                                    "status", "VERIFIED",
-                                    "fileReference", "doc/" + item.get("documentType").asText().toLowerCase(),
-                                    "reviewReason", "Verified for dashboard test"
-                            ))))
-                    .andExpect(status().isOk());
-        }
+    private void markAllRequiredKycDocumentsVerified(String applicationId) {
+        loanApplicationDocumentChecklistRepository
+                .findByLoanApplication_IdOrderByCreatedAtAsc(UUID.fromString(applicationId))
+                .forEach(item -> {
+                    if (item.isRequired()) {
+                        item.update(
+                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.SUBMITTED,
+                                "Uploaded for dashboard test",
+                                "ops.user",
+                                item.getDocumentType().name().toLowerCase() + ".pdf",
+                                "doc/" + item.getDocumentType().name().toLowerCase(),
+                                "seed",
+                                "application/pdf"
+                        );
+                        loanApplicationDocumentChecklistRepository.save(item);
+                    }
+                });
     }
 
     private static Map<String, Object> loanApplicationPayload(

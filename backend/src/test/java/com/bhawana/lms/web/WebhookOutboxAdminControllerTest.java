@@ -542,29 +542,23 @@ class WebhookOutboxAdminControllerTest {
                 .andExpect(status().isOk());
     }
 
-    private void markAllRequiredKycDocumentsVerified(String applicationId) throws Exception {
-        for (String documentType : List.of(
-                "PAN_CARD",
-                "AADHAAR_FILE",
-                "ADDRESS_PROOF",
-                "INCOME_PROOF",
-                "BANK_STATEMENT",
-                "SELFIE_PHOTOGRAPH",
-                "KFS",
-                "LOAN_AGREEMENT"
-        )) {
-            mockMvc.perform(put("/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}",
-                            applicationId,
-                            documentType)
-                            .with(opsUser())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(Map.of(
-                                    "status", "VERIFIED",
-                                    "note", "Verified",
-                                    "reviewReason", "Checked"
-                            ))))
-                    .andExpect(status().isOk());
-        }
+    private void markAllRequiredKycDocumentsVerified(String applicationId) {
+        loanApplicationDocumentChecklistRepository
+                .findByLoanApplication_IdOrderByCreatedAtAsc(UUID.fromString(applicationId))
+                .forEach(item -> {
+                    if (item.isRequired()) {
+                        item.update(
+                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.SUBMITTED,
+                                "Uploaded for approval",
+                                "ops.user",
+                                item.getDocumentType().name().toLowerCase() + ".pdf",
+                                "seed://" + item.getDocumentType().name().toLowerCase(),
+                                "seed",
+                                "application/pdf"
+                        );
+                        loanApplicationDocumentChecklistRepository.save(item);
+                    }
+                });
     }
 
     private void requestDisbursement(String applicationId) throws Exception {
@@ -582,15 +576,26 @@ class WebhookOutboxAdminControllerTest {
     }
 
     private void recordPayment(String applicationId) throws Exception {
+        MvcResult scheduleResult = mockMvc.perform(get(
+                        "/api/v1/internal/ops/loan-applications/{applicationId}/repayment-schedule",
+                        applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode schedule = objectMapper.readTree(scheduleResult.getResponse().getContentAsString());
+        String installmentId = schedule.get(0).get("id").asText();
+        BigDecimal amount = schedule.get(0).get("outstandingAmount").decimalValue();
+
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
                         .with(systemAdmin())
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "amount", new BigDecimal("4136.32"),
-                                "paymentDate", LocalDate.now().minusDays(1).toString(),
+                                "targetInstallmentId", installmentId,
+                                "amount", amount,
+                                "postedAt", LocalDate.now().minusDays(1).toString(),
                                 "reference", "PAY-OUT-001",
-                                "channel", "UPI",
-                                "status", "RECEIVED"
+                                "channel", "UPI"
                         ))))
                 .andExpect(status().isOk());
     }

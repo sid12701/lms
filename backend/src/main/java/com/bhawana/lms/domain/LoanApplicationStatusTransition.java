@@ -45,6 +45,9 @@ public class LoanApplicationStatusTransition {
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
 
+    @Column(name = "rejection_reason_json", columnDefinition = "TEXT")
+    private String rejectionReasonJson;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -60,6 +63,19 @@ public class LoanApplicationStatusTransition {
             LoanApplicationStatusReasonCode reasonCode,
             String correlationId
     ) {
+        this(loanApplication, fromStatus, toStatus, actorUsername, note, reasonCode, correlationId, null);
+    }
+
+    public LoanApplicationStatusTransition(
+            LoanApplication loanApplication,
+            LoanApplicationStatus fromStatus,
+            LoanApplicationStatus toStatus,
+            String actorUsername,
+            String note,
+            LoanApplicationStatusReasonCode reasonCode,
+            String correlationId,
+            String rejectionReasonJson
+    ) {
         this.id = UUID.randomUUID();
         this.loanApplication = loanApplication;
         this.fromStatus = fromStatus;
@@ -68,6 +84,7 @@ public class LoanApplicationStatusTransition {
         this.note = note;
         this.reasonCode = reasonCode;
         this.correlationId = correlationId;
+        this.rejectionReasonJson = rejectionReasonJson;
     }
 
     @PrePersist
@@ -105,6 +122,10 @@ public class LoanApplicationStatusTransition {
 
     public String getCorrelationId() {
         return correlationId;
+    }
+
+    public String getRejectionReasonJson() {
+        return rejectionReasonJson;
     }
 
     public Instant getCreatedAt() {

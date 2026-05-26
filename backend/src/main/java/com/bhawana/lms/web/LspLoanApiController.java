@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -66,6 +67,30 @@ public class LspLoanApiController {
                 ).stream()
                 .map(LoanApplicationOpsResponses::toPaymentTransactionResponse)
                 .toList();
+    }
+
+    @PostMapping("/{loanId}/payments")
+    @PreAuthorize("hasRole('LSP_API_CLIENT')")
+    public LoanApplicationOpsController.LoanPaymentTransactionResponse recordPayment(
+            Authentication authentication,
+            @PathVariable UUID loanId,
+            @RequestHeader(name = "Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody LoanApplicationOpsController.LoanPaymentTransactionRequest request
+    ) {
+        LoanAccount loanAccount = loanApplicationService.getLoanAccountForLsp(
+                LspAuthenticationSupport.authenticatedLspId(authentication),
+                loanId
+        );
+        return LoanApplicationOpsResponses.toPaymentTransactionResponse(loanApplicationService.recordPaymentTransaction(
+                loanAccount.getLoanApplication().getId(),
+                authentication.getName(),
+                idempotencyKey,
+                request.targetInstallmentId(),
+                request.amount(),
+                request.postedAt(),
+                request.reference(),
+                request.channel()
+        ));
     }
 
     @PostMapping("/{loanId}/foreclosure-quote")

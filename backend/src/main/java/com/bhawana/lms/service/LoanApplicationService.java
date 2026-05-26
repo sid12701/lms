@@ -12,14 +12,12 @@ import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationAuditEvent;
-import com.bhawana.lms.domain.LoanApplicationAssignmentEvent;
 import com.bhawana.lms.domain.LoanApplicationDocumentAccessAudit;
 import com.bhawana.lms.domain.LoanApplicationDocumentAccessAuditAction;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
-import com.bhawana.lms.domain.LoanApplicationPiiRevealAudit;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
@@ -41,11 +39,9 @@ import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
-import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentAccessAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
-import com.bhawana.lms.repo.LoanApplicationPiiRevealAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
@@ -81,11 +77,9 @@ public class LoanApplicationService {
     private final BorrowerRepository borrowerRepository;
     private final LoanAccountRepository loanAccountRepository;
     private final LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
-    private final LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository;
     private final LoanApplicationDocumentAccessAuditRepository loanApplicationDocumentAccessAuditRepository;
     private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     private final LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
-    private final LoanApplicationPiiRevealAuditRepository loanApplicationPiiRevealAuditRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
     private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
@@ -97,6 +91,7 @@ public class LoanApplicationService {
     private final LoanProductLspMappingRepository loanProductLspMappingRepository;
     private final LoanDisbursementAdapter loanDisbursementAdapter;
     private final WebhookOutboxService webhookOutboxService;
+    private final com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final LoanRepaymentCommandService loanRepaymentCommandService;
@@ -108,11 +103,9 @@ public class LoanApplicationService {
             BorrowerRepository borrowerRepository,
             LoanAccountRepository loanAccountRepository,
             LoanApplicationAuditEventRepository loanApplicationAuditEventRepository,
-            LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository,
             LoanApplicationDocumentAccessAuditRepository loanApplicationDocumentAccessAuditRepository,
             LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
             LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository,
-            LoanApplicationPiiRevealAuditRepository loanApplicationPiiRevealAuditRepository,
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
             LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
@@ -124,6 +117,7 @@ public class LoanApplicationService {
             LoanProductLspMappingRepository loanProductLspMappingRepository,
             LoanDisbursementAdapter loanDisbursementAdapter,
             WebhookOutboxService webhookOutboxService,
+            com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
             LoanApplicationQueryService loanApplicationQueryService,
             LoanApplicationLifecycleService loanApplicationLifecycleService,
             LoanRepaymentCommandService loanRepaymentCommandService,
@@ -134,11 +128,9 @@ public class LoanApplicationService {
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationAuditEventRepository = loanApplicationAuditEventRepository;
-        this.loanApplicationAssignmentEventRepository = loanApplicationAssignmentEventRepository;
         this.loanApplicationDocumentAccessAuditRepository = loanApplicationDocumentAccessAuditRepository;
         this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
         this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
-        this.loanApplicationPiiRevealAuditRepository = loanApplicationPiiRevealAuditRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
@@ -150,6 +142,7 @@ public class LoanApplicationService {
         this.loanProductLspMappingRepository = loanProductLspMappingRepository;
         this.loanDisbursementAdapter = loanDisbursementAdapter;
         this.webhookOutboxService = webhookOutboxService;
+        this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.loanRepaymentCommandService = loanRepaymentCommandService;
@@ -254,44 +247,6 @@ public class LoanApplicationService {
         return application;
     }
 
-    @Transactional
-    public BorrowerPiiReveal revealBorrowerPiiForLsp(
-            UUID lspId,
-            UUID applicationId,
-            String actorUsername
-    ) {
-        LoanApplication application = getApplicationForLsp(lspId, applicationId);
-        Borrower borrower = application.getBorrower();
-        loanApplicationPiiRevealAuditRepository.save(new LoanApplicationPiiRevealAudit(
-                application,
-                lspId,
-                normalizeActorUsername(actorUsername),
-                List.of(
-                        "AADHAAR_NUMBER",
-                        "PAN_NUMBER",
-                        "BANK_ACCOUNT_NUMBER",
-                        "IFSC_CODE",
-                        "ACCOUNT_HOLDER_NAME",
-                        "EMPLOYEE_ID",
-                        "REFERENCE_PERSON_NAME",
-                        "REFERENCE_PERSON_NUMBER"
-                ),
-                CorrelationIdHolder.get()
-        ));
-        return new BorrowerPiiReveal(
-                application.getId(),
-                borrower.getId(),
-                borrower.getAadharNumber(),
-                borrower.getPan(),
-                borrower.getBankAccountNumber(),
-                borrower.getIfscCode(),
-                borrower.getAccountHolderName(),
-                borrower.getEmployeeId(),
-                borrower.getReferencePersonName(),
-                borrower.getReferencePersonNumber()
-        );
-    }
-
     @Transactional(readOnly = true)
     public LoanApplication getApplicationForLspByExternalLoanId(UUID lspId, String externalLoanId) {
         String normalizedExternalLoanId = normalizeOptional(externalLoanId);
@@ -361,24 +316,10 @@ public class LoanApplicationService {
                                         transition.getCreatedAt()
                                 )
                         )),
-                loanApplicationAssignmentEventRepository.findTopByLoanApplication_IdOrderByCreatedAtDesc(applicationId)
-                        .map(event -> new ActivityCandidate(
-                                2,
-                                new LoanApplicationLastActivity(
-                                        "ASSIGNMENT_UPDATED",
-                                        event.getActorUsername(),
-                                        event.getToAssigneeUsername() == null
-                                                ? "Released back to the shared queue"
-                                                : "Assigned to " + event.getToAssigneeUsername(),
-                                        event.getNote(),
-                                        event.getCorrelationId(),
-                                        event.getCreatedAt()
-                                )
-                        )),
                 loanApplicationDocumentChecklistRepository.findTopByLoanApplication_IdOrderByUpdatedAtDesc(applicationId)
                         .filter(this::hasMeaningfulDocumentActivity)
                         .map(item -> new ActivityCandidate(
-                                3,
+                                2,
                                 new LoanApplicationLastActivity(
                                         "DOCUMENT_REVIEW_UPDATED",
                                         item.getUpdatedByUsername(),
@@ -445,6 +386,46 @@ public class LoanApplicationService {
     }
 
     @Transactional(readOnly = true)
+    public List<LoanApplicationWebhookEventProjection> listWebhookEventsForApplication(UUID applicationId) {
+        if (applicationId == null || !loanApplicationRepository.existsById(applicationId)) {
+            throw new com.bhawana.lms.common.web.ResourceNotFoundException(
+                    "Loan application not found: " + applicationId);
+        }
+        return webhookOutboxService.listOutboxForLoanApplication(applicationId).stream()
+                .map(this::toWebhookEventProjection)
+                .toList();
+    }
+
+    private LoanApplicationWebhookEventProjection toWebhookEventProjection(
+            com.bhawana.lms.domain.WebhookEventOutbox event
+    ) {
+        java.util.Optional<com.bhawana.lms.domain.WebhookEventDeliveryAttempt> latestAttempt =
+                webhookEventDeliveryAttemptRepository.findFirstByOutboxEvent_IdOrderByCreatedAtDesc(event.getId());
+        Integer responseCode = latestAttempt.map(com.bhawana.lms.domain.WebhookEventDeliveryAttempt::getResponseStatusCode)
+                .orElse(null);
+        return new LoanApplicationWebhookEventProjection(
+                event.getId().toString(),
+                event.getEventType().name(),
+                event.getLsp() == null ? null : event.getLsp().getWebhookEndpointUrl(),
+                mapOutboxStatusToDeliveryStatus(event.getStatus()),
+                event.getAttemptCount(),
+                event.getLastAttemptAt(),
+                responseCode,
+                event.getLastError(),
+                event.getCreatedAt()
+        );
+    }
+
+    private static String mapOutboxStatusToDeliveryStatus(com.bhawana.lms.domain.WebhookEventOutboxStatus status) {
+        return switch (status) {
+            case PENDING -> "PENDING";
+            case DELIVERED -> "DELIVERED";
+            case RETRYABLE_FAILURE -> "FAILED";
+            case PERMANENT_FAILURE -> "DEAD_LETTERED";
+        };
+    }
+
+    @Transactional(readOnly = true)
     public List<LoanDisbursementRequestLog> listDisbursementRequests(UUID applicationId) {
         LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
         return loanDisbursementRequestLogRepository.findTop20ByLoanAccount_IdOrderByCreatedAtDesc(loanAccount.getId());
@@ -462,12 +443,6 @@ public class LoanApplicationService {
     public List<LoanForeclosureQuote> listForeclosureQuotes(UUID applicationId) {
         LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
         return loanForeclosureQuoteRepository.findByLoanAccount_IdOrderByVersionDesc(loanAccount.getId());
-    }
-
-    @Transactional(readOnly = true)
-    public List<LoanApplicationAssignmentEvent> listAssignmentEvents(UUID applicationId) {
-        getApplication(applicationId);
-        return loanApplicationAssignmentEventRepository.findTop20ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
     }
 
     @Transactional(readOnly = true)
@@ -503,6 +478,25 @@ public class LoanApplicationService {
         return loanApplicationDocumentAccessAuditRepository.findTop20ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
     }
 
+    /**
+     * Gap #4: LSP-scoped "uploads only" document checklist read. Enforces
+     * ownership (404 if the loan isn't owned by `lspId`) and filters out
+     * the un-uploaded `PENDING` placeholders so external API consumers only
+     * see what was actually submitted. The "project all standard types"
+     * mode is deferred to post-prod and would be a separate
+     * `?includePending=true` switch.
+     */
+    @Transactional(readOnly = true)
+    public List<LoanApplicationDocumentChecklist> listSubmittedDocumentsForLsp(UUID lspId, UUID applicationId) {
+        getApplicationForLsp(lspId, applicationId);
+        return loanApplicationDocumentChecklistRepository
+                .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
+                .stream()
+                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.PENDING
+                        && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
+                .toList();
+    }
+
     @Transactional
     public LoanApplicationDocumentChecklist submitDocumentForLsp(
             UUID lspId,
@@ -520,14 +514,12 @@ public class LoanApplicationService {
                 applicationId,
                 documentType,
                 actorUsername,
-                LoanApplicationDocumentChecklistStatus.RECEIVED,
+                LoanApplicationDocumentChecklistStatus.SUBMITTED,
                 note,
                 fileName,
                 fileReference,
                 sourceReference,
-                contentType,
-                null,
-                null
+                contentType
         );
     }
 
@@ -565,16 +557,6 @@ public class LoanApplicationService {
     }
 
     @Transactional
-    public LoanApplication assignApplication(
-            UUID applicationId,
-            String actorUsername,
-            String assigneeUsername,
-            String note
-    ) {
-        return loanApplicationLifecycleService.assignApplication(applicationId, actorUsername, assigneeUsername, note);
-    }
-
-    @Transactional
     public LoanApplication invalidateApplicationForLsp(
             UUID lspId,
             UUID applicationId,
@@ -601,9 +583,7 @@ public class LoanApplicationService {
             String fileName,
             String fileReference,
             String sourceReference,
-            String contentType,
-            String reviewReason,
-            String rejectionReason
+            String contentType
     ) {
         return updateDocumentChecklistItem(
                 applicationId,
@@ -615,8 +595,6 @@ public class LoanApplicationService {
                 fileReference,
                 sourceReference,
                 contentType,
-                reviewReason,
-                rejectionReason,
                 null,
                 null,
                 null,
@@ -635,8 +613,6 @@ public class LoanApplicationService {
             String fileReference,
             String sourceReference,
             String contentType,
-            String reviewReason,
-            String rejectionReason,
             Long fileSizeBytes,
             String fileChecksum,
             String storageKey,
@@ -652,8 +628,6 @@ public class LoanApplicationService {
                 fileReference,
                 sourceReference,
                 contentType,
-                reviewReason,
-                rejectionReason,
                 fileSizeBytes,
                 fileChecksum,
                 storageKey,
@@ -688,8 +662,8 @@ public class LoanApplicationService {
     ) {
         LoanApplication application = getApplication(applicationId);
         if (application.getStatus() != LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
-                && application.getStatus() != LoanApplicationStatus.PAYMENT_REINITIATION) {
-            throw new IllegalArgumentException("Disbursement can only be requested for applications pending disbursal or payment re-initiation.");
+                && application.getStatus() != LoanApplicationStatus.DISBURSEMENT_RETRY) {
+            throw new IllegalArgumentException("Disbursement can only be requested for applications pending disbursal or disbursement retry.");
         }
         loanApplicationLifecycleService.validateRequiredDocumentsUploadedBeforeDisbursement(applicationId);
 
@@ -728,6 +702,7 @@ public class LoanApplicationService {
                 WebhookEventType.LOAN_DISBURSEMENT_UPDATED,
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
+                application.getId(),
                 loanApplicationLifecycleService.buildDisbursementPayload(application, loanAccount)
         );
         return application;
@@ -781,9 +756,9 @@ public class LoanApplicationService {
         } else {
             loanApplicationLifecycleService.updateApplicationStatus(
                     application,
-                    LoanApplicationStatus.PAYMENT_REINITIATION,
+                    LoanApplicationStatus.DISBURSEMENT_RETRY,
                     actorUsername,
-                    "Loan disbursement requires payment re-initiation.",
+                    "Loan disbursement requires retry after failed/pending-reconciliation outcome.",
                     LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
                     LoanApplicationAuditAction.STATUS_TRANSITION
             );
@@ -793,6 +768,7 @@ public class LoanApplicationService {
                 WebhookEventType.LOAN_DISBURSEMENT_UPDATED,
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
+                application.getId(),
                 loanApplicationLifecycleService.buildDisbursementPayload(application, loanAccount)
         );
         return application;
@@ -802,22 +778,22 @@ public class LoanApplicationService {
     public LoanPaymentTransaction recordPaymentTransaction(
             UUID applicationId,
             String actorUsername,
+            String idempotencyKey,
+            UUID targetInstallmentId,
             BigDecimal amount,
-            LocalDate paymentDate,
+            LocalDate postedAt,
             String reference,
-            LoanPaymentChannel channel,
-            LoanPaymentStatus status,
-            String note
+            LoanPaymentChannel channel
     ) {
         return loanRepaymentCommandService.recordPaymentTransaction(
                 applicationId,
                 actorUsername,
+                idempotencyKey,
+                targetInstallmentId,
                 amount,
-                paymentDate,
+                postedAt,
                 reference,
-                channel,
-                status,
-                note
+                channel
         );
     }
 
@@ -1013,11 +989,6 @@ public class LoanApplicationService {
         return normalized.isBlank() ? "system" : normalized;
     }
 
-    private static String normalizeAssigneeUsername(String assigneeUsername) {
-        String normalized = normalizeOptional(assigneeUsername);
-        return normalized == null ? null : normalized.toLowerCase();
-    }
-
     private static String requireNote(String note) {
         String normalized = normalizeOptional(note);
         if (normalized == null) {
@@ -1067,7 +1038,7 @@ public class LoanApplicationService {
             LoanApplicationStatusReasonCode reasonCode
     ) {
         if (targetStatus == LoanApplicationStatus.REJECTED
-                || targetStatus == LoanApplicationStatus.PAYMENT_REINITIATION) {
+                || targetStatus == LoanApplicationStatus.DISBURSEMENT_RETRY) {
             return requireReasonCode(
                     reasonCode,
                     "Reason code is required when a loan application is moved to " + targetStatus.name() + "."
@@ -1149,6 +1120,7 @@ public class LoanApplicationService {
                 WebhookEventType.LOAN_STATUS_CHANGED,
                 "LOAN_APPLICATION",
                 savedApplication.getId().toString(),
+                savedApplication.getId(),
                 buildLoanStatusChangedPayload(savedApplication, currentStatus, targetStatus, reasonCode)
         );
         return savedApplication;
@@ -1313,18 +1285,6 @@ public class LoanApplicationService {
     }
 
     private static String resolveDocumentActivityDetail(LoanApplicationDocumentChecklist checklistItem) {
-        if (checklistItem.getStatus() == LoanApplicationDocumentChecklistStatus.REJECTED) {
-            return normalizeOptional(checklistItem.getRejectionReason()) != null
-                    ? checklistItem.getRejectionReason()
-                    : checklistItem.getNote();
-        }
-
-        if (checklistItem.getStatus() == LoanApplicationDocumentChecklistStatus.VERIFIED) {
-            return normalizeOptional(checklistItem.getReviewReason()) != null
-                    ? checklistItem.getReviewReason()
-                    : checklistItem.getNote();
-        }
-
         return checklistItem.getNote();
     }
 
@@ -1375,7 +1335,7 @@ public class LoanApplicationService {
                 .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
                 .stream()
                 .filter(item -> item.getDocumentType().isRequiredForApproval())
-                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.VERIFIED
+                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.SUBMITTED
                         && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
                 .map(LoanApplicationDocumentChecklist::getDocumentType)
                 .toList();
@@ -1393,8 +1353,7 @@ public class LoanApplicationService {
                 .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
                 .stream()
                 .filter(item -> item.getDocumentType().isRequiredForDisbursement())
-                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.RECEIVED
-                        && item.getStatus() != LoanApplicationDocumentChecklistStatus.VERIFIED
+                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.SUBMITTED
                         && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
                 .map(LoanApplicationDocumentChecklist::getDocumentType)
                 .toList();
@@ -1526,17 +1485,4 @@ public class LoanApplicationService {
     ) {
     }
 
-    public record BorrowerPiiReveal(
-            UUID applicationId,
-            UUID borrowerId,
-            String aadharNumber,
-            String panNumber,
-            String bankAccountNumber,
-            String ifscCode,
-            String accountHolderName,
-            String employeeId,
-            String referencePersonName,
-            String referencePersonNumber
-    ) {
-    }
 }
