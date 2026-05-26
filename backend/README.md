@@ -5,14 +5,16 @@ Spring Boot service for the LMS platform.
 ## Prerequisites
 
 - Java 21
-- Maven 3.9+
 - Local infra from `infra/docker-compose.yml`
+
+Maven is provided via the wrapper (`mvnw` / `mvnw.cmd`) — no system Maven required.
 
 ## Run locally
 
 ```bash
 cd backend
-mvn spring-boot:run
+./mvnw spring-boot:run        # macOS/Linux/Git Bash
+mvnw.cmd spring-boot:run      # Windows PowerShell/cmd
 ```
 
 The default profile is `local`, which expects:

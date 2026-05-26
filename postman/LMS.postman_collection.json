@@ -1014,7 +1014,7 @@
               "formdata": [
                 {
                   "key": "documentType",
-                  "value": "PAN",
+                  "value": "PAN_CARD",
                   "type": "text"
                 },
                 {
@@ -1074,7 +1074,7 @@
               "formdata": [
                 {
                   "key": "documentType",
-                  "value": "AADHAR",
+                  "value": "AADHAAR_FILE",
                   "type": "text"
                 },
                 {
@@ -1417,7 +1417,7 @@
             "description": "Demo-only shortcut. Flips the pending mock disbursement to SUCCESS \u2192 loan transitions to DISBURSED \u2192 repayment schedule is generated automatically.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"outcome\": \"SUCCESS\"\n}",
+              "raw": "{\n  \"outcome\": \"DISBURSED\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
