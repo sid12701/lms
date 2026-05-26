@@ -28,7 +28,7 @@ public class LoanApplicationIntakeAudit {
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
 
-    @Column(name = "payload_json", nullable = false, length = 4000)
+    @Column(name = "payload_json", nullable = false, columnDefinition = "TEXT")
     private String payloadJson;
 
     @Column(name = "created_at", nullable = false)
