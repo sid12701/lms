@@ -1,11 +1,8 @@
 import { type ReactNode } from "react";
-import { MaskedField } from "@/components/app/pii/MaskedField";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatDate, formatINR } from "@/lib/format";
-import type { PiiFieldName } from "@/schemas/audit";
 import type { BorrowerDetail } from "../../types";
-import { useRecordPiiReveal } from "../../hooks/useRecordPiiReveal";
 
 export interface ProfileTabProps {
   detail: BorrowerDetail;
@@ -70,34 +67,13 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * Profile tab — read-only display of the borrower master record. Every
- * masked PII field flows through `MaskedField` + `useRecordPiiReveal` so
- * each reveal writes a fresh audit row (BR-7) and the dialog's `onConfirm`
- * passes a fresh idempotency key (BR-5) per attempt.
+ * Profile tab — read-only display of the borrower master record. PII
+ * fields render directly from the backend payload, which always masks
+ * identity numbers (aadhaar, account, etc.). No reveal-on-demand flow
+ * exists; see `docs/gap-fixes.md` § Gap #1.
  */
 export function ProfileTab({ detail }: ProfileTabProps) {
   const { borrower, visibleLsps } = detail;
-  const reveal = useRecordPiiReveal(borrower.id);
-
-  /**
-   * Build the `onReveal` handler `MaskedField` expects. Each invocation
-   * mints a fresh idempotency key (already minted by `PiiRevealDialog`
-   * itself, so we just forward it) and awaits the audit-write before
-   * letting MaskedField flip into its revealed state.
-   *
-   * The dialog supplies `idempotencyKey`; we don't override it — that
-   * preserves the BR-5 contract end-to-end.
-   */
-  const makeRevealHandler =
-    (field: PiiFieldName) =>
-    async ({ reason, idempotencyKey }: { reason: string; idempotencyKey: string }) => {
-      await reveal.mutateAsync({
-        borrowerId: borrower.id,
-        field,
-        reason,
-        idempotencyKey,
-      });
-    };
 
   return (
     <div
@@ -107,20 +83,17 @@ export function ProfileTab({ detail }: ProfileTabProps) {
       <Section title="Identity">
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
           <Row label="PAN">
-            <MaskedField
-              fieldName="PAN"
-              value={borrower.pan}
-              subjectLabel={borrower.fullName}
-              onReveal={makeRevealHandler("PAN")}
-            />
+            <code className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs">
+              {borrower.pan}
+            </code>
           </Row>
           <Row label="Aadhaar">
-            <MaskedField
-              fieldName="AADHAAR"
-              value={borrower.aadhaar}
-              subjectLabel={borrower.fullName}
-              onReveal={makeRevealHandler("AADHAAR")}
-            />
+            <code
+              data-slot="aadhaar"
+              className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs"
+            >
+              {borrower.aadhaar}
+            </code>
           </Row>
           <Row label="Date of birth">{formatDate(borrower.dob)}</Row>
           <Row label="Gender">{GENDER_LABEL[borrower.gender] ?? borrower.gender}</Row>
@@ -138,23 +111,9 @@ export function ProfileTab({ detail }: ProfileTabProps) {
 
       <Section title="Contact">
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-          <Row label="Mobile">
-            <MaskedField
-              fieldName="MOBILE"
-              value={borrower.mobile}
-              subjectLabel={borrower.fullName}
-              onReveal={makeRevealHandler("MOBILE")}
-            />
-          </Row>
+          <Row label="Mobile">{borrower.mobile}</Row>
           <Row label="Email">
-            {borrower.email ? (
-              <MaskedField
-                fieldName="EMAIL"
-                value={borrower.email}
-                subjectLabel={borrower.fullName}
-                onReveal={makeRevealHandler("EMAIL")}
-              />
-            ) : (
+            {borrower.email ?? (
               <span className="text-foreground-muted">—</span>
             )}
           </Row>
@@ -205,12 +164,9 @@ export function ProfileTab({ detail }: ProfileTabProps) {
           <Row label="Bank">{borrower.banking.bank}</Row>
           <Row label="Account holder">{borrower.banking.accountHolder}</Row>
           <Row label="Account number">
-            <MaskedField
-              fieldName="ACCOUNT_NUMBER"
-              value={borrower.banking.accountNumber}
-              subjectLabel={borrower.fullName}
-              onReveal={makeRevealHandler("ACCOUNT_NUMBER")}
-            />
+            <code className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs">
+              {borrower.banking.accountNumber}
+            </code>
           </Row>
           <Row label="IFSC">
             <code className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs">

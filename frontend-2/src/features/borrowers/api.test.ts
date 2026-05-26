@@ -4,6 +4,9 @@
  * don't depend on agent A's full handler runtime; the router's drift
  * detection (Zod parse on return) is exercised by the malformed-payload
  * cases.
+ *
+ * Per `docs/gap-fixes.md` § Gap #1, there is no audited PII reveal call —
+ * masking is enforced at every read site; reveal tests have been removed.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -13,7 +16,7 @@ import {
 } from "@/mocks/router";
 import { setLatencyOverride } from "@/mocks/latency";
 import { scenario } from "@/mocks/scenarios";
-import { fetchBorrowerDetail, recordPiiReveal } from "./api";
+import { fetchBorrowerDetail } from "./api";
 import type { BorrowerDetail } from "./types";
 
 const DETAIL_FIXTURE: BorrowerDetail = {
@@ -91,117 +94,5 @@ describe("fetchBorrowerDetail", () => {
     });
     await fetchBorrowerDetail("bor/with slash");
     expect(seen[0]).toContain("bor%2Fwith%20slash");
-  });
-});
-
-describe("recordPiiReveal", () => {
-  it("forwards the idempotency key in body AND header", async () => {
-    let capturedBody: Record<string, unknown> | undefined;
-    let capturedHeader: string | undefined;
-    registerRoute(
-      "POST",
-      "/api/v1/borrowers/:id/pii-reveal",
-      (req) => {
-        capturedBody = req.body as Record<string, unknown>;
-        capturedHeader = req.headers?.["Idempotency-Key"];
-        return { value: "ABCDE1234F", auditId: "audit-1" };
-      },
-      { mutating: true },
-    );
-
-    const result = await recordPiiReveal({
-      borrowerId: "bor-1",
-      field: "PAN",
-      reason: "verifying KYC",
-      idempotencyKey: "key-fixed-123",
-    });
-
-    expect(capturedBody?.idempotencyKey).toBe("key-fixed-123");
-    expect(capturedBody?.borrowerId).toBe("bor-1");
-    expect(capturedBody?.field).toBe("PAN");
-    expect(capturedBody?.reason).toBe("verifying KYC");
-    expect(capturedHeader).toBe("key-fixed-123");
-    expect(result.value).toBe("ABCDE1234F");
-    expect(result.auditId).toBe("audit-1");
-  });
-
-  it("mints a fresh idempotency key when none is supplied", async () => {
-    let captured: string | undefined;
-    registerRoute(
-      "POST",
-      "/api/v1/borrowers/:id/pii-reveal",
-      (req) => {
-        captured = (req.body as Record<string, unknown>)?.idempotencyKey as string;
-        return { value: "v", auditId: "audit-2" };
-      },
-      { mutating: true },
-    );
-    await recordPiiReveal({
-      borrowerId: "bor-1",
-      field: "MOBILE",
-      reason: "callback",
-      idempotencyKey: "",
-    });
-    expect(typeof captured).toBe("string");
-    expect((captured ?? "").length).toBeGreaterThan(0);
-  });
-
-  it("rejects an invalid field name before dispatching", async () => {
-    const handlerSpy = vi.fn();
-    registerRoute(
-      "POST",
-      "/api/v1/borrowers/:id/pii-reveal",
-      handlerSpy,
-      { mutating: true },
-    );
-
-    await expect(
-      recordPiiReveal({
-        borrowerId: "bor-1",
-        // @ts-expect-error -- intentional invalid value
-        field: "NOT_A_FIELD",
-        reason: "x",
-        idempotencyKey: "k",
-      }),
-    ).rejects.toBeDefined();
-    // The handler should never have been hit — the local Zod gate fires first.
-    expect(handlerSpy).not.toHaveBeenCalled();
-  });
-
-  it("URL-encodes the borrower id on POST", async () => {
-    const paths: string[] = [];
-    registerRoute(
-      "POST",
-      "/api/v1/borrowers/:id/pii-reveal",
-      (req) => {
-        paths.push(req.path);
-        return { value: "v", auditId: "a" };
-      },
-      { mutating: true },
-    );
-    await recordPiiReveal({
-      borrowerId: "bor/special",
-      field: "PAN",
-      reason: "verifying",
-      idempotencyKey: "k1",
-    });
-    expect(paths[0]).toContain("bor%2Fspecial");
-  });
-
-  it("rejects payloads missing the auditId (drift detection)", async () => {
-    registerRoute(
-      "POST",
-      "/api/v1/borrowers/:id/pii-reveal",
-      () => ({ value: "v" }),
-      { mutating: true },
-    );
-    await expect(
-      recordPiiReveal({
-        borrowerId: "bor-1",
-        field: "PAN",
-        reason: "x",
-        idempotencyKey: "k",
-      }),
-    ).rejects.toBeDefined();
   });
 });

@@ -87,7 +87,7 @@ export function seedAdminLspFixtures(db: MockDb): MockDb {
       enabled: false,
       endpointUrl: "https://callbacks.lsp-east.example/bhawana",
       signingSecret: "east-signing-secret-do-not-use-in-real-life-32",
-      eventTypes: ["loan.status.changed", "loan.disbursement.failed"],
+      eventTypes: ["loan.status.changed", "loan.disbursement.completed"],
     });
   }
   void SEED_TIMESTAMP;

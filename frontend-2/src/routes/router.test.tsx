@@ -8,7 +8,7 @@ import { LandingRedirect } from "./landing-redirect";
 import { RequireAuth, RequireInternal, RequireLsp } from "./guards";
 import { defaultLandingFor } from "@/lib/role-gates";
 import type { Session } from "@/mocks/api/auth";
-import { USER_OPS_ADMIN, USER_LSP_READ, USER_TEMP, LSP_BHAW_DEMO } from "@/mocks/db/seed";
+import { USER_OPS_ADMIN, USER_OPS_USER, USER_LSP_READ, USER_TEMP, LSP_BHAW_DEMO } from "@/mocks/db/seed";
 
 const adminSession: Session = {
   user: {
@@ -133,7 +133,7 @@ describe("route smoke tests", () => {
     expect(screen.getByTestId("my-loans")).toBeInTheDocument();
   });
 
-  it("RequireLsp redirects an internal user to /home", () => {
+  it("RequireLsp redirects SYSTEM_ADMIN to /home (Gap #8 default landing)", () => {
     renderWithSession(
       adminSession,
       "/my-loans",
@@ -150,6 +150,39 @@ describe("route smoke tests", () => {
       </Routes>,
     );
     expect(screen.getByTestId("home")).toBeInTheDocument();
+  });
+
+  it("RequireLsp redirects OPS_USER to /loan-applications (Gap #8)", () => {
+    const opsSession: Session = {
+      user: {
+        id: USER_OPS_USER,
+        username: "ops.user",
+        role: "OPS_USER",
+        lspId: null,
+        mustChangePassword: false,
+      },
+      accessToken: "mock.token",
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    };
+    renderWithSession(
+      opsSession,
+      "/my-loans",
+      <Routes>
+        <Route
+          path="/my-loans"
+          element={
+            <RequireLsp>
+              <div data-testid="my-loans">my loans</div>
+            </RequireLsp>
+          }
+        />
+        <Route
+          path="/loan-applications"
+          element={<div data-testid="loan-applications">apps</div>}
+        />
+      </Routes>,
+    );
+    expect(screen.getByTestId("loan-applications")).toBeInTheDocument();
   });
 
   it("createAppRouter compiles the route tree without throwing", async () => {

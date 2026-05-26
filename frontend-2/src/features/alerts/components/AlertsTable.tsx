@@ -183,6 +183,14 @@ export function AlertsTable({
                     by {a.acknowledgedByName}
                   </span>
                 ) : null}
+                {a.acknowledgmentNote ? (
+                  <span
+                    className="text-foreground-muted line-clamp-2"
+                    title={a.acknowledgmentNote}
+                  >
+                    {a.acknowledgmentNote}
+                  </span>
+                ) : null}
               </div>
             );
           }

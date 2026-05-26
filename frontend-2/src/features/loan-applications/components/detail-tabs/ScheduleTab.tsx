@@ -32,7 +32,7 @@ export interface ScheduleTabProps {
   status: LoanStatus;
   /** When true, the user may post repayments against installments. */
   canPost: boolean;
-  /** BR-3 — every required-for-disbursement document is VERIFIED. */
+  /** BR-3 — every required-for-disbursement document is uploaded. */
   docsComplete: boolean;
   /** BR-10 — a valid repayment schedule exists. */
   scheduleValid: boolean;
@@ -61,11 +61,6 @@ export function ScheduleTab({
     [query.data],
   );
 
-  const nextDue = useMemo<RepaymentInstallment | null>(() => {
-    const found = installments.find((i) => i.status !== "PAID");
-    return found ?? null;
-  }, [installments]);
-
   const showGateBanner = PRE_DISBURSEMENT_STATUSES.has(status);
   const showAwaitingScheduleBanner =
     status === "APPROVED_PENDING_DISBURSAL" && installments.length === 0;
@@ -85,6 +80,7 @@ export function ScheduleTab({
         amount: args.amount,
         postedAt: args.postedAt,
         mode: args.mode,
+        reference: args.reference,
         idempotencyKey: args.idempotencyKey,
       });
       toast.success("Repayment posted");
@@ -146,7 +142,6 @@ export function ScheduleTab({
           ) : null}
           <ScheduleTable
             installments={installments}
-            {...(nextDue ? { nextDueInstallmentId: nextDue.id } : {})}
             {...(handleOpenDialog ? { onRecordPayment: handleOpenDialog } : {})}
           />
         </>

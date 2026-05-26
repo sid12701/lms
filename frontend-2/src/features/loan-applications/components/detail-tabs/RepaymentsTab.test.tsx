@@ -89,6 +89,25 @@ describe("RepaymentsTab", () => {
     expect(screen.getByText(/^UPI$/)).toBeInTheDocument();
   });
 
+  it("renders the payment reference instead of the installment id when present", () => {
+    useRepaymentsMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: {
+        payments: [
+          payment({
+            reference: "E2E-PAY-001",
+            installmentId: "22222222-2222-4222-8222-222222222222",
+          }),
+        ],
+      },
+      refetch: vi.fn(),
+    });
+    renderWithDensity(<RepaymentsTab applicationId="app-1" />);
+    expect(screen.getByText("E2E-PAY-001")).toBeInTheDocument();
+    expect(screen.queryByText("22222222")).not.toBeInTheDocument();
+  });
+
   it("renders the error state with retry", async () => {
     const refetch = vi.fn();
     useRepaymentsMock.mockReturnValue({

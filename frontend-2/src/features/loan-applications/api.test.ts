@@ -16,6 +16,7 @@ import {
 import { setLatencyOverride } from "@/mocks/latency";
 import { scenario } from "@/mocks/scenarios";
 import {
+  backendQueryFromFilters,
   buildLoanApplicationsQuery,
   fetchLoanApplications,
   LoanApplicationListResponseSchema,
@@ -37,8 +38,6 @@ const ROW: LoanApplicationListItem = {
   requestedAmount: 250_000,
   tenureMonths: 24,
   status: "AWAITING_APPROVAL",
-  assignedTo: "55555555-5555-4555-8555-555555555555",
-  assignedToName: "Ops User",
   createdAt: "2026-05-10T08:00:00.000Z",
   updatedAt: "2026-05-11T08:00:00.000Z",
 };
@@ -78,7 +77,6 @@ describe("buildLoanApplicationsQuery", () => {
       q: "demo",
       lspId: "lsp-1",
       productId: "p-1",
-      assignedTo: "u-1",
       page: 2,
       pageSize: 50,
       sortBy: "updatedAt",
@@ -88,7 +86,6 @@ describe("buildLoanApplicationsQuery", () => {
     expect(params.get("q")).toBe("demo");
     expect(params.get("lspId")).toBe("lsp-1");
     expect(params.get("productId")).toBe("p-1");
-    expect(params.get("assignedTo")).toBe("u-1");
     expect(params.get("page")).toBe("2");
     expect(params.get("pageSize")).toBe("50");
     expect(params.get("sortBy")).toBe("updatedAt");
@@ -129,6 +126,14 @@ describe("LoanApplicationListResponseSchema", () => {
 });
 
 describe("fetchLoanApplications", () => {
+  it("requests the backend pagination envelope with the enum value the API accepts", () => {
+    expect(backendQueryFromFilters({ page: 1, pageSize: 10 })).toMatchObject({
+      offset: 10,
+      limit: 10,
+      paginationDetails: "ON",
+    });
+  });
+
   it("dispatches a GET against the canonical path with no filters", async () => {
     const received: string[] = [];
     registerRoute("GET", "/api/v1/loan-applications", (req: MockRequest) => {

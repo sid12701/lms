@@ -8,7 +8,6 @@ import { DocumentChecklistGroup } from "./DocumentChecklistGroup";
 let idCounter = 0;
 function uid(): string {
   idCounter += 1;
-  // deterministic UUID-shaped strings unique per test
   const hex = idCounter.toString(16).padStart(8, "0");
   return `${hex}-1111-4111-8111-111111111111`;
 }
@@ -25,9 +24,6 @@ function makeDoc(overrides: Partial<Document> = {}): Document {
     sizeBytes: 1024,
     uploadedAt: "2026-05-01T10:00:00.000Z",
     uploadedBy: "33333333-3333-4333-8333-333333333333",
-    verifiedAt: null,
-    verifiedBy: null,
-    rejectionReason: null,
     ...overrides,
   };
 }
@@ -80,7 +76,7 @@ describe("DocumentChecklistGroup", () => {
     expect(getByText(/No optional documents/i)).toBeInTheDocument();
   });
 
-  it("renders DocumentUploadRow for PENDING docs and DocumentChecklistRow for others", () => {
+  it("renders DocumentUploadRow for PENDING docs and DocumentChecklistRow for UPLOADED docs", () => {
     const docs: Document[] = [
       makeDoc({
         kind: "PAN_CARD",
@@ -91,7 +87,7 @@ describe("DocumentChecklistGroup", () => {
         sizeBytes: null,
         uploadedAt: null,
       }),
-      makeDoc({ kind: "AADHAAR_CARD", status: "VERIFIED", requiredForDisbursement: true }),
+      makeDoc({ kind: "AADHAAR_CARD", status: "UPLOADED", requiredForDisbursement: true }),
     ];
     const { container } = renderWithProviders(<DocumentChecklistGroup docs={docs} />);
     expect(
@@ -153,27 +149,14 @@ describe("DocumentChecklistGroup", () => {
     15_000,
   );
 
-  it(
-    "wires onVerify with permissions and forwards the doc and idempotency key",
-    async () => {
-      const doc = makeDoc({ kind: "INCOME_PROOF", status: "UPLOADED" });
-      const onVerify = vi.fn();
-      const { getByRole } = renderWithProviders(
-        <DocumentChecklistGroup
-          docs={[doc]}
-          onVerify={onVerify}
-          permissions={{ canVerify: true }}
-        />,
-      );
-      await userEvent.click(getByRole("button", { name: /Verify Income proof/i }));
-      expect(onVerify).toHaveBeenCalledTimes(1);
-      const [forwardedDoc, args] = onVerify.mock.calls[0]!;
-      expect(forwardedDoc.id).toBe(doc.id);
-      expect(typeof args.idempotencyKey).toBe("string");
-      expect(args.idempotencyKey.length).toBeGreaterThan(0);
-    },
-    15_000,
-  );
+  it("does not surface any Verify or Reject affordances (Gap #18)", () => {
+    const doc = makeDoc({ kind: "INCOME_PROOF", status: "UPLOADED" });
+    const { queryByRole } = renderWithProviders(
+      <DocumentChecklistGroup docs={[doc]} />,
+    );
+    expect(queryByRole("button", { name: /Verify/i })).toBeNull();
+    expect(queryByRole("button", { name: /Reject/i })).toBeNull();
+  });
 
   it("propagates the compact prop to data-compact", () => {
     const { container } = renderWithProviders(

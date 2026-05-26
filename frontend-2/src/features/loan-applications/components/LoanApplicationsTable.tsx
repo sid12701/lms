@@ -184,18 +184,6 @@ export function LoanApplicationsTable({
         enableSorting: true,
       },
       {
-        accessorKey: "assignedToName",
-        meta: { label: "Assignee" },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Assignee" />
-        ),
-        cell: ({ row }) =>
-          row.original.assignedToName ?? (
-            <span className="text-foreground-muted">Unassigned</span>
-          ),
-        enableSorting: false,
-      },
-      {
         accessorKey: "updatedAt",
         meta: { label: "Updated" },
         header: ({ column }) => (

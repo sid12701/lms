@@ -42,6 +42,7 @@ export interface RepaymentPostConfirmArgs {
   amount: number;
   postedAt: string;
   mode: RepaymentPostMode;
+  reference: string | null;
   /** Fresh BR-5 idempotency key minted at submit time. */
   idempotencyKey: string;
 }
@@ -101,6 +102,7 @@ export function RepaymentPostDialog({
       amount: outstandingAmount,
       postedAt: initialPostedAt,
       mode: defaultMode,
+      reference: "",
     },
     mode: "onSubmit",
   });
@@ -113,6 +115,7 @@ export function RepaymentPostDialog({
         amount: outstandingAmount,
         postedAt: initialPostedAt,
         mode: defaultMode,
+        reference: "",
       });
       return;
     }
@@ -121,6 +124,7 @@ export function RepaymentPostDialog({
       amount: outstandingAmount,
       postedAt: initialPostedAt,
       mode: defaultMode,
+      reference: "",
     });
     // Move focus to the amount input after Radix mounts the dialog. Using a
     // ref + setTimeout(0) keeps jsx-a11y/no-autofocus happy.
@@ -139,6 +143,7 @@ export function RepaymentPostDialog({
       amount: values.amount,
       postedAt: postedAtIso,
       mode: values.mode,
+      reference: values.reference?.trim() ? values.reference.trim() : null,
       idempotencyKey: newIdempotencyKey(),
     });
   };
@@ -169,17 +174,11 @@ export function RepaymentPostDialog({
                 <FormLabel>Amount (INR)</FormLabel>
                 <FormControl>
                   <Input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    min={0}
+                    type="text"
+                    readOnly
                     data-tabular="true"
-                    {...field}
-                    value={Number.isFinite(field.value) ? field.value : ""}
-                    onChange={(event) => {
-                      const raw = event.target.value;
-                      field.onChange(raw === "" ? Number.NaN : Number(raw));
-                    }}
+                    className="bg-muted"
+                    value={formatINR(outstandingAmount, { decimals: 2 })}
                     ref={(el) => {
                       field.ref(el);
                       amountRef.current = el;
@@ -187,7 +186,7 @@ export function RepaymentPostDialog({
                   />
                 </FormControl>
                 <FormDescription>
-                  Must equal the outstanding amount of the next installment.
+                  Fixed to the installment due amount (exact match required).
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -208,6 +207,28 @@ export function RepaymentPostDialog({
                 </FormControl>
                 <FormDescription>
                   When the payment was actually received from the borrower.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="reference"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Bank reference (optional)</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="UTR / cheque no. / UPI tx id"
+                    maxLength={128}
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  Reconciliation reference — can be added later when the bank
+                  statement arrives.
                 </FormDescription>
                 <FormMessage />
               </FormItem>

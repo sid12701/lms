@@ -11,6 +11,8 @@
  * components and tests keep their existing field names.
  */
 import { requestJson, requestBlob, buildQueryPath } from "@/lib/api/http-client";
+import type { DelinquencyBucket } from "@/schemas/loan-account";
+import type { MisPreviewInstallment } from "@/schemas/report";
 import type {
   CreateReportRequestInput,
   MisFilters,
@@ -37,7 +39,15 @@ interface BackendMisSummary {
   totalLoanCount: number;
 }
 
-interface BackendPreviewRow {
+export interface BackendPreviewInstallment {
+  installmentNumber: number;
+  dueDate: string | null;
+  installmentAmount: number;
+  paidAmount: number;
+  received: boolean;
+}
+
+export interface BackendPreviewRow {
   lspCode: string;
   lspName: string;
   applicationId: string;
@@ -61,7 +71,7 @@ interface BackendPreviewRow {
   tenureMonths: number;
   borrowerId: string | null;
   perEmiAmount: number | null;
-  installments: unknown[];
+  installments: BackendPreviewInstallment[];
   loanStatusDisplay: string | null;
   foreclosedRepaidAmount: number | null;
   foreclosureDate: string | null;
@@ -114,13 +124,30 @@ function normaliseStatus(value: string): ReportStatus {
   return KNOWN_STATUSES.has(value as ReportStatus) ? (value as ReportStatus) : "QUEUED";
 }
 
-const KNOWN_BUCKETS = new Set<string>([
-  "CURRENT",
-  "DPD_1_30",
-  "DPD_31_60",
-  "DPD_61_90",
-  "DPD_90_PLUS",
-]);
+/** Backend `LoanDelinquencyBucket` → frontend chart / table bucket ids. */
+export const BACKEND_DPD_TO_FE: Record<string, DelinquencyBucket> = {
+  CURRENT: "B0",
+  DPD_1_30: "B1_30",
+  DPD_31_60: "B31_60",
+  DPD_61_90: "B61_90",
+  DPD_90_PLUS: "B90_PLUS",
+};
+
+function mapDelinquencyBucket(value: string | null): DelinquencyBucket | null {
+  if (!value) return null;
+  return BACKEND_DPD_TO_FE[value] ?? null;
+}
+
+function mapInstallments(raw: BackendPreviewInstallment[] | null | undefined): MisPreviewInstallment[] {
+  if (!raw?.length) return [];
+  return raw.map((inst) => ({
+    installmentNumber: inst.installmentNumber,
+    dueDate: inst.dueDate,
+    installmentAmount: Number(inst.installmentAmount ?? 0),
+    paidAmount: Number(inst.paidAmount ?? 0),
+    received: Boolean(inst.received),
+  }));
+}
 
 function filterToQuery(filters: MisFilters | MisPreviewFilters): Record<string, string | number | undefined> {
   const out: Record<string, string | number | undefined> = {
@@ -168,20 +195,26 @@ function loanStatusFromBackend(value: string | null): MisPreviewRow["status"] {
   }
 }
 
-function toPreviewRow(payload: BackendPreviewRow): MisPreviewRow {
+/** Maps a backend portfolio-MIS preview row to the frontend table shape (Gap #10). */
+export function mapBackendPreviewRowToMisPreviewRow(payload: BackendPreviewRow): MisPreviewRow {
+  const installments = mapInstallments(payload.installments);
   return {
     loanId: payload.applicationId,
     externalLoanId: payload.externalLoanId,
     borrowerName: payload.borrowerFullName || payload.customerName || "—",
+    borrowerId: payload.borrowerId,
     lspCode: payload.lspCode,
+    lspName: payload.lspName,
     productCode: payload.productCode,
+    productName: payload.productName,
+    accountNumber: payload.accountNumber,
     amount: Number(payload.principalAmount ?? 0),
     status: loanStatusFromBackend(payload.accountStatus ?? payload.loanStatusDisplay),
+    loanStatusDisplay: payload.loanStatusDisplay ?? payload.accountStatus,
     disbursalDate: payload.disbursalDate,
+    applicationCreatedAt: payload.applicationCreatedAt,
     dpd: payload.daysPastDue,
-    delinquencyBucket: KNOWN_BUCKETS.has(payload.delinquencyBucket ?? "")
-      ? (payload.delinquencyBucket as MisPreviewRow["delinquencyBucket"])
-      : null,
+    delinquencyBucket: mapDelinquencyBucket(payload.delinquencyBucket),
     year: payload.loanYear,
     processingFee: Number(payload.processingFeeAmount ?? 0),
     disbursalAmount: Number(payload.disbursalAmount ?? 0),
@@ -190,8 +223,10 @@ function toPreviewRow(payload: BackendPreviewRow): MisPreviewRow {
     emiAmount: Number(payload.perEmiAmount ?? 0),
     overdueAmount: Number(payload.overdueAmount ?? 0),
     closureDate: payload.closedDate ?? payload.normalClosureDate,
+    closureReason: payload.closureReason,
     foreclosureDate: payload.foreclosureDate,
     foreclosedAmount: payload.foreclosedRepaidAmount,
+    address: payload.address,
     pan: payload.panNumber,
     aadhaar: payload.aadharNumber,
     gender: payload.gender,
@@ -201,6 +236,7 @@ function toPreviewRow(payload: BackendPreviewRow): MisPreviewRow {
     bankAccount: payload.bankAccountNumber,
     profession: payload.profession,
     income: payload.income,
+    installments: installments.length > 0 ? installments : undefined,
   };
 }
 
@@ -208,7 +244,7 @@ export async function misPreview(filters: MisPreviewFilters = {}): Promise<MisPr
   const path = buildQueryPath(`${BASE}/portfolio-mis/preview`, filterToQuery(filters));
   const payload = await requestJson<BackendPreviewPage>(path);
   return {
-    items: payload.content.map(toPreviewRow),
+    items: payload.content.map(mapBackendPreviewRowToMisPreviewRow),
     total: payload.totalElements,
     page: payload.page,
     pageSize: payload.size,

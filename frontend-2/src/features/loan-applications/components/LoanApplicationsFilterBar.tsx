@@ -6,7 +6,7 @@
  * before it reaches the URL — that keeps the cache key from churning
  * with every keystroke while leaving paste/blur snappy.
  *
- * Product / LSP / Assignee dropdowns render their static placeholders
+ * Product / LSP dropdowns render their static placeholders
  * for now; agents wiring `useLsps()` / `useProducts()` swap the option
  * lists in a follow-up without changing this component's contract.
  */
@@ -165,7 +165,6 @@ function hasAnyFilter(filters: Partial<LoanApplicationListFilters>): boolean {
   if (filters.status && filters.status.length > 0) return true;
   if (filters.lspId) return true;
   if (filters.productId) return true;
-  if (filters.assignedTo) return true;
   return false;
 }
 
@@ -178,8 +177,6 @@ export interface LoanApplicationsFilterBarProps {
   lspOptions?: readonly { value: string; label: string }[];
   /** Optional product options — see `lspOptions` comment. */
   productOptions?: readonly { value: string; label: string }[];
-  /** Optional assignee options — see `lspOptions` comment. */
-  assigneeOptions?: readonly { value: string; label: string }[];
   className?: string;
 }
 
@@ -192,7 +189,6 @@ export interface LoanApplicationsFilterBarProps {
 export function LoanApplicationsFilterBar({
   lspOptions = [],
   productOptions = [],
-  assigneeOptions = [],
   className,
 }: LoanApplicationsFilterBarProps) {
   const [filters, setFilters] = useUrlFilters(LoanApplicationListFilters);
@@ -233,7 +229,6 @@ export function LoanApplicationsFilterBar({
       status: undefined,
       lspId: undefined,
       productId: undefined,
-      assignedTo: undefined,
       page: 0,
     });
   };
@@ -290,15 +285,6 @@ export function LoanApplicationsFilterBar({
         ariaLabel="Product filter"
         options={productOptions}
         testId="loan-applications-product-filter"
-      />
-
-      <SingleSelect
-        value={filters.assignedTo}
-        onChange={(next) => setFilters({ assignedTo: next, page: 0 })}
-        placeholder="All assignees"
-        ariaLabel="Assignee filter"
-        options={assigneeOptions}
-        testId="loan-applications-assignee-filter"
       />
 
       <div className="flex-1" />

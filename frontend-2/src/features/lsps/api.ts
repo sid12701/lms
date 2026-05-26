@@ -26,7 +26,6 @@ const FRONTEND_TO_BACKEND_EVENT: Record<string, string> = {
   "loan.created": "LOAN_CREATED",
   "loan.status.changed": "LOAN_STATUS_CHANGED",
   "loan.disbursement.completed": "LOAN_DISBURSEMENT_UPDATED",
-  "loan.disbursement.failed": "LOAN_DISBURSEMENT_UPDATED",
   "loan.repayment.posted": "LOAN_REPAYMENT_RECORDED",
   "loan.foreclosed": "LOAN_FORECLOSURE_COMPLETED",
 };

@@ -5,17 +5,13 @@
  * Server-paged: the parent owns `{page, pageSize}` filter state; pagination
  * change fires `onFiltersChange`.
  *
- * Columns (left → right):
- *   - Loan id (middle-truncated)
- *   - Borrower (already masked on the wire)
- *   - LSP code
- *   - Product code
- *   - Amount (INR)
- *   - Status
- *   - Disbursal date
- *   - DPD
- *   - EMI (INR)
- *   - Overdue (INR)
+ * Gap #10 — the preview now exposes every column the BE returns. Identity +
+ * status columns lead; financial + lifecycle dates follow; borrower KYC +
+ * banking columns close out the row. Aadhaar values are pre-masked by the
+ * BE (Gap #1 + Gap #10) and the column renders a defensive masker as a
+ * second line of defence against a misconfigured upstream. The table
+ * scrolls horizontally inside the preview card to keep the page chrome
+ * stable.
  */
 import { useMemo } from "react";
 import {
@@ -38,13 +34,57 @@ import { DataTablePagination } from "@/components/app/data/DataTablePagination";
 import { TableSkeleton } from "@/components/app/feedback/Skeletons";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { TABULAR_ATTR } from "@/lib/tabular-nums";
-import { formatINR } from "@/lib/format";
+import { formatINR, maskAadhaar } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { MisPreviewFilters, MisPreviewResponseDto, MisPreviewRow } from "../types";
+import type {
+  MisPreviewFilters,
+  MisPreviewInstallment,
+  MisPreviewResponseDto,
+  MisPreviewRow,
+} from "../types";
 
 function truncateMiddle(value: string, head = 6, tail = 4): string {
   if (value.length <= head + tail + 1) return value;
   return `${value.slice(0, head)}…${value.slice(-tail)}`;
+}
+
+function plainText(value: string | null | undefined): string {
+  return value && value.trim() !== "" ? value : "—";
+}
+
+function nullableNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  if (!Number.isFinite(value)) return "—";
+  return value.toLocaleString();
+}
+
+/**
+ * Render an aadhaar value, defensively re-masking through the global
+ * formatter. The BE masks before sending (Gap #1 + Gap #10); this is a
+ * second line of defence so a misconfigured upstream cannot leak digits
+ * through the preview surface.
+ */
+function safeAadhaarDisplay(value: string | null | undefined): string {
+  if (!value) return "—";
+  return maskAadhaar(value);
+}
+
+/**
+ * Render the borrower bank account masked to last-4 — the BE already
+ * masks to `XXXX<last4>` (Gap #10). This component preserves whatever the
+ * wire returned and falls back to em-dash if absent.
+ */
+function safeBankAccountDisplay(value: string | null | undefined): string {
+  if (!value) return "—";
+  return value;
+}
+
+function installmentCell(installment: MisPreviewInstallment | undefined): string {
+  if (!installment) return "—";
+  const due = installment.dueDate ?? "—";
+  const paid = formatINR(installment.paidAmount, { compact: true });
+  const dueAmt = formatINR(installment.installmentAmount, { compact: true });
+  return `${due} · ${paid}/${dueAmt}`;
 }
 
 export interface MisPreviewTableProps {
@@ -70,6 +110,17 @@ export function MisPreviewTable({
     [pageIndex, pageSize],
   );
 
+  const rows = data?.items ?? [];
+
+  const maxInstallments = useMemo(() => {
+    let max = 0;
+    for (const row of rows) {
+      const count = row.installments?.length ?? 0;
+      if (count > max) max = count;
+    }
+    return max;
+  }, [rows]);
+
   const columns = useMemo<ColumnDef<MisPreviewRow>[]>(
     () => [
       {
@@ -94,9 +145,19 @@ export function MisPreviewTable({
         ),
       },
       {
+        accessorKey: "accountNumber",
+        meta: { label: "Account" },
+        header: () => <span>Account</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground font-mono text-[11px]">
+            {plainText(row.original.accountNumber)}
+          </span>
+        ),
+      },
+      {
         accessorKey: "lspCode",
-        meta: { label: "LSP" },
-        header: () => <span>LSP</span>,
+        meta: { label: "LSP code" },
+        header: () => <span>LSP code</span>,
         cell: ({ row }) => (
           <span className="text-foreground-muted text-[11px] uppercase tracking-wide">
             {row.original.lspCode}
@@ -104,12 +165,30 @@ export function MisPreviewTable({
         ),
       },
       {
+        accessorKey: "lspName",
+        meta: { label: "LSP" },
+        header: () => <span>LSP</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted text-xs">{plainText(row.original.lspName)}</span>
+        ),
+      },
+      {
         accessorKey: "productCode",
-        meta: { label: "Product" },
-        header: () => <span>Product</span>,
+        meta: { label: "Product code" },
+        header: () => <span>Product code</span>,
         cell: ({ row }) => (
           <span className="text-foreground-muted text-[11px] uppercase tracking-wide">
             {row.original.productCode}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "productName",
+        meta: { label: "Product" },
+        header: () => <span>Product</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted text-xs">
+            {plainText(row.original.productName)}
           </span>
         ),
       },
@@ -133,8 +212,20 @@ export function MisPreviewTable({
             data-status={row.original.status}
             className="text-[10px] font-medium"
           >
-            {row.original.status.replace(/_/g, " ").toLowerCase()}
+            {(row.original.loanStatusDisplay ?? row.original.status)
+              .replace(/_/g, " ")
+              .toLowerCase()}
           </Badge>
+        ),
+      },
+      {
+        accessorKey: "applicationCreatedAt",
+        meta: { label: "Applied" },
+        header: () => <span>Applied</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted text-[11px] tabular-nums">
+            {plainText(row.original.applicationCreatedAt)}
+          </span>
         ),
       },
       {
@@ -193,11 +284,266 @@ export function MisPreviewTable({
           </span>
         ),
       },
+      {
+        accessorKey: "delinquencyBucket",
+        meta: { label: "Bucket" },
+        header: () => <span>Bucket</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted text-[11px] uppercase tracking-wide">
+            {row.original.delinquencyBucket ?? "—"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "externalLoanId",
+        meta: { label: "External id" },
+        header: () => <span>External id</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted font-mono text-[11px]">
+            {row.original.externalLoanId ?? "—"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "year",
+        meta: { label: "Year", numeric: true },
+        header: () => <span>Year</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground tabular-nums">
+            {row.original.year ?? "—"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "disbursalAmount",
+        meta: { label: "Disbursal", numeric: true },
+        header: () => <span>Disbursal</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground tabular-nums">
+            {formatINR(row.original.disbursalAmount, { compact: true })}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "processingFee",
+        meta: { label: "Fee", numeric: true },
+        header: () => <span>Fee</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground tabular-nums">
+            {formatINR(row.original.processingFee, { compact: true })}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "interestPct",
+        meta: { label: "Rate %", numeric: true },
+        header: () => <span>Rate %</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground tabular-nums">
+            {row.original.interestPct.toFixed(2)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "tenureMonths",
+        meta: { label: "Tenure", numeric: true },
+        header: () => <span>Tenure</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground tabular-nums">{row.original.tenureMonths}</span>
+        ),
+      },
+      {
+        accessorKey: "closureDate",
+        meta: { label: "Closed" },
+        header: () => <span>Closed</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted text-[11px] tabular-nums">
+            {plainText(row.original.closureDate)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "closureReason",
+        meta: { label: "Closure reason" },
+        header: () => <span>Closure reason</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted text-[11px]">
+            {plainText(row.original.closureReason)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "foreclosureDate",
+        meta: { label: "Foreclosed" },
+        header: () => <span>Foreclosed</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted text-[11px] tabular-nums">
+            {plainText(row.original.foreclosureDate)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "foreclosedAmount",
+        meta: { label: "Foreclosed ₹", numeric: true },
+        header: () => <span>Foreclosed ₹</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground tabular-nums">
+            {row.original.foreclosedAmount !== null
+              ? formatINR(row.original.foreclosedAmount, { compact: true })
+              : "—"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "pan",
+        meta: { label: "PAN" },
+        header: () => <span>PAN</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted font-mono text-[11px]">
+            {plainText(row.original.pan)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "aadhaar",
+        meta: { label: "Aadhaar" },
+        header: () => <span>Aadhaar</span>,
+        cell: ({ row }) => (
+          <span
+            className="text-foreground-muted font-mono text-[11px]"
+            data-pii="aadhaar"
+          >
+            {safeAadhaarDisplay(row.original.aadhaar)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "borrowerId",
+        meta: { label: "Borrower id" },
+        header: () => <span>Borrower id</span>,
+        cell: ({ row }) => (
+          <span
+            className="text-foreground-muted font-mono text-[11px]"
+            title={row.original.borrowerId ?? undefined}
+          >
+            {row.original.borrowerId ? truncateMiddle(row.original.borrowerId) : "—"}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "address",
+        meta: { label: "Address" },
+        header: () => <span>Address</span>,
+        cell: ({ row }) => (
+          <span
+            className="text-foreground-muted max-w-[12rem] truncate text-[11px]"
+            title={row.original.address ?? undefined}
+          >
+            {plainText(row.original.address)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "gender",
+        meta: { label: "Gender" },
+        header: () => <span>Gender</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted text-[11px]">
+            {plainText(row.original.gender)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "state",
+        meta: { label: "State" },
+        header: () => <span>State</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted text-[11px]">
+            {plainText(row.original.state)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "zip",
+        meta: { label: "ZIP" },
+        header: () => <span>ZIP</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted font-mono text-[11px]">
+            {plainText(row.original.zip)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "ifsc",
+        meta: { label: "IFSC" },
+        header: () => <span>IFSC</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted font-mono text-[11px]">
+            {plainText(row.original.ifsc)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "bankAccount",
+        meta: { label: "Bank a/c" },
+        header: () => <span>Bank a/c</span>,
+        cell: ({ row }) => (
+          <span
+            className="text-foreground-muted font-mono text-[11px]"
+            data-pii="bank-account"
+          >
+            {safeBankAccountDisplay(row.original.bankAccount)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "profession",
+        meta: { label: "Profession" },
+        header: () => <span>Profession</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground-muted text-[11px]">
+            {plainText(row.original.profession)}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "income",
+        meta: { label: "Income", numeric: true },
+        header: () => <span>Income</span>,
+        cell: ({ row }) => (
+          <span className="text-foreground tabular-nums">
+            {row.original.income !== null
+              ? formatINR(row.original.income, { compact: true })
+              : nullableNumber(row.original.income)}
+          </span>
+        ),
+      },
+      ...Array.from({ length: maxInstallments }, (_, index) => {
+        const installmentNumber = index + 1;
+        return {
+          id: `emi-${installmentNumber}`,
+          meta: { label: `EMI ${installmentNumber}` },
+          header: () => <span>{`EMI ${installmentNumber}`}</span>,
+          cell: ({ row }: { row: { original: MisPreviewRow } }) => {
+            const installment = row.original.installments?.find(
+              (inst) => inst.installmentNumber === installmentNumber,
+            );
+            return (
+              <span
+                className={cn(
+                  "text-foreground-muted text-[11px] whitespace-nowrap",
+                  installment?.received && "text-success",
+                )}
+              >
+                {installmentCell(installment)}
+              </span>
+            );
+          },
+        } satisfies ColumnDef<MisPreviewRow>;
+      }),
     ],
-    [],
+    [maxInstallments],
   );
-
-  const rows = data?.items ?? [];
 
   const table = useReactTable({
     data: rows as MisPreviewRow[],
@@ -224,7 +570,7 @@ export function MisPreviewTable({
   if (isLoading && rows.length === 0) {
     return (
       <div data-slot="mis-preview-table" className={cn("flex flex-col gap-3", className)}>
-        <TableSkeleton rows={8} cols={10} />
+        <TableSkeleton rows={8} cols={12} />
       </div>
     );
   }
@@ -232,10 +578,11 @@ export function MisPreviewTable({
   return (
     <div data-slot="mis-preview-table" className={cn("flex flex-col gap-3", className)}>
       <div
-        className="border-border bg-surface shadow-e1 overflow-hidden rounded-md border"
+        className="border-border bg-surface shadow-e1 overflow-x-auto rounded-md border"
         data-density="compact"
+        data-slot="mis-preview-scroll"
       >
-        <Table aria-label="Portfolio MIS preview">
+        <Table aria-label="Portfolio MIS preview" className="min-w-max">
           <TableHeader className="bg-surface-muted/60 sticky top-0 z-10 backdrop-blur">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">

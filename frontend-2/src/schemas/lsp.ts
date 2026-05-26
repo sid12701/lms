@@ -21,14 +21,19 @@ export const Lsp = z.object({
 });
 export type Lsp = z.infer<typeof Lsp>;
 
-/** Webhook event types per blueprint §11. */
+/**
+ * Webhook event types the backend actually emits.
+ *
+ * Per `docs/gap-fixes.md` § Gap #12, two FE-only values
+ * (`loan.disbursement.failed`, `loan.foreclosure.quote.generated`) were
+ * removed because the backend does not currently dispatch them. Re-add
+ * the moment those backend dispatches ship.
+ */
 export const WebhookEventType = z.enum([
   "loan.created",
   "loan.status.changed",
   "loan.disbursement.completed",
-  "loan.disbursement.failed",
   "loan.repayment.posted",
-  "loan.foreclosure.quote.generated",
   "loan.foreclosed",
 ]);
 export type WebhookEventType = z.infer<typeof WebhookEventType>;

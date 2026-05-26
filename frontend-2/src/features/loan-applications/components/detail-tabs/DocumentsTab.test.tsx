@@ -8,7 +8,12 @@ import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/utils";
 import type { LoanDocument } from "@/types";
 
+const requestBlobMock = vi.hoisted(() => vi.fn());
 const useDocumentsMock = vi.fn();
+
+vi.mock("@/lib/api/http-client", () => ({
+  requestBlob: requestBlobMock,
+}));
 
 vi.mock("../../hooks/useLoanApplicationDocuments", () => ({
   useLoanApplicationDocuments: () => useDocumentsMock(),
@@ -39,11 +44,31 @@ function loanDoc(overrides: Partial<LoanDocument> = {}): LoanDocument {
   };
 }
 
+function stubDownloadApis(): { getClickedDownload: () => string } {
+  let clickedDownload = "";
+  Object.defineProperty(URL, "createObjectURL", {
+    value: vi.fn(() => "blob:doc"),
+    configurable: true,
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    value: vi.fn(),
+    configurable: true,
+  });
+  vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(function clickAnchor(this: HTMLAnchorElement) {
+      clickedDownload = this.download;
+    });
+  return { getClickedDownload: () => clickedDownload };
+}
+
 beforeEach(() => {
+  requestBlobMock.mockReset();
   useDocumentsMock.mockReset();
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -62,9 +87,15 @@ describe("adaptLoanDocumentToDocument", () => {
     );
   });
 
-  it("falls back to OTHER for ADDRESS_PROOF", () => {
+  it("maps ADDRESS_PROOF without collapsing it to OTHER", () => {
     expect(adaptLoanDocumentToDocument(loanDoc({ type: "ADDRESS_PROOF" })).kind).toBe(
-      "OTHER",
+      "ADDRESS_PROOF",
+    );
+  });
+
+  it("maps KFS without collapsing it to OTHER", () => {
+    expect(adaptLoanDocumentToDocument(loanDoc({ type: "KFS", displayName: "KFS" })).kind).toBe(
+      "KFS",
     );
   });
 
@@ -135,6 +166,83 @@ describe("DocumentsTab", () => {
     expect(screen.getByText(/Couldn't load documents/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /try again/i }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("downloads KFS with the backend enum and preserves the uploaded filename fallback", async () => {
+    requestBlobMock.mockResolvedValue({
+      blob: new Blob(["pdf"], { type: "application/pdf" }),
+      filename: null,
+    });
+    const { getClickedDownload } = stubDownloadApis();
+    useDocumentsMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: {
+        documents: [
+          loanDoc({
+            id: "00000000-0000-4000-8000-000000000009",
+            type: "KFS",
+            displayName: "KFS",
+            fileMeta: {
+              storageKey: "loan/app/kfs/uuid-kfs.pdf",
+              fileName: "signed-kfs.pdf",
+              mime: "application/pdf",
+              size: 4096,
+              checksum: "sha256:kfs",
+            },
+          }),
+        ],
+      },
+      refetch: vi.fn(),
+    });
+    const user = userEvent.setup();
+
+    renderWithProviders(<DocumentsTab applicationId="app-1" canManage={false} />);
+    await user.click(screen.getByRole("button", { name: /Download KFS/i }));
+
+    expect(requestBlobMock).toHaveBeenCalledWith(
+      "/api/v1/internal/ops/loan-applications/app-1/kyc-documents/KFS/content",
+    );
+    expect(getClickedDownload()).toBe("signed-kfs.pdf");
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:doc");
+  });
+
+  it("uses the server filename when Content-Disposition is readable", async () => {
+    requestBlobMock.mockResolvedValue({
+      blob: new Blob(["pdf"], { type: "application/pdf" }),
+      filename: "server-pan.pdf",
+    });
+    const { getClickedDownload } = stubDownloadApis();
+    useDocumentsMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: {
+        documents: [
+          loanDoc({
+            id: "00000000-0000-4000-8000-000000000010",
+            type: "PAN",
+            fileMeta: {
+              storageKey: "loan/app/pan/uuid-pan.pdf",
+              fileName: "uploaded-pan.pdf",
+              mime: "application/pdf",
+              size: 4096,
+              checksum: "sha256:pan",
+            },
+          }),
+        ],
+      },
+      refetch: vi.fn(),
+    });
+    const user = userEvent.setup();
+
+    renderWithProviders(<DocumentsTab applicationId="app-1" canManage={false} />);
+    await user.click(screen.getByRole("button", { name: /Download PAN card/i }));
+
+    expect(requestBlobMock).toHaveBeenCalledWith(
+      "/api/v1/internal/ops/loan-applications/app-1/kyc-documents/PAN_CARD/content",
+    );
+    expect(getClickedDownload()).toBe("server-pan.pdf");
   });
 
   it("is axe-clean when populated", async () => {

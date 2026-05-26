@@ -17,9 +17,6 @@ function makeDoc(overrides: Partial<Document> = {}): Document {
     sizeBytes: null,
     uploadedAt: null,
     uploadedBy: null,
-    verifiedAt: null,
-    verifiedBy: null,
-    rejectionReason: null,
     ...overrides,
   };
 }

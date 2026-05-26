@@ -8,10 +8,8 @@
  * docs/INTEGRATION-STATUS.md):
  *   - Backend status enum is ACTIVE / INACTIVE; frontend uses ACTIVE /
  *     DISABLED. We translate INACTIVE <-> DISABLED on both directions.
- *   - The backend has no PUT /{id} endpoint for users yet. `updateUser`
- *     therefore returns the current state unchanged (apart from the
- *     locally-applied edits) and surfaces no error — until the backend
- *     ships an update endpoint, edits cannot persist.
+ *   - `PUT /{id}` persists email, role(s), status, and lspId. Role changes
+ *     invalidate existing sessions server-side via `token_version`.
  *   - The backend response carries no `mustChangePassword` flag on the
  *     listing; we default to `false`. The reset-password flow does mint
  *     a temporary password and forces password change on next login.
@@ -144,19 +142,18 @@ export async function updateUser(
   id: string,
   input: UpdateUserInput,
 ): Promise<UserMutationResponse> {
-  // The backend has no /users/{id} update endpoint yet — we fall back to
-  // re-listing and applying client-side edits so the UI optimistic update
-  // stays consistent within the page session.
-  const all = await requestJson<BackendUserResponse[]>(BASE);
-  const found = all.find((row) => row.id === id);
-  if (!found) throw new Error(`User ${id} not found`);
-  const row = toUserRow(found);
-  if (input.email) row.email = input.email;
-  if (input.role) row.role = input.role;
-  if (input.status) row.status = input.status;
-  if (typeof input.lspId !== "undefined") row.lspId = input.lspId;
-  void frontendToBackendStatus; // reserved for future PUT endpoint
-  return { user: row };
+  const body: Record<string, unknown> = {};
+  if (input.email) body.email = input.email;
+  if (input.role) body.roles = [input.role];
+  if (input.status) body.status = frontendToBackendStatus(input.status);
+  if (typeof input.lspId !== "undefined") body.lspId = input.lspId;
+
+  const payload = await requestJson<BackendUserResponse>(
+    `${BASE}/${id}`,
+    { method: "PUT", body: JSON.stringify(body) },
+    { idempotencyKey: input.idempotencyKey },
+  );
+  return { user: toUserRow(payload) };
 }
 
 export async function resetUserPassword(

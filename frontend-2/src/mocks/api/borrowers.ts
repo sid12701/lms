@@ -1,20 +1,13 @@
 /**
- * Borrowers handler (Phase 6).
+ * Borrowers handler.
  *
- * Implements every endpoint the borrower-detail surface + the Phase 5
- * documents tab consume. The cross-agent contract lives in
- * `@/features/borrowers/types`; this file mirrors that contract one-to-one.
+ * Implements every endpoint the borrower-detail surface + the documents
+ * tab consume.
  *
  * Endpoints:
  *   GET  /api/v1/borrowers/:id                       → BorrowerDetail
  *   GET  /api/v1/borrowers/:id/loans                 → BorrowerLoansResponse
- *   GET  /api/v1/borrowers/:id/activity              → BorrowerActivityResponse
- *   POST /api/v1/borrowers/:id/pii-reveal            → RecordPiiRevealResponse
  *   POST /api/v1/documents/:documentId/access        → RecordDocumentAccessResponse
- *
- * The `documents/:documentId/access` route is co-located here because
- * Phase 6 (borrower Activity feed) and Phase 5 (documents tab) both consume
- * it; keeping one handler avoids a duplicate-route registration race.
  *
  * LSP scoping mirrors `loan-applications.ts`:
  *   SYSTEM_ADMIN / OPS_USER / PRODUCT_ADMIN  → see every borrower
@@ -25,13 +18,13 @@
  *
  * Cross-tenant access raises `ForbiddenError` (HTTP 403).
  *
- * BR coverage:
- *   - BR-5  every POST replays under its `idempotencyKey` for 30s (router cache)
- *   - BR-7  PII reveal + document access write to their audit streams
+ * Per the masking-everywhere posture (see `docs/gap-fixes.md` § Gap #1),
+ * the PII reveal endpoint is removed. Per § Gap #2, the borrower
+ * activity feed is removed.
  */
 import { z } from "zod";
-import { Iso8601, Uuid } from "@/schemas/common";
-import { PiiFieldName, DocumentAccessAction } from "@/schemas/audit";
+import { Uuid } from "@/schemas/common";
+import { DocumentAccessAction } from "@/schemas/audit";
 import { hasPermission } from "@/lib/permissions";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { STATUS_META } from "@/lib/lifecycle";
@@ -40,21 +33,16 @@ import type {
   LoanAccount,
   LoanApplication,
   LoanDocument,
-  PiiRevealEvent,
   RepaymentInstallment,
   Role,
 } from "@/types";
 import type { Borrower } from "@/schemas/borrower";
 import type {
-  BorrowerActivityEntry,
-  BorrowerActivityResponse,
   BorrowerDetail,
   BorrowerLoanRow,
   BorrowerLoansResponse,
   RecordDocumentAccessInput,
   RecordDocumentAccessResponse,
-  RecordPiiRevealInput,
-  RecordPiiRevealResponse,
 } from "@/features/borrowers/types";
 import { dispatch, registerRoute, type MockRequest } from "../router";
 import {
@@ -235,120 +223,6 @@ function loansHandler(
   return { loans };
 }
 
-function activityHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): BorrowerActivityResponse {
-  const session = requireSession(db, correlationId);
-  const id = req.params?.["id"] ?? "";
-  const borrower = loadBorrowerForSession(db, session, id, correlationId);
-
-  const apps = getApplicationsForBorrower(db, borrower.id);
-  const appIds = new Set(apps.map((a) => a.id));
-
-  const entries: BorrowerActivityEntry[] = [];
-
-  // Application audit events — every transition on borrower-owned apps.
-  for (const e of db.auditApplication) {
-    if (appIds.has(e.applicationId)) {
-      entries.push({ kind: "APPLICATION", event: e });
-    }
-  }
-
-  // PII reveal events — schema uses `subjectId` + `subjectType` (no
-  // `subjectBorrowerId` field). Filter to BORROWER + matching subjectId.
-  for (const e of db.auditPiiReveal) {
-    if (e.subjectType === "BORROWER" && e.subjectId === borrower.id) {
-      entries.push({ kind: "PII_REVEAL", event: e });
-    }
-  }
-
-  // Document access events — match by the doc's parent application.
-  for (const e of db.auditDocumentAccess) {
-    if (appIds.has(e.applicationId)) {
-      entries.push({ kind: "DOCUMENT_ACCESS", event: e });
-    }
-  }
-
-  // Sort by event timestamp desc — fields differ per stream so resolve per kind.
-  const tsOf = (entry: BorrowerActivityEntry): string => {
-    if (entry.kind === "APPLICATION") return entry.event.createdAt;
-    if (entry.kind === "PII_REVEAL") return entry.event.revealedAt;
-    return entry.event.accessedAt;
-  };
-  entries.sort((a, b) => (tsOf(a) < tsOf(b) ? 1 : -1));
-
-  return { entries };
-}
-
-// ─── PII reveal handler ──────────────────────────────────────────────────────
-
-const RecordPiiRevealSchema = z.object({
-  borrowerId: Uuid,
-  field: PiiFieldName,
-  reason: z.string().min(1).max(500),
-  idempotencyKey: z.string().min(1).max(80),
-});
-
-function fieldValueFor(borrower: Borrower, field: z.infer<typeof PiiFieldName>): string {
-  switch (field) {
-    case "PAN":
-      return borrower.pan;
-    case "AADHAAR":
-      return borrower.aadhaar;
-    case "MOBILE":
-      return borrower.mobile;
-    case "ACCOUNT_NUMBER":
-      return borrower.banking.accountNumber;
-    case "EMAIL":
-      return borrower.email ?? "";
-  }
-}
-
-function piiRevealHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): RecordPiiRevealResponse {
-  const session = requireSession(db, correlationId);
-  // BR-7: only roles that can read loan data may reveal PII. LOAN_READ
-  // is the closest fine-grained permission; SYSTEM_ADMIN/OPS_USER/LSP_*
-  // all carry it. PRODUCT_ADMIN does too via the permissions table.
-  if (!hasPermission(session.role, "LOAN_READ")) {
-    throw new ForbiddenError(correlationId, "role cannot reveal PII");
-  }
-
-  const id = req.params?.["id"] ?? "";
-  const parsed = RecordPiiRevealSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new BadRequestError(correlationId, "invalid pii-reveal body", parsed.error.flatten());
-  }
-  if (parsed.data.borrowerId !== id) {
-    throw new BadRequestError(correlationId, "path/body borrowerId mismatch");
-  }
-
-  const borrower = loadBorrowerForSession(db, session, id, correlationId);
-
-  const event: PiiRevealEvent = {
-    id: newIdempotencyKey(),
-    subjectType: "BORROWER",
-    subjectId: borrower.id,
-    fieldName: parsed.data.field,
-    actorId: session.userId,
-    actorRole: session.role,
-    reason: parsed.data.reason,
-    correlationId,
-    revealedAt: new Date().toISOString(),
-  };
-  db.auditPiiReveal.push(event);
-
-  return {
-    value: fieldValueFor(borrower, parsed.data.field),
-    auditId: event.id,
-  };
-}
-
 // ─── Document access handler ─────────────────────────────────────────────────
 
 const RecordDocumentAccessSchema = z.object({
@@ -454,24 +328,6 @@ const BorrowerLoansResponseSchema = z.object({
   loans: z.array(BorrowerLoanRowSchema).readonly(),
 });
 
-const ActivityEntrySchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("APPLICATION"), event: z.object({ createdAt: Iso8601 }).passthrough() }),
-  z.object({ kind: z.literal("PII_REVEAL"), event: z.object({ revealedAt: Iso8601 }).passthrough() }),
-  z.object({
-    kind: z.literal("DOCUMENT_ACCESS"),
-    event: z.object({ accessedAt: Iso8601 }).passthrough(),
-  }),
-]);
-
-const BorrowerActivityResponseSchema = z.object({
-  entries: z.array(ActivityEntrySchema).readonly(),
-});
-
-const RecordPiiRevealResponseSchema = z.object({
-  value: z.string(),
-  auditId: Uuid,
-});
-
 const RecordDocumentAccessResponseSchema = z.object({
   auditId: Uuid,
 });
@@ -484,10 +340,6 @@ export function registerBorrowerRoutes(): void {
   registered = true;
   registerRoute("GET", "/api/v1/borrowers/:id", detailHandler);
   registerRoute("GET", "/api/v1/borrowers/:id/loans", loansHandler);
-  registerRoute("GET", "/api/v1/borrowers/:id/activity", activityHandler);
-  registerRoute("POST", "/api/v1/borrowers/:id/pii-reveal", piiRevealHandler, {
-    mutating: true,
-  });
   registerRoute("POST", "/api/v1/documents/:documentId/access", documentAccessHandler, {
     mutating: true,
   });
@@ -529,46 +381,6 @@ export async function loans(id: string, opts?: RequestOptions): Promise<Borrower
     },
     BorrowerLoansResponseSchema,
   ) as Promise<BorrowerLoansResponse>;
-}
-
-export async function activity(
-  id: string,
-  opts?: RequestOptions,
-): Promise<BorrowerActivityResponse> {
-  return dispatch(
-    {
-      method: "GET",
-      path: `/api/v1/borrowers/${id}/activity`,
-      headers: buildHeaders(opts),
-    },
-    BorrowerActivityResponseSchema,
-  ) as Promise<BorrowerActivityResponse>;
-}
-
-export interface RecordPiiRevealClientInput {
-  field: RecordPiiRevealInput["field"];
-  reason: string;
-}
-
-export async function recordPiiReveal(
-  borrowerId: string,
-  input: RecordPiiRevealClientInput,
-  opts?: RequestOptions,
-): Promise<RecordPiiRevealResponse> {
-  const idempotencyKey = opts?.idempotencyKey ?? newIdempotencyKey();
-  const correlationId = opts?.correlationId ?? newCorrelationId();
-  return dispatch(
-    {
-      method: "POST",
-      path: `/api/v1/borrowers/${borrowerId}/pii-reveal`,
-      body: { borrowerId, field: input.field, reason: input.reason, idempotencyKey },
-      headers: {
-        "Idempotency-Key": idempotencyKey,
-        "X-Correlation-Id": correlationId,
-      },
-    },
-    RecordPiiRevealResponseSchema,
-  );
 }
 
 export interface RecordDocumentAccessClientInput {

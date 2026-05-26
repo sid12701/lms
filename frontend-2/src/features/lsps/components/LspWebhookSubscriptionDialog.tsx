@@ -72,9 +72,7 @@ const EVENT_LABELS: Record<WebhookEventType, string> = {
   "loan.created": "Loan created",
   "loan.status.changed": "Status changed",
   "loan.disbursement.completed": "Disbursement completed",
-  "loan.disbursement.failed": "Disbursement failed",
   "loan.repayment.posted": "Repayment posted",
-  "loan.foreclosure.quote.generated": "Foreclosure quote generated",
   "loan.foreclosed": "Loan foreclosed",
 };
 

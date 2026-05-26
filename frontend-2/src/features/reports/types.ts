@@ -1,23 +1,26 @@
 /**
  * View-layer types for the `/reports` surface.
  *
- * Re-exports the wire-format types from the shipped `@/mocks/api/reports`
- * module so the hooks + components don't reach across the mock boundary
- * directly. UI-only types (filter snapshot + dialog form shape are added
- * here too).
+ * MIS row/summary shapes come from `@/schemas/report` (Gap #10 — aligned
+ * with the live backend preview). Request-queue types still mirror the mock
+ * module until that surface is wired to the backend.
  */
 import type {
   CreateReportRequestInput,
-  MisFilters as MisFiltersDto,
-  MisPreviewFilters as MisPreviewFiltersDto,
+  MisPreviewInstallment,
   MisPreviewResponseDto,
   MisPreviewRow,
   MisSummary,
+} from "@/schemas/report";
+import type {
+  MisFilters as MisFiltersDto,
+  MisPreviewFilters as MisPreviewFiltersDto,
 } from "@/mocks/api/reports";
 import type { ReportRequest, ReportStatus, ReportType } from "@/types";
 
 export type {
   CreateReportRequestInput,
+  MisPreviewInstallment,
   MisPreviewRow,
   MisPreviewResponseDto,
   MisSummary,

@@ -40,7 +40,6 @@ const DETAIL_FIXTURE: LoanApplicationDetail = {
     tenureMonths: 12,
     status: "AWAITING_APPROVAL",
     sourceChannel: "UI",
-    assignedTo: null,
     createdAt: "2026-05-10T08:00:00.000Z",
     updatedAt: "2026-05-10T08:00:00.000Z",
     invalidatedAt: null,

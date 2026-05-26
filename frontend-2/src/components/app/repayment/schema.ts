@@ -13,24 +13,24 @@
 import { z } from "zod";
 
 export const RepaymentPostMode = z.enum([
+  "NEFT",
+  "RTGS",
+  "IMPS",
   "BANK_TRANSFER",
   "UPI",
   "CASH",
-  "CHEQUE",
-  "RTGS",
-  "NEFT",
 ]);
 export type RepaymentPostMode = z.infer<typeof RepaymentPostMode>;
 
 export const REPAYMENT_POST_MODES = RepaymentPostMode.options;
 
 export const REPAYMENT_POST_MODE_LABELS: Record<RepaymentPostMode, string> = {
+  NEFT: "NEFT",
+  RTGS: "RTGS",
+  IMPS: "IMPS",
   BANK_TRANSFER: "Bank transfer",
   UPI: "UPI",
   CASH: "Cash",
-  CHEQUE: "Cheque",
-  RTGS: "RTGS",
-  NEFT: "NEFT",
 };
 
 /**
@@ -42,16 +42,7 @@ export const REPAYMENT_POST_MODE_LABELS: Record<RepaymentPostMode, string> = {
  */
 export function makeRepaymentPostSchema(outstanding: number) {
   return z.object({
-    amount: z
-      .number({
-        invalid_type_error: "Amount is required.",
-        required_error: "Amount is required.",
-      })
-      .positive("Amount must be greater than zero.")
-      .refine((value) => value === outstanding, {
-        message:
-          "Repayment must equal the outstanding amount of the next installment (BR-13).",
-      }),
+    amount: z.literal(outstanding),
     postedAt: z
       .string()
       .min(1, "Posting date is required.")
@@ -59,6 +50,7 @@ export function makeRepaymentPostSchema(outstanding: number) {
         message: "Posting date is invalid.",
       }),
     mode: RepaymentPostMode,
+    reference: z.string().max(128, "Reference must be 128 characters or fewer.").optional(),
   });
 }
 

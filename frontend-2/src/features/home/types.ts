@@ -48,7 +48,6 @@ export interface HomeRecentApplication {
   status: LoanStatus;
   requestedAmount: number;
   createdAt: string;
-  assignedToName: string | null;
 }
 
 /**

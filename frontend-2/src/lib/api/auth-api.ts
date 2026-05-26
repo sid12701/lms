@@ -18,6 +18,7 @@ export interface BackendTokenResponse {
 export interface BackendSystemContext {
   application: string;
   activeProfiles: string[];
+  id: string;
   username: string;
   roles: string[];
   correlationId: string | null;

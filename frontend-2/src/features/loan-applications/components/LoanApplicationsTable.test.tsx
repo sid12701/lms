@@ -29,8 +29,6 @@ const ROW_A: LoanApplicationListItem = {
   requestedAmount: 250_000,
   tenureMonths: 24,
   status: "AWAITING_APPROVAL",
-  assignedTo: "55555555-5555-4555-8555-555555555555",
-  assignedToName: "Ops User",
   createdAt: "2026-04-10T08:00:00.000Z",
   updatedAt: "2026-05-10T08:00:00.000Z",
 };
@@ -42,8 +40,6 @@ const ROW_B: LoanApplicationListItem = {
   borrowerNameMasked: "B•••b Singh",
   requestedAmount: 75_000,
   status: "DISBURSED",
-  assignedTo: null,
-  assignedToName: null,
 };
 
 const RESPONSE: LoanApplicationListResponse = {
@@ -94,8 +90,6 @@ describe("LoanApplicationsTable", () => {
     expect(screen.getByText(ROW_B.borrowerNameMasked)).toBeInTheDocument();
     // External ID fallback
     expect(screen.getByText("—")).toBeInTheDocument();
-    // Assignee fallback
-    expect(screen.getByText("Unassigned")).toBeInTheDocument();
     // Tenure formatting
     expect(screen.getAllByText("24 mo")).toHaveLength(2);
     // Short id with mono font
@@ -215,6 +209,6 @@ describe("LoanApplicationsTable", () => {
     expect(screen.getByText("Product")).toBeInTheDocument();
     // Two amount labels (header button + sort variant) — just check presence.
     const firstRow = screen.getAllByRole("row")[1]!;
-    expect(within(firstRow).getAllByRole("cell").length).toBe(10);
+    expect(within(firstRow).getAllByRole("cell").length).toBe(9);
   });
 });

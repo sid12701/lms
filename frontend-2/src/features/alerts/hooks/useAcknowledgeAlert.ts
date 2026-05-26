@@ -1,5 +1,5 @@
 /**
- * Mutation hook — acknowledges a single alert via the mock router.
+ * Mutation hook — acknowledges a single alert via the live backend.
  *
  * Invalidates every cached `alerts` query on success + surfaces a sonner
  * toast. The caller mints the BR-5 idempotency key (the dialog does this

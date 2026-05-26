@@ -222,15 +222,29 @@ function summaryHandler(
 
 // ─── MIS preview ─────────────────────────────────────────────────────────────
 
+interface MisPreviewInstallmentPayload {
+  installmentNumber: number;
+  dueDate: string | null;
+  installmentAmount: number;
+  paidAmount: number;
+  received: boolean;
+}
+
 interface MisPreviewRowPayload {
   loanId: string;
   externalLoanId: string | null;
   borrowerName: string;
+  borrowerId: string | null;
   lspCode: string;
+  lspName: string;
   productCode: string;
+  productName: string;
+  accountNumber: string | null;
   amount: number;
   status: LoanStatusType;
+  loanStatusDisplay: string | null;
   disbursalDate: string | null;
+  applicationCreatedAt: string | null;
   dpd: number;
   delinquencyBucket: z.infer<typeof DelinquencyBucket> | null;
   year: number | null;
@@ -241,8 +255,10 @@ interface MisPreviewRowPayload {
   emiAmount: number;
   overdueAmount: number;
   closureDate: string | null;
+  closureReason: string | null;
   foreclosureDate: string | null;
   foreclosedAmount: number | null;
+  address: string | null;
   pan: string | null;
   aadhaar: string | null;
   gender: string | null;
@@ -252,6 +268,7 @@ interface MisPreviewRowPayload {
   bankAccount: string | null;
   profession: string | null;
   income: number | null;
+  installments?: MisPreviewInstallmentPayload[];
 }
 
 interface MisPreviewResponse {
@@ -339,15 +356,32 @@ function buildPreviewRow(
         .reduce((sum, p) => sum + p.amount, 0) || null
     : null;
 
+  const installmentPreviews: MisPreviewInstallmentPayload[] = installments
+    .slice()
+    .sort((a, b) => a.number - b.number)
+    .map((inst) => ({
+      installmentNumber: inst.number,
+      dueDate: inst.dueDate,
+      installmentAmount: inst.installmentAmount,
+      paidAmount: inst.paidAmount,
+      received: inst.status === "PAID",
+    }));
+
   return {
     loanId: app.id,
     externalLoanId: app.externalLoanId,
     borrowerName: borrower ? maskName(borrower.fullName) : BULLET,
+    borrowerId: app.borrowerId,
     lspCode: lsp?.code ?? "UNKNOWN",
+    lspName: lsp?.name ?? "Unknown LSP",
     productCode: product?.code ?? "UNKNOWN",
+    productName: product?.name ?? "Unknown product",
+    accountNumber: account?.accountNumber ?? null,
     amount: app.requestedAmount,
     status: app.status,
+    loanStatusDisplay: app.status,
     disbursalDate,
+    applicationCreatedAt: app.createdAt.slice(0, 10),
     dpd: maxDpd,
     delinquencyBucket: worstBucket,
     year,
@@ -358,8 +392,14 @@ function buildPreviewRow(
     emiAmount,
     overdueAmount,
     closureDate,
+    closureReason: account?.closureReason ?? null,
     foreclosureDate,
     foreclosedAmount,
+    address: borrower
+      ? [borrower.address.residential, borrower.address.city, borrower.address.state]
+          .filter(Boolean)
+          .join(", ")
+      : null,
     pan: borrower ? `${borrower.pan.slice(0, 3)}${BULLET.repeat(4)}${borrower.pan.slice(-1)}` : null,
     aadhaar: borrower
       ? `${BULLET.repeat(8)}${borrower.aadhaar.slice(-4)}`
@@ -373,6 +413,7 @@ function buildPreviewRow(
       : null,
     profession: borrower?.employment.type ?? null,
     income: borrower?.employment.monthlyIncome ?? null,
+    installments: installmentPreviews.length > 0 ? installmentPreviews : undefined,
   };
 }
 
@@ -583,15 +624,29 @@ const ReportRequestRowSchema = z.object({
   completedAt: z.string().nullable(),
 }) satisfies z.ZodType<ReportRequest>;
 
+const MisPreviewInstallmentSchema = z.object({
+  installmentNumber: z.number().int().positive(),
+  dueDate: z.string().nullable(),
+  installmentAmount: z.number().nonnegative(),
+  paidAmount: z.number().nonnegative(),
+  received: z.boolean(),
+});
+
 const MisPreviewRowSchema = z.object({
   loanId: z.string(),
   externalLoanId: z.string().nullable(),
   borrowerName: z.string(),
+  borrowerId: z.string().nullable(),
   lspCode: z.string(),
+  lspName: z.string(),
   productCode: z.string(),
+  productName: z.string(),
+  accountNumber: z.string().nullable(),
   amount: z.number().nonnegative(),
   status: LoanStatus,
+  loanStatusDisplay: z.string().nullable(),
   disbursalDate: z.string().nullable(),
+  applicationCreatedAt: z.string().nullable(),
   dpd: z.number().int().nonnegative(),
   delinquencyBucket: DelinquencyBucket.nullable(),
   year: z.number().int().nullable(),
@@ -602,8 +657,10 @@ const MisPreviewRowSchema = z.object({
   emiAmount: z.number().nonnegative(),
   overdueAmount: z.number().nonnegative(),
   closureDate: z.string().nullable(),
+  closureReason: z.string().nullable(),
   foreclosureDate: z.string().nullable(),
   foreclosedAmount: z.number().nullable(),
+  address: z.string().nullable(),
   pan: z.string().nullable(),
   aadhaar: z.string().nullable(),
   gender: z.string().nullable(),
@@ -613,6 +670,7 @@ const MisPreviewRowSchema = z.object({
   bankAccount: z.string().nullable(),
   profession: z.string().nullable(),
   income: z.number().nullable(),
+  installments: z.array(MisPreviewInstallmentSchema).optional(),
 });
 
 const MisPreviewResponseSchema = z.object({

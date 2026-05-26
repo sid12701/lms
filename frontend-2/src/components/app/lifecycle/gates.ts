@@ -18,7 +18,7 @@ import type { LoanStatus, Role } from "@/types";
 import type { LifecycleAction } from "./actions";
 
 export interface TransitionGates {
-  /** BR-3 — every required-for-disbursement document is VERIFIED. */
+  /** BR-3 — every required-for-disbursement document is uploaded. */
   docsComplete?: boolean;
   /** BR-10 — a valid repayment schedule exists for the loan. */
   scheduleValid?: boolean;

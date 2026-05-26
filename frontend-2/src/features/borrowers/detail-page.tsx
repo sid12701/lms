@@ -9,7 +9,7 @@ import { formatINR } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BorrowerHeader } from "./components/BorrowerHeader";
 import { BorrowerTabsShell } from "./components/BorrowerTabsShell";
-import { ProfileTab, LoansTab, ActivityTab } from "./components/tabs";
+import { ProfileTab, LoansTab } from "./components/tabs";
 import { useBorrowerDetail } from "./hooks/useBorrowerDetail";
 import { BorrowerDetailTab } from "./types";
 
@@ -94,8 +94,6 @@ export function BorrowerDetailPage() {
         return <ProfileTab detail={detail} />;
       case "loans":
         return <LoansTab borrowerId={borrowerId} />;
-      case "activity":
-        return <ActivityTab borrowerId={borrowerId} />;
       default:
         return null;
     }

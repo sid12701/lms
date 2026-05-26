@@ -2,17 +2,20 @@
  * Alerts inbox, wired to the live backend.
  *
  * Backend contract: `OpsAlertController` under `/api/v1/internal/alerts`
- * (SYSTEM_ADMIN + OPS_USER). The acknowledge endpoint takes no body
- * payload — the frontend's `note` field is dropped on the way out
- * (documented in docs/INTEGRATION-STATUS.md).
+ * (SYSTEM_ADMIN + OPS_USER). Per `docs/gap-fixes.md` § Gap #15, the
+ * acknowledge endpoint accepts an optional `note` (max 500 chars) and
+ * round-trips it on the response.
  */
 import { requestJson, buildQueryPath } from "@/lib/api/http-client";
 import type {
   AlertRow,
+  AlertRuleRow,
   AlertsListFilters,
   AlertsListResponse,
   AcknowledgeAlertInput,
   AcknowledgeAlertResponse,
+  EscalateAlertInput,
+  EscalateAlertResponse,
 } from "./types";
 import type {
   AlertSeverity,
@@ -71,6 +74,7 @@ interface BackendAlertResponse {
   createdAt: string;
   acknowledgedAt: string | null;
   acknowledgedByUsername: string | null;
+  acknowledgementNote: string | null;
 }
 
 function toAlertRow(payload: BackendAlertResponse): AlertRow {
@@ -88,7 +92,7 @@ function toAlertRow(payload: BackendAlertResponse): AlertRow {
     createdAt: payload.createdAt,
     acknowledgedAt: payload.acknowledgedAt,
     acknowledgedBy: null,
-    acknowledgmentNote: null,
+    acknowledgmentNote: payload.acknowledgementNote ?? null,
     acknowledgedByName: payload.acknowledgedByUsername ?? null,
   };
 }
@@ -128,12 +132,75 @@ export async function acknowledgeAlert(
   id: string,
   input: AcknowledgeAlertInput,
 ): Promise<AcknowledgeAlertResponse> {
+  const body: { note?: string } = {};
+  if (input.note && input.note.trim().length > 0) {
+    body.note = input.note.trim();
+  }
   const payload = await requestJson<BackendAlertResponse>(
     `${BASE}/${id}/acknowledge`,
-    { method: "POST" },
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
     { idempotencyKey: input.idempotencyKey },
   );
-  const row = toAlertRow(payload);
-  if (input.note) row.acknowledgmentNote = input.note;
-  return { alert: row };
+  return { alert: toAlertRow(payload) };
+}
+
+/**
+ * OPS_USER escalation surface (Gap #16). Creates a high-severity
+ * `OPS_USER_ESCALATION` alert that SYSTEM_ADMIN sees in the alerts inbox.
+ * Used from the loan-detail page when ops needs admin to intervene on a
+ * loan that is stuck or otherwise needs an out-of-band review.
+ */
+export async function escalateAlert(
+  input: EscalateAlertInput,
+): Promise<EscalateAlertResponse> {
+  const body = {
+    subjectType: input.subjectType,
+    subjectId: input.subjectId,
+    title: input.title.trim(),
+    message: input.message.trim(),
+  };
+  const payload = await requestJson<BackendAlertResponse>(
+    `${BASE}/escalate`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    { idempotencyKey: input.idempotencyKey },
+  );
+  return { alert: toAlertRow(payload) };
+}
+
+interface BackendAlertRuleResponse {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  audience: string;
+  triggerKind: string;
+  configJson: string | null;
+  lastEvaluatedAt: string | null;
+}
+
+function toAlertRuleRow(payload: BackendAlertRuleResponse): AlertRuleRow {
+  return {
+    id: payload.id,
+    code: payload.code,
+    name: payload.name,
+    description: payload.description,
+    enabled: payload.enabled,
+    audience: payload.audience === "OPS" ? "OPS" : "SYSTEM_ADMIN",
+    triggerKind: payload.triggerKind === "EVENT" ? "EVENT" : "SCHEDULED",
+    configJson: payload.configJson,
+    lastEvaluatedAt: payload.lastEvaluatedAt,
+  };
+}
+
+/** SYSTEM_ADMIN-only catalogue of configured alert rules. */
+export async function listAlertRules(): Promise<AlertRuleRow[]> {
+  const payload = await requestJson<BackendAlertRuleResponse[]>(`${BASE}/rules`);
+  return payload.map(toAlertRuleRow);
 }

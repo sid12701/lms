@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { StatusBadge } from "@/components/app/status/StatusBadge";
 import { ActionBar } from "@/components/app/lifecycle/ActionBar";
+import { EscalateToAdminDialog } from "@/components/app/lifecycle/EscalateToAdminDialog";
 import { useSession } from "@/features/auth/session-context";
+import { escalateAlert } from "@/features/alerts/api";
 import {
   useInitiateDisbursement,
   useTransitionStatus,
@@ -44,6 +46,36 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
   const mutation = useTransitionStatus(detail.application.id);
   const disbursementMutation = useInitiateDisbursement(detail.application.id);
   const [nameRevealed, setNameRevealed] = useState(false);
+  const [escalateOpen, setEscalateOpen] = useState(false);
+  const [escalateBusy, setEscalateBusy] = useState(false);
+
+  const handleEscalate = async ({
+    title,
+    message,
+    idempotencyKey,
+  }: {
+    title: string;
+    message: string;
+    idempotencyKey: string;
+  }) => {
+    setEscalateBusy(true);
+    try {
+      await escalateAlert({
+        subjectType: "LOAN_APPLICATION",
+        subjectId: detail.application.id,
+        title,
+        message,
+        idempotencyKey,
+      });
+      toast.success("Escalation sent to admin.");
+      setEscalateOpen(false);
+    } catch (err) {
+      const detailMsg = err instanceof Error ? err.message : "Please try again.";
+      toast.error(`Failed to send escalation: ${detailMsg}`);
+    } finally {
+      setEscalateBusy(false);
+    }
+  };
 
   const fullName = detail.borrower.fullName;
   const displayName = nameRevealed ? fullName : maskName(fullName);
@@ -110,7 +142,39 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
         }
       />
 
-      {role ? (
+      {role === "OPS_USER" ? (
+        <div
+          data-slot="ops-escalate-bar"
+          className="flex flex-col gap-2"
+        >
+          <p className="text-foreground-muted text-sm">
+            Approvals and lifecycle changes are automated. Use Escalate to
+            admin if this loan needs out-of-band intervention.
+          </p>
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Loan actions">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEscalateOpen(true)}
+              data-action-id="OPS_ESCALATE_TO_ADMIN"
+            >
+              <AlertTriangle aria-hidden="true" className="size-4" />
+              <span>Escalate to admin</span>
+            </Button>
+          </div>
+          <EscalateToAdminDialog
+            open={escalateOpen}
+            onOpenChange={(next) => {
+              if (escalateBusy) return;
+              setEscalateOpen(next);
+            }}
+            subjectType="LOAN_APPLICATION"
+            subjectId={detail.application.id}
+            onConfirm={handleEscalate}
+            loading={escalateBusy}
+          />
+        </div>
+      ) : role ? (
         <ActionBar
           currentStatus={detail.application.status}
           role={role}

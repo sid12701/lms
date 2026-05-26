@@ -2,29 +2,17 @@ import { ShieldCheck, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { PiiFieldName } from "@/schemas/audit";
 import type { BorrowerDetail } from "../types";
 
 export interface BorrowerHeaderProps {
   detail: BorrowerDetail;
-  /**
-   * Wired by the page so the header can offer a same-shape `onPiiReveal`
-   * surface to future inline-PII consumers (e.g. a "Reveal mobile" affordance
-   * pinned to the header). The current implementation never invokes it
-   * directly — PII reveal lives in the ProfileTab body — but the prop is
-   * documented here as the binding contract.
-   */
-  onPiiReveal?: (
-    field: PiiFieldName,
-    reason: string,
-  ) => Promise<{ value: string }>;
 }
 
 /**
  * Borrower-detail page header — eyebrow, full name, KYC badge, visible-LSP
- * count, and the open-application tally. Name is always shown because BR-7
- * masks PAN / Aadhaar / Mobile / Account / Email — full name itself is not
- * a masked field.
+ * count, and the open-application tally. Identity numbers (PAN, Aadhaar,
+ * account etc.) are always masked at the API; this header only shows
+ * non-PII attributes.
  */
 export function BorrowerHeader({ detail }: BorrowerHeaderProps) {
   const { borrower, visibleLsps, totals } = detail;

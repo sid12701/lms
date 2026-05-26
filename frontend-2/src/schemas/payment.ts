@@ -33,6 +33,8 @@ export const PaymentTransaction = z.object({
   amount: MoneyINRPositive,
   postedAt: Iso8601,
   postedBy: Uuid,
+  /** External bank/UPI/cheque reference supplied by the posting channel. */
+  reference: z.string().trim().min(1).nullable().optional(),
   /** BR-5: idempotency key on every mutation. */
   idempotencyKey: IdempotencyKey,
   allocation: z.array(PaymentAllocation),

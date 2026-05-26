@@ -17,9 +17,6 @@ function makeDoc(overrides: Partial<Document> = {}): Document {
     sizeBytes: 12345,
     uploadedAt: "2026-05-01T10:00:00.000Z",
     uploadedBy: "33333333-3333-4333-8333-333333333333",
-    verifiedAt: null,
-    verifiedBy: null,
-    rejectionReason: null,
     ...overrides,
   };
 }
@@ -38,13 +35,12 @@ describe("formatBytes", () => {
   });
 });
 
-describe("DocumentChecklistRow", () => {
+describe("DocumentChecklistRow (Gap #18 — view-only)", () => {
   it("renders the kind label, status pill, and file metadata", () => {
     const { getByText, container } = renderWithProviders(
       <DocumentChecklistRow doc={makeDoc()} />,
     );
     expect(getByText("PAN card")).toBeInTheDocument();
-    // The status pill carries an exact "Uploaded" label.
     const pill = container.querySelector('[data-slot="document-status-pill"]');
     expect(pill?.textContent).toContain("Uploaded");
     expect(getByText("pan.pdf")).toBeInTheDocument();
@@ -69,15 +65,6 @@ describe("DocumentChecklistRow", () => {
     expect(queryByText("application/pdf")).toBeNull();
   });
 
-  it("renders the rejection reason when status is REJECTED", () => {
-    const { getByText } = renderWithProviders(
-      <DocumentChecklistRow
-        doc={makeDoc({ status: "REJECTED", rejectionReason: "Blurry scan" })}
-      />,
-    );
-    expect(getByText(/Rejected: Blurry scan/i)).toBeInTheDocument();
-  });
-
   it("calls onView and onDownload when their buttons are clicked", async () => {
     const onView = vi.fn();
     const onDownload = vi.fn();
@@ -100,88 +87,14 @@ describe("DocumentChecklistRow", () => {
     expect(queryByRole("button", { name: /Download/i })).toBeNull();
   });
 
-  it("does not show Verify or Reject buttons without permissions", () => {
-    const { queryByRole } = renderWithProviders(
-      <DocumentChecklistRow
-        doc={makeDoc()}
-        onVerify={() => {}}
-        onReject={() => {}}
-      />,
+  it("does not surface any Verify or Reject affordances (Gap #18)", () => {
+    const { queryByRole, container } = renderWithProviders(
+      <DocumentChecklistRow doc={makeDoc()} />,
     );
     expect(queryByRole("button", { name: /Verify/i })).toBeNull();
     expect(queryByRole("button", { name: /Reject/i })).toBeNull();
+    expect(container.querySelector('[data-slot="document-rejection-reason"]')).toBeNull();
   });
-
-  it("hides Verify when status is already VERIFIED, hides Reject when REJECTED", () => {
-    const { queryByRole, rerender } = renderWithProviders(
-      <DocumentChecklistRow
-        doc={makeDoc({ status: "VERIFIED" })}
-        onVerify={() => {}}
-        onReject={() => {}}
-        permissions={{ canVerify: true, canReject: true }}
-      />,
-    );
-    expect(queryByRole("button", { name: /Verify/i })).toBeNull();
-    // Reject should be visible
-    expect(queryByRole("button", { name: /Reject PAN card/i })).not.toBeNull();
-
-    rerender(
-      <DocumentChecklistRow
-        doc={makeDoc({ status: "REJECTED", rejectionReason: "x" })}
-        onVerify={() => {}}
-        onReject={() => {}}
-        permissions={{ canVerify: true, canReject: true }}
-      />,
-    );
-    expect(queryByRole("button", { name: /Reject PAN card/i })).toBeNull();
-    expect(queryByRole("button", { name: /Verify PAN card/i })).not.toBeNull();
-  });
-
-  it(
-    "calls onVerify with a fresh idempotency key when Verify is clicked",
-    async () => {
-      const onVerify = vi.fn();
-      const { getByRole } = renderWithProviders(
-        <DocumentChecklistRow
-          doc={makeDoc()}
-          onVerify={onVerify}
-          permissions={{ canVerify: true }}
-        />,
-      );
-      await userEvent.click(getByRole("button", { name: /Verify PAN card/i }));
-      expect(onVerify).toHaveBeenCalledTimes(1);
-      const [args] = onVerify.mock.calls[0]!;
-      expect(typeof args.idempotencyKey).toBe("string");
-      expect(args.idempotencyKey.length).toBeGreaterThan(0);
-    },
-    15_000,
-  );
-
-  it(
-    "opens the reject dialog and forwards reason + idempotency key on submit",
-    async () => {
-      const onReject = vi.fn();
-      const { getByRole, getByLabelText } = renderWithProviders(
-        <DocumentChecklistRow
-          doc={makeDoc()}
-          onReject={onReject}
-          permissions={{ canReject: true }}
-        />,
-      );
-      await userEvent.click(getByRole("button", { name: /Reject PAN card/i }));
-      await userEvent.type(
-        getByLabelText(/Reason for rejection/i),
-        "Document is illegible",
-      );
-      await userEvent.click(getByRole("button", { name: "Reject" }));
-      expect(onReject).toHaveBeenCalledTimes(1);
-      const [args] = onReject.mock.calls[0]!;
-      expect(args.rejectionReason).toBe("Document is illegible");
-      expect(typeof args.idempotencyKey).toBe("string");
-      expect(args.idempotencyKey.length).toBeGreaterThan(0);
-    },
-    15_000,
-  );
 
   it("applies compact mode via data-compact='true'", () => {
     const { container } = renderWithProviders(

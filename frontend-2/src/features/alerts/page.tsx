@@ -18,9 +18,12 @@ import { Bell, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
+import { useSession } from "@/features/auth/session-context";
+import { AlertRulesPanel } from "./components/AlertRulesPanel";
 import { AlertsFilterBar } from "./components/AlertsFilterBar";
 import { AlertsTable } from "./components/AlertsTable";
 import { AcknowledgeAlertDialog } from "./components/AcknowledgeAlertDialog";
+import { useAlertRules } from "./hooks/useAlertRules";
 import { useAlerts } from "./hooks/useAlerts";
 import { useAcknowledgeAlert } from "./hooks/useAcknowledgeAlert";
 import type { AlertRow, AlertsListFilters } from "./types";
@@ -51,7 +54,11 @@ export function AlertsPage() {
     null,
   );
 
+  const { session } = useSession();
+  const isSystemAdmin = session?.user.role === "SYSTEM_ADMIN";
+
   const query = useAlerts(filters);
+  const rulesQuery = useAlertRules(isSystemAdmin);
   const acknowledge = useAcknowledgeAlert();
 
   const dialogOpen = selectedAlertForAck !== null;
@@ -120,6 +127,12 @@ export function AlertsPage() {
         />
       ) : (
         <>
+          {isSystemAdmin ? (
+            <AlertRulesPanel
+              rules={rulesQuery.data}
+              isLoading={rulesQuery.isPending}
+            />
+          ) : null}
           <AlertsFilterBar filters={filters} onChange={setFilters} />
           {!query.isPending &&
           (query.data?.total ?? 0) === 0 &&

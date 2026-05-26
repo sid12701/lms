@@ -3,7 +3,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 
 export interface DisbursementGateBannerProps {
-  /** BR-3: every required-for-disbursement document is VERIFIED. */
+  /** BR-3: every required-for-disbursement document is uploaded. */
   docsComplete: boolean;
   /** BR-10: a valid repayment schedule exists for the loan. */
   scheduleValid: boolean;
@@ -36,7 +36,7 @@ export function DisbursementGateBanner({
       <AlertDescription>
         <ul className="list-disc space-y-1 pl-5">
           {!docsComplete ? (
-            <li>Required documents pending verification (BR-3)</li>
+            <li>Required documents not yet uploaded (BR-3)</li>
           ) : null}
           {!scheduleValid ? (
             <li>Repayment schedule not generated (BR-10)</li>

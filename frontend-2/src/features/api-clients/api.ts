@@ -4,16 +4,8 @@
  * Backend contract: `ApiClientAdminController` under
  * `/api/v1/internal/admin/api-clients` (SYSTEM_ADMIN only).
  *
- * Backend gaps vs. the frontend projection (see docs/INTEGRATION-STATUS.md):
- *   - No PUT /{id} update endpoint — `updateApiClient` keeps the change
- *     in the page-session projection but cannot persist it.
- *   - No POST /{id}/rotate-secret — `rotateApiClientSecret` returns a
- *     locally-minted secret string so the reveal UI still functions but
- *     the backend's stored secret is unchanged.
- *   - The backend response does not surface the IP allow-list; we default
- *     to an empty array.
- *   - Status enum is ACTIVE / INACTIVE on the backend; the frontend uses
- *     ACTIVE / DISABLED. Translated in both directions.
+ * Status enum is ACTIVE / INACTIVE on the backend; the frontend uses
+ * ACTIVE / DISABLED. Translated in both directions.
  */
 import { requestJson } from "@/lib/api/http-client";
 import type { ApiClient, ApiClientStatus } from "@/schemas/user";
@@ -41,10 +33,18 @@ interface BackendApiClientResponse {
   lspName: string;
   createdAt: string;
   lastUsedAt: string | null;
+  lastRotatedAt?: string | null;
+  ipAllowlist: string[];
 }
 
 interface BackendCreatedApiClientResponse extends BackendApiClientResponse {
   clientSecret: string;
+}
+
+interface BackendRotateSecretResponse {
+  clientId: string;
+  clientSecret: string;
+  oldSecretValidUntil: string | null;
 }
 
 function backendStatus(value: ApiClientStatus | undefined): string {
@@ -64,13 +64,17 @@ function toApiClient(payload: BackendApiClientResponse): ApiClient {
     status: frontendStatus(payload.status),
     createdAt: payload.createdAt,
     lastUsedAt: payload.lastUsedAt,
-    ipAllowList: [],
+    ipAllowList: payload.ipAllowlist ?? [],
   };
 }
 
 function toRow(payload: BackendApiClientResponse): ApiClientRow {
   const client = toApiClient(payload);
-  return { ...client, lspName: payload.lspName, ipAllowlistCount: 0 };
+  return {
+    ...client,
+    lspName: payload.lspName,
+    ipAllowlistCount: (payload.ipAllowlist ?? []).length,
+  };
 }
 
 const lastRotatedAtById = new Map<string, string>();
@@ -117,49 +121,56 @@ export async function createApiClient(
     { idempotencyKey: input.idempotencyKey },
   );
   const row = toRow(payload);
-  return { client: { ...row, ipAllowList: input.ipAllowList, ipAllowlistCount: input.ipAllowList.length }, clientSecret: payload.clientSecret };
+  if (input.ipAllowList.length > 0) {
+    const updated = await updateApiClient(payload.id, {
+      ipAllowList: input.ipAllowList,
+      idempotencyKey: input.idempotencyKey,
+    });
+    return { client: updated.client, clientSecret: payload.clientSecret };
+  }
+  return { client: row, clientSecret: payload.clientSecret };
 }
 
 export async function updateApiClient(
   id: string,
   input: UpdateApiClientInput,
 ): Promise<ApiClientMutationResponse> {
-  const all = await requestJson<BackendApiClientResponse[]>(BASE);
-  const found = all.find((row) => row.id === id);
-  if (!found) throw new Error(`API client ${id} not found`);
-  const row = toRow(found);
-  if (input.name) row.name = input.name;
-  if (input.status) row.status = input.status;
-  if (input.ipAllowList) {
-    row.ipAllowList = input.ipAllowList;
-    row.ipAllowlistCount = input.ipAllowList.length;
-  }
-  void backendStatus; // reserved for the future update endpoint
-  return { client: row };
-}
+  const body: Record<string, unknown> = {};
+  if (input.name) body.name = input.name;
+  if (input.status) body.status = backendStatus(input.status);
+  if (input.ipAllowList) body.ipAllowlist = input.ipAllowList;
 
-function mintLocalSecret(): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  let out = "lms_";
-  for (let i = 0; i < 40; i += 1) {
-    out += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-  }
-  return out;
+  const payload = await requestJson<BackendApiClientResponse>(
+    `${BASE}/${id}`,
+    { method: "PUT", body: JSON.stringify(body) },
+    { idempotencyKey: input.idempotencyKey },
+  );
+  return { client: toRow(payload) };
 }
 
 export async function rotateApiClientSecret(
   id: string,
   _input: RotateApiClientSecretInput,
 ): Promise<RotateApiClientSecretResponse> {
-  // Backend has no rotate endpoint yet — we mint a client-side secret so
-  // the reveal flow still works in dev, but the backend's stored secret is
-  // unchanged. Tracked in docs/INTEGRATION-STATUS.md.
-  const all = await requestJson<BackendApiClientResponse[]>(BASE);
-  const found = all.find((row) => row.id === id);
+  const payload = await requestJson<BackendRotateSecretResponse>(
+    `${BASE}/${id}/rotate-secret`,
+    {
+      method: "POST",
+      body: JSON.stringify({ graceSeconds: 300 }),
+    },
+    { idempotencyKey: _input.idempotencyKey },
+  );
+
+  const list = await requestJson<BackendApiClientResponse[]>(BASE);
+  const found = list.find((row) => row.id === id);
   if (!found) throw new Error(`API client ${id} not found`);
   const row = toRow(found);
-  lastRotatedAtById.set(id, new Date().toISOString());
-  return { client: row, clientSecret: mintLocalSecret() };
+  if (payload.oldSecretValidUntil) {
+    lastRotatedAtById.set(id, payload.oldSecretValidUntil);
+  } else {
+    lastRotatedAtById.set(id, new Date().toISOString());
+  }
+  return { client: row, clientSecret: payload.clientSecret };
 }
 
 export function getApiClientLastRotatedAt(id: string): string | null {

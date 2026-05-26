@@ -7,7 +7,7 @@
  * shaped fixtures — that way the wrapper's typing + Zod parse-on-return is
  * exercised end-to-end against the dispatch contract.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   registerRoute,
   _resetRoutesForTests,
@@ -15,6 +15,7 @@ import {
 } from "@/mocks/router";
 import { setLatencyOverride } from "@/mocks/latency";
 import { scenario } from "@/mocks/scenarios";
+import { clearStoredSession, saveStoredSession } from "@/lib/api/session-storage";
 import { fetchHomeKpis, HomeKpisSchema } from "./api";
 import type { HomeKpis } from "./types";
 
@@ -48,7 +49,6 @@ const INTERNAL_FIXTURE: HomeKpis = {
         status: "AWAITING_APPROVAL",
         requestedAmount: 250_000,
         createdAt: "2026-05-10T08:00:00.000Z",
-        assignedToName: "Ops User",
       },
     ],
     openAlerts: [
@@ -77,6 +77,27 @@ const LSP_FIXTURE: HomeKpis = {
 };
 
 beforeEach(() => {
+  clearStoredSession();
+  saveStoredSession({
+    user: {
+      id: "22222222-2222-4222-8222-222222222222",
+      username: "ops.admin",
+      role: "SYSTEM_ADMIN",
+      lspId: null,
+      mustChangePassword: false,
+    },
+    accessToken: "access-token",
+    expiresAt: "2026-05-26T10:00:00.000Z",
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ code: "NOT_FOUND", message: "not found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      }),
+    ),
+  );
   setLatencyOverride(0);
   scenario.reset();
   _clearIdempotencyCacheForTests();
@@ -84,6 +105,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  clearStoredSession();
+  vi.unstubAllGlobals();
   scenario.reset();
   setLatencyOverride(null);
 });
@@ -100,13 +123,24 @@ describe("fetchHomeKpis", () => {
     expect(() => HomeKpisSchema.parse(result)).not.toThrow();
   });
 
-  it("returns the lsp-shape payload parsed against HomeKpisSchema", async () => {
+  it("rejects non-system-admin sessions before dispatching dashboard requests", async () => {
+    clearStoredSession();
+    saveStoredSession({
+      user: {
+        id: "33333333-3333-4333-8333-333333333333",
+        username: "ops.user",
+        role: "OPS_USER",
+        lspId: null,
+        mustChangePassword: false,
+      },
+      accessToken: "ops-token",
+      expiresAt: "2026-05-26T10:00:00.000Z",
+    });
     registerRoute("GET", "/api/v1/home/kpis", () => LSP_FIXTURE);
-    const result = await fetchHomeKpis();
-    expect(result.kind).toBe("lsp");
-    if (result.kind !== "lsp") throw new Error("narrow failed");
-    expect(result.data.myActiveApplications).toBe(7);
-    expect(() => HomeKpisSchema.parse(result)).not.toThrow();
+    await expect(fetchHomeKpis()).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+    });
   });
 
   it("rejects malformed handler payloads (drift detection)", async () => {

@@ -14,6 +14,7 @@ import {
 } from "@/mocks/router";
 import { setLatencyOverride } from "@/mocks/latency";
 import { scenario } from "@/mocks/scenarios";
+import { clearStoredSession, saveStoredSession } from "@/lib/api/session-storage";
 import {
   fetchLoanApplicationDocuments,
   fetchLoanApplicationRepayments,
@@ -24,6 +25,7 @@ import {
 const APPLICATION_ID = "11111111-1111-4111-8111-111111111111";
 
 beforeEach(() => {
+  clearStoredSession();
   setLatencyOverride(0);
   scenario.reset();
   _clearIdempotencyCacheForTests();
@@ -31,6 +33,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  clearStoredSession();
+  vi.unstubAllGlobals();
   scenario.reset();
   setLatencyOverride(null);
   vi.clearAllMocks();
@@ -89,6 +93,79 @@ describe("fetchLoanApplicationDocuments", () => {
   it("rejects when the handler returns a drift-shaped payload", async () => {
     registerRoute("GET", "/api/v1/loan-applications/:id/documents", () => ({}));
     await expect(fetchLoanApplicationDocuments(APPLICATION_ID)).rejects.toBeDefined();
+  });
+
+  it("maps live backend required document types without collapsing them to OTHER", async () => {
+    saveStoredSession({
+      user: {
+        id: "22222222-2222-4222-8222-222222222222",
+        username: "ops.admin",
+        role: "SYSTEM_ADMIN",
+        lspId: null,
+        mustChangePassword: false,
+      },
+      accessToken: "access-token",
+      expiresAt: "2026-05-26T10:00:00.000Z",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify([
+            {
+              id: "00000000-0000-4000-8000-000000000001",
+              loanApplicationId: APPLICATION_ID,
+              documentType: "ADDRESS_PROOF",
+              documentDisplayName: "Address Proof",
+              required: true,
+              status: "SUBMITTED",
+              note: null,
+              fileName: "address-proof.pdf",
+              fileReference: "lms-doc://address-proof.pdf",
+              contentType: "application/pdf",
+              sourceReference: null,
+              lmsManagedContent: true,
+              storageKey: "loan/app/address/address-proof.pdf",
+              fileChecksum: "sha256:address",
+              fileSizeBytes: 1024,
+              uploadedAt: "2026-05-26T10:00:00.000Z",
+              uploadedByUsername: "lsp.client",
+              updatedByUsername: "lsp.client",
+              createdAt: "2026-05-26T10:00:00.000Z",
+              updatedAt: "2026-05-26T10:00:00.000Z",
+            },
+            {
+              id: "00000000-0000-4000-8000-000000000002",
+              loanApplicationId: APPLICATION_ID,
+              documentType: "KFS",
+              documentDisplayName: "KFS",
+              required: true,
+              status: "SUBMITTED",
+              note: null,
+              fileName: "signed-kfs.pdf",
+              fileReference: "lms-doc://signed-kfs.pdf",
+              contentType: "application/pdf",
+              sourceReference: null,
+              lmsManagedContent: true,
+              storageKey: "loan/app/kfs/signed-kfs.pdf",
+              fileChecksum: "sha256:kfs",
+              fileSizeBytes: 2048,
+              uploadedAt: "2026-05-26T10:00:00.000Z",
+              uploadedByUsername: "lsp.client",
+              updatedByUsername: "lsp.client",
+              createdAt: "2026-05-26T10:00:00.000Z",
+              updatedAt: "2026-05-26T10:00:00.000Z",
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const result = await fetchLoanApplicationDocuments(APPLICATION_ID);
+
+    expect(result.documents.map((doc) => doc.type)).toEqual(["ADDRESS_PROOF", "KFS"]);
+    expect(result.documents[1]?.fileMeta?.fileName).toBe("signed-kfs.pdf");
   });
 });
 

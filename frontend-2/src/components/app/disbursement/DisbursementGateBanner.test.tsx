@@ -15,7 +15,7 @@ describe("<DisbursementGateBanner />", () => {
     const { getByText, queryByText } = renderWithProviders(
       <DisbursementGateBanner docsComplete={false} scheduleValid />,
     );
-    expect(getByText(/Required documents pending verification \(BR-3\)/i)).toBeInTheDocument();
+    expect(getByText(/Required documents not yet uploaded \(BR-3\)/i)).toBeInTheDocument();
     expect(queryByText(/Repayment schedule not generated/i)).not.toBeInTheDocument();
   });
 
@@ -24,14 +24,14 @@ describe("<DisbursementGateBanner />", () => {
       <DisbursementGateBanner docsComplete scheduleValid={false} />,
     );
     expect(getByText(/Repayment schedule not generated \(BR-10\)/i)).toBeInTheDocument();
-    expect(queryByText(/Required documents pending verification/i)).not.toBeInTheDocument();
+    expect(queryByText(/Required documents not yet uploaded/i)).not.toBeInTheDocument();
   });
 
   it("shows BOTH messages when both gates fail", () => {
     const { getByText } = renderWithProviders(
       <DisbursementGateBanner docsComplete={false} scheduleValid={false} />,
     );
-    expect(getByText(/Required documents pending verification \(BR-3\)/i)).toBeInTheDocument();
+    expect(getByText(/Required documents not yet uploaded \(BR-3\)/i)).toBeInTheDocument();
     expect(getByText(/Repayment schedule not generated \(BR-10\)/i)).toBeInTheDocument();
   });
 

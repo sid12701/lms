@@ -148,14 +148,13 @@ function getDocumentsForApplication(db: MockDb, applicationId: string): LoanDocu
 
 /**
  * BR-3 disbursement-doc completeness — every document flagged
- * `requiredForDisbursement` must be VERIFIED. When no required docs are
- * attached to the application, treat as complete: there is nothing
- * outstanding to verify.
+ * `requiredForDisbursement` must be UPLOADED (Gap #18: per-doc verification
+ * is removed; SUBMITTED on the backend maps to UPLOADED in the FE).
  */
 function computeDocsComplete(documents: ReadonlyArray<LoanDocument>): boolean {
   const required = documents.filter((d) => d.requiredForDisbursement);
   if (required.length === 0) return true;
-  return required.every((d) => d.status === "VERIFIED");
+  return required.every((d) => d.status === "UPLOADED");
 }
 
 /**
@@ -210,7 +209,6 @@ const ListFiltersSchema = z.object({
   status: z.array(LoanStatus).optional(),
   lspId: Uuid.optional(),
   productId: Uuid.optional(),
-  assignedTo: Uuid.optional(),
   page: z.coerce.number().int().min(0).optional(),
   pageSize: z.coerce.number().int().min(5).max(100).optional(),
   sortBy: z.enum(["createdAt", "updatedAt", "requestedAmount", "status"]).optional(),
@@ -233,7 +231,6 @@ function projectListItem(db: MockDb, app: LoanApplication): LoanApplicationListI
   const borrower = db.borrowers.get(app.borrowerId);
   const lsp = db.lsps.get(app.lspId);
   const product = db.products.get(app.productId);
-  const assignedUser = app.assignedTo ? db.users.get(app.assignedTo) : null;
   return {
     id: app.id,
     externalLoanId: app.externalLoanId,
@@ -246,8 +243,6 @@ function projectListItem(db: MockDb, app: LoanApplication): LoanApplicationListI
     requestedAmount: app.requestedAmount,
     tenureMonths: app.tenureMonths,
     status: app.status,
-    assignedTo: app.assignedTo,
-    assignedToName: assignedUser?.username ?? null,
     createdAt: app.createdAt,
     updatedAt: app.updatedAt,
   };
@@ -290,10 +285,6 @@ function listHandler(
   if (filters.productId) {
     rows = rows.filter((a) => a.productId === filters.productId);
   }
-  if (filters.assignedTo) {
-    rows = rows.filter((a) => a.assignedTo === filters.assignedTo);
-  }
-
   // Sort
   const sortBy = filters.sortBy ?? "createdAt";
   const sortDir = filters.sortDir ?? "desc";
@@ -415,7 +406,7 @@ const WEBHOOK_EVENT_FOR_STATUS: Partial<Record<LoanStatusType, string>> = {
   DISBURSEMENT_IN_PROGRESS: "loan.status.changed",
   DISBURSED: "loan.disbursement.completed",
   UNDER_REPAYMENT: "loan.repayment.posted",
-  FORECLOSURE_REQUESTED: "loan.foreclosure.quote.generated",
+  FORECLOSURE_REQUESTED: "loan.status.changed",
   FORECLOSED: "loan.foreclosed",
   FULLY_REPAID: "loan.repayment.posted",
 };
@@ -793,7 +784,7 @@ function repaymentPostHandler(
 /**
  * Disbursement initiation:
  *   1. application must be APPROVED_PENDING_DISBURSAL
- *   2. BR-3 disbursement docs must be VERIFIED
+ *   2. BR-3 disbursement docs must be uploaded (UPLOADED)
  *   3. BR-10 a valid repayment schedule must exist
  *
  * Status moves APPROVED_PENDING_DISBURSAL → DISBURSEMENT_IN_PROGRESS, and a
@@ -1213,7 +1204,6 @@ const LoanApplicationSchema: z.ZodType<LoanApplication> = z.object({
   tenureMonths: z.number().int(),
   status: LoanStatus,
   sourceChannel: z.enum(["UI", "API", "WEBHOOK"]),
-  assignedTo: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
   invalidatedAt: z.string().nullable(),
@@ -1232,8 +1222,6 @@ const ListItemSchema = z.object({
   requestedAmount: z.number().nonnegative(),
   tenureMonths: z.number().int(),
   status: LoanStatus,
-  assignedTo: z.string().nullable(),
-  assignedToName: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

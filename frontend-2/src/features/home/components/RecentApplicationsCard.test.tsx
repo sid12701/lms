@@ -26,7 +26,6 @@ const FIXTURE: HomeRecentApplication[] = [
     status: "AWAITING_APPROVAL",
     requestedAmount: 250_000,
     createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-    assignedToName: null,
   },
   {
     id: "22222222-2222-4222-8222-222222222222",
@@ -37,7 +36,6 @@ const FIXTURE: HomeRecentApplication[] = [
     status: "DISBURSED",
     requestedAmount: 75_000,
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-    assignedToName: "Ops Lead",
   },
 ];
 

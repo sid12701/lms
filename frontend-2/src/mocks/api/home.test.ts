@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setLatencyOverride } from "../latency";
 import { scenario } from "../scenarios";
 import { _clearIdempotencyCacheForTests } from "../router";
-import { LSP_BHAW_DEMO } from "../db/seed";
 import { resetMockApi, auth, home } from "./index";
 import { maskBorrowerName } from "./home";
 
@@ -36,7 +35,24 @@ describe("home.kpis — auth gate", () => {
     // are the only success paths by logging in as a forbidden synthetic.
     await auth.login({ username: "ops.admin", password: "any" });
     const result = await home.kpis();
-    expect(result.kind).toMatch(/internal|lsp/);
+    expect(result.kind).toBe("internal");
+  });
+});
+
+describe("home.kpis — non-admin roles (Gap #8)", () => {
+  it("rejects OPS_USER", async () => {
+    await auth.login({ username: "ops.user", password: "any" });
+    await expect(home.kpis()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("rejects PRODUCT_ADMIN", async () => {
+    await auth.login({ username: "product.admin", password: "any" });
+    await expect(home.kpis()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("rejects LSP_UI_READ", async () => {
+    await auth.login({ username: "lsp.read", password: "any" });
+    await expect(home.kpis()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
 
@@ -157,43 +173,6 @@ describe("home.kpis — internal (SYSTEM_ADMIN)", () => {
   });
 });
 
-describe("home.kpis — LSP scoping", () => {
-  it("returns LSP-scoped data for LSP_UI_READ and never leaks rows from other LSPs", async () => {
-    await auth.login({ username: "lsp.read", password: "any" });
-    const result = await home.kpis();
-    expect(result.kind).toBe("lsp");
-    if (result.kind !== "lsp") throw new Error("kind narrow");
-    const k = result.data;
-    expect(k.recentApplications.length).toBeGreaterThan(0);
-    // Every recent application belongs to BHAW-DEMO LSP. The DTO doesn't
-    // carry lspId, but every LSP has a unique name in the seed.
-    for (const a of k.recentApplications) {
-      expect(a.lspName).toMatch(/Bhawana Demo LSP/);
-    }
-    expect(k.myActiveApplications).toBeGreaterThanOrEqual(0);
-    expect(k.myInDisbursement).toBeGreaterThanOrEqual(0);
-  });
-
-  it("LSP_UI_WRITE sees the same shape (kind: lsp)", async () => {
-    await auth.login({ username: "lsp.write", password: "any" });
-    const result = await home.kpis();
-    expect(result.kind).toBe("lsp");
-  });
-
-  it("LSP totals are strictly less than or equal to internal totals", async () => {
-    await auth.login({ username: "ops.admin", password: "any" });
-    const internal = await home.kpis();
-    if (internal.kind !== "internal") throw new Error("expected internal");
-    const internalDisbCount = internal.data.applicationsInDisbursement;
-
-    await auth.logout();
-    await auth.login({ username: "lsp.read", password: "any" });
-    const lsp = await home.kpis();
-    if (lsp.kind !== "lsp") throw new Error("expected lsp");
-    expect(lsp.data.myInDisbursement).toBeLessThanOrEqual(internalDisbCount);
-    expect(LSP_BHAW_DEMO).toBeTypeOf("string");
-  });
-});
 
 describe("maskBorrowerName", () => {
   it("masks a two-part name", () => {

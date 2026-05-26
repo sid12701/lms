@@ -13,11 +13,7 @@ export interface InstallmentRowProps {
   installment: RepaymentInstallment;
   /** Outstanding amount still owed against this installment. */
   outstandingAmount: number;
-  /**
-   * True when this row is the immediate next-due installment that the user can
-   * post a payment against. Only when both this is set AND the row is not yet
-   * fully paid does the "Record payment" action button render.
-   */
+  /** Whether this row is the single installment currently eligible for repayment. */
   isNextDue?: boolean;
   /** Fired when the action button is clicked. */
   onRecordPayment?: (installment: RepaymentInstallment) => void;
@@ -70,7 +66,10 @@ function InstallmentRowImpl({
   const visual = STATUS_VISUAL[installment.status];
   const Icon = visual.icon;
   const showAction =
-    Boolean(onRecordPayment) && isNextDue && installment.status !== "PAID";
+    Boolean(onRecordPayment)
+    && isNextDue
+    && installment.status !== "PAID"
+    && outstandingAmount > 0;
 
   return (
     <TableRow data-slot="installment-row" data-status={installment.status}>

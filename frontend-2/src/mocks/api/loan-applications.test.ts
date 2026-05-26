@@ -301,7 +301,7 @@ describe("loan-applications.documents", () => {
       displayName: "PAN card",
       requiredForApproval: true,
       requiredForDisbursement: true,
-      status: "VERIFIED",
+      status: "UPLOADED",
       notes: null,
       fileMeta: null,
       uploadedAt: null,
@@ -597,7 +597,7 @@ describe("loan-applications.initiateDisbursement", () => {
     });
   });
 
-  it("BR-3: rejects when required documents are not all VERIFIED", async () => {
+  it("BR-3: rejects when required documents are not all uploaded", async () => {
     await auth.login({ username: "ops.admin", password: "any" });
     // Attach a required-for-disbursement doc in PENDING status — this
     // flips the BR-3 gate from "vacuously true" to "explicitly false".

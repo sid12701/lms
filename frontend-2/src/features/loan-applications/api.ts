@@ -25,33 +25,45 @@ import type {
 
 const BACKEND_BASE = "/api/v1/internal/ops/loan-applications";
 
+// Gap #11 — pass through the backend's canonical 10-status enum directly.
+// The legacy frontend-only values (INITIATED, INVALIDATED, UNDER_REVIEW,
+// KYC_PENDING, DOCS_PENDING, DISBURSEMENT_IN_PROGRESS, APPROVED, etc.) are
+// folded into the canonical statuses below for backward compatibility with
+// older mocks and legacy detail-page renderers — they should not be sent
+// to the backend.
 const STATUS_PASS_THROUGH = new Set<LoanApplicationListItem["status"]>([
+  "INITIALIZED",
   "AWAITING_APPROVAL",
-  "APPROVED",
   "APPROVED_PENDING_DISBURSAL",
   "REJECTED",
+  "DISBURSEMENT_RETRY",
+  "INVALID",
   "DISBURSED",
+  "UNDER_REPAYMENT",
   "CLOSED",
   "FORECLOSED",
-  "INVALIDATED",
 ]);
 
 export function mapBackendStatus(status: string | null | undefined): LoanApplicationListItem["status"] {
-  if (!status) return "INITIATED";
+  if (!status) return "INITIALIZED";
   if (STATUS_PASS_THROUGH.has(status as LoanApplicationListItem["status"])) {
     return status as LoanApplicationListItem["status"];
   }
+  // Backward compatibility: rows that pre-date Gap #11 still carry the old
+  // status names. Fold them onto the canonical 10 so the table keeps
+  // rendering after migration; these branches can be removed once the DB is
+  // fully migrated forward.
   switch (status) {
-    case "INITIALIZED":
-      return "INITIATED";
-    case "INVALID":
-      return "INVALIDATED";
-    case "UNDER_REPAYMENT":
-      return "DISBURSED";
     case "PAYMENT_REINITIATION":
-      return "DISBURSEMENT_IN_PROGRESS";
+      return "DISBURSEMENT_RETRY";
+    case "INITIATED":
+      return "INITIALIZED";
+    case "INVALIDATED":
+      return "INVALID";
+    case "APPROVED":
+      return "APPROVED_PENDING_DISBURSAL";
     default:
-      return "INITIATED";
+      return "INITIALIZED";
   }
 }
 
@@ -61,8 +73,9 @@ function mapFrontendStatus(value: LoanApplicationListItem["status"]): string {
 
 /**
  * Reverse-map a frontend LoanStatus value into the backend
- * `LoanApplicationStatus` enum (a strict subset of the frontend's). Used
- * by both the list filter and the lifecycle transition mutations.
+ * `LoanApplicationStatus` enum. The canonical 10 statuses are
+ * pass-through; legacy frontend-only values fold to their canonical
+ * equivalents.
  */
 export function mapFrontendStatusToBackend(
   value: LoanApplicationListItem["status"],
@@ -73,7 +86,7 @@ export function mapFrontendStatusToBackend(
     case "INVALIDATED":
       return "INVALID";
     case "DISBURSEMENT_IN_PROGRESS":
-      return "PAYMENT_REINITIATION";
+      return "DISBURSEMENT_RETRY";
     case "APPROVED":
       return "APPROVED_PENDING_DISBURSAL";
     default:
@@ -96,7 +109,6 @@ interface BackendApplicationResponse {
   requestedAmount: number | null;
   tenureMonths: number | null;
   status: string;
-  assignedToUsername: string | null;
   createdAt: string | null;
 }
 
@@ -120,14 +132,12 @@ function toListItem(payload: BackendApplicationResponse): LoanApplicationListIte
     requestedAmount: Number(payload.requestedAmount ?? 0),
     tenureMonths: Number(payload.tenureMonths ?? 0),
     status: mapBackendStatus(payload.status),
-    assignedTo: null,
-    assignedToName: payload.assignedToUsername,
     createdAt: payload.createdAt ?? new Date().toISOString(),
     updatedAt: payload.createdAt ?? new Date().toISOString(),
   };
 }
 
-function backendQueryFromFilters(
+export function backendQueryFromFilters(
   filters: LoanApplicationListFilters,
 ): Record<string, string | number | undefined> {
   const pageSize = filters.pageSize ?? 25;
@@ -142,7 +152,7 @@ function backendQueryFromFilters(
     q: filters.q,
     offset,
     limit: pageSize,
-    paginationDetails: "true",
+    paginationDetails: "ON",
   };
 }
 
@@ -158,8 +168,6 @@ const FALLBACK_ITEM_SCHEMA = z.object({
   requestedAmount: z.number().nonnegative(),
   tenureMonths: z.number().int().nonnegative(),
   status: LoanStatus,
-  assignedTo: z.string().nullable(),
-  assignedToName: z.string().nullable(),
   createdAt: z.string().min(1),
   updatedAt: z.string().min(1),
 });
@@ -181,7 +189,6 @@ export function buildLoanApplicationsQuery(filters: LoanApplicationListFilters):
   }
   if (filters.lspId) params.set("lspId", filters.lspId);
   if (filters.productId) params.set("productId", filters.productId);
-  if (filters.assignedTo) params.set("assignedTo", filters.assignedTo);
   if (typeof filters.page === "number") params.set("page", String(filters.page));
   if (typeof filters.pageSize === "number") params.set("pageSize", String(filters.pageSize));
   if (filters.sortBy) params.set("sortBy", filters.sortBy);

@@ -3,6 +3,9 @@
  * borrower-detail surface. Routes are registered directly against the
  * mock router rather than booting agent A's handler module, so the tests
  * exercise dispatch + parse without the seeded fixtures.
+ *
+ * Per `docs/gap-fixes.md` § Gap #2, the Activity tab has been removed —
+ * only the Loans tab contract is exercised here.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -13,7 +16,7 @@ import {
 } from "@/mocks/router";
 import { setLatencyOverride } from "@/mocks/latency";
 import { scenario } from "@/mocks/scenarios";
-import { fetchBorrowerActivity, fetchBorrowerLoans } from "./api-tabs";
+import { fetchBorrowerLoans } from "./api-tabs";
 
 const BORROWER_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -81,54 +84,5 @@ describe("fetchBorrowerLoans", () => {
   it("rejects when the handler returns a drift-shaped payload", async () => {
     registerRoute("GET", "/api/v1/borrowers/:id/loans", () => ({}));
     await expect(fetchBorrowerLoans(BORROWER_ID)).rejects.toBeDefined();
-  });
-});
-
-describe("fetchBorrowerActivity", () => {
-  it("dispatches GET to the activity endpoint", async () => {
-    let capturedPath: string | null = null;
-    let capturedMethod: string | null = null;
-    registerRoute(
-      "GET",
-      "/api/v1/borrowers/:id/activity",
-      (req: MockRequest) => {
-        capturedPath = req.path;
-        capturedMethod = req.method;
-        return { entries: [] };
-      },
-    );
-
-    const result = await fetchBorrowerActivity(BORROWER_ID);
-
-    expect(capturedPath).toBe(`/api/v1/borrowers/${BORROWER_ID}/activity`);
-    expect(capturedMethod).toBe("GET");
-    expect(result).toEqual({ entries: [] });
-  });
-
-  it("returns mixed activity entries when present", async () => {
-    const entries = [
-      { kind: "APPLICATION", event: { id: "e-1", createdAt: "2026-05-10T10:00:00Z" } },
-      { kind: "PII_REVEAL", event: { id: "e-2", revealedAt: "2026-05-09T10:00:00Z" } },
-      { kind: "DOCUMENT_ACCESS", event: { id: "e-3", accessedAt: "2026-05-08T10:00:00Z" } },
-    ];
-    registerRoute(
-      "GET",
-      "/api/v1/borrowers/:id/activity",
-      () => ({ entries }),
-    );
-
-    const result = await fetchBorrowerActivity(BORROWER_ID);
-    expect(result.entries).toHaveLength(3);
-  });
-
-  it("surfaces NOT_FOUND when no route is registered", async () => {
-    await expect(fetchBorrowerActivity(BORROWER_ID)).rejects.toMatchObject({
-      code: "NOT_FOUND",
-    });
-  });
-
-  it("rejects when the handler returns a drift-shaped payload", async () => {
-    registerRoute("GET", "/api/v1/borrowers/:id/activity", () => ({}));
-    await expect(fetchBorrowerActivity(BORROWER_ID)).rejects.toBeDefined();
   });
 });

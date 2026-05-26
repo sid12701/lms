@@ -31,6 +31,7 @@ import type {
   TransitionStatusInput,
 } from "./types";
 import type { ApplicationAuditEvent, LoanApplication } from "@/types";
+import { isUploadedBackendChecklistStatus } from "@/schemas/document";
 import { mapBackendStatus, mapFrontendStatusToBackend } from "./api";
 
 const BACKEND_BASE = "/api/v1/internal/ops/loan-applications";
@@ -162,9 +163,6 @@ interface BackendLoanApplicationDetail {
   invalidReasonText: string | null;
   invalidatedByUsername: string | null;
   invalidatedAt: string | null;
-  assignedToUsername: string | null;
-  assignedByUsername: string | null;
-  assignedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
   loanAccount: BackendLoanAccountSummary | null;
@@ -219,7 +217,6 @@ function backendToDetail(
     tenureMonths,
     status: mapBackendStatus(payload.status) as LoanApplication["status"],
     sourceChannel: safeChannel(payload.sourceChannel),
-    assignedTo: payload.assignedToUsername,
     createdAt: created,
     updatedAt: updated,
     invalidatedAt: payload.invalidatedAt,
@@ -307,8 +304,8 @@ function backendToDetail(
 
   const requiredChecklistRows = checklist.filter((row) => row.required);
   const docsComplete =
-    requiredChecklistRows.length > 0 &&
-    requiredChecklistRows.every((row) => row.status === "VERIFIED");
+    requiredChecklistRows.length === 0
+    || requiredChecklistRows.every((row) => isUploadedBackendChecklistStatus(row.status));
 
   const scheduleValid =
     payload.loanAccount?.repaymentSchedule != null &&
@@ -422,71 +419,51 @@ export async function fetchLoanApplicationActivity(
   );
 }
 
-interface BackendWebhookOutboxEvent {
-  id: string;
-  lspId: string;
-  lspCode: string;
+interface BackendWebhookEventDeliveryRow {
+  eventId: string;
   eventType: string;
-  aggregateType: string;
-  aggregateId: string;
-  status: string;
-  payloadJson: string | null;
-  correlationId: string | null;
-  attemptCount: number;
+  targetUrl: string | null;
+  status: "PENDING" | "DELIVERED" | "FAILED" | "DEAD_LETTERED";
+  attempts: number;
   lastAttemptAt: string | null;
-  nextAttemptAt: string | null;
-  deliveredAt: string | null;
+  lastResponseCode: number | null;
   lastError: string | null;
   createdAt: string;
 }
 
-function mapWebhookStatus(value: string): LoanApplicationWebhookDelivery["status"] {
-  const upper = value.toUpperCase();
-  if (upper.includes("DEAD")) return "DEAD_LETTERED";
-  if (upper.includes("FAIL")) return "FAILED";
-  if (upper.includes("DELIVER") || upper.includes("SENT") || upper.includes("DISPATCH")) {
-    return "DELIVERED";
-  }
-  return "PENDING";
-}
-
-function toWebhookDelivery(row: BackendWebhookOutboxEvent): LoanApplicationWebhookDelivery {
+function toWebhookDelivery(row: BackendWebhookEventDeliveryRow): LoanApplicationWebhookDelivery {
   return {
-    id: row.id,
+    id: row.eventId,
     eventType: row.eventType,
-    endpoint: `lsp:${row.lspCode}`,
-    status: mapWebhookStatus(row.status),
-    attemptCount: row.attemptCount,
+    endpoint: row.targetUrl ?? "—",
+    status: row.status,
+    attemptCount: row.attempts,
     lastAttemptAt: row.lastAttemptAt,
     lastError: row.lastError,
     createdAt: row.createdAt,
   };
 }
 
-/** Fetch the per-application webhook-delivery feed.
+/**
+ * Fetch the per-application webhook-delivery feed.
  *
- * Backend has no per-application webhook endpoint. For SYSTEM_ADMIN, we
- * read the admin outbox and filter rows whose `aggregateId` matches the
- * application. For OPS_USER (forbidden from the outbox endpoint), we
- * return an empty list — the integration-status doc records this gap.
+ * Both SYSTEM_ADMIN and OPS_USER read from the dedicated per-loan endpoint
+ * `/api/v1/internal/ops/loan-applications/{id}/webhook-events` (Gap #5):
+ * the backend projects each outbox row + its latest delivery attempt into
+ * a single row, capped at 200 events newest-first.
  */
 export async function fetchLoanApplicationWebhooks(
   id: string,
 ): Promise<LoanApplicationWebhooksResponse> {
-  if (isSystemAdmin()) {
+  if (isInternalSession()) {
     try {
-      const rows = await requestJson<BackendWebhookOutboxEvent[]>(
-        "/api/v1/internal/admin/webhook-outbox",
+      const rows = await requestJson<BackendWebhookEventDeliveryRow[]>(
+        `${BACKEND_BASE}/${encodeURIComponent(id)}/webhook-events`,
       );
-      const matching = rows.filter((row) => row.aggregateId === id);
-      return { deliveries: matching.map(toWebhookDelivery) };
+      return { deliveries: rows.map(toWebhookDelivery) };
     } catch (error) {
       if (!(error instanceof ApiError) || error.status >= 500) throw error;
     }
-  } else if (isInternalSession()) {
-    // OPS_USER cannot read the outbox. Return an empty feed rather than
-    // pretending there is no record.
-    return { deliveries: [] };
   }
 
   return dispatch(

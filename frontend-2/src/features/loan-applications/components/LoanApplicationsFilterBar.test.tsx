@@ -27,7 +27,6 @@ function renderBar(opts?: {
   initialPath?: string;
   lspOptions?: readonly { value: string; label: string }[];
   productOptions?: readonly { value: string; label: string }[];
-  assigneeOptions?: readonly { value: string; label: string }[];
   onSearch?: (q: string) => void;
 }): { container: HTMLElement; latestSearch: () => string } {
   let latest = "";
@@ -46,7 +45,6 @@ function renderBar(opts?: {
               <LoanApplicationsFilterBar
                 lspOptions={opts?.lspOptions}
                 productOptions={opts?.productOptions}
-                assigneeOptions={opts?.assigneeOptions}
               />
               <SearchSpy onChange={onChange} />
             </>
@@ -70,7 +68,7 @@ afterEach(() => {
 });
 
 describe("LoanApplicationsFilterBar", () => {
-  it("renders all five filter affordances", () => {
+  it("renders all four filter affordances", () => {
     vi.useRealTimers();
     renderBar();
     expect(
@@ -81,7 +79,6 @@ describe("LoanApplicationsFilterBar", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("LSP filter")).toBeInTheDocument();
     expect(screen.getByLabelText("Product filter")).toBeInTheDocument();
-    expect(screen.getByLabelText("Assignee filter")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Clear all filters/i }),
     ).toBeInTheDocument();

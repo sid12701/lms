@@ -99,15 +99,8 @@ describe("borrowers — auth gate", () => {
   it.each([
     ["detail", () => borrowers.detail(BORROWER_1_BHAW)],
     ["loans", () => borrowers.loans(BORROWER_1_BHAW)],
-    ["activity", () => borrowers.activity(BORROWER_1_BHAW)],
   ])("%s: UNAUTHORIZED when no session", async (_name, run) => {
     await expect(run()).rejects.toMatchObject({ code: "UNAUTHORIZED", httpStatus: 401 });
-  });
-
-  it("recordPiiReveal: UNAUTHORIZED when no session", async () => {
-    await expect(
-      borrowers.recordPiiReveal(BORROWER_1_BHAW, { field: "PAN", reason: "kyc" }),
-    ).rejects.toMatchObject({ code: "UNAUTHORIZED", httpStatus: 401 });
   });
 
   it("recordDocumentAccess: UNAUTHORIZED when no session", async () => {
@@ -222,180 +215,6 @@ describe("borrowers.loans", () => {
   });
 });
 
-// ─── Activity handler ────────────────────────────────────────────────────────
-
-describe("borrowers.activity", () => {
-  it("404s on an unknown borrower id", async () => {
-    await auth.login({ username: "ops.admin", password: "any" });
-    await expect(borrowers.activity(BORROWER_UNKNOWN)).rejects.toMatchObject({
-      code: "NOT_FOUND",
-      httpStatus: 404,
-    });
-  });
-
-  it("unions three audit streams for a borrower, sorted desc", async () => {
-    await auth.login({ username: "ops.admin", password: "any" });
-    const db = getDb();
-
-    // Seed: one PII reveal + one document access for borrower 16's app #46.
-    db.auditPiiReveal.push({
-      id: "11110000-1111-4111-8111-111111111111",
-      subjectType: "BORROWER",
-      subjectId: BORROWER_16_EAST,
-      fieldName: "PAN",
-      actorId: "aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa",
-      actorRole: "SYSTEM_ADMIN",
-      reason: "kyc audit",
-      correlationId: "11110000-2222-4111-8111-111111111111",
-      revealedAt: "2026-05-08T12:00:00.000Z",
-    });
-    const doc: LoanDocument = {
-      id: "d0000000-cccc-4ccc-8ccc-cccccccccccc",
-      applicationId: applicationId(46),
-      type: "PAN",
-      displayName: "PAN card",
-      requiredForApproval: true,
-      requiredForDisbursement: true,
-      status: "VERIFIED",
-      notes: null,
-      fileMeta: null,
-      uploadedAt: null,
-      uploadedBy: null,
-    };
-    db.documents.set(doc.id, doc);
-    db.auditDocumentAccess.push({
-      id: "22220000-1111-4111-8111-111111111111",
-      documentId: doc.id,
-      applicationId: applicationId(46),
-      action: "VIEWED",
-      actorId: "aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa",
-      actorRole: "SYSTEM_ADMIN",
-      correlationId: "22220000-2222-4111-8111-111111111111",
-      accessedAt: "2026-05-09T08:00:00.000Z",
-    });
-
-    const res = await borrowers.activity(BORROWER_16_EAST);
-    // 1 PII reveal + 1 document access. Application audit events for this
-    // borrower may or may not be seeded; the union must contain at least our
-    // two synthetic rows.
-    const kinds = res.entries.map((e) => e.kind);
-    expect(kinds).toContain("PII_REVEAL");
-    expect(kinds).toContain("DOCUMENT_ACCESS");
-
-    // Sort desc by per-stream timestamp.
-    const tsOf = (entry: (typeof res.entries)[number]): string => {
-      if (entry.kind === "APPLICATION") return entry.event.createdAt;
-      if (entry.kind === "PII_REVEAL") return entry.event.revealedAt;
-      return entry.event.accessedAt;
-    };
-    for (let i = 1; i < res.entries.length; i++) {
-      expect(tsOf(res.entries[i - 1]!) >= tsOf(res.entries[i]!)).toBe(true);
-    }
-  });
-
-  it("ignores PII reveal events for other borrowers", async () => {
-    await auth.login({ username: "ops.admin", password: "any" });
-    const db = getDb();
-    db.auditPiiReveal.push({
-      id: "11110000-3333-4111-8111-111111111111",
-      subjectType: "BORROWER",
-      subjectId: BORROWER_2_SOUTH,
-      fieldName: "PAN",
-      actorId: "aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa",
-      actorRole: "SYSTEM_ADMIN",
-      reason: "different borrower",
-      correlationId: "11110000-4444-4111-8111-111111111111",
-      revealedAt: "2026-05-08T12:00:00.000Z",
-    });
-    const res = await borrowers.activity(BORROWER_16_EAST);
-    const piiEntries = res.entries.filter((e) => e.kind === "PII_REVEAL");
-    expect(piiEntries.length).toBe(0);
-  });
-});
-
-// ─── PII reveal handler ──────────────────────────────────────────────────────
-
-describe("borrowers.recordPiiReveal", () => {
-  it("appends a row to auditPiiReveal and returns the unmasked value", async () => {
-    await auth.login({ username: "ops.admin", password: "any" });
-    const db = getDb();
-    const before = db.auditPiiReveal.length;
-    const res = await borrowers.recordPiiReveal(BORROWER_16_EAST, {
-      field: "PAN",
-      reason: "kyc audit",
-    });
-    expect(db.auditPiiReveal.length).toBe(before + 1);
-    expect(res.auditId).toBeTruthy();
-    // The seed PAN is `ABCDE${num4}F` for borrower N (num4 = N % 10000 padded).
-    expect(res.value).toMatch(/^[A-Z]{5}\d{4}[A-Z]$/);
-  });
-
-  it("returns the unmasked AADHAAR/MOBILE/ACCOUNT_NUMBER/EMAIL per field", async () => {
-    await auth.login({ username: "ops.admin", password: "any" });
-    const aadhaar = await borrowers.recordPiiReveal(BORROWER_16_EAST, {
-      field: "AADHAAR",
-      reason: "r",
-    });
-    expect(aadhaar.value.length).toBe(12);
-
-    const mobile = await borrowers.recordPiiReveal(BORROWER_16_EAST, {
-      field: "MOBILE",
-      reason: "r",
-    });
-    expect(mobile.value).toMatch(/^\d{10}$/);
-
-    const acct = await borrowers.recordPiiReveal(BORROWER_16_EAST, {
-      field: "ACCOUNT_NUMBER",
-      reason: "r",
-    });
-    expect(acct.value.length).toBeGreaterThan(0);
-
-    const email = await borrowers.recordPiiReveal(BORROWER_16_EAST, {
-      field: "EMAIL",
-      reason: "r",
-    });
-    expect(email.value).toContain("@");
-  });
-
-  it("is idempotent — replay with same key returns cached response, no new audit row", async () => {
-    await auth.login({ username: "ops.admin", password: "any" });
-    const db = getDb();
-    const key = "pii-replay-key-1234";
-    const before = db.auditPiiReveal.length;
-
-    const first = await borrowers.recordPiiReveal(
-      BORROWER_16_EAST,
-      { field: "PAN", reason: "kyc" },
-      { idempotencyKey: key },
-    );
-    const afterFirst = db.auditPiiReveal.length;
-    expect(afterFirst).toBe(before + 1);
-
-    const second = await borrowers.recordPiiReveal(
-      BORROWER_16_EAST,
-      { field: "PAN", reason: "kyc" },
-      { idempotencyKey: key },
-    );
-    expect(second.auditId).toBe(first.auditId);
-    expect(second.value).toBe(first.value);
-    expect(db.auditPiiReveal.length).toBe(afterFirst);
-  });
-
-  it("404s for unknown borrower", async () => {
-    await auth.login({ username: "ops.admin", password: "any" });
-    await expect(
-      borrowers.recordPiiReveal(BORROWER_UNKNOWN, { field: "PAN", reason: "x" }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND", httpStatus: 404 });
-  });
-
-  it("LSP_UI_READ cannot reveal PII on a borrower from another LSP", async () => {
-    await auth.login({ username: "lsp.read", password: "any" });
-    await expect(
-      borrowers.recordPiiReveal(BORROWER_2_SOUTH, { field: "PAN", reason: "x" }),
-    ).rejects.toMatchObject({ code: "FORBIDDEN", httpStatus: 403 });
-  });
-});
-
 // ─── Document access handler ─────────────────────────────────────────────────
 
 describe("recordDocumentAccess", () => {
@@ -407,7 +226,7 @@ describe("recordDocumentAccess", () => {
       displayName: "PAN card",
       requiredForApproval: true,
       requiredForDisbursement: true,
-      status: "VERIFIED",
+      status: "UPLOADED",
       notes: null,
       fileMeta: null,
       uploadedAt: null,

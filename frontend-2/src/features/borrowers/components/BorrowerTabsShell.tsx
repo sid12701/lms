@@ -6,7 +6,6 @@ import type { BorrowerDetailTab } from "../types";
 const TAB_DEFS: ReadonlyArray<{ value: BorrowerDetailTab; label: string }> = [
   { value: "profile", label: "Profile" },
   { value: "loans", label: "Loans" },
-  { value: "activity", label: "Activity" },
 ];
 
 export interface BorrowerTabsShellProps {

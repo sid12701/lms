@@ -59,7 +59,32 @@ export function canInvalidateOwnTenantLoan(role: Role): boolean {
   return role === "LSP_UI_WRITE";
 }
 
-/** Default landing route per plan §1 + UI pages.md "Role and navigation". */
-export function defaultLandingFor(role: Role): "/home" | "/my-loans" {
-  return isLspUiUser(role) ? "/my-loans" : "/home";
+/**
+ * Default landing route after sign-in.
+ *
+ * Gap #8: Home is admin-only now (mock home for non-admin roles is
+ * deleted). Each non-admin role lands directly on its natural primary
+ * work surface, which removes the "empty dashboard" first impression for
+ * OPS / PRODUCT_ADMIN / LSP roles.
+ */
+export type DefaultLandingRoute =
+  | "/home"
+  | "/loan-applications"
+  | "/products"
+  | "/my-loans";
+
+export function defaultLandingFor(role: Role): DefaultLandingRoute {
+  switch (role) {
+    case "SYSTEM_ADMIN":
+      return "/home";
+    case "OPS_USER":
+      return "/loan-applications";
+    case "PRODUCT_ADMIN":
+      return "/products";
+    case "LSP_UI_READ":
+    case "LSP_UI_WRITE":
+      return "/my-loans";
+    default:
+      return "/home";
+  }
 }

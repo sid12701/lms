@@ -58,3 +58,28 @@ export interface AcknowledgeAlertInput {
 export interface AcknowledgeAlertResponse {
   alert: AlertRow;
 }
+
+export interface EscalateAlertInput {
+  subjectType: AlertSubjectType;
+  subjectId: string | null;
+  title: string;
+  message: string;
+  idempotencyKey: string;
+}
+
+export interface EscalateAlertResponse {
+  alert: AlertRow;
+}
+
+/** Configured alert rule (Follow-up #2). */
+export interface AlertRuleRow {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  audience: "OPS" | "SYSTEM_ADMIN";
+  triggerKind: "SCHEDULED" | "EVENT";
+  configJson: string | null;
+  lastEvaluatedAt: string | null;
+}

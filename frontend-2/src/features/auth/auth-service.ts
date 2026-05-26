@@ -27,7 +27,7 @@ const ROLE_PRIORITY: Role[] = [
   "LSP_API_CLIENT",
 ];
 
-const USER_ID_STORAGE_KEY = "bhawana-lms-user-id";
+const LEGACY_USER_ID_STORAGE_KEY = "bhawana-lms-user-id";
 
 function selectPrimaryRole(roles: readonly string[]): Role {
   for (const candidate of ROLE_PRIORITY) {
@@ -36,34 +36,13 @@ function selectPrimaryRole(roles: readonly string[]): Role {
   return "OPS_USER";
 }
 
-function readPersistedUserId(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(USER_ID_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writePersistedUserId(value: string | null): void {
+function clearLegacyPersistedUserId(): void {
   if (typeof window === "undefined") return;
   try {
-    if (value) window.localStorage.setItem(USER_ID_STORAGE_KEY, value);
-    else window.localStorage.removeItem(USER_ID_STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_USER_ID_STORAGE_KEY);
   } catch {
     // best effort only
   }
-}
-
-function ensureUserId(): string {
-  const existing = readPersistedUserId();
-  if (existing) return existing;
-  const next =
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : "00000000-0000-4000-8000-000000000001";
-  writePersistedUserId(next);
-  return next;
 }
 
 function expiresAtFromToken(token: BackendTokenResponse): string {
@@ -77,8 +56,9 @@ async function buildSessionFromToken(
 ): Promise<SessionType> {
   const context = await fetchSystemContext(options.accessToken ?? token.accessToken);
   const role = selectPrimaryRole(context.roles);
+  clearLegacyPersistedUserId();
   const user: SessionUser = SessionUser.parse({
-    id: ensureUserId(),
+    id: context.id,
     username: context.username,
     role,
     lspId: context.lspId,
@@ -115,7 +95,7 @@ export async function logout(): Promise<void> {
   }
   clearStoredSession();
   clearMockSession();
-  writePersistedUserId(null);
+  clearLegacyPersistedUserId();
 }
 
 /**

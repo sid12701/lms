@@ -1,13 +1,9 @@
 /**
- * Phase 4 home dashboard.
+ * Phase 4 home dashboard — SYSTEM_ADMIN only (Gap #8).
  *
- * Dual-purpose: internal users (SYSTEM_ADMIN / OPS_USER / PRODUCT_ADMIN) see
- * the operational overview, while LSP users (LSP_UI_READ / LSP_UI_WRITE) see
- * their own portfolio summary. The shape returned by `useHomeKpis` is a
- * discriminated union keyed on `kind`, so the page only has to branch once.
- *
- * The cards themselves live in `./components/*` (owned by the cards agent);
- * this file owns wiring, loading + error states, and role-based branching.
+ * Non-admin roles redirect to their primary work surface via
+ * `defaultLandingFor`. KPI cards live in `./components/*`; this file owns
+ * wiring, loading, and error states.
  */
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
@@ -17,12 +13,11 @@ import {
   ChartSkeleton,
 } from "@/components/app/feedback/Skeletons";
 import { useSession } from "@/features/auth/session-context";
-import { isLspUiUser } from "@/lib/role-gates";
+import { defaultLandingFor } from "@/lib/role-gates";
+import { Navigate } from "react-router-dom";
 import {
   InternalKpiSummary,
   LoansByDpdBucketCard,
-  LspKpiSummary,
-  LspLinkCardGrid,
   OpenAlertsCard,
   RecentApplicationsCard,
 } from "@/features/home/components";
@@ -31,12 +26,12 @@ import { useHomeKpis } from "./hooks/useHomeKpis";
 const CARD_ENTRANCE =
   "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-300";
 
-function HomeLoadingSkeleton({ lsp }: { lsp: boolean }) {
+function HomeLoadingSkeleton() {
   return (
     <div className="flex flex-col gap-6" data-testid="home-page-loading">
-      <KpiSkeleton count={lsp ? 4 : 4} />
+      <KpiSkeleton count={4} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {lsp ? <CardSkeleton lines={4} /> : <ChartSkeleton />}
+        <ChartSkeleton />
         <CardSkeleton lines={4} />
       </div>
       <CardSkeleton lines={6} />
@@ -47,20 +42,23 @@ function HomeLoadingSkeleton({ lsp }: { lsp: boolean }) {
 export function HomePage() {
   const { session } = useSession();
   const role = session?.user.role;
-  const lsp = role ? isLspUiUser(role) : false;
-  const query = useHomeKpis();
 
-  const eyebrow = lsp ? "LSP workspace" : "Internal workspace";
-  const description = lsp
-    ? "Quick view of your active loans, in-flight applications, and pending tasks."
-    : "Operational summary across all LSPs — applications, repayments, alerts.";
+  if (role && role !== "SYSTEM_ADMIN") {
+    return <Navigate to={defaultLandingFor(role)} replace />;
+  }
+
+  const query = useHomeKpis();
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <PageHeader eyebrow={eyebrow} title="Home" description={description} />
+      <PageHeader
+        eyebrow="Internal workspace"
+        title="Home"
+        description="Operational summary across all LSPs — applications, repayments, alerts."
+      />
 
       {query.isPending ? (
-        <HomeLoadingSkeleton lsp={lsp} />
+        <HomeLoadingSkeleton />
       ) : query.isError ? (
         <ErrorState
           title="Couldn't load your dashboard"
@@ -73,10 +71,7 @@ export function HomePage() {
           }}
         />
       ) : query.data.kind === "internal" ? (
-        <div
-          data-testid="home-page-internal"
-          className="flex flex-col gap-6"
-        >
+        <div data-testid="home-page-internal" className="flex flex-col gap-6">
           <div className={CARD_ENTRANCE}>
             <InternalKpiSummary kpis={query.data.data} />
           </div>
@@ -92,19 +87,7 @@ export function HomePage() {
             <RecentApplicationsCard applications={query.data.data.recentApplications} />
           </div>
         </div>
-      ) : (
-        <div data-testid="home-page-lsp" className="flex flex-col gap-6">
-          <div className={CARD_ENTRANCE}>
-            <LspKpiSummary kpis={query.data.data} />
-          </div>
-          <div className={CARD_ENTRANCE}>
-            <LspLinkCardGrid />
-          </div>
-          <div className={CARD_ENTRANCE}>
-            <RecentApplicationsCard applications={query.data.data.recentApplications} />
-          </div>
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }

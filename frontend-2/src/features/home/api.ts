@@ -15,7 +15,15 @@ import { LoanStatus } from "@/schemas/loan-application";
 import { DelinquencyBucket } from "@/schemas/loan-account";
 import { ApiError, requestJson } from "@/lib/api/http-client";
 import { loadStoredSession } from "@/lib/api/session-storage";
-import type { HomeKpis, InternalHomeKpis } from "./types";
+import { mapBackendStatus } from "@/features/loan-applications/api";
+import type {
+  ApplicationsByStatusBucket,
+  DpdBucketSummary,
+  HomeAlertSummary,
+  HomeKpis,
+  InternalHomeKpis,
+} from "./types";
+import type { LoanStatus as LoanStatusType } from "@/types";
 
 // ─── Runtime parsers (mirror `types.ts` exactly) ────────────────────────────
 
@@ -38,7 +46,6 @@ const HomeRecentApplicationSchema = z.object({
   status: LoanStatus,
   requestedAmount: z.number().nonnegative(),
   createdAt: z.string().min(1),
-  assignedToName: z.string().nullable(),
 });
 
 const HomeAlertSummarySchema = z.object({
@@ -83,19 +90,47 @@ export const HomeKpisSchema: z.ZodType<HomeKpis> = z.discriminatedUnion("kind", 
 
 // ─── Public surface ─────────────────────────────────────────────────────────
 
+/** Backend `LoanDelinquencyBucket` → frontend chart bucket ids. */
+const BACKEND_DPD_TO_FE: Record<string, DelinquencyBucket> = {
+  CURRENT: "B0",
+  DPD_1_30: "B1_30",
+  DPD_31_60: "B31_60",
+  DPD_61_90: "B61_90",
+  DPD_90_PLUS: "B90_PLUS",
+};
+
+const DPD_BUCKETS_IN_ORDER: readonly DelinquencyBucket[] = [
+  "B0",
+  "B1_30",
+  "B31_60",
+  "B61_90",
+  "B90_PLUS",
+];
+
 /**
  * Backend home-dashboard response shape (matches
- * `HomeDashboardService.HomeDashboardSummary`). The backend only exposes the
- * SYSTEM_ADMIN-scoped overview today; LSP-scoped + PRODUCT_ADMIN-scoped home
- * views fall back to the mock for now (see docs/INTEGRATION-STATUS.md).
+ * `HomeDashboardService.HomeDashboardSummary`).
  */
-interface BackendHomeOverview {
+export interface BackendHomeOverview {
   totalDisbursedAmount: number;
   totalOutstandingAmount: number;
   dpd90PlusAmount: number;
   dpd90PlusLoanCount: number;
-  lspBreakdown: Array<{ lspId: string; lspCode: string; lspName: string }>;
-  priorityAccounts: Array<{
+  applicationsAwaitingApproval: number;
+  applicationsInDisbursement: number;
+  avgApprovalTatHours: number | null;
+  applicationsByStatus: ReadonlyArray<{ status: string; count: number }>;
+  dpdBuckets: ReadonlyArray<{ bucket: string; count: number }>;
+  openAlerts: number;
+  openAlertSummaries: ReadonlyArray<{
+    id: string;
+    severity: string;
+    title: string;
+    subjectType: string;
+    subjectId: string;
+    createdAt: string;
+  }>;
+  priorityAccounts: ReadonlyArray<{
     applicationId: string;
     externalLoanId: string | null;
     customerName: string;
@@ -107,29 +142,72 @@ interface BackendHomeOverview {
   }>;
 }
 
-function backendToInternalHomeKpis(overview: BackendHomeOverview): InternalHomeKpis {
+function safeAlertSubjectType(value: string): HomeAlertSummary["subjectType"] {
+  const parsed = AlertSubjectType.safeParse(value);
+  return parsed.success ? parsed.data : "SYSTEM";
+}
+
+function mapDpdBuckets(
+  rows: ReadonlyArray<{ bucket: string; count: number }>,
+): readonly DpdBucketSummary[] {
+  const counts = new Map<DelinquencyBucket, number>();
+  for (const bucket of DPD_BUCKETS_IN_ORDER) {
+    counts.set(bucket, 0);
+  }
+  for (const row of rows) {
+    const mapped = BACKEND_DPD_TO_FE[row.bucket] ?? "B0";
+    counts.set(mapped, row.count);
+  }
+  return DPD_BUCKETS_IN_ORDER.map((bucket) => ({
+    bucket,
+    count: counts.get(bucket) ?? 0,
+  }));
+}
+
+function mapApplicationsByStatus(
+  rows: ReadonlyArray<{ status: string; count: number }>,
+): readonly ApplicationsByStatusBucket[] {
+  return rows.map((row) => ({
+    status: mapBackendStatus(row.status) as LoanStatusType,
+    count: row.count,
+  }));
+}
+
+/** Gap #7 — maps the live backend overview onto the internal home projection. */
+export function mapBackendHomeOverviewToInternalKpis(
+  overview: BackendHomeOverview,
+): InternalHomeKpis {
   const recentApplications = overview.priorityAccounts.map((account) => ({
     id: account.applicationId,
     externalLoanId: account.externalLoanId,
     borrowerNameMasked: account.customerName,
     lspName: account.lspCode,
     productName: account.loanStatusDisplay,
-    status: "DISBURSED" as const,
+    status: mapBackendStatus(account.loanStatusDisplay) as LoanStatusType,
     requestedAmount: account.principalAmount,
     createdAt: new Date().toISOString(),
-    assignedToName: null,
+  }));
+  const openAlerts: HomeAlertSummary[] = overview.openAlertSummaries.map((alert) => ({
+    id: alert.id,
+    severity: AlertSeverity.safeParse(alert.severity).success
+      ? (AlertSeverity.parse(alert.severity))
+      : "MEDIUM",
+    title: alert.title,
+    subjectType: safeAlertSubjectType(alert.subjectType),
+    subjectId: alert.subjectId || alert.id,
+    createdAt: alert.createdAt,
   }));
   return {
-    applicationsAwaitingApproval: 0,
-    applicationsInDisbursement: 0,
+    applicationsAwaitingApproval: overview.applicationsAwaitingApproval,
+    applicationsInDisbursement: overview.applicationsInDisbursement,
     mtdDisbursedAmount: overview.totalDisbursedAmount,
     overdueLoansCount: overview.dpd90PlusLoanCount,
     overdueAmount: overview.dpd90PlusAmount,
-    avgApprovalTatHours: null,
-    applicationsByStatus: [],
-    dpdBuckets: [],
+    avgApprovalTatHours: overview.avgApprovalTatHours,
+    applicationsByStatus: mapApplicationsByStatus(overview.applicationsByStatus),
+    dpdBuckets: mapDpdBuckets(overview.dpdBuckets),
     recentApplications,
-    openAlerts: [],
+    openAlerts,
   };
 }
 
@@ -138,27 +216,32 @@ function backendToInternalHomeKpis(overview: BackendHomeOverview): InternalHomeK
  *
  * For SYSTEM_ADMIN sessions the backend's
  * `/api/v1/internal/home/overview` is queried and mapped onto the
- * `InternalHomeKpis` projection (gap fields default to 0/empty — see
- * docs/INTEGRATION-STATUS.md).
+ * `InternalHomeKpis` projection (Gap #7 — all six KPI fields populated).
  *
- * Other roles fall back to the in-process mock because the backend does
- * not expose a per-role home aggregate yet.
+ * Gap #8: only SYSTEM_ADMIN may load home KPIs. Other roles use their
+ * primary landing route and must not call this client.
  */
 export async function fetchHomeKpis(): Promise<HomeKpis> {
   const session = loadStoredSession();
-  if (session?.user.role === "SYSTEM_ADMIN") {
-    try {
-      const overview = await requestJson<BackendHomeOverview>(
-        "/api/v1/internal/home/overview",
-      );
-      return { kind: "internal", data: backendToInternalHomeKpis(overview) };
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) {
-        throw error;
-      }
-      // Fall through to mock on 4xx — most often when the backend isn't running
-      // in this dev session. Lets the rest of the surface stay clickable.
+  if (!session || session.user.role !== "SYSTEM_ADMIN") {
+    throw new ApiError(
+      "Home dashboard is only available to system administrators.",
+      403,
+      "",
+      "FORBIDDEN",
+    );
+  }
+  try {
+    const overview = await requestJson<BackendHomeOverview>(
+      "/api/v1/internal/home/overview",
+    );
+    return { kind: "internal", data: mapBackendHomeOverviewToInternalKpis(overview) };
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status >= 500) {
+      throw error;
     }
+    // Fall through to mock on 4xx — most often when the backend isn't running
+    // in this dev session. Lets the rest of the surface stay clickable.
   }
   return dispatch(
     {

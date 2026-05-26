@@ -23,7 +23,6 @@ function validApplication() {
     tenureMonths: 12,
     status: "INITIATED" as const,
     sourceChannel: "UI" as const,
-    assignedTo: null,
     createdAt: NOW,
     updatedAt: NOW,
     invalidatedAt: null,
@@ -108,6 +107,7 @@ describe("LoanDocument enums + schema", () => {
       "INCOME_PROOF",
       "BANK_STATEMENT",
       "PHOTOGRAPH",
+      "KFS",
       "LOAN_AGREEMENT",
       "OTHER",
     ]) {
@@ -116,10 +116,12 @@ describe("LoanDocument enums + schema", () => {
     expect(LoanDocumentType.safeParse("ID_CARD").success).toBe(false);
   });
 
-  it("LoanDocumentStatus accepts the lifecycle 4", () => {
-    for (const s of ["PENDING", "UPLOADED", "VERIFIED", "REJECTED"]) {
+  it("LoanDocumentStatus accepts only the current document lifecycle", () => {
+    for (const s of ["PENDING", "UPLOADED"]) {
       expect(LoanDocumentStatus.safeParse(s).success).toBe(true);
     }
+    expect(LoanDocumentStatus.safeParse("VERIFIED").success).toBe(false);
+    expect(LoanDocumentStatus.safeParse("REJECTED").success).toBe(false);
     expect(LoanDocumentStatus.safeParse("EXPIRED").success).toBe(false);
   });
 
@@ -127,6 +129,7 @@ describe("LoanDocument enums + schema", () => {
     expect(
       LoanDocumentFileMeta.safeParse({
         storageKey: "k",
+        fileName: "borrower-pan.pdf",
         mime: "application/pdf",
         size: 100 * 1024 * 1024,
         checksum: "abc",

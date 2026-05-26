@@ -8,8 +8,6 @@
  */
 import { z } from "zod";
 import type {
-  ApplicationAuditEvent,
-  DocumentAccessEvent,
   LoanApplication,
   Lsp,
   LoanProduct,
@@ -20,11 +18,10 @@ import type {
   BorrowerEmployment,
   BorrowerReference,
 } from "@/schemas/borrower";
-import type { PiiRevealEvent, PiiFieldName } from "@/schemas/audit";
 
 // ─── Tabs ────────────────────────────────────────────────────────────────────
 
-export const BorrowerDetailTab = z.enum(["profile", "loans", "activity"]);
+export const BorrowerDetailTab = z.enum(["profile", "loans"]);
 export type BorrowerDetailTab = z.infer<typeof BorrowerDetailTab>;
 
 // ─── Detail surface ──────────────────────────────────────────────────────────
@@ -72,50 +69,7 @@ export interface BorrowerLoansResponse {
   loans: readonly BorrowerLoanRow[];
 }
 
-// ─── Activity tab ────────────────────────────────────────────────────────────
-
-/**
- * Combined audit feed for the Activity tab. Three streams are surfaced
- * (BR-7 keeps PII reveal + document access auditable; application-status
- * transitions tell the story of every loan the borrower had):
- *
- *  - `APPLICATION` — every `ApplicationAuditEvent` for an application owned
- *    by this borrower
- *  - `PII_REVEAL` — every `PiiRevealEvent` whose `subjectBorrowerId` matches
- *  - `DOCUMENT_ACCESS` — every `DocumentAccessEvent` whose document is on an
- *    application owned by this borrower
- *
- * The union is sorted by event timestamp desc.
- */
-export type BorrowerActivityEntry =
-  | { kind: "APPLICATION"; event: ApplicationAuditEvent }
-  | { kind: "PII_REVEAL"; event: PiiRevealEvent }
-  | { kind: "DOCUMENT_ACCESS"; event: DocumentAccessEvent };
-
-export interface BorrowerActivityResponse {
-  entries: readonly BorrowerActivityEntry[];
-}
-
 // ─── Mutation contracts ──────────────────────────────────────────────────────
-
-/**
- * Recorded when an operator reveals a PII field on the borrower-detail
- * surface (BR-7). The request mints an `Idempotency-Key`; the response is
- * the unmasked value PLUS the audit row id for client-side traceability.
- */
-export interface RecordPiiRevealInput {
-  borrowerId: string;
-  field: PiiFieldName;
-  reason: string;
-  idempotencyKey: string;
-}
-
-export interface RecordPiiRevealResponse {
-  /** Unmasked value of the requested field. */
-  value: string;
-  /** Id of the appended `PiiRevealEvent`. */
-  auditId: string;
-}
 
 /**
  * Recorded when an operator opens / previews / downloads a document.

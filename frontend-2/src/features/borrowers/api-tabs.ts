@@ -3,21 +3,15 @@
  *
  * The Loans tab is wired to the same backend endpoint as the borrower
  * detail (`/api/v1/internal/admin/borrowers/{id}`), projecting only the
- * `loans[]` array from the response. The Activity tab stays on the mock
- * router because the backend doesn't expose a borrower-scoped audit
- * stream (status transitions / PII reveals / document accesses are
- * per-application, not per-borrower).
+ * `loans[]` array from the response. Per `docs/gap-fixes.md` § Gap #2
+ * the Activity tab is removed; only the Loans tab data fetch remains.
  */
 import { z } from "zod";
 import { ApiError, requestJson } from "@/lib/api/http-client";
 import { dispatch } from "@/mocks/router";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import { mapBackendStatus } from "@/features/loan-applications/api";
-import type {
-  BorrowerActivityResponse,
-  BorrowerLoanRow,
-  BorrowerLoansResponse,
-} from "./types";
+import type { BorrowerLoanRow, BorrowerLoansResponse } from "./types";
 
 const BACKEND_BASE = "/api/v1/internal/admin/borrowers";
 
@@ -31,10 +25,6 @@ const Permissive = z.unknown();
 const BorrowerLoansResponseSchema: z.ZodType<BorrowerLoansResponse> = z.object({
   loans: z.array(Permissive).readonly(),
 }) as unknown as z.ZodType<BorrowerLoansResponse>;
-
-const BorrowerActivityResponseSchema: z.ZodType<BorrowerActivityResponse> = z.object({
-  entries: z.array(Permissive).readonly(),
-}) as unknown as z.ZodType<BorrowerActivityResponse>;
 
 interface BackendBorrowerLoanRow {
   loanAccountId: string | null;
@@ -103,18 +93,3 @@ export async function fetchBorrowerLoans(id: string): Promise<BorrowerLoansRespo
   );
 }
 
-/** GET `/api/v1/borrowers/:id/activity` — Activity tab data.
- *
- * No backend equivalent — the audit streams are per-application, not
- * per-borrower. Stays on the mock router until a borrower-scoped audit
- * endpoint ships. See docs/INTEGRATION-STATUS.md.
- */
-export async function fetchBorrowerActivity(id: string): Promise<BorrowerActivityResponse> {
-  return dispatch(
-    {
-      method: "GET",
-      path: `/api/v1/borrowers/${encodeURIComponent(id)}/activity`,
-    },
-    BorrowerActivityResponseSchema,
-  );
-}

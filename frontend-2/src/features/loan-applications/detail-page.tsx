@@ -11,6 +11,7 @@ import { useSession } from "@/features/auth/session-context";
 import { canPostRepayment } from "@/lib/role-gates";
 import { formatINR } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useBorrowerDetail } from "@/features/borrowers/hooks/useBorrowerDetail";
 import { DetailHeader } from "./components/DetailHeader";
 import { DetailTabsShell } from "./components/DetailTabsShell";
 import {
@@ -105,6 +106,18 @@ export function LoanApplicationDetailPage() {
   const { session } = useSession();
   const role = session?.user.role;
 
+  // Gap #20: fetch the borrower-admin projection in parallel with the
+  // loan-app detail so the OverviewTab can render the fuller borrower
+  // card (visible LSPs + delinquency totals) once the second query
+  // resolves. Falls back to the loan-app's embedded thin projection
+  // while pending or on error.
+  const borrowerId = detailQuery.data?.borrower.id ?? "";
+  const borrowerDetailQuery = useBorrowerDetail(borrowerId);
+  const borrowerDetail =
+    borrowerDetailQuery.data && borrowerId.length > 0
+      ? borrowerDetailQuery.data
+      : null;
+
   const tabBody = useMemo(() => {
     if (!detailQuery.data) return null;
     const detail = detailQuery.data;
@@ -114,7 +127,7 @@ export function LoanApplicationDetailPage() {
       REPAYABLE_STATUSES.has(detail.application.status);
     switch (activeTab) {
       case "overview":
-        return <OverviewTab detail={detail} />;
+        return <OverviewTab detail={detail} borrowerDetail={borrowerDetail} />;
       case "schedule":
         return (
           <ScheduleTab
@@ -136,7 +149,7 @@ export function LoanApplicationDetailPage() {
       default:
         return null;
     }
-  }, [activeTab, applicationId, detailQuery.data, role]);
+  }, [activeTab, applicationId, detailQuery.data, role, borrowerDetail]);
 
   if (!applicationId) {
     return (

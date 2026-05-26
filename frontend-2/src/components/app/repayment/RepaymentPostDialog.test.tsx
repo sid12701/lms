@@ -22,24 +22,19 @@ describe("RepaymentPostDialog", () => {
     expect(getByLabelText(/amount/i)).toBeInTheDocument();
   });
 
-  it("blocks submit when amount differs from outstanding (BR-13)", async () => {
-    const onConfirm = vi.fn();
-    const { getByRole, getByLabelText, findAllByText } = renderWithProviders(
+  it("shows the outstanding amount as a read-only field (BR-13)", () => {
+    const { getByLabelText } = renderWithProviders(
       <RepaymentPostDialog
         open
         onOpenChange={() => {}}
         outstandingAmount={OUTSTANDING}
-        onConfirm={onConfirm}
+        onConfirm={() => {}}
       />,
     );
     const amount = getByLabelText(/amount/i) as HTMLInputElement;
-    await userEvent.clear(amount);
-    await userEvent.type(amount, "5000");
-    await userEvent.click(getByRole("button", { name: /post repayment/i }));
-    const matches = await findAllByText(/BR-13/i);
-    expect(matches.length).toBeGreaterThan(0);
-    expect(onConfirm).not.toHaveBeenCalled();
-  }, 15_000);
+    expect(amount).toHaveAttribute("readonly");
+    expect(amount.value).toContain("10");
+  });
 
   it("calls onConfirm with amount, postedAt, mode, and a fresh idempotency key", async () => {
     const onConfirm = vi.fn();

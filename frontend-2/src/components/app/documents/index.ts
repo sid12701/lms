@@ -11,10 +11,6 @@ export {
   type DocumentChecklistRowPermissions,
 } from "./DocumentChecklistRow";
 export {
-  DocumentRejectDialog,
-  type DocumentRejectDialogProps,
-} from "./DocumentRejectDialog";
-export {
   DocumentUploadRow,
   type DocumentUploadRowProps,
 } from "./DocumentUploadRow";
@@ -22,10 +18,6 @@ export {
   DocumentChecklistGroup,
   type DocumentChecklistGroupProps,
 } from "./DocumentChecklistGroup";
-export {
-  DocumentRejectSchema,
-  type DocumentRejectValues,
-} from "./schema";
 export {
   DocumentPreviewSheet,
   type DocumentPreviewSheetProps,

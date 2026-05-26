@@ -27,8 +27,6 @@ const FIXTURE: LoanApplicationListResponse = {
       requestedAmount: 250_000,
       tenureMonths: 24,
       status: "AWAITING_APPROVAL",
-      assignedTo: null,
-      assignedToName: null,
       createdAt: "2026-05-10T08:00:00.000Z",
       updatedAt: "2026-05-11T08:00:00.000Z",
     },

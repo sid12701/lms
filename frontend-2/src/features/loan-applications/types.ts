@@ -43,8 +43,6 @@ export const LoanApplicationListFilters = z.object({
   lspId: z.string().uuid().optional(),
   /** Filter to one product. */
   productId: z.string().uuid().optional(),
-  /** Filter to applications assigned to one operator. */
-  assignedTo: z.string().uuid().optional(),
   /** Page index, zero-based. Defaults to 0. */
   page: z.coerce.number().int().min(0).optional(),
   /** Page size. Defaults to 25. */
@@ -75,8 +73,6 @@ export interface LoanApplicationListItem {
   requestedAmount: number;
   tenureMonths: number;
   status: LoanApplication["status"];
-  assignedTo: string | null;
-  assignedToName: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -175,6 +171,8 @@ export interface PostRepaymentInput {
   amount: number;
   postedAt: string;
   mode: string;
+  /** Bank UTR / cheque / UPI reference for reconciliation (optional). */
+  reference?: string | null;
   idempotencyKey: string;
 }
 

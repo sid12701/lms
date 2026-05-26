@@ -5,33 +5,37 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "@/features/auth/session-context";
 import { LoginPage } from "./LoginPage";
-import { USER_OPS_ADMIN } from "@/mocks/db/seed";
 import type { Session } from "@/mocks/api/auth";
-
-const adminSession: Session = {
-  user: {
-    id: USER_OPS_ADMIN,
-    username: "ops.admin",
-    role: "SYSTEM_ADMIN",
-    lspId: null,
-    mustChangePassword: false,
-  },
-  accessToken: "mock.token.value",
-  expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-};
+import {
+  USER_OPS_ADMIN,
+  USER_OPS_USER,
+  USER_PRODUCT_ADMIN,
+  USER_LSP_READ,
+} from "@/mocks/db/seed";
 
 const loginMock = vi.fn();
 
-vi.mock("@/mocks/api", async () => {
-  const real = await vi.importActual<typeof import("@/mocks/api")>("@/mocks/api");
+vi.mock("@/features/auth/auth-service", () => ({
+  login: (...args: unknown[]) => loginMock(...args),
+}));
+
+function sessionFor(
+  role: Session["user"]["role"],
+  id: string,
+  username: string,
+): Session {
   return {
-    ...real,
-    auth: {
-      ...real.auth,
-      login: (...args: Parameters<typeof real.auth.login>) => loginMock(...args),
+    user: {
+      id,
+      username,
+      role,
+      lspId: role === "LSP_UI_READ" || role === "LSP_UI_WRITE" ? "00000000-0000-4000-8000-000000000099" : null,
+      mustChangePassword: false,
     },
+    accessToken: "mock.token.value",
+    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
   };
-});
+}
 
 function renderLogin() {
   return render(
@@ -41,6 +45,16 @@ function renderLogin() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/home" element={<div data-testid="home">Home</div>} />
+            <Route
+              path="/loan-applications"
+              element={<div data-testid="loan-applications">Applications</div>}
+            />
+            <Route path="/products" element={<div data-testid="products">Products</div>} />
+            <Route path="/my-loans" element={<div data-testid="my-loans">My loans</div>} />
+            <Route
+              path="/change-password"
+              element={<div data-testid="change-password">Change password</div>}
+            />
           </Routes>
         </TooltipProvider>
       </SessionProvider>
@@ -49,39 +63,71 @@ function renderLogin() {
 }
 
 beforeEach(() => {
-  loginMock.mockReset().mockResolvedValue(adminSession);
+  loginMock.mockReset().mockResolvedValue(sessionFor("SYSTEM_ADMIN", USER_OPS_ADMIN, "ops.admin"));
 });
 
 afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("LoginPage", () => {
-  it("renders one card per seed user (6 cards)", () => {
+describe("LoginPage (Gap #8 post-login redirect)", () => {
+  it("lists six dev prefill cards for seeded backend accounts", () => {
     renderLogin();
-    expect(screen.getByLabelText(/Sign in as ops\.admin/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Sign in as ops\.user/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Sign in as product\.admin/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Sign in as lsp\.read/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Sign in as lsp\.write/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Sign in as temp\.user/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Prefill ops\.admin/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Prefill ops\.user/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Prefill product\.admin/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Prefill lsp\.read/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Prefill lsp\.write/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Prefill temp\.user/i)).toBeInTheDocument();
   });
 
-  it("calls auth.login and routes to /home on click", async () => {
+  it("routes SYSTEM_ADMIN to /home after sign-in", async () => {
     const user = userEvent.setup();
     renderLogin();
-    await user.click(screen.getByLabelText(/Sign in as ops\.admin/));
-    await waitFor(() => {
-      expect(loginMock).toHaveBeenCalledWith({ username: "ops.admin", password: "demo" });
-    });
+    await user.click(screen.getByLabelText(/Prefill ops\.admin/i));
+    await user.type(screen.getByLabelText(/^Password$/i), "demo");
+    await user.click(screen.getByRole("button", { name: /authenticate session/i }));
+    await waitFor(() => expect(loginMock).toHaveBeenCalledWith({ username: "ops.admin", password: "demo" }));
     expect(await screen.findByTestId("home")).toBeInTheDocument();
   });
 
-  it("surfaces a sign-in error when the API rejects", async () => {
-    loginMock.mockReset().mockRejectedValueOnce(new Error("invalid credentials"));
+  it("routes OPS_USER to /loan-applications after sign-in", async () => {
+    loginMock.mockResolvedValueOnce(sessionFor("OPS_USER", USER_OPS_USER, "ops.user"));
     const user = userEvent.setup();
     renderLogin();
-    await user.click(screen.getByLabelText(/Sign in as ops\.admin/));
+    await user.click(screen.getByLabelText(/Prefill ops\.user/i));
+    await user.type(screen.getByLabelText(/^Password$/i), "demo");
+    await user.click(screen.getByRole("button", { name: /authenticate session/i }));
+    expect(await screen.findByTestId("loan-applications")).toBeInTheDocument();
+  });
+
+  it("routes PRODUCT_ADMIN to /products after sign-in", async () => {
+    loginMock.mockResolvedValueOnce(sessionFor("PRODUCT_ADMIN", USER_PRODUCT_ADMIN, "product.admin"));
+    const user = userEvent.setup();
+    renderLogin();
+    await user.click(screen.getByLabelText(/Prefill product\.admin/i));
+    await user.type(screen.getByLabelText(/^Password$/i), "demo");
+    await user.click(screen.getByRole("button", { name: /authenticate session/i }));
+    expect(await screen.findByTestId("products")).toBeInTheDocument();
+  });
+
+  it("routes LSP_UI_READ to /my-loans after sign-in", async () => {
+    loginMock.mockResolvedValueOnce(sessionFor("LSP_UI_READ", USER_LSP_READ, "lsp.read"));
+    const user = userEvent.setup();
+    renderLogin();
+    await user.click(screen.getByLabelText(/Prefill lsp\.read/i));
+    await user.type(screen.getByLabelText(/^Password$/i), "demo");
+    await user.click(screen.getByRole("button", { name: /authenticate session/i }));
+    expect(await screen.findByTestId("my-loans")).toBeInTheDocument();
+  });
+
+  it("surfaces a sign-in error when login rejects", async () => {
+    loginMock.mockRejectedValueOnce(new Error("invalid credentials"));
+    const user = userEvent.setup();
+    renderLogin();
+    await user.click(screen.getByLabelText(/Prefill ops\.admin/i));
+    await user.type(screen.getByLabelText(/^Password$/i), "wrong");
+    await user.click(screen.getByRole("button", { name: /authenticate session/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/invalid credentials/i);
   });
 });

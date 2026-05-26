@@ -30,9 +30,9 @@ export interface NavGroup {
 /**
  * Build the role-aware sidebar navigation tree.
  *
- * Internal users (SYSTEM_ADMIN / OPS_USER / PRODUCT_ADMIN) see WORKSPACE +
- * REPORTING + ADMINISTRATION. LSP users (LSP_UI_READ / LSP_UI_WRITE) see
- * WORKSPACE only with two items (Home, My loans).
+ * Gap #8: Home is admin-only. Non-admin roles never see the Home nav
+ * entry; they land directly on their primary work surface after sign-in
+ * (handled by `defaultLandingFor`).
  */
 export function getNavItems(role: Role): NavGroup[] {
   if (isLspUiUser(role)) {
@@ -40,22 +40,22 @@ export function getNavItems(role: Role): NavGroup[] {
       {
         label: "Workspace",
         items: [
-          { to: "/home", label: "Home", icon: Home, match: "exact" },
           { to: "/my-loans", label: "My loans", icon: Folder, match: "startsWith" },
         ],
       },
     ];
   }
 
-  const workspace: NavItem[] = [
-    { to: "/home", label: "Home", icon: Home, match: "exact" },
-    {
-      to: "/loan-applications",
-      label: "Loan applications",
-      icon: FileText,
-      match: "startsWith",
-    },
-  ];
+  const workspace: NavItem[] = [];
+  if (role === "SYSTEM_ADMIN") {
+    workspace.push({ to: "/home", label: "Home", icon: Home, match: "exact" });
+  }
+  workspace.push({
+    to: "/loan-applications",
+    label: "Loan applications",
+    icon: FileText,
+    match: "startsWith",
+  });
 
   const reporting: NavItem[] = [];
   if (role === "SYSTEM_ADMIN" || role === "OPS_USER") {

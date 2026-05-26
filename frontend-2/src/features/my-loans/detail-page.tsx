@@ -5,8 +5,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   ChevronRight,
-  Eye,
-  EyeOff,
   FileText,
   Loader2,
   ShieldAlert,
@@ -41,11 +39,10 @@ import { newIdempotencyKey } from "@/lib/idempotency";
 import {
   fetchInvalidReasons,
   fetchMyLoanDetail,
+  listLspSubmittedDocuments,
   LSP_DOCUMENT_TYPES,
   markLoanInvalid,
-  revealBorrowerPii,
   uploadLspDocument,
-  type BorrowerPiiReveal,
   type InvalidReasonOption,
   type LspDocumentType,
   type MyLoanDetail,
@@ -218,90 +215,38 @@ function MarkInvalidDialog({
   );
 }
 
-interface PiiRevealCardProps {
-  applicationId: string;
+interface MaskedBorrowerCardProps {
   detail: MyLoanDetail;
 }
 
-function PiiRevealCard({ applicationId, detail }: PiiRevealCardProps) {
-  const [revealed, setRevealed] = useState<BorrowerPiiReveal | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleReveal = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await revealBorrowerPii(applicationId);
-      setRevealed(result);
-    } catch (err) {
-      setError(safeApiMessage(err, "Failed to reveal borrower PII."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleHide = () => {
-    setRevealed(null);
-  };
-
+/**
+ * Read-only borrower PII summary. Per the masking-everywhere posture
+ * (see `docs/gap-fixes.md` § Gap #1), PII fields are never unmasked at
+ * the API or UI layer — the backend serves masked values; the FE
+ * displays them as-is.
+ */
+function MaskedBorrowerCard({ detail }: MaskedBorrowerCardProps) {
   return (
     <section
-      data-slot="pii-reveal-card"
+      data-slot="masked-borrower-card"
       className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
     >
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <ShieldAlert className="text-warning h-4 w-4" aria-hidden="true" />
-            <h2 className="text-base font-semibold">Verified borrower PII</h2>
+            <h2 className="text-base font-semibold">Borrower PII (masked)</h2>
           </div>
           <p className="text-foreground-muted text-xs">
-            Revealing PII is logged in the audit trail with your username and timestamp.
+            Identity numbers are masked everywhere. Re-issue the application
+            if the borrower's identity needs to be re-verified.
           </p>
         </div>
-        {revealed ? (
-          <Button type="button" variant="outline" size="sm" onClick={handleHide}>
-            <EyeOff className="h-4 w-4" aria-hidden="true" />
-            <span>Hide</span>
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleReveal}
-            disabled={busy}
-            aria-busy={busy ? "true" : undefined}
-          >
-            <Eye className="h-4 w-4" aria-hidden="true" />
-            <span>{busy ? "Revealing…" : "Reveal PII"}</span>
-          </Button>
-        )}
       </header>
 
-      {error ? (
-        <div
-          role="alert"
-          className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-3 py-2 text-sm"
-        >
-          {error}
-        </div>
-      ) : null}
-
       <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-        <Field label="Aadhaar" value={revealed?.aadhaarNumber ?? detail.borrowerAadhaarMasked} mono />
-        <Field label="PAN" value={revealed?.panNumber ?? detail.borrowerPanMasked} mono />
-        <Field
-          label="Bank account"
-          value={revealed?.bankAccountNumber ?? (revealed ? null : "•••• (revealed on demand)")}
-          mono
-        />
-        <Field label="IFSC" value={revealed?.ifscCode ?? null} mono />
-        <Field label="Account holder" value={revealed?.accountHolderName ?? null} />
-        <Field label="Employee ID" value={revealed?.employeeId ?? null} mono />
-        <Field label="Reference name" value={revealed?.referencePersonName ?? null} />
-        <Field label="Reference contact" value={revealed?.referencePersonNumber ?? null} mono />
+        <Field label="Aadhaar" value={detail.borrowerAadhaarMasked} mono />
+        <Field label="PAN" value={detail.borrowerPanMasked} mono />
       </dl>
     </section>
   );
@@ -426,6 +371,40 @@ function DocumentsSection({ applicationId, disabled }: DocumentsSectionProps) {
   const [busyType, setBusyType] = useState<LspDocumentType | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Gap #4: seed the checklist from the server on mount so previously
+  // uploaded docs are visible after a reload. Fixes the "checklist resets
+  // on reload" bug. Failures are non-fatal — the section still works in
+  // upload-only mode if the read fails.
+  useEffect(() => {
+    let cancelled = false;
+    void listLspSubmittedDocuments(applicationId)
+      .then((rows) => {
+        if (cancelled) return;
+        const seeded: Record<string, UploadedLspDocument> = {};
+        for (const row of rows) {
+          seeded[row.documentType] = {
+            id: `${row.documentType}-${row.uploadedAt ?? "seed"}`,
+            documentType: row.documentType,
+            documentDisplayName:
+              LSP_DOC_LABELS[row.documentType as LspDocumentType] ?? row.documentType,
+            status: row.status,
+            fileName: row.fileName,
+            contentType: row.contentType,
+            fileSizeBytes: null,
+            uploadedAt: row.uploadedAt,
+            uploadedByUsername: row.uploadedByUsername,
+          };
+        }
+        setUploads(seeded);
+      })
+      .catch(() => {
+        // Non-fatal: the section continues to work with upload-only state.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applicationId]);
+
   const handlePickFile = useCallback(
     async (documentType: LspDocumentType, file: File) => {
       setBusyType(documentType);
@@ -456,10 +435,9 @@ function DocumentsSection({ applicationId, disabled }: DocumentsSectionProps) {
       <header className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">Documents</h2>
         <p className="text-foreground-muted text-xs">
-          Upload borrower KYC, agreement, and supporting documents. The LSP API
-          accepts uploads but does not yet expose a GET endpoint — this checklist
-          is derived locally from the standard document types and recent uploads
-          in this session.
+          Upload borrower KYC, agreement, and supporting documents. The checklist
+          below is seeded from the LSP-scoped server read on mount and updated
+          live as new files are uploaded.
         </p>
       </header>
 
@@ -697,7 +675,7 @@ export function MyLoanDetailPage() {
         </dl>
       </section>
 
-      <PiiRevealCard applicationId={id} detail={detail} />
+      <MaskedBorrowerCard detail={detail} />
 
       <DocumentsSection applicationId={id} disabled={isTerminal} />
 

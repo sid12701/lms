@@ -8,23 +8,14 @@
  * masked server-side by the backend before it reaches the wire, so the
  * frontend never holds the cleartext on the read path.
  *
- * The audited PII reveal call (`recordPiiReveal`) still routes through
- * the mock router: the backend exposes an audited reveal endpoint only
- * on the LSP path (`/api/v1/lsp/loan-applications/{id}/borrower-pii`),
- * not on the internal-admin borrower controller. This gap is captured
- * in `docs/INTEGRATION-STATUS.md` and on issue #8.
+ * Per the masking-everywhere posture (see `docs/gap-fixes.md` § Gap #1),
+ * there is no audited PII reveal endpoint — values are always masked.
  */
 import { z } from "zod";
 import { ApiError, requestJson } from "@/lib/api/http-client";
 import { dispatch } from "@/mocks/router";
 import { loadStoredSession } from "@/lib/api/session-storage";
-import { newIdempotencyKey } from "@/lib/idempotency";
-import { PiiFieldName } from "@/schemas/audit";
-import type {
-  BorrowerDetail,
-  RecordPiiRevealInput,
-  RecordPiiRevealResponse,
-} from "./types";
+import type { BorrowerDetail } from "./types";
 
 const BACKEND_BASE = "/api/v1/internal/admin/borrowers";
 
@@ -52,12 +43,6 @@ export const BorrowerDetailSchema = z.object({
     activeOverdueAmount: z.number().nonnegative(),
   }),
 }) as unknown as z.ZodType<BorrowerDetail>;
-
-export const RecordPiiRevealResponseSchema: z.ZodType<RecordPiiRevealResponse> =
-  z.object({
-    value: z.string(),
-    auditId: z.string().min(1),
-  });
 
 // ─── Backend response shape ──────────────────────────────────────────────────
 
@@ -113,6 +98,18 @@ interface BackendBorrowerDetail {
   referencePersonNumber: string | null;
   visibleLspIds: string[];
   loans: BackendBorrowerLoanRow[];
+  delinquency: BackendBorrowerDelinquency | null;
+}
+
+/**
+ * Gap #6: aggregate delinquency across the borrower's active loans.
+ * `bucket` is null when no overdue installments exist.
+ */
+interface BackendBorrowerDelinquency {
+  activeOverdueAmount: number | string;
+  maxDaysPastDue: number;
+  overdueLoanCount: number;
+  bucket: string | null;
 }
 
 function toNumber(value: number | string | null | undefined): number {
@@ -125,12 +122,12 @@ const OPEN_STATUSES = new Set([
   "INITIALIZED",
   "AWAITING_APPROVAL",
   "APPROVED_PENDING_DISBURSAL",
-  "PAYMENT_REINITIATION",
+  "DISBURSEMENT_RETRY",
   "DISBURSED",
   "UNDER_REPAYMENT",
 ]);
 
-const CLOSED_STATUSES = new Set(["CLOSED", "REJECTED", "INVALID"]);
+const CLOSED_STATUSES = new Set(["CLOSED", "FORECLOSED", "REJECTED", "INVALID"]);
 
 function backendToDetail(payload: BackendBorrowerDetail): BorrowerDetail {
   // Project visibleLsps from the loans collection (the backend gives us
@@ -223,10 +220,10 @@ function backendToDetail(payload: BackendBorrowerDetail): BorrowerDetail {
       openApplicationsCount: openCount,
       closedApplicationsCount: closedCount,
       lifetimeDisbursedAmount: lifetimeDisbursed,
-      // No DPD/overdue data on the borrower admin endpoint; the Profile
-      // tab's "active overdue" tile renders zero until a backend
-      // aggregation surfaces it.
-      activeOverdueAmount: 0,
+      // Gap #6: server-authoritative aggregate across the borrower's
+      // active loans. Drives the Profile tab "active overdue" tile and
+      // the OverviewTab "active overdue" row.
+      activeOverdueAmount: toNumber(payload.delinquency?.activeOverdueAmount ?? 0),
     },
   };
 }
@@ -255,37 +252,3 @@ export async function fetchBorrowerDetail(id: string): Promise<BorrowerDetail> {
   );
 }
 
-/**
- * Append a PII-reveal audit row and return the unmasked value.
- *
- * GAP: the backend exposes an audited reveal endpoint only on the LSP
- * path; the internal admin borrower controller has no equivalent. Until
- * an internal endpoint ships, the reveal flows through the mock router
- * so the UX is preserved — but no audit row hits the database. Tracked
- * in docs/INTEGRATION-STATUS.md and on GitHub issue #8.
- */
-export async function recordPiiReveal(
-  input: RecordPiiRevealInput,
-): Promise<RecordPiiRevealResponse> {
-  PiiFieldName.parse(input.field);
-
-  const idempotencyKey =
-    typeof input.idempotencyKey === "string" && input.idempotencyKey.length > 0
-      ? input.idempotencyKey
-      : newIdempotencyKey();
-
-  return dispatch(
-    {
-      method: "POST",
-      path: `/api/v1/borrowers/${encodeURIComponent(input.borrowerId)}/pii-reveal`,
-      body: {
-        borrowerId: input.borrowerId,
-        field: input.field,
-        reason: input.reason,
-        idempotencyKey,
-      },
-      headers: { "Idempotency-Key": idempotencyKey },
-    },
-    RecordPiiRevealResponseSchema,
-  );
-}

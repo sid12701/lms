@@ -4,10 +4,9 @@
  * One endpoint:
  *   GET /api/v1/home/kpis  →  HomeKpis  (role-discriminated payload)
  *
- * Roles:
- *   - SYSTEM_ADMIN | OPS_USER | PRODUCT_ADMIN  → "internal" payload
- *   - LSP_UI_READ  | LSP_UI_WRITE              → "lsp" payload, scoped to lspId
- *   - LSP_API_CLIENT                            → 401 (UI surface only)
+ * Roles (Gap #8 — home is admin-only):
+ *   - SYSTEM_ADMIN  → "internal" payload
+ *   - all others    → 401 (non-admins land on their primary work surface)
  *
  * Every figure is derived from the mock db — no constants in the payload.
  *
@@ -25,7 +24,6 @@ import type {
   HomeKpis,
   HomeRecentApplication,
   InternalHomeKpis,
-  LspHomeKpis,
 } from "@/features/home/types";
 import type { DelinquencyBucket } from "@/schemas/loan-account";
 import type {
@@ -51,7 +49,6 @@ const HomeRecentApplicationSchema = z.object({
   status: LoanStatus,
   requestedAmount: z.number().nonnegative(),
   createdAt: Iso8601,
-  assignedToName: z.string().nullable(),
 });
 
 const HomeAlertSummarySchema = z.object({
@@ -102,28 +99,11 @@ export const HomeKpisSchema = z.discriminatedUnion("kind", [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const INTERNAL_ROLES = new Set(["SYSTEM_ADMIN", "OPS_USER", "PRODUCT_ADMIN"]);
-const LSP_ROLES = new Set(["LSP_UI_READ", "LSP_UI_WRITE"]);
+const HOME_ADMIN_ROLE = "SYSTEM_ADMIN" as const;
 
 const DISBURSING_STATUSES = new Set<LoanStatusType>([
   "APPROVED_PENDING_DISBURSAL",
   "DISBURSEMENT_IN_PROGRESS",
-]);
-
-const ACTIVE_STATUSES = new Set<LoanStatusType>([
-  "INITIATED",
-  "KYC_PENDING",
-  "DOCS_PENDING",
-  "UNDER_REVIEW",
-  "AWAITING_APPROVAL",
-  "APPROVED",
-  "APPROVED_PENDING_DISBURSAL",
-  "DISBURSEMENT_IN_PROGRESS",
-  "DISBURSED",
-  "UNDER_REPAYMENT",
-  "PARTIALLY_PAID",
-  "DELINQUENT",
-  "FORECLOSURE_REQUESTED",
 ]);
 
 const BULLET = "•••";
@@ -328,7 +308,6 @@ function projectRecentApplications(
       const borrower = db.borrowers.get(a.borrowerId);
       const lsp = db.lsps.get(a.lspId);
       const product = db.products.get(a.productId);
-      const assignedTo = a.assignedTo ? db.users.get(a.assignedTo) : null;
       return {
         id: a.id,
         externalLoanId: a.externalLoanId,
@@ -338,7 +317,6 @@ function projectRecentApplications(
         status: a.status,
         requestedAmount: a.requestedAmount,
         createdAt: a.createdAt,
-        assignedToName: assignedTo?.username ?? null,
       };
     });
 }
@@ -379,16 +357,9 @@ function homeKpisHandler(_req: MockRequest, db: MockDb, correlationId: string): 
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
 
-  if (INTERNAL_ROLES.has(user.role)) {
+  if (user.role === HOME_ADMIN_ROLE) {
     return { kind: "internal", data: buildInternal(db, now, today) };
   }
-  if (LSP_ROLES.has(user.role)) {
-    if (!user.lspId) {
-      throw new UnauthorizedError(correlationId, "LSP user missing lspId");
-    }
-    return { kind: "lsp", data: buildLsp(db, user.lspId, now, today) };
-  }
-  // LSP_API_CLIENT and any other future role: UI surface unavailable.
   throw new UnauthorizedError(correlationId, `role ${user.role} cannot access the home dashboard`);
 }
 
@@ -413,35 +384,6 @@ function buildInternal(db: MockDb, now: Date, today: string): InternalHomeKpis {
     avgApprovalTatHours,
     applicationsByStatus: buildApplicationsByStatus(apps),
     dpdBuckets: buildDpdBuckets(db.installments, allAccountIds),
-    recentApplications: projectRecentApplications(db, apps, 8),
-    openAlerts: projectOpenAlerts(Array.from(db.alerts.values()), 5),
-  };
-}
-
-function buildLsp(db: MockDb, lspId: string, now: Date, today: string): LspHomeKpis {
-  const apps = Array.from(db.applications.values()).filter((a) => a.lspId === lspId);
-  const appIds = new Set(apps.map((a) => a.id));
-
-  const accounts = Array.from(db.accounts.values()).filter((acc) => appIds.has(acc.applicationId));
-  const accountIds = new Set(accounts.map((acc) => acc.id));
-  const accountToApp = new Map(accounts.map((acc) => [acc.id, acc.applicationId] as const));
-
-  const myActiveApplications = apps.filter((a) => ACTIVE_STATUSES.has(a.status)).length;
-  const myInDisbursement = apps.filter((a) => DISBURSING_STATUSES.has(a.status)).length;
-  const myMtdDisbursedAmount = computeMtdDisbursedAmount(
-    db.payments,
-    accounts,
-    now,
-    appIds,
-    accountToApp,
-  );
-  const overdue = computeOverdue(db.installments, accountIds, today);
-
-  return {
-    myActiveApplications,
-    myInDisbursement,
-    myMtdDisbursedAmount,
-    myOverdueLoansCount: overdue.count,
     recentApplications: projectRecentApplications(db, apps, 8),
     openAlerts: projectOpenAlerts(Array.from(db.alerts.values()), 5),
   };

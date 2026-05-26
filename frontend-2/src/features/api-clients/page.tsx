@@ -223,7 +223,7 @@ export function ApiClientsPage() {
         }
       />
 
-      {revealedSecret ? (
+      {revealedSecret && !createOpen ? (
         <ApiSecretReveal
           secret={revealedSecret.secret}
           clientLabel={revealedSecret.clientName}
@@ -283,6 +283,7 @@ export function ApiClientsPage() {
         onOpenChange={handleCreateOpenChange}
         lspOptions={lspOptions}
         onCreate={handleCreate}
+        onSecretAcknowledge={() => setRevealedSecret(null)}
         loading={create.isPending}
         errorMessage={
           create.isError ? extractErrorMessage(create.error) : null

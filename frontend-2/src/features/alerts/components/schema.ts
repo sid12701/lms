@@ -9,7 +9,7 @@
 import { z } from "zod";
 
 export const AcknowledgeAlertSchema = z.object({
-  note: z.string().max(1000, "Note must be 1000 characters or fewer.").optional(),
+  note: z.string().max(500, "Note must be 500 characters or fewer.").optional(),
 });
 
 export type AcknowledgeAlertValues = z.infer<typeof AcknowledgeAlertSchema>;

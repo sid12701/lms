@@ -3,17 +3,10 @@
  *
  * Composition target: the page wires the filter bar, KPI summary cards, the
  * MIS preview table, the requests list (with 5s polling), the create dialog,
- * and download mutation. These tests assert that wiring end-to-end against
- * the REAL mock router + seed.
- *
- *   1. Loads + shows the 5 KPI cards for an authorised SYSTEM_ADMIN session.
- *   2. The preview table renders rows from the seed.
- *   3. Clicking "Generate report" opens the dialog; submitting creates a
- *      QUEUED request that appears in the requests table.
- *   4. Axe-clean on the happy path (container) + the open dialog
- *      (baseElement, per binding rule #1).
+ * and download mutation. Hooks are mocked so tests stay offline (the live
+ * API module targets `/api/v1/internal/reports` on the Spring backend).
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -22,12 +15,112 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { renderWithProviders } from "@/test/utils";
 import { DensityProvider } from "@/app/providers";
-import { setLatencyOverride } from "@/mocks/latency";
-import { scenario } from "@/mocks/scenarios";
-import { resetIdempotency } from "@/mocks/idempotency";
-import { resetMockApi, auth } from "@/mocks/api";
-// Side-effect: register /api/v1/reports/* routes.
-import "@/features/reports/api";
+import type { MisPreviewResponseDto, MisSummary, ReportRequest } from "./types";
+
+const SUMMARY_FIXTURE: MisSummary = {
+  totalDisbursedMtd: 12_500_000,
+  activeLoanCount: 42,
+  weightedAvgYieldPct: 14.2,
+  portfolioAtRisk30Pct: 3.1,
+  totalLoanCount: 53,
+};
+
+const PREVIEW_FIXTURE: MisPreviewResponseDto = {
+  items: [
+    {
+      loanId: "00000000-0000-4000-8000-000000000101",
+      externalLoanId: "EXT-1",
+      borrowerName: "A•••a Devi",
+      borrowerId: "00000000-0000-4000-8000-000000000201",
+      lspCode: "APEX",
+      lspName: "Apex NBFC",
+      productCode: "PL-A",
+      productName: "Personal Loan A",
+      accountNumber: "BHAW-000101",
+      amount: 250_000,
+      status: "UNDER_REPAYMENT",
+      loanStatusDisplay: "UNDER_REPAYMENT",
+      disbursalDate: "2026-01-15",
+      applicationCreatedAt: "2026-01-01",
+      dpd: 0,
+      delinquencyBucket: "B0",
+      year: 2026,
+      processingFee: 2_500,
+      disbursalAmount: 247_500,
+      interestPct: 14.5,
+      tenureMonths: 12,
+      emiAmount: 22_500,
+      overdueAmount: 0,
+      closureDate: null,
+      closureReason: null,
+      foreclosureDate: null,
+      foreclosedAmount: null,
+      address: null,
+      pan: null,
+      aadhaar: "XXXXXXXX1234",
+      gender: null,
+      state: null,
+      zip: null,
+      ifsc: null,
+      bankAccount: null,
+      profession: null,
+      income: null,
+    },
+  ],
+  total: 1,
+  page: 0,
+  pageSize: 25,
+};
+
+const createRequestMock = vi.fn();
+const downloadRequestMock = vi.fn();
+
+vi.mock("./hooks/useMisSummary", () => ({
+  useMisSummary: () => ({
+    data: SUMMARY_FIXTURE,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  MIS_SUMMARY_QUERY_KEY: ["reports", "mis-summary"],
+}));
+
+vi.mock("./hooks/useMisPreview", () => ({
+  useMisPreview: () => ({
+    data: PREVIEW_FIXTURE,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  MIS_PREVIEW_QUERY_KEY: ["reports", "mis-preview"],
+}));
+
+vi.mock("./hooks/useReportRequests", () => ({
+  useReportRequests: () => ({
+    data: { items: [] as ReportRequest[] },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  REPORT_REQUESTS_QUERY_KEY: ["reports", "requests"],
+}));
+
+vi.mock("./hooks/useCreateReportRequest", () => ({
+  useCreateReportRequest: () => ({
+    mutateAsync: createRequestMock,
+    isPending: false,
+  }),
+}));
+
+vi.mock("./hooks/useDownloadReportRequest", () => ({
+  useDownloadReportRequest: () => ({
+    mutateAsync: downloadRequestMock,
+    isPending: false,
+  }),
+}));
 
 import { ReportsPage } from "./page";
 
@@ -54,17 +147,27 @@ function renderPage() {
   );
 }
 
-beforeEach(async () => {
-  setLatencyOverride(0);
-  scenario.reset();
-  resetIdempotency();
-  resetMockApi();
-  await auth.login({ username: "ops.admin", password: "any" });
+beforeEach(() => {
+  createRequestMock.mockReset();
+  downloadRequestMock.mockReset();
+  createRequestMock.mockResolvedValue({
+    id: "report-new-1",
+    type: "PORTFOLIO_MIS",
+    status: "QUEUED",
+    requestedBy: "ops.admin",
+    lspId: null,
+    dateFrom: null,
+    dateTo: null,
+    notificationEmail: null,
+    fileMeta: null,
+    errorMessage: null,
+    queuedAt: "2026-05-25T12:00:00.000Z",
+    completedAt: null,
+  } satisfies ReportRequest);
 });
 
 afterEach(() => {
-  scenario.reset();
-  setLatencyOverride(null);
+  vi.clearAllMocks();
 });
 
 describe("ReportsPage — load + listing", () => {
@@ -76,39 +179,27 @@ describe("ReportsPage — load + listing", () => {
       screen.getByRole("heading", { level: 1, name: /^Reports$/i }),
     ).toBeInTheDocument();
 
-    // Filter bar lands.
     expect(
       await screen.findByRole("group", { name: /Report filters/i }),
     ).toBeInTheDocument();
 
-    // Five KPI cards by their stable testIds.
-    await waitFor(() => {
-      expect(screen.getByTestId("mis-kpi-disbursed-mtd")).toBeInTheDocument();
-    });
+    expect(screen.getByTestId("mis-kpi-disbursed-mtd")).toBeInTheDocument();
     expect(screen.getByTestId("mis-kpi-active-loans")).toBeInTheDocument();
     expect(screen.getByTestId("mis-kpi-total-loans")).toBeInTheDocument();
     expect(screen.getByTestId("mis-kpi-weighted-yield")).toBeInTheDocument();
     expect(screen.getByTestId("mis-kpi-par-30")).toBeInTheDocument();
 
-    // Preview rows arrive from the seed (53 applications total → first page
-    // is 25 rows). Assert at least one preview row renders.
-    await waitFor(() => {
-      const rows = document.querySelectorAll(
-        '[data-testid^="mis-preview-row-"]',
-      );
-      expect(rows.length).toBeGreaterThan(0);
-    });
+    expect(
+      screen.getByTestId("mis-preview-row-00000000-0000-4000-8000-000000000101"),
+    ).toBeInTheDocument();
   });
 
   it("is axe-clean on the happy path", async () => {
     const { container } = renderPage();
     await screen.findByTestId("mis-kpi-total-loans");
-    await waitFor(() => {
-      const rows = document.querySelectorAll(
-        '[data-testid^="mis-preview-row-"]',
-      );
-      expect(rows.length).toBeGreaterThan(0);
-    });
+    expect(
+      screen.getByTestId("mis-preview-row-00000000-0000-4000-8000-000000000101"),
+    ).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
   });
 });
@@ -120,20 +211,13 @@ describe("ReportsPage — create flow", () => {
       const user = userEvent.setup();
       const { baseElement } = renderPage();
 
-      // Wait for initial data so the Generate button is fully wired.
       await screen.findByTestId("mis-kpi-total-loans");
-
-      // Capture the requests count BEFORE create. Requests table starts empty.
-      const requestsBefore = document.querySelectorAll(
-        '[data-testid^="report-request-row-"]',
-      ).length;
 
       const generateBtn = screen.getByRole("button", {
         name: /Generate report/i,
       });
       await user.click(generateBtn);
 
-      // Radix portals the dialog to body → query via baseElement.
       const dialog = await within(baseElement).findByRole("dialog");
       expect(
         within(dialog).getByRole("heading", {
@@ -141,48 +225,23 @@ describe("ReportsPage — create flow", () => {
         }),
       ).toBeInTheDocument();
 
-      // Axe on the open dialog → baseElement (binding rule #1).
       expect(await axe(baseElement)).toHaveNoViolations();
 
-      // Submit with no input (all fields are optional).
       const submit = within(dialog).getByRole("button", {
         name: /^Queue report$/i,
       });
       await user.click(submit);
 
-      // Dialog closes once the mutation resolves.
+      await waitFor(() => {
+        expect(createRequestMock).toHaveBeenCalled();
+      });
+
       await waitFor(
         () => {
-          expect(
-            within(baseElement).queryByRole("dialog"),
-          ).not.toBeInTheDocument();
+          expect(within(baseElement).queryByRole("dialog")).not.toBeInTheDocument();
         },
         { timeout: 5000 },
       );
-
-      // Requests list refetched → a new row landed (the QUEUED report).
-      await waitFor(
-        () => {
-          const after = document.querySelectorAll(
-            '[data-testid^="report-request-row-"]',
-          );
-          expect(after.length).toBe(requestsBefore + 1);
-        },
-        { timeout: 5000 },
-      );
-
-      // The new row's status is QUEUED (auto-completion ticker won't have
-      // fired yet — 5s elapsed required and latency override is 0).
-      const newRows = document.querySelectorAll(
-        '[data-testid^="report-request-row-"]',
-      );
-      const firstRow = newRows[0] as HTMLElement | undefined;
-      expect(firstRow).toBeDefined();
-      // Status badge present + matches QUEUED.
-      const badge = firstRow?.querySelector(
-        '[data-slot="report-status-badge"]',
-      );
-      expect(badge).toBeTruthy();
     },
     15_000,
   );
@@ -200,14 +259,11 @@ describe("ReportsPage — filter bar", () => {
     });
     expect(clearBtn).toBeDisabled();
 
-    // Apply a from-date filter via the date input.
     const fromInput = screen.getByLabelText(/Date from/i);
     await user.type(fromInput, "2099-01-01");
 
-    // Clear becomes enabled once a filter is set.
     await waitFor(() => expect(clearBtn).not.toBeDisabled());
 
-    // Click Clear → filters reset.
     await user.click(clearBtn);
     await waitFor(() => expect(clearBtn).toBeDisabled());
   });

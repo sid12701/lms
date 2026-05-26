@@ -4,6 +4,7 @@ import {
   Document,
   DocumentKind,
   DocumentStatus,
+  isUploadedBackendChecklistStatus,
 } from "./document";
 
 const UUID = "550e8400-e29b-41d4-a716-446655440000";
@@ -21,9 +22,6 @@ function validUploadedDocument() {
     sizeBytes: 245_678,
     uploadedAt: NOW,
     uploadedBy: UUID,
-    verifiedAt: null,
-    verifiedBy: null,
-    rejectionReason: null,
   };
 }
 
@@ -32,10 +30,12 @@ describe("DocumentKind", () => {
     for (const k of [
       "PAN_CARD",
       "AADHAAR_CARD",
+      "ADDRESS_PROOF",
       "BANK_STATEMENT",
       "INCOME_PROOF",
       "LOAN_AGREEMENT",
       "KYC_PHOTO",
+      "KFS",
       "NACH_MANDATE",
       "OTHER",
     ]) {
@@ -55,11 +55,29 @@ describe("DocumentKind", () => {
   });
 });
 
-describe("DocumentStatus", () => {
-  it("accepts the four lifecycle states", () => {
-    for (const s of ["PENDING", "UPLOADED", "VERIFIED", "REJECTED"]) {
+describe("isUploadedBackendChecklistStatus", () => {
+  it("treats SUBMITTED and legacy verified states as uploaded", () => {
+    for (const s of ["SUBMITTED", "UPLOADED", "VERIFIED", "RECEIVED"]) {
+      expect(isUploadedBackendChecklistStatus(s)).toBe(true);
+    }
+  });
+
+  it("treats PENDING and NOT_REQUIRED as not uploaded", () => {
+    expect(isUploadedBackendChecklistStatus("PENDING")).toBe(false);
+    expect(isUploadedBackendChecklistStatus("NOT_REQUIRED")).toBe(false);
+  });
+});
+
+describe("DocumentStatus (Gap #18 — PENDING | UPLOADED only)", () => {
+  it("accepts PENDING and UPLOADED", () => {
+    for (const s of ["PENDING", "UPLOADED"]) {
       expect(DocumentStatus.safeParse(s).success).toBe(true);
     }
+  });
+
+  it("rejects the retired VERIFIED and REJECTED states", () => {
+    expect(DocumentStatus.safeParse("VERIFIED").success).toBe(false);
+    expect(DocumentStatus.safeParse("REJECTED").success).toBe(false);
   });
 
   it("rejects unknown values", () => {
@@ -84,9 +102,6 @@ describe("Document schema", () => {
       sizeBytes: null,
       uploadedAt: null,
       uploadedBy: null,
-      verifiedAt: null,
-      verifiedBy: null,
-      rejectionReason: null,
     });
     expect(r.success).toBe(true);
   });
@@ -102,48 +117,8 @@ describe("Document schema", () => {
       sizeBytes: null,
       uploadedAt: null,
       uploadedBy: null,
-      verifiedAt: null,
-      verifiedBy: null,
-      rejectionReason: null,
     });
     expect(r.requiredForDisbursement).toBe(false);
-  });
-
-  it("accepts a verified document", () => {
-    const r = Document.safeParse({
-      ...validUploadedDocument(),
-      status: "VERIFIED",
-      verifiedAt: NOW,
-      verifiedBy: UUID,
-    });
-    expect(r.success).toBe(true);
-  });
-
-  it("rejects a document with empty rejectionReason string (min 1)", () => {
-    const r = Document.safeParse({
-      ...validUploadedDocument(),
-      status: "REJECTED",
-      rejectionReason: "",
-    });
-    expect(r.success).toBe(false);
-  });
-
-  it("accepts a rejected document with a non-empty reason", () => {
-    const r = Document.safeParse({
-      ...validUploadedDocument(),
-      status: "REJECTED",
-      rejectionReason: "Image too blurry — please re-upload.",
-    });
-    expect(r.success).toBe(true);
-  });
-
-  it("rejects a rejectionReason longer than 500 chars", () => {
-    const r = Document.safeParse({
-      ...validUploadedDocument(),
-      status: "REJECTED",
-      rejectionReason: "x".repeat(501),
-    });
-    expect(r.success).toBe(false);
   });
 
   it("rejects a sizeBytes above 100 MB", () => {
@@ -158,5 +133,26 @@ describe("Document schema", () => {
     const bad: Record<string, unknown> = { ...validUploadedDocument() };
     delete bad.applicationId;
     expect(Document.safeParse(bad).success).toBe(false);
+  });
+
+  it("rejects payloads that still carry the retired verify/reject fields", () => {
+    const carriesVerified = Document.safeParse({
+      ...validUploadedDocument(),
+      verifiedAt: NOW,
+    });
+    const carriesReject = Document.safeParse({
+      ...validUploadedDocument(),
+      rejectionReason: "blurry",
+    });
+    // Zod's `object()` strips unknown keys by default rather than failing,
+    // so we assert the parsed shape no longer surfaces them.
+    expect(carriesVerified.success).toBe(true);
+    expect(carriesReject.success).toBe(true);
+    if (carriesVerified.success) {
+      expect(carriesVerified.data).not.toHaveProperty("verifiedAt");
+    }
+    if (carriesReject.success) {
+      expect(carriesReject.data).not.toHaveProperty("rejectionReason");
+    }
   });
 });

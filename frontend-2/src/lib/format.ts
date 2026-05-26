@@ -5,8 +5,8 @@
  * - Date formatting uses `date-fns` for stable test output.
  * - Masks default to a single bullet glyph; consumers can wrap further.
  *
- * BR-7: masking is the default presentation of PII; `format.ts` does not
- * itself reveal — `MaskedField` (A6) coordinates the audit write.
+ * Per `docs/gap-fixes.md` § Gap #1, masking is the only presentation of
+ * PII — there is no reveal-on-demand flow.
  */
 import { format, formatDistanceStrict, formatDistanceToNowStrict, parseISO } from "date-fns";
 
@@ -59,10 +59,21 @@ export function maskPan(pan: string): string {
   return `${pan.slice(0, 5)}${BULLET.repeat(4)}${pan.slice(9)}`;
 }
 
-/** "XXXX XXXX 1234" — last 4 visible. */
-export function maskAadhaar(aadhaar: string): string {
-  if (aadhaar.length !== 12) return BULLET.repeat(Math.max(0, aadhaar.length));
-  return `XXXX XXXX ${aadhaar.slice(8)}`;
+/**
+ * Mask aadhaar: "XXXXXXXX1234" — last 4 visible, fixed prefix.
+ *
+ * Idempotent on already-masked values (XXXXXXXX1234 → XXXXXXXX1234) and
+ * tolerant of separators/non-digit chars in the input. Matches the
+ * backend's mask shape (see `LspLoanApplicationResponses.maskAadharNumber`
+ * + `BorrowerAdminController.maskAadhar`) so a value can flow from the
+ * backend to FE without double-masking.
+ */
+export function maskAadhaar(aadhaar: string | null | undefined): string {
+  if (!aadhaar) return "";
+  if (/^X{8}\d{4}$/.test(aadhaar)) return aadhaar;
+  const digits = aadhaar.replace(/\D/g, "");
+  if (digits.length === 0) return aadhaar;
+  return `XXXXXXXX${digits.slice(-4).padStart(4, "X")}`;
 }
 
 /** "••••••3210" — last 4 visible. */

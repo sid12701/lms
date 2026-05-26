@@ -1,24 +1,10 @@
 /**
  * AlertsPage smoke tests.
  *
- * Composition target: the page wires the (already-shipped) filter bar,
- * server-paged table, and acknowledge dialog into the route shell. These
- * tests assert that wiring end-to-end against the REAL mock router + seed.
- *
- *   1. Loads + shows seeded alerts for an authorised SYSTEM_ADMIN session.
- *   2. Clicking Acknowledge opens the dialog; submitting flips the row.
- *   3. Axe-clean on the happy path (container) + the open dialog
- *      (baseElement, per binding rule #1).
- *   4. The filter bar's Clear button resets active filters.
- *
- * Note: `AlertsTable` is rendered with a thin testbed shim — the shipped
- * `AlertsTable.tsx` renders `DataTablePagination` with a stale prop shape
- * (`page` / `pageSize` / `total` / `onPageChange` / `onPageSizeChange`) and
- * crashes at runtime because `DataTablePagination` now requires a TanStack
- * `table` ref. See "INTEGRATION NOTE for orchestrator" in the report —
- * Agent A is not allowed to edit that file. The shim keeps the page-level
- * wiring assertions honest (filters in, rows out, ack → mutation) while
- * leaving the broken primitive surfaced to the orchestrator.
+ * The page is wired to the live-backend alerts API module. These tests mock
+ * that module directly so the route composition stays deterministic while
+ * still exercising filters, table wiring, the acknowledge dialog, and query
+ * invalidation behavior.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
@@ -29,22 +15,136 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { renderWithProviders } from "@/test/utils";
 import { DensityProvider } from "@/app/providers";
+import { SessionProvider } from "@/features/auth/session-context";
 import { setLatencyOverride } from "@/mocks/latency";
 import { scenario } from "@/mocks/scenarios";
 import { resetIdempotency } from "@/mocks/idempotency";
-import { resetMockApi, auth } from "@/mocks/api";
-// Side-effect: register /api/v1/alerts routes.
-import "@/features/alerts/api";
+import type { Session } from "@/mocks/api/auth";
 import type {
   AlertRow,
   AlertsListFilters,
   AlertsListResponse,
 } from "./types";
 
-// ─── Test shim for the broken AlertsTable ───────────────────────────────────
-// Renders one Acknowledge button per OPEN row + an Acknowledged label per
-// already-acked row. Wired to the page's `onAcknowledge` so the dialog flow
-// is exercised end-to-end.
+const alertsApiMock = vi.hoisted(() => {
+  const adminUserId = "11111111-1111-4111-8111-111111111111";
+  const openRows = Array.from({ length: 8 }, (_, index) => ({
+    id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index + 1).padStart(12, "0")}`,
+    type: "REPORT_REQUEST_STALE",
+    severity: index % 2 === 0 ? "HIGH" : "MEDIUM",
+    status: "OPEN",
+    title: `Open alert ${index + 1}`,
+    message: `Open alert message ${index + 1}`,
+    subjectType: index % 2 === 0 ? "REPORT_REQUEST" : "SYSTEM",
+    subjectId: `subject-open-${index + 1}`,
+    correlationId: `bbbbbbbb-bbbb-4bbb-8bbb-${String(index + 1).padStart(
+      12,
+      "0",
+    )}`,
+    createdAt: `2026-05-26T10:${String(index).padStart(2, "0")}:00.000Z`,
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+    acknowledgmentNote: null,
+    acknowledgedByName: null,
+  }));
+  const ackedRows = Array.from({ length: 4 }, (_, index) => ({
+    id: `cccccccc-cccc-4ccc-8ccc-${String(index + 1).padStart(12, "0")}`,
+    type: "REPAYMENT_DELAYED",
+    severity: "LOW",
+    status: "ACKNOWLEDGED",
+    title: `Acknowledged alert ${index + 1}`,
+    message: `Acknowledged alert message ${index + 1}`,
+    subjectType: "LOAN_ACCOUNT",
+    subjectId: `subject-acked-${index + 1}`,
+    correlationId: `dddddddd-dddd-4ddd-8ddd-${String(index + 1).padStart(
+      12,
+      "0",
+    )}`,
+    createdAt: `2026-05-26T09:${String(index).padStart(2, "0")}:00.000Z`,
+    acknowledgedAt: "2026-05-26T11:00:00.000Z",
+    acknowledgedBy: adminUserId,
+    acknowledgmentNote: "already reviewed",
+    acknowledgedByName: "ops.admin",
+  }));
+  let rows = [...openRows, ...ackedRows];
+
+  function resetRows() {
+    rows = [...openRows, ...ackedRows].map((row) => ({ ...row }));
+  }
+
+  function filteredRows(filters = {}) {
+    const typedFilters = filters as {
+      status?: string;
+      severity?: string[];
+      subjectType?: string;
+      q?: string;
+      page?: number;
+      pageSize?: number;
+    };
+    let nextRows = rows;
+    if (typedFilters.status) {
+      nextRows = nextRows.filter((row) => row.status === typedFilters.status);
+    }
+    if (typedFilters.severity && typedFilters.severity.length > 0) {
+      const severities = new Set(typedFilters.severity);
+      nextRows = nextRows.filter((row) => severities.has(row.severity));
+    }
+    if (typedFilters.subjectType) {
+      nextRows = nextRows.filter((row) => row.subjectType === typedFilters.subjectType);
+    }
+    if (typedFilters.q) {
+      const needle = typedFilters.q.toLowerCase();
+      nextRows = nextRows.filter(
+        (row) =>
+          row.title.toLowerCase().includes(needle) ||
+          row.message.toLowerCase().includes(needle),
+      );
+    }
+    return nextRows;
+  }
+
+  return {
+    resetRows,
+    listAlerts: vi.fn(async (filters = {}) => {
+      const page = typeof filters.page === "number" ? filters.page : 0;
+      const pageSize = typeof filters.pageSize === "number" ? filters.pageSize : 25;
+      const filtered = filteredRows(filters);
+      return {
+        items: filtered.slice(page * pageSize, page * pageSize + pageSize),
+        total: filtered.length,
+        page,
+        pageSize,
+      };
+    }),
+    acknowledgeAlert: vi.fn(async (id: string, input: { note: string | null }) => {
+      const row = rows.find((candidate) => candidate.id === id);
+      if (!row) {
+        throw new Error(`alert ${id} not found`);
+      }
+      const updated = {
+        ...row,
+        status: "ACKNOWLEDGED",
+        acknowledgedAt: "2026-05-26T12:00:00.000Z",
+        acknowledgedBy: adminUserId,
+        acknowledgmentNote: input.note,
+        acknowledgedByName: "ops.admin",
+      };
+      rows = rows.map((candidate) => (candidate.id === id ? updated : candidate));
+      return { alert: updated };
+    }),
+    listAlertRules: vi.fn(async () => []),
+  };
+});
+
+vi.mock("./api", () => ({
+  listAlerts: alertsApiMock.listAlerts,
+  acknowledgeAlert: alertsApiMock.acknowledgeAlert,
+  listAlertRules: alertsApiMock.listAlertRules,
+}));
+
+// Test shim for AlertsTable. It renders one Acknowledge button per OPEN row
+// and an Acknowledged label per already-acked row while preserving the page's
+// onAcknowledge contract.
 vi.mock("./components/AlertsTable", () => ({
   AlertsTable: (props: {
     data: AlertsListResponse | undefined;
@@ -65,7 +165,11 @@ vi.mock("./components/AlertsTable", () => ({
       </span>
       <ul>
         {(props.data?.items ?? []).map((row) => (
-          <li key={row.id} data-testid={`alerts-row-${row.id}`} data-status={row.status}>
+          <li
+            key={row.id}
+            data-testid={`alerts-row-${row.id}`}
+            data-status={row.status}
+          >
             <span>{row.title}</span>
             {row.status === "OPEN" ? (
               <button
@@ -87,6 +191,22 @@ vi.mock("./components/AlertsTable", () => ({
 
 import { AlertsPage } from "./page";
 
+let currentSession: Session | null = null;
+
+function buildAdminSession(): Session {
+  return {
+    user: {
+      id: "11111111-1111-4111-8111-111111111111",
+      username: "ops.admin",
+      role: "SYSTEM_ADMIN",
+      lspId: null,
+      mustChangePassword: false,
+    },
+    accessToken: "test-token",
+    expiresAt: "2026-05-26T18:00:00.000Z",
+  };
+}
+
 function renderPage() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -95,7 +215,9 @@ function renderPage() {
     return (
       <QueryClientProvider client={client}>
         <DensityProvider>
-          <MemoryRouter initialEntries={["/alerts"]}>{children}</MemoryRouter>
+          <SessionProvider skipBootstrap initialSession={currentSession}>
+            <MemoryRouter initialEntries={["/alerts"]}>{children}</MemoryRouter>
+          </SessionProvider>
         </DensityProvider>
       </QueryClientProvider>
     );
@@ -107,20 +229,22 @@ function renderPage() {
   );
 }
 
-beforeEach(async () => {
+beforeEach(() => {
   setLatencyOverride(0);
   scenario.reset();
   resetIdempotency();
-  resetMockApi();
-  await auth.login({ username: "ops.admin", password: "any" });
+  alertsApiMock.resetRows();
+  vi.clearAllMocks();
+  currentSession = buildAdminSession();
 });
 
 afterEach(() => {
+  currentSession = null;
   scenario.reset();
   setLatencyOverride(null);
 });
 
-describe("AlertsPage — load + listing", () => {
+describe("AlertsPage - load + listing", () => {
   it("renders header, filter bar, and table for an authorised session", async () => {
     renderPage();
     expect(screen.getByTestId("alerts-page")).toBeInTheDocument();
@@ -133,12 +257,10 @@ describe("AlertsPage — load + listing", () => {
       await screen.findByRole("group", { name: /Alert filters/i }),
     ).toBeInTheDocument();
 
-    // The dashboard seed ships 12 alerts (page size 25 → all visible).
     await waitFor(() => {
       expect(screen.getByTestId("alerts-table-total")).toHaveTextContent("12");
     });
 
-    // 8 are OPEN → 8 Acknowledge buttons rendered by the shim.
     const ackBtns = screen.getAllByRole("button", { name: /Acknowledge / });
     expect(ackBtns.length).toBe(8);
   });
@@ -150,7 +272,7 @@ describe("AlertsPage — load + listing", () => {
   });
 });
 
-describe("AlertsPage — acknowledge flow", () => {
+describe("AlertsPage - acknowledge flow", () => {
   it(
     "opens the dialog, submits a note, and flips the row to Acknowledged",
     async () => {
@@ -163,31 +285,23 @@ describe("AlertsPage — acknowledge flow", () => {
       const openCountBefore = ackBtnsBefore.length;
       expect(openCountBefore).toBeGreaterThan(0);
 
-      // Click the first OPEN row's Acknowledge action.
       await user.click(ackBtnsBefore[0]!);
 
-      // Radix portals the dialog to body — query via baseElement.
       const dialog = await within(baseElement).findByRole("dialog");
       expect(
         within(dialog).getByRole("heading", { name: /Acknowledge alert/i }),
       ).toBeInTheDocument();
 
-      // Axe on the open dialog → baseElement (binding rule #1).
       expect(await axe(baseElement)).toHaveNoViolations();
 
-      // Fill the optional note + submit.
       const note = within(dialog).getByLabelText(/Acknowledgement note/i);
       await user.type(note, "investigated, false alarm");
 
-      // FormShell mirrors errors into both an aria-live <ul><li> and inline
-      // <FormMessage>, so a "Acknowledge" lookup must be scoped to the
-      // submit button (it's unique by role within the dialog).
       const submit = within(dialog).getByRole("button", {
         name: /^Acknowledge$/i,
       });
       await user.click(submit);
 
-      // Dialog closes once the mutation resolves and the list invalidates.
       await waitFor(
         () => {
           expect(
@@ -197,8 +311,6 @@ describe("AlertsPage — acknowledge flow", () => {
         { timeout: 5000 },
       );
 
-      // List invalidation triggers a refetch — the row's status flipped, so
-      // there is now exactly one fewer Acknowledge button.
       await waitFor(
         () => {
           const after = screen.queryAllByRole("button", {
@@ -213,7 +325,7 @@ describe("AlertsPage — acknowledge flow", () => {
   );
 });
 
-describe("AlertsPage — filter clear", () => {
+describe("AlertsPage - filter clear", () => {
   it("Clear resets active filters; is disabled when none are active", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -225,14 +337,11 @@ describe("AlertsPage — filter clear", () => {
     });
     expect(clearBtn).toBeDisabled();
 
-    // Apply the Acknowledged status filter via the tablist.
     const ackedTab = screen.getByRole("tab", { name: /^Acknowledged$/i });
     await user.click(ackedTab);
 
-    // Once a filter is active the Clear button enables.
     await waitFor(() => expect(clearBtn).not.toBeDisabled());
 
-    // The list now narrows to the 4 ACKED rows.
     await waitFor(() => {
       expect(screen.getByTestId("alerts-table-total")).toHaveTextContent("4");
     });
@@ -240,7 +349,6 @@ describe("AlertsPage — filter clear", () => {
       screen.queryAllByRole("button", { name: /Acknowledge / }),
     ).toHaveLength(0);
 
-    // Click Clear → filters reset, OPEN rows return.
     await user.click(clearBtn);
     await waitFor(() => {
       expect(screen.getByTestId("alerts-table-total")).toHaveTextContent("12");

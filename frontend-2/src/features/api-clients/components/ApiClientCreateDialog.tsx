@@ -73,6 +73,8 @@ export interface ApiClientCreateDialogProps {
     ipAllowList: string[];
     idempotencyKey: string;
   }) => Promise<CreateApiClientResponse>;
+  /** Called when the operator confirms the cleartext secret has been saved. */
+  onSecretAcknowledge?: () => void;
   loading?: boolean;
   errorMessage?: string | null;
 }
@@ -82,6 +84,7 @@ export function ApiClientCreateDialog({
   onOpenChange,
   lspOptions,
   onCreate,
+  onSecretAcknowledge,
   loading = false,
   errorMessage = null,
 }: ApiClientCreateDialogProps) {
@@ -124,6 +127,7 @@ export function ApiClientCreateDialog({
 
   const handleAcknowledge = () => {
     setRevealed(null);
+    onSecretAcknowledge?.();
     onOpenChange(false);
   };
 

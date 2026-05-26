@@ -11,19 +11,10 @@ import { DocumentUploadRow } from "./DocumentUploadRow";
 
 export interface DocumentChecklistGroupProps {
   docs: Document[];
-  /** Compact density variant (D7) — propagated to each row. */
   compact?: boolean;
   permissions?: DocumentChecklistRowPermissions;
   onView?: (doc: Document) => void;
   onDownload?: (doc: Document) => void;
-  onVerify?: (
-    doc: Document,
-    args: { idempotencyKey: string },
-  ) => Promise<void> | void;
-  onReject?: (
-    doc: Document,
-    args: { rejectionReason: string; idempotencyKey: string },
-  ) => Promise<void> | void;
   onUpload?: (
     doc: Document,
     args: { idempotencyKey: string },
@@ -31,20 +22,16 @@ export interface DocumentChecklistGroupProps {
   className?: string;
 }
 
-/**
- * Composes the document checklist into a "Required for disbursement" (BR-3)
- * top section and an "Optional" section. Each row is the read-only
- * `DocumentChecklistRow` when the document has been uploaded, or the empty
- * `DocumentUploadRow` when the document is still PENDING.
- */
+// Gap #18 — verify/reject affordances are gone. The group composes a
+// "Required for disbursement" section over an "Optional" section; each row
+// is either the upload-affordance row (PENDING) or the read-only checklist
+// row (UPLOADED).
 export function DocumentChecklistGroup({
   docs,
   compact = false,
   permissions,
   onView,
   onDownload,
-  onVerify,
-  onReject,
   onUpload,
   className,
 }: DocumentChecklistGroupProps) {
@@ -77,8 +64,6 @@ export function DocumentChecklistGroup({
         permissions={permissions}
         onView={onView ? () => onView(doc) : undefined}
         onDownload={onDownload ? () => onDownload(doc) : undefined}
-        onVerify={onVerify ? (args) => onVerify(doc, args) : undefined}
-        onReject={onReject ? (args) => onReject(doc, args) : undefined}
       />
     );
   };

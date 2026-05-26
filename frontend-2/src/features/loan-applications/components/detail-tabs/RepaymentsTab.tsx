@@ -4,8 +4,8 @@
  * Density: COMFORTABLE per D7.
  *
  * Columns: posted at (relative + tooltip with full timestamp), amount (INR,
- * right-aligned, tabular-nums), mode (PaymentChannel), reference id (the
- * `installmentId`), transaction id (short uuid, mono). The Phase-5 contract
+ * right-aligned, tabular-nums), mode (PaymentChannel), payment reference,
+ * transaction id (short uuid, mono). The Phase-5 contract
  * does not surface a payment status column — every posted row is settled
  * (the mock router rejects partials per BR-13). We render a static
  * "POSTED" badge so the column reads sensibly when the schema evolves.
@@ -31,9 +31,11 @@ export interface RepaymentsTabProps {
   applicationId: string;
 }
 
-/** Short prefix of a UUID for compact id display. */
-function shortId(uuid: string): string {
-  return uuid.length > 8 ? uuid.slice(0, 8) : uuid;
+/** Short prefix of UUID-like values while preserving human references. */
+function shortId(value: string): string {
+  return /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value)
+    ? value.slice(0, 8)
+    : value;
 }
 
 const COLUMNS: ColumnDef<PaymentTransaction>[] = [
@@ -81,7 +83,7 @@ const COLUMNS: ColumnDef<PaymentTransaction>[] = [
     id: "reference",
     header: "Reference",
     cell: ({ row }) => {
-      const ref = row.original.installmentId;
+      const ref = row.original.reference?.trim() || row.original.installmentId;
       return (
         <code className="text-foreground-muted font-mono text-xs">
           {ref ? shortId(ref) : "—"}

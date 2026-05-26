@@ -105,7 +105,7 @@ export function AcknowledgeAlertDialog({
                 <FormControl>
                   <Textarea
                     rows={4}
-                    maxLength={1000}
+                    maxLength={500}
                     placeholder="What action was taken? (optional)"
                     {...field}
                     ref={(el) => {
@@ -115,7 +115,7 @@ export function AcknowledgeAlertDialog({
                   />
                 </FormControl>
                 <FormDescription>
-                  Up to 1000 characters. Visible in the alert audit trail.
+                  Up to 500 characters. Stored on the alert and shown in the inbox.
                 </FormDescription>
                 <FormMessage />
               </FormItem>

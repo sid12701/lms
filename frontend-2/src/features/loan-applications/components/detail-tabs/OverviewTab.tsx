@@ -1,23 +1,20 @@
 import { type ReactNode } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
-import { MaskedField } from "@/components/app/pii/MaskedField";
 import { formatDateTime, formatINR } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import type { BorrowerDetail } from "@/features/borrowers/types";
 import type { LoanApplicationDetail } from "../../types";
+import { BlockingIssuesPanel } from "./BlockingIssuesPanel";
 
 export interface OverviewTabProps {
   detail: LoanApplicationDetail;
-}
-
-/**
- * No-op PII reveal handler — wiring an audit write requires the future
- * `mocks/api/audit.ts` surface (Phase 8). Until then the dialog still
- * displays + records the user's reason locally so the UX path is
- * representative.
- */
-function noopReveal(): Promise<void> {
-  return Promise.resolve();
+  /**
+   * Optional richer borrower projection fetched in parallel (Gap #20).
+   * When present, the borrower section augments the thin projection with
+   * visible-LSP context and the activeOverdueAmount/totals KPIs.
+   */
+  borrowerDetail?: BorrowerDetail | null;
 }
 
 function Section({
@@ -72,21 +69,23 @@ function GateChip({ ok, label, hint }: { ok: boolean; label: string; hint: strin
 
 /**
  * Overview tab — read-only summary of the application's loan terms, the
- * borrower's masked PII (BR-7), the originating LSP, the assigned operator,
- * and the live lifecycle-gate state. Every PII field renders through
- * `MaskedField` so the audit-write contract is preserved when the audit
- * mutation lands.
+ * borrower's masked PII, the originating LSP, and the live lifecycle-gate
+ * state. PII fields render as-supplied by
+ * the backend (which masks identity numbers); there is no reveal path
+ * (see `docs/gap-fixes.md` § Gap #1).
  */
-export function OverviewTab({ detail }: OverviewTabProps) {
+export function OverviewTab({ detail, borrowerDetail }: OverviewTabProps) {
   const { application, borrower, lsp, product } = detail;
-  const assignedLabel = application.assignedTo ? "Assigned operator" : "Assignment";
+  // Prefer the fuller borrower projection when it has resolved (Gap #20),
+  // otherwise fall back to the loan-app's embedded thin projection. Aadhaar
+  // is masked on the backend in both cases (Gap #1).
+  const richBorrower = borrowerDetail?.borrower ?? borrower;
 
   return (
-    <div
-      data-slot="overview-tab"
-      className="grid grid-cols-1 gap-4 lg:grid-cols-2"
-    >
-      <Section title="Loan terms">
+    <div data-slot="overview-tab" className="flex flex-col gap-4">
+      <BlockingIssuesPanel detail={detail} borrowerDetail={borrowerDetail} />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Section title="Loan terms">
         <Row label="Requested amount">{formatINR(application.requestedAmount)}</Row>
         <Row label="Tenure">{application.tenureMonths} months</Row>
         <Row label="Product">{product.name}</Row>
@@ -96,32 +95,55 @@ export function OverviewTab({ detail }: OverviewTabProps) {
       </Section>
 
       <Section title="Borrower">
-        <Row label="Full name">{borrower.fullName}</Row>
+        <Row label="Full name">{richBorrower.fullName}</Row>
         <Row label="PAN">
-          <MaskedField
-            fieldName="PAN"
-            value={borrower.pan}
-            subjectLabel={borrower.fullName}
-            onReveal={noopReveal}
-          />
+          <code className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs">
+            {richBorrower.pan}
+          </code>
         </Row>
         <Row label="Aadhaar">
-          <MaskedField
-            fieldName="AADHAAR"
-            value={borrower.aadhaar}
-            subjectLabel={borrower.fullName}
-            onReveal={noopReveal}
-          />
+          <code
+            data-slot="aadhaar"
+            className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs"
+          >
+            {richBorrower.aadhaar}
+          </code>
         </Row>
-        <Row label="Mobile">
-          <MaskedField
-            fieldName="MOBILE"
-            value={borrower.mobile}
-            subjectLabel={borrower.fullName}
-            onReveal={noopReveal}
-          />
-        </Row>
+        <Row label="Mobile">{richBorrower.mobile}</Row>
+        {borrowerDetail ? (
+          <>
+            <Row label="Active overdue">
+              {formatINR(borrowerDetail.totals.activeOverdueAmount)}
+            </Row>
+            <Row label="Open loans">
+              {borrowerDetail.totals.openApplicationsCount}
+            </Row>
+            <Row label="Closed loans">
+              {borrowerDetail.totals.closedApplicationsCount}
+            </Row>
+            <Row label="Lifetime disbursed">
+              {formatINR(borrowerDetail.totals.lifetimeDisbursedAmount)}
+            </Row>
+          </>
+        ) : null}
       </Section>
+
+      {borrowerDetail && borrowerDetail.visibleLsps.length > 0 ? (
+        <Section title="Borrower visibility">
+          <Row label="LSPs that can see this borrower">
+            <div className="flex flex-wrap gap-1.5">
+              {borrowerDetail.visibleLsps.map((entry) => (
+                <Badge
+                  key={entry.id}
+                  className="border-border bg-surface-muted text-foreground border"
+                >
+                  {entry.name}
+                </Badge>
+              ))}
+            </div>
+          </Row>
+        </Section>
+      ) : null}
 
       <Section title="Lending service provider">
         <Row label="Name">{lsp.name}</Row>
@@ -132,38 +154,27 @@ export function OverviewTab({ detail }: OverviewTabProps) {
         </Row>
       </Section>
 
-      <Section title={assignedLabel}>
-        <Row label="Operator">
-          {application.assignedTo ? (
-            <code className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs">
-              {application.assignedTo}
-            </code>
-          ) : (
-            <span className="text-foreground-muted">Unassigned</span>
-          )}
-        </Row>
-      </Section>
-
-      <section
-        data-slot="overview-gates"
-        className="border-border bg-surface rounded-md border p-4 lg:col-span-2"
-      >
-        <h2 className="text-foreground mb-3 text-sm font-semibold tracking-tight">
-          Lifecycle gates
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <GateChip
-            ok={detail.docsComplete}
-            label={detail.docsComplete ? "Docs complete" : "Docs incomplete"}
-            hint="BR-3 — every required-for-disbursement document must be VERIFIED."
-          />
-          <GateChip
-            ok={detail.scheduleValid}
-            label={detail.scheduleValid ? "Schedule valid" : "Schedule missing"}
-            hint="BR-10 — a valid repayment schedule must exist before disbursement."
-          />
-        </div>
-      </section>
+        <section
+          data-slot="overview-gates"
+          className="border-border bg-surface rounded-md border p-4 lg:col-span-2"
+        >
+          <h2 className="text-foreground mb-3 text-sm font-semibold tracking-tight">
+            Lifecycle gates
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <GateChip
+              ok={detail.docsComplete}
+              label={detail.docsComplete ? "Docs complete" : "Docs incomplete"}
+              hint="BR-3 — every required-for-disbursement document must be uploaded."
+            />
+            <GateChip
+              ok={detail.scheduleValid}
+              label={detail.scheduleValid ? "Schedule valid" : "Schedule missing"}
+              hint="BR-10 — a valid repayment schedule must exist before disbursement."
+            />
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

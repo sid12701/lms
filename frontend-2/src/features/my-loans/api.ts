@@ -76,19 +76,6 @@ export interface InvalidReasonOption {
   requiresText: boolean;
 }
 
-export interface BorrowerPiiReveal {
-  applicationId: string;
-  borrowerId: string;
-  aadhaarNumber: string | null;
-  panNumber: string | null;
-  bankAccountNumber: string | null;
-  ifscCode: string | null;
-  accountHolderName: string | null;
-  employeeId: string | null;
-  referencePersonName: string | null;
-  referencePersonNumber: string | null;
-}
-
 interface BackendLspDetail {
   id: string;
   borrowerId: string;
@@ -145,19 +132,6 @@ interface BackendInvalidReasonOption {
   code: string;
   label: string;
   requiresText: boolean;
-}
-
-interface BackendPiiReveal {
-  applicationId: string;
-  borrowerId: string;
-  aadharNumber: string | null;
-  panNumber: string | null;
-  bankAccountNumber: string | null;
-  ifscCode: string | null;
-  accountHolderName: string | null;
-  employeeId: string | null;
-  referencePersonName: string | null;
-  referencePersonNumber: string | null;
 }
 
 function toNumber(value: number | string | null | undefined): number {
@@ -301,26 +275,6 @@ export async function markLoanInvalid(input: MarkInvalidInput): Promise<MyLoanDe
   return backendToDetail(payload);
 }
 
-/** GET `/api/v1/lsp/loan-applications/{id}/borrower-pii`. */
-export async function revealBorrowerPii(applicationId: string): Promise<BorrowerPiiReveal> {
-  ensureLspSession();
-  const payload = await requestJson<BackendPiiReveal>(
-    `${LSP_BASE}/${encodeURIComponent(applicationId)}/borrower-pii`,
-  );
-  return {
-    applicationId: payload.applicationId,
-    borrowerId: payload.borrowerId,
-    aadhaarNumber: payload.aadharNumber,
-    panNumber: payload.panNumber,
-    bankAccountNumber: payload.bankAccountNumber,
-    ifscCode: payload.ifscCode,
-    accountHolderName: payload.accountHolderName,
-    employeeId: payload.employeeId,
-    referencePersonName: payload.referencePersonName,
-    referencePersonNumber: payload.referencePersonNumber,
-  };
-}
-
 export const LSP_DOCUMENT_TYPES = [
   "PAN",
   "AADHAAR",
@@ -332,6 +286,19 @@ export const LSP_DOCUMENT_TYPES = [
   "OTHER",
 ] as const;
 export type LspDocumentType = (typeof LSP_DOCUMENT_TYPES)[number];
+
+// Backend `LoanApplicationDocumentType` enum names. FE uses shorter names for
+// historical reasons; translate on the wire so uploads land on the right slot.
+const FE_TO_BE_DOCUMENT_TYPE: Record<LspDocumentType, string> = {
+  PAN: "PAN_CARD",
+  AADHAAR: "AADHAAR_FILE",
+  ADDRESS_PROOF: "ADDRESS_PROOF",
+  INCOME_PROOF: "INCOME_PROOF",
+  BANK_STATEMENT: "BANK_STATEMENT",
+  PHOTOGRAPH: "SELFIE_PHOTOGRAPH",
+  LOAN_AGREEMENT: "LOAN_AGREEMENT",
+  OTHER: "OTHER",
+};
 
 export interface UploadLspDocumentInput {
   applicationId: string;
@@ -381,6 +348,58 @@ function toUploadedDocument(payload: BackendLspChecklistResponse): UploadedLspDo
 }
 
 /**
+ * Gap #4: server-shape of the new LSP-scoped GET. The BE folds status
+ * down to PENDING | SUBMITTED (Gap #18 contract); we surface it as-is.
+ */
+interface BackendLspSubmittedDocument {
+  documentType: string;
+  status: string;
+  fileName: string | null;
+  contentType: string | null;
+  note: string | null;
+  uploadedAt: string | null;
+  uploadedByUsername: string | null;
+}
+
+export interface SubmittedLspDocument {
+  documentType: string;
+  status: "PENDING" | "SUBMITTED";
+  fileName: string | null;
+  contentType: string | null;
+  note: string | null;
+  uploadedAt: string | null;
+  uploadedByUsername: string | null;
+}
+
+function toSubmittedLspDocument(payload: BackendLspSubmittedDocument): SubmittedLspDocument {
+  return {
+    documentType: payload.documentType,
+    status: payload.status === "SUBMITTED" ? "SUBMITTED" : "PENDING",
+    fileName: payload.fileName,
+    contentType: payload.contentType,
+    note: payload.note,
+    uploadedAt: payload.uploadedAt,
+    uploadedByUsername: payload.uploadedByUsername,
+  };
+}
+
+/**
+ * GET `/api/v1/lsp/loan-applications/{id}/documents` — Gap #4 read.
+ * Body is "uploads only" — un-submitted placeholders are filtered server-side
+ * so the FE only sees what was actually uploaded. Used to seed the checklist
+ * UI on page load (fixes the "checklist resets on reload" bug).
+ */
+export async function listLspSubmittedDocuments(
+  applicationId: string,
+): Promise<SubmittedLspDocument[]> {
+  ensureLspSession();
+  const payload = await requestJson<BackendLspSubmittedDocument[]>(
+    `${LSP_BASE}/${encodeURIComponent(applicationId)}/documents`,
+  );
+  return payload.map(toSubmittedLspDocument);
+}
+
+/**
  * POST `/api/v1/lsp/loan-applications/{id}/documents` (multipart) —
  * single-document upload. The backend assigns the storage key and
  * returns the checklist row.
@@ -390,7 +409,7 @@ export async function uploadLspDocument(
 ): Promise<UploadedLspDocument> {
   ensureLspSession();
   const form = new FormData();
-  form.set("documentType", input.documentType);
+  form.set("documentType", FE_TO_BE_DOCUMENT_TYPE[input.documentType]);
   if (input.note) form.set("note", input.note);
   if (input.sourceReference) form.set("sourceReference", input.sourceReference);
   form.set("file", input.file);
@@ -426,7 +445,7 @@ export async function uploadLspDocumentsBatch(
   }
   const form = new FormData();
   const metadata = input.documents.map((d) => ({
-    documentType: d.metadata.documentType,
+    documentType: FE_TO_BE_DOCUMENT_TYPE[d.metadata.documentType],
     note: d.metadata.note ?? null,
     sourceReference: d.metadata.sourceReference ?? null,
   }));

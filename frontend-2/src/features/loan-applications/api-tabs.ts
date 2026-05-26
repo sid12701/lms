@@ -8,8 +8,8 @@
  * consume. On 4xx (typically: backend not running) or for LSP-role
  * sessions, the call falls through to the legacy mock router.
  *
- * `postRepayment` is wired to the live backend in issue #6 and still
- * routes through the mock router for now.
+ * `postRepayment` posts strict per-installment payments to the live
+ * backend for internal roles (Gap #17).
  */
 import { z } from "zod";
 import { ApiError, requestJson } from "@/lib/api/http-client";
@@ -181,8 +181,6 @@ interface BackendChecklistRow {
   storageKey: string | null;
   fileChecksum: string | null;
   fileSizeBytes: number | null;
-  reviewReason: string | null;
-  rejectionReason: string | null;
   uploadedAt: string | null;
   uploadedByUsername: string | null;
   updatedByUsername: string | null;
@@ -197,6 +195,7 @@ const DOCUMENT_TYPES = new Set([
   "INCOME_PROOF",
   "BANK_STATEMENT",
   "PHOTOGRAPH",
+  "KFS",
   "LOAN_AGREEMENT",
   "OTHER",
 ]);
@@ -205,13 +204,27 @@ function safeDocumentType(value: string): LoanDocument["type"] {
   if (DOCUMENT_TYPES.has(value)) return value as LoanDocument["type"];
   if (value === "ADDRESS") return "ADDRESS_PROOF";
   if (value === "INCOME") return "INCOME_PROOF";
+  // Backend `LoanApplicationDocumentType` enum names that don't match the FE vocab.
+  if (value === "PAN_CARD") return "PAN";
+  if (value === "AADHAAR_FILE" || value === "AADHAAR_CARD") return "AADHAAR";
+  if (value === "SELFIE_PHOTOGRAPH") return "PHOTOGRAPH";
   return "OTHER";
 }
 
 function safeDocumentStatus(value: string): LoanDocument["status"] {
-  if (value === "VERIFIED") return "VERIFIED";
-  if (value === "REJECTED") return "REJECTED";
-  if (value === "UPLOADED" || value === "SUBMITTED" || value === "PENDING_REVIEW") return "UPLOADED";
+  // Gap #18 — BE statuses collapse to {PENDING, SUBMITTED, NOT_REQUIRED};
+  // we fold SUBMITTED/UPLOADED/PENDING_REVIEW and any legacy VERIFIED/REJECTED
+  // rows in the DB onto UPLOADED so existing data stays visible. NOT_REQUIRED
+  // surfaces as PENDING in the UI (optional placeholder).
+  if (
+    value === "SUBMITTED"
+    || value === "UPLOADED"
+    || value === "PENDING_REVIEW"
+    || value === "VERIFIED"
+    || value === "REJECTED"
+  ) {
+    return "UPLOADED";
+  }
   return "PENDING";
 }
 
@@ -224,11 +237,12 @@ function toDocument(row: BackendChecklistRow): LoanDocument {
     requiredForApproval: row.required,
     requiredForDisbursement: row.required,
     status: safeDocumentStatus(row.status),
-    notes: row.note ?? row.reviewReason ?? row.rejectionReason,
+    notes: row.note,
     fileMeta:
       row.fileReference || row.storageKey
         ? {
             storageKey: row.storageKey ?? row.fileReference ?? "",
+            fileName: row.fileName ?? undefined,
             mime: row.contentType ?? "application/octet-stream",
             size: row.fileSizeBytes ?? 0,
             checksum: row.fileChecksum ?? "",
@@ -266,6 +280,7 @@ export async function fetchLoanApplicationDocuments(
 interface BackendPaymentRow {
   id: string;
   loanAccountId: string;
+  targetInstallmentId?: string | null;
   actorUsername: string | null;
   amount: number | string | null;
   paymentDate: string | null;
@@ -280,11 +295,19 @@ interface BackendPaymentRow {
   updatedAt: string;
 }
 
-const PAYMENT_CHANNELS = new Set(["BANK_TRANSFER", "UPI", "CASH", "ADJUSTMENT"]);
+const PAYMENT_CHANNELS = new Set([
+  "NEFT",
+  "RTGS",
+  "IMPS",
+  "UPI",
+  "BANK_TRANSFER",
+  "CASH",
+  "ADJUSTMENT",
+  "CHEQUE",
+]);
 
 function safePaymentChannel(value: string | null): PaymentTransaction["channel"] {
   if (value && PAYMENT_CHANNELS.has(value)) return value as PaymentTransaction["channel"];
-  if (value === "NEFT" || value === "RTGS" || value === "IMPS") return "BANK_TRANSFER";
   if (value === "BANK") return "BANK_TRANSFER";
   return "BANK_TRANSFER";
 }
@@ -293,11 +316,12 @@ function toPaymentTransaction(row: BackendPaymentRow): PaymentTransaction {
   return {
     id: row.id,
     accountId: row.loanAccountId,
-    installmentId: null,
+    installmentId: row.targetInstallmentId ?? null,
     channel: safePaymentChannel(row.channel),
     amount: Math.max(0.01, toNumber(row.amount)),
     postedAt: row.paymentDate ? new Date(row.paymentDate).toISOString() : row.createdAt,
     postedBy: row.actorUsername ?? "system",
+    reference: row.reference,
     idempotencyKey: row.correlationId ?? row.id,
     allocation: [],
   };
@@ -327,62 +351,10 @@ export async function fetchLoanApplicationRepayments(
   );
 }
 
-/**
- * PUT `/api/v1/internal/ops/loan-applications/:id/kyc-documents/:type` —
- * update a document checklist item (verify/reject/attach metadata).
- *
- * Backend endpoint exists but the existing DocumentsTab UI is read-only
- * (`canManage: false`). The helper is exported so a future write-enabled
- * tab variant can adopt it without a second adapter pass.
- */
-export interface UpdateChecklistItemInput {
-  documentType: string;
-  status: "PENDING" | "UPLOADED" | "VERIFIED" | "REJECTED";
-  note?: string | null;
-  fileName?: string | null;
-  fileReference?: string | null;
-  sourceReference?: string | null;
-  contentType?: string | null;
-  reviewReason?: string | null;
-  rejectionReason?: string | null;
-  idempotencyKey?: string;
-}
-
-export async function updateDocumentChecklistItem(
-  applicationId: string,
-  input: UpdateChecklistItemInput,
-): Promise<void> {
-  if (!isInternalSession()) {
-    throw new ApiError(
-      "Document checklist updates require an internal session.",
-      403,
-      "",
-      "FORBIDDEN",
-    );
-  }
-  const body = {
-    status: input.status,
-    note: input.note ?? null,
-    fileName: input.fileName ?? null,
-    fileReference: input.fileReference ?? null,
-    sourceReference: input.sourceReference ?? null,
-    contentType: input.contentType ?? null,
-    reviewReason: input.reviewReason ?? null,
-    rejectionReason: input.rejectionReason ?? null,
-  };
-  await requestJson<unknown>(
-    `${BACKEND_BASE}/${encodeURIComponent(applicationId)}/kyc-documents/${encodeURIComponent(input.documentType)}`,
-    { method: "PUT", body: JSON.stringify(body) },
-    input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {},
-  );
-}
-
 function toBackendPaymentChannel(mode: string): string {
   const upper = (mode ?? "").toUpperCase();
   if (PAYMENT_CHANNELS.has(upper)) return upper;
-  if (upper === "BANK" || upper === "NEFT" || upper === "RTGS" || upper === "IMPS") {
-    return "BANK_TRANSFER";
-  }
+  if (upper === "BANK" || upper === "CHEQUE") return "BANK_TRANSFER";
   return "BANK_TRANSFER";
 }
 
@@ -400,25 +372,22 @@ function toIsoDate(value: string): string {
  * request header. Other roles fall back to the mock router.
  */
 export async function postRepayment(id: string, input: PostRepaymentInput): Promise<void> {
-  if (loadStoredSession()?.user.role === "SYSTEM_ADMIN") {
-    try {
-      const body = {
-        amount: input.amount,
-        paymentDate: toIsoDate(input.postedAt),
-        reference: input.idempotencyKey,
-        channel: toBackendPaymentChannel(input.mode),
-        status: "RECEIVED",
-        note: null,
-      };
-      await requestJson<unknown>(
-        `${BACKEND_BASE}/${encodeURIComponent(id)}/payments`,
-        { method: "POST", body: JSON.stringify(body) },
-        { idempotencyKey: input.idempotencyKey },
-      );
-      return;
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
+  if (isInternalSession()) {
+    const body: Record<string, unknown> = {
+      targetInstallmentId: input.installmentId,
+      amount: input.amount,
+      postedAt: toIsoDate(input.postedAt),
+      channel: toBackendPaymentChannel(input.mode),
+    };
+    if (input.reference && input.reference.trim().length > 0) {
+      body.reference = input.reference.trim();
     }
+    await requestJson<unknown>(
+      `${BACKEND_BASE}/${encodeURIComponent(id)}/payments`,
+      { method: "POST", body: JSON.stringify(body) },
+      { idempotencyKey: input.idempotencyKey },
+    );
+    return;
   }
 
   await dispatch(

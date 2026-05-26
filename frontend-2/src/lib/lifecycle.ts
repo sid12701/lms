@@ -45,6 +45,16 @@ export interface StatusMeta {
 }
 
 export const STATUS_META: Record<LoanStatus, StatusMeta> = {
+  // Gap #11 — backend canonical state machine.
+  INITIALIZED: { label: "Initialized", intent: "neutral", group: "ORIGINATION", open: true },
+  DISBURSEMENT_RETRY: {
+    label: "Disbursement retry",
+    intent: "warning",
+    group: "DISBURSEMENT",
+    open: true,
+  },
+  INVALID: { label: "Invalid", intent: "revoked", group: "FAILURE", open: false },
+
   // ORIGINATION
   INITIATED: { label: "Initiated", intent: "neutral", group: "ORIGINATION", open: true },
   KYC_PENDING: { label: "KYC pending", intent: "neutral", group: "ORIGINATION", open: true },
@@ -187,22 +197,22 @@ function requireNoOtherOpenLoan(ctx: TransitionCtx): Result<void, BusinessRuleEr
   return ok();
 }
 
-/** BR-2: every required-for-approval document must be VERIFIED. */
+/** BR-2: every required-for-approval document must be uploaded (Gap #18: no verify step). */
 function requireApprovalDocs(ctx: TransitionCtx): Result<void, BusinessRuleError> {
   const docs = ctx.documents ?? [];
-  const missing = docs.filter((d) => d.requiredForApproval && d.status !== "VERIFIED");
+  const missing = docs.filter((d) => d.requiredForApproval && d.status !== "UPLOADED");
   if (missing.length > 0) {
-    return err("DOCS_INCOMPLETE", `${missing.length} approval document(s) not verified`);
+    return err("DOCS_INCOMPLETE", `${missing.length} approval document(s) not uploaded`);
   }
   return ok();
 }
 
-/** BR-3: every required-for-disbursement document must be VERIFIED. */
+/** BR-3: every required-for-disbursement document must be uploaded (Gap #18: no verify step). */
 function requireDisbursementDocs(ctx: TransitionCtx): Result<void, BusinessRuleError> {
   const docs = ctx.documents ?? [];
-  const missing = docs.filter((d) => d.requiredForDisbursement && d.status !== "VERIFIED");
+  const missing = docs.filter((d) => d.requiredForDisbursement && d.status !== "UPLOADED");
   if (missing.length > 0) {
-    return err("DOCS_INCOMPLETE", `${missing.length} disbursement document(s) not verified`);
+    return err("DOCS_INCOMPLETE", `${missing.length} disbursement document(s) not uploaded`);
   }
   return ok();
 }
@@ -580,4 +590,41 @@ export function fullRepaymentClosure(): {
     closureReason: "FULLY_REPAID",
     webhookEvent: "loan.repayment.posted",
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gap #11 — status badge tone helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Returns the visual tone (`success | danger | neutral`) for a loan status
+ * badge. The enum carries the lifecycle phase; the visual tone for
+ * {@code UNDER_REPAYMENT} derives from per-loan delinquency aggregate per
+ * Gap #11 (default green/on-track; red when delinquency present).
+ */
+export function getStatusBadgeTone(
+  status: LoanStatus,
+  delinquency?: { maxDaysPastDue?: number; overdueInstallmentCount?: number } | null,
+): "success" | "danger" | "neutral" {
+  if (status === "UNDER_REPAYMENT") {
+    const dpd = delinquency?.maxDaysPastDue ?? 0;
+    const overdue = delinquency?.overdueInstallmentCount ?? 0;
+    return dpd > 0 || overdue > 0 ? "danger" : "success";
+  }
+  switch (status) {
+    case "APPROVED_PENDING_DISBURSAL":
+    case "DISBURSED":
+    case "CLOSED":
+    case "FULLY_REPAID":
+      return "success";
+    case "REJECTED":
+    case "INVALID":
+    case "INVALIDATED":
+    case "CANCELLED":
+    case "DISBURSEMENT_RETRY":
+    case "DELINQUENT":
+      return "danger";
+    default:
+      return "neutral";
+  }
 }

@@ -12,6 +12,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/test/utils";
 import { SessionContext, type SessionContextValue } from "@/features/auth/session-context";
 import type { Session } from "@/mocks/api/auth";
@@ -75,7 +76,6 @@ const INTERNAL_FIXTURE: HomeKpis = {
         status: "AWAITING_APPROVAL",
         requestedAmount: 250_000,
         createdAt: "2026-05-10T08:00:00.000Z",
-        assignedToName: "Ops User",
       },
     ],
     openAlerts: [
@@ -88,18 +88,6 @@ const INTERNAL_FIXTURE: HomeKpis = {
         createdAt: "2026-05-11T07:00:00.000Z",
       },
     ],
-  },
-};
-
-const LSP_FIXTURE: HomeKpis = {
-  kind: "lsp",
-  data: {
-    myActiveApplications: 7,
-    myInDisbursement: 1,
-    myMtdDisbursedAmount: 900_000,
-    myOverdueLoansCount: 0,
-    recentApplications: [],
-    openAlerts: [],
   },
 };
 
@@ -129,7 +117,9 @@ function renderHome(sessionValue: SessionContextValue) {
   function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={client}>
-        <SessionContext.Provider value={sessionValue}>{children}</SessionContext.Provider>
+        <SessionContext.Provider value={sessionValue}>
+          <MemoryRouter initialEntries={["/home"]}>{children}</MemoryRouter>
+        </SessionContext.Provider>
       </QueryClientProvider>
     );
   }
@@ -175,8 +165,10 @@ describe("HomePage — internal", () => {
     expect(screen.queryByTestId("lsp-link-card-grid")).not.toBeInTheDocument();
   });
 
-  it("uses the Internal workspace eyebrow + heading", () => {
-    renderHome(makeSession("OPS_USER"));
+  it("uses the Internal workspace eyebrow + heading for SYSTEM_ADMIN", () => {
+    // Gap #8: Home is admin-only. OPS_USER no longer sees it (redirect tested
+    // below); the eyebrow assertion lives on the SYSTEM_ADMIN path now.
+    renderHome(makeSession("SYSTEM_ADMIN"));
     expect(screen.getByText(/Internal workspace/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: /Home/ })).toBeInTheDocument();
   });
@@ -187,10 +179,10 @@ describe("HomePage — internal", () => {
   });
 });
 
-describe("HomePage — LSP", () => {
+describe("HomePage — non-admin redirect (Gap #8)", () => {
   beforeEach(() => {
     useHomeKpisMock.mockReturnValue({
-      data: LSP_FIXTURE,
+      data: INTERNAL_FIXTURE,
       isPending: false,
       isError: false,
       isSuccess: true,
@@ -199,20 +191,30 @@ describe("HomePage — LSP", () => {
     });
   });
 
-  it("renders the LSP cards for an LSP_UI_WRITE session", () => {
-    renderHome(makeSession("LSP_UI_WRITE"));
-    expect(screen.getByTestId("home-page-lsp")).toBeInTheDocument();
-    expect(screen.getByTestId("lsp-kpi-summary")).toBeInTheDocument();
-    expect(screen.getByTestId("lsp-link-card-grid")).toBeInTheDocument();
-    expect(screen.getByTestId("recent-applications-card")).toBeInTheDocument();
-    // Internal-only widgets must not appear.
-    expect(screen.queryByTestId("internal-kpi-summary")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("loans-by-dpd-card")).not.toBeInTheDocument();
+  it("redirects OPS_USER to /loan-applications instead of rendering Home", () => {
+    renderHome(makeSession("OPS_USER"));
+    // No Home content is rendered for OPS_USER — Navigate replaces the page.
+    expect(screen.queryByTestId("home-page-internal")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("home-page-lsp")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: /Home/ })).not.toBeInTheDocument();
   });
 
-  it("uses the LSP workspace eyebrow", () => {
+  it("redirects LSP_UI_WRITE to /my-loans instead of rendering Home", () => {
+    renderHome(makeSession("LSP_UI_WRITE"));
+    expect(screen.queryByTestId("home-page-internal")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("home-page-lsp")).not.toBeInTheDocument();
+  });
+
+  it("redirects LSP_UI_READ to /my-loans instead of rendering Home", () => {
     renderHome(makeSession("LSP_UI_READ"));
-    expect(screen.getByText(/LSP workspace/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("home-page-internal")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("home-page-lsp")).not.toBeInTheDocument();
+  });
+
+  it("redirects PRODUCT_ADMIN to /products instead of rendering Home", () => {
+    renderHome(makeSession("PRODUCT_ADMIN"));
+    expect(screen.queryByTestId("home-page-internal")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("home-page-lsp")).not.toBeInTheDocument();
   });
 });
 

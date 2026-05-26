@@ -35,6 +35,6 @@ export const OperationalAlert = z.object({
   createdAt: Iso8601,
   acknowledgedAt: Iso8601.nullable(),
   acknowledgedBy: Uuid.nullable(),
-  acknowledgmentNote: z.string().max(1000).nullable(),
+  acknowledgmentNote: z.string().max(500).nullable(),
 });
 export type OperationalAlert = z.infer<typeof OperationalAlert>;

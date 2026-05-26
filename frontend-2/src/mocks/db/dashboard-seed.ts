@@ -268,7 +268,6 @@ export function seedDashboardFixtures(db: MockDb): MockDb {
       tenureMonths: 12 + (p.index % 5) * 6,
       status: p.status,
       sourceChannel: p.index % 2 === 0 ? "UI" : "API",
-      assignedTo: p.index % 3 === 0 ? USER_OPS_USER : null,
       createdAt: p.createdAt,
       updatedAt: p.createdAt,
       invalidatedAt: null,
