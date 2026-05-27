@@ -85,12 +85,15 @@ class WebhookEventOutboxRepositoryPostgresTest extends PostgresDataJpaTestSuppor
     }
 
     private WebhookEventOutbox event(Lsp lsp, String aggregateId) {
+        // loan_application_id is left null: this test exercises claim-batch
+        // concurrency, not application linkage, and the FK added by V66
+        // rejects synthetic ids that don't reference a real loan_application.
         return new WebhookEventOutbox(
                 lsp,
                 WebhookEventType.LOAN_CREATED,
                 "LOAN_APPLICATION",
                 aggregateId,
-                java.util.UUID.nameUUIDFromBytes(("outbox-test:" + aggregateId).getBytes()),
+                null,
                 WebhookEventOutboxStatus.PENDING,
                 "{\"aggregateId\":\"" + aggregateId + "\"}",
                 "correlation-" + aggregateId
