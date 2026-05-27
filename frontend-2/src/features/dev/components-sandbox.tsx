@@ -289,8 +289,8 @@ export function ComponentsSandboxPage() {
             </KpiStrip>
 
             <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-              <ColorSwatch name="Brand 700" token="color-brand-700" />
-              <ColorSwatch name="Accent 500" token="color-accent-500" />
+              <ColorSwatch name="Primary" token="color-primary" />
+              <ColorSwatch name="Accent" token="color-accent" />
               <ColorSwatch name="Success" token="color-success" />
               <ColorSwatch name="Warning" token="color-warning" />
               <ColorSwatch name="Danger" token="color-danger" />

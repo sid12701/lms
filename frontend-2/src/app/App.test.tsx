@@ -8,7 +8,7 @@ describe("App", () => {
     window.localStorage.removeItem("bhawana-lms-session");
     render(<App />);
     expect(
-      await screen.findByRole("heading", { level: 1, name: /loan management/i }),
+      await screen.findByRole("heading", { level: 1, name: /bhawana capital lms/i }),
     ).toBeInTheDocument();
   });
 });

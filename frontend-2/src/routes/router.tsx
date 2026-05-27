@@ -51,6 +51,7 @@ const LoanApplicationsPage = lazyPage(() => import("@/features/loan-applications
 const LoanApplicationDetailPage = lazyPage(
   () => import("@/features/loan-applications/detail-page"),
 );
+const BorrowersPage = lazyPage(() => import("@/features/borrowers/page"));
 const BorrowerDetailPage = lazyPage(() => import("@/features/borrowers/detail-page"));
 const AlertsPage = lazyPage(() => import("@/features/alerts/page"));
 const ReportsPage = lazyPage(() => import("@/features/reports/page"));
@@ -141,6 +142,14 @@ export function createAppRouter() {
               <RequireRole roles={INTERNAL_ALL}>
                 {withSuspense(LoanApplicationDetailPage)}
               </RequireRole>
+            </RequireInternal>
+          ),
+        },
+        {
+          path: "/borrowers",
+          element: (
+            <RequireInternal>
+              <RequireRole roles={INTERNAL_ALL}>{withSuspense(BorrowersPage)}</RequireRole>
             </RequireInternal>
           ),
         },

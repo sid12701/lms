@@ -107,7 +107,7 @@ export function MyLoansPage() {
                   <td className="px-4 py-2 font-mono text-xs">
                     <Link
                       to={`/my-loans/${row.id}`}
-                      className="text-brand-700 hover:underline"
+                      className="text-primary hover:underline"
                     >
                       {row.externalLoanId ?? row.id.slice(0, 8)}
                     </Link>

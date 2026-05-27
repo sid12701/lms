@@ -59,7 +59,7 @@ export function TopBar({ onOpenMobileNav, className }: TopBarProps) {
 
       {/* Brand mark — visible only on mobile (sidebar owns it on lg+). */}
       <div className="flex items-center gap-2 lg:hidden">
-        <span aria-hidden="true" className="bg-brand-700 inline-block h-6 w-6 rounded" />
+        <span aria-hidden="true" className="bg-primary inline-block h-6 w-6 rounded" />
         <span className="text-foreground text-sm font-semibold">Bhawana</span>
       </div>
 

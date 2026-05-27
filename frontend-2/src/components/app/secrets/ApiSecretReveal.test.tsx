@@ -77,14 +77,15 @@ describe("ApiSecretReveal", () => {
     expect(onAcknowledge).toHaveBeenCalledTimes(1);
   }, 15_000);
 
-  it("renders an aria-live region announcing the reveal", () => {
+  it("renders an aria-live region without reveal wording", () => {
     const { container } = renderWithProviders(
       <ApiSecretReveal secret={SECRET} onAcknowledge={() => {}} />,
     );
     const live = container.querySelector('[data-slot="api-secret-announce"]');
     expect(live).not.toBeNull();
     expect(live?.getAttribute("aria-live")).toBe("polite");
-    expect(live?.textContent).toMatch(/Secret revealed once\. Copy now\./i);
+    expect(live?.textContent).toMatch(/Secret available once\. Copy now\./i);
+    expect(container.textContent).not.toMatch(/reveal/i);
   });
 
   it("still flips to Copied state when clipboard.writeText rejects", async () => {

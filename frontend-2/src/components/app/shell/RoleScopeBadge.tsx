@@ -22,7 +22,7 @@ export function RoleScopeBadge({ className, lspName }: RoleScopeBadgeProps) {
       data-slot="role-scope-badge"
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
-        internal ? "bg-brand-50 text-brand-700" : "bg-accent/10 text-accent-700",
+        internal ? "bg-primary/10 text-primary" : "bg-muted text-foreground",
         className,
       )}
     >
@@ -30,7 +30,7 @@ export function RoleScopeBadge({ className, lspName }: RoleScopeBadgeProps) {
         aria-hidden="true"
         className={cn(
           "inline-block h-1.5 w-1.5 rounded-full",
-          internal ? "bg-brand-700" : "bg-accent-700",
+          internal ? "bg-primary" : "bg-muted-foreground",
         )}
       />
       {label}

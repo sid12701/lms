@@ -147,7 +147,7 @@ export function CreateReportDialog({
               name="dateFrom"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>From</FormLabel>
+            <FormLabel>Disbursed from</FormLabel>
                   <FormControl>
                     <Input type="date" {...field} />
                   </FormControl>
@@ -160,7 +160,7 @@ export function CreateReportDialog({
               name="dateTo"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>To</FormLabel>
+            <FormLabel>Disbursed to</FormLabel>
                   <FormControl>
                     <Input type="date" {...field} />
                   </FormControl>

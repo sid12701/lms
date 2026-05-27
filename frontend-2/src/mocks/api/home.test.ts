@@ -144,12 +144,16 @@ describe("home.kpis — internal (SYSTEM_ADMIN)", () => {
     expect(tat === null || tat >= 0).toBe(true);
   });
 
-  it("recentApplications borrower names are masked (bullet glyph present)", async () => {
+  it("recentApplications borrower names are unmasked (no bullet glyph)", async () => {
     await auth.login({ username: "ops.admin", password: "any" });
     const result = await home.kpis();
     if (result.kind !== "internal") throw new Error("expected internal");
-    const masked = result.data.recentApplications.some((a) => a.borrowerNameMasked.includes("•"));
-    expect(masked).toBe(true);
+    const anyMasked = result.data.recentApplications.some((a) =>
+      a.borrowerNameMasked.includes("•"),
+    );
+    expect(anyMasked).toBe(false);
+    // Names still come back populated; the field name is legacy.
+    expect(result.data.recentApplications.every((a) => a.borrowerNameMasked.length > 0)).toBe(true);
   });
 
   it("openAlerts only contains OPEN alerts and is capped at 5", async () => {
@@ -174,17 +178,17 @@ describe("home.kpis — internal (SYSTEM_ADMIN)", () => {
 });
 
 
-describe("maskBorrowerName", () => {
-  it("masks a two-part name", () => {
-    expect(maskBorrowerName("Aanya Sharma")).toBe("A••• Sharma");
+describe("maskBorrowerName (now a passthrough — masking removed)", () => {
+  it("returns a two-part name unchanged", () => {
+    expect(maskBorrowerName("Aanya Sharma")).toBe("Aanya Sharma");
   });
-  it("masks a single-word name", () => {
-    expect(maskBorrowerName("Aanya")).toBe("A•••");
+  it("returns a single-word name unchanged", () => {
+    expect(maskBorrowerName("Aanya")).toBe("Aanya");
   });
-  it("falls back to bullet for empty input", () => {
-    expect(maskBorrowerName("")).toBe("•••");
+  it("falls back to a placeholder for empty input", () => {
+    expect(maskBorrowerName("")).toBe("Unknown borrower");
   });
-  it("masks middle name by keeping first initial and last word", () => {
-    expect(maskBorrowerName("Aanya Kumari Sharma")).toBe("A••• Sharma");
+  it("returns a middle name unchanged", () => {
+    expect(maskBorrowerName("Aanya Kumari Sharma")).toBe("Aanya Kumari Sharma");
   });
 });

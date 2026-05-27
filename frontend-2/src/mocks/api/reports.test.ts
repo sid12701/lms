@@ -64,8 +64,9 @@ describe("reports.misSummary", () => {
   it("returns aggregate KPIs derived from the seeded portfolio", async () => {
     await auth.login({ username: "ops.admin", password: "any" });
     const summary = await reports.misSummary();
-    // Seeded plan totals 53 applications across statuses.
-    expect(summary.totalLoanCount).toBe(53);
+    // MIS reports the count of disbursed loans (loans with an account).
+    // The seeded portfolio has 28 disbursed loans across statuses.
+    expect(summary.totalLoanCount).toBe(28);
     expect(summary.activeLoanCount).toBeGreaterThan(0);
     expect(summary.totalDisbursedMtd).toBeGreaterThanOrEqual(0);
     expect(summary.weightedAvgYieldPct).toBeGreaterThanOrEqual(0);
@@ -75,7 +76,7 @@ describe("reports.misSummary", () => {
   it("filters by lspId so the count narrows to the tenant", async () => {
     await auth.login({ username: "ops.admin", password: "any" });
     const scoped = await reports.misSummary({ lspId: LSP_BHAW_DEMO });
-    expect(scoped.totalLoanCount).toBe(13); // BHAW_DEMO's slice of 53.
+    expect(scoped.totalLoanCount).toBe(7); // BHAW_DEMO's slice of the 28 disbursed loans.
   });
 
   it("rejects an inverted date range with BAD_REQUEST", async () => {
@@ -98,8 +99,9 @@ describe("reports.misPreview", () => {
     expect(first.loanId).toBeTruthy();
     expect(first.lspCode).toBeTruthy();
     expect(first.productCode).toBeTruthy();
-    // PAN is masked (only first 3 + last 1 visible).
-    expect(first.pan === null || first.pan.includes("•")).toBe(true);
+    // Non-Aadhaar data is visible on the MIS surface.
+    expect(first.pan === null || first.pan.includes("•")).toBe(false);
+    expect(first.bankAccount === null || first.bankAccount.includes("•")).toBe(false);
   });
 
   it("paginates the preview cleanly", async () => {

@@ -72,12 +72,12 @@ export function ProductMappingDialog({
     if (!open) return;
     form.reset({ lspIds: [...initialLspIds] });
     const id = window.setTimeout(() => {
-      // Focus the first chip button (or fallback to container) for keyboard users.
-      const firstChip =
+      // Focus the dropdown trigger for keyboard users.
+      const trigger =
         containerRef.current?.querySelector<HTMLButtonElement>(
-          "[data-slot='lsp-multi-select-chip']",
+          "[data-slot='lsp-multi-select-trigger']",
         );
-      firstChip?.focus();
+      trigger?.focus();
     }, 0);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- defaults rebuilt on open
@@ -132,7 +132,7 @@ export function ProductMappingDialog({
                     />
                   </FormControl>
                   <FormDescription>
-                    Tap a chip to toggle. Leaving the list empty unmaps the
+                    Tick LSPs from the dropdown. Leaving the list empty unmaps the
                     product from every LSP.
                   </FormDescription>
                   <FormMessage />

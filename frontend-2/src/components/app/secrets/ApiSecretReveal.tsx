@@ -71,7 +71,7 @@ export function ApiSecretReveal({
 
   return (
     <Alert
-      data-slot="api-secret-reveal"
+      data-slot="api-secret-one-time"
       className={cn(
         "border-warning/40 bg-warning/5 text-foreground [&>svg]:text-warning",
         className,
@@ -97,7 +97,7 @@ export function ApiSecretReveal({
             aria-atomic="true"
             className="sr-only"
           >
-            Secret revealed once. Copy now.
+            Secret available once. Copy now.
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button

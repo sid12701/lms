@@ -43,7 +43,7 @@ export function Sidebar({ collapsed = false, onNavigate, className }: SidebarPro
         )}
       >
         {collapsed ? (
-          <span aria-hidden="true" className="bg-brand-700 inline-block h-8 w-8 rounded">
+          <span aria-hidden="true" className="bg-primary inline-block h-8 w-8 rounded">
             <span className="sr-only">Bhawana Capital</span>
           </span>
         ) : (

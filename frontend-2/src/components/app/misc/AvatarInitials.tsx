@@ -13,8 +13,8 @@ const avatarVariants = cva(
       },
       tone: {
         neutral: "bg-surface-muted text-foreground",
-        brand: "bg-brand-700 text-primary-foreground",
-        accent: "bg-accent-500 text-accent-foreground",
+        brand: "bg-primary text-primary-foreground",
+        accent: "bg-accent text-accent-foreground",
       },
     },
     defaultVariants: {

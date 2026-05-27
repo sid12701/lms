@@ -26,7 +26,7 @@ describe("AvatarInitials", () => {
       <AvatarInitials name="X Y" size="lg" tone="accent" />,
     );
     const el = container.querySelector('[data-slot="avatar-initials"]');
-    expect(el).toHaveClass("h-10", "w-10", "bg-accent-500");
+    expect(el).toHaveClass("h-10", "w-10", "bg-accent");
   });
 
   it("forwards className", () => {

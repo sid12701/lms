@@ -83,7 +83,7 @@ export function ChangePasswordPage() {
         <header className="mb-6 flex flex-col items-center gap-3 text-center">
           <span
             aria-hidden="true"
-            className="bg-brand-700 text-primary-foreground inline-flex h-10 w-10 items-center justify-center rounded-md"
+            className="bg-primary text-primary-foreground inline-flex h-10 w-10 items-center justify-center rounded-md"
           >
             <KeyRound className="h-5 w-5" />
           </span>

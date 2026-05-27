@@ -119,14 +119,7 @@ const BULLET = "•••";
  */
 export function maskBorrowerName(name: string): string {
   const trimmed = name.trim();
-  if (!trimmed) return BULLET;
-  const parts = trimmed.split(/\s+/u);
-  const first = parts[0] ?? "";
-  if (parts.length === 1) {
-    return `${first.charAt(0)}${BULLET}`;
-  }
-  const last = parts[parts.length - 1] ?? "";
-  return `${first.charAt(0)}${BULLET} ${last}`;
+  return trimmed || "Unknown borrower";
 }
 
 function isInCurrentMonth(iso: string, now: Date): boolean {

@@ -69,7 +69,7 @@ export function TempPasswordRevealCard({
 
   return (
     <Alert
-      data-slot="temp-password-reveal"
+      data-slot="temp-password-one-time"
       className={cn(
         "border-warning/40 bg-warning/5 text-foreground [&>svg]:text-warning",
         className,
@@ -96,7 +96,7 @@ export function TempPasswordRevealCard({
             aria-atomic="true"
             className="sr-only"
           >
-            Temporary password revealed once. Copy now.
+            Temporary password available once. Copy now.
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button

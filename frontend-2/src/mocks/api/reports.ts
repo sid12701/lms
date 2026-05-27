@@ -152,7 +152,12 @@ function isInCurrentMonth(iso: string, now: Date): boolean {
 function buildMisSummary(db: MockDb, filters: ReportRangeQuery): MisSummaryPayload {
   const apps = applicationsInScope(db, filters);
   const appIds = new Set(apps.map((a) => a.id));
-  const accounts = Array.from(db.accounts.values()).filter((a) => appIds.has(a.applicationId));
+  const accounts = Array.from(db.accounts.values()).filter((a) => {
+    if (!appIds.has(a.applicationId)) return false;
+    if (!filters.dateFrom && !filters.dateTo) return true;
+    const disbursement = findDisbursementPayment(db, a.id);
+    return withinRange(disbursement?.postedAt ?? null, filters.dateFrom, filters.dateTo);
+  });
   const accountIds = new Set(accounts.map((a) => a.id));
 
   const now = new Date();
@@ -205,7 +210,7 @@ function buildMisSummary(db: MockDb, filters: ReportRangeQuery): MisSummaryPaylo
     activeLoanCount: apps.filter((a) => ACTIVE_LOAN_STATUSES.has(a.status)).length,
     weightedAvgYieldPct: Math.round(weightedAvgYieldPct * 100) / 100,
     portfolioAtRisk30Pct: Math.round(portfolioAtRisk30Pct * 100) / 100,
-    totalLoanCount: apps.length,
+    totalLoanCount: accounts.length,
   };
 }
 
@@ -309,6 +314,8 @@ function maskName(name: string): string {
   return `${first}${BULLET.repeat(3)} ${parts[parts.length - 1]}`;
 }
 
+void maskName;
+
 function buildPreviewRow(
   db: MockDb,
   app: LoanApplication,
@@ -370,7 +377,7 @@ function buildPreviewRow(
   return {
     loanId: app.id,
     externalLoanId: app.externalLoanId,
-    borrowerName: borrower ? maskName(borrower.fullName) : BULLET,
+    borrowerName: borrower ? borrower.fullName : "Unknown borrower",
     borrowerId: app.borrowerId,
     lspCode: lsp?.code ?? "UNKNOWN",
     lspName: lsp?.name ?? "Unknown LSP",
@@ -400,17 +407,15 @@ function buildPreviewRow(
           .filter(Boolean)
           .join(", ")
       : null,
-    pan: borrower ? `${borrower.pan.slice(0, 3)}${BULLET.repeat(4)}${borrower.pan.slice(-1)}` : null,
+    pan: borrower?.pan ?? null,
     aadhaar: borrower
-      ? `${BULLET.repeat(8)}${borrower.aadhaar.slice(-4)}`
+      ? `XXXXXXXX${borrower.aadhaar.slice(-4)}`
       : null,
     gender: borrower?.gender ?? null,
     state: borrower?.address.state ?? null,
     zip: borrower?.address.zip ?? null,
     ifsc: borrower?.banking.ifsc ?? null,
-    bankAccount: borrower
-      ? `${BULLET.repeat(6)}${borrower.banking.accountNumber.slice(-4)}`
-      : null,
+    bankAccount: borrower?.banking.accountNumber ?? null,
     profession: borrower?.employment.type ?? null,
     income: borrower?.employment.monthlyIncome ?? null,
     installments: installmentPreviews.length > 0 ? installmentPreviews : undefined,
@@ -427,13 +432,13 @@ function previewHandler(
   const filters = parseRange(ReportPreviewQuery, req, correlationId);
 
   let apps = applicationsInScope(db, filters);
-  // If dateFrom/dateTo set: restrict to apps whose disbursement payment OR
-  // createdAt lies in the range. We use createdAt as a stable filter so all
-  // apps (including non-disbursed) are filterable.
+  // If dateFrom/dateTo set: restrict to apps whose disbursement date is in range.
   if (filters.dateFrom || filters.dateTo) {
-    apps = apps.filter((a) =>
-      withinRange(a.createdAt.slice(0, 10), filters.dateFrom, filters.dateTo),
-    );
+    apps = apps.filter((a) => {
+      const account = findAccount(db, a.id);
+      const disbursement = findDisbursementPayment(db, account?.id);
+      return withinRange(disbursement?.postedAt ?? null, filters.dateFrom, filters.dateTo);
+    });
   }
   // Deterministic ordering: newest first by createdAt.
   apps.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));

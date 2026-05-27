@@ -86,7 +86,7 @@ describe("LoginPage (Gap #8 post-login redirect)", () => {
     renderLogin();
     await user.click(screen.getByLabelText(/Prefill ops\.admin/i));
     await user.type(screen.getByLabelText(/^Password$/i), "demo");
-    await user.click(screen.getByRole("button", { name: /authenticate session/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
     await waitFor(() => expect(loginMock).toHaveBeenCalledWith({ username: "ops.admin", password: "demo" }));
     expect(await screen.findByTestId("home")).toBeInTheDocument();
   });
@@ -97,7 +97,7 @@ describe("LoginPage (Gap #8 post-login redirect)", () => {
     renderLogin();
     await user.click(screen.getByLabelText(/Prefill ops\.user/i));
     await user.type(screen.getByLabelText(/^Password$/i), "demo");
-    await user.click(screen.getByRole("button", { name: /authenticate session/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByTestId("loan-applications")).toBeInTheDocument();
   });
 
@@ -107,7 +107,7 @@ describe("LoginPage (Gap #8 post-login redirect)", () => {
     renderLogin();
     await user.click(screen.getByLabelText(/Prefill product\.admin/i));
     await user.type(screen.getByLabelText(/^Password$/i), "demo");
-    await user.click(screen.getByRole("button", { name: /authenticate session/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByTestId("products")).toBeInTheDocument();
   });
 
@@ -117,7 +117,7 @@ describe("LoginPage (Gap #8 post-login redirect)", () => {
     renderLogin();
     await user.click(screen.getByLabelText(/Prefill lsp\.read/i));
     await user.type(screen.getByLabelText(/^Password$/i), "demo");
-    await user.click(screen.getByRole("button", { name: /authenticate session/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByTestId("my-loans")).toBeInTheDocument();
   });
 
@@ -127,7 +127,7 @@ describe("LoginPage (Gap #8 post-login redirect)", () => {
     renderLogin();
     await user.click(screen.getByLabelText(/Prefill ops\.admin/i));
     await user.type(screen.getByLabelText(/^Password$/i), "wrong");
-    await user.click(screen.getByRole("button", { name: /authenticate session/i }));
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/invalid credentials/i);
   });
 });

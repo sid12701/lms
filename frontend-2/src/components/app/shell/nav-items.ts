@@ -5,6 +5,7 @@ import {
   Building2,
   Layers,
   Users,
+  UserSquare2,
   KeyRound,
   Bell,
   BarChart3,
@@ -54,6 +55,12 @@ export function getNavItems(role: Role): NavGroup[] {
     to: "/loan-applications",
     label: "Loan applications",
     icon: FileText,
+    match: "startsWith",
+  });
+  workspace.push({
+    to: "/borrowers",
+    label: "Borrowers",
+    icon: UserSquare2,
     match: "startsWith",
   });
 

@@ -98,7 +98,7 @@ export function ReportsFilterBar({
 
       <label className="flex flex-col gap-1">
         <span className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
-          From
+          Disbursed from
         </span>
         <span className="relative">
           <Calendar
@@ -110,7 +110,7 @@ export function ReportsFilterBar({
             data-slot="reports-date-from"
             value={filters.dateFrom ?? ""}
             onChange={(e) => setDateFrom(e.target.value)}
-            aria-label="Date from"
+            aria-label="Disbursed from"
             className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-44 rounded-md border pl-8 pr-2 text-sm outline-none focus-visible:ring-[3px]"
           />
         </span>
@@ -118,7 +118,7 @@ export function ReportsFilterBar({
 
       <label className="flex flex-col gap-1">
         <span className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
-          To
+          Disbursed to
         </span>
         <span className="relative">
           <Calendar
@@ -130,7 +130,7 @@ export function ReportsFilterBar({
             data-slot="reports-date-to"
             value={filters.dateTo ?? ""}
             onChange={(e) => setDateTo(e.target.value)}
-            aria-label="Date to"
+            aria-label="Disbursed to"
             className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-44 rounded-md border pl-8 pr-2 text-sm outline-none focus-visible:ring-[3px]"
           />
         </span>

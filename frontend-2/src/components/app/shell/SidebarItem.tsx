@@ -34,7 +34,7 @@ export function SidebarItem({
         cn(
           "group focus-visible:ring-ring/50 relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 outline-none focus-visible:ring-2",
           isActive
-            ? "bg-brand-50 text-brand-700"
+            ? "bg-primary/10 text-primary"
             : "text-foreground-muted hover:bg-surface-muted hover:text-foreground",
           collapsed && "justify-center px-2",
         )
@@ -45,7 +45,7 @@ export function SidebarItem({
           {isActive ? (
             <span
               aria-hidden="true"
-              className="bg-brand-700 absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-r"
+              className="bg-primary absolute top-1.5 bottom-1.5 left-0 w-0.5 rounded-r"
             />
           ) : null}
           <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />

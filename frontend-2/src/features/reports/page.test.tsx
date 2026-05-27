@@ -259,7 +259,7 @@ describe("ReportsPage — filter bar", () => {
     });
     expect(clearBtn).toBeDisabled();
 
-    const fromInput = screen.getByLabelText(/Date from/i);
+    const fromInput = screen.getByLabelText(/Disbursed from/i);
     await user.type(fromInput, "2099-01-01");
 
     await waitFor(() => expect(clearBtn).not.toBeDisabled());
