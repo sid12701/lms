@@ -26,7 +26,12 @@ import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.common.web.PagedResult;
+import com.bhawana.lms.common.web.PaginationResponseBuilder;
 import com.bhawana.lms.security.SsrfSafeUrlValidator;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import java.security.SecureRandom;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -433,6 +438,42 @@ public class AdminDirectoryService {
                 totalDisbursedAmount,
                 latestDisbursalDate
         );
+    }
+
+    /**
+     * Paginated, optionally-searched list of borrowers for the admin borrowers
+     * directory page. Search matches a case-insensitive substring across the
+     * borrower's `fullName`, `pan`, `mobile`, and `email`. Pagination follows
+     * the same `paginationDetails=ON` convention as the loan-application list.
+     */
+    @Transactional(readOnly = true)
+    public PagedResult<Borrower> listBorrowers(
+            String query,
+            Integer offset,
+            Integer limit,
+            boolean includePaginationDetails
+    ) {
+        boolean paginationRequested = PaginationResponseBuilder.isPaginationRequested(
+                offset, limit, includePaginationDetails);
+        int resolvedOffset = PaginationResponseBuilder.resolveOffset(offset, paginationRequested);
+        int resolvedLimit = PaginationResponseBuilder.resolveLimit(limit, paginationRequested);
+
+        Sort sort = Sort.by(Sort.Direction.ASC, "fullName").and(Sort.by(Sort.Direction.ASC, "id"));
+
+        if (!paginationRequested) {
+            List<Borrower> all = borrowerRepository.searchBorrowers(
+                    query,
+                    PageRequest.of(0, Integer.MAX_VALUE, sort)
+            ).getContent();
+            return new PagedResult<>(all, all.size(), 0, all.size());
+        }
+
+        int pageNumber = resolvedOffset / Math.max(resolvedLimit, 1);
+        Page<Borrower> page = borrowerRepository.searchBorrowers(
+                query,
+                PageRequest.of(pageNumber, Math.max(resolvedLimit, 1), sort)
+        );
+        return new PagedResult<>(page.getContent(), page.getTotalElements(), resolvedOffset, resolvedLimit);
     }
 
     @Transactional(readOnly = true)

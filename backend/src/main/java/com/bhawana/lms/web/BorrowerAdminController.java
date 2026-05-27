@@ -1,10 +1,14 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.web.PagedResult;
+import com.bhawana.lms.common.web.PaginationResponseBuilder;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.service.AdminDirectoryService;
 import com.bhawana.lms.service.AdminDirectoryService.BorrowerDelinquencyAggregate;
 import com.bhawana.lms.service.AdminDirectoryService.BorrowerDetailView;
 import com.bhawana.lms.service.AdminDirectoryService.BorrowerLoanView;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -12,10 +16,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -29,9 +35,44 @@ public class BorrowerAdminController {
         this.adminDirectoryService = adminDirectoryService;
     }
 
+    @GetMapping
+    public ResponseEntity<List<BorrowerSummaryResponse>> listBorrowers(
+            @RequestParam(required = false, name = "q") String query,
+            @RequestParam(required = false) @Min(0) Integer offset,
+            @RequestParam(required = false) @Min(1) @Max(1000) Integer limit,
+            @RequestParam(required = false) String paginationDetails
+    ) {
+        boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
+        PagedResult<Borrower> page = adminDirectoryService.listBorrowers(
+                query, offset, limit, includePaginationDetails);
+        PagedResult<BorrowerSummaryResponse> mapped = new PagedResult<>(
+                page.items().stream().map(BorrowerAdminController::toSummaryResponse).toList(),
+                page.totalCount(),
+                page.offset(),
+                page.limit()
+        );
+        return PaginationResponseBuilder.toListResponse(mapped, includePaginationDetails);
+    }
+
     @GetMapping("/{borrowerId}")
     public BorrowerDetailResponse getBorrowerDetail(@PathVariable UUID borrowerId) {
         return toResponse(adminDirectoryService.getBorrowerDetail(borrowerId));
+    }
+
+    private static BorrowerSummaryResponse toSummaryResponse(Borrower borrower) {
+        return new BorrowerSummaryResponse(
+                borrower.getId().toString(),
+                borrower.getFullName(),
+                borrower.getPan(),
+                borrower.getMobile(),
+                borrower.getEmail(),
+                borrower.getCity(),
+                borrower.getState(),
+                maskAadhar(borrower.getAadharNumber()),
+                borrower.getVisibleLspIds().stream()
+                        .map(UUID::toString)
+                        .collect(Collectors.toUnmodifiableSet())
+        );
     }
 
     private static BorrowerDetailResponse toResponse(BorrowerDetailView view) {
@@ -61,7 +102,7 @@ public class BorrowerAdminController {
                 borrower.getEmploymentZip(),
                 borrower.getMonthlyIncome(),
                 borrower.getAnnualIncome(),
-                maskBankAccount(borrower.getBankAccountNumber()),
+                borrower.getBankAccountNumber(),
                 borrower.getBankName(),
                 borrower.getIfscCode(),
                 borrower.getAccountHolderName(),
@@ -119,13 +160,6 @@ public class BorrowerAdminController {
         return "XXXXXXXX" + aadhar.substring(aadhar.length() - 4);
     }
 
-    private static String maskBankAccount(String account) {
-        if (account == null || account.length() < 4) {
-            return null;
-        }
-        return "XXXX" + account.substring(account.length() - 4);
-    }
-
     public record BorrowerDetailResponse(
             String id,
             String fullName,
@@ -174,6 +208,20 @@ public class BorrowerAdminController {
             int maxDaysPastDue,
             int overdueLoanCount,
             String bucket
+    ) {
+    }
+
+    /** Lightweight projection for the borrowers directory list page. */
+    public record BorrowerSummaryResponse(
+            String id,
+            String fullName,
+            String pan,
+            String mobile,
+            String email,
+            String city,
+            String state,
+            String aadharNumberMasked,
+            Set<String> visibleLspIds
     ) {
     }
 

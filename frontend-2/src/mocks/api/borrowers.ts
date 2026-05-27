@@ -44,6 +44,7 @@ import type {
   RecordDocumentAccessInput,
   RecordDocumentAccessResponse,
 } from "@/features/borrowers/types";
+import type { BorrowerSummary } from "@/features/borrowers/list-types";
 import { dispatch, registerRoute, type MockRequest } from "../router";
 import {
   BadRequestError,
@@ -178,6 +179,61 @@ function projectDetail(db: MockDb, borrower: Borrower): BorrowerDetail {
 }
 
 // ─── GET handlers ────────────────────────────────────────────────────────────
+
+function maskAadhar(aadhar: string | null | undefined): string | null {
+  if (!aadhar || aadhar.length < 4) return null;
+  return `XXXXXXXX${aadhar.slice(-4)}`;
+}
+
+function projectSummary(borrower: Borrower): BorrowerSummary {
+  return {
+    id: borrower.id,
+    fullName: borrower.fullName,
+    pan: borrower.pan,
+    mobile: borrower.mobile,
+    email: borrower.email ?? null,
+    city: borrower.address?.city ?? null,
+    state: borrower.address?.state ?? null,
+    aadharNumberMasked: maskAadhar(borrower.aadhaar),
+    visibleLspIds: borrower.visibleLspIds ?? [],
+  };
+}
+
+function matchesQuery(borrower: Borrower, q: string): boolean {
+  const needle = q.toLowerCase();
+  const haystacks: ReadonlyArray<string | null | undefined> = [
+    borrower.fullName,
+    borrower.pan,
+    borrower.mobile,
+    borrower.email,
+  ];
+  return haystacks.some((h) => h && h.toLowerCase().includes(needle));
+}
+
+function listHandler(
+  req: MockRequest,
+  db: MockDb,
+  correlationId: string,
+): readonly BorrowerSummary[] {
+  const session = requireSession(db, correlationId);
+  // Internal sessions go straight to the live backend; the mock list only
+  // serves dev/unauth setups, so we still gate visibility through the same
+  // tenant scope used by the detail handler.
+  const rawQ = (() => {
+    const v = req.query?.["q"];
+    return Array.isArray(v) ? (v[0] ?? "") : (v ?? "");
+  })();
+  const trimmedQ = rawQ.trim();
+
+  const visible: BorrowerSummary[] = [];
+  for (const b of db.borrowers.values()) {
+    if (!canSeeBorrower(session, b)) continue;
+    if (trimmedQ && !matchesQuery(b, trimmedQ)) continue;
+    visible.push(projectSummary(b));
+  }
+  visible.sort((a, b) => a.fullName.localeCompare(b.fullName));
+  return visible;
+}
 
 function detailHandler(req: MockRequest, db: MockDb, correlationId: string): BorrowerDetail {
   const session = requireSession(db, correlationId);
@@ -334,10 +390,25 @@ const RecordDocumentAccessResponseSchema = z.object({
 
 // ─── Route registration (idempotent) ─────────────────────────────────────────
 
+const BorrowerSummarySchema = z.object({
+  id: z.string().min(1),
+  fullName: z.string().min(1),
+  pan: z.string().min(1),
+  mobile: z.string().min(1),
+  email: z.string().nullable(),
+  city: z.string().nullable(),
+  state: z.string().nullable(),
+  aadharNumberMasked: z.string().nullable(),
+  visibleLspIds: z.array(z.string()).readonly(),
+});
+
+const BorrowerSummaryArraySchema = z.array(BorrowerSummarySchema);
+
 let registered = false;
 export function registerBorrowerRoutes(): void {
   if (registered) return;
   registered = true;
+  registerRoute("GET", "/api/v1/borrowers", listHandler);
   registerRoute("GET", "/api/v1/borrowers/:id", detailHandler);
   registerRoute("GET", "/api/v1/borrowers/:id/loans", loansHandler);
   registerRoute("POST", "/api/v1/documents/:documentId/access", documentAccessHandler, {
