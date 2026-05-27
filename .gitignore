@@ -57,3 +57,17 @@ blank.pdf
 graphify-out/
 .graphify_*
 _COMMUNITY_*.md
+
+# Local working trackers and notes (not part of the shipped project)
+/docs/gap-fixes.md
+/docs/gap-fixes-state-tracker.md
+/docs/database-optimization-tracker.md
+/docs/database-sql-review.md
+/docs/INTEGRATION-STATUS.md
+/docs/frontend-dev.log
+
+# Reference screenshots of the current frontend (regenerated locally)
+/docs/design/current-*.png
+
+# Ad-hoc screenshots dropped at the frontend-2 root (e.g. theme migration captures)
+/frontend-2/*.png
