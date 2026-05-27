@@ -1,8 +1,11 @@
 package com.bhawana.lms.web;
 
+import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.is;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -149,7 +152,7 @@ class OpsAlertControllerTest {
                 .andExpect(jsonPath("$.title").value("Loan stuck in DISBURSEMENT_RETRY for 6h"))
                 .andExpect(jsonPath("$.message").value("Disbursement adapter keeps failing; ops needs admin review."));
 
-        java.util.List<OpsAlert> persisted = opsAlertRepository.findAllByOrderByCreatedAtDesc();
+        java.util.List<OpsAlert> persisted = opsAlertRepository.findAll();
         org.junit.jupiter.api.Assertions.assertEquals(1, persisted.size());
         org.junit.jupiter.api.Assertions.assertEquals(
                 OpsAlertType.OPS_USER_ESCALATION,
@@ -250,5 +253,125 @@ class OpsAlertControllerTest {
                                         .claim("roles", List.of("OPS_USER")))
                                 .authorities(() -> "ROLE_OPS_USER")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listAlertsAppliesDefaultLimitWhenNoQueryParamsProvided() throws Exception {
+        for (int i = 0; i < 60; i++) {
+            opsAlertRepository.save(new OpsAlert(
+                    OpsAlertType.BORROWER_IDENTITY_CONFLICT,
+                    OpsAlertSeverity.HIGH,
+                    "Alert " + i,
+                    "Body " + i,
+                    "BORROWER",
+                    null,
+                    "corr-" + i,
+                    null
+            ));
+        }
+
+        mockMvc.perform(get("/api/v1/internal/alerts").with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(50));
+    }
+
+    @Test
+    void listAlertsHonorsOffsetAndLimitInDescendingCreatedAtOrder() throws Exception {
+        seedAlertsInOrder("Alert-A", "Alert-B", "Alert-C", "Alert-D", "Alert-E");
+
+        // Newest-first: E, D, C, B, A. offset=2, limit=2 -> [C, B].
+        mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(opsUser())
+                        .queryParam("offset", "2")
+                        .queryParam("limit", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].title").value("Alert-C"))
+                .andExpect(jsonPath("$[1].title").value("Alert-B"));
+    }
+
+    @Test
+    void listAlertsEmitsPaginationHeadersWhenPaginationDetailsIsOn() throws Exception {
+        seedAlertsInOrder("Alert-A", "Alert-B", "Alert-C", "Alert-D", "Alert-E");
+
+        mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(opsUser())
+                        .queryParam("offset", "0")
+                        .queryParam("limit", "2")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(header().string("X-Total-Count", "5"))
+                .andExpect(header().string("X-Limit", "2"))
+                .andExpect(header().string("X-Offset", "0"));
+    }
+
+    @Test
+    void listAlertsFiltersByStatusAndComposesWithPagination() throws Exception {
+        // Seed three NEW + two ACKNOWLEDGED alerts. The ACKs are the two newest.
+        seedAlertsInOrder("New-A", "New-B", "New-C");
+        OpsAlert ackOne = opsAlertRepository.save(new OpsAlert(
+                OpsAlertType.BORROWER_IDENTITY_CONFLICT,
+                OpsAlertSeverity.HIGH,
+                "Ack-A",
+                "Body Ack-A",
+                "BORROWER", null, "corr-AckA", null
+        ));
+        ackOne.acknowledge("ops.user", "first ack");
+        opsAlertRepository.save(ackOne);
+        Thread.sleep(2);
+        OpsAlert ackTwo = opsAlertRepository.save(new OpsAlert(
+                OpsAlertType.BORROWER_IDENTITY_CONFLICT,
+                OpsAlertSeverity.HIGH,
+                "Ack-B",
+                "Body Ack-B",
+                "BORROWER", null, "corr-AckB", null
+        ));
+        ackTwo.acknowledge("ops.user", "second ack");
+        opsAlertRepository.save(ackTwo);
+
+        mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(opsUser())
+                        .queryParam("status", "NEW")
+                        .queryParam("limit", "10")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[*].status", everyItem(is("NEW"))))
+                .andExpect(jsonPath("$[0].title").value("New-C"))
+                .andExpect(jsonPath("$[1].title").value("New-B"))
+                .andExpect(jsonPath("$[2].title").value("New-A"))
+                .andExpect(header().string("X-Total-Count", "3"));
+    }
+
+    @Test
+    void listAlertsRejectsLimitAboveOneThousand() throws Exception {
+        mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(opsUser())
+                        .queryParam("limit", "1001"))
+                .andExpect(status().isBadRequest());
+    }
+
+    private void seedAlertsInOrder(String... titles) throws InterruptedException {
+        for (String title : titles) {
+            opsAlertRepository.save(new OpsAlert(
+                    OpsAlertType.BORROWER_IDENTITY_CONFLICT,
+                    OpsAlertSeverity.HIGH,
+                    title,
+                    "Body for " + title,
+                    "BORROWER",
+                    null,
+                    "corr-" + title,
+                    null
+            ));
+            // Force distinct createdAt across saves so DESC ordering is deterministic
+            // (Instant.now() granularity can otherwise produce ties on fast loops).
+            Thread.sleep(2);
+        }
+    }
+
+    private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor opsUser() {
+        return jwt().jwt(jwt -> jwt.subject("ops.user").claim("roles", List.of("OPS_USER")))
+                .authorities(() -> "ROLE_OPS_USER");
     }
 }

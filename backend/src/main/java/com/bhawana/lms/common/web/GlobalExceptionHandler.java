@@ -4,6 +4,8 @@ import com.bhawana.lms.common.api.ApiError;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -32,6 +34,22 @@ public class GlobalExceptionHandler {
         Map<String, String> fieldErrors = new LinkedHashMap<>();
         for (FieldError fieldError : exception.getBindingResult().getFieldErrors()) {
             fieldErrors.put(fieldError.getField(), fieldError.getDefaultMessage());
+        }
+
+        return build(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed", request, fieldErrors);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiError> handleConstraintViolation(
+            ConstraintViolationException exception,
+            HttpServletRequest request
+    ) {
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        for (ConstraintViolation<?> violation : exception.getConstraintViolations()) {
+            String path = violation.getPropertyPath().toString();
+            int dot = path.lastIndexOf('.');
+            String field = dot >= 0 ? path.substring(dot + 1) : path;
+            fieldErrors.put(field, violation.getMessage());
         }
 
         return build(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed", request, fieldErrors);

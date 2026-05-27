@@ -1,6 +1,8 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.PagedResult;
+import com.bhawana.lms.common.web.PaginationResponseBuilder;
 import com.bhawana.lms.domain.OpsAlert;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertStatus;
@@ -9,12 +11,16 @@ import com.bhawana.lms.domain.AlertRule;
 import com.bhawana.lms.service.AlertRuleEvaluationService;
 import com.bhawana.lms.service.OpsAlertService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/internal/alerts")
 @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','OPS_USER')")
+@Validated
 public class OpsAlertController {
 
     private final OpsAlertService opsAlertService;
@@ -48,10 +55,22 @@ public class OpsAlertController {
     }
 
     @GetMapping
-    public List<OpsAlertResponse> listAlerts(@RequestParam(required = false) OpsAlertStatus status) {
-        return opsAlertService.listAlerts(status).stream()
-                .map(OpsAlertController::toResponse)
-                .toList();
+    public ResponseEntity<List<OpsAlertResponse>> listAlerts(
+            @RequestParam(required = false) OpsAlertStatus status,
+            @RequestParam(required = false) @Min(0) Integer offset,
+            @RequestParam(required = false) @Min(1) @Max(1000) Integer limit,
+            @RequestParam(required = false) String paginationDetails
+    ) {
+        boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
+        PagedResult<OpsAlert> page = opsAlertService.listAlerts(
+                status, offset, limit, includePaginationDetails);
+        PagedResult<OpsAlertResponse> mapped = new PagedResult<>(
+                page.items().stream().map(OpsAlertController::toResponse).toList(),
+                page.totalCount(),
+                page.offset(),
+                page.limit()
+        );
+        return PaginationResponseBuilder.toListResponse(mapped, includePaginationDetails);
     }
 
     @PostMapping("/{alertId}/acknowledge")
