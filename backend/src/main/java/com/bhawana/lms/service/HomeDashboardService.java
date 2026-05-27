@@ -114,9 +114,9 @@ public class HomeDashboardService {
                 .toList();
         long openAlerts = opsAlertRepository.countByStatus(OpsAlertStatus.NEW);
         List<OpenAlertSummary> openAlertSummaries = opsAlertRepository
-                .findByStatusOrderByCreatedAtDesc(OpsAlertStatus.NEW)
+                .findByStatusOrderByCreatedAtDesc(OpsAlertStatus.NEW, PageRequest.of(0, 5))
+                .getContent()
                 .stream()
-                .limit(5)
                 .map(this::toOpenAlertSummary)
                 .toList();
 
