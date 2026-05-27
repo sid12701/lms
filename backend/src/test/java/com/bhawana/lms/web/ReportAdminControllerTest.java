@@ -226,12 +226,15 @@ class ReportAdminControllerTest {
 
         // Seed the borrower's aadhaar + bank account directly so the masking
         // contract has something to mask. The intake flow does not currently
-        // collect these, so we patch via jdbc.
+        // collect these, so we patch via jdbc. The two values must not share a
+        // substring (the raw bank account is emitted, the raw aadhaar must not
+        // leak — keep them disjoint so a substring check on the response body
+        // can distinguish them).
         jdbcTemplate.update(
                 "update borrower set aadhar_number = ?, bank_account_number = ? "
                         + "where id = (select borrower_id from loan_application where id = ?)",
                 "987654321012",
-                "9876543210123456",
+                "1122334455667788",
                 UUID.fromString(loan.get("id").asText())
         );
 
@@ -240,12 +243,12 @@ class ReportAdminControllerTest {
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].aadharNumber").value("XXXXXXXX1012"))
-                .andExpect(jsonPath("$.content[0].bankAccountNumber").value("9876543210123456"))
+                .andExpect(jsonPath("$.content[0].bankAccountNumber").value("1122334455667788"))
                 .andExpect(jsonPath("$.content[0].panNumber").value("ABCDE1234F"))
                 .andReturn();
         String previewBody = preview.getResponse().getContentAsString();
         assertFalse(previewBody.contains("987654321012"), "raw aadhaar must not leak through the preview");
-        assertTrue(previewBody.contains("9876543210123456"), "raw bank account should be visible in the preview");
+        assertTrue(previewBody.contains("1122334455667788"), "raw bank account should be visible in the preview");
 
         // CSV download surface inherits the same row projection.
         String csv = mockMvc.perform(get("/api/v1/internal/reports/portfolio-mis")
@@ -253,7 +256,7 @@ class ReportAdminControllerTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         assertTrue(csv.contains("XXXXXXXX1012"), "CSV must carry masked aadhaar");
-        assertTrue(csv.contains("9876543210123456"), "CSV must carry raw bank account");
+        assertTrue(csv.contains("1122334455667788"), "CSV must carry raw bank account");
         assertTrue(csv.contains("ABCDE1234F"), "CSV must carry raw PAN");
         assertFalse(csv.contains("987654321012"), "raw aadhaar must not leak through the CSV");
     }
