@@ -396,20 +396,6 @@ public class AdminReportingService {
         return "XXXXXXXX" + digits.substring(digits.length() - 4);
     }
 
-    /**
-     * Gap #10 — mask the borrower's bank-account number on the MIS surface
-     * (same shape used by {@code BorrowerAdminController.maskBankAccount}).
-     */
-    private static String maskBankAccount(String account) {
-        if (account == null) {
-            return null;
-        }
-        if (account.length() < 4) {
-            return "XXXX";
-        }
-        return "XXXX" + account.substring(account.length() - 4);
-    }
-
     private static String buildAddress(Borrower borrower) {
         List<String> parts = new ArrayList<>();
         if (borrower.getAddressLine1() != null) {

@@ -222,13 +222,13 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(jsonPath("$.lspId").value(apex.id()))
                 .andExpect(jsonPath("$.lspLoanId").value("APEX-EXT-001"))
                 .andExpect(jsonPath("$.aadharNumber").value("XXXXXXXX1234"))
-                .andExpect(jsonPath("$.panNumber").value("ABXXXXX34F"))
-                .andExpect(jsonPath("$.empId").value("***"))
-                .andExpect(jsonPath("$.bankAccountNumber").value("XXXX9012"))
-                .andExpect(jsonPath("$.ifscCode").value("HDFC******"))
-                .andExpect(jsonPath("$.accountHolderName").value("***"))
-                .andExpect(jsonPath("$.referencePersonName").value("***"))
-                .andExpect(jsonPath("$.referencePersonNumber").value("***"))
+                .andExpect(jsonPath("$.panNumber").value("ABCDE1234F"))
+                .andExpect(jsonPath("$.empId").value("EMP-001"))
+                .andExpect(jsonPath("$.bankAccountNumber").value("123456789012"))
+                .andExpect(jsonPath("$.ifscCode").value("HDFC0001234"))
+                .andExpect(jsonPath("$.accountHolderName").value("Anika Sharma"))
+                .andExpect(jsonPath("$.referencePersonName").value("Neha Verma"))
+                .andExpect(jsonPath("$.referencePersonNumber").value("9888877777"))
                 .andExpect(jsonPath("$.status").value("INITIALIZED"));
 
         JsonNode northApplication = createInternalApplication(
@@ -244,18 +244,18 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].lspLoanId").value("APEX-EXT-001"))
                 .andExpect(jsonPath("$[0].aadharNumber").value("XXXXXXXX1234"))
-                .andExpect(jsonPath("$[0].panNumber").value("ABXXXXX34F"))
-                .andExpect(jsonPath("$[0].bankAccountNumber").value("XXXX9012"));
+                .andExpect(jsonPath("$[0].panNumber").value("ABCDE1234F"))
+                .andExpect(jsonPath("$[0].bankAccountNumber").value("123456789012"));
 
         mockMvc.perform(get("/api/v1/lsp/loan-applications/external/{externalLoanId}", "APEX-EXT-001")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lspLoanId").value("APEX-EXT-001"))
                 .andExpect(jsonPath("$.aadharNumber").value("XXXXXXXX1234"))
-                .andExpect(jsonPath("$.panNumber").value("ABXXXXX34F"))
-                .andExpect(jsonPath("$.empId").value("***"))
-                .andExpect(jsonPath("$.bankAccountNumber").value("XXXX9012"))
-                .andExpect(jsonPath("$.ifscCode").value("HDFC******"))
+                .andExpect(jsonPath("$.panNumber").value("ABCDE1234F"))
+                .andExpect(jsonPath("$.empId").value("EMP-001"))
+                .andExpect(jsonPath("$.bankAccountNumber").value("123456789012"))
+                .andExpect(jsonPath("$.ifscCode").value("HDFC0001234"))
                 .andExpect(jsonPath("$.lastActivity.actorUsername").value(apiClient.get("clientId").asText()))
                 .andExpect(jsonPath("$.loanAccount").doesNotExist());
 
@@ -333,7 +333,7 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lspLoanId").value("APEX-UI-001"))
                 .andExpect(jsonPath("$.aadharNumber").isEmpty())
-                .andExpect(jsonPath("$.panNumber").value("ABXXXXX34F"));
+                .andExpect(jsonPath("$.panNumber").value("ABCDE1234F"));
 
         mockMvc.perform(post("/api/v1/lsp/loan-applications")
                         .with(lspUiUser(apex.id(), "Apex Tenant"))
@@ -354,7 +354,7 @@ class LspLoanApplicationApiControllerTest {
     }
 
     @Test
-    void borrowerPiiIsAlwaysMaskedAndRevealEndpointIsRemoved() throws Exception {
+    void lspApiMasksAadhaarButReturnsOtherPiiRawAndRevealEndpointIsRemoved() throws Exception {
         LspFixture apex = createLsp("ACTIVE");
         ProductFixture apexProduct = createProduct("ACTIVE");
         mapProductToLsp(apexProduct.id(), apex.id());
@@ -368,17 +368,20 @@ class LspLoanApplicationApiControllerTest {
         JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-PII-001");
         String applicationId = createdApplication.get("id").asText();
 
-        // Aadhaar/PAN/bank PII is masked on every read site — there is no reveal path.
+        // Aadhaar stays masked on every LSP read site; other borrower PII (PAN,
+        // bank account, IFSC, employment / reference fields) is returned raw to
+        // the partner. There is no reveal path: the legacy borrower-pii endpoint
+        // is removed and writes no audit.
         mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.aadharNumber").value("XXXXXXXX1234"))
-                .andExpect(jsonPath("$.panNumber").value("ABXXXXX34F"))
-                .andExpect(jsonPath("$.bankAccountNumber").value("XXXX9012"))
-                .andExpect(jsonPath("$.ifscCode").value("HDFC******"))
-                .andExpect(jsonPath("$.accountHolderName").value("***"))
-                .andExpect(jsonPath("$.referencePersonName").value("***"))
-                .andExpect(jsonPath("$.referencePersonNumber").value("***"));
+                .andExpect(jsonPath("$.panNumber").value("ABCDE1234F"))
+                .andExpect(jsonPath("$.bankAccountNumber").value("123456789012"))
+                .andExpect(jsonPath("$.ifscCode").value("HDFC0001234"))
+                .andExpect(jsonPath("$.accountHolderName").value("Anika Sharma"))
+                .andExpect(jsonPath("$.referencePersonName").value("Neha Verma"))
+                .andExpect(jsonPath("$.referencePersonNumber").value("9888877777"));
 
         // The historical borrower-pii reveal endpoint is removed. Any caller hits 404,
         // regardless of role. No audit row is written.
