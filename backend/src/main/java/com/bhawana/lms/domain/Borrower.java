@@ -24,7 +24,7 @@ public class Borrower {
     @Id
     private UUID id;
 
-    @ElementCollection(fetch = FetchType.EAGER)
+    @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "borrower_lsp_access", joinColumns = @jakarta.persistence.JoinColumn(name = "borrower_id"))
     @Column(name = "lsp_id", nullable = false)
     private Set<UUID> visibleLspIds = new LinkedHashSet<>();

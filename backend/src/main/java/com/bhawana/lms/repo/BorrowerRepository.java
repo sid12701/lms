@@ -6,12 +6,18 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface BorrowerRepository extends JpaRepository<Borrower, UUID> {
 
+    @Override
+    @EntityGraph(attributePaths = "visibleLspIds")
+    Optional<Borrower> findById(UUID id);
+
+    @EntityGraph(attributePaths = "visibleLspIds")
     Optional<Borrower> findByPanIgnoreCase(String pan);
 
     List<Borrower> findTop10ByMobileOrderByUpdatedAtDesc(String mobile);
@@ -30,5 +36,6 @@ public interface BorrowerRepository extends JpaRepository<Borrower, UUID> {
                OR b.mobile          LIKE CONCAT('%', :q, '%')
                OR LOWER(b.email)    LIKE LOWER(CONCAT('%', :q, '%'))
             """)
+    @EntityGraph(attributePaths = "visibleLspIds")
     Page<Borrower> searchBorrowers(@Param("q") String q, Pageable pageable);
 }
