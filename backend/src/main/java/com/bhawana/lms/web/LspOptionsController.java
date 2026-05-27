@@ -1,6 +1,7 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.Lsp;
+import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.service.AdminDirectoryService;
 import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,6 +23,7 @@ public class LspOptionsController {
     @GetMapping
     public List<LspOptionResponse> listLspOptions() {
         return adminDirectoryService.listLsps().stream()
+                .filter(lsp -> lsp.getStatus() == LspStatus.ACTIVE)
                 .map(LspOptionsController::toResponse)
                 .toList();
     }

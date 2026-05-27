@@ -178,6 +178,8 @@ public class LoanApplicationService {
             String status,
             String sourceChannel,
             String query,
+            String lspLoanId,
+            String bhawLoanId,
             LocalDate disbursalDateFrom,
             LocalDate disbursalDateTo,
             Integer offset,
@@ -190,12 +192,55 @@ public class LoanApplicationService {
                 status,
                 sourceChannel,
                 query,
+                lspLoanId,
+                bhawLoanId,
                 disbursalDateFrom,
                 disbursalDateTo,
                 offset,
                 limit,
                 includePaginationDetails
         );
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<LoanApplication> listApplicationsPage(
+            UUID lspId,
+            UUID productId,
+            String status,
+            String sourceChannel,
+            String query,
+            LocalDate disbursalDateFrom,
+            LocalDate disbursalDateTo,
+            Integer offset,
+            Integer limit,
+            boolean includePaginationDetails
+    ) {
+        return listApplicationsPage(
+                lspId,
+                productId,
+                status,
+                sourceChannel,
+                query,
+                null,
+                null,
+                disbursalDateFrom,
+                disbursalDateTo,
+                offset,
+                limit,
+                includePaginationDetails
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public Map<UUID, String> getLoanAccountNumbers(List<UUID> applicationIds) {
+        if (applicationIds == null || applicationIds.isEmpty()) {
+            return Map.of();
+        }
+        return loanAccountRepository.findAccountNumbersByLoanApplicationIdIn(applicationIds).stream()
+                .collect(java.util.stream.Collectors.toUnmodifiableMap(
+                        LoanAccountRepository.LoanAccountNumberProjection::getApplicationId,
+                        LoanAccountRepository.LoanAccountNumberProjection::getAccountNumber
+                ));
     }
 
     @Transactional(readOnly = true)

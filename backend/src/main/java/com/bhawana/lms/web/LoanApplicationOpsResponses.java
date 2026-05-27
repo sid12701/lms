@@ -25,6 +25,13 @@ public final class LoanApplicationOpsResponses {
     }
 
     public static LoanApplicationOpsController.LoanApplicationResponse toResponse(LoanApplication application) {
+        return toResponse(application, null);
+    }
+
+    public static LoanApplicationOpsController.LoanApplicationResponse toResponse(
+            LoanApplication application,
+            String accountNumber
+    ) {
         return new LoanApplicationOpsController.LoanApplicationResponse(
                 application.getId().toString(),
                 application.getBorrower().getId().toString(),
@@ -44,6 +51,7 @@ public final class LoanApplicationOpsResponses {
                 application.getLoanProduct().getCode(),
                 application.getLoanProduct().getName(),
                 application.getExternalLoanId(),
+                accountNumber,
                 application.getSourceChannel(),
                 application.getRequestedAmount(),
                 application.getRequestedTenureMonths(),
@@ -377,9 +385,7 @@ public final class LoanApplicationOpsResponses {
             JsonNode child = objectNode.get(fieldName);
             if (child != null && child.isTextual()) {
                 objectNode.put(fieldName, switch (fieldName) {
-                    case "borrowerPan", "pan" -> maskPan(child.asText());
-                    case "borrowerMobile", "mobile" -> maskMobile(child.asText());
-                    case "borrowerEmail", "email" -> maskEmail(child.asText());
+                    case "aadharNumber", "aadhaarNumber", "aadhar", "aadhaar", "incomingAadhar" -> maskAadhar(child.asText());
                     default -> child.asText();
                 });
             } else {
@@ -389,36 +395,14 @@ public final class LoanApplicationOpsResponses {
         return objectNode;
     }
 
-    private static String maskPan(String value) {
-        return maskMiddle(value, 3, 2);
-    }
-
-    private static String maskMobile(String value) {
-        return maskMiddle(value, 0, 4);
-    }
-
-    private static String maskEmail(String value) {
-        int atIndex = value.indexOf('@');
-        if (atIndex <= 0 || atIndex == value.length() - 1) {
-            return maskMiddle(value, 1, 0);
-        }
-        String localPart = value.substring(0, atIndex);
-        String domain = value.substring(atIndex + 1);
-        String maskedLocalPart = localPart.length() <= 1
-                ? "*"
-                : localPart.substring(0, 1) + "*".repeat(Math.max(localPart.length() - 1, 2));
-        return maskedLocalPart + "@" + domain;
-    }
-
-    private static String maskMiddle(String value, int visibleStart, int visibleEnd) {
+    private static String maskAadhar(String value) {
         if (value == null || value.isBlank()) {
             return value;
         }
-        if (value.length() <= visibleStart + visibleEnd) {
-            return "*".repeat(value.length());
+        String digits = value.replaceAll("\\s", "");
+        if (digits.length() < 4) {
+            return "XXXXXXXX";
         }
-        return value.substring(0, visibleStart)
-                + "*".repeat(value.length() - visibleStart - visibleEnd)
-                + value.substring(value.length() - visibleEnd);
+        return "XXXXXXXX" + digits.substring(digits.length() - 4);
     }
 }

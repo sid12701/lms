@@ -199,10 +199,22 @@ class ReportAdminControllerTest {
         assertFalse(apexFilteredCsv.contains("NORTH-LOAN-001"));
         assertTrue(apexFilteredCsv.contains("2026-03-10"));
         assertFalse(apexFilteredCsv.contains("2026-04-01"));
+
+        String disbursedAfterCsv = mockMvc.perform(get("/api/v1/internal/reports/portfolio-mis")
+                        .with(systemAdmin())
+                        .queryParam("disbursalDateFrom", "2026-04-01"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertFalse(disbursedAfterCsv.contains("APEX-LOAN-001"));
+        assertTrue(disbursedAfterCsv.contains("NORTH-LOAN-001"));
+        assertTrue(disbursedAfterCsv.contains("2026-04-01"));
     }
 
     @Test
-    void portfolioMisPreviewMasksAadhaarAndBankAccountForEveryRow() throws Exception {
+    void portfolioMisPreviewMasksAadhaarAndShowsNonAadhaarDataForEveryRow() throws Exception {
         LspFixture apex = createLsp("APEX");
         ProductFixture product = createProduct();
         mapProductToLsps(product.id(), apex.id());
@@ -228,11 +240,12 @@ class ReportAdminControllerTest {
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].aadharNumber").value("XXXXXXXX1012"))
-                .andExpect(jsonPath("$.content[0].bankAccountNumber").value("XXXX3456"))
+                .andExpect(jsonPath("$.content[0].bankAccountNumber").value("9876543210123456"))
+                .andExpect(jsonPath("$.content[0].panNumber").value("ABCDE1234F"))
                 .andReturn();
         String previewBody = preview.getResponse().getContentAsString();
         assertFalse(previewBody.contains("987654321012"), "raw aadhaar must not leak through the preview");
-        assertFalse(previewBody.contains("9876543210123456"), "raw bank account must not leak through the preview");
+        assertTrue(previewBody.contains("9876543210123456"), "raw bank account should be visible in the preview");
 
         // CSV download surface inherits the same row projection.
         String csv = mockMvc.perform(get("/api/v1/internal/reports/portfolio-mis")
@@ -240,9 +253,9 @@ class ReportAdminControllerTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         assertTrue(csv.contains("XXXXXXXX1012"), "CSV must carry masked aadhaar");
-        assertTrue(csv.contains("XXXX3456"), "CSV must carry masked bank account");
+        assertTrue(csv.contains("9876543210123456"), "CSV must carry raw bank account");
+        assertTrue(csv.contains("ABCDE1234F"), "CSV must carry raw PAN");
         assertFalse(csv.contains("987654321012"), "raw aadhaar must not leak through the CSV");
-        assertFalse(csv.contains("9876543210123456"), "raw bank account must not leak through the CSV");
     }
 
     @Test

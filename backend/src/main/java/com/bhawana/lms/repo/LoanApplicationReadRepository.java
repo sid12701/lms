@@ -39,6 +39,34 @@ public class LoanApplicationReadRepository {
                 sourceChannel,
                 queryText,
                 queryApplicationId,
+                null,
+                null,
+                disbursalDateFrom,
+                disbursalDateTo
+        );
+    }
+
+    public PagedResult<LoanApplication> findApplications(
+            UUID lspId,
+            UUID productId,
+            LoanApplicationStatus status,
+            String sourceChannel,
+            String queryText,
+            UUID queryApplicationId,
+            String lspLoanIdText,
+            String bhawLoanIdText,
+            Instant disbursalDateFrom,
+            Instant disbursalDateTo
+    ) {
+        return findApplications(
+                lspId,
+                productId,
+                status,
+                sourceChannel,
+                queryText,
+                queryApplicationId,
+                lspLoanIdText,
+                bhawLoanIdText,
                 disbursalDateFrom,
                 disbursalDateTo,
                 false,
@@ -55,6 +83,8 @@ public class LoanApplicationReadRepository {
             String sourceChannel,
             String queryText,
             UUID queryApplicationId,
+            String lspLoanIdText,
+            String bhawLoanIdText,
             Instant disbursalDateFrom,
             Instant disbursalDateTo,
             boolean paginationRequested,
@@ -73,11 +103,13 @@ public class LoanApplicationReadRepository {
                 sourceChannel,
                 queryText,
                 queryApplicationId,
+                lspLoanIdText,
+                bhawLoanIdText,
                 disbursalDateFrom,
                 disbursalDateTo
         );
 
-        String accountJoin = needsAccountJoin(disbursalDateFrom, disbursalDateTo)
+        String accountJoin = needsAccountJoin(bhawLoanIdText, disbursalDateFrom, disbursalDateTo)
                 ? " join LoanAccount account on account.loanApplication = application\n"
                 : "";
 
@@ -124,8 +156,12 @@ public class LoanApplicationReadRepository {
         return countQuery.getSingleResult();
     }
 
-    private static boolean needsAccountJoin(Instant disbursalDateFrom, Instant disbursalDateTo) {
-        return disbursalDateFrom != null || disbursalDateTo != null;
+    private static boolean needsAccountJoin(
+            String bhawLoanIdText,
+            Instant disbursalDateFrom,
+            Instant disbursalDateTo
+    ) {
+        return bhawLoanIdText != null || disbursalDateFrom != null || disbursalDateTo != null;
     }
 
     private static void appendFilters(
@@ -137,6 +173,8 @@ public class LoanApplicationReadRepository {
             String sourceChannel,
             String queryText,
             UUID queryApplicationId,
+            String lspLoanIdText,
+            String bhawLoanIdText,
             Instant disbursalDateFrom,
             Instant disbursalDateTo
     ) {
@@ -175,6 +213,14 @@ public class LoanApplicationReadRepository {
             }
 
             jpql.append(")");
+        }
+        if (lspLoanIdText != null) {
+            jpql.append(" and lower(application.externalLoanId) like :lspLoanIdText");
+            parameters.put("lspLoanIdText", "%" + lspLoanIdText.toLowerCase(Locale.ROOT) + "%");
+        }
+        if (bhawLoanIdText != null) {
+            jpql.append(" and lower(account.accountNumber) like :bhawLoanIdText");
+            parameters.put("bhawLoanIdText", "%" + bhawLoanIdText.toLowerCase(Locale.ROOT) + "%");
         }
         if (disbursalDateFrom != null) {
             jpql.append(" and account.disbursedAt >= :disbursalDateFrom");

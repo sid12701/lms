@@ -26,7 +26,7 @@ public final class LspLoanApplicationResponses {
                 application.getBorrower().getMaritalStatus(),
                 application.getBorrower().getFatherName(),
                 maskAadharNumber(application.getBorrower().getAadharNumber()),
-                maskPanNumber(application.getBorrower().getPan()),
+                application.getBorrower().getPan(),
                 application.getLoanProduct().getId().toString(),
                 application.getLoanProduct().getCode(),
                 application.getLoanProduct().getName(),
@@ -45,18 +45,18 @@ public final class LspLoanApplicationResponses {
                 application.getBorrower().getSpouseName(),
                 application.getBorrower().getEmploymentType(),
                 application.getBorrower().getOrganizationName(),
-                maskOpaqueValue(application.getBorrower().getEmployeeId()),
+                application.getBorrower().getEmployeeId(),
                 application.getBorrower().getEmploymentCity(),
                 application.getBorrower().getEmploymentState(),
                 application.getBorrower().getEmploymentZip(),
                 application.getBorrower().getMonthlyIncome(),
                 application.getBorrower().getAnnualIncome(),
-                maskBankAccountNumber(application.getBorrower().getBankAccountNumber()),
+                application.getBorrower().getBankAccountNumber(),
                 application.getBorrower().getBankName(),
-                maskIfscCode(application.getBorrower().getIfscCode()),
-                maskOpaqueValue(application.getBorrower().getAccountHolderName()),
-                maskOpaqueValue(application.getBorrower().getReferencePersonName()),
-                maskOpaqueValue(application.getBorrower().getReferencePersonNumber()),
+                application.getBorrower().getIfscCode(),
+                application.getBorrower().getAccountHolderName(),
+                application.getBorrower().getReferencePersonName(),
+                application.getBorrower().getReferencePersonNumber(),
                 application.getSourceChannel(),
                 application.getStatus().name(),
                 application.getInvalidReasonCode() == null ? null : application.getInvalidReasonCode().name(),
@@ -88,7 +88,7 @@ public final class LspLoanApplicationResponses {
                 application.getBorrower().getMaritalStatus(),
                 application.getBorrower().getFatherName(),
                 maskAadharNumber(application.getBorrower().getAadharNumber()),
-                maskPanNumber(application.getBorrower().getPan()),
+                application.getBorrower().getPan(),
                 application.getLoanProduct().getId().toString(),
                 application.getLoanProduct().getCode(),
                 application.getLoanProduct().getName(),
@@ -107,18 +107,18 @@ public final class LspLoanApplicationResponses {
                 application.getBorrower().getSpouseName(),
                 application.getBorrower().getEmploymentType(),
                 application.getBorrower().getOrganizationName(),
-                maskOpaqueValue(application.getBorrower().getEmployeeId()),
+                application.getBorrower().getEmployeeId(),
                 application.getBorrower().getEmploymentCity(),
                 application.getBorrower().getEmploymentState(),
                 application.getBorrower().getEmploymentZip(),
                 application.getBorrower().getMonthlyIncome(),
                 application.getBorrower().getAnnualIncome(),
-                maskBankAccountNumber(application.getBorrower().getBankAccountNumber()),
+                application.getBorrower().getBankAccountNumber(),
                 application.getBorrower().getBankName(),
-                maskIfscCode(application.getBorrower().getIfscCode()),
-                maskOpaqueValue(application.getBorrower().getAccountHolderName()),
-                maskOpaqueValue(application.getBorrower().getReferencePersonName()),
-                maskOpaqueValue(application.getBorrower().getReferencePersonNumber()),
+                application.getBorrower().getIfscCode(),
+                application.getBorrower().getAccountHolderName(),
+                application.getBorrower().getReferencePersonName(),
+                application.getBorrower().getReferencePersonNumber(),
                 application.getSourceChannel(),
                 application.getStatus().name(),
                 application.getCreatedAt().toString()
@@ -179,31 +179,4 @@ public final class LspLoanApplicationResponses {
         return "XXXXXXXX" + value.substring(value.length() - 4);
     }
 
-    private static String maskPanNumber(String value) {
-        if (value == null || value.length() != 10) {
-            return value;
-        }
-        return value.substring(0, 2) + "XXXXX" + value.substring(value.length() - 3);
-    }
-
-    private static String maskBankAccountNumber(String value) {
-        if (value == null || value.length() < 4) {
-            return value;
-        }
-        return "XXXX" + value.substring(value.length() - 4);
-    }
-
-    private static String maskIfscCode(String value) {
-        if (value == null || value.length() < 4) {
-            return value;
-        }
-        return value.substring(0, 4) + "******";
-    }
-
-    private static String maskOpaqueValue(String value) {
-        if (value == null || value.isBlank()) {
-            return value;
-        }
-        return "***";
-    }
 }

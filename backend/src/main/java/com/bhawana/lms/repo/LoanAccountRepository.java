@@ -53,6 +53,16 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
 
     Optional<LoanAccount> findByLoanApplication_Id(UUID applicationId);
 
+    @Query("""
+            select account.loanApplication.id as applicationId,
+                   account.accountNumber as accountNumber
+            from LoanAccount account
+            where account.loanApplication.id in :applicationIds
+            """)
+    List<LoanAccountNumberProjection> findAccountNumbersByLoanApplicationIdIn(
+            @Param("applicationIds") Collection<UUID> applicationIds
+    );
+
     boolean existsByBorrower_IdAndStatusIn(UUID borrowerId, Collection<LoanAccountStatus> statuses);
 
     List<LoanAccount> findByBorrower_IdAndStatusIn(UUID borrowerId, Collection<LoanAccountStatus> statuses);
@@ -171,6 +181,12 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
         BigDecimal getTotalDisbursedAmount();
 
         Instant getLatestDisbursalAt();
+    }
+
+    interface LoanAccountNumberProjection {
+        UUID getApplicationId();
+
+        String getAccountNumber();
     }
 
     interface HomeDashboardAccountSnapshotProjection {

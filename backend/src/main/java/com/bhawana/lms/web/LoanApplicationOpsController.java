@@ -70,6 +70,8 @@ public class LoanApplicationOpsController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String sourceChannel,
             @RequestParam(required = false, name = "q") String query,
+            @RequestParam(required = false) String lspLoanId,
+            @RequestParam(required = false) String bhawLoanId,
             @RequestParam(required = false) LocalDate disbursalDateFrom,
             @RequestParam(required = false) LocalDate disbursalDateTo,
             @RequestParam(required = false) @Min(0) Integer offset,
@@ -83,15 +85,22 @@ public class LoanApplicationOpsController {
                 status,
                 sourceChannel,
                 query,
+                lspLoanId,
+                bhawLoanId,
                 disbursalDateFrom,
                 disbursalDateTo,
                 offset,
                 limit,
                 includePaginationDetails
         );
+        java.util.Map<UUID, String> accountNumbersByApplicationId = loanApplicationService
+                .getLoanAccountNumbers(applicationsPage.items().stream().map(LoanApplication::getId).toList());
         PagedResult<LoanApplicationResponse> page = new PagedResult<>(
                 applicationsPage.items().stream()
-                .map(LoanApplicationOpsResponses::toResponse)
+                .map(application -> LoanApplicationOpsResponses.toResponse(
+                        application,
+                        accountNumbersByApplicationId.get(application.getId())
+                ))
                 .toList(),
                 applicationsPage.totalCount(),
                 applicationsPage.offset(),
@@ -484,6 +493,7 @@ public class LoanApplicationOpsController {
             String productCode,
             String productName,
             String externalLoanId,
+            String accountNumber,
             String sourceChannel,
             BigDecimal requestedAmount,
             Integer tenureMonths,

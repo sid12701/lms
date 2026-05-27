@@ -314,6 +314,70 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
+    void opsUserCanFilterLoanApplicationsByDisbursedAfterDate() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        String marchApplicationId = createApplication(lsp.id(), product.id(), "EXT-MARCH-AFTER", "API", "ABCDE1234F")
+                .get("id").asText();
+        String aprilApplicationId = createApplication(lsp.id(), product.id(), "EXT-APRIL-AFTER", "API", "ZXCVB1234N")
+                .get("id").asText();
+
+        transitionApplication(marchApplicationId, "AWAITING_APPROVAL", "Started review");
+        markAllRequiredKycDocumentsVerified(marchApplicationId);
+        transitionApplication(marchApplicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
+        disburseLoan(marchApplicationId);
+        setDisbursedAt(marchApplicationId, LocalDate.of(2026, 3, 10));
+
+        transitionApplication(aprilApplicationId, "AWAITING_APPROVAL", "Started review");
+        markAllRequiredKycDocumentsVerified(aprilApplicationId);
+        transitionApplication(aprilApplicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
+        disburseLoan(aprilApplicationId);
+        setDisbursedAt(aprilApplicationId, LocalDate.of(2026, 4, 5));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("disbursalDateFrom", "2026-04-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].externalLoanId").value("EXT-APRIL-AFTER"));
+    }
+
+    @Test
+    void opsUserCanFilterLoanApplicationsByLspLoanIdAndBhawLoanId() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        String disbursedApplicationId = createApplication(lsp.id(), product.id(), "LSP-LOAN-9001", "API", "ABCDE1234F")
+                .get("id").asText();
+        createApplication(lsp.id(), product.id(), "LSP-LOAN-9002", "API", "ZXCVB1234N");
+
+        transitionApplication(disbursedApplicationId, "AWAITING_APPROVAL", "Started review");
+        markAllRequiredKycDocumentsVerified(disbursedApplicationId);
+        transitionApplication(disbursedApplicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
+        disburseLoan(disbursedApplicationId);
+        String accountNumber = accountNumberFor(disbursedApplicationId);
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("lspLoanId", "9001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].externalLoanId").value("LSP-LOAN-9001"))
+                .andExpect(jsonPath("$[0].accountNumber").value(accountNumber));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("bhawLoanId", accountNumber.substring(0, accountNumber.length() - 2)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(disbursedApplicationId))
+                .andExpect(jsonPath("$[0].accountNumber").value(accountNumber));
+    }
+
+    @Test
     void opsUserCanSearchLoanApplicationsByApplicationId() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
@@ -382,9 +446,9 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].actorUsername").value("ops.user"))
                 .andExpect(jsonPath("$[0].payloadJson", containsString("\"externalLoanId\":\"EXT-901\"")))
                 .andExpect(jsonPath("$[0].payloadJson", containsString("\"sourceChannel\":\"API\"")))
-                .andExpect(jsonPath("$[0].payloadJson", containsString("\"borrowerPan\":\"ABC*****4F\"")))
-                .andExpect(jsonPath("$[0].payloadJson", containsString("\"borrowerMobile\":\"******" + mobileForPan("ABCDE1234F").substring(6) + "\"")))
-                .andExpect(jsonPath("$[0].payloadJson", containsString("@example.com")));
+                .andExpect(jsonPath("$[0].payloadJson", containsString("\"borrowerPan\":\"ABCDE1234F\"")))
+                .andExpect(jsonPath("$[0].payloadJson", containsString("\"borrowerMobile\":\"" + mobileForPan("ABCDE1234F") + "\"")))
+                .andExpect(jsonPath("$[0].payloadJson", containsString("\"borrowerEmail\":\"anika+abcde1234f@example.com\"")));
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/document-access-audits", created.get("id").asText())
                         .with(opsUser()))
@@ -2103,6 +2167,14 @@ class LoanApplicationOpsControllerTest {
         jdbcTemplate.update(
                 "update loan_account set disbursed_at = ? where loan_application_id = ?",
                 Timestamp.from(OffsetDateTime.of(disbursedDate.atStartOfDay(), ZoneOffset.UTC).toInstant()),
+                UUID.fromString(applicationId)
+        );
+    }
+
+    private String accountNumberFor(String applicationId) {
+        return jdbcTemplate.queryForObject(
+                "select account_number from loan_account where loan_application_id = ?",
+                String.class,
                 UUID.fromString(applicationId)
         );
     }

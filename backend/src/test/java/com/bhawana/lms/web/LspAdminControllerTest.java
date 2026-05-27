@@ -119,10 +119,12 @@ class LspAdminControllerTest {
     @Test
     void opsUserCanReadLightweightLspOptions() throws Exception {
         String lspId = createLsp();
+        createLsp("INACTIVE");
 
         mockMvc.perform(get("/api/v1/internal/admin/lsp-options")
                         .with(opsUser()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].id").value(lspId))
                 .andExpect(jsonPath("$[0].code").exists())
                 .andExpect(jsonPath("$[0].name").value("North Finance"))
@@ -159,13 +161,17 @@ class LspAdminControllerTest {
     }
 
     private String createLsp() throws Exception {
+        return createLsp("ACTIVE");
+    }
+
+    private String createLsp(String status) throws Exception {
         MvcResult createResult = mockMvc.perform(post("/api/v1/internal/admin/lsps")
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", "NORTH-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
                                 "name", "North Finance",
-                                "status", "ACTIVE"
+                                "status", status
                         ))))
                 .andExpect(status().isOk())
                 .andReturn();

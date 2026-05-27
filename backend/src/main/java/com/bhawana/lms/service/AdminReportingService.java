@@ -371,7 +371,7 @@ public class AdminReportingService {
                 borrower.getAddressZipCode(),
                 borrower.getState(),
                 borrower.getIfscCode(),
-                maskBankAccount(borrower.getBankAccountNumber()),
+                borrower.getBankAccountNumber(),
                 borrower.getGender(),
                 maskAadhaar(borrower.getAadharNumber()),
                 borrower.getPan(),

@@ -43,6 +43,8 @@ public class LoanApplicationQueryService {
                 status,
                 sourceChannel,
                 query,
+                null,
+                null,
                 disbursalDateFrom,
                 disbursalDateTo,
                 null,
@@ -58,6 +60,8 @@ public class LoanApplicationQueryService {
             String status,
             String sourceChannel,
             String query,
+            String lspLoanId,
+            String bhawLoanId,
             LocalDate disbursalDateFrom,
             LocalDate disbursalDateTo,
             Integer offset,
@@ -67,6 +71,8 @@ public class LoanApplicationQueryService {
         validateDateRange(disbursalDateFrom, disbursalDateTo);
 
         String normalizedQuery = normalizeQuery(query);
+        String normalizedLspLoanId = normalizeQuery(lspLoanId);
+        String normalizedBhawLoanId = normalizeQuery(bhawLoanId);
         LoanApplicationStatus normalizedStatus = resolveStatus(status);
         if (status != null && normalizedStatus == null) {
             return new PagedResult<>(
@@ -95,6 +101,8 @@ public class LoanApplicationQueryService {
                 normalizeOptional(sourceChannel),
                 normalizedQuery,
                 parseApplicationId(normalizedQuery),
+                normalizedLspLoanId,
+                normalizedBhawLoanId,
                 disbursalFromInstant,
                 disbursalToInstant,
                 paginationRequested,
@@ -103,12 +111,14 @@ public class LoanApplicationQueryService {
                 includePaginationDetails
         );
         log.debug(
-                "loan_application_list_query completed lspId={} productId={} status={} sourceChannel={} queryPresent={} disbursalFrom={} disbursalTo={} offset={} limit={} paginationDetails={} resultCount={} durationMs={}",
+                "loan_application_list_query completed lspId={} productId={} status={} sourceChannel={} queryPresent={} lspLoanIdPresent={} bhawLoanIdPresent={} disbursalFrom={} disbursalTo={} offset={} limit={} paginationDetails={} resultCount={} durationMs={}",
                 lspId,
                 productId,
                 normalizedStatus,
                 normalizeOptional(sourceChannel),
                 normalizedQuery != null,
+                normalizedLspLoanId != null,
+                normalizedBhawLoanId != null,
                 disbursalDateFrom,
                 disbursalDateTo,
                 resolvedOffset,
@@ -151,6 +161,35 @@ public class LoanApplicationQueryService {
                 query,
                 null,
                 null,
+                offset,
+                limit,
+                includePaginationDetails
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<LoanApplication> listApplicationsPage(
+            UUID lspId,
+            UUID productId,
+            String status,
+            String sourceChannel,
+            String query,
+            LocalDate disbursalDateFrom,
+            LocalDate disbursalDateTo,
+            Integer offset,
+            Integer limit,
+            boolean includePaginationDetails
+    ) {
+        return listApplicationsPage(
+                lspId,
+                productId,
+                status,
+                sourceChannel,
+                query,
+                null,
+                null,
+                disbursalDateFrom,
+                disbursalDateTo,
                 offset,
                 limit,
                 includePaginationDetails
