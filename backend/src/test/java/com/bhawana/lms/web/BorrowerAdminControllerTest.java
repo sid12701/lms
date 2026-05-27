@@ -7,7 +7,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.domain.Borrower;
+import com.bhawana.lms.domain.Lsp;
+import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.LspRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -30,9 +33,13 @@ class BorrowerAdminControllerTest {
     @Autowired
     private BorrowerRepository borrowerRepository;
 
+    @Autowired
+    private LspRepository lspRepository;
+
     @BeforeEach
     void setUp() {
         borrowerRepository.deleteAllInBatch();
+        lspRepository.deleteAllInBatch();
     }
 
     @Test
@@ -147,6 +154,60 @@ class BorrowerAdminControllerTest {
     void listBorrowersRejectsUnauthorizedSessions() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/borrowers").with(lspUiRead()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listBorrowersExposesVisibleLspIdsPerBorrower() throws Exception {
+        Lsp apex = lspRepository.save(new Lsp("APEX-VIS", "Apex Visibility", LspStatus.ACTIVE));
+        Lsp north = lspRepository.save(new Lsp("NORTH-VIS", "Northbridge Visibility", LspStatus.ACTIVE));
+
+        Borrower anika = seedBorrower(
+                "Anika Sharma", "ABCDE1234F", "9999999991", "anika@example.com",
+                "Bengaluru", "Karnataka");
+        anika.grantVisibilityTo(apex);
+        anika.grantVisibilityTo(north);
+        borrowerRepository.save(anika);
+
+        Borrower rahul = seedBorrower(
+                "Rahul Shah", "ZXCVB1234N", "9876543210", "rahul@example.com",
+                "Delhi", "Delhi");
+        rahul.grantVisibilityTo(apex);
+        borrowerRepository.save(rahul);
+
+        mockMvc.perform(get("/api/v1/internal/admin/borrowers").with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[?(@.pan == 'ABCDE1234F')].visibleLspIds.length()").value(2))
+                .andExpect(jsonPath(
+                        "$[?(@.pan == 'ABCDE1234F')].visibleLspIds[?(@ == '" + apex.getId() + "')]")
+                        .isNotEmpty())
+                .andExpect(jsonPath(
+                        "$[?(@.pan == 'ABCDE1234F')].visibleLspIds[?(@ == '" + north.getId() + "')]")
+                        .isNotEmpty())
+                .andExpect(jsonPath("$[?(@.pan == 'ZXCVB1234N')].visibleLspIds.length()").value(1))
+                .andExpect(jsonPath(
+                        "$[?(@.pan == 'ZXCVB1234N')].visibleLspIds[?(@ == '" + apex.getId() + "')]")
+                        .isNotEmpty());
+    }
+
+    @Test
+    void getBorrowerDetailExposesVisibleLspIds() throws Exception {
+        Lsp apex = lspRepository.save(new Lsp("APEX-VIS-D", "Apex Visibility Detail", LspStatus.ACTIVE));
+        Lsp north = lspRepository.save(new Lsp("NORTH-VIS-D", "Northbridge Visibility Detail", LspStatus.ACTIVE));
+
+        Borrower borrower = seedBorrower(
+                "Anika Sharma", "ABCDE1234F", "9999999991", "anika@example.com",
+                "Bengaluru", "Karnataka");
+        borrower.grantVisibilityTo(apex);
+        borrower.grantVisibilityTo(north);
+        borrower = borrowerRepository.save(borrower);
+
+        mockMvc.perform(get("/api/v1/internal/admin/borrowers/" + borrower.getId()).with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pan").value("ABCDE1234F"))
+                .andExpect(jsonPath("$.visibleLspIds.length()").value(2))
+                .andExpect(jsonPath("$.visibleLspIds[?(@ == '" + apex.getId() + "')]").isNotEmpty())
+                .andExpect(jsonPath("$.visibleLspIds[?(@ == '" + north.getId() + "')]").isNotEmpty());
     }
 
     private Borrower seedBorrower(
