@@ -119,12 +119,24 @@ export function LoanApplicationsTable({
       },
       {
         accessorKey: "externalLoanId",
-        meta: { label: "External ID" },
+        meta: { label: "LSP Loan ID" },
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="External ID" />
+          <DataTableColumnHeader column={column} title="LSP Loan ID" />
         ),
         cell: ({ row }) =>
           row.original.externalLoanId ?? (
+            <span className="text-foreground-muted">—</span>
+          ),
+        enableSorting: false,
+      },
+      {
+        accessorKey: "accountNumber",
+        meta: { label: "Bhaw Loan ID" },
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Bhaw Loan ID" />
+        ),
+        cell: ({ row }) =>
+          row.original.accountNumber ?? (
             <span className="text-foreground-muted">—</span>
           ),
         enableSorting: false,

@@ -20,6 +20,7 @@ import type {
 const ROW_A: LoanApplicationListItem = {
   id: "11111111-1111-4111-8111-111111111111",
   externalLoanId: "EXT-001",
+  accountNumber: "LMS-LN-111111111111",
   borrowerId: "22222222-2222-4222-8222-222222222222",
   borrowerNameMasked: "A•••a Devi",
   lspId: "33333333-3333-4333-8333-333333333333",
@@ -37,6 +38,7 @@ const ROW_B: LoanApplicationListItem = {
   ...ROW_A,
   id: "99999999-9999-4999-8999-999999999999",
   externalLoanId: null,
+  accountNumber: null,
   borrowerNameMasked: "B•••b Singh",
   requestedAmount: 75_000,
   status: "DISBURSED",
@@ -88,8 +90,11 @@ describe("LoanApplicationsTable", () => {
     expect(screen.getAllByRole("row")).toHaveLength(3);
     expect(screen.getByText(ROW_A.borrowerNameMasked)).toBeInTheDocument();
     expect(screen.getByText(ROW_B.borrowerNameMasked)).toBeInTheDocument();
-    // External ID fallback
-    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getByText("LSP Loan ID")).toBeInTheDocument();
+    expect(screen.getByText("Bhaw Loan ID")).toBeInTheDocument();
+    expect(screen.getByText("LMS-LN-111111111111")).toBeInTheDocument();
+    // Em-dash fallback appears for ROW_B's null LSP loan ID and Bhaw loan ID.
+    expect(screen.getAllByText("—")).toHaveLength(2);
     // Tenure formatting
     expect(screen.getAllByText("24 mo")).toHaveLength(2);
     // Short id with mono font
@@ -209,6 +214,6 @@ describe("LoanApplicationsTable", () => {
     expect(screen.getByText("Product")).toBeInTheDocument();
     // Two amount labels (header button + sort variant) — just check presence.
     const firstRow = screen.getAllByRole("row")[1]!;
-    expect(within(firstRow).getAllByRole("cell").length).toBe(9);
+    expect(within(firstRow).getAllByRole("cell").length).toBe(10);
   });
 });

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Eye, EyeOff, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/layout/PageHeader";
@@ -34,6 +34,8 @@ function maskName(name: string): string {
     .join(" ");
 }
 
+void maskName;
+
 /**
  * Detail-page header: eyebrow → masked borrower name (revealable) → status
  * badge → ActionBar. The ActionBar wires `onConfirm` to `useTransitionStatus`
@@ -45,7 +47,6 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
   const role = session?.user.role;
   const mutation = useTransitionStatus(detail.application.id);
   const disbursementMutation = useInitiateDisbursement(detail.application.id);
-  const [nameRevealed, setNameRevealed] = useState(false);
   const [escalateOpen, setEscalateOpen] = useState(false);
   const [escalateBusy, setEscalateBusy] = useState(false);
 
@@ -78,7 +79,6 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
   };
 
   const fullName = detail.borrower.fullName;
-  const displayName = nameRevealed ? fullName : maskName(fullName);
   const externalLabel = detail.application.externalLoanId ?? "—";
 
   const handleConfirm = async ({
@@ -118,26 +118,11 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
     <div data-slot="detail-header" className="flex flex-col gap-4">
       <PageHeader
         eyebrow={`Loan application · ${externalLabel}`}
-        title={displayName || "Borrower"}
+        title={fullName || "Borrower"}
         description={`Application ${detail.application.id}`}
         actions={
           <div className="flex items-center gap-2">
             <StatusBadge status={detail.application.status} />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setNameRevealed((prev) => !prev)}
-              aria-label={nameRevealed ? "Hide borrower name" : "Reveal borrower name"}
-              aria-pressed={nameRevealed}
-            >
-              {nameRevealed ? (
-                <EyeOff aria-hidden="true" className="size-4" />
-              ) : (
-                <Eye aria-hidden="true" className="size-4" />
-              )}
-              <span>{nameRevealed ? "Hide" : "Reveal"}</span>
-            </Button>
           </div>
         }
       />

@@ -11,7 +11,7 @@
  * lists in a follow-up without changing this component's contract.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Search, X } from "lucide-react";
+import { Calendar, Check, ChevronDown, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -162,6 +162,10 @@ function SingleSelect({
 
 function hasAnyFilter(filters: Partial<LoanApplicationListFilters>): boolean {
   if (filters.q && filters.q.trim() !== "") return true;
+  if (filters.lspLoanId && filters.lspLoanId.trim() !== "") return true;
+  if (filters.bhawLoanId && filters.bhawLoanId.trim() !== "") return true;
+  if (filters.disbursalDateFrom) return true;
+  if (filters.disbursalDateTo) return true;
   if (filters.status && filters.status.length > 0) return true;
   if (filters.lspId) return true;
   if (filters.productId) return true;
@@ -226,6 +230,10 @@ export function LoanApplicationsFilterBar({
     setSearch("");
     setFilters({
       q: undefined,
+      lspLoanId: undefined,
+      bhawLoanId: undefined,
+      disbursalDateFrom: undefined,
+      disbursalDateTo: undefined,
       status: undefined,
       lspId: undefined,
       productId: undefined,
@@ -256,9 +264,45 @@ export function LoanApplicationsFilterBar({
           data-slot="loan-applications-search"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search id, external id, or borrower"
+          placeholder="Search borrower, PAN, mobile, city"
           aria-label="Search loan applications"
           className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pl-7.5 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+        />
+      </label>
+
+      <label className="flex min-w-[150px] flex-col gap-1">
+        <span className="sr-only">LSP loan ID</span>
+        <input
+          type="search"
+          data-slot="loan-applications-lsp-loan-id-filter"
+          value={filters.lspLoanId ?? ""}
+          onChange={(event) =>
+            setFilters({
+              lspLoanId: event.target.value.trim() === "" ? undefined : event.target.value,
+              page: 0,
+            })
+          }
+          placeholder="LSP Loan ID"
+          aria-label="LSP loan ID"
+          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border px-2 text-sm outline-none focus-visible:ring-[3px]"
+        />
+      </label>
+
+      <label className="flex min-w-[150px] flex-col gap-1">
+        <span className="sr-only">Bhaw loan ID</span>
+        <input
+          type="search"
+          data-slot="loan-applications-bhaw-loan-id-filter"
+          value={filters.bhawLoanId ?? ""}
+          onChange={(event) =>
+            setFilters({
+              bhawLoanId: event.target.value.trim() === "" ? undefined : event.target.value,
+              page: 0,
+            })
+          }
+          placeholder="Bhaw Loan ID"
+          aria-label="Bhaw loan ID"
+          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border px-2 text-sm outline-none focus-visible:ring-[3px]"
         />
       </label>
 
@@ -277,6 +321,48 @@ export function LoanApplicationsFilterBar({
         options={lspOptions}
         testId="loan-applications-lsp-filter"
       />
+
+      <label className="relative">
+        <span className="sr-only">Disbursed from</span>
+        <Calendar
+          aria-hidden="true"
+          className="text-foreground-muted pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
+        />
+        <input
+          type="date"
+          data-slot="loan-applications-disbursed-from"
+          value={filters.disbursalDateFrom ?? ""}
+          onChange={(event) =>
+            setFilters({
+              disbursalDateFrom: event.target.value === "" ? undefined : event.target.value,
+              page: 0,
+            })
+          }
+          aria-label="Disbursed from"
+          className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-40 rounded-md border pl-8 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+        />
+      </label>
+
+      <label className="relative">
+        <span className="sr-only">Disbursed to</span>
+        <Calendar
+          aria-hidden="true"
+          className="text-foreground-muted pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
+        />
+        <input
+          type="date"
+          data-slot="loan-applications-disbursed-to"
+          value={filters.disbursalDateTo ?? ""}
+          onChange={(event) =>
+            setFilters({
+              disbursalDateTo: event.target.value === "" ? undefined : event.target.value,
+              page: 0,
+            })
+          }
+          aria-label="Disbursed to"
+          className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-40 rounded-md border pl-8 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+        />
+      </label>
 
       <SingleSelect
         value={filters.productId}

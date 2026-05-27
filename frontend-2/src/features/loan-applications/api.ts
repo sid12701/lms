@@ -105,6 +105,7 @@ interface BackendApplicationResponse {
   productCode: string;
   productName: string;
   externalLoanId: string | null;
+  accountNumber: string | null;
   sourceChannel: string | null;
   requestedAmount: number | null;
   tenureMonths: number | null;
@@ -123,6 +124,7 @@ function toListItem(payload: BackendApplicationResponse): LoanApplicationListIte
   return {
     id: payload.id,
     externalLoanId: payload.externalLoanId,
+    accountNumber: payload.accountNumber ?? null,
     borrowerId: payload.borrowerId,
     borrowerNameMasked: payload.borrowerFullName,
     lspId: payload.lspId,
@@ -150,6 +152,10 @@ export function backendQueryFromFilters(
     productId: filters.productId,
     status,
     q: filters.q,
+    lspLoanId: filters.lspLoanId,
+    bhawLoanId: filters.bhawLoanId,
+    disbursalDateFrom: filters.disbursalDateFrom,
+    disbursalDateTo: filters.disbursalDateTo,
     offset,
     limit: pageSize,
     paginationDetails: "ON",
@@ -159,6 +165,7 @@ export function backendQueryFromFilters(
 const FALLBACK_ITEM_SCHEMA = z.object({
   id: z.string().min(1),
   externalLoanId: z.string().nullable(),
+  accountNumber: z.string().nullable().optional(),
   borrowerId: z.string().min(1),
   borrowerNameMasked: z.string().min(1),
   lspId: z.string().min(1),
@@ -184,6 +191,10 @@ export const LoanApplicationListResponseSchema: z.ZodType<LoanApplicationListRes
 export function buildLoanApplicationsQuery(filters: LoanApplicationListFilters): string {
   const params = new URLSearchParams();
   if (filters.q && filters.q.trim() !== "") params.set("q", filters.q);
+  if (filters.lspLoanId && filters.lspLoanId.trim() !== "") params.set("lspLoanId", filters.lspLoanId);
+  if (filters.bhawLoanId && filters.bhawLoanId.trim() !== "") params.set("bhawLoanId", filters.bhawLoanId);
+  if (filters.disbursalDateFrom) params.set("disbursalDateFrom", filters.disbursalDateFrom);
+  if (filters.disbursalDateTo) params.set("disbursalDateTo", filters.disbursalDateTo);
   if (filters.status && filters.status.length > 0) {
     params.set("status", filters.status.join(","));
   }

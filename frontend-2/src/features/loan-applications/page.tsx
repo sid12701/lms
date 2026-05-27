@@ -14,16 +14,44 @@
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { useUrlFilters } from "@/lib/url-state";
+import { listLspOptions } from "@/features/lsps/options";
 import {
   LoanApplicationsFilterBar,
   LoanApplicationsTable,
 } from "./components";
 import { useLoanApplications } from "./hooks/useLoanApplications";
 import { LoanApplicationListFilters } from "./types";
+import { useEffect, useMemo, useState } from "react";
 
 export function LoanApplicationsPage() {
   const [filters, setFilters] = useUrlFilters(LoanApplicationListFilters);
   const query = useLoanApplications(filters);
+  const [lspOptions, setLspOptions] = useState<readonly { value: string; label: string }[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listLspOptions()
+      .then((rows) => {
+        if (cancelled) return;
+        setLspOptions(rows.map((row) => ({
+          value: row.id,
+          label: `${row.name} (${row.code})`,
+        })));
+      })
+      .catch(() => {
+        if (!cancelled) setLspOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const productOptions = useMemo(() => {
+    const rows = query.data?.items ?? [];
+    const byId = new Map<string, string>();
+    rows.forEach((row) => byId.set(row.productId, row.productName));
+    return Array.from(byId.entries()).map(([value, label]) => ({ value, label }));
+  }, [query.data?.items]);
 
   return (
     <div
@@ -37,7 +65,10 @@ export function LoanApplicationsPage() {
         description="Browse, filter, and act on every loan application across LSPs."
       />
 
-      <LoanApplicationsFilterBar />
+      <LoanApplicationsFilterBar
+        lspOptions={lspOptions}
+        productOptions={productOptions}
+      />
 
       {query.isError ? (
         <ErrorState

@@ -29,6 +29,7 @@ import type {
 const ROW: LoanApplicationListItem = {
   id: "11111111-1111-4111-8111-111111111111",
   externalLoanId: "EXT-001",
+  accountNumber: "LMS-LN-111111111111",
   borrowerId: "22222222-2222-4222-8222-222222222222",
   borrowerNameMasked: "A•••a Devi",
   lspId: "33333333-3333-4333-8333-333333333333",
@@ -77,6 +78,10 @@ describe("buildLoanApplicationsQuery", () => {
       q: "demo",
       lspId: "lsp-1",
       productId: "p-1",
+      lspLoanId: "LSP-42",
+      bhawLoanId: "LMS-LN-42",
+      disbursalDateFrom: "2026-04-01",
+      disbursalDateTo: "2026-04-30",
       page: 2,
       pageSize: 50,
       sortBy: "updatedAt",
@@ -86,6 +91,10 @@ describe("buildLoanApplicationsQuery", () => {
     expect(params.get("q")).toBe("demo");
     expect(params.get("lspId")).toBe("lsp-1");
     expect(params.get("productId")).toBe("p-1");
+    expect(params.get("lspLoanId")).toBe("LSP-42");
+    expect(params.get("bhawLoanId")).toBe("LMS-LN-42");
+    expect(params.get("disbursalDateFrom")).toBe("2026-04-01");
+    expect(params.get("disbursalDateTo")).toBe("2026-04-30");
     expect(params.get("page")).toBe("2");
     expect(params.get("pageSize")).toBe("50");
     expect(params.get("sortBy")).toBe("updatedAt");
@@ -127,7 +136,18 @@ describe("LoanApplicationListResponseSchema", () => {
 
 describe("fetchLoanApplications", () => {
   it("requests the backend pagination envelope with the enum value the API accepts", () => {
-    expect(backendQueryFromFilters({ page: 1, pageSize: 10 })).toMatchObject({
+    expect(backendQueryFromFilters({
+      page: 1,
+      pageSize: 10,
+      lspLoanId: "LSP-42",
+      bhawLoanId: "LMS-LN-42",
+      disbursalDateFrom: "2026-04-01",
+      disbursalDateTo: "2026-04-30",
+    })).toMatchObject({
+      lspLoanId: "LSP-42",
+      bhawLoanId: "LMS-LN-42",
+      disbursalDateFrom: "2026-04-01",
+      disbursalDateTo: "2026-04-30",
       offset: 10,
       limit: 10,
       paginationDetails: "ON",

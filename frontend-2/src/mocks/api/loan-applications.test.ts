@@ -197,11 +197,12 @@ describe("loan-applications.list — filtering and scoping", () => {
     }
   });
 
-  it("borrower name is masked on list rows (BR-7)", async () => {
+  it("borrower name is rendered unmasked on list rows (mask removed)", async () => {
     await auth.login({ username: "ops.admin", password: "any" });
     const res = await loanApplications.list({ pageSize: 5 });
     for (const item of res.items) {
-      expect(item.borrowerNameMasked).toMatch(/•/);
+      expect(item.borrowerNameMasked).not.toMatch(/•/);
+      expect(item.borrowerNameMasked.length).toBeGreaterThan(0);
     }
   });
 

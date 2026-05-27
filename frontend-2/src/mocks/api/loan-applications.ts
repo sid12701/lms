@@ -206,6 +206,10 @@ function getScheduleForAccount(
 
 const ListFiltersSchema = z.object({
   q: z.string().trim().min(1).max(120).optional(),
+  lspLoanId: z.string().trim().min(1).max(120).optional(),
+  bhawLoanId: z.string().trim().min(1).max(120).optional(),
+  disbursalDateFrom: IsoDate.optional(),
+  disbursalDateTo: IsoDate.optional(),
   status: z.array(LoanStatus).optional(),
   lspId: Uuid.optional(),
   productId: Uuid.optional(),
@@ -231,9 +235,11 @@ function projectListItem(db: MockDb, app: LoanApplication): LoanApplicationListI
   const borrower = db.borrowers.get(app.borrowerId);
   const lsp = db.lsps.get(app.lspId);
   const product = db.products.get(app.productId);
+  const account = getAccountForApplication(db, app.id);
   return {
     id: app.id,
     externalLoanId: app.externalLoanId,
+    accountNumber: account?.accountNumber ?? null,
     borrowerId: app.borrowerId,
     borrowerNameMasked: borrower ? maskBorrowerName(borrower.fullName) : "•••",
     lspId: app.lspId,
@@ -273,6 +279,30 @@ function listHandler(
       const borrower = db.borrowers.get(a.borrowerId);
       if (borrower && borrower.fullName.toLowerCase().includes(needle)) return true;
       return false;
+    });
+  }
+  if (filters.lspLoanId) {
+    const needle = filters.lspLoanId.toLowerCase();
+    rows = rows.filter((a) => a.externalLoanId?.toLowerCase().includes(needle) ?? false);
+  }
+  if (filters.bhawLoanId) {
+    const needle = filters.bhawLoanId.toLowerCase();
+    rows = rows.filter((a) => {
+      const account = getAccountForApplication(db, a.id);
+      return account?.accountNumber.toLowerCase().includes(needle) ?? false;
+    });
+  }
+  if (filters.disbursalDateFrom || filters.disbursalDateTo) {
+    rows = rows.filter((a) => {
+      const account = getAccountForApplication(db, a.id);
+      const disbursement = account
+        ? db.payments.find((payment) => payment.accountId === account.id && payment.installmentId === null)
+        : undefined;
+      const date = disbursement?.postedAt.slice(0, 10);
+      if (!date) return false;
+      if (filters.disbursalDateFrom && date < filters.disbursalDateFrom) return false;
+      if (filters.disbursalDateTo && date > filters.disbursalDateTo) return false;
+      return true;
     });
   }
   if (filters.status && filters.status.length > 0) {
@@ -1213,6 +1243,7 @@ const LoanApplicationSchema: z.ZodType<LoanApplication> = z.object({
 const ListItemSchema = z.object({
   id: z.string(),
   externalLoanId: z.string().nullable(),
+  accountNumber: z.string().nullable(),
   borrowerId: z.string(),
   borrowerNameMasked: z.string(),
   lspId: z.string(),

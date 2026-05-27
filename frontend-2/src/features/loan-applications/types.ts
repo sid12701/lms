@@ -35,8 +35,16 @@ import type { Borrower } from "@/schemas/borrower";
  * the full set when no filter is selected.
  */
 export const LoanApplicationListFilters = z.object({
-  /** Free-text search across application id, external loan id, borrower name. */
+  /** Free-text borrower/general search. Loan IDs have dedicated filters. */
   q: z.string().trim().min(1).max(120).optional(),
+  /** LSP-provided loan identifier, backed by the backend externalLoanId field. */
+  lspLoanId: z.string().trim().min(1).max(120).optional(),
+  /** Bhawana LMS loan account number, e.g. LMS-LN-... */
+  bhawLoanId: z.string().trim().min(1).max(120).optional(),
+  /** Inclusive disbursal date lower bound. */
+  disbursalDateFrom: z.string().trim().min(1).max(10).optional(),
+  /** Inclusive disbursal date upper bound. */
+  disbursalDateTo: z.string().trim().min(1).max(10).optional(),
   /** Multi-select of LoanStatus values, encoded as `?status=X,Y,Z`. */
   status: z.array(LoanStatus).optional(),
   /** Filter to one LSP. */
@@ -63,6 +71,7 @@ export type LoanApplicationListFilters = z.infer<typeof LoanApplicationListFilte
 export interface LoanApplicationListItem {
   id: string;
   externalLoanId: string | null;
+  accountNumber: string | null;
   borrowerId: string;
   /** Masked for the list surface (BR-7) — reveal lives on detail. */
   borrowerNameMasked: string;

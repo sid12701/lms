@@ -68,12 +68,16 @@ afterEach(() => {
 });
 
 describe("LoanApplicationsFilterBar", () => {
-  it("renders all four filter affordances", () => {
+  it("renders loan id, LSP, status, product, and disbursal filters", () => {
     vi.useRealTimers();
     renderBar();
     expect(
       screen.getByRole("searchbox", { name: /Search loan applications/i }),
     ).toBeInTheDocument();
+    expect(screen.getByLabelText(/LSP loan ID/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Bhaw loan ID/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Disbursed from/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Disbursed to/i)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /All statuses/i }),
     ).toBeInTheDocument();
@@ -173,6 +177,25 @@ describe("LoanApplicationsFilterBar", () => {
     await user.click(option);
     await waitFor(() => {
       expect(latestSearch()).toContain("lspId=lsp-1");
+    });
+  }, 15000);
+
+  it("emits separate loan ID and disbursal date filters into the URL", async () => {
+    vi.useRealTimers();
+    const user = userEvent.setup();
+    const { latestSearch } = renderBar();
+
+    await user.type(screen.getByLabelText(/LSP loan ID/i), "LSP-9001");
+    await user.type(screen.getByLabelText(/Bhaw loan ID/i), "LMS-LN-9001");
+    await user.type(screen.getByLabelText(/Disbursed from/i), "2026-04-01");
+    await user.type(screen.getByLabelText(/Disbursed to/i), "2026-04-30");
+
+    await waitFor(() => {
+      const s = latestSearch();
+      expect(s).toContain("lspLoanId=LSP-9001");
+      expect(s).toContain("bhawLoanId=LMS-LN-9001");
+      expect(s).toContain("disbursalDateFrom=2026-04-01");
+      expect(s).toContain("disbursalDateTo=2026-04-30");
     });
   }, 15000);
 
