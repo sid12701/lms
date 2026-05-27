@@ -1,0 +1,13 @@
+-- F-13: Drop the deprecated assignment-event index.
+--
+-- V53 retired the ops assignment queue: loan_application_assignment_event
+-- is kept on disk for forensic continuity only, and application code no
+-- longer writes to it (no live `INSERT INTO loan_application_assignment_event`
+-- anywhere in main sources; the JPA entity exists only to support legacy
+-- forensic reads). The (loan_application_id, created_at DESC) composite
+-- introduced in V11 therefore costs write amplification on every event
+-- that *would* land here, with zero read benefit on the read paths that
+-- still survive. See docs/database-sql-review.md F-13 / issue #32.
+--
+-- Table and columns remain in place for forensic reads.
+DROP INDEX IF EXISTS idx_loan_application_assignment_event_application_created_at;
