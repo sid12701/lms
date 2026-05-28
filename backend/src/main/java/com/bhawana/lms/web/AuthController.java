@@ -129,7 +129,7 @@ public class AuthController {
             Authentication authentication,
             @Valid @RequestBody ChangePasswordRequest request
     ) {
-        AppUser user = appUserRepository.findByUsernameIgnoreCase(authentication.getName())
+        AppUser user = appUserRepository.findByUsername(authentication.getName())
                 .orElseThrow(() -> new IllegalArgumentException("Password changes are only supported for managed users."));
 
         if (!user.isPasswordChangeRequired()) {
@@ -223,7 +223,7 @@ public class AuthController {
     }
 
     private List<String> loadRolesForUsername(String username) {
-        return appUserRepository.findByUsernameIgnoreCase(username)
+        return appUserRepository.findByUsername(username)
                 .map(user -> user.getRoles().stream()
                         .map(role -> role.getCode().name())
                         .toList())
@@ -346,7 +346,7 @@ public class AuthController {
     }
 
     private ManagedUserState loadManagedUserState(String username) {
-        return appUserRepository.findByUsernameIgnoreCase(username)
+        return appUserRepository.findByUsername(username)
                 .map(user -> new ManagedUserState(
                         user.isPasswordChangeRequired(),
                         user.getPasswordChangedAt(),
@@ -355,7 +355,7 @@ public class AuthController {
     }
 
     private Map<String, Object> loadManagedUserClaims(String username) {
-        return appUserRepository.findByUsernameIgnoreCase(username)
+        return appUserRepository.findByUsername(username)
                 .map(user -> {
                     Map<String, Object> claims = new LinkedHashMap<>();
                     if (user.getLsp() != null) {

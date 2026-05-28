@@ -135,7 +135,7 @@ public class LocalDemoPortfolioSeedService {
             UUID lspId,
             Set<RoleCode> roleCodes
     ) {
-        if (appUserRepository.existsByUsernameIgnoreCase(username)) {
+        if (appUserRepository.existsByUsername(username)) {
             return;
         }
         adminDirectoryService.createUser(username, email, password, status, lspId, roleCodes);

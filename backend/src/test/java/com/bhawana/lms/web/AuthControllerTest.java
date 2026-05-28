@@ -137,7 +137,7 @@ class AuthControllerTest {
 
         String accessToken = objectMapper.readTree(result.getResponse().getContentAsString()).get("accessToken").asText();
 
-        AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
+        AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
         mockMvc.perform(get("/api/v1/internal/system/context")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
@@ -186,7 +186,7 @@ class AuthControllerTest {
 
     @Test
     void managedUserPasswordResetAllowsNewLogin() throws Exception {
-        AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
+        AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
         String oldPasswordHash = managedUser.getPasswordHash();
 
         AdminDirectoryService.ResetPasswordResult resetResult = adminDirectoryService.resetUserPassword(managedUser.getId());
@@ -205,7 +205,7 @@ class AuthControllerTest {
 
     @Test
     void managedUserMustChangePasswordAfterAdminReset() throws Exception {
-        AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
+        AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
         AdminDirectoryService.ResetPasswordResult resetResult = adminDirectoryService.resetUserPassword(managedUser.getId());
 
         MvcResult resetLoginResult = mockMvc.perform(post("/api/v1/auth/login")

@@ -231,10 +231,10 @@ public class AdminDirectoryService {
             UUID lspId,
             Set<RoleCode> roleCodes
     ) {
-        if (appUserRepository.existsByUsernameIgnoreCase(username)) {
+        if (appUserRepository.existsByUsername(username)) {
             throw new IllegalArgumentException("Username already exists: " + username);
         }
-        if (appUserRepository.existsByEmailIgnoreCase(email)) {
+        if (appUserRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("Email already exists: " + email);
         }
 
@@ -249,8 +249,10 @@ public class AdminDirectoryService {
                     .orElseThrow(() -> new IllegalArgumentException("Unknown LSP id: " + lspId));
         }
 
+        // F-11: canonicalise username + email to lowercase so the unique indexes
+        // can satisfy the new raw-equality lookups in AppUserRepository.
         AppUser user = new AppUser(
-                username.trim(),
+                username.trim().toLowerCase(),
                 email.trim().toLowerCase(),
                 passwordEncoder.encode(rawPassword),
                 status,
@@ -282,7 +284,7 @@ public class AdminDirectoryService {
 
         String resolvedEmail = email == null ? user.getEmail() : email.trim().toLowerCase();
         if (!resolvedEmail.equalsIgnoreCase(user.getEmail())
-                && appUserRepository.existsByEmailIgnoreCaseAndIdNot(resolvedEmail, userId)) {
+                && appUserRepository.existsByEmailAndIdNot(resolvedEmail, userId)) {
             throw new IllegalArgumentException("Email already exists: " + resolvedEmail);
         }
 

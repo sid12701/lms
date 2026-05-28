@@ -56,9 +56,11 @@ public class LocalBootstrapAdminSyncService implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        String username = securityProperties.getBootstrapUser().getUsername().trim();
+        // F-11: bootstrap username and derived email canonicalised to lowercase
+        // so the unique indexes can satisfy the new raw-equality lookups.
+        String username = securityProperties.getBootstrapUser().getUsername().trim().toLowerCase();
         String rawPassword = securityProperties.getBootstrapUser().getPassword();
-        String email = username + "@bhawana.local";
+        String email = (username + "@bhawana.local").toLowerCase();
         Set<RoleCode> roleCodes = securityProperties.getBootstrapUser().getRoles().stream()
                 .map(this::toRoleCode)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
@@ -69,7 +71,7 @@ public class LocalBootstrapAdminSyncService implements ApplicationRunner {
             throw new IllegalStateException("Bootstrap user roles are not fully available.");
         }
 
-        appUserRepository.findByUsernameIgnoreCase(username)
+        appUserRepository.findByUsername(username)
                 .ifPresentOrElse(existingUser -> {
                     boolean passwordChanged = !passwordEncoder.matches(rawPassword, existingUser.getPasswordHash());
                     String newPasswordHash = passwordChanged ? passwordEncoder.encode(rawPassword) : null;
