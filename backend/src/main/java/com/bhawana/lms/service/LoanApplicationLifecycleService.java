@@ -708,7 +708,7 @@ public class LoanApplicationLifecycleService {
         String normalizedAadhar = normalizeAadhar(command.aadharNumber());
         String normalizedFullName = normalizeFullName(command.fullName());
 
-        Borrower borrowerByPan = borrowerRepository.findByPanIgnoreCase(normalizedPan).orElse(null);
+        Borrower borrowerByPan = borrowerRepository.findByPan(normalizedPan).orElse(null);
         Borrower borrowerByMobile = borrowerRepository.findTop10ByMobileOrderByUpdatedAtDesc(normalizedMobile)
                 .stream()
                 .findFirst()

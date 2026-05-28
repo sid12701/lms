@@ -158,7 +158,7 @@ public class ReportRequestService {
         if (recipientEmail != null && !recipientEmail.isBlank()) {
             return recipientEmail.trim();
         }
-        return appUserRepository.findByUsernameIgnoreCase(requestedByUsername)
+        return appUserRepository.findByUsername(requestedByUsername)
                 .map(appUser -> appUser.getEmail() == null ? null : appUser.getEmail().trim())
                 .filter(email -> !email.isBlank())
                 .orElse(null);

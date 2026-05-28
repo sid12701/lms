@@ -29,7 +29,7 @@ public class ApiClientAuthenticationService {
         String normalizedClientId = requireField(clientId, "clientId");
         String normalizedClientSecret = requireField(clientSecret, "clientSecret");
 
-        ApiClient apiClient = apiClientRepository.findByClientIdIgnoreCase(normalizedClientId)
+        ApiClient apiClient = apiClientRepository.findByClientId(normalizedClientId)
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
 
         if (apiClient.getStatus() != ApiClientStatus.ACTIVE) {
@@ -54,7 +54,7 @@ public class ApiClientAuthenticationService {
 
     @Transactional(readOnly = true)
     public AuthenticatedApiClient lookupByClientId(String clientId) {
-        ApiClient apiClient = apiClientRepository.findByClientIdIgnoreCase(clientId)
+        ApiClient apiClient = apiClientRepository.findByClientId(clientId)
                 .orElseThrow(() -> new BadCredentialsException("Unknown API client: " + clientId));
         return new AuthenticatedApiClient(
                 apiClient.getClientId(),

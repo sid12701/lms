@@ -17,8 +17,14 @@ public interface BorrowerRepository extends JpaRepository<Borrower, UUID> {
     @EntityGraph(attributePaths = "visibleLspIds")
     Optional<Borrower> findById(UUID id);
 
+    /**
+     * Raw equality on `pan`: borrower.pan is normalised to upper-case at write
+     * time (Borrower constructor), so the unique index `uk_borrower_pan` can
+     * satisfy this lookup. F-11: removed the previous IgnoreCase variant that
+     * forced a sequential scan.
+     */
     @EntityGraph(attributePaths = "visibleLspIds")
-    Optional<Borrower> findByPanIgnoreCase(String pan);
+    Optional<Borrower> findByPan(String pan);
 
     List<Borrower> findTop10ByMobileOrderByUpdatedAtDesc(String mobile);
 

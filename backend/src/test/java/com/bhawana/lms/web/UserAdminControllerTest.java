@@ -78,7 +78,7 @@ class UserAdminControllerTest {
 
     @Test
     void systemAdminCanResetManagedUserPassword() throws Exception {
-        AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
+        AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
         String oldPasswordHash = managedUser.getPasswordHash();
 
         MvcResult resetResult = mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/reset-password", managedUser.getId())
@@ -107,7 +107,7 @@ class UserAdminControllerTest {
 
     @Test
     void systemAdminCanUpdateManagedUserEmail() throws Exception {
-        AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
+        AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
 
         mockMvc.perform(put("/api/v1/internal/admin/users/{userId}", managedUser.getId())
                         .with(systemAdmin())
@@ -125,7 +125,7 @@ class UserAdminControllerTest {
 
     @Test
     void roleChangeInvalidatesExistingAccessToken() throws Exception {
-        AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
+        AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
         String accessToken = loginAccessToken("test.user", "TestPassword123!");
 
         AppRole productAdminRole = appRoleRepository.findByCodeIn(List.of(RoleCode.PRODUCT_ADMIN)).stream()
@@ -195,11 +195,48 @@ class UserAdminControllerTest {
 
     @Test
     void nonSystemAdminCannotResetManagedUserPassword() throws Exception {
-        AppUser managedUser = appUserRepository.findByUsernameIgnoreCase("test.user").orElseThrow();
+        AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
 
         mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/reset-password", managedUser.getId())
                         .with(opsUser()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void createUserCanonicalisesMixedCaseUsernameAndEmailToLowercase() throws Exception {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("username", "Mixed.Case.User");
+        body.put("email", "Mixed.Case@Example.COM");
+        body.put("password", "TempPassword123!");
+        body.set("roles", objectMapper.createArrayNode().add("OPS_USER"));
+
+        mockMvc.perform(post("/api/v1/internal/admin/users")
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("mixed.case.user"))
+                .andExpect(jsonPath("$.email").value("mixed.case@example.com"));
+
+        AppUser stored = appUserRepository.findByUsername("MIXED.CASE.USER").orElseThrow();
+        assertEquals("mixed.case.user", stored.getUsername());
+        assertEquals("mixed.case@example.com", stored.getEmail());
+    }
+
+    @Test
+    void createUserRejectsDuplicateMixedCaseEmail() throws Exception {
+        // setUp() already seeded test.user@bhawana.local in lowercase.
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("username", "Different.User");
+        body.put("email", "TEST.USER@bhawana.LOCAL");  // different case, same canonical email
+        body.put("password", "TempPassword123!");
+        body.set("roles", objectMapper.createArrayNode().add("OPS_USER"));
+
+        mockMvc.perform(post("/api/v1/internal/admin/users")
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.toString()))
+                .andExpect(status().isBadRequest());
     }
 
     private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor systemAdmin() {

@@ -44,7 +44,7 @@ public class SystemController {
             lspName = jwt.getClaimAsString("lspName");
         }
 
-        UUID userId = appUserRepository.findByUsernameIgnoreCase(authentication.getName())
+        UUID userId = appUserRepository.findByUsername(authentication.getName())
                 .map(AppUser::getId)
                 .orElseGet(() -> deterministicBootstrapId(authentication.getName()));
 

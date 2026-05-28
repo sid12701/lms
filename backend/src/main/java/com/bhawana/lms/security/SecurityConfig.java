@@ -76,7 +76,7 @@ public class SecurityConfig {
         UserDetails bootstrapUserDetails = bootstrapUserDetails(bootstrapUser, passwordEncoder);
 
         return username -> {
-            return appUserRepository.findByUsernameIgnoreCase(username)
+            return appUserRepository.findByUsername(username)
                     .map(SecurityConfig::appUserDetails)
                     .orElseGet(() -> {
                         if (bootstrapUser.getUsername().equalsIgnoreCase(username)) {
@@ -239,7 +239,7 @@ public class SecurityConfig {
                 return OAuth2TokenValidatorResult.success();
             }
 
-            return appUserRepository.findByUsernameIgnoreCase(username)
+            return appUserRepository.findByUsername(username)
                     .map(appUser -> {
                         Long tokenPasswordVersion = jwt.getClaim("pwdv");
                         long currentPasswordVersion = appUser.getPasswordChangedAt().toEpochMilli();
@@ -280,7 +280,7 @@ public class SecurityConfig {
                         .toList());
             }
 
-            appUserRepository.findByUsernameIgnoreCase(jwt.getSubject())
+            appUserRepository.findByUsername(jwt.getSubject())
                     .filter(AppUser::isPasswordChangeRequired)
                     .ifPresent(appUser -> authorities.add(new SimpleGrantedAuthority("ROLE_PASSWORD_CHANGE_REQUIRED")));
 

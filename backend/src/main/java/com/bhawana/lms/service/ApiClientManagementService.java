@@ -68,7 +68,7 @@ public class ApiClientManagementService {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown LSP id: " + lspId));
 
         String clientId = generateClientId();
-        while (apiClientRepository.existsByClientIdIgnoreCase(clientId)) {
+        while (apiClientRepository.existsByClientId(clientId)) {
             clientId = generateClientId();
         }
 

@@ -12,16 +12,28 @@ import org.springframework.data.repository.query.Param;
 
 public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
 
-    boolean existsByUsernameIgnoreCase(String username);
+    /**
+     * F-11: username and email are canonicalised to lowercase at write time
+     * (AdminDirectoryService#createUser, LocalBootstrapAdminSyncService,
+     * V67 migration). Using LOWER(:param) lets Postgres treat the predicate
+     * as `WHERE col = <constant>` so the unique B-tree index can satisfy
+     * the lookup. The previous IgnoreCase variants applied UPPER(...) to the
+     * column itself and forced a sequential scan.
+     */
+    @Query("select (count(u) > 0) from AppUser u where u.username = lower(:username)")
+    boolean existsByUsername(@Param("username") String username);
 
-    boolean existsByEmailIgnoreCase(String email);
+    @Query("select (count(u) > 0) from AppUser u where u.email = lower(:email)")
+    boolean existsByEmail(@Param("email") String email);
 
-    boolean existsByEmailIgnoreCaseAndIdNot(String email, UUID id);
+    @Query("select (count(u) > 0) from AppUser u where u.email = lower(:email) and u.id <> :id")
+    boolean existsByEmailAndIdNot(@Param("email") String email, @Param("id") UUID id);
 
     @EntityGraph(attributePaths = {"lsp", "roles"})
     Optional<AppUser> findDetailedById(UUID id);
 
-    Optional<AppUser> findByUsernameIgnoreCase(String username);
+    @Query("select u from AppUser u where u.username = lower(:username)")
+    Optional<AppUser> findByUsername(@Param("username") String username);
 
     @Query("""
             select count(distinct u)
