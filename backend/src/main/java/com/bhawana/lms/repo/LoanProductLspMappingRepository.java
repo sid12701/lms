@@ -5,7 +5,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface LoanProductLspMappingRepository extends JpaRepository<LoanProductLspMapping, UUID> {
 
@@ -13,7 +15,9 @@ public interface LoanProductLspMappingRepository extends JpaRepository<LoanProdu
 
     List<LoanProductLspMapping> findAllByLsp_IdAndEnabledTrue(UUID lspId);
 
-    long deleteByLoanProduct_Id(UUID loanProductId);
+    @Modifying(clearAutomatically = true)
+    @Query("delete from LoanProductLspMapping m where m.loanProduct.id = :loanProductId")
+    long deleteByLoanProductId(@Param("loanProductId") UUID loanProductId);
 
     Optional<LoanProductLspMapping> findByLsp_IdAndLoanProduct_Id(UUID lspId, UUID loanProductId);
 
