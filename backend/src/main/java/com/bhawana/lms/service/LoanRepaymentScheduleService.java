@@ -39,7 +39,7 @@ public class LoanRepaymentScheduleService {
     public List<LoanRepaymentScheduleInstallment> replaceWithGeneratedScheduleForLsp(UUID lspId, UUID applicationId) {
         LoanAccount loanAccount = getMutableLoanAccountForLsp(lspId, applicationId);
         List<LoanRepaymentScheduleInstallment> generated = buildGeneratedInstallments(loanAccount);
-        loanRepaymentScheduleInstallmentRepository.deleteByLoanAccount_Id(loanAccount.getId());
+        loanRepaymentScheduleInstallmentRepository.deleteByLoanAccountId(loanAccount.getId());
         loanRepaymentScheduleInstallmentRepository.flush();
         return loanRepaymentScheduleInstallmentRepository.saveAll(generated);
     }
@@ -52,7 +52,7 @@ public class LoanRepaymentScheduleService {
     ) {
         LoanAccount loanAccount = getMutableLoanAccountForLsp(lspId, applicationId);
         validateProvidedInstallments(loanAccount, installments);
-        loanRepaymentScheduleInstallmentRepository.deleteByLoanAccount_Id(loanAccount.getId());
+        loanRepaymentScheduleInstallmentRepository.deleteByLoanAccountId(loanAccount.getId());
         loanRepaymentScheduleInstallmentRepository.flush();
         return loanRepaymentScheduleInstallmentRepository.saveAll(installments.stream()
                 .map(draft -> new LoanRepaymentScheduleInstallment(

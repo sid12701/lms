@@ -217,7 +217,7 @@ public class ProductConfigurationService {
             throw new IllegalArgumentException("One or more requested LSP ids are not available.");
         }
 
-        loanProductLspMappingRepository.deleteByLoanProduct_Id(productId);
+        loanProductLspMappingRepository.deleteByLoanProductId(productId);
         List<LoanProductLspMapping> mappings = lsps.stream()
                 .map(lsp -> new LoanProductLspMapping(product, lsp, true))
                 .toList();

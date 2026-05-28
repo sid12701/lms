@@ -5,6 +5,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface LoanRepaymentScheduleInstallmentRepository extends JpaRepository<LoanRepaymentScheduleInstallment, UUID> {
 
@@ -17,5 +20,7 @@ public interface LoanRepaymentScheduleInstallmentRepository extends JpaRepositor
             int installmentNumber
     );
 
-    long deleteByLoanAccount_Id(UUID loanAccountId);
+    @Modifying(clearAutomatically = true)
+    @Query("delete from LoanRepaymentScheduleInstallment i where i.loanAccount.id = :loanAccountId")
+    long deleteByLoanAccountId(@Param("loanAccountId") UUID loanAccountId);
 }
