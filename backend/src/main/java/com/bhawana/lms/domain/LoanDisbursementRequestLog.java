@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -12,6 +13,8 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "loan_disbursement_request_log")
@@ -39,11 +42,13 @@ public class LoanDisbursementRequestLog {
     @Column(name = "provider_status", nullable = false, length = 64)
     private String providerStatus;
 
-    @Column(name = "request_payload_json", nullable = false, columnDefinition = "TEXT")
-    private String requestPayloadJson;
+    @Column(name = "request_payload_json", nullable = false, columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private JsonNode requestPayloadJson;
 
-    @Column(name = "response_payload_json", nullable = false, columnDefinition = "TEXT")
-    private String responsePayloadJson;
+    @Column(name = "response_payload_json", nullable = false, columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private JsonNode responsePayloadJson;
 
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
@@ -75,8 +80,8 @@ public class LoanDisbursementRequestLog {
         this.providerName = providerName;
         this.providerRequestId = providerRequestId;
         this.providerStatus = providerStatus;
-        this.requestPayloadJson = requestPayloadJson;
-        this.responsePayloadJson = responsePayloadJson;
+        this.requestPayloadJson = JsonPayloads.requiredObject(requestPayloadJson, "requestPayloadJson");
+        this.responsePayloadJson = JsonPayloads.requiredObject(responsePayloadJson, "responsePayloadJson");
         this.correlationId = correlationId;
     }
 
@@ -121,11 +126,11 @@ public class LoanDisbursementRequestLog {
     }
 
     public String getRequestPayloadJson() {
-        return requestPayloadJson;
+        return JsonPayloads.asString(requestPayloadJson);
     }
 
     public String getResponsePayloadJson() {
-        return responsePayloadJson;
+        return JsonPayloads.asString(responsePayloadJson);
     }
 
     public String getCorrelationId() {
@@ -142,6 +147,6 @@ public class LoanDisbursementRequestLog {
 
     public void updateOutcome(String providerStatus, String responsePayloadJson) {
         this.providerStatus = providerStatus;
-        this.responsePayloadJson = responsePayloadJson;
+        this.responsePayloadJson = JsonPayloads.requiredObject(responsePayloadJson, "responsePayloadJson");
     }
 }

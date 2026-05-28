@@ -102,7 +102,7 @@ class WebhookEventOutboxLoanApplicationFkTest extends PostgresDataJpaTestSupport
                 "INSERT INTO webhook_event_outbox (id, lsp_id, event_type, aggregate_type, aggregate_id, "
                         + "loan_application_id, status, payload_json, correlation_id, attempt_count, entity_version, "
                         + "created_at, updated_at) "
-                        + "VALUES (?, ?, 'LOAN_CREATED', 'LOAN_APPLICATION', ?, ?, 'PENDING', '{}', ?, 0, 0, NOW(), NOW())",
+                        + "VALUES (?, ?, 'LOAN_CREATED', 'LOAN_APPLICATION', ?, ?, 'PENDING', '{}'::jsonb, ?, 0, 0, NOW(), NOW())",
                 UUID.randomUUID(),
                 lspId,
                 UUID.randomUUID().toString(),

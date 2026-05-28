@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -12,6 +13,8 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "loan_application_status_transition")
@@ -45,8 +48,9 @@ public class LoanApplicationStatusTransition {
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
 
-    @Column(name = "rejection_reason_json", columnDefinition = "TEXT")
-    private String rejectionReasonJson;
+    @Column(name = "rejection_reason_json", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private JsonNode rejectionReasonJson;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -84,7 +88,7 @@ public class LoanApplicationStatusTransition {
         this.note = note;
         this.reasonCode = reasonCode;
         this.correlationId = correlationId;
-        this.rejectionReasonJson = rejectionReasonJson;
+        this.rejectionReasonJson = JsonPayloads.optionalObject(rejectionReasonJson, "rejectionReasonJson");
     }
 
     @PrePersist
@@ -125,7 +129,7 @@ public class LoanApplicationStatusTransition {
     }
 
     public String getRejectionReasonJson() {
-        return rejectionReasonJson;
+        return JsonPayloads.asString(rejectionReasonJson);
     }
 
     public Instant getCreatedAt() {

@@ -138,6 +138,7 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
 
     @BeforeEach
     void setUp() {
+        jdbcTemplate.execute("delete from report_request");
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
@@ -160,6 +161,25 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
         loanProductLspMappingRepository.deleteAllInBatch();
         loanProductRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
+    }
+
+    @Test
+    void tenantConnectionOnlyReadsOwnReportRequestsEvenWithoutWhereClause() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        LspFixture north = createLsp("ACTIVE");
+
+        UUID apexRequestId = UUID.randomUUID();
+        UUID northRequestId = UUID.randomUUID();
+        UUID globalRequestId = UUID.randomUUID();
+        createReportRequest(apexRequestId, UUID.fromString(apex.id()), "apex.reports");
+        createReportRequest(northRequestId, UUID.fromString(north.id()), "north.reports");
+        createReportRequest(globalRequestId, null, "ops.reports");
+
+        assertEquals(3, queryCountAsAdmin("report_request"));
+        org.assertj.core.api.Assertions.assertThat(queryReportRequestIdsAsTenant(UUID.fromString(apex.id())))
+                .containsExactly(apexRequestId);
+        org.assertj.core.api.Assertions.assertThat(queryReportRequestIdsAsTenant(UUID.fromString(north.id())))
+                .containsExactly(northRequestId);
     }
 
     @Test
@@ -269,8 +289,36 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
         }
     }
 
+    private List<UUID> queryReportRequestIdsAsTenant(UUID lspId) {
+        TenantDataAccessContextHolder.useTenant(lspId);
+        try {
+            return transactionTemplate().execute(status ->
+                    jdbcTemplate.queryForList("select id from report_request order by created_at", UUID.class)
+            );
+        } finally {
+            TenantDataAccessContextHolder.clear();
+        }
+    }
+
     private TransactionTemplate transactionTemplate() {
         return new TransactionTemplate(transactionManager);
+    }
+
+    private void createReportRequest(UUID requestId, UUID lspId, String requestedByUsername) {
+        jdbcTemplate.update("""
+                        insert into report_request (
+                            id,
+                            report_type,
+                            status,
+                            lsp_id,
+                            requested_by_username
+                        )
+                        values (?, 'PORTFOLIO_MIS', 'PENDING', ?, ?)
+                        """,
+                requestId,
+                lspId,
+                requestedByUsername
+        );
     }
 
     private JsonNode createExternalApplication(
