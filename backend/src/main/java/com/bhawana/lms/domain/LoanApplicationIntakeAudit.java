@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -10,6 +11,8 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "loan_application_intake_audit")
@@ -28,8 +31,9 @@ public class LoanApplicationIntakeAudit {
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
 
-    @Column(name = "payload_json", nullable = false, columnDefinition = "TEXT")
-    private String payloadJson;
+    @Column(name = "payload_json", nullable = false, columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private JsonNode payloadJson;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -47,7 +51,7 @@ public class LoanApplicationIntakeAudit {
         this.loanApplication = loanApplication;
         this.actorUsername = actorUsername;
         this.correlationId = correlationId;
-        this.payloadJson = payloadJson;
+        this.payloadJson = JsonPayloads.requiredObject(payloadJson, "payloadJson");
     }
 
     @PrePersist
@@ -72,7 +76,7 @@ public class LoanApplicationIntakeAudit {
     }
 
     public String getPayloadJson() {
-        return payloadJson;
+        return JsonPayloads.asString(payloadJson);
     }
 
     public Instant getCreatedAt() {

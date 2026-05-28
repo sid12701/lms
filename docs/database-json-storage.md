@@ -1,0 +1,16 @@
+# Database JSON Storage
+
+This note records where the LMS stores JSON-shaped data, where each payload comes from, and whether JSON is the right storage shape or mainly a convenience from the original implementation.
+
+| Place | What stores it | Source | Necessary as JSON? | Reason |
+|---|---|---|---|---|
+| `webhook_event_outbox.payload_json` | Webhook event envelope and payload | `WebhookOutboxService` | Yes | This is the actual webhook body delivered to partners. JSON is the correct shape because downstream receivers consume it as structured JSON. |
+| `loan_application_intake_audit.payload_json` | Snapshot of loan intake/application/borrower fields | `LoanApplicationLifecycleService` | Mostly yes | Used as a forensic/audit snapshot and parsed for masking in audit views. It could be normalized, but JSON is practical because intake shape is broad and changes over time. |
+| `loan_disbursement_request_log.request_payload_json` | Disbursement request sent to provider/mock adapter | `LoanApplicationService` | Yes | Represents a structured provider request. Keeping it as JSON preserves exact request shape for debugging and audit. |
+| `loan_disbursement_request_log.response_payload_json` | Provider/mock disbursement response | `LoanDisbursementAdapter`, `MockLoanDisbursementAdapter`, `LoanApplicationService` | Yes | Provider responses are naturally structured and may vary by provider/status. JSON is appropriate for audit and troubleshooting. |
+| `loan_application_status_transition.rejection_reason_json` | Auto-rejection metadata such as failed rule codes | `LoanApplicationLifecycleService` | Yes | The API/UI parses this to display structured rejection reasons. JSON is appropriate. |
+| `ops_alert.context_json` | Extra alert metadata: application id, bucket, LSP id, event id, etc. | `AlertRuleEvaluationService`, `LoanApplicationLifecycleService`, `OpsAlertController` | Useful, not strictly necessary | Alert context varies by alert type. JSON avoids many nullable columns and allows future filtering by context fields. |
+| `app_user_audit_event.before_state_json` | User state before admin edit | `AdminDirectoryService` | Useful, not strictly necessary | This is an audit snapshot. JSON is flexible, but the fields are predictable enough that normalized columns could also work. |
+| `app_user_audit_event.after_state_json` | User state after admin edit | `AdminDirectoryService` | Useful, not strictly necessary | Same as `before_state_json`: useful for compact audit snapshots, but not the only possible design. |
+| `api_client_audit_event.details_json` | API client audit details, before/after state, secret rotation metadata | `ApiClientManagementService` | Useful, not strictly necessary | Audit detail shape varies by action, so JSON is practical. It could be normalized only if reporting/querying becomes important. |
+| `alert_rule.config_json` | Alert rule configuration seeded by migration | `V60__alert_rules.sql`, `AlertRule` | Not currently necessary | Current logic mostly uses typed application properties, not this JSON config deeply. It was likely added for future configurable rules. It can stay text or become `jsonb` later if DB-driven rule config becomes real. |

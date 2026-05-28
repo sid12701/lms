@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -10,6 +11,8 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "api_client_audit_event")
@@ -28,8 +31,9 @@ public class ApiClientAuditEvent {
     @Column(nullable = false, length = 64)
     private String action;
 
-    @Column(name = "details_json", nullable = false, columnDefinition = "TEXT")
-    private String detailsJson;
+    @Column(name = "details_json", nullable = false, columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private JsonNode detailsJson;
 
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
@@ -51,7 +55,7 @@ public class ApiClientAuditEvent {
         this.apiClient = apiClient;
         this.actorUsername = actorUsername;
         this.action = action;
-        this.detailsJson = detailsJson;
+        this.detailsJson = JsonPayloads.requiredObject(detailsJson, "detailsJson");
         this.correlationId = correlationId;
     }
 

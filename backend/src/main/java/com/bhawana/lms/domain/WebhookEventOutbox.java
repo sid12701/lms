@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -14,6 +15,8 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "webhook_event_outbox")
@@ -43,8 +46,9 @@ public class WebhookEventOutbox {
     @Column(nullable = false, length = 32)
     private WebhookEventOutboxStatus status;
 
-    @Column(name = "payload_json", nullable = false, columnDefinition = "TEXT")
-    private String payloadJson;
+    @Column(name = "payload_json", nullable = false, columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private JsonNode payloadJson;
 
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
@@ -94,7 +98,7 @@ public class WebhookEventOutbox {
         this.aggregateId = aggregateId;
         this.loanApplicationId = loanApplicationId;
         this.status = status;
-        this.payloadJson = payloadJson;
+        this.payloadJson = JsonPayloads.requiredObject(payloadJson, "payloadJson");
         this.correlationId = correlationId;
     }
 
@@ -139,7 +143,7 @@ public class WebhookEventOutbox {
     }
 
     public String getPayloadJson() {
-        return payloadJson;
+        return JsonPayloads.asString(payloadJson);
     }
 
     public String getCorrelationId() {

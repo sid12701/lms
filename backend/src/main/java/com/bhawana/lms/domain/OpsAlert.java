@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -9,6 +10,8 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "ops_alert")
@@ -44,8 +47,9 @@ public class OpsAlert {
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
 
-    @Column(name = "context_json", columnDefinition = "TEXT")
-    private String contextJson;
+    @Column(name = "context_json", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private JsonNode contextJson;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -81,7 +85,7 @@ public class OpsAlert {
         this.subjectType = normalize(subjectType);
         this.subjectId = subjectId;
         this.correlationId = normalize(correlationId);
-        this.contextJson = normalize(contextJson);
+        this.contextJson = JsonPayloads.optionalObject(normalize(contextJson), "contextJson");
     }
 
     @PrePersist
@@ -126,7 +130,7 @@ public class OpsAlert {
     }
 
     public String getContextJson() {
-        return contextJson;
+        return JsonPayloads.asString(contextJson);
     }
 
     public Instant getCreatedAt() {
