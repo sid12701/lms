@@ -59,8 +59,8 @@ public class ReportRequest {
     @Column(name = "media_type", length = 128)
     private String mediaType;
 
-    @Column(name = "report_content", columnDefinition = "TEXT")
-    private String reportContent;
+    @Column(name = "storage_key", length = 500)
+    private String storageKey;
 
     @Column(name = "error_message", length = 1000)
     private String errorMessage;
@@ -159,8 +159,8 @@ public class ReportRequest {
         return mediaType;
     }
 
-    public String getReportContent() {
-        return reportContent;
+    public String getStorageKey() {
+        return storageKey;
     }
 
     public String getErrorMessage() {
@@ -188,11 +188,11 @@ public class ReportRequest {
         this.errorMessage = null;
     }
 
-    public void markCompleted(String fileName, String mediaType, String reportContent, Instant completedAt) {
+    public void markCompleted(String fileName, String mediaType, String storageKey, Instant completedAt) {
         this.status = ReportRequestStatus.COMPLETED;
         this.fileName = fileName;
         this.mediaType = mediaType;
-        this.reportContent = reportContent;
+        this.storageKey = storageKey;
         this.completedAt = completedAt;
         this.errorMessage = null;
     }
@@ -200,7 +200,7 @@ public class ReportRequest {
     public void markFailed(String errorMessage) {
         this.status = ReportRequestStatus.FAILED;
         this.errorMessage = truncate(errorMessage);
-        this.reportContent = null;
+        this.storageKey = null;
         this.fileName = null;
         this.mediaType = null;
         this.completedAt = null;

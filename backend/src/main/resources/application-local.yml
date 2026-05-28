@@ -68,6 +68,13 @@ app:
         secret-key: ${APP_STORAGE_DOCUMENTS_R2_SECRET_KEY:}
         bucket: ${APP_STORAGE_DOCUMENTS_R2_BUCKET:}
         region: ${APP_STORAGE_DOCUMENTS_R2_REGION:auto}
+    reports:
+      r2:
+        endpoint: ${APP_STORAGE_REPORTS_R2_ENDPOINT:}
+        access-key: ${APP_STORAGE_REPORTS_R2_ACCESS_KEY:}
+        secret-key: ${APP_STORAGE_REPORTS_R2_SECRET_KEY:}
+        bucket: ${APP_STORAGE_REPORTS_R2_BUCKET:}
+        region: ${APP_STORAGE_REPORTS_R2_REGION:auto}
   datasource:
     tenant:
       username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
