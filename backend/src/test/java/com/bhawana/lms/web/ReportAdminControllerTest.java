@@ -31,6 +31,7 @@ import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.ReportRequestRepository;
 import com.bhawana.lms.service.ReportRequestService;
+import com.bhawana.lms.support.MinioTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -59,7 +60,7 @@ import org.springframework.test.web.servlet.MvcResult;
 @SpringBootTest(properties = "app.reports.notifications.enabled=true")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class ReportAdminControllerTest {
+class ReportAdminControllerTest extends MinioTestSupport {
 
     @Autowired
     private MockMvc mockMvc;

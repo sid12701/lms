@@ -5,7 +5,6 @@ import com.bhawana.lms.domain.ReportRequestStatus;
 import com.bhawana.lms.domain.ReportType;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.ReportRequestRepository;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -24,17 +23,20 @@ public class ReportRequestService {
     private final AdminReportingService adminReportingService;
     private final AppUserRepository appUserRepository;
     private final ReportNotificationService reportNotificationService;
+    private final ReportStorageService reportStorageService;
 
     public ReportRequestService(
             ReportRequestRepository reportRequestRepository,
             AdminReportingService adminReportingService,
             AppUserRepository appUserRepository,
-            ReportNotificationService reportNotificationService
+            ReportNotificationService reportNotificationService,
+            ReportStorageService reportStorageService
     ) {
         this.reportRequestRepository = reportRequestRepository;
         this.adminReportingService = adminReportingService;
         this.appUserRepository = appUserRepository;
         this.reportNotificationService = reportNotificationService;
+        this.reportStorageService = reportStorageService;
     }
 
     @Transactional
@@ -66,14 +68,15 @@ public class ReportRequestService {
     public GeneratedStoredReport getCompletedReport(UUID requestId) {
         ReportRequest reportRequest = reportRequestRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown report request id: " + requestId));
-        if (reportRequest.getStatus() != ReportRequestStatus.COMPLETED || reportRequest.getReportContent() == null) {
+        if (reportRequest.getStatus() != ReportRequestStatus.COMPLETED || reportRequest.getStorageKey() == null) {
             throw new IllegalArgumentException("Report is not ready for download.");
         }
 
+        byte[] content = reportStorageService.retrieve(reportRequest.getStorageKey());
         return new GeneratedStoredReport(
                 reportRequest.getFileName(),
                 reportRequest.getMediaType(),
-                reportRequest.getReportContent().getBytes(StandardCharsets.UTF_8)
+                content
         );
     }
 
@@ -102,10 +105,20 @@ public class ReportRequestService {
                     );
                 };
 
+                ReportStorageService.StoredReport stored = reportStorageService.store(
+                        new ReportStorageService.ReportStorageDescriptor(
+                                reportRequest.getId(),
+                                reportRequest.getReportType(),
+                                generatedReport.fileName(),
+                                generatedReport.mediaType()
+                        ),
+                        generatedReport.content()
+                );
+
                 reportRequest.markCompleted(
-                        generatedReport.fileName(),
-                        generatedReport.mediaType(),
-                        new String(generatedReport.content(), StandardCharsets.UTF_8),
+                        stored.fileName(),
+                        stored.mediaType(),
+                        stored.storageKey(),
                         Instant.now()
                 );
                 completed += 1;
