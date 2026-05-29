@@ -15,10 +15,7 @@ import { PageHeader } from "@/components/app/layout/PageHeader";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { useUrlFilters } from "@/lib/url-state";
 import { listLspOptions } from "@/features/lsps/options";
-import {
-  LoanApplicationsFilterBar,
-  LoanApplicationsTable,
-} from "./components";
+import { LoanApplicationsFilterBar, LoanApplicationsTable } from "./components";
 import { useLoanApplications } from "./hooks/useLoanApplications";
 import { LoanApplicationListFilters } from "./types";
 import { useEffect, useMemo, useState } from "react";
@@ -33,10 +30,12 @@ export function LoanApplicationsPage() {
     void listLspOptions()
       .then((rows) => {
         if (cancelled) return;
-        setLspOptions(rows.map((row) => ({
-          value: row.id,
-          label: `${row.name} (${row.code})`,
-        })));
+        setLspOptions(
+          rows.map((row) => ({
+            value: row.id,
+            label: `${row.name} (${row.code})`,
+          })),
+        );
       })
       .catch(() => {
         if (!cancelled) setLspOptions([]);
@@ -65,10 +64,7 @@ export function LoanApplicationsPage() {
         description="Browse, filter, and act on every loan application across LSPs."
       />
 
-      <LoanApplicationsFilterBar
-        lspOptions={lspOptions}
-        productOptions={productOptions}
-      />
+      <LoanApplicationsFilterBar lspOptions={lspOptions} productOptions={productOptions} />
 
       {query.isError ? (
         <ErrorState

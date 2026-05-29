@@ -12,9 +12,7 @@ export function borrowerLoansQueryKey(id: string): readonly unknown[] {
   return ["borrower", id, "loans"] as const;
 }
 
-export function useBorrowerLoans(
-  id: string,
-): UseQueryResult<BorrowerLoansResponse, Error> {
+export function useBorrowerLoans(id: string): UseQueryResult<BorrowerLoansResponse, Error> {
   return useQuery({
     queryKey: borrowerLoansQueryKey(id),
     queryFn: () => fetchBorrowerLoans(id),

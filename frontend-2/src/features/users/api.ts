@@ -95,9 +95,7 @@ function mintTemporaryPassword(): string {
   return out;
 }
 
-export async function listUsers(
-  filters: UsersListFilters = {},
-): Promise<UsersListResponse> {
+export async function listUsers(filters: UsersListFilters = {}): Promise<UsersListResponse> {
   const all = await requestJson<BackendUserResponse[]>(BASE);
   const filtered = all.filter((row) => {
     if (filters.status && backendToFrontendStatus(row.status) !== filters.status) return false;

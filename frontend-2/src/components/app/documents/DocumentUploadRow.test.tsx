@@ -49,43 +49,35 @@ describe("DocumentUploadRow", () => {
     expect(queryByRole("button")).toBeNull();
   });
 
-  it(
-    "calls onUpload with a fresh idempotency key when clicked",
-    async () => {
-      const onUpload = vi.fn();
-      const { getByRole } = renderWithProviders(
-        <DocumentUploadRow doc={makeDoc()} onUpload={onUpload} />,
-      );
-      await userEvent.click(getByRole("button", { name: /Upload PAN card/i }));
-      expect(onUpload).toHaveBeenCalledTimes(1);
-      const [args] = onUpload.mock.calls[0]!;
-      expect(typeof args.idempotencyKey).toBe("string");
-      expect(args.idempotencyKey.length).toBeGreaterThan(0);
-    },
-    15_000,
-  );
+  it("calls onUpload with a fresh idempotency key when clicked", async () => {
+    const onUpload = vi.fn();
+    const { getByRole } = renderWithProviders(
+      <DocumentUploadRow doc={makeDoc()} onUpload={onUpload} />,
+    );
+    await userEvent.click(getByRole("button", { name: /Upload PAN card/i }));
+    expect(onUpload).toHaveBeenCalledTimes(1);
+    const [args] = onUpload.mock.calls[0]!;
+    expect(typeof args.idempotencyKey).toBe("string");
+    expect(args.idempotencyKey.length).toBeGreaterThan(0);
+  }, 15_000);
 
-  it(
-    "shows a busy state while the upload promise is pending",
-    async () => {
-      let resolve: (() => void) | undefined;
-      const onUpload = vi.fn(
-        () =>
-          new Promise<void>((r) => {
-            resolve = r;
-          }),
-      );
-      const { getByRole, findByRole } = renderWithProviders(
-        <DocumentUploadRow doc={makeDoc()} onUpload={onUpload} />,
-      );
-      await userEvent.click(getByRole("button", { name: /Upload PAN card/i }));
-      const busyBtn = await findByRole("button", { name: /Upload PAN card/i });
-      expect(busyBtn).toBeDisabled();
-      expect(busyBtn.getAttribute("aria-busy")).toBe("true");
-      resolve?.();
-    },
-    15_000,
-  );
+  it("shows a busy state while the upload promise is pending", async () => {
+    let resolve: (() => void) | undefined;
+    const onUpload = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolve = r;
+        }),
+    );
+    const { getByRole, findByRole } = renderWithProviders(
+      <DocumentUploadRow doc={makeDoc()} onUpload={onUpload} />,
+    );
+    await userEvent.click(getByRole("button", { name: /Upload PAN card/i }));
+    const busyBtn = await findByRole("button", { name: /Upload PAN card/i });
+    expect(busyBtn).toBeDisabled();
+    expect(busyBtn.getAttribute("aria-busy")).toBe("true");
+    resolve?.();
+  }, 15_000);
 
   it("applies compact styling via data-compact='true' when compact", () => {
     const { container } = renderWithProviders(
@@ -97,10 +89,7 @@ describe("DocumentUploadRow", () => {
 
   it("has no axe violations", async () => {
     const { container } = renderWithProviders(
-      <DocumentUploadRow
-        doc={makeDoc({ requiredForDisbursement: true })}
-        onUpload={() => {}}
-      />,
+      <DocumentUploadRow doc={makeDoc({ requiredForDisbursement: true })} onUpload={() => {}} />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });

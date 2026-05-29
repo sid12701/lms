@@ -30,10 +30,7 @@ import { newIdempotencyKey } from "@/lib/idempotency";
 import type { LoanProduct, UpdateProductMappingInput } from "../types";
 import { LspMultiSelect } from "./LspMultiSelect";
 import type { LspChoice } from "../hooks/useLspChoices";
-import {
-  ProductMappingFormSchema,
-  type ProductMappingFormValues,
-} from "./schema";
+import { ProductMappingFormSchema, type ProductMappingFormValues } from "./schema";
 
 export interface ProductMappingConfirmArgs {
   input: UpdateProductMappingInput;
@@ -73,10 +70,9 @@ export function ProductMappingDialog({
     form.reset({ lspIds: [...initialLspIds] });
     const id = window.setTimeout(() => {
       // Focus the dropdown trigger for keyboard users.
-      const trigger =
-        containerRef.current?.querySelector<HTMLButtonElement>(
-          "[data-slot='lsp-multi-select-trigger']",
-        );
+      const trigger = containerRef.current?.querySelector<HTMLButtonElement>(
+        "[data-slot='lsp-multi-select-trigger']",
+      );
       trigger?.focus();
     }, 0);
     return () => window.clearTimeout(id);
@@ -103,16 +99,14 @@ export function ProductMappingDialog({
               {product ? (
                 <>
                   {" "}
-                  <span className="text-foreground-muted font-mono text-sm">
-                    ({product.code})
-                  </span>
+                  <span className="text-foreground-muted font-mono text-sm">({product.code})</span>
                 </>
               ) : null}
             </DialogTitle>
           </div>
           <DialogDescription>
-            Replace the full list of LSPs this product is offered to. Mapping
-            changes append a row to the product audit stream.
+            Replace the full list of LSPs this product is offered to. Mapping changes append a row
+            to the product audit stream.
           </DialogDescription>
         </DialogHeader>
 
@@ -132,8 +126,8 @@ export function ProductMappingDialog({
                     />
                   </FormControl>
                   <FormDescription>
-                    Tick LSPs from the dropdown. Leaving the list empty unmaps the
-                    product from every LSP.
+                    Tick LSPs from the dropdown. Leaving the list empty unmaps the product from
+                    every LSP.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

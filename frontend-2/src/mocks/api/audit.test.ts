@@ -160,9 +160,7 @@ describe("audit.events — listing", () => {
     expect(streams).toContain("PRODUCT");
 
     for (let i = 1; i < res.items.length; i++) {
-      expect(
-        res.items[i - 1]!.createdAt >= res.items[i]!.createdAt,
-      ).toBe(true);
+      expect(res.items[i - 1]!.createdAt >= res.items[i]!.createdAt).toBe(true);
     }
   });
 

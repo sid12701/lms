@@ -321,7 +321,10 @@ function projectRecentApplications(
  * full open-alerts feed is returned. If a future iteration tags alerts with
  * a tenant id, scope here.
  */
-function projectOpenAlerts(alerts: ReadonlyArray<OperationalAlert>, limit: number): HomeAlertSummary[] {
+function projectOpenAlerts(
+  alerts: ReadonlyArray<OperationalAlert>,
+  limit: number,
+): HomeAlertSummary[] {
   return [...alerts]
     .filter((a) => a.status === "OPEN")
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))

@@ -7,11 +7,7 @@
  * from `@/types` (type-only re-exports crash at runtime).
  */
 import { z } from "zod";
-import type {
-  LoanApplication,
-  Lsp,
-  LoanProduct,
-} from "@/types";
+import type { LoanApplication, Lsp, LoanProduct } from "@/types";
 import type {
   Borrower,
   BorrowerBanking,
@@ -87,11 +83,4 @@ export interface RecordDocumentAccessResponse {
 
 // ─── Re-exports — convenience for tab components ─────────────────────────────
 
-export type {
-  Borrower,
-  BorrowerBanking,
-  BorrowerEmployment,
-  BorrowerReference,
-  Lsp,
-  LoanProduct,
-};
+export type { Borrower, BorrowerBanking, BorrowerEmployment, BorrowerReference, Lsp, LoanProduct };

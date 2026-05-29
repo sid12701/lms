@@ -1,7 +1,4 @@
-export {
-  DisbursementGateBanner,
-  type DisbursementGateBannerProps,
-} from "./DisbursementGateBanner";
+export { DisbursementGateBanner, type DisbursementGateBannerProps } from "./DisbursementGateBanner";
 export {
   DisbursementSummaryCard,
   type DisbursementSummaryCardProps,

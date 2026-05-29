@@ -22,7 +22,7 @@ const columns: ColumnDef<Row>[] = [
 
 function Harness() {
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table is the project-mandated table primitive
+
   const table = useReactTable({
     data,
     columns,

@@ -6,12 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "@/features/auth/session-context";
 import { LoginPage } from "./LoginPage";
 import type { Session } from "@/mocks/api/auth";
-import {
-  USER_OPS_ADMIN,
-  USER_OPS_USER,
-  USER_PRODUCT_ADMIN,
-  USER_LSP_READ,
-} from "@/mocks/db/seed";
+import { USER_OPS_ADMIN, USER_OPS_USER, USER_PRODUCT_ADMIN, USER_LSP_READ } from "@/mocks/db/seed";
 
 const loginMock = vi.fn();
 
@@ -19,17 +14,16 @@ vi.mock("@/features/auth/auth-service", () => ({
   login: (...args: unknown[]) => loginMock(...args),
 }));
 
-function sessionFor(
-  role: Session["user"]["role"],
-  id: string,
-  username: string,
-): Session {
+function sessionFor(role: Session["user"]["role"], id: string, username: string): Session {
   return {
     user: {
       id,
       username,
       role,
-      lspId: role === "LSP_UI_READ" || role === "LSP_UI_WRITE" ? "00000000-0000-4000-8000-000000000099" : null,
+      lspId:
+        role === "LSP_UI_READ" || role === "LSP_UI_WRITE"
+          ? "00000000-0000-4000-8000-000000000099"
+          : null,
       mustChangePassword: false,
     },
     accessToken: "mock.token.value",
@@ -87,7 +81,9 @@ describe("LoginPage (Gap #8 post-login redirect)", () => {
     await user.click(screen.getByLabelText(/Prefill ops\.admin/i));
     await user.type(screen.getByLabelText(/^Password$/i), "demo");
     await user.click(screen.getByRole("button", { name: /^sign in$/i }));
-    await waitFor(() => expect(loginMock).toHaveBeenCalledWith({ username: "ops.admin", password: "demo" }));
+    await waitFor(() =>
+      expect(loginMock).toHaveBeenCalledWith({ username: "ops.admin", password: "demo" }),
+    );
     expect(await screen.findByTestId("home")).toBeInTheDocument();
   });
 
@@ -102,7 +98,9 @@ describe("LoginPage (Gap #8 post-login redirect)", () => {
   });
 
   it("routes PRODUCT_ADMIN to /products after sign-in", async () => {
-    loginMock.mockResolvedValueOnce(sessionFor("PRODUCT_ADMIN", USER_PRODUCT_ADMIN, "product.admin"));
+    loginMock.mockResolvedValueOnce(
+      sessionFor("PRODUCT_ADMIN", USER_PRODUCT_ADMIN, "product.admin"),
+    );
     const user = userEvent.setup();
     renderLogin();
     await user.click(screen.getByLabelText(/Prefill product\.admin/i));

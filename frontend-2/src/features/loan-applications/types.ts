@@ -56,9 +56,7 @@ export const LoanApplicationListFilters = z.object({
   /** Page size. Defaults to 25. */
   pageSize: z.coerce.number().int().min(5).max(100).optional(),
   /** Sort key — table column id. */
-  sortBy: z
-    .enum(["createdAt", "updatedAt", "requestedAmount", "status"])
-    .optional(),
+  sortBy: z.enum(["createdAt", "updatedAt", "requestedAmount", "status"]).optional(),
   /** Sort direction. */
   sortDir: z.enum(["asc", "desc"]).optional(),
 });

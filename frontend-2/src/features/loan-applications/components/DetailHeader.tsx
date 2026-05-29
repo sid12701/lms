@@ -8,10 +8,7 @@ import { ActionBar } from "@/components/app/lifecycle/ActionBar";
 import { EscalateToAdminDialog } from "@/components/app/lifecycle/EscalateToAdminDialog";
 import { useSession } from "@/features/auth/session-context";
 import { escalateAlert } from "@/features/alerts/api";
-import {
-  useInitiateDisbursement,
-  useTransitionStatus,
-} from "../hooks/useLoanApplicationMutations";
+import { useInitiateDisbursement, useTransitionStatus } from "../hooks/useLoanApplicationMutations";
 import type { LoanApplicationDetail, TransitionStatusInput } from "../types";
 
 export interface DetailHeaderProps {
@@ -128,13 +125,10 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
       />
 
       {role === "OPS_USER" ? (
-        <div
-          data-slot="ops-escalate-bar"
-          className="flex flex-col gap-2"
-        >
+        <div data-slot="ops-escalate-bar" className="flex flex-col gap-2">
           <p className="text-foreground-muted text-sm">
-            Approvals and lifecycle changes are automated. Use Escalate to
-            admin if this loan needs out-of-band intervention.
+            Approvals and lifecycle changes are automated. Use Escalate to admin if this loan needs
+            out-of-band intervention.
           </p>
           <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Loan actions">
             <Button

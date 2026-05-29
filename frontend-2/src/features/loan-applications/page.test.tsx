@@ -23,21 +23,15 @@ vi.mock("./hooks/useLoanApplications", () => ({
 }));
 
 vi.mock("./components", () => ({
-  LoanApplicationsFilterBar: () => (
-    <div data-testid="filter-bar">FilterBar</div>
-  ),
+  LoanApplicationsFilterBar: () => <div data-testid="filter-bar">FilterBar</div>,
   LoanApplicationsTable: (props: {
     data: LoanApplicationListResponse | undefined;
     isLoading: boolean;
     filters: Record<string, unknown>;
   }) => (
     <div data-testid="triage-table">
-      <span data-testid="triage-table-loading">
-        {props.isLoading ? "loading" : "idle"}
-      </span>
-      <span data-testid="triage-table-total">
-        {props.data ? String(props.data.total) : "none"}
-      </span>
+      <span data-testid="triage-table-loading">{props.isLoading ? "loading" : "idle"}</span>
+      <span data-testid="triage-table-total">{props.data ? String(props.data.total) : "none"}</span>
       <span data-testid="triage-table-filters">{JSON.stringify(props.filters)}</span>
     </div>
   ),

@@ -163,10 +163,7 @@ export function DocumentPreviewSheet({
                     />
                   ) : (
                     <>
-                      <FileText
-                        aria-hidden="true"
-                        className="text-foreground-muted size-10"
-                      />
+                      <FileText aria-hidden="true" className="text-foreground-muted size-10" />
                       <p className="text-foreground-muted px-4 text-xs">
                         Preview not available — backend integration required.
                       </p>
@@ -184,9 +181,7 @@ export function DocumentPreviewSheet({
                     {document.uploadedAt ? formatDateTime(document.uploadedAt) : "—"}
                   </dd>
                   <dt className="text-foreground-muted">Uploaded by</dt>
-                  <dd className="text-foreground font-mono">
-                    {document.uploadedBy ?? "—"}
-                  </dd>
+                  <dd className="text-foreground font-mono">{document.uploadedBy ?? "—"}</dd>
                   <dt className="text-foreground-muted">Size</dt>
                   <dd className="text-foreground">{formatBytes(sizeBytes)}</dd>
                   <dt className="text-foreground-muted">MIME type</dt>
@@ -208,11 +203,7 @@ export function DocumentPreviewSheet({
             data-slot="document-preview-footer"
             className="border-border flex items-center justify-end gap-2 border-t px-4 py-3"
           >
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Close
             </Button>
             {onDownload && document ? (

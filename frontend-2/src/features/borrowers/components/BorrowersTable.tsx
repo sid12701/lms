@@ -30,11 +30,7 @@ import { TableSkeleton } from "@/components/app/feedback/Skeletons";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { useDensity } from "@/app/providers";
 import { cn } from "@/lib/utils";
-import type {
-  BorrowerListFilters,
-  BorrowerListResponse,
-  BorrowerSummary,
-} from "../list-types";
+import type { BorrowerListFilters, BorrowerListResponse, BorrowerSummary } from "../list-types";
 
 const DASH = "—";
 
@@ -200,11 +196,7 @@ export function BorrowersTable({
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
                 {headerGroup.headers.map((header) => (
-                  <TableHead
-                    key={header.id}
-                    scope="col"
-                    className={cn(headPad)}
-                  >
+                  <TableHead key={header.id} scope="col" className={cn(headPad)}>
                     {header.isPlaceholder
                       ? null
                       : flexRender(header.column.columnDef.header, header.getContext())}
@@ -241,7 +233,7 @@ export function BorrowersTable({
                     }
                   }}
                   className={cn(
-                    "border-border hover:bg-surface-muted/40 focus-visible:ring-ring/50 cursor-pointer outline-none transition-colors duration-150 focus-visible:ring-2",
+                    "border-border hover:bg-surface-muted/40 focus-visible:ring-ring/50 cursor-pointer transition-colors duration-150 outline-none focus-visible:ring-2",
                   )}
                 >
                   {row.getVisibleCells().map((cell) => (

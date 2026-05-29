@@ -1,11 +1,5 @@
 import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
-import {
-  AlertTriangle,
-  Banknote,
-  Files,
-  Wallet,
-  type LucideIcon,
-} from "lucide-react";
+import { AlertTriangle, Banknote, Files, Wallet, type LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { KpiStrip } from "@/components/app/layout/KpiStrip";
 import { formatINR } from "@/lib/format";
@@ -55,23 +49,16 @@ function KpiTile({ icon: Icon, label, value, className, ...rest }: KpiTileProps)
  * Four-up KPI strip for the LSP home dashboard. Scoped to the caller's
  * tenant — never shows cross-LSP totals.
  */
-export const LspKpiSummary = forwardRef<HTMLDivElement, LspKpiSummaryProps>(
-  function LspKpiSummary({ kpis, className }, ref) {
-    return (
-      <KpiStrip ref={ref} className={cn(className)} aria-label="LSP home metrics">
-        <KpiTile icon={Files} label="My active applications" value={kpis.myActiveApplications} />
-        <KpiTile icon={Wallet} label="In disbursement" value={kpis.myInDisbursement} />
-        <KpiTile
-          icon={Banknote}
-          label="MTD disbursed"
-          value={formatINR(kpis.myMtdDisbursedAmount)}
-        />
-        <KpiTile
-          icon={AlertTriangle}
-          label="My overdue loans"
-          value={kpis.myOverdueLoansCount}
-        />
-      </KpiStrip>
-    );
-  },
-);
+export const LspKpiSummary = forwardRef<HTMLDivElement, LspKpiSummaryProps>(function LspKpiSummary(
+  { kpis, className },
+  ref,
+) {
+  return (
+    <KpiStrip ref={ref} className={cn(className)} aria-label="LSP home metrics">
+      <KpiTile icon={Files} label="My active applications" value={kpis.myActiveApplications} />
+      <KpiTile icon={Wallet} label="In disbursement" value={kpis.myInDisbursement} />
+      <KpiTile icon={Banknote} label="MTD disbursed" value={formatINR(kpis.myMtdDisbursedAmount)} />
+      <KpiTile icon={AlertTriangle} label="My overdue loans" value={kpis.myOverdueLoansCount} />
+    </KpiStrip>
+  );
+});

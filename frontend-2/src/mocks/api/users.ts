@@ -31,12 +31,7 @@ import { Role } from "@/schemas/role";
 import { User, UserStatus } from "@/schemas/user";
 import type { Role as RoleType, User as UserType } from "@/types";
 import { dispatch, registerRoute, type MockRequest } from "../router";
-import {
-  BadRequestError,
-  ConflictError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../errors";
+import { BadRequestError, ConflictError, NotFoundError, UnauthorizedError } from "../errors";
 import type { MockDb } from "../db/state";
 import type {
   CreateUserInput,
@@ -57,10 +52,7 @@ interface ActiveSession {
   role: RoleType;
 }
 
-function requireSystemAdminSession(
-  db: MockDb,
-  correlationId: string,
-): ActiveSession {
+function requireSystemAdminSession(db: MockDb, correlationId: string): ActiveSession {
   if (!db.currentSession) {
     throw new UnauthorizedError(correlationId, "no active session");
   }
@@ -69,21 +61,14 @@ function requireSystemAdminSession(
     throw new UnauthorizedError(correlationId, "user no longer exists");
   }
   if (user.role !== "SYSTEM_ADMIN") {
-    throw new UnauthorizedError(
-      correlationId,
-      `role ${user.role} cannot manage users`,
-    );
+    throw new UnauthorizedError(correlationId, `role ${user.role} cannot manage users`);
   }
   return { userId: user.id, role: user.role };
 }
 
 // ─── Tenant-scoped role helpers ──────────────────────────────────────────────
 
-const TENANT_SCOPED_ROLES = new Set<RoleType>([
-  "LSP_UI_READ",
-  "LSP_UI_WRITE",
-  "LSP_API_CLIENT",
-]);
+const TENANT_SCOPED_ROLES = new Set<RoleType>(["LSP_UI_READ", "LSP_UI_WRITE", "LSP_API_CLIENT"]);
 
 function requireRoleLspConsistency(
   role: RoleType,
@@ -91,18 +76,14 @@ function requireRoleLspConsistency(
   correlationId: string,
 ): void {
   if (TENANT_SCOPED_ROLES.has(role) && (lspId === null || lspId === "")) {
-    throw new BadRequestError(
-      correlationId,
-      `role ${role} requires a non-null lspId`,
-      { path: ["lspId"] },
-    );
+    throw new BadRequestError(correlationId, `role ${role} requires a non-null lspId`, {
+      path: ["lspId"],
+    });
   }
   if (!TENANT_SCOPED_ROLES.has(role) && lspId !== null) {
-    throw new BadRequestError(
-      correlationId,
-      `role ${role} cannot have an lspId`,
-      { path: ["lspId"] },
-    );
+    throw new BadRequestError(correlationId, `role ${role} cannot have an lspId`, {
+      path: ["lspId"],
+    });
   }
 }
 
@@ -131,20 +112,12 @@ function parseListQuery(
   const raw: Record<string, unknown> = { ...(req.query ?? {}) };
   const parsed = ListFiltersSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid list filters",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid list filters", parsed.error.flatten());
   }
   return parsed.data;
 }
 
-function listHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): UsersListResponse {
+function listHandler(req: MockRequest, db: MockDb, correlationId: string): UsersListResponse {
   requireSystemAdminSession(db, correlationId);
   const filters = parseListQuery(req, correlationId);
 
@@ -162,9 +135,7 @@ function listHandler(
   if (filters.q) {
     const needle = filters.q.toLowerCase();
     rows = rows.filter(
-      (u) =>
-        u.username.toLowerCase().includes(needle) ||
-        u.email.toLowerCase().includes(needle),
+      (u) => u.username.toLowerCase().includes(needle) || u.email.toLowerCase().includes(needle),
     );
   }
 
@@ -214,20 +185,12 @@ const CreateBodySchema = z.object({
   idempotencyKey: z.string().min(1).max(80),
 });
 
-function createHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): CreateUserResponse {
+function createHandler(req: MockRequest, db: MockDb, correlationId: string): CreateUserResponse {
   requireSystemAdminSession(db, correlationId);
 
   const parsed = CreateBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid create body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid create body", parsed.error.flatten());
   }
 
   const { username, email, role, lspId } = parsed.data;
@@ -238,10 +201,7 @@ function createHandler(
     (u) => u.username.toLowerCase() === username.toLowerCase(),
   );
   if (usernameTaken) {
-    throw new ConflictError(
-      correlationId,
-      `username "${username}" is already in use`,
-    );
+    throw new ConflictError(correlationId, `username "${username}" is already in use`);
   }
 
   // If lspId provided, it must point at an existing LSP.
@@ -301,11 +261,7 @@ const UpdateBodySchema = z
     { message: "no fields to update" },
   );
 
-function updateHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): UserMutationResponse {
+function updateHandler(req: MockRequest, db: MockDb, correlationId: string): UserMutationResponse {
   requireSystemAdminSession(db, correlationId);
 
   const id = req.params?.["id"] ?? "";
@@ -316,17 +272,12 @@ function updateHandler(
 
   const parsed = UpdateBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid update body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid update body", parsed.error.flatten());
   }
   const body = parsed.data;
 
   const nextRole = body.role ?? existing.role;
-  const nextLspId =
-    body.lspId !== undefined ? body.lspId : existing.lspId;
+  const nextLspId = body.lspId !== undefined ? body.lspId : existing.lspId;
 
   requireRoleLspConsistency(nextRole, nextLspId, correlationId);
 
@@ -376,11 +327,7 @@ function resetPasswordHandler(
 
   const parsed = ResetBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid reset-password body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid reset-password body", parsed.error.flatten());
   }
 
   const updated: UserType = { ...existing, mustChangePassword: true };
@@ -405,12 +352,9 @@ export function registerUserAdminRoutes(): void {
   registerRoute("PATCH", "/api/v1/admin/users/:id", updateHandler, {
     mutating: true,
   });
-  registerRoute(
-    "POST",
-    "/api/v1/admin/users/:id/reset-password",
-    resetPasswordHandler,
-    { mutating: true },
-  );
+  registerRoute("POST", "/api/v1/admin/users/:id/reset-password", resetPasswordHandler, {
+    mutating: true,
+  });
 }
 registerUserAdminRoutes();
 
@@ -453,9 +397,7 @@ const ResetResponseSchema: z.ZodType<ResetUserPasswordResponse> = z.object({
 
 // ─── Public wrappers ─────────────────────────────────────────────────────────
 
-function queryFromFilters(
-  filters: UsersListFilters,
-): Record<string, string> {
+function queryFromFilters(filters: UsersListFilters): Record<string, string> {
   const out: Record<string, string> = {};
   if (filters.role) out["role"] = filters.role;
   if (filters.status) out["status"] = filters.status;
@@ -468,9 +410,7 @@ function queryFromFilters(
   return out;
 }
 
-export async function listUsers(
-  filters: UsersListFilters = {},
-): Promise<UsersListResponse> {
+export async function listUsers(filters: UsersListFilters = {}): Promise<UsersListResponse> {
   return dispatch(
     {
       method: "GET",
@@ -481,9 +421,7 @@ export async function listUsers(
   );
 }
 
-export async function createUser(
-  input: CreateUserInput,
-): Promise<CreateUserResponse> {
+export async function createUser(input: CreateUserInput): Promise<CreateUserResponse> {
   return dispatch(
     {
       method: "POST",

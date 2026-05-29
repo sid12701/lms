@@ -177,7 +177,6 @@ describe("home.kpis — internal (SYSTEM_ADMIN)", () => {
   });
 });
 
-
 describe("maskBorrowerName (now a passthrough — masking removed)", () => {
   it("returns a two-part name unchanged", () => {
     expect(maskBorrowerName("Aanya Sharma")).toBe("Aanya Sharma");

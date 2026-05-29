@@ -9,9 +9,7 @@ describe("<ForeclosureRequestDialog />", () => {
     const { getByRole, getByLabelText } = renderWithProviders(
       <ForeclosureRequestDialog open onOpenChange={() => {}} onConfirm={() => {}} />,
     );
-    expect(
-      getByRole("heading", { name: /Request foreclosure/i }),
-    ).toBeInTheDocument();
+    expect(getByRole("heading", { name: /Request foreclosure/i })).toBeInTheDocument();
     expect(getByLabelText("Reason")).toBeInTheDocument();
     expect(getByLabelText(/Note \(optional\)/i)).toBeInTheDocument();
   });
@@ -36,14 +34,8 @@ describe("<ForeclosureRequestDialog />", () => {
     const { getByLabelText, getAllByRole } = renderWithProviders(
       <ForeclosureRequestDialog open onOpenChange={() => {}} onConfirm={onConfirm} />,
     );
-    await userEvent.type(
-      getByLabelText("Reason"),
-      "  Borrower requested closure.  ",
-    );
-    await userEvent.type(
-      getByLabelText(/Note \(optional\)/i),
-      "  Sales-ops escalation 2391.  ",
-    );
+    await userEvent.type(getByLabelText("Reason"), "  Borrower requested closure.  ");
+    await userEvent.type(getByLabelText(/Note \(optional\)/i), "  Sales-ops escalation 2391.  ");
     const submit = getAllByRole("button", { name: /Request foreclosure/i }).find(
       (b) => (b as HTMLButtonElement).type === "submit",
     )!;
@@ -77,11 +69,7 @@ describe("<ForeclosureRequestDialog />", () => {
   it("invokes onOpenChange(false) when cancel is clicked", async () => {
     const onOpenChange = vi.fn();
     const { getByRole } = renderWithProviders(
-      <ForeclosureRequestDialog
-        open
-        onOpenChange={onOpenChange}
-        onConfirm={() => {}}
-      />,
+      <ForeclosureRequestDialog open onOpenChange={onOpenChange} onConfirm={() => {}} />,
     );
     await userEvent.click(getByRole("button", { name: "Cancel" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -89,12 +77,7 @@ describe("<ForeclosureRequestDialog />", () => {
 
   it("shows a submitting state while loading", () => {
     const { getByRole } = renderWithProviders(
-      <ForeclosureRequestDialog
-        open
-        loading
-        onOpenChange={() => {}}
-        onConfirm={() => {}}
-      />,
+      <ForeclosureRequestDialog open loading onOpenChange={() => {}} onConfirm={() => {}} />,
     );
     expect(getByRole("button", { name: /Submitting/i })).toBeDisabled();
     expect(getByRole("button", { name: "Cancel" })).toBeDisabled();
@@ -107,15 +90,9 @@ describe("<ForeclosureRequestDialog />", () => {
     );
     await userEvent.type(getByLabelText("Reason"), "Stale draft");
     rerender(
-      <ForeclosureRequestDialog
-        open={false}
-        onOpenChange={() => {}}
-        onConfirm={onConfirm}
-      />,
+      <ForeclosureRequestDialog open={false} onOpenChange={() => {}} onConfirm={onConfirm} />,
     );
-    rerender(
-      <ForeclosureRequestDialog open onOpenChange={() => {}} onConfirm={onConfirm} />,
-    );
+    rerender(<ForeclosureRequestDialog open onOpenChange={() => {}} onConfirm={onConfirm} />);
     // After reopen, the reason textarea should be empty — submitting fails on
     // the required-min check rather than carrying over "Stale draft".
     const submit = getAllByRole("button", { name: /Request foreclosure/i }).find(

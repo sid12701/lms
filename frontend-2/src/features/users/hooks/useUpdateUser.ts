@@ -4,11 +4,7 @@
  * Invalidates the list query on success + surfaces a sonner toast. The
  * caller mints the BR-5 idempotency key at submit time.
  */
-import {
-  useMutation,
-  useQueryClient,
-  type UseMutationResult,
-} from "@tanstack/react-query";
+import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { updateUser } from "../api";
 import type { UpdateUserInput, UserMutationResponse } from "../types";

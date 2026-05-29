@@ -25,11 +25,7 @@ import { formatDateTime, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/schemas/role";
 import type { UserStatus } from "@/schemas/user";
-import type {
-  UserRow,
-  UsersListFilters,
-  UsersListResponse,
-} from "../types";
+import type { UserRow, UsersListFilters, UsersListResponse } from "../types";
 
 const ROLE_LABEL: Record<Role, string> = {
   SYSTEM_ADMIN: "System admin",
@@ -89,17 +85,11 @@ export function UsersTable({
         header: "Username",
         cell: ({ row }) => (
           <div className="flex flex-col gap-0.5">
-            <span
-              className="text-foreground text-sm font-medium"
-              data-slot="users-username"
-            >
+            <span className="text-foreground text-sm font-medium" data-slot="users-username">
               {row.original.username}
             </span>
             {row.original.mustChangePassword ? (
-              <span
-                data-slot="users-must-change-flag"
-                className="text-warning text-xs"
-              >
+              <span data-slot="users-must-change-flag" className="text-warning text-xs">
                 Must change password
               </span>
             ) : null}
@@ -110,27 +100,21 @@ export function UsersTable({
         id: "email",
         header: "Email",
         cell: ({ row }) => (
-          <span className="text-foreground-muted text-xs">
-            {row.original.email}
-          </span>
+          <span className="text-foreground-muted text-xs">{row.original.email}</span>
         ),
       },
       {
         id: "role",
         header: "Role",
         cell: ({ row }) => (
-          <span className="text-foreground text-xs">
-            {ROLE_LABEL[row.original.role]}
-          </span>
+          <span className="text-foreground text-xs">{ROLE_LABEL[row.original.role]}</span>
         ),
       },
       {
         id: "lsp",
         header: "LSP",
         cell: ({ row }) => (
-          <span className="text-foreground-muted text-xs">
-            {row.original.lspName ?? "—"}
-          </span>
+          <span className="text-foreground-muted text-xs">{row.original.lspName ?? "—"}</span>
         ),
       },
       {
@@ -194,11 +178,7 @@ export function UsersTable({
                 variant="outline"
                 size="sm"
                 data-slot="users-toggle-status-button"
-                aria-label={
-                  isDisabled
-                    ? `Enable ${u.username}`
-                    : `Disable ${u.username}`
-                }
+                aria-label={isDisabled ? `Enable ${u.username}` : `Disable ${u.username}`}
                 onClick={() => onToggleStatus(u)}
               >
                 {isDisabled ? "Enable" : "Disable"}

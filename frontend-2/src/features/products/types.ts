@@ -13,11 +13,7 @@
  * Mutations require role SYSTEM_ADMIN or PRODUCT_ADMIN (per IA §4).
  */
 import { z } from "zod";
-import {
-  LoanProduct,
-  ProductLspMapping,
-  ProductStatus,
-} from "@/schemas/product";
+import { LoanProduct, ProductLspMapping, ProductStatus } from "@/schemas/product";
 
 export type { LoanProduct, ProductLspMapping };
 export { ProductStatus };

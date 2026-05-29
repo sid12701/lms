@@ -3,10 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { renderWithProviders } from "@/test/utils";
 import { maskAccount } from "@/lib/format";
-import {
-  DisbursementInitiateDialog,
-  type DisbursementTarget,
-} from "./DisbursementInitiateDialog";
+import { DisbursementInitiateDialog, type DisbursementTarget } from "./DisbursementInitiateDialog";
 
 const TARGET: DisbursementTarget = {
   accountNumber: "112233445566",

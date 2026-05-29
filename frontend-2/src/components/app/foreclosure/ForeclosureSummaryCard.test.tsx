@@ -18,10 +18,7 @@ afterEach(() => {
 describe("<ForeclosureSummaryCard />", () => {
   it("renders all four amounts", () => {
     const { getByText } = renderWithProviders(
-      <ForeclosureSummaryCard
-        {...BASE_PROPS}
-        quoteValidUntil="2099-01-01T00:00:00.000Z"
-      />,
+      <ForeclosureSummaryCard {...BASE_PROPS} quoteValidUntil="2099-01-01T00:00:00.000Z" />,
     );
     expect(getByText("Principal outstanding")).toBeInTheDocument();
     expect(getByText("Accrued interest")).toBeInTheDocument();
@@ -66,10 +63,7 @@ describe("<ForeclosureSummaryCard />", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-11T10:00:00.000Z"));
     const { getByText } = renderWithProviders(
-      <ForeclosureSummaryCard
-        {...BASE_PROPS}
-        quoteValidUntil="2026-05-12T18:30:00.000Z"
-      />,
+      <ForeclosureSummaryCard {...BASE_PROPS} quoteValidUntil="2026-05-12T18:30:00.000Z" />,
     );
     // The "Quote fresh — expires" label proves the fresh-branch path renders;
     // the absolute wallclock differs by TZ so we don't lock to it.
@@ -78,10 +72,7 @@ describe("<ForeclosureSummaryCard />", () => {
 
   it("has no axe violations", async () => {
     const { container } = renderWithProviders(
-      <ForeclosureSummaryCard
-        {...BASE_PROPS}
-        quoteValidUntil="2099-01-01T00:00:00.000Z"
-      />,
+      <ForeclosureSummaryCard {...BASE_PROPS} quoteValidUntil="2099-01-01T00:00:00.000Z" />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });

@@ -147,9 +147,7 @@ describe("runFullLifecycle", () => {
       .mockResolvedValueOnce(detailFor("APPROVED_PENDING_DISBURSAL") as never);
 
     vi.mocked(loanApi.submitSchedule).mockResolvedValue({} as never);
-    vi.mocked(loanApi.initiateDisbursement).mockRejectedValue(
-      new Error("disbursement failed"),
-    );
+    vi.mocked(loanApi.initiateDisbursement).mockRejectedValue(new Error("disbursement failed"));
 
     const result = await runFullLifecycle("app-1");
     const last = result.steps[result.steps.length - 1]!;
@@ -237,9 +235,7 @@ describe("runFullLifecycle", () => {
     expect(labels[0]).toBe("fetch-detail");
     expect(labels).toContain("submit-schedule");
     expect(labels).toContain("initiate-disbursement");
-    expect(labels.indexOf("submit-schedule")).toBeLessThan(
-      labels.indexOf("initiate-disbursement"),
-    );
+    expect(labels.indexOf("submit-schedule")).toBeLessThan(labels.indexOf("initiate-disbursement"));
     expect(labels).toContain("post-repayment-1");
     expect(labels.indexOf("initiate-disbursement")).toBeLessThan(
       labels.indexOf("post-repayment-1"),

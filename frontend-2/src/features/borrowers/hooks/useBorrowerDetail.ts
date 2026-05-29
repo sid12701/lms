@@ -16,9 +16,7 @@ export function borrowerDetailQueryKey(id: string) {
   return [BORROWER_DETAIL_QUERY_KEY, id] as const;
 }
 
-export function useBorrowerDetail(
-  id: string,
-): UseQueryResult<BorrowerDetail, Error> {
+export function useBorrowerDetail(id: string): UseQueryResult<BorrowerDetail, Error> {
   return useQuery({
     queryKey: borrowerDetailQueryKey(id),
     queryFn: () => fetchBorrowerDetail(id),

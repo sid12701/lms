@@ -70,9 +70,7 @@ function renderTable(props: {
       />
     </DensityProvider>
   );
-  const detailMarker = (
-    <div data-testid="detail-route">detail</div>
-  );
+  const detailMarker = <div data-testid="detail-route">detail</div>;
   return renderWithProviders(
     <MemoryRouter initialEntries={[props.initialPath ?? "/loan-applications"]}>
       <Routes>
@@ -110,9 +108,7 @@ describe("LoanApplicationsTable", () => {
     renderTable({
       data: { items: [], total: 0, page: 0, pageSize: 25 },
     });
-    expect(
-      screen.getByText(/No applications match these filters/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/No applications match these filters/i)).toBeInTheDocument();
   });
 
   it("navigates to the detail route on row click", async () => {

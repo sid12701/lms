@@ -6,11 +6,6 @@ import { z } from "zod";
  * out of the .tsx so fast-refresh doesn't whine about non-component exports.
  */
 export const DisbursementInitiateSchema = z.object({
-  note: z
-    .string()
-    .trim()
-    .max(500, "Note must be 500 characters or fewer.")
-    .optional()
-    .default(""),
+  note: z.string().trim().max(500, "Note must be 500 characters or fewer.").optional().default(""),
 });
 export type DisbursementInitiateValues = z.infer<typeof DisbursementInitiateSchema>;

@@ -83,14 +83,9 @@ function DocsPendingCard({ detail }: { detail: LoanApplicationDetail }) {
     return null;
   }
   return (
-    <PanelShell
-      tone="info"
-      title="Blocking issues"
-      hint="Application is awaiting auto-approval"
-    >
-      Required documents are not yet uploaded. The auto-approval rule engine
-      will re-evaluate the application as soon as the last required document
-      is attached.
+    <PanelShell tone="info" title="Blocking issues" hint="Application is awaiting auto-approval">
+      Required documents are not yet uploaded. The auto-approval rule engine will re-evaluate the
+      application as soon as the last required document is attached.
     </PanelShell>
   );
 }
@@ -98,22 +93,18 @@ function DocsPendingCard({ detail }: { detail: LoanApplicationDetail }) {
 function PendingDisbursementCard({ detail: _detail }: { detail: LoanApplicationDetail }) {
   return (
     <PanelShell tone="info" title="Awaiting disbursement">
-      The loan has been auto-approved and is queued for disbursement. The
-      payout adapter will pick it up on the next scheduler tick.
+      The loan has been auto-approved and is queued for disbursement. The payout adapter will pick
+      it up on the next scheduler tick.
     </PanelShell>
   );
 }
 
 function DisbursementRetryCard({ detail }: { detail: LoanApplicationDetail }) {
   return (
-    <PanelShell
-      tone="warning"
-      title="Disbursement retry pending"
-      hint="Last attempt failed"
-    >
+    <PanelShell tone="warning" title="Disbursement retry pending" hint="Last attempt failed">
       Disbursement for loan {detail.application.externalLoanId ?? detail.application.id}
-      will be retried automatically. Inspect the Disbursements tab for the
-      detailed adapter response.
+      will be retried automatically. Inspect the Disbursements tab for the detailed adapter
+      response.
     </PanelShell>
   );
 }
@@ -123,9 +114,8 @@ function ScheduleStartCard({ detail }: { detail: LoanApplicationDetail }) {
   return (
     <PanelShell tone="success" title="Loan disbursed">
       Disbursement completed
-      {approvedAt ? ` on ${formatDate(approvedAt)}` : ""}. The first
-      installment will move the loan into{" "}
-      <Badge variant="outline">UNDER_REPAYMENT</Badge>.
+      {approvedAt ? ` on ${formatDate(approvedAt)}` : ""}. The first installment will move the loan
+      into <Badge variant="outline">UNDER_REPAYMENT</Badge>.
     </PanelShell>
   );
 }
@@ -145,12 +135,10 @@ function DelinquencyCard({ borrowerDetail }: { borrowerDetail?: BorrowerDetail |
     <PanelShell tone="danger" title="Loan is delinquent">
       <ul className="space-y-1">
         <li>
-          Active overdue amount:{" "}
-          <span className="font-mono">{formatINR(overdue)}</span>
+          Active overdue amount: <span className="font-mono">{formatINR(overdue)}</span>
         </li>
         <li className="text-foreground-muted text-xs">
-          Per-installment DPD / bucket detail is available on the Repayments
-          tab.
+          Per-installment DPD / bucket detail is available on the Repayments tab.
         </li>
       </ul>
     </PanelShell>
@@ -160,9 +148,8 @@ function DelinquencyCard({ borrowerDetail }: { borrowerDetail?: BorrowerDetail |
 function RejectedCard({ detail }: { detail: LoanApplicationDetail }) {
   return (
     <PanelShell tone="danger" title="Application rejected">
-      The auto-approval rule engine rejected this application. Inspect the
-      Activity tab for the failed-rule list captured on the REJECTED
-      transition (
+      The auto-approval rule engine rejected this application. Inspect the Activity tab for the
+      failed-rule list captured on the REJECTED transition (
       {detail.application.externalLoanId ?? detail.application.id}).
     </PanelShell>
   );

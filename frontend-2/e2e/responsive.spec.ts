@@ -66,9 +66,7 @@ async function signInAsSystemAdmin(page: Page): Promise<void> {
  * Measure body scrollWidth vs documentElement clientWidth. Returns both so
  * a failure message can show the actual overflow magnitude.
  */
-async function measureOverflow(
-  page: Page,
-): Promise<{ scrollWidth: number; clientWidth: number }> {
+async function measureOverflow(page: Page): Promise<{ scrollWidth: number; clientWidth: number }> {
   return await page.evaluate(() => ({
     scrollWidth: document.body.scrollWidth,
     clientWidth: document.documentElement.clientWidth,

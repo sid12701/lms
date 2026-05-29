@@ -128,9 +128,7 @@ function projectAuditRow(event: BackendUnifiedAuditEvent): AuditRow {
     correlationId: event.correlationId ?? event.id,
     subjectType: subject.subjectType,
     subjectId: subject.subjectId,
-    headline: event.summary && event.summary.trim() !== ""
-      ? event.summary
-      : humanize(event.action),
+    headline: event.summary && event.summary.trim() !== "" ? event.summary : humanize(event.action),
     raw: event,
   };
 }
@@ -152,9 +150,7 @@ function passesClientFilters(row: AuditRow, filters: AuditEventsFilters): boolea
   return true;
 }
 
-async function fetchFromBackend(
-  filters: AuditEventsFilters,
-): Promise<AuditEventsResponse> {
+async function fetchFromBackend(filters: AuditEventsFilters): Promise<AuditEventsResponse> {
   const path = buildQueryPath(ENDPOINT, buildBackendQueryParams(filters));
   const payload = await requestJson<BackendPagedAuditEvents>(path);
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
@@ -163,10 +159,11 @@ async function fetchFromBackend(
   const projected = payload.items.map(projectAuditRow);
   const visible = projected.filter((row) => passesClientFilters(row, filters));
 
-  const total = payload.totalCount >= 0
-    ? payload.totalCount
-    // BE returned the -1 sentinel — fall back to the visible-window size.
-    : visible.length + page * pageSize;
+  const total =
+    payload.totalCount >= 0
+      ? payload.totalCount
+      : // BE returned the -1 sentinel — fall back to the visible-window size.
+        visible.length + page * pageSize;
 
   return {
     items: visible,
@@ -183,9 +180,7 @@ async function fetchFromBackend(
  * else falls back to the mock router so non-admin contexts (Storybook,
  * tests, dev fixtures) still render.
  */
-export async function fetchAuditEvents(
-  filters: AuditEventsFilters,
-): Promise<AuditEventsResponse> {
+export async function fetchAuditEvents(filters: AuditEventsFilters): Promise<AuditEventsResponse> {
   if (isSystemAdmin()) {
     try {
       return await fetchFromBackend(filters);

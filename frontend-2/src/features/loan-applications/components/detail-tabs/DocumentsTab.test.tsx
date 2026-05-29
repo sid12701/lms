@@ -54,11 +54,11 @@ function stubDownloadApis(): { getClickedDownload: () => string } {
     value: vi.fn(),
     configurable: true,
   });
-  vi
-    .spyOn(HTMLAnchorElement.prototype, "click")
-    .mockImplementation(function clickAnchor(this: HTMLAnchorElement) {
-      clickedDownload = this.download;
-    });
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function clickAnchor(
+    this: HTMLAnchorElement,
+  ) {
+    clickedDownload = this.download;
+  });
   return { getClickedDownload: () => clickedDownload };
 }
 
@@ -82,9 +82,7 @@ describe("adaptLoanDocumentToDocument", () => {
   });
 
   it("maps PHOTOGRAPH → KYC_PHOTO", () => {
-    expect(adaptLoanDocumentToDocument(loanDoc({ type: "PHOTOGRAPH" })).kind).toBe(
-      "KYC_PHOTO",
-    );
+    expect(adaptLoanDocumentToDocument(loanDoc({ type: "PHOTOGRAPH" })).kind).toBe("KYC_PHOTO");
   });
 
   it("maps ADDRESS_PROOF without collapsing it to OTHER", () => {
@@ -100,9 +98,7 @@ describe("adaptLoanDocumentToDocument", () => {
   });
 
   it("handles a null fileMeta gracefully", () => {
-    const out = adaptLoanDocumentToDocument(
-      loanDoc({ fileMeta: null, displayName: "Bank stmt" }),
-    );
+    const out = adaptLoanDocumentToDocument(loanDoc({ fileMeta: null, displayName: "Bank stmt" }));
     expect(out.fileName).toBe("Bank stmt");
     expect(out.mimeType).toBeNull();
     expect(out.sizeBytes).toBeNull();
@@ -250,9 +246,7 @@ describe("DocumentsTab", () => {
       isPending: false,
       isError: false,
       data: {
-        documents: [
-          loanDoc({ id: "d-1", type: "PAN", requiredForDisbursement: true }),
-        ],
+        documents: [loanDoc({ id: "d-1", type: "PAN", requiredForDisbursement: true })],
       },
       refetch: vi.fn(),
     });

@@ -36,7 +36,10 @@ const REPAYABLE_STATUSES = new Set([
  * `?tab=` URL state. Mirrors the type from `./types.ts` — invalid or
  * missing values fall back to `"overview"`.
  */
-function useTabParam(): readonly [LoanApplicationDetailTab, (next: LoanApplicationDetailTab) => void] {
+function useTabParam(): readonly [
+  LoanApplicationDetailTab,
+  (next: LoanApplicationDetailTab) => void,
+] {
   const [params, setParams] = useSearchParams();
   const raw = params.get("tab");
   const parsed = LoanApplicationDetailTab.safeParse(raw);
@@ -114,9 +117,7 @@ export function LoanApplicationDetailPage() {
   const borrowerId = detailQuery.data?.borrower.id ?? "";
   const borrowerDetailQuery = useBorrowerDetail(borrowerId);
   const borrowerDetail =
-    borrowerDetailQuery.data && borrowerId.length > 0
-      ? borrowerDetailQuery.data
-      : null;
+    borrowerDetailQuery.data && borrowerId.length > 0 ? borrowerDetailQuery.data : null;
 
   const tabBody = useMemo(() => {
     if (!detailQuery.data) return null;
@@ -222,32 +223,21 @@ export function LoanApplicationDetailPage() {
       <RightRail>
         <section
           data-slot="detail-summary"
-          className={cn(
-            "border-border bg-surface rounded-md border p-4",
-            "flex flex-col gap-3",
-          )}
+          className={cn("border-border bg-surface rounded-md border p-4", "flex flex-col gap-3")}
         >
-          <h2 className="text-foreground text-sm font-semibold tracking-tight">
-            At a glance
-          </h2>
+          <h2 className="text-foreground text-sm font-semibold tracking-tight">At a glance</h2>
           <div className="flex flex-col gap-2">
-            <div className="text-foreground-muted text-xs tracking-wide uppercase">
-              Status
-            </div>
+            <div className="text-foreground-muted text-xs tracking-wide uppercase">Status</div>
             <StatusBadge status={detail.application.status} />
           </div>
           <div className="flex flex-col gap-2">
-            <div className="text-foreground-muted text-xs tracking-wide uppercase">
-              Requested
-            </div>
+            <div className="text-foreground-muted text-xs tracking-wide uppercase">Requested</div>
             <div className="text-foreground text-base tabular-nums">
               {formatINR(detail.application.requestedAmount)}
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <div className="text-foreground-muted text-xs tracking-wide uppercase">
-              LSP
-            </div>
+            <div className="text-foreground-muted text-xs tracking-wide uppercase">LSP</div>
             <div className="text-foreground text-sm">{detail.lsp.name}</div>
           </div>
           <div className="flex flex-wrap gap-2">

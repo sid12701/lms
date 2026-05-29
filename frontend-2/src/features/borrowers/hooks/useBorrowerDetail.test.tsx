@@ -15,10 +15,7 @@ vi.mock("../api", () => ({
   fetchBorrowerDetail: (id: string) => detailMock(id),
 }));
 
-import {
-  borrowerDetailQueryKey,
-  useBorrowerDetail,
-} from "./useBorrowerDetail";
+import { borrowerDetailQueryKey, useBorrowerDetail } from "./useBorrowerDetail";
 
 const DETAIL_FIXTURE = {
   borrower: { id: "bor-1", fullName: "Aanya Devi" },

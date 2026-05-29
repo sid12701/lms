@@ -7,9 +7,7 @@ import type { ProductDetailResponse } from "../types";
 
 export const PRODUCT_DETAIL_QUERY_KEY = ["products", "detail"] as const;
 
-export function useProduct(
-  id: string | null,
-): UseQueryResult<ProductDetailResponse, Error> {
+export function useProduct(id: string | null): UseQueryResult<ProductDetailResponse, Error> {
   return useQuery({
     queryKey: [...PRODUCT_DETAIL_QUERY_KEY, id],
     queryFn: () => getProduct(id ?? ""),

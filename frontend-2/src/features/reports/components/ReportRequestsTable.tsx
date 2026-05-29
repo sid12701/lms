@@ -6,13 +6,7 @@
  * timer; the parent page polls every 5s so a freshly queued row visibly
  * progresses without manual refresh.
  */
-import {
-  CheckCircle2,
-  CircleDashed,
-  Download,
-  Loader2,
-  XCircle,
-} from "lucide-react";
+import { CheckCircle2, CircleDashed, Download, Loader2, XCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
   Table,
@@ -30,10 +24,7 @@ import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ReportRequest, ReportStatus } from "../types";
 
-const STATUS_META: Record<
-  ReportStatus,
-  { label: string; icon: LucideIcon; className: string }
-> = {
+const STATUS_META: Record<ReportStatus, { label: string; icon: LucideIcon; className: string }> = {
   QUEUED: {
     label: "Queued",
     icon: CircleDashed,
@@ -84,10 +75,7 @@ export function ReportRequestsTable({
 
   if (isLoading && items.length === 0) {
     return (
-      <div
-        data-slot="report-requests-table"
-        className={cn("flex flex-col gap-2", className)}
-      >
+      <div data-slot="report-requests-table" className={cn("flex flex-col gap-2", className)}>
         <TableSkeleton rows={3} cols={5} />
       </div>
     );
@@ -97,10 +85,7 @@ export function ReportRequestsTable({
     return (
       <div
         data-slot="report-requests-table-empty"
-        className={cn(
-          "border-border bg-surface rounded-md border",
-          className,
-        )}
+        className={cn("border-border bg-surface rounded-md border", className)}
       >
         <EmptyState
           title="No reports queued yet"
@@ -159,10 +144,7 @@ export function ReportRequestsTable({
                   >
                     <Icon
                       aria-hidden="true"
-                      className={cn(
-                        "size-3",
-                        row.status === "PROCESSING" && "animate-spin",
-                      )}
+                      className={cn("size-3", row.status === "PROCESSING" && "animate-spin")}
                     />
                     <span>{meta.label}</span>
                   </Badge>

@@ -4,10 +4,7 @@
  * The mock router returns a `data:text/csv;base64,…` URL; the consumer
  * calls `window.open(url, "_blank")` after the promise resolves.
  */
-import {
-  useMutation,
-  type UseMutationResult,
-} from "@tanstack/react-query";
+import { useMutation, type UseMutationResult } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { downloadRequest } from "../api";
 

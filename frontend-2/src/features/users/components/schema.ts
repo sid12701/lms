@@ -15,11 +15,7 @@ import { Email, Uuid } from "@/schemas/common";
 import { Role } from "@/schemas/role";
 import { UserStatus } from "@/schemas/user";
 
-const TENANT_SCOPED_ROLES = new Set([
-  "LSP_UI_READ",
-  "LSP_UI_WRITE",
-  "LSP_API_CLIENT",
-]);
+const TENANT_SCOPED_ROLES = new Set(["LSP_UI_READ", "LSP_UI_WRITE", "LSP_API_CLIENT"]);
 
 const LSP_SENTINEL_NONE = "__none__";
 
@@ -55,10 +51,7 @@ export const CreateUserFormSchema = z
       .trim()
       .min(3, "Username must be at least 3 characters.")
       .max(64, "Username must be 64 characters or fewer.")
-      .regex(
-        /^[a-z0-9._-]+$/iu,
-        "Use letters, digits, dot, hyphen, or underscore.",
-      ),
+      .regex(/^[a-z0-9._-]+$/iu, "Use letters, digits, dot, hyphen, or underscore."),
     email: Email.refine((v) => v.length <= 254, {
       message: "Email is too long.",
     }),

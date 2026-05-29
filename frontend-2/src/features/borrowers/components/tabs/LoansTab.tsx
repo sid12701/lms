@@ -93,13 +93,9 @@ export function LoansTab({ borrowerId }: LoansTabProps) {
       {
         accessorKey: "externalLoanId",
         meta: { label: "External ID" },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="External ID" />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="External ID" />,
         cell: ({ row }) =>
-          row.original.externalLoanId ?? (
-            <span className="text-foreground-muted">—</span>
-          ),
+          row.original.externalLoanId ?? <span className="text-foreground-muted">—</span>,
         enableSorting: false,
       },
       {
@@ -112,50 +108,37 @@ export function LoansTab({ borrowerId }: LoansTabProps) {
       {
         accessorKey: "productName",
         meta: { label: "Product" },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Product" />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Product" />,
         cell: ({ row }) => <span>{row.original.productName}</span>,
         enableSorting: false,
       },
       {
         accessorKey: "requestedAmount",
         meta: { label: "Amount", numeric: true },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Amount" numeric />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Amount" numeric />,
         cell: ({ row }) => <span>{formatINR(row.original.requestedAmount)}</span>,
         enableSorting: true,
       },
       {
         accessorKey: "tenureMonths",
         meta: { label: "Tenure", numeric: true },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Tenure" numeric />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Tenure" numeric />,
         cell: ({ row }) => <span>{row.original.tenureMonths} mo</span>,
         enableSorting: false,
       },
       {
         accessorKey: "status",
         meta: { label: "Status" },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Status" />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
         cell: ({ row }) => <StatusBadge status={row.original.status} />,
         enableSorting: true,
       },
       {
         accessorKey: "updatedAt",
         meta: { label: "Updated" },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Updated" />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Updated" />,
         cell: ({ row }) => (
-          <span
-            className="text-foreground-muted text-sm"
-            title={row.original.updatedAt}
-          >
+          <span className="text-foreground-muted text-sm" title={row.original.updatedAt}>
             {safeRelative(row.original.updatedAt)}
           </span>
         ),
@@ -165,7 +148,6 @@ export function LoansTab({ borrowerId }: LoansTabProps) {
     [],
   );
 
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table is the project-mandated table primitive
   const table = useReactTable({
     data: loans,
     columns,
@@ -230,14 +212,13 @@ export function LoansTab({ borrowerId }: LoansTabProps) {
                   const numeric = meta?.numeric ?? false;
                   const sortable = SORTABLE_COLUMNS.has(header.column.id);
                   const sorted = header.column.getIsSorted();
-                  const ariaSort: "ascending" | "descending" | "none" | undefined =
-                    sortable
-                      ? sorted === "asc"
-                        ? "ascending"
-                        : sorted === "desc"
-                          ? "descending"
-                          : "none"
-                      : undefined;
+                  const ariaSort: "ascending" | "descending" | "none" | undefined = sortable
+                    ? sorted === "asc"
+                      ? "ascending"
+                      : sorted === "desc"
+                        ? "descending"
+                        : "none"
+                    : undefined;
                   return (
                     <TableHead
                       key={header.id}

@@ -111,9 +111,7 @@ describe("<ApplicationsByStatusCard />", () => {
         dispatchEvent: vi.fn(),
       }),
     });
-    const { getByTestId } = renderWithProviders(
-      <ApplicationsByStatusCard buckets={BUCKETS} />,
-    );
+    const { getByTestId } = renderWithProviders(<ApplicationsByStatusCard buckets={BUCKETS} />);
     const chart = getByTestId("applications-by-status-chart");
     expect(chart.getAttribute("data-reduced-motion")).toBe("true");
   });

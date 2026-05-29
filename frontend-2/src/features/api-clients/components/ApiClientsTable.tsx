@@ -21,11 +21,7 @@ import { DataTablePagination } from "@/components/app/data/DataTablePagination";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type {
-  ApiClientRow,
-  ApiClientsListFilters,
-  ApiClientsListResponse,
-} from "../types";
+import type { ApiClientRow, ApiClientsListFilters, ApiClientsListResponse } from "../types";
 
 export interface ApiClientsTableProps {
   data: ApiClientsListResponse | undefined;
@@ -60,7 +56,7 @@ export function ApiClientsTable({
             type="button"
             data-slot="api-clients-row-link"
             onClick={() => onSelect(row.original)}
-            className="text-foreground hover:underline focus-visible:underline outline-none focus-visible:ring-2 focus-visible:ring-ring/50 rounded-sm font-mono text-sm tabular-nums"
+            className="text-foreground focus-visible:ring-ring/50 rounded-sm font-mono text-sm tabular-nums outline-none hover:underline focus-visible:underline focus-visible:ring-2"
           >
             {row.original.clientId}
           </button>
@@ -69,17 +65,13 @@ export function ApiClientsTable({
       {
         id: "name",
         header: "Name",
-        cell: ({ row }) => (
-          <span className="text-foreground text-sm">{row.original.name}</span>
-        ),
+        cell: ({ row }) => <span className="text-foreground text-sm">{row.original.name}</span>,
       },
       {
         id: "lsp",
         header: "LSP",
         cell: ({ row }) => (
-          <span className="text-foreground-muted text-sm">
-            {row.original.lspName}
-          </span>
+          <span className="text-foreground-muted text-sm">{row.original.lspName}</span>
         ),
       },
       {
@@ -127,10 +119,7 @@ export function ApiClientsTable({
             return <span className="text-foreground-muted text-xs">—</span>;
           }
           return (
-            <span
-              title={formatDateTime(v)}
-              className="text-foreground-muted text-xs"
-            >
+            <span title={formatDateTime(v)} className="text-foreground-muted text-xs">
               {formatRelative(v)}
             </span>
           );
@@ -179,10 +168,7 @@ export function ApiClientsTable({
   });
 
   return (
-    <div
-      data-slot="api-clients-table"
-      className={cn("flex flex-col gap-2", className)}
-    >
+    <div data-slot="api-clients-table" className={cn("flex flex-col gap-2", className)}>
       <DataTable<ApiClientRow, unknown>
         columns={columns}
         data={rows}

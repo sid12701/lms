@@ -3,10 +3,7 @@ import { FileText, FolderOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import type { Document } from "@/schemas/document";
-import {
-  DocumentChecklistRow,
-  type DocumentChecklistRowPermissions,
-} from "./DocumentChecklistRow";
+import { DocumentChecklistRow, type DocumentChecklistRowPermissions } from "./DocumentChecklistRow";
 import { DocumentUploadRow } from "./DocumentUploadRow";
 
 export interface DocumentChecklistGroupProps {
@@ -15,10 +12,7 @@ export interface DocumentChecklistGroupProps {
   permissions?: DocumentChecklistRowPermissions;
   onView?: (doc: Document) => void;
   onDownload?: (doc: Document) => void;
-  onUpload?: (
-    doc: Document,
-    args: { idempotencyKey: string },
-  ) => Promise<void> | void;
+  onUpload?: (doc: Document, args: { idempotencyKey: string }) => Promise<void> | void;
   className?: string;
 }
 

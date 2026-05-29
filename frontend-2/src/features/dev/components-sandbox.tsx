@@ -218,243 +218,251 @@ export function ComponentsSandboxPage() {
           </div>
         }
       >
-      <div className="mx-auto grid max-w-[1320px] grid-cols-1 gap-6 p-6 lg:grid-cols-[200px_1fr_288px]">
-        {/* Sticky TOC */}
-        <nav aria-label="Sandbox sections" className="sticky top-6 hidden h-fit lg:block">
-          <PageEyebrow className="mb-2 px-2">On this page</PageEyebrow>
-          <ul className="flex flex-col gap-0.5">
-            {SECTIONS.map((s) => (
-              <li key={s.id}>
-                <a
-                  href={`#${s.id}`}
-                  onClick={() => setActive(s.id)}
-                  data-state={active === s.id ? "active" : undefined}
-                  className={cn(
-                    "hover:bg-surface-muted text-foreground-muted block rounded px-3 py-1.5 text-sm",
-                    active === s.id && "bg-surface-muted text-foreground font-medium",
-                  )}
-                >
-                  {s.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
-        {/* Main column */}
-        <main className="flex min-w-0 flex-col gap-8">
-          <PageHeader
-            eyebrow="Dev"
-            title="Components sandbox"
-            description="Visual QA surface for every composed component. DEV-only route."
-            actions={
-              <>
-                <Button type="button" variant="outline" size="sm">
-                  <Download aria-hidden="true" /> Export
-                </Button>
-                <Button type="button" size="sm">
-                  <Plus aria-hidden="true" /> New
-                </Button>
-              </>
-            }
-          />
-
-          {/* Layout primitives */}
-          <PageSection id="layout" eyebrow="Layout" title="PageSection, KpiStrip, palette swatches">
-            <KpiStrip>
-              <div className="border-border bg-surface rounded-md border p-4">
-                <div className="text-foreground-muted text-xs uppercase">Open loans</div>
-                <div className="text-foreground mt-1 text-2xl font-semibold">
-                  <TabularNumber value={1248} />
-                </div>
-              </div>
-              <div className="border-border bg-surface rounded-md border p-4">
-                <div className="text-foreground-muted text-xs uppercase">Disbursed (mtd)</div>
-                <div className="text-foreground mt-1 text-2xl font-semibold">
-                  <TabularNumber value={4520000} variant="currency" />
-                </div>
-              </div>
-              <div className="border-border bg-surface rounded-md border p-4">
-                <div className="text-foreground-muted text-xs uppercase">Avg. DPD</div>
-                <div className="text-foreground mt-1 text-2xl font-semibold">
-                  <TabularNumber value={3.42} variant="percent" />
-                </div>
-              </div>
-              <div className="border-border bg-surface rounded-md border p-4">
-                <div className="text-foreground-muted text-xs uppercase">Webhooks</div>
-                <div className="text-foreground mt-1 text-2xl font-semibold">
-                  <TabularNumber value={97.5} variant="percent" />
-                </div>
-              </div>
-            </KpiStrip>
-
-            <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-              <ColorSwatch name="Primary" token="color-primary" />
-              <ColorSwatch name="Accent" token="color-accent" />
-              <ColorSwatch name="Success" token="color-success" />
-              <ColorSwatch name="Warning" token="color-warning" />
-              <ColorSwatch name="Danger" token="color-danger" />
-              <ColorSwatch name="Info" token="color-info" />
-              <ColorSwatch name="Revoked" token="color-revoked" />
-              <ColorSwatch name="Neutral" token="color-neutral" />
-            </div>
-          </PageSection>
-
-          {/* Misc primitives */}
-          <PageSection id="misc" eyebrow="Misc" title="Tabular, copyable IDs, kbd, avatars">
-            <div className="flex flex-wrap items-center gap-4">
-              <TabularNumber value={1234567} variant="currency" decimals={0} />
-              <TabularNumber value={12.345} variant="percent" />
-              <CopyableId value="bc-app-9c3a-2d11-4e10-b8f7" truncate={18} label="Application ID" />
-              <KbdHint keys={["Cmd", "K"]} />
-              <KbdHint keys={["Ctrl", "Shift", "P"]} />
-              <AvatarInitials name="Aanya Mehra" size="sm" />
-              <AvatarInitials name="Karthik Nair" tone="accent" />
-              <AvatarInitials name="Riya Sehgal" size="lg" tone="neutral" />
-            </div>
-          </PageSection>
-
-          {/* Status badges */}
-          <PageSection
-            id="status"
-            eyebrow="Status"
-            title="StatusBadge, AccountStatusBadge, DpdBadge"
-          >
-            <h3 className="text-foreground mb-2 text-sm font-semibold">
-              Loan status — subtle (default)
-            </h3>
-            <div className="mb-5 flex flex-wrap gap-2">
-              {loanStatuses.map((s) => (
-                <StatusBadge key={s} status={s} />
+        <div className="mx-auto grid max-w-[1320px] grid-cols-1 gap-6 p-6 lg:grid-cols-[200px_1fr_288px]">
+          {/* Sticky TOC */}
+          <nav aria-label="Sandbox sections" className="sticky top-6 hidden h-fit lg:block">
+            <PageEyebrow className="mb-2 px-2">On this page</PageEyebrow>
+            <ul className="flex flex-col gap-0.5">
+              {SECTIONS.map((s) => (
+                <li key={s.id}>
+                  <a
+                    href={`#${s.id}`}
+                    onClick={() => setActive(s.id)}
+                    data-state={active === s.id ? "active" : undefined}
+                    className={cn(
+                      "hover:bg-surface-muted text-foreground-muted block rounded px-3 py-1.5 text-sm",
+                      active === s.id && "bg-surface-muted text-foreground font-medium",
+                    )}
+                  >
+                    {s.label}
+                  </a>
+                </li>
               ))}
-            </div>
-            <h3 className="text-foreground mb-2 text-sm font-semibold">Loan status — solid</h3>
-            <div className="mb-5 flex flex-wrap gap-2">
-              {loanStatuses.slice(0, 8).map((s) => (
-                <StatusBadge key={s} status={s} variant="default" />
-              ))}
-            </div>
-            <h3 className="text-foreground mb-2 text-sm font-semibold">Account status</h3>
-            <div className="mb-5 flex flex-wrap gap-2">
-              {ACCOUNT_STATUSES.map((s) => (
-                <AccountStatusBadge key={s} status={s} />
-              ))}
-            </div>
-            <h3 className="text-foreground mb-2 text-sm font-semibold">DPD buckets</h3>
-            <div className="flex flex-wrap gap-2">
-              {DPD_BUCKETS.map((b) => (
-                <DpdBadge key={b} bucket={b} />
-              ))}
-              <DpdBadge bucket="B31_60" days={47} />
-            </div>
-          </PageSection>
+            </ul>
+          </nav>
 
-          {/* Feedback */}
-          <PageSection
-            id="feedback"
-            eyebrow="Feedback"
-            title="Empty / Error / Permission / Skeletons"
-          >
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="border-border rounded-md border p-3">
-                <EmptyState
-                  title="No loan applications"
-                  description="No loans match the current filters."
-                />
-              </div>
-              <div className="border-border rounded-md border p-3">
-                <ErrorState
-                  title="Something went wrong"
-                  description="The mock router returned an error."
-                  retry={{ label: "Retry", onClick: () => undefined }}
-                />
-              </div>
-              <div className="border-border rounded-md border p-3">
-                <PermissionDeniedState
-                  title="No access"
-                  description="Your role cannot view this surface."
-                />
-              </div>
-              <div className="border-border rounded-md border p-3">
-                <ContentState status="loading">
-                  <span>Body content (hidden while loading)</span>
-                </ContentState>
-              </div>
-              <div className="border-border rounded-md border p-3">
-                <KpiSkeleton />
-              </div>
-              <div className="border-border rounded-md border p-3">
-                <CardSkeleton />
-              </div>
-              <div className="border-border rounded-md border p-3">
-                <FormSkeleton />
-              </div>
-              <div className="border-border rounded-md border p-3">
-                <TableSkeleton />
-              </div>
-            </div>
-          </PageSection>
-
-          {/* Data table */}
-          <PageSection
-            id="data"
-            eyebrow="Data"
-            title="DataTable + column header + view options + pagination"
-            actions={<DensityToggle />}
-          >
-            <SandboxTable rows={SAMPLE_ROWS} columns={columns} />
-          </PageSection>
-
-          {/* Filters + density */}
-          <PageSection id="filters" eyebrow="Filters" title="FilterBar + DensityToggle">
-            <FilterBar schema={FILTER_SCHEMA} label="Filters">
-              {({ filters, setFilters }) => (
+          {/* Main column */}
+          <main className="flex min-w-0 flex-col gap-8">
+            <PageHeader
+              eyebrow="Dev"
+              title="Components sandbox"
+              description="Visual QA surface for every composed component. DEV-only route."
+              actions={
                 <>
-                  <Badge variant="secondary">{`Active: ${Object.keys(filters).length}`}</Badge>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={filters.status === "DISBURSED" ? "default" : "outline"}
-                    onClick={() =>
-                      setFilters({
-                        status: filters.status === "DISBURSED" ? undefined : "DISBURSED",
-                      })
-                    }
-                  >
-                    Disbursed
+                  <Button type="button" variant="outline" size="sm">
+                    <Download aria-hidden="true" /> Export
                   </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={filters.status === "UNDER_REVIEW" ? "default" : "outline"}
-                    onClick={() =>
-                      setFilters({
-                        status: filters.status === "UNDER_REVIEW" ? undefined : "UNDER_REVIEW",
-                      })
-                    }
-                  >
-                    Under review
+                  <Button type="button" size="sm">
+                    <Plus aria-hidden="true" /> New
                   </Button>
                 </>
-              )}
-            </FilterBar>
-          </PageSection>
-        </main>
+              }
+            />
 
-        {/* Right rail */}
-        <RightRail>
-          <div className="border-border bg-surface flex flex-col gap-3 rounded-md border p-4">
-            <PageEyebrow>Sandbox</PageEyebrow>
-            <p className="text-foreground text-sm">
-              Visual QA only. Components mounted with hard-coded fixtures so changes are reviewable
-              in one place.
-            </p>
-            <Badge variant="outline" className="gap-1">
-              <ShieldCheck aria-hidden="true" /> DEV
-            </Badge>
-          </div>
-        </RightRail>
-      </div>
+            {/* Layout primitives */}
+            <PageSection
+              id="layout"
+              eyebrow="Layout"
+              title="PageSection, KpiStrip, palette swatches"
+            >
+              <KpiStrip>
+                <div className="border-border bg-surface rounded-md border p-4">
+                  <div className="text-foreground-muted text-xs uppercase">Open loans</div>
+                  <div className="text-foreground mt-1 text-2xl font-semibold">
+                    <TabularNumber value={1248} />
+                  </div>
+                </div>
+                <div className="border-border bg-surface rounded-md border p-4">
+                  <div className="text-foreground-muted text-xs uppercase">Disbursed (mtd)</div>
+                  <div className="text-foreground mt-1 text-2xl font-semibold">
+                    <TabularNumber value={4520000} variant="currency" />
+                  </div>
+                </div>
+                <div className="border-border bg-surface rounded-md border p-4">
+                  <div className="text-foreground-muted text-xs uppercase">Avg. DPD</div>
+                  <div className="text-foreground mt-1 text-2xl font-semibold">
+                    <TabularNumber value={3.42} variant="percent" />
+                  </div>
+                </div>
+                <div className="border-border bg-surface rounded-md border p-4">
+                  <div className="text-foreground-muted text-xs uppercase">Webhooks</div>
+                  <div className="text-foreground mt-1 text-2xl font-semibold">
+                    <TabularNumber value={97.5} variant="percent" />
+                  </div>
+                </div>
+              </KpiStrip>
+
+              <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <ColorSwatch name="Primary" token="color-primary" />
+                <ColorSwatch name="Accent" token="color-accent" />
+                <ColorSwatch name="Success" token="color-success" />
+                <ColorSwatch name="Warning" token="color-warning" />
+                <ColorSwatch name="Danger" token="color-danger" />
+                <ColorSwatch name="Info" token="color-info" />
+                <ColorSwatch name="Revoked" token="color-revoked" />
+                <ColorSwatch name="Neutral" token="color-neutral" />
+              </div>
+            </PageSection>
+
+            {/* Misc primitives */}
+            <PageSection id="misc" eyebrow="Misc" title="Tabular, copyable IDs, kbd, avatars">
+              <div className="flex flex-wrap items-center gap-4">
+                <TabularNumber value={1234567} variant="currency" decimals={0} />
+                <TabularNumber value={12.345} variant="percent" />
+                <CopyableId
+                  value="bc-app-9c3a-2d11-4e10-b8f7"
+                  truncate={18}
+                  label="Application ID"
+                />
+                <KbdHint keys={["Cmd", "K"]} />
+                <KbdHint keys={["Ctrl", "Shift", "P"]} />
+                <AvatarInitials name="Aanya Mehra" size="sm" />
+                <AvatarInitials name="Karthik Nair" tone="accent" />
+                <AvatarInitials name="Riya Sehgal" size="lg" tone="neutral" />
+              </div>
+            </PageSection>
+
+            {/* Status badges */}
+            <PageSection
+              id="status"
+              eyebrow="Status"
+              title="StatusBadge, AccountStatusBadge, DpdBadge"
+            >
+              <h3 className="text-foreground mb-2 text-sm font-semibold">
+                Loan status — subtle (default)
+              </h3>
+              <div className="mb-5 flex flex-wrap gap-2">
+                {loanStatuses.map((s) => (
+                  <StatusBadge key={s} status={s} />
+                ))}
+              </div>
+              <h3 className="text-foreground mb-2 text-sm font-semibold">Loan status — solid</h3>
+              <div className="mb-5 flex flex-wrap gap-2">
+                {loanStatuses.slice(0, 8).map((s) => (
+                  <StatusBadge key={s} status={s} variant="default" />
+                ))}
+              </div>
+              <h3 className="text-foreground mb-2 text-sm font-semibold">Account status</h3>
+              <div className="mb-5 flex flex-wrap gap-2">
+                {ACCOUNT_STATUSES.map((s) => (
+                  <AccountStatusBadge key={s} status={s} />
+                ))}
+              </div>
+              <h3 className="text-foreground mb-2 text-sm font-semibold">DPD buckets</h3>
+              <div className="flex flex-wrap gap-2">
+                {DPD_BUCKETS.map((b) => (
+                  <DpdBadge key={b} bucket={b} />
+                ))}
+                <DpdBadge bucket="B31_60" days={47} />
+              </div>
+            </PageSection>
+
+            {/* Feedback */}
+            <PageSection
+              id="feedback"
+              eyebrow="Feedback"
+              title="Empty / Error / Permission / Skeletons"
+            >
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="border-border rounded-md border p-3">
+                  <EmptyState
+                    title="No loan applications"
+                    description="No loans match the current filters."
+                  />
+                </div>
+                <div className="border-border rounded-md border p-3">
+                  <ErrorState
+                    title="Something went wrong"
+                    description="The mock router returned an error."
+                    retry={{ label: "Retry", onClick: () => undefined }}
+                  />
+                </div>
+                <div className="border-border rounded-md border p-3">
+                  <PermissionDeniedState
+                    title="No access"
+                    description="Your role cannot view this surface."
+                  />
+                </div>
+                <div className="border-border rounded-md border p-3">
+                  <ContentState status="loading">
+                    <span>Body content (hidden while loading)</span>
+                  </ContentState>
+                </div>
+                <div className="border-border rounded-md border p-3">
+                  <KpiSkeleton />
+                </div>
+                <div className="border-border rounded-md border p-3">
+                  <CardSkeleton />
+                </div>
+                <div className="border-border rounded-md border p-3">
+                  <FormSkeleton />
+                </div>
+                <div className="border-border rounded-md border p-3">
+                  <TableSkeleton />
+                </div>
+              </div>
+            </PageSection>
+
+            {/* Data table */}
+            <PageSection
+              id="data"
+              eyebrow="Data"
+              title="DataTable + column header + view options + pagination"
+              actions={<DensityToggle />}
+            >
+              <SandboxTable rows={SAMPLE_ROWS} columns={columns} />
+            </PageSection>
+
+            {/* Filters + density */}
+            <PageSection id="filters" eyebrow="Filters" title="FilterBar + DensityToggle">
+              <FilterBar schema={FILTER_SCHEMA} label="Filters">
+                {({ filters, setFilters }) => (
+                  <>
+                    <Badge variant="secondary">{`Active: ${Object.keys(filters).length}`}</Badge>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={filters.status === "DISBURSED" ? "default" : "outline"}
+                      onClick={() =>
+                        setFilters({
+                          status: filters.status === "DISBURSED" ? undefined : "DISBURSED",
+                        })
+                      }
+                    >
+                      Disbursed
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={filters.status === "UNDER_REVIEW" ? "default" : "outline"}
+                      onClick={() =>
+                        setFilters({
+                          status: filters.status === "UNDER_REVIEW" ? undefined : "UNDER_REVIEW",
+                        })
+                      }
+                    >
+                      Under review
+                    </Button>
+                  </>
+                )}
+              </FilterBar>
+            </PageSection>
+          </main>
+
+          {/* Right rail */}
+          <RightRail>
+            <div className="border-border bg-surface flex flex-col gap-3 rounded-md border p-4">
+              <PageEyebrow>Sandbox</PageEyebrow>
+              <p className="text-foreground text-sm">
+                Visual QA only. Components mounted with hard-coded fixtures so changes are
+                reviewable in one place.
+              </p>
+              <Badge variant="outline" className="gap-1">
+                <ShieldCheck aria-hidden="true" /> DEV
+              </Badge>
+            </div>
+          </RightRail>
+        </div>
       </Suspense>
     </div>
   );
@@ -492,7 +500,7 @@ function DataTableScaffold<TData>({
 }) {
   // Owns a live TanStack table instance so the toolbar (view options) and
   // pagination row can both read/write the same pagination + visibility state.
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table is the project-mandated table primitive
+
   const table = useReactTable<TData>({
     data: rows,
     columns,

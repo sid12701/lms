@@ -17,13 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -115,16 +109,13 @@ export function ProductEditDialog({
               {product ? (
                 <>
                   {" "}
-                  <span className="text-foreground-muted font-mono text-sm">
-                    ({product.code})
-                  </span>
+                  <span className="text-foreground-muted font-mono text-sm">({product.code})</span>
                 </>
               ) : null}
             </DialogTitle>
           </div>
           <DialogDescription>
-            Status and pricing changes are versioned in the product audit
-            stream.
+            Status and pricing changes are versioned in the product audit stream.
           </DialogDescription>
         </DialogHeader>
 
@@ -156,15 +147,8 @@ export function ProductEditDialog({
                 <FormItem>
                   <FormLabel>Status</FormLabel>
                   <FormControl>
-                    <Select
-                      value={field.value}
-                      onValueChange={(v) => field.onChange(v)}
-                    >
-                      <SelectTrigger
-                        size="sm"
-                        data-slot="products-edit-status"
-                        aria-label="Status"
-                      >
+                    <Select value={field.value} onValueChange={(v) => field.onChange(v)}>
+                      <SelectTrigger size="sm" data-slot="products-edit-status" aria-label="Status">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>

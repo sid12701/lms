@@ -37,9 +37,7 @@ describe("formatBytes", () => {
 
 describe("DocumentChecklistRow (Gap #18 — view-only)", () => {
   it("renders the kind label, status pill, and file metadata", () => {
-    const { getByText, container } = renderWithProviders(
-      <DocumentChecklistRow doc={makeDoc()} />,
-    );
+    const { getByText, container } = renderWithProviders(<DocumentChecklistRow doc={makeDoc()} />);
     expect(getByText("PAN card")).toBeInTheDocument();
     const pill = container.querySelector('[data-slot="document-status-pill"]');
     expect(pill?.textContent).toContain("Uploaded");
@@ -57,9 +55,7 @@ describe("DocumentChecklistRow (Gap #18 — view-only)", () => {
 
   it("falls back to the no-file message when fileName is null", () => {
     const { getByText, queryByText } = renderWithProviders(
-      <DocumentChecklistRow
-        doc={makeDoc({ fileName: null, mimeType: null, sizeBytes: null })}
-      />,
+      <DocumentChecklistRow doc={makeDoc({ fileName: null, mimeType: null, sizeBytes: null })} />,
     );
     expect(getByText(/No file uploaded yet/i)).toBeInTheDocument();
     expect(queryByText("application/pdf")).toBeNull();
@@ -79,10 +75,7 @@ describe("DocumentChecklistRow (Gap #18 — view-only)", () => {
 
   it("hides the Download button when there is no file", () => {
     const { queryByRole } = renderWithProviders(
-      <DocumentChecklistRow
-        doc={makeDoc({ fileName: null })}
-        onDownload={() => {}}
-      />,
+      <DocumentChecklistRow doc={makeDoc({ fileName: null })} onDownload={() => {}} />,
     );
     expect(queryByRole("button", { name: /Download/i })).toBeNull();
   });
@@ -97,9 +90,7 @@ describe("DocumentChecklistRow (Gap #18 — view-only)", () => {
   });
 
   it("applies compact mode via data-compact='true'", () => {
-    const { container } = renderWithProviders(
-      <DocumentChecklistRow doc={makeDoc()} compact />,
-    );
+    const { container } = renderWithProviders(<DocumentChecklistRow doc={makeDoc()} compact />);
     const row = container.querySelector('[data-slot="document-checklist-row"]');
     expect(row?.getAttribute("data-compact")).toBe("true");
   });

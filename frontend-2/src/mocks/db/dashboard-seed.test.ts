@@ -86,9 +86,7 @@ describe("seedDashboardFixtures", () => {
 
   it("seeds approval audit pairs for TAT computation", () => {
     const awaiting = db.auditApplication.filter((e) => e.toStatus === "AWAITING_APPROVAL");
-    const approved = db.auditApplication.filter(
-      (e) => e.toStatus === "APPROVED_PENDING_DISBURSAL",
-    );
+    const approved = db.auditApplication.filter((e) => e.toStatus === "APPROVED_PENDING_DISBURSAL");
     expect(awaiting.length).toBeGreaterThan(0);
     expect(approved.length).toBeGreaterThan(0);
   });

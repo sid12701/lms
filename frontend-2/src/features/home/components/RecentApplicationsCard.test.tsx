@@ -86,9 +86,7 @@ describe("<RecentApplicationsCard />", () => {
     const row = getByText("A•••a Devi").closest("tr");
     expect(row).not.toBeNull();
     await user.click(row!);
-    expect(navigateMock).toHaveBeenCalledWith(
-      `/loan-applications/${FIXTURE[0]!.id}`,
-    );
+    expect(navigateMock).toHaveBeenCalledWith(`/loan-applications/${FIXTURE[0]!.id}`);
   });
 
   it("navigates on keyboard Enter", async () => {
@@ -99,9 +97,7 @@ describe("<RecentApplicationsCard />", () => {
     const row = getByText("R•••h Kumar").closest("tr") as HTMLTableRowElement;
     row.focus();
     await user.keyboard("{Enter}");
-    expect(navigateMock).toHaveBeenCalledWith(
-      `/loan-applications/${FIXTURE[1]!.id}`,
-    );
+    expect(navigateMock).toHaveBeenCalledWith(`/loan-applications/${FIXTURE[1]!.id}`);
   });
 
   it("forwards className to the card", () => {
@@ -121,9 +117,7 @@ describe("<RecentApplicationsCard />", () => {
   });
 
   it("has no axe violations when empty", async () => {
-    const { container } = renderWithProviders(
-      wrap(<RecentApplicationsCard applications={[]} />),
-    );
+    const { container } = renderWithProviders(wrap(<RecentApplicationsCard applications={[]} />));
     expect(await axe(container)).toHaveNoViolations();
   });
 });

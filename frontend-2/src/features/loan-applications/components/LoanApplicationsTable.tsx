@@ -20,11 +20,7 @@ import {
   type Row,
   type SortingState,
 } from "@tanstack/react-table";
-import {
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
+import { flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { formatDistanceToNow } from "date-fns";
 import {
   Table,
@@ -49,12 +45,7 @@ import type {
   LoanApplicationListResponse,
 } from "../types";
 
-const SORTABLE_COLUMNS = new Set([
-  "createdAt",
-  "updatedAt",
-  "requestedAmount",
-  "status",
-]);
+const SORTABLE_COLUMNS = new Set(["createdAt", "updatedAt", "requestedAmount", "status"]);
 
 type SortKey = NonNullable<LoanApplicationListFilters["sortBy"]>;
 
@@ -120,36 +111,24 @@ export function LoanApplicationsTable({
       {
         accessorKey: "externalLoanId",
         meta: { label: "LSP Loan ID" },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="LSP Loan ID" />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="LSP Loan ID" />,
         cell: ({ row }) =>
-          row.original.externalLoanId ?? (
-            <span className="text-foreground-muted">—</span>
-          ),
+          row.original.externalLoanId ?? <span className="text-foreground-muted">—</span>,
         enableSorting: false,
       },
       {
         accessorKey: "accountNumber",
         meta: { label: "Bhaw Loan ID" },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Bhaw Loan ID" />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Bhaw Loan ID" />,
         cell: ({ row }) =>
-          row.original.accountNumber ?? (
-            <span className="text-foreground-muted">—</span>
-          ),
+          row.original.accountNumber ?? <span className="text-foreground-muted">—</span>,
         enableSorting: false,
       },
       {
         accessorKey: "borrowerNameMasked",
         meta: { label: "Borrower" },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Borrower" />
-        ),
-        cell: ({ row }) => (
-          <span className="font-medium">{row.original.borrowerNameMasked}</span>
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Borrower" />,
+        cell: ({ row }) => <span className="font-medium">{row.original.borrowerNameMasked}</span>,
         enableSorting: false,
       },
       {
@@ -162,50 +141,37 @@ export function LoanApplicationsTable({
       {
         accessorKey: "productName",
         meta: { label: "Product" },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Product" />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Product" />,
         cell: ({ row }) => <span>{row.original.productName}</span>,
         enableSorting: false,
       },
       {
         accessorKey: "requestedAmount",
         meta: { label: "Amount", numeric: true },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Amount" numeric />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Amount" numeric />,
         cell: ({ row }) => <span>{formatINR(row.original.requestedAmount)}</span>,
         enableSorting: true,
       },
       {
         accessorKey: "tenureMonths",
         meta: { label: "Tenure", numeric: true },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Tenure" numeric />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Tenure" numeric />,
         cell: ({ row }) => <span>{row.original.tenureMonths} mo</span>,
         enableSorting: false,
       },
       {
         accessorKey: "status",
         meta: { label: "Status" },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Status" />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
         cell: ({ row }) => <StatusBadge status={row.original.status} />,
         enableSorting: true,
       },
       {
         accessorKey: "updatedAt",
         meta: { label: "Updated" },
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Updated" />
-        ),
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Updated" />,
         cell: ({ row }) => (
-          <span
-            className="text-foreground-muted text-sm"
-            title={row.original.updatedAt}
-          >
+          <span className="text-foreground-muted text-sm" title={row.original.updatedAt}>
             {safeRelative(row.original.updatedAt)}
           </span>
         ),
@@ -227,8 +193,7 @@ export function LoanApplicationsTable({
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => row.id,
     onSortingChange: (updater) => {
-      const next =
-        typeof updater === "function" ? updater(sorting) : updater;
+      const next = typeof updater === "function" ? updater(sorting) : updater;
       if (next.length === 0) {
         onFiltersChange({
           ...filters,
@@ -248,8 +213,7 @@ export function LoanApplicationsTable({
       });
     },
     onPaginationChange: (updater) => {
-      const next =
-        typeof updater === "function" ? updater(pagination) : updater;
+      const next = typeof updater === "function" ? updater(pagination) : updater;
       onFiltersChange({
         ...filters,
         page: next.pageIndex,
@@ -294,10 +258,7 @@ export function LoanApplicationsTable({
         <Table aria-label="Loan applications">
           <TableHeader className="bg-surface-muted/60 sticky top-0 z-10 backdrop-blur">
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow
-                key={headerGroup.id}
-                className="border-border hover:bg-transparent"
-              >
+              <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
                 {headerGroup.headers.map((header) => {
                   const meta = header.column.columnDef.meta;
                   const numeric = meta?.numeric ?? false;
@@ -319,10 +280,7 @@ export function LoanApplicationsTable({
                     >
                       {header.isPlaceholder
                         ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
+                        : flexRender(header.column.columnDef.header, header.getContext())}
                     </TableHead>
                   );
                 })}
@@ -357,7 +315,7 @@ export function LoanApplicationsTable({
                     }
                   }}
                   className={cn(
-                    "border-border hover:bg-surface-muted/40 focus-visible:ring-ring/50 cursor-pointer outline-none transition-colors duration-150 focus-visible:ring-2",
+                    "border-border hover:bg-surface-muted/40 focus-visible:ring-ring/50 cursor-pointer transition-colors duration-150 outline-none focus-visible:ring-2",
                   )}
                 >
                   {row.getVisibleCells().map((cell) => {
@@ -384,11 +342,7 @@ export function LoanApplicationsTable({
         </Table>
       </div>
 
-      <DataTablePagination
-        table={table}
-        totalRows={data?.total ?? 0}
-        className="px-1"
-      />
+      <DataTablePagination table={table} totalRows={data?.total ?? 0} className="px-1" />
     </div>
   );
 }

@@ -77,13 +77,7 @@ describe("ScheduleTab", () => {
       refetch: vi.fn(),
     });
     const { container } = renderWithProviders(
-      <ScheduleTab
-        applicationId="app-1"
-        status="DISBURSED"
-        canPost
-        docsComplete
-        scheduleValid
-      />,
+      <ScheduleTab applicationId="app-1" status="DISBURSED" canPost docsComplete scheduleValid />,
     );
     expect(container.querySelector('[data-slot="table-skeleton"]')).not.toBeNull();
   });
@@ -164,13 +158,7 @@ describe("ScheduleTab", () => {
 
     const user = userEvent.setup();
     renderWithProviders(
-      <ScheduleTab
-        applicationId="app-1"
-        status="DISBURSED"
-        canPost
-        docsComplete
-        scheduleValid
-      />,
+      <ScheduleTab applicationId="app-1" status="DISBURSED" canPost docsComplete scheduleValid />,
     );
 
     // Click the record-payment trigger on the next-due row.
@@ -207,13 +195,7 @@ describe("ScheduleTab", () => {
 
     const user = userEvent.setup();
     renderWithProviders(
-      <ScheduleTab
-        applicationId="app-1"
-        status="DISBURSED"
-        canPost
-        docsComplete
-        scheduleValid
-      />,
+      <ScheduleTab applicationId="app-1" status="DISBURSED" canPost docsComplete scheduleValid />,
     );
 
     const trigger = await screen.findByRole("button", { name: /record/i });
@@ -237,13 +219,7 @@ describe("ScheduleTab", () => {
     });
     const user = userEvent.setup();
     renderWithProviders(
-      <ScheduleTab
-        applicationId="app-1"
-        status="DISBURSED"
-        canPost
-        docsComplete
-        scheduleValid
-      />,
+      <ScheduleTab applicationId="app-1" status="DISBURSED" canPost docsComplete scheduleValid />,
     );
     expect(screen.getByText(/Couldn't load repayment schedule/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /try again/i }));
@@ -266,9 +242,7 @@ describe("ScheduleTab", () => {
         scheduleValid={false}
       />,
     );
-    expect(
-      container.querySelector('[data-slot="awaiting-schedule-banner"]'),
-    ).not.toBeNull();
+    expect(container.querySelector('[data-slot="awaiting-schedule-banner"]')).not.toBeNull();
     // The generic empty state should NOT also render — avoid double-emptiness.
     expect(screen.queryByText(/No repayment schedule yet/i)).toBeNull();
   });
@@ -289,9 +263,7 @@ describe("ScheduleTab", () => {
         scheduleValid={false}
       />,
     );
-    expect(
-      container.querySelector('[data-slot="invalid-schedule-banner"]'),
-    ).not.toBeNull();
+    expect(container.querySelector('[data-slot="invalid-schedule-banner"]')).not.toBeNull();
     expect(screen.getByText(/Schedule validation failed/i)).toBeInTheDocument();
   });
 
@@ -322,13 +294,7 @@ describe("ScheduleTab", () => {
       refetch: vi.fn(),
     });
     const { container } = renderWithProviders(
-      <ScheduleTab
-        applicationId="app-1"
-        status="DISBURSED"
-        canPost
-        docsComplete
-        scheduleValid
-      />,
+      <ScheduleTab applicationId="app-1" status="DISBURSED" canPost docsComplete scheduleValid />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });

@@ -84,28 +84,21 @@ export function IpAllowListEditor({
   };
 
   return (
-    <div
-      data-slot="ip-allow-list-editor"
-      id={id}
-      className={cn("flex flex-col gap-2", className)}
-    >
+    <div data-slot="ip-allow-list-editor" id={id} className={cn("flex flex-col gap-2", className)}>
       {value.length === 0 && !adding ? (
         <p className="text-foreground-muted text-xs">
-          No IP restrictions. The client will be reachable from any source IP
-          until you add an entry.
+          No IP restrictions. The client will be reachable from any source IP until you add an
+          entry.
         </p>
       ) : null}
 
       {value.length > 0 ? (
-        <ul
-          aria-label="IP allow-list entries"
-          className="flex flex-wrap gap-1.5"
-        >
+        <ul aria-label="IP allow-list entries" className="flex flex-wrap gap-1.5">
           {value.map((entry) => (
             <li
               key={entry}
               data-slot="ip-chip"
-              className="border-border bg-surface-muted text-foreground inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-mono"
+              className="border-border bg-surface-muted text-foreground inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-mono text-xs"
             >
               <span>{entry}</span>
               <Button
@@ -141,7 +134,7 @@ export function IpAllowListEditor({
               aria-invalid={error !== null}
               data-slot="ip-add-input"
               disabled={disabled}
-              className="h-8 max-w-xs text-sm font-mono"
+              className="h-8 max-w-xs font-mono text-sm"
             />
             <Button
               type="button"
@@ -169,11 +162,7 @@ export function IpAllowListEditor({
             </Button>
           </div>
           {error ? (
-            <p
-              role="alert"
-              data-slot="ip-add-error"
-              className="text-danger text-xs"
-            >
+            <p role="alert" data-slot="ip-add-error" className="text-danger text-xs">
               {error}
             </p>
           ) : null}
@@ -186,7 +175,7 @@ export function IpAllowListEditor({
           onClick={() => setAdding(true)}
           disabled={disabled}
           data-slot="ip-add-open"
-          className="self-start gap-1"
+          className="gap-1 self-start"
         >
           <Plus aria-hidden="true" className="size-3.5" />
           Add CIDR

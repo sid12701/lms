@@ -26,9 +26,7 @@ vi.mock("@/features/home/components", () => ({
   LspKpiSummary: ({ kpis }: { kpis: unknown }) => (
     <div data-testid="lsp-kpi-summary">{kpis ? "ok" : "no"}</div>
   ),
-  LoansByDpdBucketCard: () => (
-    <div data-testid="loans-by-dpd-card">LoansByDpdBucketCard</div>
-  ),
+  LoansByDpdBucketCard: () => <div data-testid="loans-by-dpd-card">LoansByDpdBucketCard</div>,
   OpenAlertsCard: () => <div data-testid="open-alerts-card">OpenAlertsCard</div>,
   RecentApplicationsCard: () => (
     <div data-testid="recent-applications-card">RecentApplicationsCard</div>
@@ -97,7 +95,10 @@ function makeSession(role: Session["user"]["role"]): SessionContextValue {
       id: "00000000-0000-4000-8000-000000000001",
       username: "tester",
       role,
-      lspId: role === "LSP_UI_READ" || role === "LSP_UI_WRITE" ? "00000000-0000-4000-8000-000000000099" : null,
+      lspId:
+        role === "LSP_UI_READ" || role === "LSP_UI_WRITE"
+          ? "00000000-0000-4000-8000-000000000099"
+          : null,
       mustChangePassword: false,
     },
     accessToken: "mock.token",

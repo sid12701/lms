@@ -12,7 +12,7 @@ describe("PageEyebrow", () => {
     expect(container.querySelector('[data-slot="page-eyebrow"]')).not.toBeNull();
   });
 
-  it("renders as a span when as=\"span\"", () => {
+  it('renders as a span when as="span"', () => {
     const { getByText } = renderWithProviders(<PageEyebrow as="span">Inline</PageEyebrow>);
     const node = getByText("Inline");
     expect(node.tagName).toBe("SPAN");
