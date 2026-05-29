@@ -53,6 +53,13 @@ public class AuditExplorerService {
         return new PagedResult<>(projected, raw.totalCount(), raw.offset(), raw.limit());
     }
 
+    @Transactional(readOnly = true)
+    public List<DocumentAccessDocumentTypeCount> countDocumentAccessByDocumentType(Instant since, Instant until) {
+        return repository.countDocumentAccessByDocumentType(since, until).stream()
+                .map(row -> new DocumentAccessDocumentTypeCount(row.documentType(), row.count()))
+                .toList();
+    }
+
     private AuditExplorerEvent project(UnifiedAuditEventRow row) {
         AuditStream stream = AuditStream.valueOf(row.stream());
         String compositeId = stream.name() + ":" + row.nativeId();
@@ -217,5 +224,8 @@ public class AuditExplorerService {
             Map<String, Object> detail,
             String correlationId
     ) {
+    }
+
+    public record DocumentAccessDocumentTypeCount(String documentType, long count) {
     }
 }

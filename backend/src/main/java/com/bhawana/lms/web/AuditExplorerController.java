@@ -74,6 +74,17 @@ public class AuditExplorerController {
         return service.search(query);
     }
 
+    @GetMapping("/document-access/document-type-counts")
+    public List<AuditExplorerService.DocumentAccessDocumentTypeCount> countDocumentAccessByDocumentType(
+            @RequestParam(required = false) String since,
+            @RequestParam(required = false) String until
+    ) {
+        return service.countDocumentAccessByDocumentType(
+                parseInstant(since, "since"),
+                parseInstant(until, "until")
+        );
+    }
+
     private static Set<AuditStream> parseStreams(String raw) {
         if (raw == null || raw.isBlank()) {
             return AuditExplorerQuery.ALL_STREAMS;
