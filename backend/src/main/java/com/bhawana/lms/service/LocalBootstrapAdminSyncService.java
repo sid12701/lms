@@ -13,13 +13,15 @@ import java.util.Set;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+// F-19: refresh_token rows FK to app_user, so the configured bootstrap admin
+// must exist as a real app_user row in every profile (not just "local").
+// Demo-portfolio seeding stays guarded by the app.seed.demo-portfolio.enabled
+// property so production profiles do not seed sample data.
 @Component
-@Profile("local")
 public class LocalBootstrapAdminSyncService implements ApplicationRunner {
 
     private static final Map<RoleCode, String> DEFAULT_ROLE_DESCRIPTIONS = Map.of(

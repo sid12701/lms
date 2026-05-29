@@ -964,13 +964,14 @@ Connected endpoints/services: ops alerts.
 |---|---|---|
 | `id` | UUID, PK | Token id |
 | `token_hash` | text/varchar, unique | Hash of refresh token value |
-| `username` | text/varchar | Principal username/client id |
-| `auth_type` | text/varchar | Managed user or API client |
+| `app_user_id` | UUID, FK -> `app_user(id)` ON DELETE CASCADE, nullable | Set when `auth_type='PASSWORD'`; deleting the user cascades the token rows |
+| `api_client_id` | UUID, FK -> `api_client(id)` ON DELETE CASCADE, nullable | Set when `auth_type='API_CLIENT'`; deleting the client cascades the token rows |
+| `auth_type` | text/varchar | Managed user (`PASSWORD`) or API client (`API_CLIENT`) |
 | `expires_at` | timestamp | Expiry |
 | `revoked` | boolean | Revocation flag |
 | `created_at` | timestamp | Created time |
 
-Connected endpoints/services: auth refresh/logout. No direct FK to user/client was found in the summarized schema, so username/client id integrity is application-managed.
+Constraint `chk_refresh_token_subject_xor` enforces that exactly one of `app_user_id` / `api_client_id` is populated, matching `auth_type`. Connected endpoints/services: auth refresh/logout. Configured bootstrap admin is seeded into `app_user` by `LocalBootstrapAdminSyncService` so the FK is always satisfiable.
 
 ### RLS, Indexes, and Hardening
 
@@ -1004,7 +1005,8 @@ Connected endpoints/services: auth refresh/logout. No direct FK to user/client w
 | `webhook_event_outbox` | 1 -> many | `webhook_event_delivery_attempt` | Delivery attempts |
 | `lsp` | 1 -> many | `report_request` | Optional report filter |
 | `ops_alert` | loose reference | subject table | `subject_type` and `subject_id` are not enforced by FK in inspected schema |
-| `refresh_token` | application-managed reference | user/client | Stores username/client id and auth type, not a direct FK |
+| `app_user` | 1 -> many | `refresh_token` | `refresh_token.app_user_id` FK, ON DELETE CASCADE (F-19) |
+| `api_client` | 1 -> many | `refresh_token` | `refresh_token.api_client_id` FK, ON DELETE CASCADE (F-19) |
 
 ```txt
 LSP
