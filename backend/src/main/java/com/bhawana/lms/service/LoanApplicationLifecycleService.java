@@ -255,14 +255,16 @@ public class LoanApplicationLifecycleService {
                 || currentStatus == LoanApplicationStatus.DISBURSED
                 || currentStatus == LoanApplicationStatus.UNDER_REPAYMENT
                 || currentStatus == LoanApplicationStatus.INVALID
-                || currentStatus == LoanApplicationStatus.CLOSED) {
+                || currentStatus == LoanApplicationStatus.CLOSED
+                || currentStatus == LoanApplicationStatus.FORECLOSED) {
             throw new IllegalArgumentException("Loan applications that have entered servicing cannot be manually overridden.");
         }
         if (targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
                 || targetStatus == LoanApplicationStatus.DISBURSED
                 || targetStatus == LoanApplicationStatus.UNDER_REPAYMENT
                 || targetStatus == LoanApplicationStatus.INVALID
-                || targetStatus == LoanApplicationStatus.CLOSED) {
+                || targetStatus == LoanApplicationStatus.CLOSED
+                || targetStatus == LoanApplicationStatus.FORECLOSED) {
             throw new IllegalArgumentException("Use the standard approval flow instead of a manual status update.");
         }
         if (targetStatus != LoanApplicationStatus.INITIALIZED
@@ -321,6 +323,7 @@ public class LoanApplicationLifecycleService {
         LoanApplicationDocumentChecklist checklistItem = loanApplicationDocumentChecklistRepository
                 .findByLoanApplication_IdAndDocumentType(applicationId, documentType)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document checklist item: " + documentType.name()));
+        boolean wasComplete = allRequiredDocumentsUploaded(applicationId);
 
         checklistItem.update(
                 status,
@@ -335,7 +338,19 @@ public class LoanApplicationLifecycleService {
                 storageKey,
                 lmsManagedContent
         );
-        return loanApplicationDocumentChecklistRepository.save(checklistItem);
+        LoanApplicationDocumentChecklist savedChecklistItem = loanApplicationDocumentChecklistRepository.save(checklistItem);
+        boolean isComplete = allRequiredDocumentsUploaded(applicationId);
+        if (!wasComplete && isComplete) {
+            webhookOutboxService.enqueueIfSubscribed(
+                    application.getLsp(),
+                    WebhookEventType.DOCUMENTS_UPLOADED,
+                    "LOAN_APPLICATION",
+                    application.getId().toString(),
+                    application.getId(),
+                    buildDocumentsUploadedPayload(application)
+            );
+        }
+        return savedChecklistItem;
     }
 
     /**
@@ -461,6 +476,32 @@ public class LoanApplicationLifecycleService {
                         || item.getStatus() == LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
                         && (item.getStatus() == LoanApplicationDocumentChecklistStatus.NOT_REQUIRED
                                 || item.isLmsManagedContent()));
+    }
+
+    private boolean allRequiredDocumentsUploaded(UUID applicationId) {
+        return loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
+                .stream()
+                .filter(item -> item.getDocumentType().isRequiredForDisbursement())
+                .allMatch(item -> item.getStatus() == LoanApplicationDocumentChecklistStatus.SUBMITTED
+                        || item.getStatus() == LoanApplicationDocumentChecklistStatus.NOT_REQUIRED);
+    }
+
+    private Map<String, Object> buildDocumentsUploadedPayload(LoanApplication application) {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("loanApplicationId", application.getId());
+        payload.put("externalLoanId", application.getExternalLoanId());
+        payload.put("allRequiredDocumentsUploaded", true);
+        payload.put(
+                "documentTypes",
+                loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(application.getId())
+                        .stream()
+                        .filter(item -> item.getDocumentType().isRequiredForDisbursement())
+                        .filter(item -> item.getStatus() == LoanApplicationDocumentChecklistStatus.SUBMITTED
+                                || item.getStatus() == LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
+                        .map(item -> item.getDocumentType().name())
+                        .toList()
+        );
+        return payload;
     }
 
     public LoanApplication updateApplicationStatus(
@@ -589,6 +630,19 @@ public class LoanApplicationLifecycleService {
         return payload;
     }
 
+    public Map<String, Object> buildLoanFullyRepaidPayload(
+            LoanApplication application,
+            LoanAccount loanAccount
+    ) {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("loanApplicationId", application.getId());
+        payload.put("loanAccountId", loanAccount.getId());
+        payload.put("accountNumber", loanAccount.getAccountNumber());
+        payload.put("closureReason", loanAccount.getClosureReason().name());
+        payload.put("closedAt", loanAccount.getClosedAt());
+        return payload;
+    }
+
     public Map<String, Object> buildForeclosurePayload(
             LoanApplication application,
             LoanAccount loanAccount,
@@ -604,6 +658,22 @@ public class LoanApplicationLifecycleService {
         payload.put("settlementAmount", quote.getSettlementAmount());
         payload.put("closureReason", LoanAccountClosureReason.FORECLOSURE.name());
         payload.put("closedAt", loanAccount.getClosedAt());
+        return payload;
+    }
+
+    public Map<String, Object> buildForeclosureQuotePayload(
+            LoanApplication application,
+            LoanAccount loanAccount,
+            LoanForeclosureQuote quote
+    ) {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("loanApplicationId", application.getId());
+        payload.put("loanAccountId", loanAccount.getId());
+        payload.put("accountNumber", loanAccount.getAccountNumber());
+        payload.put("foreclosureQuoteId", quote.getId());
+        payload.put("quoteVersion", quote.getVersion());
+        payload.put("effectiveDate", quote.getEffectiveDate());
+        payload.put("settlementAmount", quote.getSettlementAmount());
         return payload;
     }
 
@@ -624,7 +694,8 @@ public class LoanApplicationLifecycleService {
         }
         if (currentStatus == LoanApplicationStatus.DISBURSED
                 || currentStatus == LoanApplicationStatus.UNDER_REPAYMENT
-                || currentStatus == LoanApplicationStatus.CLOSED) {
+                || currentStatus == LoanApplicationStatus.CLOSED
+                || currentStatus == LoanApplicationStatus.FORECLOSED) {
             throw new IllegalArgumentException("Loan applications that have entered servicing cannot be marked invalid.");
         }
 

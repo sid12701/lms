@@ -244,9 +244,9 @@ public class LoanServicingSupportService {
             loanAccountRepository.save(loanAccount);
             loanApplicationLifecycleService.updateApplicationStatus(
                     application,
-                    LoanApplicationStatus.CLOSED,
+                    LoanApplicationStatus.FORECLOSED,
                     actorUsername,
-                    "Loan closed after foreclosure settlement.",
+                    "Loan foreclosed after settlement.",
                     null,
                     LoanApplicationAuditAction.STATUS_TRANSITION
             );

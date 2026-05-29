@@ -15,8 +15,6 @@ import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -114,6 +112,7 @@ public class LoanRepaymentCommandService {
         paymentTransaction.updateAllocation(normalizedAmount, BigDecimal.ZERO.setScale(2));
         LoanPaymentTransaction savedPaymentTransaction = loanPaymentTransactionRepository.save(paymentTransaction);
 
+        boolean wasFullyRepaid = loanAccount.getClosureReason() == LoanAccountClosureReason.FULLY_REPAID;
         loanServicingSupportService.synchronizeLoanAccountClosureState(
                 application,
                 loanAccount,
@@ -127,6 +126,7 @@ public class LoanRepaymentCommandService {
         );
         recordPaymentAudit(application, savedPaymentTransaction, installment, idempotencyKey);
         enqueueRepaymentWebhook(application, loanAccount, savedPaymentTransaction);
+        enqueueFullyRepaidWebhookIfClosed(application, loanAccount, wasFullyRepaid);
         return savedPaymentTransaction;
     }
 
@@ -185,6 +185,25 @@ public class LoanRepaymentCommandService {
                 paymentTransaction.getId().toString(),
                 application.getId(),
                 loanApplicationLifecycleService.buildRepaymentPayload(application, loanAccount, paymentTransaction)
+        );
+    }
+
+    private void enqueueFullyRepaidWebhookIfClosed(
+            LoanApplication application,
+            LoanAccount loanAccount,
+            boolean wasFullyRepaid
+    ) {
+        if (wasFullyRepaid || loanAccount.getClosureReason() != LoanAccountClosureReason.FULLY_REPAID) {
+            return;
+        }
+
+        webhookOutboxService.enqueueIfSubscribed(
+                application.getLsp(),
+                WebhookEventType.LOAN_FULLY_REPAID,
+                "LOAN_ACCOUNT",
+                loanAccount.getId().toString(),
+                application.getId(),
+                loanApplicationLifecycleService.buildLoanFullyRepaidPayload(application, loanAccount)
         );
     }
 }
