@@ -16,10 +16,7 @@ import type { ReportRequestsListResponse } from "../types";
 
 export const REPORT_REQUESTS_QUERY_KEY = ["reports", "requests"] as const;
 
-export function useReportRequests(): UseQueryResult<
-  ReportRequestsListResponse,
-  Error
-> {
+export function useReportRequests(): UseQueryResult<ReportRequestsListResponse, Error> {
   return useQuery({
     queryKey: [...REPORT_REQUESTS_QUERY_KEY],
     queryFn: () => listRequests(),

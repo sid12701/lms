@@ -131,8 +131,7 @@ export function AuditPageFilterBar({
         className,
       )}
     >
-      <label className="relative flex-1 min-w-[200px]">
-        <span className="sr-only">Search audit log</span>
+      <div className="relative min-w-[200px] flex-1">
         <Search
           aria-hidden="true"
           className="text-foreground-muted pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
@@ -144,9 +143,9 @@ export function AuditPageFilterBar({
           onChange={(e) => onQChange(e.target.value)}
           placeholder="Search by headline or actor"
           aria-label="Search audit log"
-          className="h-8 pl-7.5 pr-2 text-sm"
+          className="h-8 pr-2 pl-7.5 text-sm"
         />
-      </label>
+      </div>
 
       <Select
         value={value.actorId ?? ALL_ACTORS}
@@ -176,8 +175,11 @@ export function AuditPageFilterBar({
         </SelectContent>
       </Select>
 
-      <label className="flex items-center gap-1.5">
-        <span className="text-foreground-muted text-xs font-medium tracking-wide uppercase">
+      <div className="flex items-center gap-1.5">
+        <span
+          aria-hidden="true"
+          className="text-foreground-muted text-xs font-medium tracking-wide uppercase"
+        >
           From
         </span>
         <Input
@@ -194,9 +196,12 @@ export function AuditPageFilterBar({
           }
           className="h-8 w-36 px-2 text-xs tabular-nums"
         />
-      </label>
-      <label className="flex items-center gap-1.5">
-        <span className="text-foreground-muted text-xs font-medium tracking-wide uppercase">
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span
+          aria-hidden="true"
+          className="text-foreground-muted text-xs font-medium tracking-wide uppercase"
+        >
           To
         </span>
         <Input
@@ -213,10 +218,13 @@ export function AuditPageFilterBar({
           }
           className="h-8 w-36 px-2 text-xs tabular-nums"
         />
-      </label>
+      </div>
 
-      <label className="flex items-center gap-1.5">
-        <span className="text-foreground-muted text-xs font-medium tracking-wide uppercase">
+      <div className="flex items-center gap-1.5">
+        <span
+          aria-hidden="true"
+          className="text-foreground-muted text-xs font-medium tracking-wide uppercase"
+        >
           Correlation
         </span>
         <Input
@@ -228,7 +236,7 @@ export function AuditPageFilterBar({
           placeholder="correlation id"
           className="h-8 w-48 px-2 text-xs"
         />
-      </label>
+      </div>
 
       <div className="flex-1" />
 

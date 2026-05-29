@@ -90,8 +90,8 @@ export function AcknowledgeAlertDialog({
             <DialogTitle>Acknowledge alert</DialogTitle>
           </div>
           <DialogDescription>
-            Confirm that this alert has been triaged: <strong>{alertTitle}</strong>.
-            An optional note is recorded against the acknowledgement.
+            Confirm that this alert has been triaged: <strong>{alertTitle}</strong>. An optional
+            note is recorded against the acknowledgement.
           </DialogDescription>
         </DialogHeader>
 

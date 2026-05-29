@@ -42,16 +42,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FormShell } from "@/components/app/forms/FormShell";
-import {
-  ApiClientSecretMeta,
-  ApiSecretReveal,
-} from "@/components/app/secrets";
+import { ApiClientSecretMeta, ApiSecretReveal } from "@/components/app/secrets";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { IpAllowListEditor } from "./IpAllowListEditor";
-import {
-  CreateApiClientSchema,
-  type CreateApiClientValues,
-} from "./schema";
+import { CreateApiClientSchema, type CreateApiClientValues } from "./schema";
 import type { ApiClientRow, CreateApiClientResponse } from "../types";
 
 export interface LspChoice {
@@ -181,9 +175,7 @@ export function ApiClientCreateDialog({
                       maxLength={120}
                     />
                   </FormControl>
-                  <FormDescription>
-                    Human-readable label shown in the admin list.
-                  </FormDescription>
+                  <FormDescription>Human-readable label shown in the admin list.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -196,15 +188,8 @@ export function ApiClientCreateDialog({
                 <FormItem>
                   <FormLabel>LSP</FormLabel>
                   <FormControl>
-                    <Select
-                      value={field.value || undefined}
-                      onValueChange={field.onChange}
-                    >
-                      <SelectTrigger
-                        size="sm"
-                        aria-label="LSP"
-                        data-slot="api-client-create-lsp"
-                      >
+                    <Select value={field.value || undefined} onValueChange={field.onChange}>
+                      <SelectTrigger size="sm" aria-label="LSP" data-slot="api-client-create-lsp">
                         <SelectValue placeholder="Select an LSP" />
                       </SelectTrigger>
                       <SelectContent>
@@ -216,9 +201,7 @@ export function ApiClientCreateDialog({
                       </SelectContent>
                     </Select>
                   </FormControl>
-                  <FormDescription>
-                    The LSP this credential authorises against.
-                  </FormDescription>
+                  <FormDescription>The LSP this credential authorises against.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -231,10 +214,7 @@ export function ApiClientCreateDialog({
                 <FormItem>
                   <FormLabel>IP allow-list</FormLabel>
                   <FormControl>
-                    <IpAllowListEditor
-                      value={field.value}
-                      onChange={field.onChange}
-                    />
+                    <IpAllowListEditor value={field.value} onChange={field.onChange} />
                   </FormControl>
                   <FormDescription>
                     Optional. Each entry is an IPv4 address or CIDR (BR-8).

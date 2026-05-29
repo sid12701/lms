@@ -179,9 +179,7 @@ export function AuditTable({
         accessorKey: "headline",
         meta: { label: "Event" },
         header: () => <span>Event</span>,
-        cell: ({ row }) => (
-          <span className="text-foreground text-xs">{row.original.headline}</span>
-        ),
+        cell: ({ row }) => <span className="text-foreground text-xs">{row.original.headline}</span>,
       },
       {
         id: "subject",

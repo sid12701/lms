@@ -23,10 +23,7 @@ import { Input } from "@/components/ui/input";
 import { FormShell } from "@/components/app/forms/FormShell";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import type { CreateReportRequestInput } from "../types";
-import {
-  CreateReportRequestFormSchema,
-  type CreateReportRequestFormValues,
-} from "./schema";
+import { CreateReportRequestFormSchema, type CreateReportRequestFormValues } from "./schema";
 
 export interface CreateReportConfirmArgs {
   input: CreateReportRequestInput;
@@ -111,8 +108,8 @@ export function CreateReportDialog({
             <DialogTitle>Generate portfolio MIS report</DialogTitle>
           </div>
           <DialogDescription>
-            Queue a CSV export of the portfolio. Reports complete in the
-            background — refresh the requests list to track progress.
+            Queue a CSV export of the portfolio. Reports complete in the background — refresh the
+            requests list to track progress.
           </DialogDescription>
         </DialogHeader>
 
@@ -133,9 +130,7 @@ export function CreateReportDialog({
                     }}
                   />
                 </FormControl>
-                <FormDescription>
-                  Optional. Leave blank for a cross-LSP export.
-                </FormDescription>
+                <FormDescription>Optional. Leave blank for a cross-LSP export.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -147,7 +142,7 @@ export function CreateReportDialog({
               name="dateFrom"
               render={({ field }) => (
                 <FormItem>
-            <FormLabel>Disbursed from</FormLabel>
+                  <FormLabel>Disbursed from</FormLabel>
                   <FormControl>
                     <Input type="date" {...field} />
                   </FormControl>
@@ -160,7 +155,7 @@ export function CreateReportDialog({
               name="dateTo"
               render={({ field }) => (
                 <FormItem>
-            <FormLabel>Disbursed to</FormLabel>
+                  <FormLabel>Disbursed to</FormLabel>
                   <FormControl>
                     <Input type="date" {...field} />
                   </FormControl>
@@ -177,11 +172,7 @@ export function CreateReportDialog({
               <FormItem>
                 <FormLabel>Notification email</FormLabel>
                 <FormControl>
-                  <Input
-                    type="email"
-                    placeholder="you@example.com"
-                    {...field}
-                  />
+                  <Input type="email" placeholder="you@example.com" {...field} />
                 </FormControl>
                 <FormDescription>
                   Optional — receive an alert when the report completes.

@@ -21,12 +21,11 @@ import type { ApiClientsListFilters } from "../types";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
-const STATUS_TABS: readonly { value: ApiClientStatus | "ALL"; label: string }[] =
-  [
-    { value: "ALL", label: "All" },
-    { value: "ACTIVE", label: "Active" },
-    { value: "DISABLED", label: "Disabled" },
-  ];
+const STATUS_TABS: readonly { value: ApiClientStatus | "ALL"; label: string }[] = [
+  { value: "ALL", label: "All" },
+  { value: "ACTIVE", label: "Active" },
+  { value: "DISABLED", label: "Disabled" },
+];
 
 const ALL_SENTINEL = "__all__";
 
@@ -99,8 +98,7 @@ export function ApiClientsFilterBar({
     onChange({ page: 0 });
   };
 
-  const active =
-    Boolean(filters.q) || Boolean(filters.status) || Boolean(filters.lspId);
+  const active = Boolean(filters.q) || Boolean(filters.status) || Boolean(filters.lspId);
 
   const activeTab: ApiClientStatus | "ALL" = filters.status ?? "ALL";
 
@@ -137,9 +135,7 @@ export function ApiClientsFilterBar({
 
       <Select
         value={filters.lspId ?? ALL_SENTINEL}
-        onValueChange={(next) =>
-          setLspId(next === ALL_SENTINEL ? undefined : next)
-        }
+        onValueChange={(next) => setLspId(next === ALL_SENTINEL ? undefined : next)}
       >
         <SelectTrigger
           size="sm"
@@ -172,7 +168,7 @@ export function ApiClientsFilterBar({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search by name or client id"
           aria-label="Search API clients"
-          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pl-7.5 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pr-2 pl-7.5 text-sm outline-none focus-visible:ring-[3px]"
         />
       </label>
 

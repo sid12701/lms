@@ -92,4 +92,3 @@ export async function fetchBorrowerLoans(id: string): Promise<BorrowerLoansRespo
     BorrowerLoansResponseSchema,
   );
 }
-

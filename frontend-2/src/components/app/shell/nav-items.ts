@@ -40,9 +40,7 @@ export function getNavItems(role: Role): NavGroup[] {
     return [
       {
         label: "Workspace",
-        items: [
-          { to: "/my-loans", label: "My loans", icon: Folder, match: "startsWith" },
-        ],
+        items: [{ to: "/my-loans", label: "My loans", icon: Folder, match: "startsWith" }],
       },
     ];
   }

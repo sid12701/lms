@@ -6,22 +6,15 @@
  * does not require re-typing the secret.
  */
 import { z } from "zod";
-import {
-  LspWebhookSubscription,
-  WebhookEventType,
-} from "@/schemas/lsp";
+import { LspWebhookSubscription, WebhookEventType } from "@/schemas/lsp";
 
 export const WebhookSubscriptionFormSchema = z.object({
   enabled: LspWebhookSubscription.shape.enabled,
   endpointUrl: LspWebhookSubscription.shape.endpointUrl,
   signingSecret: LspWebhookSubscription.shape.signingSecret,
-  eventTypes: z
-    .array(WebhookEventType)
-    .min(1, "Select at least one event type."),
+  eventTypes: z.array(WebhookEventType).min(1, "Select at least one event type."),
 });
 
-export type WebhookSubscriptionFormValues = z.infer<
-  typeof WebhookSubscriptionFormSchema
->;
+export type WebhookSubscriptionFormValues = z.infer<typeof WebhookSubscriptionFormSchema>;
 
 export const ALL_WEBHOOK_EVENT_TYPES = WebhookEventType.options;

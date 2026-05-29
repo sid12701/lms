@@ -33,10 +33,7 @@ export type DocumentStatus = z.infer<typeof DocumentStatus>;
 export function isUploadedBackendChecklistStatus(status: string): boolean {
   const value = status.toUpperCase();
   return (
-    value === "SUBMITTED"
-    || value === "UPLOADED"
-    || value === "VERIFIED"
-    || value === "RECEIVED"
+    value === "SUBMITTED" || value === "UPLOADED" || value === "VERIFIED" || value === "RECEIVED"
   );
 }
 

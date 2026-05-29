@@ -1,10 +1,6 @@
 import { Check, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { LspChoice } from "../hooks/useLspChoices";
 
@@ -15,12 +11,7 @@ export interface LspMultiSelectProps {
   className?: string;
 }
 
-export function LspMultiSelect({
-  choices,
-  selected,
-  onChange,
-  className,
-}: LspMultiSelectProps) {
+export function LspMultiSelect({ choices, selected, onChange, className }: LspMultiSelectProps) {
   const selectedSet = new Set(selected);
   const selectedChoices = choices.filter((choice) => selectedSet.has(choice.id));
   const summary =

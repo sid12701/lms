@@ -137,9 +137,7 @@ function buildProductRequestBody(input: {
   };
 }
 
-export async function createProduct(
-  input: CreateProductInput,
-): Promise<ProductMutationResponse> {
+export async function createProduct(input: CreateProductInput): Promise<ProductMutationResponse> {
   const payload = await requestJson<BackendProductResponse>(
     BASE,
     { method: "POST", body: JSON.stringify(buildProductRequestBody(input)) },

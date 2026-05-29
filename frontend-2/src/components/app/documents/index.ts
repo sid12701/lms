@@ -10,19 +10,7 @@ export {
   type DocumentChecklistRowProps,
   type DocumentChecklistRowPermissions,
 } from "./DocumentChecklistRow";
-export {
-  DocumentUploadRow,
-  type DocumentUploadRowProps,
-} from "./DocumentUploadRow";
-export {
-  DocumentChecklistGroup,
-  type DocumentChecklistGroupProps,
-} from "./DocumentChecklistGroup";
-export {
-  DocumentPreviewSheet,
-  type DocumentPreviewSheetProps,
-} from "./DocumentPreviewSheet";
-export {
-  DownloadAllAsZipButton,
-  type DownloadAllAsZipButtonProps,
-} from "./DownloadAllAsZipButton";
+export { DocumentUploadRow, type DocumentUploadRowProps } from "./DocumentUploadRow";
+export { DocumentChecklistGroup, type DocumentChecklistGroupProps } from "./DocumentChecklistGroup";
+export { DocumentPreviewSheet, type DocumentPreviewSheetProps } from "./DocumentPreviewSheet";
+export { DownloadAllAsZipButton, type DownloadAllAsZipButtonProps } from "./DownloadAllAsZipButton";

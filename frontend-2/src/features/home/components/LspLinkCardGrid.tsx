@@ -2,11 +2,7 @@ import { forwardRef, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight, FilePlus2, Files, HelpCircle, type LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export interface LspLinkCardGridProps {
@@ -66,7 +62,11 @@ function prefersReducedMotion(): boolean {
  * disabled fallback so the two states stay pixel-identical except for
  * focus/hover affordances.
  */
-function CardBody({ icon: Icon, title, description }: Pick<LinkCardSpec, "icon" | "title" | "description">) {
+function CardBody({
+  icon: Icon,
+  title,
+  description,
+}: Pick<LinkCardSpec, "icon" | "title" | "description">) {
   return (
     <>
       <div className="bg-surface-muted text-foreground flex size-9 items-center justify-center rounded-md">
@@ -76,10 +76,7 @@ function CardBody({ icon: Icon, title, description }: Pick<LinkCardSpec, "icon" 
         <span className="text-foreground text-sm font-semibold">{title}</span>
         <span className="text-foreground-muted text-xs leading-[1.25rem]">{description}</span>
       </div>
-      <ChevronRight
-        aria-hidden="true"
-        className="text-foreground-muted size-4 shrink-0"
-      />
+      <ChevronRight aria-hidden="true" className="text-foreground-muted size-4 shrink-0" />
     </>
   );
 }
@@ -111,10 +108,7 @@ export const LspLinkCardGrid = forwardRef<HTMLDivElement, LspLinkCardGridProps>(
         ref={ref}
         data-slot="lsp-link-card-grid"
         data-reduced-motion={reducedMotion || undefined}
-        className={cn(
-          "grid grid-cols-1 gap-4 md:grid-cols-3",
-          className,
-        )}
+        className={cn("grid grid-cols-1 gap-4 md:grid-cols-3", className)}
       >
         {CARDS.map((card) => {
           const ariaLabel = `${card.title}. ${card.description}${card.disabled ? `. ${card.disabledReason}` : ""}`;
@@ -132,11 +126,7 @@ export const LspLinkCardGrid = forwardRef<HTMLDivElement, LspLinkCardGridProps>(
                     tabIndex={0}
                     className={cn(cardClasses, "cursor-not-allowed opacity-70")}
                   >
-                    <CardBody
-                      icon={card.icon}
-                      title={card.title}
-                      description={card.description}
-                    />
+                    <CardBody icon={card.icon} title={card.title} description={card.description} />
                   </Card>
                 </TooltipTrigger>
                 <TooltipContent side="top">{card.disabledReason ?? "Unavailable"}</TooltipContent>

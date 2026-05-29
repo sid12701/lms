@@ -10,9 +10,7 @@ describe("RotateSecretDialog", () => {
       <RotateSecretDialog open onOpenChange={() => {}} onConfirm={() => {}} />,
     );
     expect(getByRole("heading", { name: /Rotate API client secret/i })).toBeInTheDocument();
-    expect(
-      getByText(/Rotating invalidates the current secret immediately/i),
-    ).toBeInTheDocument();
+    expect(getByText(/Rotating invalidates the current secret immediately/i)).toBeInTheDocument();
     expect(getByLabelText(/Reason for rotation/i)).toBeInTheDocument();
   });
 

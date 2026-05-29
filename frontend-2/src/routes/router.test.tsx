@@ -8,7 +8,13 @@ import { LandingRedirect } from "./landing-redirect";
 import { RequireAuth, RequireInternal, RequireLsp } from "./guards";
 import { defaultLandingFor } from "@/lib/role-gates";
 import type { Session } from "@/mocks/api/auth";
-import { USER_OPS_ADMIN, USER_OPS_USER, USER_LSP_READ, USER_TEMP, LSP_BHAW_DEMO } from "@/mocks/db/seed";
+import {
+  USER_OPS_ADMIN,
+  USER_OPS_USER,
+  USER_LSP_READ,
+  USER_TEMP,
+  LSP_BHAW_DEMO,
+} from "@/mocks/db/seed";
 
 const adminSession: Session = {
   user: {

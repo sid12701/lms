@@ -71,18 +71,14 @@ describe("AuditFilterBar", () => {
         onChange={onChange}
       />,
     );
-    const input2 = container.querySelector(
-      '[data-slot="audit-filter-from"]',
-    ) as HTMLInputElement;
+    const input2 = container.querySelector('[data-slot="audit-filter-from"]') as HTMLInputElement;
     await userEvent.clear(input2);
     expect(onChange).toHaveBeenLastCalledWith({ ...EMPTY_AUDIT_FILTER, fromDate: null });
   }, 15_000);
 
   it("emits a toDate when the To input changes", async () => {
     const { onChange, container } = setup();
-    const input = container.querySelector(
-      '[data-slot="audit-filter-to"]',
-    ) as HTMLInputElement;
+    const input = container.querySelector('[data-slot="audit-filter-to"]') as HTMLInputElement;
     await userEvent.type(input, "2026-05-31");
     const lastCall = onChange.mock.calls.at(-1);
     expect(lastCall?.[0].toDate).not.toBeNull();

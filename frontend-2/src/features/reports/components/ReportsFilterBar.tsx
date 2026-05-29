@@ -22,11 +22,7 @@ export interface ReportsFilterBarProps {
   className?: string;
 }
 
-export function ReportsFilterBar({
-  filters,
-  onChange,
-  className,
-}: ReportsFilterBarProps) {
+export function ReportsFilterBar({ filters, onChange, className }: ReportsFilterBarProps) {
   const [lspIdDraft, setLspIdDraft] = useState<string>(filters.lspId ?? "");
 
   // Keep local draft in sync if parent resets filters.
@@ -53,10 +49,7 @@ export function ReportsFilterBar({
     onChange({ lspId: null, dateFrom: null, dateTo: null });
   };
 
-  const active =
-    Boolean(filters.lspId) ||
-    Boolean(filters.dateFrom) ||
-    Boolean(filters.dateTo);
+  const active = Boolean(filters.lspId) || Boolean(filters.dateFrom) || Boolean(filters.dateTo);
 
   return (
     <div
@@ -91,7 +84,7 @@ export function ReportsFilterBar({
             }}
             placeholder="All LSPs (paste a UUID to scope)"
             aria-label="LSP id filter"
-            className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border pl-8 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+            className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border pr-2 pl-8 text-sm outline-none focus-visible:ring-[3px]"
           />
         </span>
       </label>
@@ -111,7 +104,7 @@ export function ReportsFilterBar({
             value={filters.dateFrom ?? ""}
             onChange={(e) => setDateFrom(e.target.value)}
             aria-label="Disbursed from"
-            className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-44 rounded-md border pl-8 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+            className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-44 rounded-md border pr-2 pl-8 text-sm outline-none focus-visible:ring-[3px]"
           />
         </span>
       </label>
@@ -131,7 +124,7 @@ export function ReportsFilterBar({
             value={filters.dateTo ?? ""}
             onChange={(e) => setDateTo(e.target.value)}
             aria-label="Disbursed to"
-            className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-44 rounded-md border pl-8 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+            className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-44 rounded-md border pr-2 pl-8 text-sm outline-none focus-visible:ring-[3px]"
           />
         </span>
       </label>

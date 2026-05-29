@@ -5,17 +5,10 @@
  * surfaces it via `TempPasswordRevealCard` and only acknowledges once the
  * operator has saved it.
  */
-import {
-  useMutation,
-  useQueryClient,
-  type UseMutationResult,
-} from "@tanstack/react-query";
+import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { resetUserPassword } from "../api";
-import type {
-  ResetUserPasswordInput,
-  ResetUserPasswordResponse,
-} from "../types";
+import type { ResetUserPasswordInput, ResetUserPasswordResponse } from "../types";
 import { USERS_LIST_QUERY_KEY } from "./useUsers";
 
 export interface ResetUserPasswordVariables extends ResetUserPasswordInput {
@@ -28,11 +21,7 @@ export function useResetUserPassword(): UseMutationResult<
   ResetUserPasswordVariables
 > {
   const queryClient = useQueryClient();
-  return useMutation<
-    ResetUserPasswordResponse,
-    Error,
-    ResetUserPasswordVariables
-  >({
+  return useMutation<ResetUserPasswordResponse, Error, ResetUserPasswordVariables>({
     mutationFn: ({ id, ...rest }) => resetUserPassword(id, rest),
     onSuccess: () => {
       void queryClient.invalidateQueries({

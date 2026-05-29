@@ -23,12 +23,14 @@ export function useLspChoices(): LspChoice[] {
     setChoices(readLsps());
     void listLspOptions()
       .then((rows) => {
-        setChoices(rows.map((row) => ({
-          id: row.id,
-          name: row.name,
-          code: row.code,
-          status: row.status,
-        })));
+        setChoices(
+          rows.map((row) => ({
+            id: row.id,
+            name: row.name,
+            code: row.code,
+            status: row.status,
+          })),
+        );
       })
       .catch(() => {
         setChoices(readLsps());
@@ -40,10 +42,12 @@ export function useLspChoices(): LspChoice[] {
 
 function readLsps(): LspChoice[] {
   const db = getDb();
-  return Array.from(db.lsps.values()).filter((l) => l.status === "ACTIVE").map((l) => ({
-    id: l.id,
-    name: l.name,
-    code: l.code,
-    status: l.status,
-  }));
+  return Array.from(db.lsps.values())
+    .filter((l) => l.status === "ACTIVE")
+    .map((l) => ({
+      id: l.id,
+      name: l.name,
+      code: l.code,
+      status: l.status,
+    }));
 }

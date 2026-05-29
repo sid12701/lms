@@ -40,11 +40,7 @@ describe("ApiSecretReveal", () => {
 
   it("includes the clientLabel in the description when provided", () => {
     const { getByText } = renderWithProviders(
-      <ApiSecretReveal
-        secret={SECRET}
-        onAcknowledge={() => {}}
-        clientLabel="Acme NBFC"
-      />,
+      <ApiSecretReveal secret={SECRET} onAcknowledge={() => {}} clientLabel="Acme NBFC" />,
     );
     expect(getByText(/for Acme NBFC/i)).toBeInTheDocument();
   });

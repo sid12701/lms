@@ -14,12 +14,7 @@ import {
   type ColumnDef,
   type PaginationState,
 } from "@tanstack/react-table";
-import {
-  AlertOctagon,
-  AlertTriangle,
-  CheckCircle2,
-  Info,
-} from "lucide-react";
+import { AlertOctagon, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/app/data/DataTable";
@@ -124,23 +119,17 @@ export function AlertsTable({
         header: "Alert",
         cell: ({ row }) => {
           const a = row.original;
-          const href = resolveAlertSubjectHref(
-            a.subjectType,
-            a.subjectId,
-            a.correlationId,
-          );
+          const href = resolveAlertSubjectHref(a.subjectType, a.subjectId, a.correlationId);
           return (
             <div className="flex flex-col gap-0.5">
               <Link
                 to={href}
                 data-slot="alerts-title-link"
-                className="text-foreground hover:underline focus-visible:underline outline-none focus-visible:ring-2 focus-visible:ring-ring/50 rounded-sm text-sm font-medium"
+                className="text-foreground focus-visible:ring-ring/50 rounded-sm text-sm font-medium outline-none hover:underline focus-visible:underline focus-visible:ring-2"
               >
                 {a.title}
               </Link>
-              <p className="text-foreground-muted line-clamp-2 max-w-md text-xs">
-                {a.message}
-              </p>
+              <p className="text-foreground-muted line-clamp-2 max-w-md text-xs">{a.message}</p>
             </div>
           );
         },
@@ -149,7 +138,7 @@ export function AlertsTable({
         id: "subject",
         header: "Subject",
         cell: ({ row }) => (
-          <span className="text-foreground-muted text-xs uppercase tracking-wide">
+          <span className="text-foreground-muted text-xs tracking-wide uppercase">
             {row.original.subjectType.replace(/_/g, " ").toLowerCase()}
           </span>
         ),
@@ -179,24 +168,17 @@ export function AlertsTable({
                   Acknowledged
                 </span>
                 {a.acknowledgedByName ? (
-                  <span className="text-foreground-muted">
-                    by {a.acknowledgedByName}
-                  </span>
+                  <span className="text-foreground-muted">by {a.acknowledgedByName}</span>
                 ) : null}
                 {a.acknowledgmentNote ? (
-                  <span
-                    className="text-foreground-muted line-clamp-2"
-                    title={a.acknowledgmentNote}
-                  >
+                  <span className="text-foreground-muted line-clamp-2" title={a.acknowledgmentNote}>
                     {a.acknowledgmentNote}
                   </span>
                 ) : null}
               </div>
             );
           }
-          return (
-            <span className="text-warning text-xs font-medium">Open</span>
-          );
+          return <span className="text-warning text-xs font-medium">Open</span>;
         },
       },
       {
@@ -205,9 +187,7 @@ export function AlertsTable({
         cell: ({ row }) => {
           const a = row.original;
           if (a.status === "ACKNOWLEDGED") {
-            return (
-              <span className="text-foreground-muted text-xs">—</span>
-            );
+            return <span className="text-foreground-muted text-xs">—</span>;
           }
           return (
             <Button

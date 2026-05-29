@@ -19,10 +19,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { renderWithProviders } from "@/test/utils";
-import {
-  SessionContext,
-  type SessionContextValue,
-} from "@/features/auth/session-context";
+import { SessionContext, type SessionContextValue } from "@/features/auth/session-context";
 import type { Session } from "@/mocks/api/auth";
 import { auth, resetMockApi } from "@/mocks/api";
 import { setLatencyOverride } from "@/mocks/latency";
@@ -105,50 +102,38 @@ afterEach(() => {
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe("AuditPage — SYSTEM_ADMIN happy path", () => {
-  it(
-    "renders headline rows once the query resolves",
-    async () => {
-      const session = await auth.login({ username: "ops.admin", password: "demo" });
-      expect(session.user.role).toBe("SYSTEM_ADMIN");
-      expect(session.user.id).toBe(USER_OPS_ADMIN);
+  it("renders headline rows once the query resolves", async () => {
+    const session = await auth.login({ username: "ops.admin", password: "demo" });
+    expect(session.user.role).toBe("SYSTEM_ADMIN");
+    expect(session.user.id).toBe(USER_OPS_ADMIN);
 
-      renderPage({ session });
+    renderPage({ session });
 
-      // The seed writes ApplicationAuditEvent rows in dashboard-seed.ts — at
-      // least one headline must surface once the query resolves.
-      const rows = await screen.findAllByRole(
-        "button",
-        { name: /Open audit event/i },
-        { timeout: 15_000 },
-      );
-      expect(rows.length).toBeGreaterThan(0);
-    },
-    15_000,
-  );
+    // The seed writes ApplicationAuditEvent rows in dashboard-seed.ts — at
+    // least one headline must surface once the query resolves.
+    const rows = await screen.findAllByRole(
+      "button",
+      { name: /Open audit event/i },
+      { timeout: 15_000 },
+    );
+    expect(rows.length).toBeGreaterThan(0);
+  }, 15_000);
 
-  it(
-    "is axe-clean on the happy path",
-    async () => {
-      const session = await auth.login({ username: "ops.admin", password: "demo" });
-      const { container } = renderPage({ session });
+  it("is axe-clean on the happy path", async () => {
+    const session = await auth.login({ username: "ops.admin", password: "demo" });
+    const { container } = renderPage({ session });
 
-      await screen.findAllByRole(
-        "button",
-        { name: /Open audit event/i },
-        { timeout: 15_000 },
-      );
+    await screen.findAllByRole("button", { name: /Open audit event/i }, { timeout: 15_000 });
 
-      // `nested-interactive` is a known design choice in `AuditTable` (the
-      // row itself is the primary click target, with secondary buttons /
-      // links inside each cell) and is owned outside this page module.
-      expect(
-        await axe(container, {
-          rules: { "nested-interactive": { enabled: false } },
-        }),
-      ).toHaveNoViolations();
-    },
-    15_000,
-  );
+    // `nested-interactive` is a known design choice in `AuditTable` (the
+    // row itself is the primary click target, with secondary buttons /
+    // links inside each cell) and is owned outside this page module.
+    expect(
+      await axe(container, {
+        rules: { "nested-interactive": { enabled: false } },
+      }),
+    ).toHaveNoViolations();
+  }, 15_000);
 });
 
 describe("AuditPage — role gate", () => {
@@ -159,13 +144,9 @@ describe("AuditPage — role gate", () => {
 
     renderPage({ session });
 
-    expect(
-      screen.getByText(/Restricted to system administrators/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Restricted to system administrators/i)).toBeInTheDocument();
     // Filter bar must not render — the query never fires for restricted roles.
-    expect(
-      screen.queryByRole("group", { name: /Audit log filters/i }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /Audit log filters/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("tablist", { name: /Audit stream/i })).not.toBeInTheDocument();
   });
 });
@@ -188,44 +169,38 @@ describe("AuditPage — URL state", () => {
 });
 
 describe("AuditPage — detail sheet", () => {
-  it(
-    "opens the detail sheet with the row's headline when a row is clicked",
-    async () => {
-      const session = await auth.login({ username: "ops.admin", password: "demo" });
-      const { baseElement } = renderPage({ session });
+  it("opens the detail sheet with the row's headline when a row is clicked", async () => {
+    const session = await auth.login({ username: "ops.admin", password: "demo" });
+    const { baseElement } = renderPage({ session });
 
-      const rowButtons = await screen.findAllByRole(
-        "button",
-        { name: /Open audit event/i },
-        { timeout: 15_000 },
-      );
-      const row = rowButtons[0]!;
-      // Pull the row's id off the aria-label so we can assert the URL round-trip.
-      const rowAriaLabel = row.getAttribute("aria-label") ?? "";
-      const rowId = rowAriaLabel.replace(/^Open audit event\s+/i, "").trim();
+    const rowButtons = await screen.findAllByRole(
+      "button",
+      { name: /Open audit event/i },
+      { timeout: 15_000 },
+    );
+    const row = rowButtons[0]!;
+    // Pull the row's id off the aria-label so we can assert the URL round-trip.
+    const rowAriaLabel = row.getAttribute("aria-label") ?? "";
+    const rowId = rowAriaLabel.replace(/^Open audit event\s+/i, "").trim();
 
-      const user = userEvent.setup();
-      await user.click(row);
+    const user = userEvent.setup();
+    await user.click(row);
 
-      // The sheet portals into document.body — scope queries to baseElement.
-      await waitFor(
-        () => {
-          const dialog = within(baseElement).queryByRole("dialog");
-          expect(dialog).toBeInTheDocument();
-        },
-        { timeout: 15_000 },
-      );
+    // The sheet portals into document.body — scope queries to baseElement.
+    await waitFor(
+      () => {
+        const dialog = within(baseElement).queryByRole("dialog");
+        expect(dialog).toBeInTheDocument();
+      },
+      { timeout: 15_000 },
+    );
 
-      const dialog = within(baseElement).getByRole("dialog");
-      // Sheet must surface the projected headline (the seed's first audit row
-      // is a Created event for a loan application).
-      const dialogText = dialog.textContent ?? "";
-      expect(dialogText).toMatch(/Created|Initiated|Approved|→/);
-      // URL now carries the eventId for the clicked row.
-      expect(screen.getByTestId("location-probe").textContent ?? "").toContain(
-        `eventId=${rowId}`,
-      );
-    },
-    15_000,
-  );
+    const dialog = within(baseElement).getByRole("dialog");
+    // Sheet must surface the projected headline (the seed's first audit row
+    // is a Created event for a loan application).
+    const dialogText = dialog.textContent ?? "";
+    expect(dialogText).toMatch(/Created|Initiated|Approved|→/);
+    // URL now carries the eventId for the clicked row.
+    expect(screen.getByTestId("location-probe").textContent ?? "").toContain(`eventId=${rowId}`);
+  }, 15_000);
 });

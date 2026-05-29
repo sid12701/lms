@@ -8,10 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
-import type {
-  DisbursementResponse,
-  TransitionResponse,
-} from "../api-detail";
+import type { DisbursementResponse, TransitionResponse } from "../api-detail";
 
 const postTransitionMock =
   vi.fn<
@@ -29,16 +26,15 @@ const postDisbursementMock =
   >();
 
 vi.mock("../api-detail", () => ({
-  postTransition: (id: string, input: { to: string; reason: string | null; idempotencyKey: string }) =>
-    postTransitionMock(id, input),
+  postTransition: (
+    id: string,
+    input: { to: string; reason: string | null; idempotencyKey: string },
+  ) => postTransitionMock(id, input),
   postDisbursement: (id: string, input: { note: string | null; idempotencyKey: string }) =>
     postDisbursementMock(id, input),
 }));
 
-import {
-  useInitiateDisbursement,
-  useTransitionStatus,
-} from "./useLoanApplicationMutations";
+import { useInitiateDisbursement, useTransitionStatus } from "./useLoanApplicationMutations";
 
 function makeWrapper() {
   const client = new QueryClient({

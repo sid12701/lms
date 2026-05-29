@@ -67,11 +67,7 @@ export function canInvalidateOwnTenantLoan(role: Role): boolean {
  * work surface, which removes the "empty dashboard" first impression for
  * OPS / PRODUCT_ADMIN / LSP roles.
  */
-export type DefaultLandingRoute =
-  | "/home"
-  | "/loan-applications"
-  | "/products"
-  | "/my-loans";
+export type DefaultLandingRoute = "/home" | "/loan-applications" | "/products" | "/my-loans";
 
 export function defaultLandingFor(role: Role): DefaultLandingRoute {
   switch (role) {

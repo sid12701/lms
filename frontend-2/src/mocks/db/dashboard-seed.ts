@@ -361,7 +361,15 @@ export function seedDashboardFixtures(db: MockDb): MockDb {
         outstandingAmount,
         dpd,
         delinquencyBucket:
-          dpd === 0 ? "B0" : dpd <= 30 ? "B1_30" : dpd <= 60 ? "B31_60" : dpd <= 90 ? "B61_90" : "B90_PLUS",
+          dpd === 0
+            ? "B0"
+            : dpd <= 30
+              ? "B1_30"
+              : dpd <= 60
+                ? "B31_60"
+                : dpd <= 90
+                  ? "B61_90"
+                  : "B90_PLUS",
         status,
       });
     }

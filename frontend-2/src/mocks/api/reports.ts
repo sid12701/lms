@@ -40,12 +40,7 @@ import type {
   Role,
 } from "@/types";
 import { dispatch, registerRoute, type MockRequest } from "../router";
-import {
-  BadRequestError,
-  ForbiddenError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../errors";
+import { BadRequestError, ForbiddenError, NotFoundError, UnauthorizedError } from "../errors";
 import type { MockDb } from "../db/state";
 
 // ─── Role helpers ────────────────────────────────────────────────────────────
@@ -100,10 +95,7 @@ function parseRange<T extends z.ZodType>(
   }
   const data = parsed.data as { dateFrom?: string; dateTo?: string };
   if (data.dateFrom && data.dateTo && data.dateFrom > data.dateTo) {
-    throw new BadRequestError(
-      correlationId,
-      "dateFrom must be on or before dateTo",
-    );
+    throw new BadRequestError(correlationId, "dateFrom must be on or before dateTo");
   }
   return parsed.data as z.infer<T>;
 }
@@ -116,10 +108,7 @@ function withinRange(iso: string | null, from?: string, to?: string): boolean {
   return true;
 }
 
-function applicationsInScope(
-  db: MockDb,
-  filters: ReportRangeQuery,
-): LoanApplication[] {
+function applicationsInScope(db: MockDb, filters: ReportRangeQuery): LoanApplication[] {
   return Array.from(db.applications.values()).filter((app) => {
     if (filters.lspId && app.lspId !== filters.lspId) return false;
     return true;
@@ -191,8 +180,7 @@ function buildMisSummary(db: MockDb, filters: ReportRangeQuery): MisSummaryPaylo
       }
     }
     if (principalDueSum > 0) {
-      const apr =
-        (interestDueSum / (principalDueSum + interestDueSum)) * 100;
+      const apr = (interestDueSum / (principalDueSum + interestDueSum)) * 100;
       yieldNumerator += apr * account.principal;
       yieldDenominator += account.principal;
     }
@@ -200,8 +188,7 @@ function buildMisSummary(db: MockDb, filters: ReportRangeQuery): MisSummaryPaylo
     atRisk30Balance += overdue30Balance;
   }
 
-  const weightedAvgYieldPct =
-    yieldDenominator > 0 ? yieldNumerator / yieldDenominator : 0;
+  const weightedAvgYieldPct = yieldDenominator > 0 ? yieldNumerator / yieldDenominator : 0;
   const portfolioAtRisk30Pct =
     portfolioBalance > 0 ? (atRisk30Balance / portfolioBalance) * 100 : 0;
 
@@ -214,11 +201,7 @@ function buildMisSummary(db: MockDb, filters: ReportRangeQuery): MisSummaryPaylo
   };
 }
 
-function summaryHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): MisSummaryPayload {
+function summaryHandler(req: MockRequest, db: MockDb, correlationId: string): MisSummaryPayload {
   const session = requireSession(db, correlationId);
   requireSystemAdmin(session, correlationId);
   const filters = parseRange(ReportRangeQuery, req, correlationId);
@@ -283,10 +266,7 @@ interface MisPreviewResponse {
   pageSize: number;
 }
 
-function findAccount(
-  db: MockDb,
-  applicationId: string,
-): LoanAccount | undefined {
+function findAccount(db: MockDb, applicationId: string): LoanAccount | undefined {
   for (const acc of db.accounts.values()) {
     if (acc.applicationId === applicationId) return acc;
   }
@@ -316,15 +296,12 @@ function maskName(name: string): string {
 
 void maskName;
 
-function buildPreviewRow(
-  db: MockDb,
-  app: LoanApplication,
-): MisPreviewRowPayload {
+function buildPreviewRow(db: MockDb, app: LoanApplication): MisPreviewRowPayload {
   const borrower = db.borrowers.get(app.borrowerId);
   const lsp = db.lsps.get(app.lspId);
   const product = db.products.get(app.productId);
   const account = findAccount(db, app.id);
-  const installments = account ? db.installments.get(account.id) ?? [] : [];
+  const installments = account ? (db.installments.get(account.id) ?? []) : [];
   const disbursementPayment = findDisbursementPayment(db, account?.id);
 
   let maxDpd = 0;
@@ -350,9 +327,7 @@ function buildPreviewRow(
 
   const disbursalIso = disbursementPayment?.postedAt ?? null;
   const disbursalDate = disbursalIso ? disbursalIso.slice(0, 10) : null;
-  const year = disbursalDate
-    ? Number.parseInt(disbursalDate.slice(0, 4), 10)
-    : null;
+  const year = disbursalDate ? Number.parseInt(disbursalDate.slice(0, 4), 10) : null;
 
   const closureDate = account?.closedAt ? account.closedAt.slice(0, 10) : null;
   const isForeclosed = account?.closureReason === "FORECLOSED";
@@ -408,9 +383,7 @@ function buildPreviewRow(
           .join(", ")
       : null,
     pan: borrower?.pan ?? null,
-    aadhaar: borrower
-      ? `XXXXXXXX${borrower.aadhaar.slice(-4)}`
-      : null,
+    aadhaar: borrower ? `XXXXXXXX${borrower.aadhaar.slice(-4)}` : null,
     gender: borrower?.gender ?? null,
     state: borrower?.address.state ?? null,
     zip: borrower?.address.zip ?? null,
@@ -422,11 +395,7 @@ function buildPreviewRow(
   };
 }
 
-function previewHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): MisPreviewResponse {
+function previewHandler(req: MockRequest, db: MockDb, correlationId: string): MisPreviewResponse {
   const session = requireSession(db, correlationId);
   requireSystemAdmin(session, correlationId);
   const filters = parseRange(ReportPreviewQuery, req, correlationId);
@@ -521,27 +490,16 @@ const CreateRequestBodySchema = z.object({
   idempotencyKey: z.string().min(1).max(80),
 });
 
-function createRequestHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): ReportRequest {
+function createRequestHandler(req: MockRequest, db: MockDb, correlationId: string): ReportRequest {
   const session = requireSession(db, correlationId);
   requireSystemAdmin(session, correlationId);
   const parsed = CreateRequestBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid report-request body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid report-request body", parsed.error.flatten());
   }
   const { type, lspId, dateFrom, dateTo, notificationEmail } = parsed.data;
   if (dateFrom && dateTo && dateFrom > dateTo) {
-    throw new BadRequestError(
-      correlationId,
-      "dateFrom must be on or before dateTo",
-    );
+    throw new BadRequestError(correlationId, "dateFrom must be on or before dateTo");
   }
 
   const nowIso = new Date().toISOString();
@@ -564,11 +522,7 @@ function createRequestHandler(
   return record;
 }
 
-function downloadHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): { url: string } {
+function downloadHandler(req: MockRequest, db: MockDb, correlationId: string): { url: string } {
   const session = requireSession(db, correlationId);
   requireSystemAdmin(session, correlationId);
   tickReportRequests(db);
@@ -783,9 +737,7 @@ export async function misPreview(
   );
 }
 
-export async function listRequests(
-  opts?: RequestOptions,
-): Promise<{ items: ReportRequest[] }> {
+export async function listRequests(opts?: RequestOptions): Promise<{ items: ReportRequest[] }> {
   return dispatch(
     {
       method: "GET",
@@ -820,10 +772,7 @@ export async function createRequest(
   );
 }
 
-export async function downloadRequest(
-  id: string,
-  opts?: RequestOptions,
-): Promise<{ url: string }> {
+export async function downloadRequest(id: string, opts?: RequestOptions): Promise<{ url: string }> {
   return dispatch(
     {
       method: "GET",

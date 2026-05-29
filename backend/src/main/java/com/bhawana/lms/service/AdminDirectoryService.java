@@ -68,7 +68,8 @@ public class AdminDirectoryService {
             LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
             LoanApplicationStatus.DISBURSED,
             LoanApplicationStatus.UNDER_REPAYMENT,
-            LoanApplicationStatus.CLOSED
+            LoanApplicationStatus.CLOSED,
+            LoanApplicationStatus.FORECLOSED
     );
 
     private static final List<LoanAccountStatus> ACTIVE_LOAN_STATUSES = List.of(

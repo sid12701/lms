@@ -81,9 +81,7 @@ describe("alerts.list", () => {
       pageSize: 100,
     });
     expect(res.total).toBeGreaterThan(0);
-    expect(
-      res.items.every((a) => a.severity === "CRITICAL" || a.severity === "HIGH"),
-    ).toBe(true);
+    expect(res.items.every((a) => a.severity === "CRITICAL" || a.severity === "HIGH")).toBe(true);
   });
 
   it("subjectType narrows to LOAN_APPLICATION rows", async () => {
@@ -92,9 +90,7 @@ describe("alerts.list", () => {
       subjectType: "LOAN_APPLICATION",
       pageSize: 100,
     });
-    expect(res.items.every((a) => a.subjectType === "LOAN_APPLICATION")).toBe(
-      true,
-    );
+    expect(res.items.every((a) => a.subjectType === "LOAN_APPLICATION")).toBe(true);
   });
 
   it("q search matches against title", async () => {
@@ -120,9 +116,7 @@ describe("alerts.list", () => {
     await auth.login({ username: "ops.admin", password: "any" });
     const res = await listAlerts({ status: "ACKNOWLEDGED", pageSize: 100 });
     expect(res.items.length).toBeGreaterThan(0);
-    expect(res.items.every((a) => typeof a.acknowledgedByName === "string")).toBe(
-      true,
-    );
+    expect(res.items.every((a) => typeof a.acknowledgedByName === "string")).toBe(true);
   });
 });
 

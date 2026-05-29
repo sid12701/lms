@@ -17,10 +17,7 @@ import { BorrowerDetailTab } from "./types";
  * `?tab=` URL state. Mirrors the Phase 5 helper exactly — invalid or
  * missing values fall back to `"profile"`.
  */
-function useBorrowerTabParam(): readonly [
-  BorrowerDetailTab,
-  (next: BorrowerDetailTab) => void,
-] {
+function useBorrowerTabParam(): readonly [BorrowerDetailTab, (next: BorrowerDetailTab) => void] {
   const [params, setParams] = useSearchParams();
   const raw = params.get("tab");
   const parsed = BorrowerDetailTab.safeParse(raw);
@@ -112,11 +109,7 @@ export function BorrowerDetailPage() {
 
   if (detailQuery.isPending) {
     return (
-      <div
-        className="flex flex-col gap-6 p-6"
-        data-testid="borrower-detail"
-        data-loading="true"
-      >
+      <div className="flex flex-col gap-6 p-6" data-testid="borrower-detail" data-loading="true">
         <DetailSkeleton />
       </div>
     );
@@ -138,19 +131,11 @@ export function BorrowerDetailPage() {
       );
     }
     return (
-      <div
-        className="flex flex-col gap-6 p-6"
-        data-testid="borrower-detail"
-        data-state="error"
-      >
+      <div className="flex flex-col gap-6 p-6" data-testid="borrower-detail" data-state="error">
         <ErrorState
           icon={Users}
           title="Couldn't load this borrower"
-          description={
-            detailQuery.error instanceof Error
-              ? detailQuery.error.message
-              : undefined
-          }
+          description={detailQuery.error instanceof Error ? detailQuery.error.message : undefined}
           retry={{ label: "Retry", onClick: () => void detailQuery.refetch() }}
         />
       </div>
@@ -174,14 +159,9 @@ export function BorrowerDetailPage() {
       <RightRail>
         <section
           data-slot="borrower-summary"
-          className={cn(
-            "border-border bg-surface rounded-md border p-4",
-            "flex flex-col gap-3",
-          )}
+          className={cn("border-border bg-surface rounded-md border p-4", "flex flex-col gap-3")}
         >
-          <h2 className="text-foreground text-sm font-semibold tracking-tight">
-            At a glance
-          </h2>
+          <h2 className="text-foreground text-sm font-semibold tracking-tight">At a glance</h2>
           <div className="flex flex-col gap-2">
             <div className="text-foreground-muted text-xs tracking-wide uppercase">
               Open applications
@@ -213,9 +193,7 @@ export function BorrowerDetailPage() {
             <div
               className={cn(
                 "text-base tabular-nums",
-                detail.totals.activeOverdueAmount > 0
-                  ? "text-danger"
-                  : "text-foreground",
+                detail.totals.activeOverdueAmount > 0 ? "text-danger" : "text-foreground",
               )}
             >
               {formatINR(detail.totals.activeOverdueAmount)}

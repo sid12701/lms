@@ -98,7 +98,7 @@ public class LoanForeclosureCommandService {
                 .max()
                 .orElse(0) + 1;
 
-        return loanForeclosureQuoteRepository.save(new LoanForeclosureQuote(
+        LoanForeclosureQuote savedQuote = loanForeclosureQuoteRepository.save(new LoanForeclosureQuote(
                 loanAccount,
                 nextVersion,
                 loanServicingSupportService.normalizeActorUsername(actorUsername),
@@ -107,6 +107,15 @@ public class LoanForeclosureCommandService {
                 loanServicingSupportService.scaleCurrency(outstandingInterest),
                 settlementAmount
         ));
+        webhookOutboxService.enqueueIfSubscribed(
+                application.getLsp(),
+                WebhookEventType.FORECLOSURE_QUOTE_REQUESTED,
+                "LOAN_FORECLOSURE_QUOTE",
+                savedQuote.getId().toString(),
+                application.getId(),
+                loanApplicationLifecycleService.buildForeclosureQuotePayload(application, loanAccount, savedQuote)
+        );
+        return savedQuote;
     }
 
     @Transactional

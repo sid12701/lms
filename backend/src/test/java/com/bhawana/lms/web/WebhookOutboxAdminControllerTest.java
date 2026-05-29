@@ -159,7 +159,8 @@ class WebhookOutboxAdminControllerTest {
         updateWebhookSubscription(lsp.id(), List.of(
                 "LOAN_CREATED",
                 "LOAN_STATUS_CHANGED",
-                "LOAN_DISBURSEMENT_UPDATED",
+                "DISBURSEMENT_REQUESTED",
+                "DISBURSEMENT_COMPLETED",
                 "LOAN_REPAYMENT_RECORDED"
         ));
 
@@ -180,7 +181,8 @@ class WebhookOutboxAdminControllerTest {
                 .andExpect(jsonPath("$[*].eventType", hasItems(
                         "LOAN_CREATED",
                         "LOAN_STATUS_CHANGED",
-                        "LOAN_DISBURSEMENT_UPDATED",
+                        "DISBURSEMENT_REQUESTED",
+                        "DISBURSEMENT_COMPLETED",
                         "LOAN_REPAYMENT_RECORDED"
                 )));
     }
@@ -193,8 +195,10 @@ class WebhookOutboxAdminControllerTest {
         updateWebhookSubscription(lsp.id(), List.of(
                 "LOAN_CREATED",
                 "LOAN_STATUS_CHANGED",
-                "LOAN_DISBURSEMENT_UPDATED",
+                "DISBURSEMENT_REQUESTED",
+                "DISBURSEMENT_COMPLETED",
                 "LOAN_REPAYMENT_RECORDED",
+                "FORECLOSURE_QUOTE_REQUESTED",
                 "LOAN_FORECLOSURE_COMPLETED"
         ));
 
@@ -211,7 +215,7 @@ class WebhookOutboxAdminControllerTest {
         executeForeclosureQuote(applicationId, quote.get("id").asText(), foreclosureDate);
 
         List<WebhookEventOutbox> events = webhookEventOutboxRepository.findTop50ByLsp_IdOrderByCreatedAtDesc(UUID.fromString(lsp.id()));
-        assertEquals(10, events.size());
+        assertEquals(11, events.size());
 
         JsonNode loanCreatedEnvelope = payloadEnvelope(findFirstEvent(events, WebhookEventType.LOAN_CREATED));
         assertEquals("LOAN_CREATED", loanCreatedEnvelope.get("eventType").asText());
@@ -254,17 +258,20 @@ class WebhookOutboxAdminControllerTest {
         assertEquals("UNDER_REPAYMENT", repaymentStatusPayload.get("toStatus").asText());
         assertTrue(repaymentStatusPayload.get("reasonCode").isNull());
 
-        JsonNode closedStatusPayload = payloadEnvelope(findStatusEvent(statusEvents, "UNDER_REPAYMENT", "CLOSED")).get("payload");
+        JsonNode closedStatusPayload = payloadEnvelope(findStatusEvent(statusEvents, "UNDER_REPAYMENT", "FORECLOSED")).get("payload");
         assertEquals("UNDER_REPAYMENT", closedStatusPayload.get("fromStatus").asText());
-        assertEquals("CLOSED", closedStatusPayload.get("toStatus").asText());
+        assertEquals("FORECLOSED", closedStatusPayload.get("toStatus").asText());
         assertTrue(closedStatusPayload.get("reasonCode").isNull());
 
         List<WebhookEventOutbox> disbursementEvents = events.stream()
-                .filter(event -> event.getEventType() == WebhookEventType.LOAN_DISBURSEMENT_UPDATED)
+                .filter(event -> event.getEventType() == WebhookEventType.DISBURSEMENT_REQUESTED
+                        || event.getEventType() == WebhookEventType.DISBURSEMENT_COMPLETED)
                 .toList();
         assertEquals(2, disbursementEvents.size());
 
-        JsonNode requestedDisbursementPayload = payloadEnvelope(findDisbursementEvent(disbursementEvents, "DISBURSEMENT_REQUESTED"))
+        JsonNode requestedDisbursementEnvelope = payloadEnvelope(findFirstEvent(disbursementEvents, WebhookEventType.DISBURSEMENT_REQUESTED));
+        assertEquals("DISBURSEMENT_REQUESTED", requestedDisbursementEnvelope.get("eventType").asText());
+        JsonNode requestedDisbursementPayload = requestedDisbursementEnvelope
                 .get("payload");
         assertEquals(applicationId, requestedDisbursementPayload.get("loanApplicationId").asText());
         assertFalse(requestedDisbursementPayload.get("loanAccountId").asText().isBlank());
@@ -272,7 +279,9 @@ class WebhookOutboxAdminControllerTest {
         assertEquals("DISBURSEMENT_REQUESTED", requestedDisbursementPayload.get("loanAccountStatus").asText());
         assertBigDecimalEquals("45000.00", requestedDisbursementPayload.get("principalAmount"));
 
-        JsonNode disbursedPayload = payloadEnvelope(findDisbursementEvent(disbursementEvents, "DISBURSED")).get("payload");
+        JsonNode completedDisbursementEnvelope = payloadEnvelope(findFirstEvent(disbursementEvents, WebhookEventType.DISBURSEMENT_COMPLETED));
+        assertEquals("DISBURSEMENT_COMPLETED", completedDisbursementEnvelope.get("eventType").asText());
+        JsonNode disbursedPayload = completedDisbursementEnvelope.get("payload");
         assertEquals("DISBURSED", disbursedPayload.get("loanAccountStatus").asText());
 
         JsonNode repaymentEnvelope = payloadEnvelope(findFirstEvent(events, WebhookEventType.LOAN_REPAYMENT_RECORDED));
@@ -287,6 +296,16 @@ class WebhookOutboxAdminControllerTest {
         assertBigDecimalEquals("0.00", repaymentPayload.get("unallocatedAmount"));
         assertEquals("RECEIVED", repaymentPayload.get("paymentStatus").asText());
         assertEquals(LocalDate.now().minusDays(1).toString(), repaymentPayload.get("paymentDate").asText());
+
+        JsonNode quoteEnvelope = payloadEnvelope(findFirstEvent(events, WebhookEventType.FORECLOSURE_QUOTE_REQUESTED));
+        assertEquals("LOAN_FORECLOSURE_QUOTE", quoteEnvelope.get("aggregateType").asText());
+        JsonNode quotePayload = quoteEnvelope.get("payload");
+        assertEquals(applicationId, quotePayload.get("loanApplicationId").asText());
+        assertFalse(quotePayload.get("loanAccountId").asText().isBlank());
+        assertFalse(quotePayload.get("foreclosureQuoteId").asText().isBlank());
+        assertEquals(1, quotePayload.get("quoteVersion").asInt());
+        assertEquals(foreclosureDate.toString(), quotePayload.get("effectiveDate").asText());
+        assertNotNull(quotePayload.get("settlementAmount"));
 
         JsonNode foreclosureEnvelope = payloadEnvelope(findFirstEvent(events, WebhookEventType.LOAN_FORECLOSURE_COMPLETED));
         assertEquals("LOAN_ACCOUNT", foreclosureEnvelope.get("aggregateType").asText());
@@ -319,6 +338,36 @@ class WebhookOutboxAdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].eventType").value("LOAN_CREATED"));
+    }
+
+    @Test
+    void outboxCapturesLoanFullyRepaidWhenFinalInstallmentSettlesTheLoan() throws Exception {
+        LspFixture lsp = createLsp("REPAID");
+        ProductFixture product = createProduct();
+        mapProductToLsp(product.id(), lsp.id());
+        updateWebhookSubscription(lsp.id(), List.of("LOAN_FULLY_REPAID"));
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-REPAID-001");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "AWAITING_APPROVAL");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", systemAdmin());
+        requestDisbursement(applicationId);
+        resolveDisbursement(applicationId);
+        recordAllPayments(applicationId);
+
+        List<WebhookEventOutbox> events = webhookEventOutboxRepository.findTop50ByLsp_IdOrderByCreatedAtDesc(UUID.fromString(lsp.id()));
+        assertEquals(1, events.size());
+        WebhookEventOutbox event = events.getFirst();
+        assertEquals(WebhookEventType.LOAN_FULLY_REPAID, event.getEventType());
+        JsonNode envelope = payloadEnvelope(event);
+        assertEquals("LOAN_FULLY_REPAID", envelope.get("eventType").asText());
+        assertEquals("LOAN_ACCOUNT", envelope.get("aggregateType").asText());
+        JsonNode payload = envelope.get("payload");
+        assertEquals(applicationId, payload.get("loanApplicationId").asText());
+        assertFalse(payload.get("loanAccountId").asText().isBlank());
+        assertEquals("FULLY_REPAID", payload.get("closureReason").asText());
+        assertFalse(payload.get("closedAt").asText().isBlank());
     }
 
     @Test
@@ -598,6 +647,33 @@ class WebhookOutboxAdminControllerTest {
                                 "channel", "UPI"
                         ))))
                 .andExpect(status().isOk());
+    }
+
+    private void recordAllPayments(String applicationId) throws Exception {
+        MvcResult scheduleResult = mockMvc.perform(get(
+                        "/api/v1/internal/ops/loan-applications/{applicationId}/repayment-schedule",
+                        applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode schedule = objectMapper.readTree(scheduleResult.getResponse().getContentAsString());
+
+        for (JsonNode installment : schedule) {
+            String installmentId = installment.get("id").asText();
+            BigDecimal amount = installment.get("outstandingAmount").decimalValue();
+            mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                            .with(systemAdmin())
+                            .header("Idempotency-Key", UUID.randomUUID().toString())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "targetInstallmentId", installmentId,
+                                    "amount", amount,
+                                    "postedAt", LocalDate.now().minusDays(1).toString(),
+                                    "reference", "PAY-FULL-" + installment.get("installmentNumber").asInt(),
+                                    "channel", "UPI"
+                            ))))
+                    .andExpect(status().isOk());
+        }
     }
 
     private JsonNode requestForeclosureQuote(String applicationId, LocalDate effectiveDate) throws Exception {

@@ -304,8 +304,8 @@ function backendToDetail(
 
   const requiredChecklistRows = checklist.filter((row) => row.required);
   const docsComplete =
-    requiredChecklistRows.length === 0
-    || requiredChecklistRows.every((row) => isUploadedBackendChecklistStatus(row.status));
+    requiredChecklistRows.length === 0 ||
+    requiredChecklistRows.every((row) => isUploadedBackendChecklistStatus(row.status));
 
   const scheduleValid =
     payload.loanAccount?.repaymentSchedule != null &&
@@ -335,15 +335,11 @@ async function fetchChecklistSafely(id: string): Promise<readonly BackendCheckli
 // ─── Public surface ──────────────────────────────────────────────────────────
 
 /** Fetch the full detail payload for one loan application. */
-export async function fetchLoanApplicationDetail(
-  id: string,
-): Promise<LoanApplicationDetail> {
+export async function fetchLoanApplicationDetail(id: string): Promise<LoanApplicationDetail> {
   if (isInternalSession()) {
     try {
       const [payload, checklist] = await Promise.all([
-        requestJson<BackendLoanApplicationDetail>(
-          `${BACKEND_BASE}/${encodeURIComponent(id)}`,
-        ),
+        requestJson<BackendLoanApplicationDetail>(`${BACKEND_BASE}/${encodeURIComponent(id)}`),
         fetchChecklistSafely(id),
       ]);
       return backendToDetail(payload, checklist);
@@ -382,7 +378,9 @@ function toAuditEvent(row: BackendAuditEvent): ApplicationAuditEvent {
   return {
     id: row.id,
     applicationId: row.loanApplicationId,
-    fromStatus: row.fromStatus ? (mapBackendStatus(row.fromStatus) as ApplicationAuditEvent["fromStatus"]) : null,
+    fromStatus: row.fromStatus
+      ? (mapBackendStatus(row.fromStatus) as ApplicationAuditEvent["fromStatus"])
+      : null,
     toStatus: mapBackendStatus(row.toStatus ?? "INITIATED") as ApplicationAuditEvent["toStatus"],
     action: row.action || "transition",
     actorId: row.actorUsername ?? "system",

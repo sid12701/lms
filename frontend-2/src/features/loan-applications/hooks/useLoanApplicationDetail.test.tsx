@@ -102,10 +102,9 @@ describe("useLoanApplicationActivity", () => {
   it("respects the enabled option (paused when false)", () => {
     activityMock.mockResolvedValue({ events: [] });
     const { Wrapper } = makeWrapper();
-    const { result } = renderHook(
-      () => useLoanApplicationActivity("app-1", { enabled: false }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderHook(() => useLoanApplicationActivity("app-1", { enabled: false }), {
+      wrapper: Wrapper,
+    });
     expect(result.current.fetchStatus).toBe("idle");
     expect(activityMock).not.toHaveBeenCalled();
   });
@@ -113,10 +112,9 @@ describe("useLoanApplicationActivity", () => {
   it("fetches when enabled is true", async () => {
     activityMock.mockResolvedValue({ events: [] });
     const { Wrapper } = makeWrapper();
-    const { result } = renderHook(
-      () => useLoanApplicationActivity("app-1", { enabled: true }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderHook(() => useLoanApplicationActivity("app-1", { enabled: true }), {
+      wrapper: Wrapper,
+    });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(activityMock).toHaveBeenCalledWith("app-1");
   });
@@ -126,10 +124,9 @@ describe("useLoanApplicationWebhooks", () => {
   it("respects the enabled option (paused when false)", () => {
     webhooksMock.mockResolvedValue({ deliveries: [] });
     const { Wrapper } = makeWrapper();
-    const { result } = renderHook(
-      () => useLoanApplicationWebhooks("app-1", { enabled: false }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderHook(() => useLoanApplicationWebhooks("app-1", { enabled: false }), {
+      wrapper: Wrapper,
+    });
     expect(result.current.fetchStatus).toBe("idle");
     expect(webhooksMock).not.toHaveBeenCalled();
   });
@@ -137,10 +134,9 @@ describe("useLoanApplicationWebhooks", () => {
   it("fetches when enabled is true", async () => {
     webhooksMock.mockResolvedValue({ deliveries: [] });
     const { Wrapper } = makeWrapper();
-    const { result } = renderHook(
-      () => useLoanApplicationWebhooks("app-1", { enabled: true }),
-      { wrapper: Wrapper },
-    );
+    const { result } = renderHook(() => useLoanApplicationWebhooks("app-1", { enabled: true }), {
+      wrapper: Wrapper,
+    });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(webhooksMock).toHaveBeenCalledWith("app-1");
   });

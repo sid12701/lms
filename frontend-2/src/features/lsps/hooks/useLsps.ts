@@ -10,9 +10,7 @@ import type { LspsListFilters, LspsListResponse } from "../types";
 
 export const LSPS_LIST_QUERY_KEY = ["lsps", "list"] as const;
 
-export function useLsps(
-  filters: LspsListFilters,
-): UseQueryResult<LspsListResponse, Error> {
+export function useLsps(filters: LspsListFilters): UseQueryResult<LspsListResponse, Error> {
   return useQuery({
     queryKey: [...LSPS_LIST_QUERY_KEY, filters],
     queryFn: () => listLsps(filters),

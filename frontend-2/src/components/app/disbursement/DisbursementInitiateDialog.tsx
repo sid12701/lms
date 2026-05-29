@@ -99,9 +99,9 @@ export function DisbursementInitiateDialog({
             <DialogTitle>Initiate disbursement</DialogTitle>
           </div>
           <DialogDescription>
-            Confirm the disbursement target. The application will move to
-            DISBURSEMENT_IN_PROGRESS and the change is recorded in the application
-            audit log alongside your name and the time.
+            Confirm the disbursement target. The application will move to DISBURSEMENT_IN_PROGRESS
+            and the change is recorded in the application audit log alongside your name and the
+            time.
           </DialogDescription>
         </DialogHeader>
 
@@ -112,19 +112,17 @@ export function DisbursementInitiateDialog({
         >
           <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
             <div className="flex flex-col gap-0.5">
-              <dt className="text-foreground-muted text-xs uppercase tracking-wide">
-                Beneficiary
-              </dt>
+              <dt className="text-foreground-muted text-xs tracking-wide uppercase">Beneficiary</dt>
               <dd className="text-foreground font-medium">{target.beneficiaryName}</dd>
             </div>
             {target.bankName ? (
               <div className="flex flex-col gap-0.5">
-                <dt className="text-foreground-muted text-xs uppercase tracking-wide">Bank</dt>
+                <dt className="text-foreground-muted text-xs tracking-wide uppercase">Bank</dt>
                 <dd className="text-foreground font-medium">{target.bankName}</dd>
               </div>
             ) : null}
             <div className="flex flex-col gap-0.5">
-              <dt className="text-foreground-muted text-xs uppercase tracking-wide">
+              <dt className="text-foreground-muted text-xs tracking-wide uppercase">
                 Account number
               </dt>
               <dd className="text-foreground font-medium" {...TABULAR_ATTR}>
@@ -132,7 +130,7 @@ export function DisbursementInitiateDialog({
               </dd>
             </div>
             <div className="flex flex-col gap-0.5">
-              <dt className="text-foreground-muted text-xs uppercase tracking-wide">IFSC</dt>
+              <dt className="text-foreground-muted text-xs tracking-wide uppercase">IFSC</dt>
               <dd className="text-foreground font-medium" {...TABULAR_ATTR}>
                 {target.ifsc}
               </dd>

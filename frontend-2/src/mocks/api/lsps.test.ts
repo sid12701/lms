@@ -335,9 +335,7 @@ describe("lsps.webhookSubscription", () => {
       eventTypes: ["loan.foreclosed"],
       idempotencyKey: key,
     });
-    expect(second.subscription?.endpointUrl).toBe(
-      first.subscription?.endpointUrl,
-    );
+    expect(second.subscription?.endpointUrl).toBe(first.subscription?.endpointUrl);
     expect(second.subscription?.enabled).toBe(first.subscription?.enabled);
   });
 });

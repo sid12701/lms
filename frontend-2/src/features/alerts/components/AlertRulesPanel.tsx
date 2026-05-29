@@ -39,8 +39,8 @@ export function AlertRulesPanel({ rules, isLoading }: AlertRulesPanelProps) {
         </Badge>
       </div>
       <p className="text-foreground-muted text-xs leading-relaxed">
-        Scheduled checks run every few minutes; event-driven rules fire on intake,
-        webhooks, and rate limits. Open alerts below were emitted by these rules.
+        Scheduled checks run every few minutes; event-driven rules fire on intake, webhooks, and
+        rate limits. Open alerts below were emitted by these rules.
       </p>
       <ul className="grid gap-2 sm:grid-cols-2">
         {rules.map((rule) => (
@@ -53,7 +53,7 @@ export function AlertRulesPanel({ rules, isLoading }: AlertRulesPanelProps) {
               <span className="text-foreground text-xs font-medium">{rule.name}</span>
               <Badge
                 variant={rule.enabled ? "outline" : "secondary"}
-                className="text-[10px] shrink-0"
+                className="shrink-0 text-[10px]"
               >
                 {rule.enabled ? "On" : "Off"}
               </Badge>
@@ -61,7 +61,7 @@ export function AlertRulesPanel({ rules, isLoading }: AlertRulesPanelProps) {
             <p className="text-foreground-muted mt-1 text-[11px] leading-snug">
               {rule.description}
             </p>
-            <div className="text-foreground-muted mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-wide">
+            <div className="text-foreground-muted mt-2 flex flex-wrap gap-2 text-[10px] tracking-wide uppercase">
               <span>{rule.audience.replace(/_/g, " ")}</span>
               <span>·</span>
               <span>{rule.triggerKind.toLowerCase()}</span>

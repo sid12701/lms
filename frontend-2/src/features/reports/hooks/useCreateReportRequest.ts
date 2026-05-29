@@ -5,11 +5,7 @@
  * time). On success the list cache is invalidated so the new QUEUED row
  * shows up immediately + a sonner toast fires.
  */
-import {
-  useMutation,
-  useQueryClient,
-  type UseMutationResult,
-} from "@tanstack/react-query";
+import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { createRequest } from "../api";
 import type { CreateReportRequestInput, ReportRequest } from "../types";
@@ -27,8 +23,7 @@ export function useCreateReportRequest(): UseMutationResult<
 > {
   const queryClient = useQueryClient();
   return useMutation<ReportRequest, Error, CreateReportRequestVariables>({
-    mutationFn: ({ input, idempotencyKey }) =>
-      createRequest(input, { idempotencyKey }),
+    mutationFn: ({ input, idempotencyKey }) => createRequest(input, { idempotencyKey }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: [...REPORT_REQUESTS_QUERY_KEY],

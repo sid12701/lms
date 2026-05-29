@@ -33,10 +33,7 @@ describe("DetailTabsShell", () => {
         <p>activity body</p>
       </DetailTabsShell>,
     );
-    expect(getByRole("tab", { name: "Activity" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(getByRole("tab", { name: "Activity" })).toHaveAttribute("aria-selected", "true");
     expect(getByTestId("tab-panel-activity")).toHaveTextContent("activity body");
   });
 

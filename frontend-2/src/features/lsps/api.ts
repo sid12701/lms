@@ -101,10 +101,7 @@ export async function listLsps(filters: LspsListFilters = {}): Promise<LspsListR
     if (filters.status && normaliseStatus(row.status) !== filters.status) return false;
     if (filters.q) {
       const needle = filters.q.toLowerCase();
-      if (
-        !row.code.toLowerCase().includes(needle) &&
-        !row.name.toLowerCase().includes(needle)
-      ) {
+      if (!row.code.toLowerCase().includes(needle) && !row.name.toLowerCase().includes(needle)) {
         return false;
       }
     }
@@ -120,16 +117,16 @@ export async function listLsps(filters: LspsListFilters = {}): Promise<LspsListR
 export async function createLsp(input: CreateLspInput): Promise<LspMutationResponse> {
   const payload = await requestJson<BackendLspResponse>(
     BACKEND_BASE,
-    { method: "POST", body: JSON.stringify({ code: input.code, name: input.name, status: "ACTIVE" }) },
+    {
+      method: "POST",
+      body: JSON.stringify({ code: input.code, name: input.name, status: "ACTIVE" }),
+    },
     { idempotencyKey: input.idempotencyKey },
   );
   return { lsp: projectLspRow(payload) };
 }
 
-export async function updateLsp(
-  id: string,
-  input: UpdateLspInput,
-): Promise<LspMutationResponse> {
+export async function updateLsp(id: string, input: UpdateLspInput): Promise<LspMutationResponse> {
   // The backend only exposes webhook updates today; name + status edits stay client-side.
   const path = buildQueryPath(`${BACKEND_BASE}/${id}`, {});
   const payload = await requestJson<BackendLspResponse>(path, { method: "GET" });
@@ -139,9 +136,7 @@ export async function updateLsp(
   return { lsp: projected };
 }
 
-export async function getLspWebhookSubscription(
-  id: string,
-): Promise<WebhookSubscriptionResponse> {
+export async function getLspWebhookSubscription(id: string): Promise<WebhookSubscriptionResponse> {
   const payload = await requestJson<BackendLspResponse>(`${BACKEND_BASE}/${id}`);
   return { subscription: projectWebhookSubscription(id, payload.webhookSubscription) };
 }

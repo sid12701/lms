@@ -34,11 +34,7 @@ export interface LspsFilterBarProps {
   className?: string;
 }
 
-export function LspsFilterBar({
-  filters,
-  onChange,
-  className,
-}: LspsFilterBarProps) {
+export function LspsFilterBar({ filters, onChange, className }: LspsFilterBarProps) {
   const [search, setSearch] = useState<string>(filters.q ?? "");
   const debounceRef = useRef<number | null>(null);
 
@@ -126,7 +122,7 @@ export function LspsFilterBar({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search code or name"
           aria-label="Search LSPs"
-          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pl-7.5 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pr-2 pl-7.5 text-sm outline-none focus-visible:ring-[3px]"
         />
       </label>
 

@@ -175,13 +175,9 @@ describe("ReportsPage — load + listing", () => {
     renderPage();
     expect(screen.getByTestId("reports-page")).toBeInTheDocument();
     expect(screen.getByText(/Reporting/i)).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 1, name: /^Reports$/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: /^Reports$/i })).toBeInTheDocument();
 
-    expect(
-      await screen.findByRole("group", { name: /Report filters/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: /Report filters/i })).toBeInTheDocument();
 
     expect(screen.getByTestId("mis-kpi-disbursed-mtd")).toBeInTheDocument();
     expect(screen.getByTestId("mis-kpi-active-loans")).toBeInTheDocument();
@@ -205,46 +201,42 @@ describe("ReportsPage — load + listing", () => {
 });
 
 describe("ReportsPage — create flow", () => {
-  it(
-    "opens the dialog, submits the form, and the new QUEUED request appears in the list",
-    async () => {
-      const user = userEvent.setup();
-      const { baseElement } = renderPage();
+  it("opens the dialog, submits the form, and the new QUEUED request appears in the list", async () => {
+    const user = userEvent.setup();
+    const { baseElement } = renderPage();
 
-      await screen.findByTestId("mis-kpi-total-loans");
+    await screen.findByTestId("mis-kpi-total-loans");
 
-      const generateBtn = screen.getByRole("button", {
-        name: /Generate report/i,
-      });
-      await user.click(generateBtn);
+    const generateBtn = screen.getByRole("button", {
+      name: /Generate report/i,
+    });
+    await user.click(generateBtn);
 
-      const dialog = await within(baseElement).findByRole("dialog");
-      expect(
-        within(dialog).getByRole("heading", {
-          name: /Generate portfolio MIS report/i,
-        }),
-      ).toBeInTheDocument();
+    const dialog = await within(baseElement).findByRole("dialog");
+    expect(
+      within(dialog).getByRole("heading", {
+        name: /Generate portfolio MIS report/i,
+      }),
+    ).toBeInTheDocument();
 
-      expect(await axe(baseElement)).toHaveNoViolations();
+    expect(await axe(baseElement)).toHaveNoViolations();
 
-      const submit = within(dialog).getByRole("button", {
-        name: /^Queue report$/i,
-      });
-      await user.click(submit);
+    const submit = within(dialog).getByRole("button", {
+      name: /^Queue report$/i,
+    });
+    await user.click(submit);
 
-      await waitFor(() => {
-        expect(createRequestMock).toHaveBeenCalled();
-      });
+    await waitFor(() => {
+      expect(createRequestMock).toHaveBeenCalled();
+    });
 
-      await waitFor(
-        () => {
-          expect(within(baseElement).queryByRole("dialog")).not.toBeInTheDocument();
-        },
-        { timeout: 5000 },
-      );
-    },
-    15_000,
-  );
+    await waitFor(
+      () => {
+        expect(within(baseElement).queryByRole("dialog")).not.toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+  }, 15_000);
 });
 
 describe("ReportsPage — filter bar", () => {

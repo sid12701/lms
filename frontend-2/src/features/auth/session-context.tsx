@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- context module co-exports a Provider, hook, and Context */
 import {
   createContext,
   useCallback,
@@ -43,7 +42,9 @@ export function SessionProvider({
   skipBootstrap = false,
   initialSession = null,
 }: SessionProviderProps): ReactElement {
-  const [session, setSession] = useState<Session | null>(() => initialSession ?? loadStoredSession());
+  const [session, setSession] = useState<Session | null>(
+    () => initialSession ?? loadStoredSession(),
+  );
   const [isLoading, setIsLoading] = useState<boolean>(
     !skipBootstrap && initialSession === null && loadStoredSession() === null,
   );

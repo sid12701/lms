@@ -25,7 +25,6 @@ export function useLoanApplicationActivity(
     queryKey: loanApplicationActivityQueryKey(id),
     queryFn: () => fetchLoanApplicationActivity(id),
     staleTime: 30_000,
-    enabled:
-      typeof id === "string" && id.length > 0 && (options.enabled ?? true),
+    enabled: typeof id === "string" && id.length > 0 && (options.enabled ?? true),
   });
 }

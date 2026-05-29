@@ -61,9 +61,7 @@ export interface LspWebhookSubscriptionDialogProps {
   lspLabel: string;
   /** Current subscription, or `null` if none exists yet. */
   initialSubscription: LspWebhookSubscription | null;
-  onConfirm: (
-    args: LspWebhookSubscriptionConfirmArgs,
-  ) => Promise<void> | void;
+  onConfirm: (args: LspWebhookSubscriptionConfirmArgs) => Promise<void> | void;
   loading?: boolean;
   errorMessage?: string | null;
 }
@@ -142,9 +140,8 @@ export function LspWebhookSubscriptionDialog({
             <DialogTitle>Webhook subscription</DialogTitle>
           </div>
           <DialogDescription>
-            Configure where Bhawana posts lifecycle events for{" "}
-            <strong>{lspLabel}</strong>. HMAC signatures use the signing secret
-            you provide.
+            Configure where Bhawana posts lifecycle events for <strong>{lspLabel}</strong>. HMAC
+            signatures use the signing secret you provide.
           </DialogDescription>
         </DialogHeader>
 
@@ -257,12 +254,7 @@ export function LspWebhookSubscriptionDialog({
                               onClick={() => toggle(evt)}
                               className="gap-1"
                             >
-                              {isOn ? (
-                                <Check
-                                  aria-hidden="true"
-                                  className="size-3"
-                                />
-                              ) : null}
+                              {isOn ? <Check aria-hidden="true" className="size-3" /> : null}
                               <span>{EVENT_LABELS[evt]}</span>
                             </Button>
                           </li>
@@ -271,8 +263,7 @@ export function LspWebhookSubscriptionDialog({
                     </ul>
                   </FormControl>
                   <FormDescription>
-                    Pick at least one. Bhawana fans out lifecycle events to
-                    every selected type.
+                    Pick at least one. Bhawana fans out lifecycle events to every selected type.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

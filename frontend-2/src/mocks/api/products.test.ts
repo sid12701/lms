@@ -18,13 +18,7 @@ import {
 } from "./products";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { getDb } from "../db/state";
-import {
-  LSP_BHAW_DEMO,
-  LSP_NORTH,
-  LSP_SOUTH,
-  PROD_EDUCATION,
-  PROD_PERSONAL,
-} from "../db/seed";
+import { LSP_BHAW_DEMO, LSP_NORTH, LSP_SOUTH, PROD_EDUCATION, PROD_PERSONAL } from "../db/seed";
 
 beforeEach(() => {
   setLatencyOverride(0);
@@ -122,9 +116,10 @@ describe("products.detail", () => {
 
   it("404s when product does not exist", async () => {
     await auth.login({ username: "ops.admin", password: "any" });
-    await expect(
-      getProduct("bbbbbbbb-9999-4bbb-8bbb-bbbbbbbbbbbb"),
-    ).rejects.toMatchObject({ code: "NOT_FOUND", httpStatus: 404 });
+    await expect(getProduct("bbbbbbbb-9999-4bbb-8bbb-bbbbbbbbbbbb")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      httpStatus: 404,
+    });
   });
 });
 
@@ -410,9 +405,7 @@ describe("products.audit-sample", () => {
       "MAPPING_CHANGED",
     ]);
     // Dump the sample for the report.
-    // eslint-disable-next-line no-console
     if (process.env["DUMP_AUDIT"] === "1") {
-      // eslint-disable-next-line no-console
       console.log(JSON.stringify(audits, null, 2));
     }
   });

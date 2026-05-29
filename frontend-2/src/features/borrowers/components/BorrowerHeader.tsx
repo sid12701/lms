@@ -42,14 +42,8 @@ export function BorrowerHeader({ detail }: BorrowerHeaderProps) {
               )}
               {borrower.kycComplete ? "KYC complete" : "KYC pending"}
             </Badge>
-            <Badge
-              data-slot="lsp-count-badge"
-              variant="outline"
-              className="border-border"
-            >
-              {visibleLsps.length === 1
-                ? "1 LSP"
-                : `${visibleLsps.length} LSPs`}
+            <Badge data-slot="lsp-count-badge" variant="outline" className="border-border">
+              {visibleLsps.length === 1 ? "1 LSP" : `${visibleLsps.length} LSPs`}
             </Badge>
           </div>
         }

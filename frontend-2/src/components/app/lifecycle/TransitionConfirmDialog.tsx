@@ -81,9 +81,7 @@ export function TransitionConfirmDialog({
   loading = false,
 }: TransitionConfirmDialogProps) {
   const requiresReason = action?.requiresReason ?? false;
-  const schema = requiresReason
-    ? LifecycleReasonRequiredSchema
-    : LifecycleReasonOptionalSchema;
+  const schema = requiresReason ? LifecycleReasonRequiredSchema : LifecycleReasonOptionalSchema;
 
   const form = useForm<LifecycleReasonOptionalValues>({
     resolver: zodResolver(schema),
@@ -151,9 +149,7 @@ export function TransitionConfirmDialog({
             name="reason"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>
-                  {requiresReason ? "Reason" : "Reason (optional)"}
-                </FormLabel>
+                <FormLabel>{requiresReason ? "Reason" : "Reason (optional)"}</FormLabel>
                 <FormControl>
                   <Textarea
                     rows={3}
@@ -170,9 +166,7 @@ export function TransitionConfirmDialog({
                     }}
                   />
                 </FormControl>
-                <FormDescription>
-                  Up to 1000 characters. Visible to auditors.
-                </FormDescription>
+                <FormDescription>Up to 1000 characters. Visible to auditors.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}

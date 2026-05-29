@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- module co-exports the meta lookup helper for tests */
 import { forwardRef, type HTMLAttributes } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Clock, FileUp } from "lucide-react";

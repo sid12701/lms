@@ -106,9 +106,7 @@ describe("<OpenAlertsCard />", () => {
   });
 
   it("has no axe violations", async () => {
-    const { container } = renderWithProviders(
-      wrap(<OpenAlertsCard alerts={[mkAlert()]} />),
-    );
+    const { container } = renderWithProviders(wrap(<OpenAlertsCard alerts={[mkAlert()]} />));
     expect(await axe(container)).toHaveNoViolations();
   });
 

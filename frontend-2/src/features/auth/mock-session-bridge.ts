@@ -14,9 +14,7 @@ import { getDb } from "@/mocks/db/state";
 import { SEED_USERS } from "@/mocks/db/seed";
 
 function pickSeedFor(session: Session): (typeof SEED_USERS)[number] | undefined {
-  const byUsername = SEED_USERS.find(
-    (candidate) => candidate.username === session.user.username,
-  );
+  const byUsername = SEED_USERS.find((candidate) => candidate.username === session.user.username);
   if (byUsername) return byUsername;
   return SEED_USERS.find((candidate) => candidate.role === session.user.role);
 }

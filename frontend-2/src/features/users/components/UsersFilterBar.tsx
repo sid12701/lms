@@ -49,12 +49,7 @@ export interface UsersFilterBarProps {
   className?: string;
 }
 
-export function UsersFilterBar({
-  filters,
-  onChange,
-  lspOptions,
-  className,
-}: UsersFilterBarProps) {
+export function UsersFilterBar({ filters, onChange, lspOptions, className }: UsersFilterBarProps) {
   const [search, setSearch] = useState<string>(filters.q ?? "");
   const debounceRef = useRef<number | null>(null);
 
@@ -129,9 +124,7 @@ export function UsersFilterBar({
     >
       <Select
         value={filters.role ?? ALL_SENTINEL}
-        onValueChange={(next) =>
-          setRole(next === ALL_SENTINEL ? undefined : next)
-        }
+        onValueChange={(next) => setRole(next === ALL_SENTINEL ? undefined : next)}
       >
         <SelectTrigger
           size="sm"
@@ -153,9 +146,7 @@ export function UsersFilterBar({
 
       <Select
         value={filters.status ?? ALL_SENTINEL}
-        onValueChange={(next) =>
-          setStatus(next === ALL_SENTINEL ? undefined : next)
-        }
+        onValueChange={(next) => setStatus(next === ALL_SENTINEL ? undefined : next)}
       >
         <SelectTrigger
           size="sm"
@@ -177,9 +168,7 @@ export function UsersFilterBar({
 
       <Select
         value={filters.lspId ?? ALL_SENTINEL}
-        onValueChange={(next) =>
-          setLsp(next === ALL_SENTINEL ? undefined : next)
-        }
+        onValueChange={(next) => setLsp(next === ALL_SENTINEL ? undefined : next)}
       >
         <SelectTrigger
           size="sm"
@@ -212,7 +201,7 @@ export function UsersFilterBar({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search username or email"
           aria-label="Search users"
-          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pl-7.5 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pr-2 pl-7.5 text-sm outline-none focus-visible:ring-[3px]"
         />
       </label>
 

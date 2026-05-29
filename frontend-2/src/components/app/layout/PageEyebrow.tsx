@@ -27,7 +27,8 @@ export const PageEyebrow = forwardRef<HTMLElement, PageEyebrowProps>(function Pa
   { children, as = "p", className, ...rest },
   ref,
 ) {
-  const baseClass = "text-foreground-muted text-[11px] leading-4 font-semibold uppercase tracking-[0.08em]";
+  const baseClass =
+    "text-foreground-muted text-[11px] leading-4 font-semibold uppercase tracking-[0.08em]";
   if (as === "span") {
     return (
       <span

@@ -28,8 +28,7 @@ const TONE_BUTTON: Record<LifecycleAction["tone"], string> = {
   destructive: "",
   // No "success" Button variant ships, so we layer brand-success utility
   // classes on top of the default variant for the approve tone.
-  approve:
-    "bg-success text-success-foreground hover:bg-success/90 focus-visible:ring-success/30",
+  approve: "bg-success text-success-foreground hover:bg-success/90 focus-visible:ring-success/30",
 };
 
 /**
@@ -43,13 +42,7 @@ const TONE_BUTTON: Record<LifecycleAction["tone"], string> = {
  * Status of the most recent submit is announced via an `aria-live="polite"`
  * region so AT users hear success / failure without re-reading the page.
  */
-export function ActionBar({
-  currentStatus,
-  role,
-  gates,
-  onConfirm,
-  className,
-}: ActionBarProps) {
+export function ActionBar({ currentStatus, role, gates, onConfirm, className }: ActionBarProps) {
   const [activeAction, setActiveAction] = useState<LifecycleAction | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -88,10 +81,7 @@ export function ActionBar({
   };
 
   return (
-    <div
-      data-slot="action-bar"
-      className={cn("flex flex-col gap-2", className)}
-    >
+    <div data-slot="action-bar" className={cn("flex flex-col gap-2", className)}>
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Loan actions">
         {items.length === 0 ? (
           <p className="text-foreground-muted text-sm" data-slot="action-bar-empty">
@@ -106,10 +96,7 @@ export function ActionBar({
                   ? "default"
                   : "outline";
             return (
-              <TransitionDisabledTooltip
-                key={action.id}
-                disabledReason={disabledReason}
-              >
+              <TransitionDisabledTooltip key={action.id} disabledReason={disabledReason}>
                 <Button
                   type="button"
                   variant={variant}
@@ -126,12 +113,7 @@ export function ActionBar({
         )}
       </div>
 
-      <span
-        data-slot="action-bar-status"
-        aria-live="polite"
-        aria-atomic="true"
-        className="sr-only"
-      >
+      <span data-slot="action-bar-status" aria-live="polite" aria-atomic="true" className="sr-only">
         {statusMessage}
       </span>
 

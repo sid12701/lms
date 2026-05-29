@@ -9,7 +9,4 @@ export {
   LoanApplicationsFilterBar,
   type LoanApplicationsFilterBarProps,
 } from "./LoanApplicationsFilterBar";
-export {
-  LoanApplicationsTable,
-  type LoanApplicationsTableProps,
-} from "./LoanApplicationsTable";
+export { LoanApplicationsTable, type LoanApplicationsTableProps } from "./LoanApplicationsTable";

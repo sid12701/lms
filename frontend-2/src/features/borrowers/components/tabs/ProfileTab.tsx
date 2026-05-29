@@ -42,14 +42,9 @@ function Section({
   return (
     <section
       data-slot="profile-section"
-      className={cn(
-        "border-border bg-surface rounded-md border p-4",
-        className,
-      )}
+      className={cn("border-border bg-surface rounded-md border p-4", className)}
     >
-      <h2 className="text-foreground mb-3 text-sm font-semibold tracking-tight">
-        {title}
-      </h2>
+      <h2 className="text-foreground mb-3 text-sm font-semibold tracking-tight">{title}</h2>
       {children}
     </section>
   );
@@ -58,9 +53,7 @@ function Section({
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <dt className="text-foreground-muted text-xs tracking-wide uppercase">
-        {label}
-      </dt>
+      <dt className="text-foreground-muted text-xs tracking-wide uppercase">{label}</dt>
       <dd className="text-foreground text-sm">{children}</dd>
     </div>
   );
@@ -76,10 +69,7 @@ export function ProfileTab({ detail }: ProfileTabProps) {
   const { borrower, visibleLsps } = detail;
 
   return (
-    <div
-      data-slot="profile-tab"
-      className="grid grid-cols-1 gap-4 lg:grid-cols-2"
-    >
+    <div data-slot="profile-tab" className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <Section title="Identity">
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
           <Row label="PAN">
@@ -102,9 +92,7 @@ export function ProfileTab({ detail }: ProfileTabProps) {
           </Row>
           <Row label="Father's name">{borrower.fathersName}</Row>
           <Row label="Spouse name">
-            {borrower.spouseName ?? (
-              <span className="text-foreground-muted">—</span>
-            )}
+            {borrower.spouseName ?? <span className="text-foreground-muted">—</span>}
           </Row>
         </dl>
       </Section>
@@ -113,9 +101,7 @@ export function ProfileTab({ detail }: ProfileTabProps) {
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
           <Row label="Mobile">{borrower.mobile}</Row>
           <Row label="Email">
-            {borrower.email ?? (
-              <span className="text-foreground-muted">—</span>
-            )}
+            {borrower.email ?? <span className="text-foreground-muted">—</span>}
           </Row>
           <Row label="Residential address">
             <span className="block">{borrower.address.residential}</span>
@@ -132,29 +118,19 @@ export function ProfileTab({ detail }: ProfileTabProps) {
             {EMPLOYMENT_LABEL[borrower.employment.type] ?? borrower.employment.type}
           </Row>
           <Row label="Organization">
-            {borrower.employment.organization ?? (
-              <span className="text-foreground-muted">—</span>
-            )}
+            {borrower.employment.organization ?? <span className="text-foreground-muted">—</span>}
           </Row>
           <Row label="Employee ID">
-            {borrower.employment.employeeId ?? (
-              <span className="text-foreground-muted">—</span>
-            )}
+            {borrower.employment.employeeId ?? <span className="text-foreground-muted">—</span>}
           </Row>
           <Row label="Location">
-            {borrower.employment.location ?? (
-              <span className="text-foreground-muted">—</span>
-            )}
+            {borrower.employment.location ?? <span className="text-foreground-muted">—</span>}
           </Row>
           <Row label="Monthly income">
-            <span className="tabular-nums">
-              {formatINR(borrower.employment.monthlyIncome)}
-            </span>
+            <span className="tabular-nums">{formatINR(borrower.employment.monthlyIncome)}</span>
           </Row>
           <Row label="Annual income">
-            <span className="tabular-nums">
-              {formatINR(borrower.employment.annualIncome)}
-            </span>
+            <span className="tabular-nums">{formatINR(borrower.employment.annualIncome)}</span>
           </Row>
         </dl>
       </Section>
@@ -192,14 +168,9 @@ export function ProfileTab({ detail }: ProfileTabProps) {
 
       <Section title="LSP visibility" className="lg:col-span-2">
         {visibleLsps.length === 0 ? (
-          <p className="text-foreground-muted text-sm">
-            No LSPs currently see this borrower
-          </p>
+          <p className="text-foreground-muted text-sm">No LSPs currently see this borrower</p>
         ) : (
-          <ul
-            data-slot="lsp-chip-cloud"
-            className="flex flex-wrap gap-2"
-          >
+          <ul data-slot="lsp-chip-cloud" className="flex flex-wrap gap-2">
             {visibleLsps.map((lsp) => (
               <li key={lsp.id}>
                 <Badge variant="outline" className="border-border">

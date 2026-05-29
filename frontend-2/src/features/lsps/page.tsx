@@ -50,11 +50,7 @@ function extractErrorMessage(err: unknown): string | null {
   return "Something went wrong. Try again in a moment.";
 }
 
-const VALID_STATUSES: readonly LspStatus[] = [
-  "ACTIVE",
-  "SUSPENDED",
-  "INACTIVE",
-];
+const VALID_STATUSES: readonly LspStatus[] = ["ACTIVE", "SUSPENDED", "INACTIVE"];
 
 function parseFiltersFromUrl(params: URLSearchParams): LspsListFilters {
   const filters: LspsListFilters = {};
@@ -92,10 +88,7 @@ function filtersToParams(filters: LspsListFilters): URLSearchParams {
 
 export function LspsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const filters = useMemo(
-    () => parseFiltersFromUrl(searchParams),
-    [searchParams],
-  );
+  const filters = useMemo(() => parseFiltersFromUrl(searchParams), [searchParams]);
 
   const setFilters = (next: LspsListFilters) => {
     setSearchParams(filtersToParams(next), { replace: false });
@@ -207,21 +200,13 @@ export function LspsPage() {
   };
 
   return (
-    <div
-      data-testid="lsps-page"
-      className="flex flex-col gap-6 p-6"
-      data-density="comfortable"
-    >
+    <div data-testid="lsps-page" className="flex flex-col gap-6 p-6" data-density="comfortable">
       <PageHeader
         eyebrow="Administration"
         title="LSPs"
         description="Manage Loan Service Provider tenants and their webhook subscriptions."
         actions={
-          <Button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            data-slot="lsps-new-button"
-          >
+          <Button type="button" onClick={() => setCreateOpen(true)} data-slot="lsps-new-button">
             <Plus aria-hidden="true" className="size-4" />
             New LSP
           </Button>
@@ -249,10 +234,7 @@ export function LspsPage() {
       ) : (
         <>
           <LspsFilterBar filters={filters} onChange={setFilters} />
-          {!list.isPending &&
-          (list.data?.total ?? 0) === 0 &&
-          !filters.q &&
-          !filters.status ? (
+          {!list.isPending && (list.data?.total ?? 0) === 0 && !filters.q && !filters.status ? (
             <EmptyState
               icon={Building2}
               title="No LSPs yet"
@@ -276,9 +258,7 @@ export function LspsPage() {
         onOpenChange={handleCreateOpenChange}
         onConfirm={handleCreateConfirm}
         loading={create.isPending}
-        errorMessage={
-          create.isError ? extractErrorMessage(create.error) : null
-        }
+        errorMessage={create.isError ? extractErrorMessage(create.error) : null}
       />
 
       <LspEditDialog
@@ -287,24 +267,18 @@ export function LspsPage() {
         lsp={editTarget}
         onConfirm={handleEditConfirm}
         loading={update.isPending}
-        errorMessage={
-          update.isError ? extractErrorMessage(update.error) : null
-        }
+        errorMessage={update.isError ? extractErrorMessage(update.error) : null}
       />
 
       <LspWebhookSubscriptionDialog
         open={webhookTarget !== null}
         onOpenChange={handleWebhookOpenChange}
         lspId={webhookTarget?.id ?? null}
-        lspLabel={
-          webhookTarget ? `${webhookTarget.code} — ${webhookTarget.name}` : ""
-        }
+        lspLabel={webhookTarget ? `${webhookTarget.code} — ${webhookTarget.name}` : ""}
         initialSubscription={webhookQuery.data?.subscription ?? null}
         onConfirm={handleWebhookConfirm}
         loading={upsertWebhook.isPending}
-        errorMessage={
-          upsertWebhook.isError ? extractErrorMessage(upsertWebhook.error) : null
-        }
+        errorMessage={upsertWebhook.isError ? extractErrorMessage(upsertWebhook.error) : null}
       />
     </div>
   );

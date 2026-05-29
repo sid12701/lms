@@ -5,17 +5,10 @@
  * toast. The caller mints the BR-5 idempotency key (the edit dialog does
  * this at submit time).
  */
-import {
-  useMutation,
-  useQueryClient,
-  type UseMutationResult,
-} from "@tanstack/react-query";
+import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { updateApiClient } from "../api";
-import type {
-  ApiClientMutationResponse,
-  UpdateApiClientInput,
-} from "../types";
+import type { ApiClientMutationResponse, UpdateApiClientInput } from "../types";
 import { API_CLIENTS_LIST_QUERY_KEY } from "./useApiClients";
 
 export interface UpdateApiClientVariables extends UpdateApiClientInput {
@@ -28,11 +21,7 @@ export function useUpdateApiClient(): UseMutationResult<
   UpdateApiClientVariables
 > {
   const queryClient = useQueryClient();
-  return useMutation<
-    ApiClientMutationResponse,
-    Error,
-    UpdateApiClientVariables
-  >({
+  return useMutation<ApiClientMutationResponse, Error, UpdateApiClientVariables>({
     mutationFn: ({ id, ...rest }) => updateApiClient(id, rest),
     onSuccess: () => {
       void queryClient.invalidateQueries({

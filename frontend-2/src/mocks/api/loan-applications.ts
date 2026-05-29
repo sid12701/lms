@@ -219,7 +219,10 @@ const ListFiltersSchema = z.object({
   sortDir: z.enum(["asc", "desc"]).optional(),
 });
 
-function parseListQuery(req: MockRequest, correlationId: string): z.infer<typeof ListFiltersSchema> {
+function parseListQuery(
+  req: MockRequest,
+  correlationId: string,
+): z.infer<typeof ListFiltersSchema> {
   const raw: Record<string, unknown> = { ...(req.query ?? {}) };
   if (typeof raw["status"] === "string" && raw["status"]) {
     raw["status"] = (raw["status"] as string).split(",").filter(Boolean);
@@ -296,7 +299,9 @@ function listHandler(
     rows = rows.filter((a) => {
       const account = getAccountForApplication(db, a.id);
       const disbursement = account
-        ? db.payments.find((payment) => payment.accountId === account.id && payment.installmentId === null)
+        ? db.payments.find(
+            (payment) => payment.accountId === account.id && payment.installmentId === null,
+          )
         : undefined;
       const date = disbursement?.postedAt.slice(0, 10);
       if (!date) return false;
@@ -341,11 +346,7 @@ function listHandler(
 
 // ─── Detail + per-tab handlers ───────────────────────────────────────────────
 
-function detailHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): LoanApplicationDetail {
+function detailHandler(req: MockRequest, db: MockDb, correlationId: string): LoanApplicationDetail {
   const session = requireSession(db, correlationId);
   const id = req.params?.["id"] ?? "";
   const app = loadApplicationForSession(db, session, id, correlationId);
@@ -664,9 +665,10 @@ function transitionsHandler(
 function findNextDueInstallment(
   installments: ReadonlyArray<RepaymentInstallment>,
 ): RepaymentInstallment | null {
-  return [...installments]
-    .filter((i) => i.status !== "PAID")
-    .sort((a, b) => a.number - b.number)[0] ?? null;
+  return (
+    [...installments].filter((i) => i.status !== "PAID").sort((a, b) => a.number - b.number)[0] ??
+    null
+  );
 }
 
 function applyInstallmentPayment(
@@ -738,9 +740,10 @@ function repaymentPostHandler(
     id: newIdempotencyKey(),
     accountId: account.id,
     installmentId: next.id,
-    channel: mode === "UPI" || mode === "BANK_TRANSFER" || mode === "CASH" || mode === "ADJUSTMENT"
-      ? mode
-      : "BANK_TRANSFER",
+    channel:
+      mode === "UPI" || mode === "BANK_TRANSFER" || mode === "CASH" || mode === "ADJUSTMENT"
+        ? mode
+        : "BANK_TRANSFER",
     amount,
     postedAt,
     postedBy: session.userId,
@@ -924,10 +927,7 @@ function submitScheduleHandler(
 ): SubmitScheduleResponse {
   const session = requireSession(db, correlationId);
   if (!SCHEDULE_SUBMIT_ROLES.has(session.role)) {
-    throw new UnauthorizedError(
-      correlationId,
-      `role ${session.role} cannot submit a schedule`,
-    );
+    throw new UnauthorizedError(correlationId, `role ${session.role} cannot submit a schedule`);
   }
   const id = req.params?.["id"] ?? "";
   const app = loadApplicationForSession(db, session, id, correlationId);
@@ -1109,18 +1109,13 @@ function forecloseHandler(
 
   if (!FORECLOSEABLE_STATUSES.has(app.status)) {
     throw wrapBusinessRuleError(
-      new BusinessRuleError(
-        "INVALID_TRANSITION",
-        `cannot foreclose from status ${app.status}`,
-      ),
+      new BusinessRuleError("INVALID_TRANSITION", `cannot foreclose from status ${app.status}`),
       correlationId,
     );
   }
 
   const total =
-    parsed.data.outstandingPrincipal +
-    parsed.data.accruedInterest +
-    parsed.data.foreclosureCharge;
+    parsed.data.outstandingPrincipal + parsed.data.accruedInterest + parsed.data.foreclosureCharge;
   if (total <= 0) {
     throw new BadRequestError(correlationId, "foreclosure total must be greater than zero");
   }
@@ -1371,18 +1366,12 @@ export function registerLoanApplicationRoutes(): void {
   registerRoute("POST", "/api/v1/loan-applications/:id/disbursement", disbursementHandler, {
     mutating: true,
   });
-  registerRoute(
-    "POST",
-    "/api/v1/lsp-api/loan-applications/:id/schedule",
-    submitScheduleHandler,
-    { mutating: true },
-  );
-  registerRoute(
-    "POST",
-    "/api/v1/lsp-api/loan-applications/:id/foreclose",
-    forecloseHandler,
-    { mutating: true },
-  );
+  registerRoute("POST", "/api/v1/lsp-api/loan-applications/:id/schedule", submitScheduleHandler, {
+    mutating: true,
+  });
+  registerRoute("POST", "/api/v1/lsp-api/loan-applications/:id/foreclose", forecloseHandler, {
+    mutating: true,
+  });
 }
 
 registerLoanApplicationRoutes();

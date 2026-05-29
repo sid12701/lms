@@ -1,13 +1,5 @@
 import { forwardRef, useMemo } from "react";
-import {
-  Bar,
-  BarChart,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { STATUS_META, type Intent } from "@/lib/lifecycle";
@@ -154,11 +146,7 @@ export const ApplicationsByStatusCard = forwardRef<HTMLDivElement, ApplicationsB
                       fontSize: 12,
                     }}
                   />
-                  <Bar
-                    dataKey="count"
-                    isAnimationActive={!reducedMotion}
-                    radius={[0, 4, 4, 0]}
-                  >
+                  <Bar dataKey="count" isAnimationActive={!reducedMotion} radius={[0, 4, 4, 0]}>
                     {data.map((d) => (
                       <Cell
                         key={d.status}

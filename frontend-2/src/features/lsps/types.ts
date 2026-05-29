@@ -10,12 +10,7 @@
  * are upsert-style — there's one subscription per LSP per blueprint §11.
  */
 import { z } from "zod";
-import {
-  Lsp,
-  LspStatus,
-  LspWebhookSubscription,
-  WebhookEventType,
-} from "@/schemas/lsp";
+import { Lsp, LspStatus, LspWebhookSubscription, WebhookEventType } from "@/schemas/lsp";
 
 export type { Lsp, LspWebhookSubscription };
 export { LspStatus, WebhookEventType };

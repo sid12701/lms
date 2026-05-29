@@ -20,11 +20,7 @@ import { setLatencyOverride } from "@/mocks/latency";
 import { scenario } from "@/mocks/scenarios";
 import { resetIdempotency } from "@/mocks/idempotency";
 import type { Session } from "@/mocks/api/auth";
-import type {
-  AlertRow,
-  AlertsListFilters,
-  AlertsListResponse,
-} from "./types";
+import type { AlertRow, AlertsListFilters, AlertsListResponse } from "./types";
 
 const alertsApiMock = vi.hoisted(() => {
   const adminUserId = "11111111-1111-4111-8111-111111111111";
@@ -37,10 +33,7 @@ const alertsApiMock = vi.hoisted(() => {
     message: `Open alert message ${index + 1}`,
     subjectType: index % 2 === 0 ? "REPORT_REQUEST" : "SYSTEM",
     subjectId: `subject-open-${index + 1}`,
-    correlationId: `bbbbbbbb-bbbb-4bbb-8bbb-${String(index + 1).padStart(
-      12,
-      "0",
-    )}`,
+    correlationId: `bbbbbbbb-bbbb-4bbb-8bbb-${String(index + 1).padStart(12, "0")}`,
     createdAt: `2026-05-26T10:${String(index).padStart(2, "0")}:00.000Z`,
     acknowledgedAt: null,
     acknowledgedBy: null,
@@ -56,20 +49,17 @@ const alertsApiMock = vi.hoisted(() => {
     message: `Acknowledged alert message ${index + 1}`,
     subjectType: "LOAN_ACCOUNT",
     subjectId: `subject-acked-${index + 1}`,
-    correlationId: `dddddddd-dddd-4ddd-8ddd-${String(index + 1).padStart(
-      12,
-      "0",
-    )}`,
+    correlationId: `dddddddd-dddd-4ddd-8ddd-${String(index + 1).padStart(12, "0")}`,
     createdAt: `2026-05-26T09:${String(index).padStart(2, "0")}:00.000Z`,
     acknowledgedAt: "2026-05-26T11:00:00.000Z",
     acknowledgedBy: adminUserId,
     acknowledgmentNote: "already reviewed",
     acknowledgedByName: "ops.admin",
   }));
-  let rows = [...openRows, ...ackedRows];
+  let rows: AlertRow[] = [...openRows, ...ackedRows] as AlertRow[];
 
   function resetRows() {
-    rows = [...openRows, ...ackedRows].map((row) => ({ ...row }));
+    rows = [...openRows, ...ackedRows].map((row) => ({ ...row })) as AlertRow[];
   }
 
   function filteredRows(filters = {}) {
@@ -96,8 +86,7 @@ const alertsApiMock = vi.hoisted(() => {
       const needle = typedFilters.q.toLowerCase();
       nextRows = nextRows.filter(
         (row) =>
-          row.title.toLowerCase().includes(needle) ||
-          row.message.toLowerCase().includes(needle),
+          row.title.toLowerCase().includes(needle) || row.message.toLowerCase().includes(needle),
       );
     }
     return nextRows;
@@ -121,7 +110,7 @@ const alertsApiMock = vi.hoisted(() => {
       if (!row) {
         throw new Error(`alert ${id} not found`);
       }
-      const updated = {
+      const updated: AlertRow = {
         ...row,
         status: "ACKNOWLEDGED",
         acknowledgedAt: "2026-05-26T12:00:00.000Z",
@@ -154,22 +143,12 @@ vi.mock("./components/AlertsTable", () => ({
     onAcknowledge: (row: AlertRow) => void;
   }) => (
     <div data-testid="alerts-table">
-      <span data-testid="alerts-table-loading">
-        {props.isLoading ? "loading" : "idle"}
-      </span>
-      <span data-testid="alerts-table-total">
-        {props.data ? String(props.data.total) : "none"}
-      </span>
-      <span data-testid="alerts-table-filters">
-        {JSON.stringify(props.filters)}
-      </span>
+      <span data-testid="alerts-table-loading">{props.isLoading ? "loading" : "idle"}</span>
+      <span data-testid="alerts-table-total">{props.data ? String(props.data.total) : "none"}</span>
+      <span data-testid="alerts-table-filters">{JSON.stringify(props.filters)}</span>
       <ul>
         {(props.data?.items ?? []).map((row) => (
-          <li
-            key={row.id}
-            data-testid={`alerts-row-${row.id}`}
-            data-status={row.status}
-          >
+          <li key={row.id} data-testid={`alerts-row-${row.id}`} data-status={row.status}>
             <span>{row.title}</span>
             {row.status === "OPEN" ? (
               <button
@@ -249,13 +228,9 @@ describe("AlertsPage - load + listing", () => {
     renderPage();
     expect(screen.getByTestId("alerts-page")).toBeInTheDocument();
     expect(screen.getByText(/Reporting/i)).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 1, name: /Alerts/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: /Alerts/i })).toBeInTheDocument();
 
-    expect(
-      await screen.findByRole("group", { name: /Alert filters/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: /Alert filters/i })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByTestId("alerts-table-total")).toHaveTextContent("12");
@@ -273,56 +248,48 @@ describe("AlertsPage - load + listing", () => {
 });
 
 describe("AlertsPage - acknowledge flow", () => {
-  it(
-    "opens the dialog, submits a note, and flips the row to Acknowledged",
-    async () => {
-      const user = userEvent.setup();
-      const { baseElement } = renderPage();
+  it("opens the dialog, submits a note, and flips the row to Acknowledged", async () => {
+    const user = userEvent.setup();
+    const { baseElement } = renderPage();
 
-      const ackBtnsBefore = await screen.findAllByRole("button", {
-        name: /Acknowledge /,
-      });
-      const openCountBefore = ackBtnsBefore.length;
-      expect(openCountBefore).toBeGreaterThan(0);
+    const ackBtnsBefore = await screen.findAllByRole("button", {
+      name: /Acknowledge /,
+    });
+    const openCountBefore = ackBtnsBefore.length;
+    expect(openCountBefore).toBeGreaterThan(0);
 
-      await user.click(ackBtnsBefore[0]!);
+    await user.click(ackBtnsBefore[0]!);
 
-      const dialog = await within(baseElement).findByRole("dialog");
-      expect(
-        within(dialog).getByRole("heading", { name: /Acknowledge alert/i }),
-      ).toBeInTheDocument();
+    const dialog = await within(baseElement).findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: /Acknowledge alert/i })).toBeInTheDocument();
 
-      expect(await axe(baseElement)).toHaveNoViolations();
+    expect(await axe(baseElement)).toHaveNoViolations();
 
-      const note = within(dialog).getByLabelText(/Acknowledgement note/i);
-      await user.type(note, "investigated, false alarm");
+    const note = within(dialog).getByLabelText(/Acknowledgement note/i);
+    await user.type(note, "investigated, false alarm");
 
-      const submit = within(dialog).getByRole("button", {
-        name: /^Acknowledge$/i,
-      });
-      await user.click(submit);
+    const submit = within(dialog).getByRole("button", {
+      name: /^Acknowledge$/i,
+    });
+    await user.click(submit);
 
-      await waitFor(
-        () => {
-          expect(
-            within(baseElement).queryByRole("dialog"),
-          ).not.toBeInTheDocument();
-        },
-        { timeout: 5000 },
-      );
+    await waitFor(
+      () => {
+        expect(within(baseElement).queryByRole("dialog")).not.toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
 
-      await waitFor(
-        () => {
-          const after = screen.queryAllByRole("button", {
-            name: /Acknowledge /,
-          });
-          expect(after.length).toBe(openCountBefore - 1);
-        },
-        { timeout: 5000 },
-      );
-    },
-    15_000,
-  );
+    await waitFor(
+      () => {
+        const after = screen.queryAllByRole("button", {
+          name: /Acknowledge /,
+        });
+        expect(after.length).toBe(openCountBefore - 1);
+      },
+      { timeout: 5000 },
+    );
+  }, 15_000);
 });
 
 describe("AlertsPage - filter clear", () => {
@@ -345,9 +312,7 @@ describe("AlertsPage - filter clear", () => {
     await waitFor(() => {
       expect(screen.getByTestId("alerts-table-total")).toHaveTextContent("4");
     });
-    expect(
-      screen.queryAllByRole("button", { name: /Acknowledge / }),
-    ).toHaveLength(0);
+    expect(screen.queryAllByRole("button", { name: /Acknowledge / })).toHaveLength(0);
 
     await user.click(clearBtn);
     await waitFor(() => {

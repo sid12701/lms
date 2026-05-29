@@ -143,8 +143,8 @@ export function UserEditDialog({
             <DialogTitle>Edit user</DialogTitle>
           </div>
           <DialogDescription>
-            Update <strong>{user?.username ?? "—"}</strong>. Username cannot
-            be changed after creation.
+            Update <strong>{user?.username ?? "—"}</strong>. Username cannot be changed after
+            creation.
           </DialogDescription>
         </DialogHeader>
 
@@ -178,14 +178,8 @@ export function UserEditDialog({
               <FormItem>
                 <FormLabel>Role</FormLabel>
                 <FormControl>
-                  <Select
-                    value={field.value}
-                    onValueChange={(v) => field.onChange(v as Role)}
-                  >
-                    <SelectTrigger
-                      aria-label="Role"
-                      data-slot="user-edit-role"
-                    >
+                  <Select value={field.value} onValueChange={(v) => field.onChange(v as Role)}>
+                    <SelectTrigger aria-label="Role" data-slot="user-edit-role">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -212,20 +206,13 @@ export function UserEditDialog({
                   <FormControl>
                     <Select
                       value={field.value ?? LSP_SELECT_NONE}
-                      onValueChange={(v) =>
-                        field.onChange(v === LSP_SELECT_NONE ? null : v)
-                      }
+                      onValueChange={(v) => field.onChange(v === LSP_SELECT_NONE ? null : v)}
                     >
-                      <SelectTrigger
-                        aria-label="LSP"
-                        data-slot="user-edit-lsp"
-                      >
+                      <SelectTrigger aria-label="LSP" data-slot="user-edit-lsp">
                         <SelectValue placeholder="Select an LSP" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={LSP_SELECT_NONE}>
-                          Select an LSP
-                        </SelectItem>
+                        <SelectItem value={LSP_SELECT_NONE}>Select an LSP</SelectItem>
                         {lspOptions.map((o) => (
                           <SelectItem key={o.id} value={o.id}>
                             {o.name}
@@ -234,9 +221,7 @@ export function UserEditDialog({
                       </SelectContent>
                     </Select>
                   </FormControl>
-                  <FormDescription>
-                    Required for tenant-scoped roles.
-                  </FormDescription>
+                  <FormDescription>Required for tenant-scoped roles.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -254,10 +239,7 @@ export function UserEditDialog({
                     value={field.value}
                     onValueChange={(v) => field.onChange(v as UserStatus)}
                   >
-                    <SelectTrigger
-                      aria-label="Status"
-                      data-slot="user-edit-status"
-                    >
+                    <SelectTrigger aria-label="Status" data-slot="user-edit-status">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

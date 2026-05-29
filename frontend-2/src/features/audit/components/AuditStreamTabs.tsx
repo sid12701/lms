@@ -31,10 +31,7 @@ const TABS: ReadonlyArray<TabDescriptor> = [
   ...AUDIT_STREAMS.map((s) => ({ id: s, label: AUDIT_STREAM_LABEL[s] })),
 ];
 
-function isActive(
-  tab: TabDescriptor,
-  value: ReadonlyArray<AuditStream> | undefined,
-): boolean {
+function isActive(tab: TabDescriptor, value: ReadonlyArray<AuditStream> | undefined): boolean {
   if (tab.id === "ALL") return !value || value.length === 0;
   return value !== undefined && value.length === 1 && value[0] === tab.id;
 }

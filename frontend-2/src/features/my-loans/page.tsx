@@ -69,10 +69,7 @@ export function MyLoansPage() {
         description="Active loans and applications scoped to your LSP."
       />
       {loading ? (
-        <div
-          role="status"
-          className="text-foreground-muted flex items-center gap-2 text-sm"
-        >
+        <div role="status" className="text-foreground-muted flex items-center gap-2 text-sm">
           <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
           Loading loans…
         </div>
@@ -105,10 +102,7 @@ export function MyLoansPage() {
               {items.map((row) => (
                 <tr key={row.id} className="border-border/40 border-t">
                   <td className="px-4 py-2 font-mono text-xs">
-                    <Link
-                      to={`/my-loans/${row.id}`}
-                      className="text-primary hover:underline"
-                    >
+                    <Link to={`/my-loans/${row.id}`} className="text-primary hover:underline">
                       {row.externalLoanId ?? row.id.slice(0, 8)}
                     </Link>
                   </td>

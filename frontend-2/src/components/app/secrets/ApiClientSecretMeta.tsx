@@ -50,30 +50,25 @@ export function ApiClientSecretMeta({
       <CardContent>
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div data-slot="meta-row" className="flex flex-col gap-1">
-            <dt className="text-muted-foreground text-xs uppercase tracking-wide">Key id</dt>
-            <dd
-              data-slot="meta-key-id"
-              className="font-mono text-sm tabular-nums"
-            >
+            <dt className="text-muted-foreground text-xs tracking-wide uppercase">Key id</dt>
+            <dd data-slot="meta-key-id" className="font-mono text-sm tabular-nums">
               {keyIdPrefix}
             </dd>
           </div>
           <div data-slot="meta-row" className="flex flex-col gap-1">
-            <dt className="text-muted-foreground text-xs uppercase tracking-wide">Created</dt>
+            <dt className="text-muted-foreground text-xs tracking-wide uppercase">Created</dt>
             <dd data-slot="meta-created" className="text-sm tabular-nums">
               {formatTimestamp(createdAt)}
             </dd>
           </div>
           <div data-slot="meta-row" className="flex flex-col gap-1">
-            <dt className="text-muted-foreground text-xs uppercase tracking-wide">Last rotated</dt>
+            <dt className="text-muted-foreground text-xs tracking-wide uppercase">Last rotated</dt>
             <dd data-slot="meta-rotated" className="text-sm tabular-nums">
               {lastRotatedAt === null ? "Never rotated" : formatTimestamp(lastRotatedAt)}
             </dd>
           </div>
           <div data-slot="meta-row" className="flex flex-col gap-1">
-            <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-              IP allow-list
-            </dt>
+            <dt className="text-muted-foreground text-xs tracking-wide uppercase">IP allow-list</dt>
             <dd data-slot="meta-allowlist" className="text-sm tabular-nums">
               {ipAllowlistCount} {ipAllowlistCount === 1 ? "entry" : "entries"}
             </dd>

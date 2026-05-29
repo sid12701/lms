@@ -17,9 +17,7 @@ describe("DocumentStatusPill", () => {
   it.each(CASES)(
     "renders the right label, tone, and icon for status=$status",
     ({ status, label, tone }) => {
-      const { container, getByText } = renderWithProviders(
-        <DocumentStatusPill status={status} />,
-      );
+      const { container, getByText } = renderWithProviders(<DocumentStatusPill status={status} />);
       expect(getByText(label)).toBeInTheDocument();
       const pill = container.querySelector('[data-slot="document-status-pill"]');
       expect(pill).not.toBeNull();
@@ -30,20 +28,14 @@ describe("DocumentStatusPill", () => {
   );
 
   it("hides the icon when hideIcon is true", () => {
-    const { container } = renderWithProviders(
-      <DocumentStatusPill status="UPLOADED" hideIcon />,
-    );
+    const { container } = renderWithProviders(<DocumentStatusPill status="UPLOADED" hideIcon />);
     const pill = container.querySelector('[data-slot="document-status-pill"]');
     expect(pill?.querySelector("svg")).toBeNull();
   });
 
   it("forwards extra props (className, custom data-*)", () => {
     const { container } = renderWithProviders(
-      <DocumentStatusPill
-        status="UPLOADED"
-        className="extra-class"
-        data-testid="my-pill"
-      />,
+      <DocumentStatusPill status="UPLOADED" className="extra-class" data-testid="my-pill" />,
     );
     const pill = container.querySelector('[data-slot="document-status-pill"]');
     expect(pill).not.toBeNull();

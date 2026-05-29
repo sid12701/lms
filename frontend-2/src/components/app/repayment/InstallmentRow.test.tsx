@@ -2,17 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { renderWithProviders } from "@/test/utils";
-import {
-  Table,
-  TableBody,
-  TableHeader,
-  TableHead,
-  TableRow,
-} from "@/components/ui/table";
-import type {
-  RepaymentInstallment,
-  InstallmentStatus,
-} from "@/schemas/loan-account";
+import { Table, TableBody, TableHeader, TableHead, TableRow } from "@/components/ui/table";
+import type { RepaymentInstallment, InstallmentStatus } from "@/schemas/loan-account";
 import { InstallmentRow } from "./InstallmentRow";
 
 const BASE_INSTALLMENT: RepaymentInstallment = {
@@ -127,12 +118,7 @@ describe("InstallmentRow", () => {
     expect(getByText("Overdue")).toBeInTheDocument();
   });
 
-  const STATUSES: InstallmentStatus[] = [
-    "DUE",
-    "PARTIALLY_PAID",
-    "PAID",
-    "OVERDUE",
-  ];
+  const STATUSES: InstallmentStatus[] = ["DUE", "PARTIALLY_PAID", "PAID", "OVERDUE"];
 
   it.each(STATUSES)("renders the %s status branch", (status) => {
     const { container } = renderRow(

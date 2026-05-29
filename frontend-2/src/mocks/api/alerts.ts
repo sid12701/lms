@@ -22,11 +22,7 @@ import { z } from "zod";
 import { AlertSeverity, AlertStatus, AlertSubjectType } from "@/schemas/alert";
 import type { OperationalAlert, Role } from "@/types";
 import { dispatch, registerRoute, type MockRequest } from "../router";
-import {
-  BadRequestError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../errors";
+import { BadRequestError, NotFoundError, UnauthorizedError } from "../errors";
 import type { MockDb } from "../db/state";
 import type {
   AcknowledgeAlertInput,
@@ -54,10 +50,7 @@ function requireAlertSession(db: MockDb, correlationId: string): ActiveSession {
     throw new UnauthorizedError(correlationId, "user no longer exists");
   }
   if (!ALERT_ROLES.has(user.role)) {
-    throw new UnauthorizedError(
-      correlationId,
-      `role ${user.role} cannot access alerts`,
-    );
+    throw new UnauthorizedError(correlationId, `role ${user.role} cannot access alerts`);
   }
   return { userId: user.id, role: user.role };
 }
@@ -93,20 +86,12 @@ function parseListQuery(
   }
   const parsed = ListFiltersSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid list filters",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid list filters", parsed.error.flatten());
   }
   return parsed.data;
 }
 
-function listHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): AlertsListResponse {
+function listHandler(req: MockRequest, db: MockDb, correlationId: string): AlertsListResponse {
   requireAlertSession(db, correlationId);
   const filters = parseListQuery(req, correlationId);
 
@@ -125,9 +110,7 @@ function listHandler(
   if (filters.q) {
     const needle = filters.q.toLowerCase();
     rows = rows.filter(
-      (a) =>
-        a.title.toLowerCase().includes(needle) ||
-        a.message.toLowerCase().includes(needle),
+      (a) => a.title.toLowerCase().includes(needle) || a.message.toLowerCase().includes(needle),
     );
   }
 
@@ -168,11 +151,7 @@ function acknowledgeHandler(
 
   const parsed = AcknowledgeBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid acknowledge body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid acknowledge body", parsed.error.flatten());
   }
 
   // Already-ACKNOWLEDGED: no-op, return current row. This keeps the UI
@@ -263,9 +242,7 @@ const AcknowledgeResponseSchema: z.ZodType<AcknowledgeAlertResponse> = z.object(
 
 // ─── Public wrappers ─────────────────────────────────────────────────────────
 
-function queryFromFilters(
-  filters: AlertsListFilters,
-): Record<string, string> {
+function queryFromFilters(filters: AlertsListFilters): Record<string, string> {
   const out: Record<string, string> = {};
   if (filters.status) out["status"] = filters.status;
   if (filters.severity && filters.severity.length > 0) {
@@ -280,9 +257,7 @@ function queryFromFilters(
   return out;
 }
 
-export async function listAlerts(
-  filters: AlertsListFilters = {},
-): Promise<AlertsListResponse> {
+export async function listAlerts(filters: AlertsListFilters = {}): Promise<AlertsListResponse> {
   return dispatch(
     {
       method: "GET",

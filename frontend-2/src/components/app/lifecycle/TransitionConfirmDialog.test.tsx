@@ -129,12 +129,7 @@ describe("<TransitionConfirmDialog />", () => {
 
   it("renders a fallback empty body when no action is supplied", () => {
     const { baseElement } = renderWithProviders(
-      <TransitionConfirmDialog
-        open
-        onOpenChange={() => {}}
-        action={null}
-        onConfirm={() => {}}
-      />,
+      <TransitionConfirmDialog open onOpenChange={() => {}} action={null} onConfirm={() => {}} />,
     );
     expect(baseElement).toBeTruthy();
   });

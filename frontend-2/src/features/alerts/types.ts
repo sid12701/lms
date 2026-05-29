@@ -7,12 +7,7 @@
  * table component stays pure.
  */
 import { z } from "zod";
-import {
-  AlertSeverity,
-  AlertStatus,
-  AlertSubjectType,
-  OperationalAlert,
-} from "@/schemas/alert";
+import { AlertSeverity, AlertStatus, AlertSubjectType, OperationalAlert } from "@/schemas/alert";
 
 export type { OperationalAlert };
 export { AlertSeverity, AlertStatus, AlertSubjectType };

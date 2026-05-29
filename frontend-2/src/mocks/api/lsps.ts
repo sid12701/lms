@@ -26,12 +26,7 @@ import {
 import type { Role, Lsp } from "@/types";
 import type { LspWebhookSubscription } from "@/schemas/lsp";
 import { dispatch, registerRoute, type MockRequest } from "../router";
-import {
-  BadRequestError,
-  ConflictError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../errors";
+import { BadRequestError, ConflictError, NotFoundError, UnauthorizedError } from "../errors";
 import type { MockDb } from "../db/state";
 import type {
   CreateLspInput,
@@ -62,10 +57,7 @@ function requireAdminSession(db: MockDb, correlationId: string): ActiveSession {
     throw new UnauthorizedError(correlationId, "user no longer exists");
   }
   if (!ADMIN_ONLY.has(user.role)) {
-    throw new UnauthorizedError(
-      correlationId,
-      `role ${user.role} cannot manage LSPs`,
-    );
+    throw new UnauthorizedError(correlationId, `role ${user.role} cannot manage LSPs`);
   }
   return { userId: user.id, role: user.role };
 }
@@ -101,20 +93,12 @@ function parseListQuery(
   const raw: Record<string, unknown> = { ...(req.query ?? {}) };
   const parsed = ListFiltersSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid list filters",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid list filters", parsed.error.flatten());
   }
   return parsed.data;
 }
 
-function listHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): LspsListResponse {
+function listHandler(req: MockRequest, db: MockDb, correlationId: string): LspsListResponse {
   requireAdminSession(db, correlationId);
   const filters = parseListQuery(req, correlationId);
 
@@ -126,9 +110,7 @@ function listHandler(
   if (filters.q) {
     const needle = filters.q.toLowerCase();
     rows = rows.filter(
-      (l) =>
-        l.code.toLowerCase().includes(needle) ||
-        l.name.toLowerCase().includes(needle),
+      (l) => l.code.toLowerCase().includes(needle) || l.name.toLowerCase().includes(needle),
     );
   }
 
@@ -164,19 +146,11 @@ function findByCode(db: MockDb, code: string): Lsp | undefined {
   return undefined;
 }
 
-function createHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): LspMutationResponse {
+function createHandler(req: MockRequest, db: MockDb, correlationId: string): LspMutationResponse {
   requireAdminSession(db, correlationId);
   const parsed = CreateBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid create body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid create body", parsed.error.flatten());
   }
   const { code, name } = parsed.data;
   if (findByCode(db, code)) {
@@ -205,11 +179,7 @@ const UpdateBodySchema = z
     message: "patch must include at least one of: name, status",
   });
 
-function updateHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): LspMutationResponse {
+function updateHandler(req: MockRequest, db: MockDb, correlationId: string): LspMutationResponse {
   requireAdminSession(db, correlationId);
   const id = req.params?.["id"] ?? "";
   const existing = db.lsps.get(id);
@@ -218,11 +188,7 @@ function updateHandler(
   }
   const parsed = UpdateBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid update body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid update body", parsed.error.flatten());
   }
   const next: Lsp = {
     ...existing,
@@ -269,11 +235,7 @@ function upsertSubscriptionHandler(
   }
   const parsed = UpsertSubscriptionBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid subscription body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid subscription body", parsed.error.flatten());
   }
   const sub: LspWebhookSubscription = {
     lspId: id,
@@ -297,17 +259,10 @@ export function registerLspRoutes(): void {
   registerRoute("PATCH", "/api/v1/admin/lsps/:id", updateHandler, {
     mutating: true,
   });
-  registerRoute(
-    "GET",
-    "/api/v1/admin/lsps/:id/webhook-subscription",
-    readSubscriptionHandler,
-  );
-  registerRoute(
-    "PUT",
-    "/api/v1/admin/lsps/:id/webhook-subscription",
-    upsertSubscriptionHandler,
-    { mutating: true },
-  );
+  registerRoute("GET", "/api/v1/admin/lsps/:id/webhook-subscription", readSubscriptionHandler);
+  registerRoute("PUT", "/api/v1/admin/lsps/:id/webhook-subscription", upsertSubscriptionHandler, {
+    mutating: true,
+  });
 }
 registerLspRoutes();
 
@@ -329,16 +284,13 @@ const MutationResponseSchema: z.ZodType<LspMutationResponse> = z.object({
   lsp: LspRowParser,
 }) as unknown as z.ZodType<LspMutationResponse>;
 
-const SubscriptionResponseSchema: z.ZodType<WebhookSubscriptionResponse> =
-  z.object({
-    subscription: LspWebhookSubscriptionSchema.nullable(),
-  }) as unknown as z.ZodType<WebhookSubscriptionResponse>;
+const SubscriptionResponseSchema: z.ZodType<WebhookSubscriptionResponse> = z.object({
+  subscription: LspWebhookSubscriptionSchema.nullable(),
+}) as unknown as z.ZodType<WebhookSubscriptionResponse>;
 
 // ─── Public wrappers ─────────────────────────────────────────────────────────
 
-function queryFromFilters(
-  filters: LspsListFilters,
-): Record<string, string> {
+function queryFromFilters(filters: LspsListFilters): Record<string, string> {
   const out: Record<string, string> = {};
   if (filters.status) out["status"] = filters.status;
   if (filters.q) out["q"] = filters.q;
@@ -349,9 +301,7 @@ function queryFromFilters(
   return out;
 }
 
-export async function listLsps(
-  filters: LspsListFilters = {},
-): Promise<LspsListResponse> {
+export async function listLsps(filters: LspsListFilters = {}): Promise<LspsListResponse> {
   return dispatch(
     {
       method: "GET",
@@ -362,9 +312,7 @@ export async function listLsps(
   );
 }
 
-export async function createLsp(
-  input: CreateLspInput,
-): Promise<LspMutationResponse> {
+export async function createLsp(input: CreateLspInput): Promise<LspMutationResponse> {
   return dispatch(
     {
       method: "POST",
@@ -376,10 +324,7 @@ export async function createLsp(
   );
 }
 
-export async function updateLsp(
-  id: string,
-  input: UpdateLspInput,
-): Promise<LspMutationResponse> {
+export async function updateLsp(id: string, input: UpdateLspInput): Promise<LspMutationResponse> {
   return dispatch(
     {
       method: "PATCH",
@@ -391,9 +336,7 @@ export async function updateLsp(
   );
 }
 
-export async function getLspWebhookSubscription(
-  id: string,
-): Promise<WebhookSubscriptionResponse> {
+export async function getLspWebhookSubscription(id: string): Promise<WebhookSubscriptionResponse> {
   return dispatch(
     {
       method: "GET",

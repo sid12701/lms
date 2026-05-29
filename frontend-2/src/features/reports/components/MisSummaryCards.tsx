@@ -11,13 +11,7 @@
  * the row on failure rather than five duplicated banners.
  */
 import type { ReactNode } from "react";
-import {
-  Activity,
-  AlertTriangle,
-  Layers,
-  Percent,
-  TrendingUp,
-} from "lucide-react";
+import { Activity, AlertTriangle, Layers, Percent, TrendingUp } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -98,9 +92,7 @@ function KpiCard({
           <p className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
             {label}
           </p>
-          <p className="text-foreground text-xl font-semibold tabular-nums">
-            {value}
-          </p>
+          <p className="text-foreground text-xl font-semibold tabular-nums">{value}</p>
         </div>
         <span
           aria-hidden="true"
@@ -132,7 +124,7 @@ export function MisSummaryCards({
           className,
         )}
       >
-        Couldn't load portfolio KPIs. Try again in a moment.
+        Couldn&apos;t load portfolio KPIs. Try again in a moment.
       </div>
     );
   }
@@ -141,10 +133,7 @@ export function MisSummaryCards({
     return (
       <div
         data-slot="mis-kpi-row"
-        className={cn(
-          "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5",
-          className,
-        )}
+        className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5", className)}
       >
         {KPI_SPECS.map((spec) => (
           <Card key={spec.key} className="gap-2 py-4">
@@ -161,10 +150,7 @@ export function MisSummaryCards({
   return (
     <div
       data-slot="mis-kpi-row"
-      className={cn(
-        "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5",
-        className,
-      )}
+      className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5", className)}
     >
       {KPI_SPECS.map((spec) => (
         <KpiCard

@@ -82,11 +82,7 @@ export interface AuditEventDetailSheetProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function AuditEventDetailSheet({
-  event,
-  open,
-  onOpenChange,
-}: AuditEventDetailSheetProps) {
+export function AuditEventDetailSheet({ event, open, onOpenChange }: AuditEventDetailSheetProps) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const navigate = useNavigate();
 
@@ -154,7 +150,7 @@ export function AuditEventDetailSheet({
           </header>
 
           <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-xs">
-            <dt className="text-foreground-muted uppercase tracking-wide">Actor</dt>
+            <dt className="text-foreground-muted tracking-wide uppercase">Actor</dt>
             <dd className="text-foreground">
               {event.actorName}
               {event.actorRole ? (
@@ -162,7 +158,7 @@ export function AuditEventDetailSheet({
               ) : null}
             </dd>
 
-            <dt className="text-foreground-muted uppercase tracking-wide">Correlation</dt>
+            <dt className="text-foreground-muted tracking-wide uppercase">Correlation</dt>
             <dd className="flex items-center gap-1">
               <span
                 className="text-foreground font-mono text-[11px] break-all"
@@ -182,7 +178,7 @@ export function AuditEventDetailSheet({
               </Button>
             </dd>
 
-            <dt className="text-foreground-muted uppercase tracking-wide">Subject</dt>
+            <dt className="text-foreground-muted tracking-wide uppercase">Subject</dt>
             <dd className="text-foreground">
               {event.subjectType ? (
                 <span>
@@ -217,7 +213,7 @@ export function AuditEventDetailSheet({
           ) : null}
 
           <section className="flex flex-1 flex-col gap-1 overflow-hidden">
-            <h3 className="text-foreground-muted text-[11px] font-medium uppercase tracking-wide">
+            <h3 className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
               Raw event
             </h3>
             <pre

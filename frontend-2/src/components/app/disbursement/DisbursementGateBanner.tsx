@@ -35,12 +35,8 @@ export function DisbursementGateBanner({
       <AlertTitle>Disbursement blocked</AlertTitle>
       <AlertDescription>
         <ul className="list-disc space-y-1 pl-5">
-          {!docsComplete ? (
-            <li>Required documents not yet uploaded (BR-3)</li>
-          ) : null}
-          {!scheduleValid ? (
-            <li>Repayment schedule not generated (BR-10)</li>
-          ) : null}
+          {!docsComplete ? <li>Required documents not yet uploaded (BR-3)</li> : null}
+          {!scheduleValid ? <li>Repayment schedule not generated (BR-10)</li> : null}
         </ul>
       </AlertDescription>
     </Alert>

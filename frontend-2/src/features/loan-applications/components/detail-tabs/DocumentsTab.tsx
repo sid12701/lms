@@ -70,9 +70,9 @@ function extensionFromMime(mime: string | null | undefined): string {
 
 function fallbackDownloadFilename(doc: LoanDocument, backendType: string): string {
   return (
-    doc.fileMeta?.fileName?.trim()
-    || filenameFromPathLike(doc.fileMeta?.storageKey)
-    || `${backendType.toLowerCase()}${extensionFromMime(doc.fileMeta?.mime)}`
+    doc.fileMeta?.fileName?.trim() ||
+    filenameFromPathLike(doc.fileMeta?.storageKey) ||
+    `${backendType.toLowerCase()}${extensionFromMime(doc.fileMeta?.mime)}`
   );
 }
 

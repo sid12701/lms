@@ -113,10 +113,7 @@ describe("Responsive QA — AppShell at lg (1024px)", () => {
     originalInnerWidth = window.innerWidth;
     // jsdom defaults `documentElement.clientWidth` to 0 — pin it to the
     // viewport so the assertion's denominator is meaningful.
-    const desc = Object.getOwnPropertyDescriptor(
-      Element.prototype,
-      "clientWidth",
-    );
+    const desc = Object.getOwnPropertyDescriptor(Element.prototype, "clientWidth");
     originalClientWidth = desc ? Number(desc.value ?? 0) : 0;
     Object.defineProperty(window, "innerWidth", {
       configurable: true,

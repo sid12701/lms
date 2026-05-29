@@ -26,7 +26,10 @@ export interface BackendSystemContext {
   lspName: string | null;
 }
 
-export function loginWithPassword(username: string, password: string): Promise<BackendTokenResponse> {
+export function loginWithPassword(
+  username: string,
+  password: string,
+): Promise<BackendTokenResponse> {
   return requestJson<BackendTokenResponse>(
     "/api/v1/auth/login",
     { method: "POST", body: JSON.stringify({ username, password }) },
@@ -50,11 +53,7 @@ export function completePasswordChange(newPassword: string): Promise<BackendToke
 }
 
 export function logoutSession(): Promise<void> {
-  return requestJson<void>(
-    "/api/v1/auth/logout",
-    { method: "POST" },
-    { authenticated: false },
-  );
+  return requestJson<void>("/api/v1/auth/logout", { method: "POST" }, { authenticated: false });
 }
 
 export function fetchSystemContext(accessToken?: string): Promise<BackendSystemContext> {

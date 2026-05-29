@@ -23,11 +23,7 @@ export function BorrowersPage() {
   const query = useBorrowersList(filters);
 
   return (
-    <div
-      className="flex flex-col gap-6 p-6"
-      data-testid="borrowers-page"
-      data-page="borrowers"
-    >
+    <div className="flex flex-col gap-6 p-6" data-testid="borrowers-page" data-page="borrowers">
       <PageHeader
         eyebrow="Workspace"
         title="Borrowers"
