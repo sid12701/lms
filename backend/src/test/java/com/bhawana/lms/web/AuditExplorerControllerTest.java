@@ -279,6 +279,15 @@ class AuditExplorerControllerTest {
     }
 
     @Test
+    void systemAdminCanCountDocumentAccessAuditsByDocumentType() throws Exception {
+        mockMvc.perform(get("/api/v1/internal/admin/audit-events/document-access/document-type-counts")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.documentType == 'PAN_CARD')].count", hasItem(1)))
+                .andExpect(jsonPath("$[?(@.documentType == 'AADHAAR_FILE')].count", hasItem(1)));
+    }
+
+    @Test
     void streamsFilterScopesResponseToSelectedStreams() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())

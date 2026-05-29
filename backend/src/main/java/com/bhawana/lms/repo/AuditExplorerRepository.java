@@ -83,6 +83,29 @@ public class AuditExplorerRepository {
         return new PagedResult<>(rows, totalCount, query.offset(), query.limit());
     }
 
+    public List<DocumentAccessDocumentTypeCountRow> countDocumentAccessByDocumentType(Instant since, Instant until) {
+        Map<String, Object> parameters = new HashMap<>();
+        parameters.put("__since", since);
+        parameters.put("__until", until);
+
+        return jdbc.query("""
+                select
+                  cast(audit_type.document_type as varchar(64)) as document_type,
+                  count(*) as access_count
+                from loan_application_document_access_audit_type audit_type
+                join loan_application_document_access_audit audit
+                  on audit.id = audit_type.audit_id
+                where (:__since is null or audit.created_at >= :__since)
+                  and (:__until is null or audit.created_at <= :__until)
+                group by audit_type.document_type
+                order by audit_type.document_type asc
+                """, new MapSqlParameterSource(parameters),
+                (rs, rowNum) -> new DocumentAccessDocumentTypeCountRow(
+                        rs.getString("document_type"),
+                        rs.getLong("access_count")
+                ));
+    }
+
     private Set<AuditStream> effectiveStreams(AuditExplorerQuery query) {
         Set<AuditStream> active = EnumSet.copyOf(query.streams());
 
@@ -273,5 +296,8 @@ public class AuditExplorerRepository {
             String payloadJson,
             String documentTypes
     ) {
+    }
+
+    public record DocumentAccessDocumentTypeCountRow(String documentType, long count) {
     }
 }
