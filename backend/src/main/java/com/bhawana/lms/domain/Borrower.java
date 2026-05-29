@@ -53,7 +53,7 @@ public class Borrower {
     @Column(name = "father_name", length = 255)
     private String fatherName;
 
-    @Column(name = "aadhar_number", length = 16)
+    @Column(name = "aadhar_number", length = 12)
     private String aadharNumber;
 
     @Column(length = 128)
@@ -104,7 +104,7 @@ public class Borrower {
     @Column(name = "bank_name", length = 255)
     private String bankName;
 
-    @Column(name = "ifsc_code", length = 32)
+    @Column(name = "ifsc_code", length = 11)
     private String ifscCode;
 
     @Column(name = "account_holder_name", length = 255)
