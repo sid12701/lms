@@ -1,7 +1,9 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.RefreshToken;
+import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
 import com.bhawana.lms.security.SecurityProperties;
@@ -35,6 +37,7 @@ import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -56,6 +59,7 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final ApiClientAuthenticationService apiClientAuthenticationService;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final ApiClientRepository apiClientRepository;
 
     public AuthController(
             AuthenticationManager authenticationManager,
@@ -64,7 +68,8 @@ public class AuthController {
             AppUserRepository appUserRepository,
             PasswordEncoder passwordEncoder,
             ApiClientAuthenticationService apiClientAuthenticationService,
-            RefreshTokenRepository refreshTokenRepository
+            RefreshTokenRepository refreshTokenRepository,
+            ApiClientRepository apiClientRepository
     ) {
         this.authenticationManager = authenticationManager;
         this.jwtEncoder = jwtEncoder;
@@ -73,22 +78,23 @@ public class AuthController {
         this.passwordEncoder = passwordEncoder;
         this.apiClientAuthenticationService = apiClientAuthenticationService;
         this.refreshTokenRepository = refreshTokenRepository;
+        this.apiClientRepository = apiClientRepository;
     }
 
     @PostMapping("/login")
     public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
         TokenResponse tokenResponse = issuePasswordToken(request);
-        String rawRefreshToken = generateAndStoreRefreshToken(request.username(), "PASSWORD");
-        ResponseCookie cookie = buildRefreshCookie(rawRefreshToken, securityProperties.getJwt().getRefreshTtl().getSeconds());
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                .headers(headers -> issueRefreshCookieForUsername(request.username(), headers))
                 .body(tokenResponse);
     }
 
     @PostMapping("/token")
     public ResponseEntity<TokenResponse> token(@Valid @RequestBody ClientCredentialsRequest request) {
         TokenResponse tokenResponse = issueClientCredentialsToken(request);
-        String rawRefreshToken = generateAndStoreRefreshToken(request.clientId(), "API_CLIENT");
+        ApiClient apiClient = apiClientRepository.findByClientId(request.clientId().trim())
+                .orElseThrow(() -> new IllegalStateException("API client missing after successful authentication."));
+        String rawRefreshToken = generateAndStoreRefreshTokenForApiClient(apiClient);
         ResponseCookie cookie = buildRefreshCookie(rawRefreshToken, securityProperties.getJwt().getRefreshTtl().getSeconds());
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
@@ -96,6 +102,7 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
+    @Transactional
     public ResponseEntity<TokenResponse> refresh(
             @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshCookie
     ) {
@@ -112,13 +119,21 @@ public class AuthController {
         existing.revoke();
         refreshTokenRepository.save(existing);
 
-        String username = existing.getUsername();
-        String authType = existing.getAuthType();
+        TokenResponse tokenResponse;
+        String newRawRefreshToken;
+        if (existing.getAppUser() != null) {
+            AppUser user = existing.getAppUser();
+            tokenResponse = mintTokenForAppUser(user);
+            newRawRefreshToken = generateAndStoreRefreshTokenForAppUser(user);
+        } else if (existing.getApiClient() != null) {
+            ApiClient apiClient = existing.getApiClient();
+            tokenResponse = mintTokenForApiClient(apiClient);
+            newRawRefreshToken = generateAndStoreRefreshTokenForApiClient(apiClient);
+        } else {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
 
-        TokenResponse tokenResponse = mintTokenForStoredIdentity(username, authType);
-        String newRawRefreshToken = generateAndStoreRefreshToken(username, authType);
         ResponseCookie cookie = buildRefreshCookie(newRawRefreshToken, securityProperties.getJwt().getRefreshTtl().getSeconds());
-
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
                 .body(tokenResponse);
@@ -144,11 +159,8 @@ public class AuthController {
         appUserRepository.save(user);
 
         TokenResponse tokenResponse = mintTokenResponse(authentication);
-        String rawRefreshToken = generateAndStoreRefreshToken(authentication.getName(), "PASSWORD");
-        ResponseCookie cookie = buildRefreshCookie(rawRefreshToken, securityProperties.getJwt().getRefreshTtl().getSeconds());
-
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                .headers(headers -> issueRefreshCookieForUsername(authentication.getName(), headers))
                 .body(tokenResponse);
     }
 
@@ -196,29 +208,29 @@ public class AuthController {
     ) {
     }
 
-    private TokenResponse mintTokenForStoredIdentity(String username, String authType) {
-        if ("API_CLIENT".equals(authType)) {
-            ApiClientAuthenticationService.AuthenticatedApiClient apiClient =
-                    apiClientAuthenticationService.lookupByClientId(username);
-            return mintTokenResponse(
-                    apiClient.clientId(),
-                    List.of("LSP_API_CLIENT"),
-                    new ManagedUserState(false, Instant.EPOCH, 0L),
-                    Map.of(
-                            "authType", "API_CLIENT",
-                            "clientId", apiClient.clientId(),
-                            "clientName", apiClient.clientName(),
-                            "lspId", apiClient.lspId().toString(),
-                            "lspCode", apiClient.lspCode()
-                    )
-            );
-        }
-
+    private TokenResponse mintTokenForAppUser(AppUser user) {
         return mintTokenResponse(
-                username,
-                loadRolesForUsername(username),
-                loadManagedUserState(username),
-                loadManagedUserClaims(username)
+                user.getUsername(),
+                loadRolesForUsername(user.getUsername()),
+                loadManagedUserState(user.getUsername()),
+                loadManagedUserClaims(user.getUsername())
+        );
+    }
+
+    private TokenResponse mintTokenForApiClient(ApiClient apiClient) {
+        ApiClientAuthenticationService.AuthenticatedApiClient view =
+                apiClientAuthenticationService.lookupByClientId(apiClient.getClientId());
+        return mintTokenResponse(
+                view.clientId(),
+                List.of("LSP_API_CLIENT"),
+                new ManagedUserState(false, Instant.EPOCH, 0L),
+                Map.of(
+                        "authType", "API_CLIENT",
+                        "clientId", view.clientId(),
+                        "clientName", view.clientName(),
+                        "lspId", view.lspId().toString(),
+                        "lspCode", view.lspCode()
+                )
         );
     }
 
@@ -302,19 +314,36 @@ public class AuthController {
         );
     }
 
-    private String generateAndStoreRefreshToken(String username, String authType) {
+    private String generateAndStoreRefreshTokenForAppUser(AppUser user) {
+        RawRefreshToken raw = newRawRefreshToken();
+        refreshTokenRepository.save(new RefreshToken(raw.hash(), user, raw.expiresAt()));
+        return raw.value();
+    }
+
+    private String generateAndStoreRefreshTokenForApiClient(ApiClient apiClient) {
+        RawRefreshToken raw = newRawRefreshToken();
+        refreshTokenRepository.save(new RefreshToken(raw.hash(), apiClient, raw.expiresAt()));
+        return raw.value();
+    }
+
+    private RawRefreshToken newRawRefreshToken() {
         byte[] randomBytes = new byte[32];
         SECURE_RANDOM.nextBytes(randomBytes);
-        String rawToken = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
-        String tokenHash = sha256Hex(rawToken);
+        String value = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+        String hash = sha256Hex(value);
+        Instant expiresAt = Instant.now().plus(securityProperties.getJwt().getRefreshTtl());
+        return new RawRefreshToken(value, hash, expiresAt);
+    }
 
-        Duration refreshTtl = securityProperties.getJwt().getRefreshTtl();
-        Instant expiresAt = Instant.now().plus(refreshTtl);
+    private record RawRefreshToken(String value, String hash, Instant expiresAt) {
+    }
 
-        RefreshToken refreshToken = new RefreshToken(tokenHash, username, authType, expiresAt);
-        refreshTokenRepository.save(refreshToken);
-
-        return rawToken;
+    private void issueRefreshCookieForUsername(String username, HttpHeaders headers) {
+        appUserRepository.findByUsername(username).ifPresent(user -> {
+            String rawToken = generateAndStoreRefreshTokenForAppUser(user);
+            ResponseCookie cookie = buildRefreshCookie(rawToken, securityProperties.getJwt().getRefreshTtl().getSeconds());
+            headers.add(HttpHeaders.SET_COOKIE, cookie.toString());
+        });
     }
 
     private ResponseCookie buildRefreshCookie(String rawToken, long maxAgeSeconds) {

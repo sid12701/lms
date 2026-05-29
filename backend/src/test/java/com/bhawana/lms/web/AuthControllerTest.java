@@ -366,4 +366,64 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.lspId").value(lsp.getId().toString()))
                 .andExpect(jsonPath("$.lspName").value("Apex UI Tenant"));
     }
+
+    @Test
+    void apiClientRefreshCookieMintsFreshAccessToken() throws Exception {
+        Lsp lsp = lspRepository.save(new Lsp("APEX-MACHINE", "Apex Machine Tenant", LspStatus.ACTIVE));
+        ApiClientManagementService.CreatedApiClient created = apiClientManagementService.createClient(
+                "Apex Machine Client",
+                null,
+                lsp.getId(),
+                com.bhawana.lms.domain.ApiClientStatus.ACTIVE
+        );
+
+        MvcResult tokenResult = mockMvc.perform(post("/api/v1/auth/token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                                created.client().getClientId(),
+                                created.rawSecret()
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String originalToken = objectMapper.readTree(tokenResult.getResponse().getContentAsString())
+                .get("accessToken").asText();
+        Cookie refreshCookie = tokenResult.getResponse().getCookie("lms-refresh");
+        assert refreshCookie != null : "Token response must include lms-refresh cookie";
+
+        MvcResult refreshResult = mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(refreshCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andReturn();
+
+        String refreshedToken = objectMapper.readTree(refreshResult.getResponse().getContentAsString())
+                .get("accessToken").asText();
+        assertNotEquals(originalToken, refreshedToken);
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + refreshedToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void deletingManagedUserInvalidatesTheirRefreshTokens() throws Exception {
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new AuthController.LoginRequest("test.user", "TestPassword123!"))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        Cookie refreshCookie = loginResult.getResponse().getCookie("lms-refresh");
+        assert refreshCookie != null : "Login response must include lms-refresh cookie";
+
+        AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
+        appUserRepository.deleteById(managedUser.getId());
+        appUserRepository.flush();
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(refreshCookie))
+                .andExpect(status().isUnauthorized());
+    }
 }
