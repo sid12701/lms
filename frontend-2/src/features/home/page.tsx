@@ -7,11 +7,7 @@
  */
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
-import {
-  KpiSkeleton,
-  CardSkeleton,
-  ChartSkeleton,
-} from "@/components/app/feedback/Skeletons";
+import { KpiSkeleton, CardSkeleton, ChartSkeleton } from "@/components/app/feedback/Skeletons";
 import { useSession } from "@/features/auth/session-context";
 import { defaultLandingFor } from "@/lib/role-gates";
 import { Navigate } from "react-router-dom";
@@ -42,12 +38,11 @@ function HomeLoadingSkeleton() {
 export function HomePage() {
   const { session } = useSession();
   const role = session?.user.role;
+  const query = useHomeKpis();
 
   if (role && role !== "SYSTEM_ADMIN") {
     return <Navigate to={defaultLandingFor(role)} replace />;
   }
-
-  const query = useHomeKpis();
 
   return (
     <div className="flex flex-col gap-6 p-6">

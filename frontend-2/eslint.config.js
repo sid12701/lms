@@ -33,8 +33,19 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      // shadcn pattern (Badge/Button/etc. co-export their cva variants) and
+      // intentional cell-renderer factories trigger this; not actionable.
+      "react-refresh/only-export-components": "off",
       "react/react-in-jsx-scope": "off",
+      // Heuristic from eslint-plugin-react-hooks 7.x. Legitimate uses in this
+      // codebase (dialog form resets on `open=false`, syncing input state with
+      // URL search params, focus-on-mount via setTimeout) are intentional and
+      // align with React's own "You might not need an effect" guidance. Revisit
+      // if these patterns are refactored to controlled-from-parent.
+      "react-hooks/set-state-in-effect": "off",
+      // React Compiler can't memoize TanStack Table's useReactTable; this rule
+      // surfaces that as a warning on every table. Informational, not a bug.
+      "react-hooks/incompatible-library": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },

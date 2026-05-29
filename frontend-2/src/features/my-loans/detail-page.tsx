@@ -112,8 +112,7 @@ function MarkInvalidDialog({
     [reasons, reasonCode],
   );
   const requiresText = selected?.requiresText ?? false;
-  const canSubmit =
-    !!reasonCode && !busy && (!requiresText || reasonText.trim().length > 0);
+  const canSubmit = !!reasonCode && !busy && (!requiresText || reasonText.trim().length > 0);
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -144,8 +143,8 @@ function MarkInvalidDialog({
             <DialogTitle>Mark loan invalid</DialogTitle>
           </div>
           <DialogDescription>
-            This stops further processing of the application. The reason is recorded in
-            the audit log against your account.
+            This stops further processing of the application. The reason is recorded in the audit
+            log against your account.
           </DialogDescription>
         </DialogHeader>
 
@@ -238,8 +237,8 @@ function MaskedBorrowerCard({ detail }: MaskedBorrowerCardProps) {
             <h2 className="text-base font-semibold">Borrower PII (masked)</h2>
           </div>
           <p className="text-foreground-muted text-xs">
-            Identity numbers are masked everywhere. Re-issue the application
-            if the borrower's identity needs to be re-verified.
+            Identity numbers are masked everywhere. Re-issue the application if the borrower&apos;s
+            identity needs to be re-verified.
           </p>
         </div>
       </header>
@@ -261,7 +260,7 @@ interface FieldProps {
 function Field({ label, value, mono = false }: FieldProps) {
   return (
     <div className="flex flex-col gap-0.5">
-      <dt className="text-foreground-muted text-xs uppercase tracking-wide">{label}</dt>
+      <dt className="text-foreground-muted text-xs tracking-wide uppercase">{label}</dt>
       <dd className={mono ? "font-mono text-sm tabular-nums" : "text-sm"}>{fmt(value)}</dd>
     </div>
   );
@@ -435,9 +434,8 @@ function DocumentsSection({ applicationId, disabled }: DocumentsSectionProps) {
       <header className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">Documents</h2>
         <p className="text-foreground-muted text-xs">
-          Upload borrower KYC, agreement, and supporting documents. The checklist
-          below is seeded from the LSP-scoped server read on mount and updated
-          live as new files are uploaded.
+          Upload borrower KYC, agreement, and supporting documents. The checklist below is seeded
+          from the LSP-scoped server read on mount and updated live as new files are uploaded.
         </p>
       </header>
 
@@ -483,9 +481,9 @@ function DocumentsSection({ applicationId, disabled }: DocumentsSectionProps) {
           <ul className="flex flex-col gap-1 text-xs">
             {otherUploads.map((row) => (
               <li key={row.id} className="text-foreground-muted">
-                <span className="font-mono">{row.id.slice(0, 8)}</span>{" "}
-                · {row.fileName ?? row.documentDisplayName}{" "}
-                · <span className="text-foreground">{row.status}</span>
+                <span className="font-mono">{row.id.slice(0, 8)}</span> ·{" "}
+                {row.fileName ?? row.documentDisplayName} ·{" "}
+                <span className="text-foreground">{row.status}</span>
               </li>
             ))}
           </ul>
@@ -493,9 +491,9 @@ function DocumentsSection({ applicationId, disabled }: DocumentsSectionProps) {
       </div>
 
       <p className="text-foreground-muted text-xs">
-        Required document types: {LSP_REQUIRED_DOC_TYPES.length}. The backend
-        validates type + file size on every upload; the UI surfaces failures
-        inline. Tracked via {LSP_DOCUMENT_TYPES.length} known document types.
+        Required document types: {LSP_REQUIRED_DOC_TYPES.length}. The backend validates type + file
+        size on every upload; the UI surfaces failures inline. Tracked via{" "}
+        {LSP_DOCUMENT_TYPES.length} known document types.
       </p>
     </section>
   );
@@ -562,10 +560,7 @@ export function MyLoanDetailPage() {
     return (
       <div className="flex flex-col gap-6 p-6">
         <PageHeader eyebrow="LSP workspace" title="Loan" />
-        <div
-          role="status"
-          className="text-foreground-muted flex items-center gap-2 text-sm"
-        >
+        <div role="status" className="text-foreground-muted flex items-center gap-2 text-sm">
           <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
           Loading loan details…
         </div>
@@ -611,12 +606,7 @@ export function MyLoanDetailPage() {
           <div className="flex items-center gap-2">
             <StatusBadge status={detail.status} />
             {!isTerminal ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={openMarkInvalid}
-              >
+              <Button type="button" variant="outline" size="sm" onClick={openMarkInvalid}>
                 <AlertTriangle className="h-4 w-4" aria-hidden="true" />
                 <span>Mark invalid</span>
               </Button>
@@ -644,8 +634,14 @@ export function MyLoanDetailPage() {
           <Field label="Product" value={detail.productName} />
           <Field label="Product code" value={detail.productCode} mono />
           <Field label="LSP" value={detail.lspName} />
-          <Field label="Created" value={detail.createdAt ? formatDateTime(detail.createdAt) : null} />
-          <Field label="Updated" value={detail.updatedAt ? formatDateTime(detail.updatedAt) : null} />
+          <Field
+            label="Created"
+            value={detail.createdAt ? formatDateTime(detail.createdAt) : null}
+          />
+          <Field
+            label="Updated"
+            value={detail.updatedAt ? formatDateTime(detail.updatedAt) : null}
+          />
           {detail.invalidatedAt ? (
             <Field label="Invalidated at" value={formatDateTime(detail.invalidatedAt)} />
           ) : null}
@@ -688,40 +684,29 @@ export function MyLoanDetailPage() {
           <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
             <Field label="Account number" value={detail.loanAccount.accountNumber} mono />
             <Field label="Status" value={detail.loanAccount.status} />
-            <Field
-              label="Principal"
-              value={formatINR(detail.loanAccount.principalAmount)}
-              mono
-            />
+            <Field label="Principal" value={formatINR(detail.loanAccount.principalAmount)} mono />
             <Field
               label="Tenure"
               value={
-                detail.loanAccount.tenureMonths
-                  ? `${detail.loanAccount.tenureMonths} months`
-                  : null
+                detail.loanAccount.tenureMonths ? `${detail.loanAccount.tenureMonths} months` : null
               }
             />
             <Field
               label="Approved at"
               value={
-                detail.loanAccount.approvedAt
-                  ? formatDateTime(detail.loanAccount.approvedAt)
-                  : null
+                detail.loanAccount.approvedAt ? formatDateTime(detail.loanAccount.approvedAt) : null
               }
             />
             <Field
               label="Closed at"
               value={
-                detail.loanAccount.closedAt
-                  ? formatDateTime(detail.loanAccount.closedAt)
-                  : null
+                detail.loanAccount.closedAt ? formatDateTime(detail.loanAccount.closedAt) : null
               }
             />
           </dl>
           {detail.loanAccount.repaymentSchedule ? (
             <p className="text-foreground-muted text-xs">
-              Schedule: {detail.loanAccount.repaymentSchedule.installmentCount ?? 0}{" "}
-              installments of{" "}
+              Schedule: {detail.loanAccount.repaymentSchedule.installmentCount ?? 0} installments of{" "}
               <span className="font-mono">
                 {formatINR(detail.loanAccount.repaymentSchedule.installmentAmount)}
               </span>
