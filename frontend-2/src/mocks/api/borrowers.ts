@@ -383,20 +383,6 @@ const RecordDocumentAccessResponseSchema = z.object({
 
 // ─── Route registration (idempotent) ─────────────────────────────────────────
 
-const BorrowerSummarySchema = z.object({
-  id: z.string().min(1),
-  fullName: z.string().min(1),
-  pan: z.string().min(1),
-  mobile: z.string().min(1),
-  email: z.string().nullable(),
-  city: z.string().nullable(),
-  state: z.string().nullable(),
-  aadharNumberMasked: z.string().nullable(),
-  visibleLspIds: z.array(z.string()).readonly(),
-});
-
-const _BorrowerSummaryArraySchema = z.array(BorrowerSummarySchema);
-
 let registered = false;
 export function registerBorrowerRoutes(): void {
   if (registered) return;

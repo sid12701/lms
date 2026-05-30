@@ -426,7 +426,7 @@ export function MisPreviewTable({
         header: () => <span>Address</span>,
         cell: ({ row }) => (
           <span
-            className="text-foreground-muted max-w-[12rem] truncate text-[11px]"
+            className="text-foreground-muted max-w-48 truncate text-[11px]"
             title={row.original.address ?? undefined}
           >
             {plainText(row.original.address)}

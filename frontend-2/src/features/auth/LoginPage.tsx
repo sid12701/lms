@@ -102,7 +102,7 @@ export function LoginPage() {
     <main className="bg-background relative flex min-h-screen flex-col items-center justify-center p-6">
       <div
         aria-hidden="true"
-        className="from-brand-100/40 dark:from-brand-950/30 pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px] bg-gradient-to-b to-transparent"
+        className="from-brand-100/40 dark:from-brand-950/30 pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px] bg-linear-to-b to-transparent"
       />
 
       <div className="flex w-full max-w-3xl flex-col gap-10">
@@ -122,7 +122,7 @@ export function LoginPage() {
           onSubmit={handleSubmit}
           aria-label="Sign in"
           aria-busy={submitting}
-          className="border-border bg-card mx-auto flex w-full max-w-md flex-col gap-5 rounded-2xl border p-7 shadow-lg shadow-black/[0.03] sm:p-8"
+          className="border-border bg-card mx-auto flex w-full max-w-md flex-col gap-5 rounded-2xl border p-7 shadow-lg shadow-black/3 sm:p-8"
         >
           <div className="flex flex-col gap-2">
             <Label htmlFor="username" className="text-sm font-medium">
