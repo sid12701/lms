@@ -37,7 +37,7 @@ app:
   security:
     bootstrap-user:
       username: ${APP_SECURITY_BOOTSTRAP_USERNAME:ops.admin}
-      password: ${APP_SECURITY_BOOTSTRAP_PASSWORD:ChangeMe123!}
+      password: ${APP_SECURITY_BOOTSTRAP_PASSWORD:}
       roles:
         - SYSTEM_ADMIN
         - OPS_USER

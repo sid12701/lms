@@ -1,8 +1,12 @@
+# Local profile: imports backend/.env for secrets. See application-local.yml.example.
+
 spring:
+  config:
+    import: optional:file:.env[.properties]
   datasource:
-    url: ${LMS_DB_URL:jdbc:postgresql://db.avvzobksoybnmwjkeelk.supabase.co:5432/postgres?sslmode=require}
-    username: ${LMS_DB_USERNAME:postgres}
-    password: ${LMS_DB_PASSWORD:5hjJa0oRsZOWyGik}
+    url: ${LMS_DB_URL}
+    username: ${LMS_DB_USERNAME}
+    password: ${LMS_DB_PASSWORD}
     hikari:
       maximum-pool-size: 5
       minimum-idle: 2
@@ -45,13 +49,13 @@ springdoc:
 app:
   security:
     bootstrap-user:
-      username: ${APP_SECURITY_BOOTSTRAP_USERNAME:ops.admin}
-      password: ${APP_SECURITY_BOOTSTRAP_PASSWORD:ChangeMe123!}
+      username: ${APP_SECURITY_BOOTSTRAP_USERNAME}
+      password: ${APP_SECURITY_BOOTSTRAP_PASSWORD}
       roles:
         - SYSTEM_ADMIN
         - OPS_USER
     jwt:
-      secret: ${APP_SECURITY_JWT_SECRET:change-me-local-dev-secret-change-me-local-dev}
+      secret: ${APP_SECURITY_JWT_SECRET}
       secure-cookies: false
   seed:
     sample-data:
@@ -77,5 +81,5 @@ app:
         region: ${APP_STORAGE_REPORTS_R2_REGION:auto}
   datasource:
     tenant:
-      username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
-      password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
+      username: ${APP_TENANT_DATASOURCE_USERNAME}
+      password: ${APP_TENANT_DATASOURCE_PASSWORD}

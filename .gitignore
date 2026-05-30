@@ -12,8 +12,10 @@ tmp/
 .env
 .env.*
 !.env.example
+!backend/.env.example
 .env.local
 .env.test
+backend/.env
 
 backend/.gradle/
 backend/build/
