@@ -2,7 +2,6 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.AlertRule;
-import com.bhawana.lms.domain.AlertRuleTriggerKind;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
@@ -26,8 +25,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,8 +34,6 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class AlertRuleEvaluationService {
-
-    private static final Logger log = LoggerFactory.getLogger(AlertRuleEvaluationService.class);
 
     private final AlertRuleRepository alertRuleRepository;
     private final LoanApplicationRepository loanApplicationRepository;

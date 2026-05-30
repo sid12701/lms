@@ -25,6 +25,7 @@ public abstract class MinioTestSupport {
     private static final String ACCESS_KEY = "lms-test-access";
     private static final String SECRET_KEY = "lms-test-secret";
 
+    @SuppressWarnings("resource")
     @Container
     static final MinIOContainer MINIO = new MinIOContainer("minio/minio:RELEASE.2024-12-18T13-15-44Z")
             .withUserName(ACCESS_KEY)

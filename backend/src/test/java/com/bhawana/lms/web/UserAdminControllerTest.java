@@ -128,10 +128,6 @@ class UserAdminControllerTest {
         AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
         String accessToken = loginAccessToken("test.user", "TestPassword123!");
 
-        AppRole productAdminRole = appRoleRepository.findByCodeIn(List.of(RoleCode.PRODUCT_ADMIN)).stream()
-                .findFirst()
-                .orElseThrow();
-
         mockMvc.perform(put("/api/v1/internal/admin/users/{userId}", managedUser.getId())
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)

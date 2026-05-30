@@ -5,11 +5,8 @@ import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
-import com.bhawana.lms.domain.LoanForeclosureQuote;
-import com.bhawana.lms.domain.LoanPaymentChannel;
-import com.bhawana.lms.domain.LoanPaymentTransaction;
-import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.common.web.PagedResult;
+import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.common.web.PaginationResponseBuilder;
 import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
 import com.bhawana.lms.service.LoanApplicationService;
@@ -30,6 +27,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -42,7 +40,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -93,7 +90,7 @@ public class LoanApplicationOpsController {
                 limit,
                 includePaginationDetails
         );
-        java.util.Map<UUID, String> accountNumbersByApplicationId = loanApplicationService
+        Map<UUID, String> accountNumbersByApplicationId = loanApplicationService
                 .getLoanAccountNumbers(applicationsPage.items().stream().map(LoanApplication::getId).toList());
         PagedResult<LoanApplicationResponse> page = new PagedResult<>(
                 applicationsPage.items().stream()
@@ -599,11 +596,6 @@ public class LoanApplicationOpsController {
             @NotNull LoanApplicationStatus targetStatus,
             @NotBlank @Size(max = 500) String note,
             @NotNull LoanApplicationStatusReasonCode reasonCode
-    ) {
-    }
-
-    public record MockDisbursementOutcomeRequest(
-            @NotNull MockDisbursementOutcome outcome
     ) {
     }
 

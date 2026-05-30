@@ -28,7 +28,6 @@ import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
 import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
-import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
@@ -40,10 +39,8 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -128,9 +125,6 @@ class LoanApplicationOpsControllerTest {
 
     @Autowired
     private AppUserRepository appUserRepository;
-
-    @Autowired
-    private AppRoleRepository appRoleRepository;
 
     @Autowired
     private LspRepository lspRepository;
@@ -2316,20 +2310,6 @@ class LoanApplicationOpsControllerTest {
     }
 
     private record LspFixture(String id, String code) {
-    }
-
-    private void createManagedOpsUser(String username) {
-        Set<com.bhawana.lms.domain.AppRole> roles = new LinkedHashSet<>(
-                appRoleRepository.findByCodeIn(List.of(com.bhawana.lms.domain.RoleCode.OPS_USER))
-        );
-        appUserRepository.save(new com.bhawana.lms.domain.AppUser(
-                username,
-                username + "@example.com",
-                "$2a$10$abcdefghijklmnopqrstuv",
-                com.bhawana.lms.domain.UserStatus.ACTIVE,
-                null,
-                roles
-        ));
     }
 
     private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor systemAdmin() {

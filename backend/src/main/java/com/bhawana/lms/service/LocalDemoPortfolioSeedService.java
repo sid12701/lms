@@ -1,6 +1,5 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;

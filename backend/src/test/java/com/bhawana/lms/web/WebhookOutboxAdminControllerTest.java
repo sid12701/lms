@@ -728,16 +728,6 @@ class WebhookOutboxAdminControllerTest {
         throw new AssertionError("Expected status webhook event " + fromStatus + " -> " + toStatus);
     }
 
-    private WebhookEventOutbox findDisbursementEvent(List<WebhookEventOutbox> events, String loanAccountStatus) throws Exception {
-        for (WebhookEventOutbox event : events) {
-            JsonNode payload = payloadEnvelope(event).get("payload");
-            if (loanAccountStatus.equals(payload.get("loanAccountStatus").asText())) {
-                return event;
-            }
-        }
-        throw new AssertionError("Expected disbursement webhook event for status " + loanAccountStatus);
-    }
-
     private static String hmacSha256(String secret, String value) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");

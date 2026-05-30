@@ -29,7 +29,6 @@ import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.domain.LspStatus;
-import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
@@ -59,7 +58,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class LoanApplicationLifecycleService {
 
-    private final AppUserRepository appUserRepository;
     private final BorrowerRepository borrowerRepository;
     private final LoanAccountRepository loanAccountRepository;
     private final LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
@@ -78,7 +76,6 @@ public class LoanApplicationLifecycleService {
     private final ObjectMapper objectMapper;
 
     public LoanApplicationLifecycleService(
-            AppUserRepository appUserRepository,
             BorrowerRepository borrowerRepository,
             LoanAccountRepository loanAccountRepository,
             LoanApplicationAuditEventRepository loanApplicationAuditEventRepository,
@@ -96,7 +93,6 @@ public class LoanApplicationLifecycleService {
             LoanAutoApprovalRuleEngine loanAutoApprovalRuleEngine,
             ObjectMapper objectMapper
     ) {
-        this.appUserRepository = appUserRepository;
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationAuditEventRepository = loanApplicationAuditEventRepository;
@@ -659,22 +655,6 @@ public class LoanApplicationLifecycleService {
         payload.put("closureReason", LoanAccountClosureReason.FORECLOSURE.name());
         payload.put("closedAt", loanAccount.getClosedAt());
         payload.put("applicationStatus", application.getStatus().name());
-        return payload;
-    }
-
-    public Map<String, Object> buildForeclosureQuotePayload(
-            LoanApplication application,
-            LoanAccount loanAccount,
-            LoanForeclosureQuote quote
-    ) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("loanAccountId", loanAccount.getId());
-        payload.put("accountNumber", loanAccount.getAccountNumber());
-        payload.put("foreclosureQuoteId", quote.getId());
-        payload.put("quoteVersion", quote.getVersion());
-        payload.put("effectiveDate", quote.getEffectiveDate());
-        payload.put("settlementAmount", quote.getSettlementAmount());
         return payload;
     }
 

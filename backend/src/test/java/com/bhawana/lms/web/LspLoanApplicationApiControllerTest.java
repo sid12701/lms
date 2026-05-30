@@ -58,8 +58,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.ResultActions;
-
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -1408,14 +1406,6 @@ class LspLoanApplicationApiControllerTest {
         return objectMapper.readTree(result.getResponse().getContentAsString());
     }
 
-    private JsonNode getRepaymentSchedule(String accessToken, String loanId) throws Exception {
-        MvcResult result = mockMvc.perform(get("/api/v1/lsp/loans/{loanId}/repayment-schedule", loanId)
-                        .header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isOk())
-                .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString());
-    }
-
     private JsonNode getInternalApplicationDetail(String applicationId) throws Exception {
         MvcResult result = mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
                         .with(opsUser()))
@@ -1524,31 +1514,6 @@ class LspLoanApplicationApiControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-                .andExpect(status().isOk());
-    }
-
-    private void recordPayment(String applicationId) throws Exception {
-        MvcResult scheduleResult = mockMvc.perform(get(
-                        "/api/v1/internal/ops/loan-applications/{applicationId}/repayment-schedule",
-                        applicationId)
-                        .with(systemAdmin()))
-                .andExpect(status().isOk())
-                .andReturn();
-        JsonNode schedule = objectMapper.readTree(scheduleResult.getResponse().getContentAsString());
-        String installmentId = schedule.get(0).get("id").asText();
-        BigDecimal amount = schedule.get(0).get("outstandingAmount").decimalValue();
-
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
-                        .with(systemAdmin())
-                        .header("Idempotency-Key", UUID.randomUUID().toString())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "targetInstallmentId", installmentId,
-                                "amount", amount,
-                                "postedAt", LocalDate.now().minusDays(1).toString(),
-                                "reference", "PAY-LSP-001",
-                                "channel", "UPI"
-                        ))))
                 .andExpect(status().isOk());
     }
 

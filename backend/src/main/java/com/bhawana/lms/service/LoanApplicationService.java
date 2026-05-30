@@ -1,13 +1,9 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.common.web.DocumentUploadRequiredException;
-import com.bhawana.lms.common.web.KycCompletionRequiredException;
 import com.bhawana.lms.common.web.PagedResult;
-import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.LoanAccount;
-import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
@@ -24,19 +20,11 @@ import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.domain.LoanInvalidationReason;
 import com.bhawana.lms.domain.LoanPaymentChannel;
-import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
-import com.bhawana.lms.domain.LoanRepaymentScheduleInstallmentStatus;
-import com.bhawana.lms.domain.LoanProductLspMapping;
-import com.bhawana.lms.domain.LoanProductStatus;
-import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.domain.WebhookEventType;
-import com.bhawana.lms.domain.LspStatus;
-import com.bhawana.lms.repo.AppUserRepository;
-import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentAccessAuditRepository;
@@ -45,21 +33,16 @@ import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
-import com.bhawana.lms.repo.LoanProductLspMappingRepository;
-import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanForeclosureQuoteRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
-import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -73,8 +56,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class LoanApplicationService {
 
-    private final AppUserRepository appUserRepository;
-    private final BorrowerRepository borrowerRepository;
     private final LoanAccountRepository loanAccountRepository;
     private final LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
     private final LoanApplicationDocumentAccessAuditRepository loanApplicationDocumentAccessAuditRepository;
@@ -85,10 +66,7 @@ public class LoanApplicationService {
     private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final LoanForeclosureQuoteRepository loanForeclosureQuoteRepository;
-    private final LoanProductRepository loanProductRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
-    private final LspRepository lspRepository;
-    private final LoanProductLspMappingRepository loanProductLspMappingRepository;
     private final LoanDisbursementAdapter loanDisbursementAdapter;
     private final WebhookOutboxService webhookOutboxService;
     private final com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
@@ -99,8 +77,6 @@ public class LoanApplicationService {
     private final ObjectMapper objectMapper;
 
     public LoanApplicationService(
-            AppUserRepository appUserRepository,
-            BorrowerRepository borrowerRepository,
             LoanAccountRepository loanAccountRepository,
             LoanApplicationAuditEventRepository loanApplicationAuditEventRepository,
             LoanApplicationDocumentAccessAuditRepository loanApplicationDocumentAccessAuditRepository,
@@ -111,10 +87,7 @@ public class LoanApplicationService {
             LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
             LoanForeclosureQuoteRepository loanForeclosureQuoteRepository,
-            LoanProductRepository loanProductRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
-            LspRepository lspRepository,
-            LoanProductLspMappingRepository loanProductLspMappingRepository,
             LoanDisbursementAdapter loanDisbursementAdapter,
             WebhookOutboxService webhookOutboxService,
             com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
@@ -124,8 +97,6 @@ public class LoanApplicationService {
             LoanForeclosureCommandService loanForeclosureCommandService,
             ObjectMapper objectMapper
     ) {
-        this.appUserRepository = appUserRepository;
-        this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationAuditEventRepository = loanApplicationAuditEventRepository;
         this.loanApplicationDocumentAccessAuditRepository = loanApplicationDocumentAccessAuditRepository;
@@ -136,10 +107,7 @@ public class LoanApplicationService {
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.loanForeclosureQuoteRepository = loanForeclosureQuoteRepository;
-        this.loanProductRepository = loanProductRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
-        this.lspRepository = lspRepository;
-        this.loanProductLspMappingRepository = loanProductLspMappingRepository;
         this.loanDisbursementAdapter = loanDisbursementAdapter;
         this.webhookOutboxService = webhookOutboxService;
         this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
@@ -690,7 +658,6 @@ public class LoanApplicationService {
             UUID applicationId,
             String actorUsername
     ) {
-        LoanApplication application = getApplication(applicationId);
         LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
         return initiateDisbursement(
                 applicationId,
@@ -902,35 +869,6 @@ public class LoanApplicationService {
         return loanApplicationIntakeAuditRepository.findTop10ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
     }
 
-    private static String normalizePan(String pan) {
-        return pan.trim().toUpperCase();
-    }
-
-    private static String normalizeEmail(String email) {
-        if (email == null) {
-            return null;
-        }
-
-        String normalized = email.trim();
-        return normalized.isBlank() ? null : normalized.toLowerCase();
-    }
-
-    private static String normalizeSourceChannel(String sourceChannel) {
-        return sourceChannel.trim().toUpperCase();
-    }
-
-    private static BigDecimal normalizeMonthlyIncome(BigDecimal monthlyIncome) {
-        if (monthlyIncome == null) {
-            return null;
-        }
-
-        if (monthlyIncome.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Borrower monthly income must be greater than zero.");
-        }
-
-        return monthlyIncome.setScale(2, java.math.RoundingMode.HALF_UP);
-    }
-
     private static String normalizeOptional(String value) {
         if (value == null) {
             return null;
@@ -940,96 +878,11 @@ public class LoanApplicationService {
         return normalized.isBlank() ? null : normalized;
     }
 
-    private com.bhawana.lms.domain.LoanProduct resolveLoanProduct(LoanApplicationOnboardingCommand command) {
-        if (command.productId() != null) {
-            return loanProductRepository.findById(command.productId())
-                    .orElseThrow(() -> new IllegalArgumentException("Unknown loan product id: " + command.productId()));
-        }
-        String loanProductCode = normalizeOptional(command.loanProduct());
-        if (loanProductCode == null) {
-            throw new IllegalArgumentException("Loan product is required.");
-        }
-        return loanProductRepository.findByCodeIgnoreCase(loanProductCode)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown loan product code: " + loanProductCode));
-    }
-
-    private static void validateInterestRate(BigDecimal requestedInterestRate, BigDecimal configuredInterestRate) {
-        if (requestedInterestRate == null) {
-            return;
-        }
-
-        BigDecimal normalizedRequestedRate = requestedInterestRate.setScale(2, RoundingMode.HALF_UP);
-        BigDecimal normalizedConfiguredRate = configuredInterestRate.setScale(2, RoundingMode.HALF_UP);
-        if (normalizedRequestedRate.compareTo(normalizedConfiguredRate) != 0) {
-            throw new IllegalArgumentException("Requested interest rate does not match the configured product interest rate.");
-        }
-    }
-
-    private static BigDecimal normalizeMonthlyIncome(BigDecimal monthlyIncome, BigDecimal annualIncome) {
-        if (monthlyIncome != null) {
-            return scaleCurrency(monthlyIncome);
-        }
-        if (annualIncome == null) {
-            return null;
-        }
-        return scaleCurrency(annualIncome.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP));
-    }
-
-    private static BigDecimal normalizeAnnualIncome(BigDecimal monthlyIncome, BigDecimal annualIncome) {
-        if (annualIncome != null) {
-            return scaleCurrency(annualIncome);
-        }
-        if (monthlyIncome == null) {
-            return null;
-        }
-        return scaleCurrency(monthlyIncome.multiply(BigDecimal.valueOf(12)));
-    }
-
     private static BigDecimal requireCurrency(BigDecimal value, String fieldName) {
         if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException(fieldName + " must be greater than zero.");
         }
         return value;
-    }
-
-    private static int requireTenure(Integer loanTenure) {
-        if (loanTenure == null || loanTenure < 1) {
-            throw new IllegalArgumentException("Loan tenure must be at least 1 month.");
-        }
-        return loanTenure;
-    }
-
-    private static String requireField(String value, String fieldName) {
-        String normalized = normalizeOptional(value);
-        if (normalized == null) {
-            throw new IllegalArgumentException(fieldName + " is required.");
-        }
-        return normalized;
-    }
-
-    private static String resolveTransitionNote(
-            String note,
-            LoanApplicationStatus currentStatus,
-            LoanApplicationStatus targetStatus
-    ) {
-        if (note == null) {
-            return defaultTransitionNote(currentStatus, targetStatus);
-        }
-
-        String normalizedNote = note.trim();
-        return normalizedNote.isBlank()
-                ? defaultTransitionNote(currentStatus, targetStatus)
-                : normalizedNote;
-    }
-
-    private static String defaultTransitionNote(
-            LoanApplicationStatus currentStatus,
-            LoanApplicationStatus targetStatus
-    ) {
-        return "Transitioned loan application from "
-                + currentStatus.name()
-                + " to "
-                + targetStatus.name();
     }
 
     private static String normalizeActorUsername(String actorUsername) {
@@ -1039,209 +892,6 @@ public class LoanApplicationService {
 
         String normalized = actorUsername.trim();
         return normalized.isBlank() ? "system" : normalized;
-    }
-
-    private static String requireNote(String note) {
-        String normalized = normalizeOptional(note);
-        if (normalized == null) {
-            throw new IllegalArgumentException("Manual status note is required.");
-        }
-        return normalized;
-    }
-
-    private static Map<String, Object> buildLoanCreatedPayload(LoanApplication application) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("externalLoanId", application.getExternalLoanId());
-        payload.put("status", application.getStatus().name());
-        payload.put("borrowerId", application.getBorrower().getId());
-        payload.put("requestedAmount", application.getRequestedAmount());
-        payload.put("tenureMonths", application.getRequestedTenureMonths());
-        return payload;
-    }
-
-    private static Map<String, Object> buildLoanStatusChangedPayload(
-            LoanApplication application,
-            LoanApplicationStatus fromStatus,
-            LoanApplicationStatus toStatus,
-            LoanApplicationStatusReasonCode reasonCode
-    ) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("externalLoanId", application.getExternalLoanId());
-        payload.put("fromStatus", fromStatus.name());
-        payload.put("toStatus", toStatus.name());
-        payload.put("reasonCode", reasonCode == null ? null : reasonCode.name());
-        return payload;
-    }
-
-    private static Map<String, Object> buildDisbursementPayload(LoanApplication application, LoanAccount loanAccount) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("loanAccountId", loanAccount.getId());
-        payload.put("accountNumber", loanAccount.getAccountNumber());
-        payload.put("loanAccountStatus", loanAccount.getStatus().name());
-        payload.put("principalAmount", loanAccount.getPrincipalAmount());
-        return payload;
-    }
-
-    private static LoanApplicationStatusReasonCode validateTransitionReasonCode(
-            LoanApplicationStatus targetStatus,
-            LoanApplicationStatusReasonCode reasonCode
-    ) {
-        if (targetStatus == LoanApplicationStatus.REJECTED
-                || targetStatus == LoanApplicationStatus.DISBURSEMENT_RETRY) {
-            return requireReasonCode(
-                    reasonCode,
-                    "Reason code is required when a loan application is moved to " + targetStatus.name() + "."
-            );
-        }
-
-        return reasonCode;
-    }
-
-    private static LoanApplicationStatusReasonCode requireReasonCode(
-            LoanApplicationStatusReasonCode reasonCode,
-            String message
-    ) {
-        if (reasonCode == null) {
-            throw new IllegalArgumentException(message);
-        }
-        return reasonCode;
-    }
-
-    private void recordAuditEvent(
-            LoanApplication application,
-            LoanApplicationAuditAction action,
-            LoanApplicationStatus fromStatus,
-            LoanApplicationStatus toStatus,
-            String actorUsername,
-            String note,
-            LoanApplicationStatusReasonCode reasonCode
-    ) {
-        loanApplicationAuditEventRepository.save(new LoanApplicationAuditEvent(
-                application,
-                action,
-                normalizeActorUsername(actorUsername),
-                fromStatus,
-                toStatus,
-                note,
-                reasonCode,
-                CorrelationIdHolder.get()
-        ));
-    }
-
-    private LoanApplication updateApplicationStatus(
-            LoanApplication application,
-            LoanApplicationStatus targetStatus,
-            String actorUsername,
-            String note,
-            LoanApplicationStatusReasonCode reasonCode,
-            LoanApplicationAuditAction auditAction
-    ) {
-        LoanApplicationStatus currentStatus = application.getStatus();
-        if (currentStatus == targetStatus) {
-            return application;
-        }
-
-        application.transitionTo(targetStatus);
-        LoanApplication savedApplication = loanApplicationRepository.save(application);
-        String resolvedNote = normalizeOptional(note) == null
-                ? defaultTransitionNote(currentStatus, targetStatus)
-                : normalizeOptional(note);
-        loanApplicationStatusTransitionRepository.save(new LoanApplicationStatusTransition(
-                savedApplication,
-                currentStatus,
-                targetStatus,
-                normalizeActorUsername(actorUsername),
-                resolvedNote,
-                reasonCode,
-                CorrelationIdHolder.get()
-        ));
-        recordAuditEvent(
-                savedApplication,
-                auditAction,
-                currentStatus,
-                targetStatus,
-                actorUsername,
-                resolvedNote,
-                reasonCode
-        );
-        webhookOutboxService.enqueueIfSubscribed(
-                savedApplication.getLsp(),
-                WebhookEventType.LOAN_STATUS_CHANGED,
-                "LOAN_APPLICATION",
-                savedApplication.getId().toString(),
-                savedApplication.getId(),
-                buildLoanStatusChangedPayload(savedApplication, currentStatus, targetStatus, reasonCode)
-        );
-        return savedApplication;
-    }
-
-    private LoanAccount ensureLoanAccountForApprovedApplication(LoanApplication application) {
-        LoanAccount loanAccount = loanAccountRepository.findByLoanApplication_Id(application.getId())
-                .orElseGet(() -> loanAccountRepository.save(new LoanAccount(
-                        application,
-                        application.getBorrower(),
-                        application.getLsp(),
-                        application.getLoanProduct(),
-                        generateAccountNumber(application),
-                        application.getRequestedAmount(),
-                        application.getTenureMonths(),
-                        LoanAccountStatus.PENDING_DISBURSEMENT,
-                        Instant.now()
-                )));
-        generateRepaymentSchedule(loanAccount);
-        return loanAccount;
-    }
-
-    private void generateRepaymentSchedule(LoanAccount loanAccount) {
-        if (!loanRepaymentScheduleInstallmentRepository
-                .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId())
-                .isEmpty()) {
-            return;
-        }
-
-        BigDecimal principal = scaleCurrency(loanAccount.getPrincipalAmount());
-        int tenureMonths = loanAccount.getTenureMonths();
-        BigDecimal annualRate = loanAccount.getLoanProduct().getInterestRate();
-        BigDecimal monthlyRate = annualRate
-                .divide(BigDecimal.valueOf(1200), 10, RoundingMode.HALF_UP);
-        BigDecimal emiAmount = calculateMonthlyEmi(principal, monthlyRate, tenureMonths);
-        LocalDate firstDueDate = loanAccount.getApprovedAt().atZone(ZoneOffset.UTC).toLocalDate().plusMonths(1);
-
-        BigDecimal remainingPrincipal = principal;
-        List<LoanRepaymentScheduleInstallment> installments = new java.util.ArrayList<>();
-        for (int installmentNumber = 1; installmentNumber <= tenureMonths; installmentNumber++) {
-            BigDecimal openingPrincipal = scaleCurrency(remainingPrincipal);
-            BigDecimal interestDue = scaleCurrency(openingPrincipal.multiply(monthlyRate));
-            BigDecimal installmentAmount = emiAmount;
-            BigDecimal principalDue = scaleCurrency(installmentAmount.subtract(interestDue));
-
-            if (installmentNumber == tenureMonths) {
-                principalDue = openingPrincipal;
-                installmentAmount = scaleCurrency(principalDue.add(interestDue));
-            }
-
-            BigDecimal closingPrincipal = scaleCurrency(openingPrincipal.subtract(principalDue));
-            if (closingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
-                closingPrincipal = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-            }
-
-            installments.add(new LoanRepaymentScheduleInstallment(
-                    loanAccount,
-                    installmentNumber,
-                    firstDueDate.plusMonths(installmentNumber - 1L),
-                    openingPrincipal,
-                    principalDue,
-                    interestDue,
-                    installmentAmount,
-                    closingPrincipal
-            ));
-            remainingPrincipal = closingPrincipal;
-        }
-
-        loanRepaymentScheduleInstallmentRepository.saveAll(installments);
     }
 
     private LoanDelinquencySummary buildDelinquencySummary(List<LoanRepaymentScheduleInstallment> installments) {
@@ -1278,24 +928,6 @@ public class LoanApplicationService {
             case FAILED -> "FAILED";
             case PENDING_RECONCILIATION -> "PENDING_RECONCILIATION";
         };
-    }
-
-    private static BigDecimal calculateMonthlyEmi(BigDecimal principal, BigDecimal monthlyRate, int tenureMonths) {
-        if (monthlyRate.compareTo(BigDecimal.ZERO) == 0) {
-            return scaleCurrency(principal.divide(BigDecimal.valueOf(tenureMonths), 2, RoundingMode.HALF_UP));
-        }
-
-        BigDecimal rateDecimal = monthlyRate;
-        BigDecimal onePlusRatePower = BigDecimal
-                .valueOf(Math.pow(BigDecimal.ONE.add(rateDecimal).doubleValue(), tenureMonths));
-        BigDecimal numerator = principal.multiply(rateDecimal).multiply(onePlusRatePower, MathContext.DECIMAL64);
-        BigDecimal denominator = onePlusRatePower.subtract(BigDecimal.ONE);
-        return scaleCurrency(numerator.divide(denominator, 2, RoundingMode.HALF_UP));
-    }
-
-    private static String generateAccountNumber(LoanApplication application) {
-        String compactId = application.getId().toString().replace("-", "").toUpperCase();
-        return "LMS-LN-" + compactId.substring(0, 12);
     }
 
     private static BigDecimal scaleCurrency(BigDecimal value) {
@@ -1340,133 +972,8 @@ public class LoanApplicationService {
         return checklistItem.getNote();
     }
 
-    private void ensureDocumentChecklist(LoanApplication application) {
-        if (!loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(application.getId()).isEmpty()) {
-            return;
-        }
-
-        seedDocumentChecklist(application, "system");
-    }
-
-    private void seedDocumentChecklist(LoanApplication application, String actorUsername) {
-        List<LoanApplicationDocumentChecklist> checklistItems = List.of(
-                buildChecklistItem(application, LoanApplicationDocumentType.PAN_CARD, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.AADHAAR_FILE, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.ADDRESS_PROOF, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.INCOME_PROOF, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.BANK_STATEMENT, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.SELFIE_PHOTOGRAPH, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.KFS, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.LOAN_AGREEMENT, actorUsername)
-        );
-        loanApplicationDocumentChecklistRepository.saveAll(checklistItems);
-    }
-
-    private LoanApplicationDocumentChecklist buildChecklistItem(
-            LoanApplication application,
-            LoanApplicationDocumentType documentType,
-            String actorUsername
-    ) {
-        return new LoanApplicationDocumentChecklist(
-                application,
-                documentType,
-                documentType.isRequiredByDefault(),
-                documentType.isRequiredByDefault()
-                        ? LoanApplicationDocumentChecklistStatus.PENDING
-                        : LoanApplicationDocumentChecklistStatus.NOT_REQUIRED,
-                documentType.isRequiredByDefault() ? "Awaiting " + documentType.getDisplayName() : "Optional placeholder",
-                actorUsername
-        );
-    }
-
-    private void validateKycCompletionBeforeApproval(UUID applicationId) {
-        LoanApplication application = getApplication(applicationId);
-        ensureDocumentChecklist(application);
-
-        List<LoanApplicationDocumentType> blockingDocumentTypes = loanApplicationDocumentChecklistRepository
-                .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
-                .stream()
-                .filter(item -> item.getDocumentType().isRequiredForApproval())
-                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.SUBMITTED
-                        && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
-                .map(LoanApplicationDocumentChecklist::getDocumentType)
-                .toList();
-
-        if (!blockingDocumentTypes.isEmpty()) {
-            throw new KycCompletionRequiredException(blockingDocumentTypes);
-        }
-    }
-
-    private void validateRequiredDocumentsUploadedBeforeDisbursement(UUID applicationId) {
-        LoanApplication application = getApplication(applicationId);
-        ensureDocumentChecklist(application);
-
-        List<LoanApplicationDocumentType> blockingDocumentTypes = loanApplicationDocumentChecklistRepository
-                .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
-                .stream()
-                .filter(item -> item.getDocumentType().isRequiredForDisbursement())
-                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.SUBMITTED
-                        && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
-                .map(LoanApplicationDocumentChecklist::getDocumentType)
-                .toList();
-
-        if (!blockingDocumentTypes.isEmpty()) {
-            throw new DocumentUploadRequiredException(blockingDocumentTypes);
-        }
-    }
-
     public boolean hasAllRequiredLmsManagedDocuments(UUID applicationId, boolean requireForApprovalOnly) {
         return loanApplicationLifecycleService.hasAllRequiredLmsManagedDocuments(applicationId, requireForApprovalOnly);
-    }
-
-    private String serializePayload(LoanApplication application) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("lspId", application.getLsp().getId());
-        payload.put("lspCode", application.getLsp().getCode());
-        payload.put("productId", application.getLoanProduct().getId());
-        payload.put("productCode", application.getLoanProduct().getCode());
-        payload.put("externalLoanId", application.getExternalLoanId());
-        payload.put("sourceChannel", application.getSourceChannel());
-        payload.put("requestedAmount", application.getRequestedAmount());
-        payload.put("tenureMonths", application.getRequestedTenureMonths());
-        payload.put("borrowerPan", application.getBorrower().getPan());
-        payload.put("borrowerFullName", application.getBorrower().getFullName());
-        payload.put("borrowerMobile", application.getBorrower().getMobile());
-        payload.put("borrowerEmail", application.getBorrower().getEmail());
-        payload.put("borrowerDateOfBirth", application.getBorrower().getDateOfBirth());
-        payload.put("borrowerGender", application.getBorrower().getGender());
-        payload.put("borrowerMaritalStatus", application.getBorrower().getMaritalStatus());
-        payload.put("borrowerFatherName", application.getBorrower().getFatherName());
-        payload.put("borrowerAadharNumber", application.getBorrower().getAadharNumber());
-        payload.put("addressLine1", application.getBorrower().getAddressLine1());
-        payload.put("addressLine2", application.getBorrower().getAddressLine2());
-        payload.put("borrowerCity", application.getBorrower().getCity());
-        payload.put("borrowerState", application.getBorrower().getState());
-        payload.put("addressZipCode", application.getBorrower().getAddressZipCode());
-        payload.put("spouseName", application.getBorrower().getSpouseName());
-        payload.put("borrowerEmploymentType", application.getBorrower().getEmploymentType());
-        payload.put("organizationName", application.getBorrower().getOrganizationName());
-        payload.put("employeeId", application.getBorrower().getEmployeeId());
-        payload.put("employmentCity", application.getBorrower().getEmploymentCity());
-        payload.put("employmentState", application.getBorrower().getEmploymentState());
-        payload.put("employmentZip", application.getBorrower().getEmploymentZip());
-        payload.put("borrowerMonthlyIncome", application.getBorrower().getMonthlyIncome());
-        payload.put("borrowerAnnualIncome", application.getBorrower().getAnnualIncome());
-        payload.put("bankAccountNumber", application.getBorrower().getBankAccountNumber());
-        payload.put("bankName", application.getBorrower().getBankName());
-        payload.put("ifscCode", application.getBorrower().getIfscCode());
-        payload.put("accountHolderName", application.getBorrower().getAccountHolderName());
-        payload.put("referencePersonName", application.getBorrower().getReferencePersonName());
-        payload.put("referencePersonNumber", application.getBorrower().getReferencePersonNumber());
-        payload.put("interestRate", application.getLoanProduct().getInterestRate());
-        payload.put("status", application.getStatus().name());
-
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Unable to serialize intake payload audit.", exception);
-        }
     }
 
     private String serializeDisbursementRequest(LoanDisbursementAdapter.DisbursementCommand command) {
