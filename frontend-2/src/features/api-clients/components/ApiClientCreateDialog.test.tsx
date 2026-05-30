@@ -24,10 +24,19 @@ const createdClient: ApiClientRow = {
 describe("ApiClientCreateDialog", () => {
   it("clears the parent-held reveal when the one-time create secret is acknowledged", async () => {
     const user = userEvent.setup();
-    const onCreate = vi.fn<[], Promise<CreateApiClientResponse>>().mockResolvedValue({
-      client: createdClient,
-      clientSecret: CLIENT_SECRET,
-    });
+    const onCreate = vi
+      .fn<
+        (input: {
+          name: string;
+          lspId: string;
+          ipAllowList: string[];
+          idempotencyKey: string;
+        }) => Promise<CreateApiClientResponse>
+      >()
+      .mockResolvedValue({
+        client: createdClient,
+        clientSecret: CLIENT_SECRET,
+      });
     const onOpenChange = vi.fn();
     const onSecretAcknowledge = vi.fn();
 

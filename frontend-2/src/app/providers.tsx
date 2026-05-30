@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- module co-exports providers + hooks for theme/density/scenario */
 import {
   createContext,
   useContext,

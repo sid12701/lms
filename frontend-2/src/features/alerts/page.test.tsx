@@ -56,10 +56,10 @@ const alertsApiMock = vi.hoisted(() => {
     acknowledgmentNote: "already reviewed",
     acknowledgedByName: "ops.admin",
   }));
-  let rows = [...openRows, ...ackedRows];
+  let rows: AlertRow[] = [...openRows, ...ackedRows] as AlertRow[];
 
   function resetRows() {
-    rows = [...openRows, ...ackedRows].map((row) => ({ ...row }));
+    rows = [...openRows, ...ackedRows].map((row) => ({ ...row })) as AlertRow[];
   }
 
   function filteredRows(filters = {}) {
@@ -110,7 +110,7 @@ const alertsApiMock = vi.hoisted(() => {
       if (!row) {
         throw new Error(`alert ${id} not found`);
       }
-      const updated = {
+      const updated: AlertRow = {
         ...row,
         status: "ACKNOWLEDGED",
         acknowledgedAt: "2026-05-26T12:00:00.000Z",

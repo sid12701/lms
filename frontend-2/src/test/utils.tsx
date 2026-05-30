@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- test-only helper module */
 import "vitest-axe/extend-expect";
 import type { ReactElement, ReactNode } from "react";
 import { render, type RenderOptions, type RenderResult } from "@testing-library/react";

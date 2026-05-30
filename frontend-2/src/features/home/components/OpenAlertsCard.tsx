@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- module co-exports SEVERITY_TOKEN for downstream consumers/tests */
 import { forwardRef } from "react";
 import { Link } from "react-router-dom";
 import { AlertCircle, AlertTriangle, BellOff, Info, type LucideIcon } from "lucide-react";

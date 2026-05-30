@@ -263,7 +263,8 @@ public class LoanApplicationLifecycleService {
                 || targetStatus == LoanApplicationStatus.DISBURSED
                 || targetStatus == LoanApplicationStatus.UNDER_REPAYMENT
                 || targetStatus == LoanApplicationStatus.INVALID
-                || targetStatus == LoanApplicationStatus.CLOSED) {
+                || targetStatus == LoanApplicationStatus.CLOSED
+                || targetStatus == LoanApplicationStatus.FORECLOSED) {
             throw new IllegalArgumentException("Use the standard approval flow instead of a manual status update.");
         }
         if (targetStatus != LoanApplicationStatus.INITIALIZED
@@ -658,6 +659,22 @@ public class LoanApplicationLifecycleService {
         payload.put("closureReason", LoanAccountClosureReason.FORECLOSURE.name());
         payload.put("closedAt", loanAccount.getClosedAt());
         payload.put("applicationStatus", application.getStatus().name());
+        return payload;
+    }
+
+    public Map<String, Object> buildForeclosureQuotePayload(
+            LoanApplication application,
+            LoanAccount loanAccount,
+            LoanForeclosureQuote quote
+    ) {
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+        payload.put("loanApplicationId", application.getId());
+        payload.put("loanAccountId", loanAccount.getId());
+        payload.put("accountNumber", loanAccount.getAccountNumber());
+        payload.put("foreclosureQuoteId", quote.getId());
+        payload.put("quoteVersion", quote.getVersion());
+        payload.put("effectiveDate", quote.getEffectiveDate());
+        payload.put("settlementAmount", quote.getSettlementAmount());
         return payload;
     }
 

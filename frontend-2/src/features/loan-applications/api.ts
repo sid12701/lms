@@ -165,7 +165,7 @@ export function backendQueryFromFilters(
 const FALLBACK_ITEM_SCHEMA = z.object({
   id: z.string().min(1),
   externalLoanId: z.string().nullable(),
-  accountNumber: z.string().nullable().optional(),
+  accountNumber: z.string().nullable(),
   borrowerId: z.string().min(1),
   borrowerNameMasked: z.string().min(1),
   lspId: z.string().min(1),

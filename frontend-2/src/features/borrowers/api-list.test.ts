@@ -80,7 +80,7 @@ describe("fetchBorrowersList (mock fallback)", () => {
 
     const result: BorrowerListResponse = await fetchBorrowersList({});
     expect(result.items).toHaveLength(2);
-    expect(result.items[0].fullName).toBe("Anika Sharma");
+    expect(result.items[0]?.fullName).toBe("Anika Sharma");
     expect(result.total).toBe(2);
     expect(result.page).toBe(0);
     expect(result.pageSize).toBeGreaterThan(0);

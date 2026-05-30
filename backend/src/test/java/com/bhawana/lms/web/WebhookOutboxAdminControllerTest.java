@@ -258,9 +258,9 @@ class WebhookOutboxAdminControllerTest {
         assertEquals("UNDER_REPAYMENT", repaymentStatusPayload.get("toStatus").asText());
         assertTrue(repaymentStatusPayload.get("reasonCode").isNull());
 
-        JsonNode closedStatusPayload = payloadEnvelope(findStatusEvent(statusEvents, "UNDER_REPAYMENT", "CLOSED")).get("payload");
+        JsonNode closedStatusPayload = payloadEnvelope(findStatusEvent(statusEvents, "UNDER_REPAYMENT", "FORECLOSED")).get("payload");
         assertEquals("UNDER_REPAYMENT", closedStatusPayload.get("fromStatus").asText());
-        assertEquals("CLOSED", closedStatusPayload.get("toStatus").asText());
+        assertEquals("FORECLOSED", closedStatusPayload.get("toStatus").asText());
         assertTrue(closedStatusPayload.get("reasonCode").isNull());
 
         List<WebhookEventOutbox> disbursementEvents = events.stream()

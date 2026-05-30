@@ -989,6 +989,7 @@ class LoanApplicationOpsControllerTest {
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CLOSED"))
                 .andExpect(jsonPath("$.loanAccount.status").value("CLOSED"))
                 .andExpect(jsonPath("$.loanAccount.closureReason").value("FULLY_REPAID"))
                 .andExpect(jsonPath("$.loanAccount.closedByUsername").value("ops.admin"))

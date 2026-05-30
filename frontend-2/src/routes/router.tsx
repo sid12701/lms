@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- module co-exports a router factory + private layout components */
 import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from "react";
 import { createBrowserRouter, Outlet, type RouteObject } from "react-router-dom";
 import { Loader2 } from "lucide-react";
