@@ -175,6 +175,7 @@ public class LoanForeclosureCommandService {
 
         quote.execute(normalizedActorUsername);
         loanForeclosureQuoteRepository.save(quote);
+        LoanApplicationStatus statusBeforeForeclosure = application.getStatus();
         loanServicingSupportService.synchronizeLoanAccountClosureState(
                 application,
                 loanAccount,
@@ -184,7 +185,7 @@ public class LoanForeclosureCommandService {
         loanApplicationLifecycleService.recordAuditEvent(
                 application,
                 LoanApplicationAuditAction.FORECLOSURE_EXECUTED,
-                application.getStatus(),
+                statusBeforeForeclosure,
                 application.getStatus(),
                 actorUsername,
                 "Foreclosure executed using quote v"

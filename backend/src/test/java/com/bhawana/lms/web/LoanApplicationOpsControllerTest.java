@@ -917,6 +917,7 @@ class LoanApplicationOpsControllerTest {
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FORECLOSED"))
                 .andExpect(jsonPath("$.loanAccount.status").value("FORECLOSED"))
                 .andExpect(jsonPath("$.loanAccount.closureReason").value("FORECLOSURE"))
                 .andExpect(jsonPath("$.loanAccount.closedAt").exists())
@@ -1072,6 +1073,7 @@ class LoanApplicationOpsControllerTest {
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("FORECLOSED"))
                 .andExpect(jsonPath("$.loanAccount.status").value("FORECLOSED"))
                 .andExpect(jsonPath("$.loanAccount.closureReason").value("FORECLOSURE"))
                 .andExpect(jsonPath("$.loanAccount.closedByUsername").value("ops.admin"));

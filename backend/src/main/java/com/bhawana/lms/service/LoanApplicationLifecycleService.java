@@ -255,7 +255,8 @@ public class LoanApplicationLifecycleService {
                 || currentStatus == LoanApplicationStatus.DISBURSED
                 || currentStatus == LoanApplicationStatus.UNDER_REPAYMENT
                 || currentStatus == LoanApplicationStatus.INVALID
-                || currentStatus == LoanApplicationStatus.CLOSED) {
+                || currentStatus == LoanApplicationStatus.CLOSED
+                || currentStatus == LoanApplicationStatus.FORECLOSED) {
             throw new IllegalArgumentException("Loan applications that have entered servicing cannot be manually overridden.");
         }
         if (targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
@@ -321,7 +322,6 @@ public class LoanApplicationLifecycleService {
         LoanApplicationDocumentChecklist checklistItem = loanApplicationDocumentChecklistRepository
                 .findByLoanApplication_IdAndDocumentType(applicationId, documentType)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document checklist item: " + documentType.name()));
-
         checklistItem.update(
                 status,
                 note,
@@ -604,6 +604,7 @@ public class LoanApplicationLifecycleService {
         payload.put("settlementAmount", quote.getSettlementAmount());
         payload.put("closureReason", LoanAccountClosureReason.FORECLOSURE.name());
         payload.put("closedAt", loanAccount.getClosedAt());
+        payload.put("applicationStatus", application.getStatus().name());
         return payload;
     }
 
@@ -624,7 +625,8 @@ public class LoanApplicationLifecycleService {
         }
         if (currentStatus == LoanApplicationStatus.DISBURSED
                 || currentStatus == LoanApplicationStatus.UNDER_REPAYMENT
-                || currentStatus == LoanApplicationStatus.CLOSED) {
+                || currentStatus == LoanApplicationStatus.CLOSED
+                || currentStatus == LoanApplicationStatus.FORECLOSED) {
             throw new IllegalArgumentException("Loan applications that have entered servicing cannot be marked invalid.");
         }
 
