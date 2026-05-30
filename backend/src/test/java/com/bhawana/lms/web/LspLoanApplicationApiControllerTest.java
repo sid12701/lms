@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.domain.WebhookEventOutbox;
+import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
 import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
@@ -34,6 +36,7 @@ import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
+import com.bhawana.lms.repo.WebhookEventOutboxRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayInputStream;
@@ -137,8 +140,12 @@ class LspLoanApplicationApiControllerTest {
     @Autowired
     private OpsAlertRepository opsAlertRepository;
 
+    @Autowired
+    private WebhookEventOutboxRepository webhookEventOutboxRepository;
+
     @BeforeEach
     void setUp() {
+        webhookEventOutboxRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
@@ -996,6 +1003,39 @@ class LspLoanApplicationApiControllerTest {
     }
 
     @Test
+    void lspReceivesDocumentsUploadedWebhookWhenRequiredChecklistIsComplete() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        updateWebhookSubscription(apex.id(), List.of("DOCUMENTS_UPLOADED"));
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Integration");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-DOCS-WEBHOOK-001");
+        String applicationId = createdApplication.get("id").asText();
+
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        List<WebhookEventOutbox> events = webhookEventOutboxRepository.findTop50ByLsp_IdOrderByCreatedAtDesc(UUID.fromString(apex.id()));
+        assertEquals(1, events.size());
+        WebhookEventOutbox event = events.getFirst();
+        assertEquals(WebhookEventType.DOCUMENTS_UPLOADED, event.getEventType());
+        JsonNode envelope = objectMapper.readTree(event.getPayloadJson());
+        assertEquals("DOCUMENTS_UPLOADED", envelope.get("eventType").asText());
+        assertEquals("LOAN_APPLICATION", envelope.get("aggregateType").asText());
+        assertEquals(applicationId, envelope.get("aggregateId").asText());
+        JsonNode payload = envelope.get("payload");
+        assertEquals(applicationId, payload.get("loanApplicationId").asText());
+        assertEquals("APEX-DOCS-WEBHOOK-001", payload.get("externalLoanId").asText());
+        assertTrue(payload.get("allRequiredDocumentsUploaded").asBoolean());
+        assertEquals(8, payload.get("documentTypes").size());
+    }
+
+    @Test
     void apiClientCannotAccessAnotherLspLoanEndpoints() throws Exception {
         LspFixture apex = createLsp("ACTIVE");
         LspFixture north = createLsp("ACTIVE");
@@ -1610,6 +1650,19 @@ class LspLoanApplicationApiControllerTest {
                         .with(productAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("lspIds", List.of(lspId)))))
+                .andExpect(status().isOk());
+    }
+
+    private void updateWebhookSubscription(String lspId, List<String> eventTypes) throws Exception {
+        mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "enabled", true,
+                                "endpointUrl", "https://partner.example.com/webhooks/lms",
+                                "signingSecret", "whsec_lsp_docs",
+                                "eventTypes", eventTypes
+                        ))))
                 .andExpect(status().isOk());
     }
 

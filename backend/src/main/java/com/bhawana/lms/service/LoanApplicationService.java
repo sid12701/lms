@@ -744,7 +744,7 @@ public class LoanApplicationService {
         ));
         webhookOutboxService.enqueueIfSubscribed(
                 application.getLsp(),
-                WebhookEventType.LOAN_DISBURSEMENT_UPDATED,
+                WebhookEventType.DISBURSEMENT_REQUESTED,
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
                 application.getId(),
@@ -808,14 +808,21 @@ public class LoanApplicationService {
                     LoanApplicationAuditAction.STATUS_TRANSITION
             );
         }
-        webhookOutboxService.enqueueIfSubscribed(
-                application.getLsp(),
-                WebhookEventType.LOAN_DISBURSEMENT_UPDATED,
-                "LOAN_ACCOUNT",
-                loanAccount.getId().toString(),
-                application.getId(),
-                loanApplicationLifecycleService.buildDisbursementPayload(application, loanAccount)
-        );
+        WebhookEventType eventType = switch (outcome) {
+            case DISBURSED -> WebhookEventType.DISBURSEMENT_COMPLETED;
+            case FAILED -> WebhookEventType.DISBURSEMENT_FAILED;
+            case PENDING_RECONCILIATION -> null;
+        };
+        if (eventType != null) {
+            webhookOutboxService.enqueueIfSubscribed(
+                    application.getLsp(),
+                    eventType,
+                    "LOAN_ACCOUNT",
+                    loanAccount.getId().toString(),
+                    application.getId(),
+                    loanApplicationLifecycleService.buildDisbursementPayload(application, loanAccount)
+            );
+        }
         return application;
     }
 
