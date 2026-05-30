@@ -16,13 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import {
   Select,
   SelectContent,
@@ -36,10 +30,7 @@ import { FormShell } from "@/components/app/forms/FormShell";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import type { LspStatus } from "@/schemas/lsp";
 import type { LspRow } from "../types";
-import {
-  EditLspFormSchema,
-  type EditLspFormValues,
-} from "./editLspSchema";
+import { EditLspFormSchema, type EditLspFormValues } from "./editLspSchema";
 
 export interface LspEditConfirmArgs {
   id: string;
@@ -109,8 +100,7 @@ export function LspEditDialog({
             <DialogTitle>Edit LSP</DialogTitle>
           </div>
           <DialogDescription>
-            Update the display name or operational status. The code is
-            immutable.
+            Update the display name or operational status. The code is immutable.
           </DialogDescription>
         </DialogHeader>
 
@@ -154,10 +144,7 @@ export function LspEditDialog({
               <FormItem>
                 <FormLabel>Status</FormLabel>
                 <FormControl>
-                  <Select
-                    value={field.value}
-                    onValueChange={(v) => field.onChange(v as LspStatus)}
-                  >
+                  <Select value={field.value} onValueChange={(v) => field.onChange(v as LspStatus)}>
                     <SelectTrigger data-slot="lsp-edit-status-trigger">
                       <SelectValue />
                     </SelectTrigger>

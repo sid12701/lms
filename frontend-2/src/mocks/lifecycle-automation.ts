@@ -11,9 +11,7 @@
  */
 import * as loanApi from "@/mocks/api/loan-applications";
 import { newIdempotencyKey } from "@/lib/idempotency";
-import type {
-  SubmitScheduleInstallmentInput,
-} from "@/features/loan-applications/types";
+import type { SubmitScheduleInstallmentInput } from "@/features/loan-applications/types";
 
 export interface LifecycleStepResult {
   step: string;
@@ -112,7 +110,12 @@ export async function runFullLifecycle(
 ): Promise<RunFullLifecycleResult> {
   const steps: LifecycleStepResult[] = [];
   try {
-    let detail = await runStep(steps, "fetch-detail", () => loanApi.detail(applicationId), opts?.onStep);
+    let detail = await runStep(
+      steps,
+      "fetch-detail",
+      () => loanApi.detail(applicationId),
+      opts?.onStep,
+    );
     let status: string = detail.application.status;
 
     // Pre-approval walk.
@@ -122,13 +125,22 @@ export async function runFullLifecycle(
         steps,
         `transition-${next}`,
         () =>
-          loanApi.transition(applicationId, {
-            to: next as never,
-            reason: null,
-          }, { idempotencyKey: newIdempotencyKey() }),
+          loanApi.transition(
+            applicationId,
+            {
+              to: next as never,
+              reason: null,
+            },
+            { idempotencyKey: newIdempotencyKey() },
+          ),
         opts?.onStep,
       );
-      detail = await runStep(steps, "fetch-detail", () => loanApi.detail(applicationId), opts?.onStep);
+      detail = await runStep(
+        steps,
+        "fetch-detail",
+        () => loanApi.detail(applicationId),
+        opts?.onStep,
+      );
       status = detail.application.status;
     }
 
@@ -138,13 +150,22 @@ export async function runFullLifecycle(
         steps,
         "transition-APPROVED_PENDING_DISBURSAL",
         () =>
-          loanApi.transition(applicationId, {
-            to: "APPROVED_PENDING_DISBURSAL" as never,
-            reason: null,
-          }, { idempotencyKey: newIdempotencyKey() }),
+          loanApi.transition(
+            applicationId,
+            {
+              to: "APPROVED_PENDING_DISBURSAL" as never,
+              reason: null,
+            },
+            { idempotencyKey: newIdempotencyKey() },
+          ),
         opts?.onStep,
       );
-      detail = await runStep(steps, "fetch-detail", () => loanApi.detail(applicationId), opts?.onStep);
+      detail = await runStep(
+        steps,
+        "fetch-detail",
+        () => loanApi.detail(applicationId),
+        opts?.onStep,
+      );
       status = detail.application.status;
     }
 
@@ -158,12 +179,14 @@ export async function runFullLifecycle(
         steps,
         "submit-schedule",
         () =>
-          (loanApi as unknown as {
-            submitSchedule: (
-              id: string,
-              input: { installments: SubmitScheduleInstallmentInput[]; idempotencyKey: string },
-            ) => Promise<unknown>;
-          }).submitSchedule(applicationId, {
+          (
+            loanApi as unknown as {
+              submitSchedule: (
+                id: string,
+                input: { installments: SubmitScheduleInstallmentInput[]; idempotencyKey: string },
+              ) => Promise<unknown>;
+            }
+          ).submitSchedule(applicationId, {
             installments: synthesised,
             idempotencyKey: newIdempotencyKey(),
           }),
@@ -173,10 +196,19 @@ export async function runFullLifecycle(
         steps,
         "initiate-disbursement",
         () =>
-          loanApi.initiateDisbursement(applicationId, { note: null }, { idempotencyKey: newIdempotencyKey() }),
+          loanApi.initiateDisbursement(
+            applicationId,
+            { note: null },
+            { idempotencyKey: newIdempotencyKey() },
+          ),
         opts?.onStep,
       );
-      detail = await runStep(steps, "fetch-detail", () => loanApi.detail(applicationId), opts?.onStep);
+      detail = await runStep(
+        steps,
+        "fetch-detail",
+        () => loanApi.detail(applicationId),
+        opts?.onStep,
+      );
       status = detail.application.status;
     }
 
@@ -194,18 +226,20 @@ export async function runFullLifecycle(
         steps,
         "complete-foreclosure",
         () =>
-          (loanApi as unknown as {
-            completeForeclosure: (
-              id: string,
-              input: {
-                outstandingPrincipal: number;
-                accruedInterest: number;
-                foreclosureCharge: number;
-                settledAt: string;
-                idempotencyKey: string;
-              },
-            ) => Promise<unknown>;
-          }).completeForeclosure(applicationId, {
+          (
+            loanApi as unknown as {
+              completeForeclosure: (
+                id: string,
+                input: {
+                  outstandingPrincipal: number;
+                  accruedInterest: number;
+                  foreclosureCharge: number;
+                  settledAt: string;
+                  idempotencyKey: string;
+                },
+              ) => Promise<unknown>;
+            }
+          ).completeForeclosure(applicationId, {
             outstandingPrincipal,
             accruedInterest: 0,
             foreclosureCharge: Math.round(outstandingPrincipal * 0.02),
@@ -214,7 +248,12 @@ export async function runFullLifecycle(
           }),
         opts?.onStep,
       );
-      detail = await runStep(steps, "fetch-detail", () => loanApi.detail(applicationId), opts?.onStep);
+      detail = await runStep(
+        steps,
+        "fetch-detail",
+        () => loanApi.detail(applicationId),
+        opts?.onStep,
+      );
       status = detail.application.status;
     } else {
       // Repayment loop — post every remaining installment until CLOSED/FULLY_REPAID.
@@ -244,7 +283,12 @@ export async function runFullLifecycle(
             ),
           opts?.onStep,
         );
-        detail = await runStep(steps, "fetch-detail", () => loanApi.detail(applicationId), opts?.onStep);
+        detail = await runStep(
+          steps,
+          "fetch-detail",
+          () => loanApi.detail(applicationId),
+          opts?.onStep,
+        );
         status = detail.application.status;
       }
       if (safety >= REPAYMENT_LOOP_CAP && status !== "CLOSED" && status !== "FULLY_REPAID") {
@@ -273,9 +317,7 @@ export async function runFullLifecycle(
   }
 }
 
-export async function submitGeneratedSchedule(
-  applicationId: string,
-): Promise<LifecycleStepResult> {
+export async function submitGeneratedSchedule(applicationId: string): Promise<LifecycleStepResult> {
   const steps: LifecycleStepResult[] = [];
   try {
     const detail = await runStep(steps, "fetch-detail", () => loanApi.detail(applicationId));
@@ -284,12 +326,14 @@ export async function submitGeneratedSchedule(
       detail.application.tenureMonths,
     );
     await runStep(steps, "submit-schedule", () =>
-      (loanApi as unknown as {
-        submitSchedule: (
-          id: string,
-          input: { installments: SubmitScheduleInstallmentInput[]; idempotencyKey: string },
-        ) => Promise<unknown>;
-      }).submitSchedule(applicationId, {
+      (
+        loanApi as unknown as {
+          submitSchedule: (
+            id: string,
+            input: { installments: SubmitScheduleInstallmentInput[]; idempotencyKey: string },
+          ) => Promise<unknown>;
+        }
+      ).submitSchedule(applicationId, {
         installments: synthesised,
         idempotencyKey: newIdempotencyKey(),
       }),
@@ -311,18 +355,20 @@ export async function completeForeclosureForApplication(
       .filter((i) => i.status !== "PAID")
       .reduce((s, i) => s + i.principalDue, 0);
     await runStep(steps, "complete-foreclosure", () =>
-      (loanApi as unknown as {
-        completeForeclosure: (
-          id: string,
-          input: {
-            outstandingPrincipal: number;
-            accruedInterest: number;
-            foreclosureCharge: number;
-            settledAt: string;
-            idempotencyKey: string;
-          },
-        ) => Promise<unknown>;
-      }).completeForeclosure(applicationId, {
+      (
+        loanApi as unknown as {
+          completeForeclosure: (
+            id: string,
+            input: {
+              outstandingPrincipal: number;
+              accruedInterest: number;
+              foreclosureCharge: number;
+              settledAt: string;
+              idempotencyKey: string;
+            },
+          ) => Promise<unknown>;
+        }
+      ).completeForeclosure(applicationId, {
         outstandingPrincipal,
         accruedInterest: 0,
         foreclosureCharge: Math.round(outstandingPrincipal * 0.02),

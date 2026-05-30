@@ -73,16 +73,13 @@ export function ResetPasswordDialog({
             <DialogTitle>Reset password</DialogTitle>
           </div>
           <DialogDescription>
-            Generate a new temporary password for <strong>{username}</strong>.
-            They&rsquo;ll be required to change it on next sign-in.
+            Generate a new temporary password for <strong>{username}</strong>. They&rsquo;ll be
+            required to change it on next sign-in.
           </DialogDescription>
         </DialogHeader>
 
         {revealed && temporaryPassword ? (
-          <div
-            data-slot="reset-password-revealed"
-            className="flex flex-col gap-4"
-          >
+          <div data-slot="reset-password-revealed" className="flex flex-col gap-4">
             <TempPasswordRevealCard
               password={temporaryPassword}
               username={username}

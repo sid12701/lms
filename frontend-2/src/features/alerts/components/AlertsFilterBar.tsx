@@ -8,11 +8,7 @@
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -120,9 +116,7 @@ function SeverityMultiSelect({
                     aria-hidden="true"
                     className={cn(
                       "border-border inline-flex size-4 items-center justify-center rounded-sm border",
-                      checked
-                        ? "bg-primary border-primary text-primary-foreground"
-                        : null,
+                      checked ? "bg-primary border-primary text-primary-foreground" : null,
                     )}
                   >
                     {checked ? <Check className="size-3" aria-hidden="true" /> : null}
@@ -138,11 +132,7 @@ function SeverityMultiSelect({
   );
 }
 
-export function AlertsFilterBar({
-  filters,
-  onChange,
-  className,
-}: AlertsFilterBarProps) {
+export function AlertsFilterBar({ filters, onChange, className }: AlertsFilterBarProps) {
   const [search, setSearch] = useState<string>(filters.q ?? "");
   const debounceRef = useRef<number | null>(null);
 
@@ -238,10 +228,7 @@ export function AlertsFilterBar({
         ))}
       </div>
 
-      <SeverityMultiSelect
-        selected={filters.severity ?? []}
-        onChange={setSeverity}
-      />
+      <SeverityMultiSelect selected={filters.severity ?? []} onChange={setSeverity} />
 
       <Select
         value={filters.subjectType ?? ALL_SENTINEL}
@@ -278,7 +265,7 @@ export function AlertsFilterBar({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search title or message"
           aria-label="Search alerts"
-          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pl-7.5 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pr-2 pl-7.5 text-sm outline-none focus-visible:ring-[3px]"
         />
       </label>
 

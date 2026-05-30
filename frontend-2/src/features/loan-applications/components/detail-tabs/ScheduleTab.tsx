@@ -119,8 +119,8 @@ export function ScheduleTab({
           <div className="flex flex-col gap-1">
             <p className="font-semibold">Awaiting LSP schedule</p>
             <p className="text-foreground-muted">
-              This application is approved but no repayment schedule has been submitted by the
-              LSP yet. Use the dev tools to simulate an LSP POST, or wait for the LSP backend to
+              This application is approved but no repayment schedule has been submitted by the LSP
+              yet. Use the dev tools to simulate an LSP POST, or wait for the LSP backend to
               deliver.
             </p>
           </div>

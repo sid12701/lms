@@ -29,10 +29,7 @@ import { PageHeader } from "@/components/app/layout/PageHeader";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { Button } from "@/components/ui/button";
-import {
-  ApiSecretReveal,
-  RotateSecretDialog,
-} from "@/components/app/secrets";
+import { ApiSecretReveal, RotateSecretDialog } from "@/components/app/secrets";
 import { ApiClientsFilterBar } from "./components/ApiClientsFilterBar";
 import { ApiClientsTable } from "./components/ApiClientsTable";
 import { ApiClientCreateDialog } from "./components/ApiClientCreateDialog";
@@ -105,10 +102,7 @@ function filtersToParams(filters: ApiClientsListFilters): URLSearchParams {
 
 export function ApiClientsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const filters = useMemo(
-    () => parseFiltersFromUrl(searchParams),
-    [searchParams],
-  );
+  const filters = useMemo(() => parseFiltersFromUrl(searchParams), [searchParams]);
 
   const setFilters = (next: ApiClientsListFilters) => {
     setSearchParams(filtersToParams(next), { replace: false });
@@ -251,11 +245,7 @@ export function ApiClientsPage() {
         />
       ) : (
         <>
-          <ApiClientsFilterBar
-            filters={filters}
-            onChange={setFilters}
-            lspOptions={lspOptions}
-          />
+          <ApiClientsFilterBar filters={filters} onChange={setFilters} lspOptions={lspOptions} />
           {!list.isPending &&
           (list.data?.total ?? 0) === 0 &&
           !filters.q &&
@@ -285,9 +275,7 @@ export function ApiClientsPage() {
         onCreate={handleCreate}
         onSecretAcknowledge={() => setRevealedSecret(null)}
         loading={create.isPending}
-        errorMessage={
-          create.isError ? extractErrorMessage(create.error) : null
-        }
+        errorMessage={create.isError ? extractErrorMessage(create.error) : null}
       />
 
       <RotateSecretDialog

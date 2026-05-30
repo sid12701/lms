@@ -131,7 +131,7 @@ export function AuditPageFilterBar({
         className,
       )}
     >
-      <label className="relative flex-1 min-w-[200px]">
+      <label className="relative min-w-[200px] flex-1">
         <span className="sr-only">Search audit log</span>
         <Search
           aria-hidden="true"
@@ -144,7 +144,7 @@ export function AuditPageFilterBar({
           onChange={(e) => onQChange(e.target.value)}
           placeholder="Search by headline or actor"
           aria-label="Search audit log"
-          className="h-8 pl-7.5 pr-2 text-sm"
+          className="h-8 pr-2 pl-7.5 text-sm"
         />
       </label>
 

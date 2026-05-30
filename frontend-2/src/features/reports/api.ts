@@ -138,7 +138,9 @@ function mapDelinquencyBucket(value: string | null): DelinquencyBucket | null {
   return BACKEND_DPD_TO_FE[value] ?? null;
 }
 
-function mapInstallments(raw: BackendPreviewInstallment[] | null | undefined): MisPreviewInstallment[] {
+function mapInstallments(
+  raw: BackendPreviewInstallment[] | null | undefined,
+): MisPreviewInstallment[] {
   if (!raw?.length) return [];
   return raw.map((inst) => ({
     installmentNumber: inst.installmentNumber,
@@ -149,7 +151,9 @@ function mapInstallments(raw: BackendPreviewInstallment[] | null | undefined): M
   }));
 }
 
-function filterToQuery(filters: MisFilters | MisPreviewFilters): Record<string, string | number | undefined> {
+function filterToQuery(
+  filters: MisFilters | MisPreviewFilters,
+): Record<string, string | number | undefined> {
   const out: Record<string, string | number | undefined> = {
     lspId: filters.lspId ?? undefined,
     disbursalDateFrom: filters.dateFrom ?? undefined,

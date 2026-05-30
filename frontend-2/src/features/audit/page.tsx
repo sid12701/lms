@@ -29,17 +29,9 @@ import { PageHeader } from "@/components/app/layout/PageHeader";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { useSession } from "@/features/auth/session-context";
 import { useAuditEvents } from "./hooks/useAuditEvents";
-import {
-  AUDIT_STREAMS,
-  type AuditEventsFilters,
-  type AuditRow,
-  type AuditStream,
-} from "./types";
+import { AUDIT_STREAMS, type AuditEventsFilters, type AuditRow, type AuditStream } from "./types";
 import { AuditStreamTabs } from "./components/AuditStreamTabs";
-import {
-  AuditPageFilterBar,
-  type ActorOption,
-} from "./components/AuditFilterBar";
+import { AuditPageFilterBar, type ActorOption } from "./components/AuditFilterBar";
 import { AuditTable } from "./components/AuditTable";
 import { AuditEventDetailSheet } from "./components/AuditEventDetailSheet";
 

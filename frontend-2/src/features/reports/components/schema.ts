@@ -27,18 +27,12 @@ export const CreateReportRequestFormSchema = z
       .string()
       .trim()
       .optional()
-      .refine(
-        (v) => !v || IsoDatePattern.test(v),
-        "Date must be in YYYY-MM-DD format.",
-      ),
+      .refine((v) => !v || IsoDatePattern.test(v), "Date must be in YYYY-MM-DD format."),
     dateTo: z
       .string()
       .trim()
       .optional()
-      .refine(
-        (v) => !v || IsoDatePattern.test(v),
-        "Date must be in YYYY-MM-DD format.",
-      ),
+      .refine((v) => !v || IsoDatePattern.test(v), "Date must be in YYYY-MM-DD format."),
     notificationEmail: z
       .string()
       .trim()
@@ -60,6 +54,4 @@ export const CreateReportRequestFormSchema = z
     },
   );
 
-export type CreateReportRequestFormValues = z.infer<
-  typeof CreateReportRequestFormSchema
->;
+export type CreateReportRequestFormValues = z.infer<typeof CreateReportRequestFormSchema>;

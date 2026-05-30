@@ -41,9 +41,9 @@ async function signInAsSystemAdmin(page: Page): Promise<void> {
   // AND a sidebar landmark that only exists post-auth, so the session is
   // proven hydrated before we navigate away.
   await page.waitForURL(/\/home$/);
-  await expect(
-    page.getByRole("complementary", { name: /Primary navigation/i }),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("complementary", { name: /Primary navigation/i })).toBeVisible({
+    timeout: 15_000,
+  });
   // The mock-db saveDb is debounced 200ms; if we navigate before the
   // session persists, the next page-load bootstraps a fresh seed without
   // a session and the route guard bounces to /login. Poll until the
@@ -151,9 +151,7 @@ async function assertBr13RejectsPartial(page: Page): Promise<void> {
   // FormShell mirrors the error into both an aria-live `<li>` summary
   // and the inline `<FormMessage>`, so there are two visible matches.
   await expect(
-    dialog
-      .getByText(/Repayment must equal the outstanding amount.*BR-13/i)
-      .first(),
+    dialog.getByText(/Repayment must equal the outstanding amount.*BR-13/i).first(),
   ).toBeVisible();
   await dialog.getByRole("button", { name: /^Cancel$/i }).click();
   await expect(dialog).toBeHidden();
@@ -172,45 +170,38 @@ test.describe("loan-application lifecycle", () => {
   // default), and `signInAsSystemAdmin` clears the persisted mock DB
   // before the click so the seed runs anew. No beforeEach needed.
 
-  test(
-    "DISBURSED → UNDER_REPAYMENT → FULLY_REPAID via repayments, asserting BR-13/BR-14/BR-15",
-    async ({ page }) => {
-      await signInAsSystemAdmin(page);
+  test("DISBURSED → UNDER_REPAYMENT → FULLY_REPAID via repayments, asserting BR-13/BR-14/BR-15", async ({
+    page,
+  }) => {
+    await signInAsSystemAdmin(page);
 
-      // Jump straight to the seeded DISBURSED loan's Schedule tab.
-      await page.goto(
-        `/loan-applications/${DISBURSED_APPLICATION_ID}?tab=schedule`,
-      );
+    // Jump straight to the seeded DISBURSED loan's Schedule tab.
+    await page.goto(`/loan-applications/${DISBURSED_APPLICATION_ID}?tab=schedule`);
 
-      // Wait for the detail page to finish its first paint — the eyebrow
-      // text proves the detail query resolved and the schedule installments
-      // are in the DOM.
-      await expect(
-        page.getByText(/LOAN APPLICATION ·/i).first(),
-      ).toBeVisible({ timeout: 15_000 });
+    // Wait for the detail page to finish its first paint — the eyebrow
+    // text proves the detail query resolved and the schedule installments
+    // are in the DOM.
+    await expect(page.getByText(/LOAN APPLICATION ·/i).first()).toBeVisible({ timeout: 15_000 });
 
-      // Header should read "Disbursed" before any payment is posted.
-      await expectStatus(page, /Disbursed/i);
+    // Header should read "Disbursed" before any payment is posted.
+    await expectStatus(page, /Disbursed/i);
 
-      // BR-13: a partial-amount submit must surface the inline schema
-      // error. Cancel + reopen so the actual repayment fires from a
-      // clean default-filled dialog.
-      await assertBr13RejectsPartial(page);
-      await postNextRepayment(page);
+    // BR-13: a partial-amount submit must surface the inline schema
+    // error. Cancel + reopen so the actual repayment fires from a
+    // clean default-filled dialog.
+    await assertBr13RejectsPartial(page);
+    await postNextRepayment(page);
 
-      // BR-14: status should auto-advance to UNDER_REPAYMENT on the first
-      // posted payment. The badge text in `STATUS_META` is "Under repayment".
-      await expectStatus(page, /Under repayment/i);
+    // BR-14: status should auto-advance to UNDER_REPAYMENT on the first
+    // posted payment. The badge text in `STATUS_META` is "Under repayment".
+    await expectStatus(page, /Under repayment/i);
 
-      // Two PAID rows + status flip prove BR-14 fully — assert the second
-      // PAID row before exiting. (BR-15 full-repayment auto-close is
-      // exercised by the mock router's vitest suite; the e2e closure walk
-      // hits a Radix dialog/refetch race after the third dialog open and
-      // is tracked as a Phase 5 follow-up.)
-      await postNextRepayment(page);
-      await expect(
-        page.getByText(/Paid/i),
-      ).toHaveCount(2, { timeout: 15_000 });
-    },
-  );
+    // Two PAID rows + status flip prove BR-14 fully — assert the second
+    // PAID row before exiting. (BR-15 full-repayment auto-close is
+    // exercised by the mock router's vitest suite; the e2e closure walk
+    // hits a Radix dialog/refetch race after the third dialog open and
+    // is tracked as a Phase 5 follow-up.)
+    await postNextRepayment(page);
+    await expect(page.getByText(/Paid/i)).toHaveCount(2, { timeout: 15_000 });
+  });
 });

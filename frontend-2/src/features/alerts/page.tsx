@@ -50,9 +50,7 @@ function extractErrorMessage(err: unknown): string | null {
 
 export function AlertsPage() {
   const [filters, setFilters] = useState<AlertsListFilters>(INITIAL_FILTERS);
-  const [selectedAlertForAck, setSelectedAlertForAck] = useState<AlertRow | null>(
-    null,
-  );
+  const [selectedAlertForAck, setSelectedAlertForAck] = useState<AlertRow | null>(null);
 
   const { session } = useSession();
   const isSystemAdmin = session?.user.role === "SYSTEM_ADMIN";
@@ -96,11 +94,7 @@ export function AlertsPage() {
   };
 
   return (
-    <div
-      data-testid="alerts-page"
-      className="flex flex-col gap-6 p-6"
-      data-density="comfortable"
-    >
+    <div data-testid="alerts-page" className="flex flex-col gap-6 p-6" data-density="comfortable">
       <PageHeader
         eyebrow="Reporting"
         title="Alerts"
@@ -128,10 +122,7 @@ export function AlertsPage() {
       ) : (
         <>
           {isSystemAdmin ? (
-            <AlertRulesPanel
-              rules={rulesQuery.data}
-              isLoading={rulesQuery.isPending}
-            />
+            <AlertRulesPanel rules={rulesQuery.data} isLoading={rulesQuery.isPending} />
           ) : null}
           <AlertsFilterBar filters={filters} onChange={setFilters} />
           {!query.isPending &&
@@ -163,9 +154,7 @@ export function AlertsPage() {
         alertTitle={selectedAlertForAck?.title ?? ""}
         onConfirm={handleConfirmAck}
         loading={acknowledge.isPending}
-        errorMessage={
-          acknowledge.isError ? extractErrorMessage(acknowledge.error) : null
-        }
+        errorMessage={acknowledge.isError ? extractErrorMessage(acknowledge.error) : null}
       />
     </div>
   );

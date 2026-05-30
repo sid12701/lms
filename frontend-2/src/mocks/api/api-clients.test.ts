@@ -178,12 +178,7 @@ describe("api-clients.create", () => {
     const res = await createApiClient({
       name: "Multi-range",
       lspId: LSP_BHAW_DEMO,
-      ipAllowList: [
-        "10.0.0.0/8",
-        "192.168.1.0/24",
-        "203.0.113.7",
-        "198.51.100.0/22",
-      ],
+      ipAllowList: ["10.0.0.0/8", "192.168.1.0/24", "203.0.113.7", "198.51.100.0/22"],
       idempotencyKey: newIdempotencyKey(),
     });
     expect(res.client.ipAllowList).toHaveLength(4);

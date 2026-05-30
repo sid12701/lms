@@ -19,21 +19,13 @@ import { ReportsFilterBar } from "./components/ReportsFilterBar";
 import { MisSummaryCards } from "./components/MisSummaryCards";
 import { MisPreviewTable } from "./components/MisPreviewTable";
 import { ReportRequestsTable } from "./components/ReportRequestsTable";
-import {
-  CreateReportDialog,
-  type CreateReportConfirmArgs,
-} from "./components/CreateReportDialog";
+import { CreateReportDialog, type CreateReportConfirmArgs } from "./components/CreateReportDialog";
 import { useMisSummary } from "./hooks/useMisSummary";
 import { useMisPreview } from "./hooks/useMisPreview";
 import { useReportRequests } from "./hooks/useReportRequests";
 import { useCreateReportRequest } from "./hooks/useCreateReportRequest";
 import { useDownloadReportRequest } from "./hooks/useDownloadReportRequest";
-import type {
-  MisFilters,
-  MisPreviewFilters,
-  ReportRequest,
-  ReportsPageFilters,
-} from "./types";
+import type { MisFilters, MisPreviewFilters, ReportRequest, ReportsPageFilters } from "./types";
 
 const INITIAL_FILTERS: ReportsPageFilters = {
   lspId: null,
@@ -61,9 +53,10 @@ function extractErrorMessage(err: unknown): string | null {
 
 export function ReportsPage() {
   const [filters, setFilters] = useState<ReportsPageFilters>(INITIAL_FILTERS);
-  const [pagination, setPagination] = useState<{ page: number; pageSize: number }>(
-    { page: 0, pageSize: INITIAL_PAGE_SIZE },
-  );
+  const [pagination, setPagination] = useState<{ page: number; pageSize: number }>({
+    page: 0,
+    pageSize: INITIAL_PAGE_SIZE,
+  });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
@@ -115,10 +108,7 @@ export function ReportsPage() {
     setDialogOpen(true);
   };
 
-  const handleConfirmCreate = async ({
-    input,
-    idempotencyKey,
-  }: CreateReportConfirmArgs) => {
+  const handleConfirmCreate = async ({ input, idempotencyKey }: CreateReportConfirmArgs) => {
     try {
       await createMutation.mutateAsync({ input, idempotencyKey });
       setDialogOpen(false);
@@ -151,17 +141,11 @@ export function ReportsPage() {
     (summaryQuery.isError && isUnauthorized(summaryQuery.error)) ||
     (previewQuery.isError && isUnauthorized(previewQuery.error));
 
-  const summaryHardError =
-    summaryQuery.isError && !isUnauthorized(summaryQuery.error);
-  const previewHardError =
-    previewQuery.isError && !isUnauthorized(previewQuery.error);
+  const summaryHardError = summaryQuery.isError && !isUnauthorized(summaryQuery.error);
+  const previewHardError = previewQuery.isError && !isUnauthorized(previewQuery.error);
 
   return (
-    <div
-      data-testid="reports-page"
-      className="flex flex-col gap-6 p-6"
-      data-density="comfortable"
-    >
+    <div data-testid="reports-page" className="flex flex-col gap-6 p-6" data-density="comfortable">
       <PageHeader
         eyebrow="Reporting"
         title="Reports"
@@ -188,10 +172,7 @@ export function ReportsPage() {
         />
       ) : (
         <>
-          <ReportsFilterBar
-            filters={filters}
-            onChange={handleFiltersChange}
-          />
+          <ReportsFilterBar filters={filters} onChange={handleFiltersChange} />
 
           {summaryHardError ? (
             <ErrorState
@@ -205,20 +186,11 @@ export function ReportsPage() {
               }}
             />
           ) : (
-            <MisSummaryCards
-              data={summaryQuery.data}
-              isLoading={summaryQuery.isPending}
-            />
+            <MisSummaryCards data={summaryQuery.data} isLoading={summaryQuery.isPending} />
           )}
 
-          <section
-            aria-labelledby="reports-requests-heading"
-            className="flex flex-col gap-2"
-          >
-            <h2
-              id="reports-requests-heading"
-              className="text-foreground text-base font-semibold"
-            >
+          <section aria-labelledby="reports-requests-heading" className="flex flex-col gap-2">
+            <h2 id="reports-requests-heading" className="text-foreground text-base font-semibold">
               Your report requests
             </h2>
             <ReportRequestsTable
@@ -232,14 +204,8 @@ export function ReportsPage() {
             />
           </section>
 
-          <section
-            aria-labelledby="reports-preview-heading"
-            className="flex flex-col gap-2"
-          >
-            <h2
-              id="reports-preview-heading"
-              className="text-foreground text-base font-semibold"
-            >
+          <section aria-labelledby="reports-preview-heading" className="flex flex-col gap-2">
+            <h2 id="reports-preview-heading" className="text-foreground text-base font-semibold">
               Portfolio preview
             </h2>
             {previewHardError ? (
@@ -271,11 +237,7 @@ export function ReportsPage() {
         initialValues={filters}
         onConfirm={handleConfirmCreate}
         loading={createMutation.isPending}
-        errorMessage={
-          createMutation.isError
-            ? extractErrorMessage(createMutation.error)
-            : null
-        }
+        errorMessage={createMutation.isError ? extractErrorMessage(createMutation.error) : null}
       />
     </div>
   );

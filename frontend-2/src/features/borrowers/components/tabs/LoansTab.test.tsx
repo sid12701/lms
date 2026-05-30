@@ -109,19 +109,13 @@ describe("LoansTab", () => {
   }, 15_000);
 
   it("renders the empty state when there are no loans", () => {
-    useLoansMock.mockReturnValue(
-      buildResult({ isSuccess: true, data: { loans: [] } }),
-    );
+    useLoansMock.mockReturnValue(buildResult({ isSuccess: true, data: { loans: [] } }));
     renderInRouter(<LoansTab borrowerId="b-1" />);
-    expect(
-      screen.getByText("This borrower has no loan applications."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("This borrower has no loan applications.")).toBeInTheDocument();
   });
 
   it("renders a comfortable table when there are 12 or fewer rows", () => {
-    useLoansMock.mockReturnValue(
-      buildResult({ isSuccess: true, data: { loans: makeRows(5) } }),
-    );
+    useLoansMock.mockReturnValue(buildResult({ isSuccess: true, data: { loans: makeRows(5) } }));
     const { container } = renderInRouter(<LoansTab borrowerId="b-1" />);
     const wrapper = container.querySelector('[data-slot="loans-tab"]') as HTMLElement;
     expect(wrapper).not.toBeNull();
@@ -129,9 +123,7 @@ describe("LoansTab", () => {
   });
 
   it("switches to compact density when there are more than 12 rows", () => {
-    useLoansMock.mockReturnValue(
-      buildResult({ isSuccess: true, data: { loans: makeRows(13) } }),
-    );
+    useLoansMock.mockReturnValue(buildResult({ isSuccess: true, data: { loans: makeRows(13) } }));
     const { container } = renderInRouter(<LoansTab borrowerId="b-1" />);
     const wrapper = container.querySelector('[data-slot="loans-tab"]') as HTMLElement;
     expect(wrapper.getAttribute("data-density")).toBe("compact");
@@ -166,9 +158,7 @@ describe("LoansTab", () => {
 
   it("navigates to the application detail when a row is clicked", async () => {
     const r = row({ applicationId: "app-abcd1234-xxxx" });
-    useLoansMock.mockReturnValue(
-      buildResult({ isSuccess: true, data: { loans: [r] } }),
-    );
+    useLoansMock.mockReturnValue(buildResult({ isSuccess: true, data: { loans: [r] } }));
     renderInRouter(<LoansTab borrowerId="b-1" />);
     const rowEl = screen.getByTestId(`borrower-loan-row-${r.applicationId}`);
     await userEvent.click(rowEl);
@@ -177,9 +167,7 @@ describe("LoansTab", () => {
 
   it("opens the detail surface via keyboard (Enter)", async () => {
     const r = row({ applicationId: "app-keyboard-test" });
-    useLoansMock.mockReturnValue(
-      buildResult({ isSuccess: true, data: { loans: [r] } }),
-    );
+    useLoansMock.mockReturnValue(buildResult({ isSuccess: true, data: { loans: [r] } }));
     renderInRouter(<LoansTab borrowerId="b-1" />);
     const rowEl = screen.getByTestId(`borrower-loan-row-${r.applicationId}`);
     rowEl.focus();
@@ -188,9 +176,7 @@ describe("LoansTab", () => {
   }, 15_000);
 
   it("has no axe violations on the populated state", async () => {
-    useLoansMock.mockReturnValue(
-      buildResult({ isSuccess: true, data: { loans: makeRows(3) } }),
-    );
+    useLoansMock.mockReturnValue(buildResult({ isSuccess: true, data: { loans: makeRows(3) } }));
     const { container } = renderInRouter(<LoansTab borrowerId="b-1" />);
     expect(await axe(container)).toHaveNoViolations();
   }, 15_000);

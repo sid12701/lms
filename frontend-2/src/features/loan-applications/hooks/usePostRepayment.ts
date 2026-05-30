@@ -12,9 +12,7 @@ import { LOAN_APPLICATIONS_LIST_QUERY_KEY } from "./useLoanApplications";
 import { loanApplicationRepaymentsQueryKey } from "./useLoanApplicationRepayments";
 import { loanApplicationScheduleQueryKey } from "./useLoanApplicationSchedule";
 
-export function usePostRepayment(
-  id: string,
-): UseMutationResult<void, Error, PostRepaymentInput> {
+export function usePostRepayment(id: string): UseMutationResult<void, Error, PostRepaymentInput> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, PostRepaymentInput>({
     mutationFn: (input) => postRepayment(id, input),

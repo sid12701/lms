@@ -1,13 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { axe } from "vitest-axe";
 import { renderWithProviders } from "@/test/utils";
-import {
-  CardSkeleton,
-  ChartSkeleton,
-  FormSkeleton,
-  KpiSkeleton,
-  TableSkeleton,
-} from "./index";
+import { CardSkeleton, ChartSkeleton, FormSkeleton, KpiSkeleton, TableSkeleton } from "./index";
 
 describe("Skeletons", () => {
   it("KpiSkeleton renders the requested count of placeholders", () => {

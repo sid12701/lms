@@ -118,9 +118,7 @@ export async function refreshSession(): Promise<SessionType | null> {
   }
 }
 
-export async function completePasswordChange(input: {
-  newPassword: string;
-}): Promise<SessionType> {
+export async function completePasswordChange(input: { newPassword: string }): Promise<SessionType> {
   const token = await backendCompletePassword(input.newPassword);
   const session = await buildSessionFromToken(token);
   saveStoredSession(session);

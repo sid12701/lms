@@ -4,11 +4,7 @@
  * Idempotency key is minted by the caller (the dialog) at submit time, not
  * here. On success, invalidates the products list cache + fires a toast.
  */
-import {
-  useMutation,
-  useQueryClient,
-  type UseMutationResult,
-} from "@tanstack/react-query";
+import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { createProduct } from "../api";
 import type { CreateProductInput, ProductMutationResponse } from "../types";

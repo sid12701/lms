@@ -60,8 +60,7 @@ export const CreateProductFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["tenureMaxMonths"],
-        message:
-          "Max tenure must be greater than or equal to min tenure (months).",
+        message: "Max tenure must be greater than or equal to min tenure (months).",
       });
     }
   });
@@ -95,8 +94,7 @@ export const EditProductFormSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["tenureMaxMonths"],
-        message:
-          "Max tenure must be greater than or equal to min tenure (months).",
+        message: "Max tenure must be greater than or equal to min tenure (months).",
       });
     }
   });

@@ -128,10 +128,7 @@ export function MisPreviewTable({
         meta: { label: "Loan id" },
         header: () => <span>Loan id</span>,
         cell: ({ row }) => (
-          <span
-            className="text-foreground font-mono text-[11px]"
-            title={row.original.loanId}
-          >
+          <span className="text-foreground font-mono text-[11px]" title={row.original.loanId}>
             {truncateMiddle(row.original.loanId)}
           </span>
         ),
@@ -159,7 +156,7 @@ export function MisPreviewTable({
         meta: { label: "LSP code" },
         header: () => <span>LSP code</span>,
         cell: ({ row }) => (
-          <span className="text-foreground-muted text-[11px] uppercase tracking-wide">
+          <span className="text-foreground-muted text-[11px] tracking-wide uppercase">
             {row.original.lspCode}
           </span>
         ),
@@ -177,7 +174,7 @@ export function MisPreviewTable({
         meta: { label: "Product code" },
         header: () => <span>Product code</span>,
         cell: ({ row }) => (
-          <span className="text-foreground-muted text-[11px] uppercase tracking-wide">
+          <span className="text-foreground-muted text-[11px] tracking-wide uppercase">
             {row.original.productCode}
           </span>
         ),
@@ -273,9 +270,7 @@ export function MisPreviewTable({
           <span
             className={cn(
               "tabular-nums",
-              row.original.overdueAmount > 0
-                ? "text-danger font-medium"
-                : "text-foreground-muted",
+              row.original.overdueAmount > 0 ? "text-danger font-medium" : "text-foreground-muted",
             )}
           >
             {row.original.overdueAmount > 0
@@ -289,7 +284,7 @@ export function MisPreviewTable({
         meta: { label: "Bucket" },
         header: () => <span>Bucket</span>,
         cell: ({ row }) => (
-          <span className="text-foreground-muted text-[11px] uppercase tracking-wide">
+          <span className="text-foreground-muted text-[11px] tracking-wide uppercase">
             {row.original.delinquencyBucket ?? "—"}
           </span>
         ),
@@ -309,9 +304,7 @@ export function MisPreviewTable({
         meta: { label: "Year", numeric: true },
         header: () => <span>Year</span>,
         cell: ({ row }) => (
-          <span className="text-foreground tabular-nums">
-            {row.original.year ?? "—"}
-          </span>
+          <span className="text-foreground tabular-nums">{row.original.year ?? "—"}</span>
         ),
       },
       {
@@ -409,10 +402,7 @@ export function MisPreviewTable({
         meta: { label: "Aadhaar" },
         header: () => <span>Aadhaar</span>,
         cell: ({ row }) => (
-          <span
-            className="text-foreground-muted font-mono text-[11px]"
-            data-pii="aadhaar"
-          >
+          <span className="text-foreground-muted font-mono text-[11px]" data-pii="aadhaar">
             {safeAadhaarDisplay(row.original.aadhaar)}
           </span>
         ),
@@ -458,9 +448,7 @@ export function MisPreviewTable({
         meta: { label: "State" },
         header: () => <span>State</span>,
         cell: ({ row }) => (
-          <span className="text-foreground-muted text-[11px]">
-            {plainText(row.original.state)}
-          </span>
+          <span className="text-foreground-muted text-[11px]">{plainText(row.original.state)}</span>
         ),
       },
       {
@@ -488,10 +476,7 @@ export function MisPreviewTable({
         meta: { label: "Bank a/c" },
         header: () => <span>Bank a/c</span>,
         cell: ({ row }) => (
-          <span
-            className="text-foreground-muted font-mono text-[11px]"
-            data-pii="bank-account"
-          >
+          <span className="text-foreground-muted font-mono text-[11px]" data-pii="bank-account">
             {safeBankAccountDisplay(row.original.bankAccount)}
           </span>
         ),

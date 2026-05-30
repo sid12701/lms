@@ -14,11 +14,7 @@ import { useMemo } from "react";
 import { Receipt } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DataTable } from "@/components/app/data/DataTable";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
@@ -33,9 +29,7 @@ export interface RepaymentsTabProps {
 
 /** Short prefix of UUID-like values while preserving human references. */
 function shortId(value: string): string {
-  return /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value)
-    ? value.slice(0, 8)
-    : value;
+  return /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value) ? value.slice(0, 8) : value;
 }
 
 const COLUMNS: ColumnDef<PaymentTransaction>[] = [
@@ -66,9 +60,7 @@ const COLUMNS: ColumnDef<PaymentTransaction>[] = [
     id: "mode",
     header: "Mode",
     accessorKey: "channel",
-    cell: ({ row }) => (
-      <span className="text-foreground text-sm">{row.original.channel}</span>
-    ),
+    cell: ({ row }) => <span className="text-foreground text-sm">{row.original.channel}</span>,
   },
   {
     id: "status",
@@ -85,9 +77,7 @@ const COLUMNS: ColumnDef<PaymentTransaction>[] = [
     cell: ({ row }) => {
       const ref = row.original.reference?.trim() || row.original.installmentId;
       return (
-        <code className="text-foreground-muted font-mono text-xs">
-          {ref ? shortId(ref) : "—"}
-        </code>
+        <code className="text-foreground-muted font-mono text-xs">{ref ? shortId(ref) : "—"}</code>
       );
     },
   },
@@ -95,9 +85,7 @@ const COLUMNS: ColumnDef<PaymentTransaction>[] = [
     id: "transactionId",
     header: "Transaction",
     cell: ({ row }) => (
-      <code className="text-foreground-muted font-mono text-xs">
-        {shortId(row.original.id)}
-      </code>
+      <code className="text-foreground-muted font-mono text-xs">{shortId(row.original.id)}</code>
     ),
   },
 ];

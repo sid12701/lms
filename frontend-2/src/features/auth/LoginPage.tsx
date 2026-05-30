@@ -163,7 +163,7 @@ export function LoginPage() {
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 aria-pressed={showPassword}
                 className={cn(
-                  "text-foreground-muted hover:text-foreground focus-visible:ring-ring/40 absolute inset-y-0 right-0 inline-flex h-full w-10 items-center justify-center rounded-r-lg outline-none transition-colors focus-visible:ring-2",
+                  "text-foreground-muted hover:text-foreground focus-visible:ring-ring/40 absolute inset-y-0 right-0 inline-flex h-full w-10 items-center justify-center rounded-r-lg transition-colors outline-none focus-visible:ring-2",
                   "disabled:pointer-events-none disabled:opacity-40",
                 )}
               >
@@ -216,9 +216,9 @@ export function LoginPage() {
               Available system roles
             </h2>
             <p className="text-foreground-muted text-xs leading-5">
-              These are the bootstrap accounts the backend seeds in dev mode. Click one to
-              prefill its username — then enter the matching password to sign in. The role
-              column shows where each account lands after authentication.
+              These are the bootstrap accounts the backend seeds in dev mode. Click one to prefill
+              its username — then enter the matching password to sign in. The role column shows
+              where each account lands after authentication.
             </p>
           </header>
 
@@ -239,8 +239,8 @@ export function LoginPage() {
                     aria-pressed={isActive}
                     className={cn(
                       "group/card border-border bg-background flex h-full w-full flex-col items-start gap-1 rounded-xl border px-4 py-3 text-left text-sm transition-all duration-150",
-                      "hover:border-brand-500/60 hover:bg-brand-50/40 hover:-translate-y-px hover:shadow-sm dark:hover:bg-brand-950/20",
-                      "focus-visible:border-brand-500 focus-visible:ring-brand-500/30 focus-visible:ring-2 outline-none",
+                      "hover:border-brand-500/60 hover:bg-brand-50/40 dark:hover:bg-brand-950/20 hover:-translate-y-px hover:shadow-sm",
+                      "focus-visible:border-brand-500 focus-visible:ring-brand-500/30 outline-none focus-visible:ring-2",
                       "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none",
                       isActive &&
                         "border-brand-500 bg-brand-50/60 dark:bg-brand-950/30 ring-brand-500/20 ring-2",

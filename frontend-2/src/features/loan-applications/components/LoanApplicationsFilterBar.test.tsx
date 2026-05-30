@@ -7,12 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  MemoryRouter,
-  Routes,
-  Route,
-  useSearchParams,
-} from "react-router-dom";
+import { MemoryRouter, Routes, Route, useSearchParams } from "react-router-dom";
 import type { ReactNode } from "react";
 import { renderWithProviders } from "@/test/utils";
 import { LoanApplicationsFilterBar } from "./LoanApplicationsFilterBar";
@@ -78,14 +73,10 @@ describe("LoanApplicationsFilterBar", () => {
     expect(screen.getByLabelText(/Bhaw loan ID/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Disbursed from/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Disbursed to/i)).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /All statuses/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /All statuses/i })).toBeInTheDocument();
     expect(screen.getByLabelText("LSP filter")).toBeInTheDocument();
     expect(screen.getByLabelText("Product filter")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Clear all filters/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Clear all filters/i })).toBeInTheDocument();
   });
 
   it("disables the clear button when no filters are active", () => {

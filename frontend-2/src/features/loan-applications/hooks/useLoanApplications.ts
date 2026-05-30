@@ -7,10 +7,7 @@
  */
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { fetchLoanApplications } from "../api";
-import type {
-  LoanApplicationListFilters,
-  LoanApplicationListResponse,
-} from "../types";
+import type { LoanApplicationListFilters, LoanApplicationListResponse } from "../types";
 
 export const LOAN_APPLICATIONS_LIST_QUERY_KEY = ["loan-applications", "list"] as const;
 

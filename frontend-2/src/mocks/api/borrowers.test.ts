@@ -29,11 +29,7 @@ import { setLatencyOverride } from "../latency";
 import { scenario } from "../scenarios";
 import { resetIdempotency } from "../idempotency";
 import { getDb } from "../db/state";
-import {
-  LSP_BHAW_DEMO,
-  LSP_EAST,
-  LSP_SOUTH,
-} from "../db/seed";
+import { LSP_BHAW_DEMO, LSP_EAST, LSP_SOUTH } from "../db/seed";
 import { resetMockApi, auth, borrowers } from "./index";
 import type { LoanDocument } from "@/types";
 
@@ -295,9 +291,10 @@ describe("recordDocumentAccess", () => {
     await auth.login({ username: "lsp.read", password: "any" });
     const doc = seedDoc(applicationId(1));
     void LSP_SOUTH;
-    await expect(
-      borrowers.recordDocumentAccess(doc.id, { action: "VIEW" }),
-    ).rejects.toMatchObject({ code: "FORBIDDEN", httpStatus: 403 });
+    await expect(borrowers.recordDocumentAccess(doc.id, { action: "VIEW" })).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      httpStatus: 403,
+    });
   });
 });
 

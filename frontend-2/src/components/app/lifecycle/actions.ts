@@ -138,8 +138,7 @@ export const LIFECYCLE_ACTIONS: LifecycleAction[] = TRANSITIONS.filter(
   // Destructive rule.intent should always end up tone="destructive" so the
   // table's destructive marker (e.g. "Cancel foreclosure") wins over the
   // per-target override.
-  const tone: LifecycleActionTone =
-    rule.intent === "destructive" ? "destructive" : ov.tone;
+  const tone: LifecycleActionTone = rule.intent === "destructive" ? "destructive" : ov.tone;
   return {
     id: makeId(rule.from, rule.to),
     label: ov.labelOverride ?? rule.label,
@@ -160,8 +159,7 @@ export const LIFECYCLE_ACTIONS: LifecycleAction[] = TRANSITIONS.filter(
 export function actionsFor(from: LoanStatus): LifecycleAction[] {
   return TRANSITIONS.filter((r) => r.from === from && r.allowedRoles.length > 0).map((rule) => {
     const ov = ACTION_OVERRIDES[rule.to] ?? DEFAULT_OVERRIDE;
-    const tone: LifecycleActionTone =
-      rule.intent === "destructive" ? "destructive" : ov.tone;
+    const tone: LifecycleActionTone = rule.intent === "destructive" ? "destructive" : ov.tone;
     return {
       id: makeId(rule.from, rule.to),
       label: ov.labelOverride ?? rule.label,

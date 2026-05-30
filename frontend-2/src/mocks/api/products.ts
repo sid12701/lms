@@ -42,12 +42,7 @@ import type {
   Role,
 } from "@/types";
 import { dispatch, registerRoute, type MockRequest } from "../router";
-import {
-  BadRequestError,
-  ConflictError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../errors";
+import { BadRequestError, ConflictError, NotFoundError, UnauthorizedError } from "../errors";
 import type { MockDb } from "../db/state";
 import type {
   CreateProductInput,
@@ -78,10 +73,7 @@ function requireProductSession(db: MockDb, correlationId: string): ActiveSession
     throw new UnauthorizedError(correlationId, "user no longer exists");
   }
   if (!PRODUCT_ADMIN_ROLES.has(user.role)) {
-    throw new UnauthorizedError(
-      correlationId,
-      `role ${user.role} cannot access product admin`,
-    );
+    throw new UnauthorizedError(correlationId, `role ${user.role} cannot access product admin`);
   }
   return { userId: user.id, role: user.role };
 }
@@ -145,20 +137,12 @@ function parseListQuery(
   const raw: Record<string, unknown> = { ...(req.query ?? {}) };
   const parsed = ListFiltersSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid list filters",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid list filters", parsed.error.flatten());
   }
   return parsed.data;
 }
 
-function listHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): ProductsListResponse {
+function listHandler(req: MockRequest, db: MockDb, correlationId: string): ProductsListResponse {
   requireProductSession(db, correlationId);
   const filters = parseListQuery(req, correlationId);
 
@@ -170,9 +154,7 @@ function listHandler(
   if (filters.q) {
     const needle = filters.q.toLowerCase();
     rows = rows.filter(
-      (p) =>
-        p.code.toLowerCase().includes(needle) ||
-        p.name.toLowerCase().includes(needle),
+      (p) => p.code.toLowerCase().includes(needle) || p.name.toLowerCase().includes(needle),
     );
   }
 
@@ -199,11 +181,7 @@ function listHandler(
 
 // ─── Detail handler ──────────────────────────────────────────────────────────
 
-function detailHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): ProductDetailResponse {
+function detailHandler(req: MockRequest, db: MockDb, correlationId: string): ProductDetailResponse {
   requireProductSession(db, correlationId);
   const id = req.params?.["id"] ?? "";
   const product = db.products.get(id);
@@ -239,11 +217,7 @@ function createHandler(
 
   const parsed = CreateBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid product body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid product body", parsed.error.flatten());
   }
   const body = parsed.data;
 
@@ -251,10 +225,7 @@ function createHandler(
   const codeNorm = body.code.toUpperCase();
   for (const existing of db.products.values()) {
     if (existing.code.toUpperCase() === codeNorm) {
-      throw new ConflictError(
-        correlationId,
-        `product code "${body.code}" already exists`,
-      );
+      throw new ConflictError(correlationId, `product code "${body.code}" already exists`);
     }
   }
 
@@ -275,11 +246,7 @@ function createHandler(
   // Trip the LoanProduct superRefine (principalMin ≤ Max + tenureMin ≤ Max).
   const productParse = LoanProduct.safeParse(newProduct);
   if (!productParse.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid product",
-      productParse.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid product", productParse.error.flatten());
   }
 
   db.products.set(newProduct.id, newProduct);
@@ -332,11 +299,7 @@ function updateHandler(
 
   const parsed = UpdateBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid product update",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid product update", parsed.error.flatten());
   }
   const body = parsed.data;
 
@@ -355,28 +318,15 @@ function updateHandler(
   // Trip the LoanProduct superRefine.
   const productParse = LoanProduct.safeParse(next);
   if (!productParse.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid product",
-      productParse.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid product", productParse.error.flatten());
   }
 
-  const statusChanged =
-    body.status !== undefined && body.status !== current.status;
+  const statusChanged = body.status !== undefined && body.status !== current.status;
   const action: ProductAuditAction = statusChanged ? "STATUS_CHANGED" : "UPDATED";
 
   db.products.set(id, next);
 
-  emitAudit(
-    db,
-    session,
-    id,
-    action,
-    cloneForAudit(current),
-    cloneForAudit(next),
-    correlationId,
-  );
+  emitAudit(db, session, id, action, cloneForAudit(current), cloneForAudit(next), correlationId);
 
   return { product: projectRow(db, next) };
 }
@@ -402,11 +352,7 @@ function mappingHandler(
 
   const parsed = MappingBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid mapping body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid mapping body", parsed.error.flatten());
   }
 
   // Validate every referenced LSP exists.
@@ -455,12 +401,7 @@ export function registerProductRoutes(): void {
   registerRoute("PATCH", "/api/v1/admin/products/:id", updateHandler, {
     mutating: true,
   });
-  registerRoute(
-    "PUT",
-    "/api/v1/admin/products/:id/mapping",
-    mappingHandler,
-    { mutating: true },
-  );
+  registerRoute("PUT", "/api/v1/admin/products/:id/mapping", mappingHandler, { mutating: true });
 }
 registerProductRoutes();
 
@@ -523,9 +464,7 @@ const MutationResponseSchema: z.ZodType<ProductMutationResponse> = z.object({
 
 // ─── Public wrappers ─────────────────────────────────────────────────────────
 
-function queryFromFilters(
-  filters: ProductsListFilters,
-): Record<string, string> {
+function queryFromFilters(filters: ProductsListFilters): Record<string, string> {
   const out: Record<string, string> = {};
   if (filters.status) out["status"] = filters.status;
   if (filters.q) out["q"] = filters.q;
@@ -559,9 +498,7 @@ export async function getProduct(id: string): Promise<ProductDetailResponse> {
   );
 }
 
-export async function createProduct(
-  input: CreateProductInput,
-): Promise<ProductMutationResponse> {
+export async function createProduct(input: CreateProductInput): Promise<ProductMutationResponse> {
   return dispatch(
     {
       method: "POST",

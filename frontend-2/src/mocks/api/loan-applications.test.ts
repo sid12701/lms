@@ -150,7 +150,10 @@ describe("loan-applications.list — filtering and scoping", () => {
 
   it("multi-status filter (comma-encoded) accepts multiple values", async () => {
     await auth.login({ username: "ops.admin", password: "any" });
-    const res = await loanApplications.list({ status: ["INITIATED", "KYC_PENDING"], pageSize: 100 });
+    const res = await loanApplications.list({
+      status: ["INITIATED", "KYC_PENDING"],
+      pageSize: 100,
+    });
     expect(res.total).toBe(7);
   });
 
@@ -532,9 +535,7 @@ describe("loan-applications.postRepayment", () => {
     expect(account?.closureReason).toBe("FULLY_REPAID");
     // Webhooks now reflect the full-repayment audit event.
     const webhooks = await loanApplications.webhooks(APP_DISBURSED_BHAW);
-    const repaidWebhook = webhooks.deliveries.find(
-      (d) => d.eventType === "loan.repayment.posted",
-    );
+    const repaidWebhook = webhooks.deliveries.find((d) => d.eventType === "loan.repayment.posted");
     expect(repaidWebhook).toBeDefined();
   });
 
@@ -1034,8 +1035,6 @@ describe("LSP-API foreclosure completion", () => {
     expect(second.finalStatus).toBe(first.finalStatus);
     expect(db.payments.length).toBe(paymentsAfterFirst);
     expect(db.auditApplication.length).toBe(auditAfterFirst);
-    expect(
-      db.payments.filter((p) => p.idempotencyKey === "fc-replay-key").length,
-    ).toBe(1);
+    expect(db.payments.filter((p) => p.idempotencyKey === "fc-replay-key").length).toBe(1);
   });
 });

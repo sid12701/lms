@@ -29,11 +29,7 @@ import type { ApiClient, Role } from "@/types";
 import { ApiClientStatus } from "@/schemas/user";
 import { IpCidr } from "@/schemas/common";
 import { dispatch, registerRoute, type MockRequest } from "../router";
-import {
-  BadRequestError,
-  NotFoundError,
-  UnauthorizedError,
-} from "../errors";
+import { BadRequestError, NotFoundError, UnauthorizedError } from "../errors";
 import type { MockDb } from "../db/state";
 import type {
   ApiClientMutationResponse,
@@ -65,10 +61,7 @@ function requireSystemAdmin(db: MockDb, correlationId: string): ActiveSession {
     throw new UnauthorizedError(correlationId, "user no longer exists");
   }
   if (user.role !== ADMIN_ROLE) {
-    throw new UnauthorizedError(
-      correlationId,
-      `role ${user.role} cannot access api-clients`,
-    );
+    throw new UnauthorizedError(correlationId, `role ${user.role} cannot access api-clients`);
   }
   return { userId: user.id, role: user.role };
 }
@@ -153,20 +146,12 @@ function parseListQuery(
   const raw: Record<string, unknown> = { ...(req.query ?? {}) };
   const parsed = ListFiltersSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid list filters",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid list filters", parsed.error.flatten());
   }
   return parsed.data;
 }
 
-function listHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): ApiClientsListResponse {
+function listHandler(req: MockRequest, db: MockDb, correlationId: string): ApiClientsListResponse {
   requireSystemAdmin(db, correlationId);
   const filters = parseListQuery(req, correlationId);
 
@@ -181,9 +166,7 @@ function listHandler(
   if (filters.q) {
     const needle = filters.q.toLowerCase();
     rows = rows.filter(
-      (c) =>
-        c.name.toLowerCase().includes(needle) ||
-        c.clientId.toLowerCase().includes(needle),
+      (c) => c.name.toLowerCase().includes(needle) || c.clientId.toLowerCase().includes(needle),
     );
   }
 
@@ -238,11 +221,7 @@ function createHandler(
 
   const parsed = CreateBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid create body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid create body", parsed.error.flatten());
   }
   const body = parsed.data;
 
@@ -288,11 +267,7 @@ function updateHandler(
 
   const parsed = UpdateBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid update body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid update body", parsed.error.flatten());
   }
   const body = parsed.data;
 
@@ -300,9 +275,7 @@ function updateHandler(
     ...existing,
     ...(body.name !== undefined ? { name: body.name } : {}),
     ...(body.status !== undefined ? { status: body.status } : {}),
-    ...(body.ipAllowList !== undefined
-      ? { ipAllowList: [...body.ipAllowList] }
-      : {}),
+    ...(body.ipAllowList !== undefined ? { ipAllowList: [...body.ipAllowList] } : {}),
   };
   db.apiClients.set(id, updated);
 
@@ -326,11 +299,7 @@ function rotateHandler(
 
   const parsed = RotateBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new BadRequestError(
-      correlationId,
-      "invalid rotate body",
-      parsed.error.flatten(),
-    );
+    throw new BadRequestError(correlationId, "invalid rotate body", parsed.error.flatten());
   }
   // `reason` is consumed for audit but the mock does not write to an audit
   // stream — the audit explorer's product-audit stream is for product-config
@@ -360,12 +329,9 @@ export function registerApiClientRoutes(): void {
   registerRoute("PATCH", "/api/v1/admin/api-clients/:id", updateHandler, {
     mutating: true,
   });
-  registerRoute(
-    "POST",
-    "/api/v1/admin/api-clients/:id/rotate-secret",
-    rotateHandler,
-    { mutating: true },
-  );
+  registerRoute("POST", "/api/v1/admin/api-clients/:id/rotate-secret", rotateHandler, {
+    mutating: true,
+  });
 }
 registerApiClientRoutes();
 
@@ -409,9 +375,7 @@ const RotateResponseSchema: z.ZodType<RotateApiClientSecretResponse> = z.object(
 
 // ─── Public wrappers ─────────────────────────────────────────────────────────
 
-function queryFromFilters(
-  filters: ApiClientsListFilters,
-): Record<string, string> {
+function queryFromFilters(filters: ApiClientsListFilters): Record<string, string> {
   const out: Record<string, string> = {};
   if (filters.status) out["status"] = filters.status;
   if (filters.lspId) out["lspId"] = filters.lspId;

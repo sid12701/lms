@@ -1,12 +1,5 @@
 import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
-import {
-  AlertTriangle,
-  Banknote,
-  Clock,
-  Inbox,
-  Wallet,
-  type LucideIcon,
-} from "lucide-react";
+import { AlertTriangle, Banknote, Clock, Inbox, Wallet, type LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { KpiStrip } from "@/components/app/layout/KpiStrip";
 import { formatINR } from "@/lib/format";
@@ -33,7 +26,15 @@ interface KpiTileProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
  * Single KPI tile used by the internal/LSP KPI summaries. Mirrors the
  * KpiSkeleton card geometry so loading → loaded swaps avoid CLS.
  */
-function KpiTile({ icon: Icon, label, value, support, numeric = true, className, ...rest }: KpiTileProps) {
+function KpiTile({
+  icon: Icon,
+  label,
+  value,
+  support,
+  numeric = true,
+  className,
+  ...rest
+}: KpiTileProps) {
   return (
     <Card
       data-slot="kpi-tile"
@@ -56,7 +57,10 @@ function KpiTile({ icon: Icon, label, value, support, numeric = true, className,
           {value}
         </div>
         {support ? (
-          <div className="text-foreground-muted text-xs leading-4" {...(numeric ? TABULAR_ATTR : {})}>
+          <div
+            className="text-foreground-muted text-xs leading-4"
+            {...(numeric ? TABULAR_ATTR : {})}
+          >
             {support}
           </div>
         ) : null}
@@ -82,21 +86,9 @@ export const InternalKpiSummary = forwardRef<HTMLDivElement, InternalKpiSummaryP
         className={cn("xl:grid-cols-5", className)}
         aria-label="Internal home metrics"
       >
-        <KpiTile
-          icon={Inbox}
-          label="Awaiting approval"
-          value={kpis.applicationsAwaitingApproval}
-        />
-        <KpiTile
-          icon={Wallet}
-          label="In disbursement"
-          value={kpis.applicationsInDisbursement}
-        />
-        <KpiTile
-          icon={Banknote}
-          label="MTD disbursed"
-          value={formatINR(kpis.mtdDisbursedAmount)}
-        />
+        <KpiTile icon={Inbox} label="Awaiting approval" value={kpis.applicationsAwaitingApproval} />
+        <KpiTile icon={Wallet} label="In disbursement" value={kpis.applicationsInDisbursement} />
+        <KpiTile icon={Banknote} label="MTD disbursed" value={formatINR(kpis.mtdDisbursedAmount)} />
         <KpiTile
           icon={AlertTriangle}
           label="Overdue loans"

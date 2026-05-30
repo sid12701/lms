@@ -66,14 +66,10 @@ describe("DocumentPreviewSheet", () => {
     );
     expect(getByRole("dialog")).toBeInTheDocument();
     expect(getByText("pan-card.pdf")).toBeInTheDocument();
-    expect(
-      baseElement.querySelector('[data-slot="document-status-pill"]'),
-    ).toBeInTheDocument();
+    expect(baseElement.querySelector('[data-slot="document-status-pill"]')).toBeInTheDocument();
     expect(getByText(/12\.1 KB|12 KB|12345 B/i)).toBeInTheDocument();
     expect(getByText("application/pdf")).toBeInTheDocument();
-    expect(
-      getByText(/Preview not available — backend integration required/i),
-    ).toBeInTheDocument();
+    expect(getByText(/Preview not available — backend integration required/i)).toBeInTheDocument();
   });
 
   it("calls onPreview exactly once when opened with a document", () => {
@@ -146,24 +142,14 @@ describe("DocumentPreviewSheet", () => {
   it("does not call onPreview when opened without a document", () => {
     const onPreview = vi.fn();
     renderWithProviders(
-      <DocumentPreviewSheet
-        open
-        onOpenChange={() => {}}
-        document={null}
-        onPreview={onPreview}
-      />,
+      <DocumentPreviewSheet open onOpenChange={() => {}} document={null} onPreview={onPreview} />,
     );
     expect(onPreview).not.toHaveBeenCalled();
   });
 
   it("renders the empty body copy when document is null", () => {
     const { getByText } = renderWithProviders(
-      <DocumentPreviewSheet
-        open
-        onOpenChange={() => {}}
-        document={null}
-        onPreview={() => {}}
-      />,
+      <DocumentPreviewSheet open onOpenChange={() => {}} document={null} onPreview={() => {}} />,
     );
     expect(getByText(/No document selected/i)).toBeInTheDocument();
   });
@@ -178,9 +164,7 @@ describe("DocumentPreviewSheet", () => {
         onPreview={() => {}}
       />,
     );
-    expect(
-      baseElement.querySelector('[data-slot="document-preview-loading"]'),
-    ).toBeInTheDocument();
+    expect(baseElement.querySelector('[data-slot="document-preview-loading"]')).toBeInTheDocument();
   });
 
   it("invokes onOpenChange(false) when Close is clicked", async () => {
@@ -274,12 +258,7 @@ describe("DocumentPreviewSheet", () => {
 
   it("has no axe violations when open without a document", async () => {
     const { baseElement } = renderWithProviders(
-      <DocumentPreviewSheet
-        open
-        onOpenChange={() => {}}
-        document={null}
-        onPreview={() => {}}
-      />,
+      <DocumentPreviewSheet open onOpenChange={() => {}} document={null} onPreview={() => {}} />,
     );
     expect(await axe(baseElement)).toHaveNoViolations();
   });

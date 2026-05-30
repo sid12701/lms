@@ -17,21 +17,11 @@ export interface OverviewTabProps {
   borrowerDetail?: BorrowerDetail | null;
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="border-border bg-surface rounded-md border p-4">
-      <h2 className="text-foreground mb-3 text-sm font-semibold tracking-tight">
-        {title}
-      </h2>
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-        {children}
-      </dl>
+      <h2 className="text-foreground mb-3 text-sm font-semibold tracking-tight">{title}</h2>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">{children}</dl>
     </section>
   );
 }
@@ -86,73 +76,69 @@ export function OverviewTab({ detail, borrowerDetail }: OverviewTabProps) {
       <BlockingIssuesPanel detail={detail} borrowerDetail={borrowerDetail} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Section title="Loan terms">
-        <Row label="Requested amount">{formatINR(application.requestedAmount)}</Row>
-        <Row label="Tenure">{application.tenureMonths} months</Row>
-        <Row label="Product">{product.name}</Row>
-        <Row label="Source channel">{application.sourceChannel}</Row>
-        <Row label="Created">{formatDateTime(application.createdAt)}</Row>
-        <Row label="Updated">{formatDateTime(application.updatedAt)}</Row>
-      </Section>
+          <Row label="Requested amount">{formatINR(application.requestedAmount)}</Row>
+          <Row label="Tenure">{application.tenureMonths} months</Row>
+          <Row label="Product">{product.name}</Row>
+          <Row label="Source channel">{application.sourceChannel}</Row>
+          <Row label="Created">{formatDateTime(application.createdAt)}</Row>
+          <Row label="Updated">{formatDateTime(application.updatedAt)}</Row>
+        </Section>
 
-      <Section title="Borrower">
-        <Row label="Full name">{richBorrower.fullName}</Row>
-        <Row label="PAN">
-          <code className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs">
-            {richBorrower.pan}
-          </code>
-        </Row>
-        <Row label="Aadhaar">
-          <code
-            data-slot="aadhaar"
-            className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs"
-          >
-            {richBorrower.aadhaar}
-          </code>
-        </Row>
-        <Row label="Mobile">{richBorrower.mobile}</Row>
-        {borrowerDetail ? (
-          <>
-            <Row label="Active overdue">
-              {formatINR(borrowerDetail.totals.activeOverdueAmount)}
+        <Section title="Borrower">
+          <Row label="Full name">{richBorrower.fullName}</Row>
+          <Row label="PAN">
+            <code className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs">
+              {richBorrower.pan}
+            </code>
+          </Row>
+          <Row label="Aadhaar">
+            <code
+              data-slot="aadhaar"
+              className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs"
+            >
+              {richBorrower.aadhaar}
+            </code>
+          </Row>
+          <Row label="Mobile">{richBorrower.mobile}</Row>
+          {borrowerDetail ? (
+            <>
+              <Row label="Active overdue">
+                {formatINR(borrowerDetail.totals.activeOverdueAmount)}
+              </Row>
+              <Row label="Open loans">{borrowerDetail.totals.openApplicationsCount}</Row>
+              <Row label="Closed loans">{borrowerDetail.totals.closedApplicationsCount}</Row>
+              <Row label="Lifetime disbursed">
+                {formatINR(borrowerDetail.totals.lifetimeDisbursedAmount)}
+              </Row>
+            </>
+          ) : null}
+        </Section>
+
+        {borrowerDetail && borrowerDetail.visibleLsps.length > 0 ? (
+          <Section title="Borrower visibility">
+            <Row label="LSPs that can see this borrower">
+              <div className="flex flex-wrap gap-1.5">
+                {borrowerDetail.visibleLsps.map((entry) => (
+                  <Badge
+                    key={entry.id}
+                    className="border-border bg-surface-muted text-foreground border"
+                  >
+                    {entry.name}
+                  </Badge>
+                ))}
+              </div>
             </Row>
-            <Row label="Open loans">
-              {borrowerDetail.totals.openApplicationsCount}
-            </Row>
-            <Row label="Closed loans">
-              {borrowerDetail.totals.closedApplicationsCount}
-            </Row>
-            <Row label="Lifetime disbursed">
-              {formatINR(borrowerDetail.totals.lifetimeDisbursedAmount)}
-            </Row>
-          </>
+          </Section>
         ) : null}
-      </Section>
 
-      {borrowerDetail && borrowerDetail.visibleLsps.length > 0 ? (
-        <Section title="Borrower visibility">
-          <Row label="LSPs that can see this borrower">
-            <div className="flex flex-wrap gap-1.5">
-              {borrowerDetail.visibleLsps.map((entry) => (
-                <Badge
-                  key={entry.id}
-                  className="border-border bg-surface-muted text-foreground border"
-                >
-                  {entry.name}
-                </Badge>
-              ))}
-            </div>
+        <Section title="Lending service provider">
+          <Row label="Name">{lsp.name}</Row>
+          <Row label="LSP id">
+            <code className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs">
+              {lsp.id}
+            </code>
           </Row>
         </Section>
-      ) : null}
-
-      <Section title="Lending service provider">
-        <Row label="Name">{lsp.name}</Row>
-        <Row label="LSP id">
-          <code className="bg-surface-muted rounded px-1.5 py-0.5 font-mono text-xs">
-            {lsp.id}
-          </code>
-        </Row>
-      </Section>
 
         <section
           data-slot="overview-gates"

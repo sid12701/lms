@@ -98,11 +98,7 @@ export const RecentApplicationsCard = forwardRef<HTMLDivElement, RecentApplicati
     const data = useMemo(() => [...applications], [applications]);
 
     return (
-      <Card
-        ref={ref}
-        data-slot="recent-applications"
-        className={cn(className)}
-      >
+      <Card ref={ref} data-slot="recent-applications" className={cn(className)}>
         <CardHeader>
           <CardTitle>Recent applications</CardTitle>
         </CardHeader>

@@ -98,10 +98,7 @@ function filtersToParams(filters: ProductsListFilters): URLSearchParams {
 
 export function ProductsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const filters = useMemo(
-    () => parseFiltersFromUrl(searchParams),
-    [searchParams],
-  );
+  const filters = useMemo(() => parseFiltersFromUrl(searchParams), [searchParams]);
 
   const setFilters = (next: ProductsListFilters) => {
     setSearchParams(filtersToParams(next), { replace: false });
@@ -172,11 +169,7 @@ export function ProductsPage() {
       updateMapping.reset();
     }
   };
-  const handleMappingConfirm = async ({
-    input,
-  }: {
-    input: UpdateProductMappingInput;
-  }) => {
+  const handleMappingConfirm = async ({ input }: { input: UpdateProductMappingInput }) => {
     if (!mappingTarget) return;
     try {
       await updateMapping.mutateAsync({ id: mappingTarget.id, ...input });
@@ -188,21 +181,13 @@ export function ProductsPage() {
   };
 
   return (
-    <div
-      data-testid="products-page"
-      className="flex flex-col gap-6 p-6"
-      data-density="comfortable"
-    >
+    <div data-testid="products-page" className="flex flex-col gap-6 p-6" data-density="comfortable">
       <PageHeader
         eyebrow="Administration"
         title="Products"
         description="Loan products, tenor and rate bands, and per-LSP availability."
         actions={
-          <Button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            data-slot="products-new-button"
-          >
+          <Button type="button" onClick={() => setCreateOpen(true)} data-slot="products-new-button">
             <Plus aria-hidden="true" className="size-4" />
             New product
           </Button>
@@ -230,10 +215,7 @@ export function ProductsPage() {
       ) : (
         <>
           <ProductsFilterBar filters={filters} onChange={setFilters} />
-          {!list.isPending &&
-          (list.data?.total ?? 0) === 0 &&
-          !filters.q &&
-          !filters.status ? (
+          {!list.isPending && (list.data?.total ?? 0) === 0 && !filters.q && !filters.status ? (
             <EmptyState
               icon={Layers}
               title="No products yet"
@@ -278,9 +260,7 @@ export function ProductsPage() {
         lspChoices={lspChoices}
         onConfirm={handleMappingConfirm}
         loading={updateMapping.isPending}
-        errorMessage={
-          updateMapping.isError ? extractErrorMessage(updateMapping.error) : null
-        }
+        errorMessage={updateMapping.isError ? extractErrorMessage(updateMapping.error) : null}
       />
     </div>
   );

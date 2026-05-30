@@ -28,10 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormShell } from "@/components/app/forms/FormShell";
 import { newIdempotencyKey } from "@/lib/idempotency";
-import {
-  CreateLspFormSchema,
-  type CreateLspFormValues,
-} from "./createLspSchema";
+import { CreateLspFormSchema, type CreateLspFormValues } from "./createLspSchema";
 
 export interface LspCreateConfirmArgs {
   code: string;
@@ -88,8 +85,8 @@ export function LspCreateDialog({
             <DialogTitle>New LSP</DialogTitle>
           </div>
           <DialogDescription>
-            Register a new Loan Service Provider tenant. The code is immutable
-            once created and is the stable tenant identifier across the platform.
+            Register a new Loan Service Provider tenant. The code is immutable once created and is
+            the stable tenant identifier across the platform.
           </DialogDescription>
         </DialogHeader>
 
@@ -127,11 +124,7 @@ export function LspCreateDialog({
               <FormItem>
                 <FormLabel>Display name</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="Example Originators Pvt Ltd"
-                    maxLength={120}
-                    {...field}
-                  />
+                  <Input placeholder="Example Originators Pvt Ltd" maxLength={120} {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

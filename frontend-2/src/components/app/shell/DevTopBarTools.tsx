@@ -1,13 +1,5 @@
 import { DropdownMenu } from "radix-ui";
-import {
-  Wrench,
-  Database,
-  RefreshCw,
-  FlaskConical,
-  Send,
-  Banknote,
-  Workflow,
-} from "lucide-react";
+import { Wrench, Database, RefreshCw, FlaskConical, Send, Banknote, Workflow } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";

@@ -2,10 +2,7 @@ import { describe, it, expect } from "vitest";
 import { axe } from "vitest-axe";
 import { renderWithProviders } from "@/test/utils";
 import { Button } from "@/components/ui/button";
-import {
-  TransitionDisabledTooltip,
-  resolveDisabledReason,
-} from "./TransitionDisabledTooltip";
+import { TransitionDisabledTooltip, resolveDisabledReason } from "./TransitionDisabledTooltip";
 import type { LifecycleAction } from "./actions";
 
 const APPROVE_ACTION: LifecycleAction = {
@@ -28,12 +25,10 @@ const DISBURSE_ACTION: LifecycleAction = {
 
 describe("resolveDisabledReason()", () => {
   it("returns null when role is permitted and gates are clean", () => {
-    const reason = resolveDisabledReason(
-      APPROVE_ACTION,
-      "AWAITING_APPROVAL",
-      "SYSTEM_ADMIN",
-      { docsComplete: true, scheduleValid: true },
-    );
+    const reason = resolveDisabledReason(APPROVE_ACTION, "AWAITING_APPROVAL", "SYSTEM_ADMIN", {
+      docsComplete: true,
+      scheduleValid: true,
+    });
     expect(reason).toBeNull();
   });
 

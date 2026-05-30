@@ -79,10 +79,7 @@ function readFilenameFromContentDisposition(value: string | null): string | null
   return simple?.[1]?.trim() ?? null;
 }
 
-export function buildQueryPath(
-  path: string,
-  params: Record<string, QueryParamValue>,
-): string {
+export function buildQueryPath(path: string, params: Record<string, QueryParamValue>): string {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
     if (v == null || v === "") return;

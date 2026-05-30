@@ -71,7 +71,7 @@ export function BorrowersFilterBar({ className }: BorrowersFilterBarProps) {
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search by name, PAN, mobile, or email"
           aria-label="Search borrowers"
-          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pl-7.5 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pr-2 pl-7.5 text-sm outline-none focus-visible:ring-[3px]"
         />
       </label>
 

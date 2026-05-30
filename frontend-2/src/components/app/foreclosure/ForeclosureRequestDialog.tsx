@@ -94,8 +94,8 @@ export function ForeclosureRequestDialog({
             <DialogTitle>Request foreclosure</DialogTitle>
           </div>
           <DialogDescription>
-            Provide a reason for requesting foreclosure. The reason is recorded in the
-            application audit log alongside your name, the time, and the foreclosure quote.
+            Provide a reason for requesting foreclosure. The reason is recorded in the application
+            audit log alongside your name, the time, and the foreclosure quote.
           </DialogDescription>
         </DialogHeader>
 
@@ -118,9 +118,7 @@ export function ForeclosureRequestDialog({
                     }}
                   />
                 </FormControl>
-                <FormDescription>
-                  Up to 500 characters. Visible to auditors.
-                </FormDescription>
+                <FormDescription>Up to 500 characters. Visible to auditors.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -141,9 +139,7 @@ export function ForeclosureRequestDialog({
                     value={field.value ?? ""}
                   />
                 </FormControl>
-                <FormDescription>
-                  Up to 500 characters. Visible to auditors.
-                </FormDescription>
+                <FormDescription>Up to 500 characters. Visible to auditors.</FormDescription>
                 <FormMessage />
               </FormItem>
             )}

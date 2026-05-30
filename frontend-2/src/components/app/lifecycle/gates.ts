@@ -35,9 +35,7 @@ const DOCS_GATED_TARGETS: ReadonlySet<LoanStatus> = new Set([
 ]);
 
 /** Schedule gate only applies to the disbursement step (BR-10). */
-const SCHEDULE_GATED_TARGETS: ReadonlySet<LoanStatus> = new Set([
-  "DISBURSEMENT_IN_PROGRESS",
-]);
+const SCHEDULE_GATED_TARGETS: ReadonlySet<LoanStatus> = new Set(["DISBURSEMENT_IN_PROGRESS"]);
 
 export function resolveDisabledReason(
   action: LifecycleAction,
@@ -51,9 +49,7 @@ export function resolveDisabledReason(
   if (!hasPermission(role, action.permission)) {
     return "Insufficient permissions.";
   }
-  const rule = TRANSITIONS.find(
-    (r) => r.from === currentStatus && r.to === action.toStatus,
-  );
+  const rule = TRANSITIONS.find((r) => r.from === currentStatus && r.to === action.toStatus);
   if (!rule) {
     return "Transition not allowed from the current status.";
   }

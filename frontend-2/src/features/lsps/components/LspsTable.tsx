@@ -75,10 +75,7 @@ export function LspsTable({
         id: "code",
         header: "Code",
         cell: ({ row }) => (
-          <span
-            data-slot="lsps-code"
-            className="text-foreground font-mono text-sm font-medium"
-          >
+          <span data-slot="lsps-code" className="text-foreground font-mono text-sm font-medium">
             {row.original.code}
           </span>
         ),
@@ -86,9 +83,7 @@ export function LspsTable({
       {
         id: "name",
         header: "Name",
-        cell: ({ row }) => (
-          <span className="text-foreground text-sm">{row.original.name}</span>
-        ),
+        cell: ({ row }) => <span className="text-foreground text-sm">{row.original.name}</span>,
       },
       {
         id: "status",
@@ -133,9 +128,7 @@ export function LspsTable({
               </span>
             );
           }
-          return (
-            <span className="text-foreground-muted text-xs">Not configured</span>
-          );
+          return <span className="text-foreground-muted text-xs">Not configured</span>;
         },
       },
       {

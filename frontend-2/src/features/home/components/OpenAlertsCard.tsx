@@ -1,13 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- module co-exports SEVERITY_TOKEN for downstream consumers/tests */
 import { forwardRef } from "react";
 import { Link } from "react-router-dom";
-import {
-  AlertCircle,
-  AlertTriangle,
-  BellOff,
-  Info,
-  type LucideIcon,
-} from "lucide-react";
+import { AlertCircle, AlertTriangle, BellOff, Info, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { formatRelative } from "@/lib/format";
@@ -83,11 +77,7 @@ export const OpenAlertsCard = forwardRef<HTMLDivElement, OpenAlertsCardProps>(
         </CardHeader>
         <CardContent>
           {alerts.length === 0 ? (
-            <EmptyState
-              icon={BellOff}
-              title="No open alerts"
-              description="You're all caught up."
-            />
+            <EmptyState icon={BellOff} title="No open alerts" description="You're all caught up." />
           ) : (
             <ul className="flex flex-col gap-2" data-slot="open-alerts-list">
               {alerts.map((alert) => {
@@ -99,10 +89,7 @@ export const OpenAlertsCard = forwardRef<HTMLDivElement, OpenAlertsCardProps>(
                     data-slot="alert-row"
                     data-severity={alert.severity}
                     data-token={meta.token}
-                    className={cn(
-                      "flex items-start gap-3 rounded-md border p-3",
-                      meta.classes,
-                    )}
+                    className={cn("flex items-start gap-3 rounded-md border p-3", meta.classes)}
                   >
                     <Icon
                       aria-hidden="true"
@@ -110,11 +97,9 @@ export const OpenAlertsCard = forwardRef<HTMLDivElement, OpenAlertsCardProps>(
                     />
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
                       <div className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="text-foreground text-sm font-medium">
-                          {alert.title}
-                        </span>
+                        <span className="text-foreground text-sm font-medium">{alert.title}</span>
                         <span
-                          className="text-foreground-muted text-xs uppercase tracking-wide"
+                          className="text-foreground-muted text-xs tracking-wide uppercase"
                           aria-label={`Severity ${meta.label}`}
                         >
                           {meta.label}
@@ -124,7 +109,7 @@ export const OpenAlertsCard = forwardRef<HTMLDivElement, OpenAlertsCardProps>(
                         {alert.subjectType === "LOAN_APPLICATION" ? (
                           <Link
                             to={`/loan-applications/${alert.subjectId}`}
-                            className="text-info hover:underline font-mono"
+                            className="text-info font-mono hover:underline"
                           >
                             {alert.subjectId.slice(0, 8)}
                           </Link>

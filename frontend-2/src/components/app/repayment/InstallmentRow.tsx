@@ -66,10 +66,7 @@ function InstallmentRowImpl({
   const visual = STATUS_VISUAL[installment.status];
   const Icon = visual.icon;
   const showAction =
-    Boolean(onRecordPayment)
-    && isNextDue
-    && installment.status !== "PAID"
-    && outstandingAmount > 0;
+    Boolean(onRecordPayment) && isNextDue && installment.status !== "PAID" && outstandingAmount > 0;
 
   return (
     <TableRow data-slot="installment-row" data-status={installment.status}>
@@ -93,20 +90,14 @@ function InstallmentRowImpl({
       <TableCell className="py-2 text-right text-sm" {...TABULAR_ATTR}>
         {formatINR(installment.interestDue, { decimals: 2 })}
       </TableCell>
-      <TableCell
-        className="py-2 text-right text-sm font-medium"
-        {...TABULAR_ATTR}
-      >
+      <TableCell className="py-2 text-right text-sm font-medium" {...TABULAR_ATTR}>
         {formatINR(installment.installmentAmount, { decimals: 2 })}
       </TableCell>
       <TableCell className="py-2 text-right text-sm" {...TABULAR_ATTR}>
         {formatINR(outstandingAmount, { decimals: 2 })}
       </TableCell>
       <TableCell className="py-2 text-sm">
-        <Badge
-          data-slot="installment-status-badge"
-          className={cn("gap-1", visual.className)}
-        >
+        <Badge data-slot="installment-status-badge" className={cn("gap-1", visual.className)}>
           <Icon aria-hidden="true" className="size-3" />
           <span>{visual.label}</span>
         </Badge>

@@ -31,10 +31,7 @@ import { Input } from "@/components/ui/input";
 import { FormShell } from "@/components/app/forms/FormShell";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import type { CreateProductInput } from "../types";
-import {
-  CreateProductFormSchema,
-  type CreateProductFormValues,
-} from "./schema";
+import { CreateProductFormSchema, type CreateProductFormValues } from "./schema";
 import type { LspChoice } from "../hooks/useLspChoices";
 import { LspMultiSelect } from "./LspMultiSelect";
 
@@ -114,8 +111,8 @@ export function ProductCreateDialog({
             <DialogTitle>New loan product</DialogTitle>
           </div>
           <DialogDescription>
-            Configure a new loan product. The code must be unique across the
-            catalog. Mapping to LSPs can be edited later.
+            Configure a new loan product. The code must be unique across the catalog. Mapping to
+            LSPs can be edited later.
           </DialogDescription>
         </DialogHeader>
 
@@ -151,10 +148,7 @@ export function ProductCreateDialog({
                 <FormItem>
                   <FormLabel>Name</FormLabel>
                   <FormControl>
-                    <Input
-                      placeholder="Personal Loan — Standard"
-                      {...field}
-                    />
+                    <Input placeholder="Personal Loan — Standard" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -327,8 +321,8 @@ export function ProductCreateDialog({
                   />
                 </FormControl>
                 <FormDescription>
-                  Pick the LSPs this product is offered to. You can change this
-                  later from the row actions menu.
+                  Pick the LSPs this product is offered to. You can change this later from the row
+                  actions menu.
                 </FormDescription>
                 <FormMessage />
               </FormItem>

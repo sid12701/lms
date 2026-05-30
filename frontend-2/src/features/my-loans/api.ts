@@ -200,15 +200,13 @@ function backendToDetail(payload: BackendLspDetail): MyLoanDetail {
             ? {
                 bucket: payload.loanAccount.delinquency.bucket,
                 overdueAmount: toNumber(payload.loanAccount.delinquency.overdueAmount),
-                overdueInstallmentCount:
-                  payload.loanAccount.delinquency.overdueInstallmentCount,
+                overdueInstallmentCount: payload.loanAccount.delinquency.overdueInstallmentCount,
                 maxDaysPastDue: payload.loanAccount.delinquency.maxDaysPastDue,
               }
             : null,
           repaymentSchedule: payload.loanAccount.repaymentSchedule
             ? {
-                installmentCount:
-                  payload.loanAccount.repaymentSchedule.installmentCount,
+                installmentCount: payload.loanAccount.repaymentSchedule.installmentCount,
                 installmentAmount: toNumber(
                   payload.loanAccount.repaymentSchedule.installmentAmount,
                 ),
@@ -224,18 +222,14 @@ function backendToDetail(payload: BackendLspDetail): MyLoanDetail {
 /** GET `/api/v1/lsp/loan-applications/{id}`. */
 export async function fetchMyLoanDetail(id: string): Promise<MyLoanDetail> {
   ensureLspSession();
-  const payload = await requestJson<BackendLspDetail>(
-    `${LSP_BASE}/${encodeURIComponent(id)}`,
-  );
+  const payload = await requestJson<BackendLspDetail>(`${LSP_BASE}/${encodeURIComponent(id)}`);
   return backendToDetail(payload);
 }
 
 /** GET `/api/v1/lsp/loan-applications/invalid-reasons`. */
 export async function fetchInvalidReasons(): Promise<InvalidReasonOption[]> {
   ensureLspSession();
-  const rows = await requestJson<BackendInvalidReasonOption[]>(
-    `${LSP_BASE}/invalid-reasons`,
-  );
+  const rows = await requestJson<BackendInvalidReasonOption[]>(`${LSP_BASE}/invalid-reasons`);
   return rows.map((row) => ({
     code: row.code,
     label: row.label,
@@ -449,10 +443,7 @@ export async function uploadLspDocumentsBatch(
     note: d.metadata.note ?? null,
     sourceReference: d.metadata.sourceReference ?? null,
   }));
-  form.append(
-    "documents",
-    new Blob([JSON.stringify(metadata)], { type: "application/json" }),
-  );
+  form.append("documents", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
   for (const d of input.documents) {
     form.append("files", d.file);
   }

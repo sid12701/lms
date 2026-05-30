@@ -13,11 +13,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Calendar, Check, ChevronDown, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -253,7 +249,7 @@ export function LoanApplicationsFilterBar({
         className,
       )}
     >
-      <label className="relative flex-1 min-w-[200px]">
+      <label className="relative min-w-[200px] flex-1">
         <span className="sr-only">Search applications</span>
         <Search
           aria-hidden="true"
@@ -266,7 +262,7 @@ export function LoanApplicationsFilterBar({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search borrower, PAN, mobile, city"
           aria-label="Search loan applications"
-          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pl-7.5 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pr-2 pl-7.5 text-sm outline-none focus-visible:ring-[3px]"
         />
       </label>
 
@@ -308,9 +304,7 @@ export function LoanApplicationsFilterBar({
 
       <StatusMultiSelect
         selected={filters.status ?? []}
-        onChange={(next) =>
-          setFilters({ status: next.length > 0 ? next : undefined, page: 0 })
-        }
+        onChange={(next) => setFilters({ status: next.length > 0 ? next : undefined, page: 0 })}
       />
 
       <SingleSelect
@@ -339,7 +333,7 @@ export function LoanApplicationsFilterBar({
             })
           }
           aria-label="Disbursed from"
-          className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-40 rounded-md border pl-8 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+          className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-40 rounded-md border pr-2 pl-8 text-sm outline-none focus-visible:ring-[3px]"
         />
       </label>
 
@@ -360,7 +354,7 @@ export function LoanApplicationsFilterBar({
             })
           }
           aria-label="Disbursed to"
-          className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-40 rounded-md border pl-8 pr-2 text-sm outline-none focus-visible:ring-[3px]"
+          className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-40 rounded-md border pr-2 pl-8 text-sm outline-none focus-visible:ring-[3px]"
         />
       </label>
 

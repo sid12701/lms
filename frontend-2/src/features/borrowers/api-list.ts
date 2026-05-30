@@ -16,11 +16,7 @@ import { z } from "zod";
 import { ApiError, requestJson } from "@/lib/api/http-client";
 import { dispatch } from "@/mocks/router";
 import { loadStoredSession } from "@/lib/api/session-storage";
-import type {
-  BorrowerListFilters,
-  BorrowerListResponse,
-  BorrowerSummary,
-} from "./list-types";
+import type { BorrowerListFilters, BorrowerListResponse, BorrowerSummary } from "./list-types";
 
 const BACKEND_BASE = "/api/v1/internal/admin/borrowers";
 const MOCK_BASE = "/api/v1/borrowers";
@@ -55,8 +51,7 @@ export function buildBorrowersListQuery(filters: BorrowerListFilters): string {
   const trimmedQ = filters.q?.trim();
   if (trimmedQ && trimmedQ.length > 0) params.set("q", trimmedQ);
 
-  const paginate =
-    typeof filters.page === "number" || typeof filters.pageSize === "number";
+  const paginate = typeof filters.page === "number" || typeof filters.pageSize === "number";
   if (paginate) {
     const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
     const page = filters.page ?? 0;

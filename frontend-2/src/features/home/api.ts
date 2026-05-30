@@ -190,7 +190,7 @@ export function mapBackendHomeOverviewToInternalKpis(
   const openAlerts: HomeAlertSummary[] = overview.openAlertSummaries.map((alert) => ({
     id: alert.id,
     severity: AlertSeverity.safeParse(alert.severity).success
-      ? (AlertSeverity.parse(alert.severity))
+      ? AlertSeverity.parse(alert.severity)
       : "MEDIUM",
     title: alert.title,
     subjectType: safeAlertSubjectType(alert.subjectType),
@@ -232,9 +232,7 @@ export async function fetchHomeKpis(): Promise<HomeKpis> {
     );
   }
   try {
-    const overview = await requestJson<BackendHomeOverview>(
-      "/api/v1/internal/home/overview",
-    );
+    const overview = await requestJson<BackendHomeOverview>("/api/v1/internal/home/overview");
     return { kind: "internal", data: mapBackendHomeOverviewToInternalKpis(overview) };
   } catch (error) {
     if (!(error instanceof ApiError) || error.status >= 500) {

@@ -17,11 +17,7 @@ import type {
   EscalateAlertInput,
   EscalateAlertResponse,
 } from "./types";
-import type {
-  AlertSeverity,
-  AlertStatus,
-  AlertSubjectType,
-} from "@/schemas/alert";
+import type { AlertSeverity, AlertStatus, AlertSubjectType } from "@/schemas/alert";
 
 const BASE = "/api/v1/internal/alerts";
 const FALLBACK_UUID = "00000000-0000-4000-8000-000000000000";
@@ -97,9 +93,7 @@ function toAlertRow(payload: BackendAlertResponse): AlertRow {
   };
 }
 
-export async function listAlerts(
-  filters: AlertsListFilters = {},
-): Promise<AlertsListResponse> {
+export async function listAlerts(filters: AlertsListFilters = {}): Promise<AlertsListResponse> {
   const path = buildQueryPath(BASE, {
     status: backendStatus(filters.status),
   });
@@ -153,9 +147,7 @@ export async function acknowledgeAlert(
  * Used from the loan-detail page when ops needs admin to intervene on a
  * loan that is stuck or otherwise needs an out-of-band review.
  */
-export async function escalateAlert(
-  input: EscalateAlertInput,
-): Promise<EscalateAlertResponse> {
+export async function escalateAlert(input: EscalateAlertInput): Promise<EscalateAlertResponse> {
   const body = {
     subjectType: input.subjectType,
     subjectId: input.subjectId,

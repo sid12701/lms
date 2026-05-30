@@ -37,15 +37,11 @@ describe("fetchBorrowerLoans", () => {
   it("dispatches GET to the loans endpoint", async () => {
     let capturedPath: string | null = null;
     let capturedMethod: string | null = null;
-    registerRoute(
-      "GET",
-      "/api/v1/borrowers/:id/loans",
-      (req: MockRequest) => {
-        capturedPath = req.path;
-        capturedMethod = req.method;
-        return { loans: [] };
-      },
-    );
+    registerRoute("GET", "/api/v1/borrowers/:id/loans", (req: MockRequest) => {
+      capturedPath = req.path;
+      capturedMethod = req.method;
+      return { loans: [] };
+    });
 
     const result = await fetchBorrowerLoans(BORROWER_ID);
 

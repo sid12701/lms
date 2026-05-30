@@ -47,18 +47,14 @@ describe("ActivityTab", () => {
     activityHookMock.mockReturnValue(
       buildResult({ isError: true, error: new Error("boom"), refetch }),
     );
-    const { getByRole, getByText } = renderWithProviders(
-      <ActivityTab applicationId="app-1" />,
-    );
+    const { getByRole, getByText } = renderWithProviders(<ActivityTab applicationId="app-1" />);
     expect(getByText("Couldn't load activity")).toBeInTheDocument();
     getByRole("button", { name: /retry/i }).click();
     expect(refetch).toHaveBeenCalled();
   });
 
   it("renders an empty timeline when there are no events", () => {
-    activityHookMock.mockReturnValue(
-      buildResult({ isSuccess: true, data: { events: [] } }),
-    );
+    activityHookMock.mockReturnValue(buildResult({ isSuccess: true, data: { events: [] } }));
     const { getByText } = renderWithProviders(<ActivityTab applicationId="app-1" />);
     expect(getByText("No activity yet")).toBeInTheDocument();
   });
@@ -86,9 +82,7 @@ describe("ActivityTab", () => {
         } as LoanApplicationActivityResponse,
       }),
     );
-    const { container, getAllByText } = renderWithProviders(
-      <ActivityTab applicationId="app-1" />,
-    );
+    const { container, getAllByText } = renderWithProviders(<ActivityTab applicationId="app-1" />);
     expect(container.querySelector('[data-slot="audit-timeline"]')).not.toBeNull();
     // AuditEventNode renders the verb in both the headline (UNDER_REVIEW → APPROVED)
     // and the detail body — `findAllByText` handles the dual match.

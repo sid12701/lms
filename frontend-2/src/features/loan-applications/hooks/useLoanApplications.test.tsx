@@ -8,10 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import type {
-  LoanApplicationListFilters,
-  LoanApplicationListResponse,
-} from "../types";
+import type { LoanApplicationListFilters, LoanApplicationListResponse } from "../types";
 
 const FIXTURE: LoanApplicationListResponse = {
   items: [
@@ -40,15 +37,11 @@ const fetchLoanApplicationsMock =
   vi.fn<(f: LoanApplicationListFilters) => Promise<LoanApplicationListResponse>>();
 
 vi.mock("../api", () => ({
-  fetchLoanApplications: (f: LoanApplicationListFilters) =>
-    fetchLoanApplicationsMock(f),
+  fetchLoanApplications: (f: LoanApplicationListFilters) => fetchLoanApplicationsMock(f),
 }));
 
 // Import AFTER vi.mock so the hook picks up the mocked module.
-import {
-  useLoanApplications,
-  LOAN_APPLICATIONS_LIST_QUERY_KEY,
-} from "./useLoanApplications";
+import { useLoanApplications, LOAN_APPLICATIONS_LIST_QUERY_KEY } from "./useLoanApplications";
 
 function makeWrapper() {
   const client = new QueryClient({

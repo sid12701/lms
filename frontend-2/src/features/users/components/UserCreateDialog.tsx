@@ -159,8 +159,7 @@ export function UserCreateDialog({
             <DialogTitle>New user</DialogTitle>
           </div>
           <DialogDescription>
-            Create a console or LSP user. A temporary password is generated
-            and shown exactly once.
+            Create a console or LSP user. A temporary password is generated and shown exactly once.
           </DialogDescription>
         </DialogHeader>
 
@@ -206,12 +205,7 @@ export function UserCreateDialog({
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input
-                      type="email"
-                      placeholder="user@example.com"
-                      maxLength={254}
-                      {...field}
-                    />
+                    <Input type="email" placeholder="user@example.com" maxLength={254} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -225,10 +219,7 @@ export function UserCreateDialog({
                 <FormItem>
                   <FormLabel>Role</FormLabel>
                   <FormControl>
-                    <Select
-                      value={field.value}
-                      onValueChange={(v) => field.onChange(v as Role)}
-                    >
+                    <Select value={field.value} onValueChange={(v) => field.onChange(v as Role)}>
                       <SelectTrigger aria-label="Role" data-slot="user-create-role">
                         <SelectValue />
                       </SelectTrigger>
@@ -256,20 +247,13 @@ export function UserCreateDialog({
                     <FormControl>
                       <Select
                         value={field.value ?? LSP_SELECT_NONE}
-                        onValueChange={(v) =>
-                          field.onChange(v === LSP_SELECT_NONE ? null : v)
-                        }
+                        onValueChange={(v) => field.onChange(v === LSP_SELECT_NONE ? null : v)}
                       >
-                        <SelectTrigger
-                          aria-label="LSP"
-                          data-slot="user-create-lsp"
-                        >
+                        <SelectTrigger aria-label="LSP" data-slot="user-create-lsp">
                           <SelectValue placeholder="Select an LSP" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={LSP_SELECT_NONE}>
-                            Select an LSP
-                          </SelectItem>
+                          <SelectItem value={LSP_SELECT_NONE}>Select an LSP</SelectItem>
                           {lspOptions.map((o) => (
                             <SelectItem key={o.id} value={o.id}>
                               {o.name}
@@ -278,9 +262,7 @@ export function UserCreateDialog({
                         </SelectContent>
                       </Select>
                     </FormControl>
-                    <FormDescription>
-                      Required for tenant-scoped roles.
-                    </FormDescription>
+                    <FormDescription>Required for tenant-scoped roles.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

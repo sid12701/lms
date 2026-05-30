@@ -58,19 +58,14 @@ describe("ScheduleTable", () => {
   });
 
   it("renders an empty state when there are no installments", () => {
-    const { getByText } = renderWithProviders(
-      <ScheduleTable installments={[]} />,
-    );
+    const { getByText } = renderWithProviders(<ScheduleTable installments={[]} />);
     expect(getByText(/no installments scheduled/i)).toBeInTheDocument();
   });
 
   it("forwards onRecordPayment from the first non-paid (next-due) row only", async () => {
     const onRecordPayment = vi.fn();
     const { getAllByRole } = renderWithProviders(
-      <ScheduleTable
-        installments={INSTALLMENTS}
-        onRecordPayment={onRecordPayment}
-      />,
+      <ScheduleTable installments={INSTALLMENTS} onRecordPayment={onRecordPayment} />,
     );
     const buttons = getAllByRole("button", { name: /record payment/i });
     // Only the next-due (#2) renders an action button.
@@ -95,10 +90,7 @@ describe("ScheduleTable", () => {
 
   it("has no axe violations", async () => {
     const { container } = renderWithProviders(
-      <ScheduleTable
-        installments={INSTALLMENTS}
-        onRecordPayment={() => {}}
-      />,
+      <ScheduleTable installments={INSTALLMENTS} onRecordPayment={() => {}} />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });

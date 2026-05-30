@@ -149,10 +149,7 @@ describe("reports.listRequests / createRequest", () => {
   it("BR-5: replays under the same idempotencyKey without a second insert", async () => {
     await auth.login({ username: "ops.admin", password: "any" });
     const key = "test-create-replay";
-    const first = await reports.createRequest(
-      { type: "PORTFOLIO_MIS" },
-      { idempotencyKey: key },
-    );
+    const first = await reports.createRequest({ type: "PORTFOLIO_MIS" }, { idempotencyKey: key });
     const second = await reports.createRequest(
       { type: "PORTFOLIO_MIS", lspId: LSP_BHAW_DEMO },
       { idempotencyKey: key },

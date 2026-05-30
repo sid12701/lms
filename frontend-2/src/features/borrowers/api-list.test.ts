@@ -58,9 +58,9 @@ describe("buildBorrowersListQuery", () => {
   });
 
   it("encodes the search query, offset, and limit", () => {
-    expect(
-      buildBorrowersListQuery({ q: "rahul", page: 2, pageSize: 25 }),
-    ).toBe("q=rahul&offset=50&limit=25&paginationDetails=ON");
+    expect(buildBorrowersListQuery({ q: "rahul", page: 2, pageSize: 25 })).toBe(
+      "q=rahul&offset=50&limit=25&paginationDetails=ON",
+    );
   });
 
   it("trims blank search queries", () => {
@@ -76,11 +76,7 @@ describe("buildBorrowersListQuery", () => {
 
 describe("fetchBorrowersList (mock fallback)", () => {
   it("parses an array response and surfaces it as { items, total }", async () => {
-    registerRoute(
-      "GET",
-      "/api/v1/borrowers",
-      () => [SUMMARY_A, SUMMARY_B],
-    );
+    registerRoute("GET", "/api/v1/borrowers", () => [SUMMARY_A, SUMMARY_B]);
 
     const result: BorrowerListResponse = await fetchBorrowersList({});
     expect(result.items).toHaveLength(2);
@@ -99,9 +95,7 @@ describe("fetchBorrowersList (mock fallback)", () => {
   });
 
   it("rejects payloads with non-string ids (drift detection)", async () => {
-    registerRoute("GET", "/api/v1/borrowers", () => [
-      { ...SUMMARY_A, id: 12345 },
-    ]);
+    registerRoute("GET", "/api/v1/borrowers", () => [{ ...SUMMARY_A, id: 12345 }]);
     await expect(fetchBorrowersList({})).rejects.toBeDefined();
   });
 

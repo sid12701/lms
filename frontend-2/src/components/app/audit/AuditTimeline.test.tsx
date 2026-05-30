@@ -60,8 +60,9 @@ describe("AuditTimeline", () => {
     const { container } = renderWithProviders(
       <AuditTimeline events={ALL_FIXTURES} compact now={FIXTURE_NOW} />,
     );
-    expect(container.querySelector('[data-slot="audit-timeline"]')?.getAttribute("data-compact"))
-      .toBe("true");
+    expect(
+      container.querySelector('[data-slot="audit-timeline"]')?.getAttribute("data-compact"),
+    ).toBe("true");
     const compactNodes = container.querySelectorAll('[data-compact="true"]');
     // 1 timeline + 6 nodes = 7
     expect(compactNodes.length).toBe(ALL_FIXTURES.length + 1);

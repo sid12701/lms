@@ -13,11 +13,7 @@ export const ForeclosureRequestSchema = z.object({
     .trim()
     .min(1, "Reason is required.")
     .max(500, "Reason must be 500 characters or fewer."),
-  note: z
-    .string()
-    .trim()
-    .max(500, "Note must be 500 characters or fewer.")
-    .optional(),
+  note: z.string().trim().max(500, "Note must be 500 characters or fewer.").optional(),
 });
 
 export type ForeclosureRequestValues = z.infer<typeof ForeclosureRequestSchema>;

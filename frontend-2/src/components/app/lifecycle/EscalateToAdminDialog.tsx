@@ -24,11 +24,7 @@ export interface EscalateToAdminDialogProps {
   title?: string;
   /** Optional context line above the form. */
   description?: string;
-  onConfirm: (args: {
-    title: string;
-    message: string;
-    idempotencyKey: string;
-  }) => Promise<void>;
+  onConfirm: (args: { title: string; message: string; idempotencyKey: string }) => Promise<void>;
   /** Disables submit while the network call is in-flight. */
   loading?: boolean;
 }
@@ -101,7 +97,7 @@ export function EscalateToAdminDialog({
       <DialogContent>
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-warning" aria-hidden="true" />
+            <AlertTriangle className="text-warning h-5 w-5" aria-hidden="true" />
             <DialogTitle>{title ?? "Escalate to admin"}</DialogTitle>
           </div>
           <DialogDescription>

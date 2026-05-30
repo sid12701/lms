@@ -8,12 +8,10 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { PostRepaymentInput } from "../types";
 
-const postRepaymentMock =
-  vi.fn<(id: string, input: PostRepaymentInput) => Promise<void>>();
+const postRepaymentMock = vi.fn<(id: string, input: PostRepaymentInput) => Promise<void>>();
 
 vi.mock("../api-tabs", () => ({
-  postRepayment: (id: string, input: PostRepaymentInput) =>
-    postRepaymentMock(id, input),
+  postRepayment: (id: string, input: PostRepaymentInput) => postRepaymentMock(id, input),
 }));
 
 // Import AFTER vi.mock so the hook picks up the mocked module.

@@ -16,9 +16,7 @@ describe("RepaymentPostDialog", () => {
         onConfirm={() => {}}
       />,
     );
-    expect(
-      getByRole("heading", { name: /record repayment/i }),
-    ).toBeInTheDocument();
+    expect(getByRole("heading", { name: /record repayment/i })).toBeInTheDocument();
     expect(getByLabelText(/amount/i)).toBeInTheDocument();
   });
 

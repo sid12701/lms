@@ -70,10 +70,7 @@ export function DocumentChecklistRow({
         </div>
 
         {doc.fileName ? (
-          <p
-            data-slot="document-file-meta"
-            className="text-foreground-muted text-xs"
-          >
+          <p data-slot="document-file-meta" className="text-foreground-muted text-xs">
             <span className="text-foreground font-mono">{doc.fileName}</span>
             <span aria-hidden="true"> · </span>
             <span>{formatBytes(doc.sizeBytes)}</span>
@@ -90,8 +87,7 @@ export function DocumentChecklistRow({
 
         {doc.uploadedAt ? (
           <p className="text-foreground-subtle text-xs">
-            Uploaded{" "}
-            <time dateTime={doc.uploadedAt}>{formatDateTime(doc.uploadedAt)}</time>{" "}
+            Uploaded <time dateTime={doc.uploadedAt}>{formatDateTime(doc.uploadedAt)}</time>{" "}
             <span className="text-foreground-subtle">({formatRelative(doc.uploadedAt)})</span>
           </p>
         ) : null}

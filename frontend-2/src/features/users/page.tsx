@@ -107,10 +107,7 @@ function filtersToParams(filters: UsersListFilters): URLSearchParams {
 
 export function UsersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const filters = useMemo(
-    () => parseFiltersFromUrl(searchParams),
-    [searchParams],
-  );
+  const filters = useMemo(() => parseFiltersFromUrl(searchParams), [searchParams]);
 
   const setFilters = (next: UsersListFilters) => {
     setSearchParams(filtersToParams(next), { replace: false });
@@ -134,8 +131,7 @@ export function UsersPage() {
   // a typeahead.
   const lspsQuery = useLsps({ pageSize: 100 });
   const lspOptions = useMemo(
-    () =>
-      (lspsQuery.data?.items ?? []).map((l) => ({ id: l.id, name: l.name })),
+    () => (lspsQuery.data?.items ?? []).map((l) => ({ id: l.id, name: l.name })),
     [lspsQuery.data],
   );
 
@@ -234,11 +230,7 @@ export function UsersPage() {
       clearRevealed();
     }
   };
-  const handleResetConfirm = async ({
-    idempotencyKey,
-  }: {
-    idempotencyKey: string;
-  }) => {
+  const handleResetConfirm = async ({ idempotencyKey }: { idempotencyKey: string }) => {
     if (!resetTarget) return;
     try {
       const result = await reset.mutateAsync({
@@ -261,8 +253,7 @@ export function UsersPage() {
 
   // ── Toggle status (Enable / Disable) ────────────────────────────────────────
   const handleToggleStatus = (row: UserRow) => {
-    const nextStatus: UserStatusT =
-      row.status === "DISABLED" ? "ACTIVE" : "DISABLED";
+    const nextStatus: UserStatusT = row.status === "DISABLED" ? "ACTIVE" : "DISABLED";
     update.mutate({
       id: row.id,
       status: nextStatus,
@@ -271,21 +262,13 @@ export function UsersPage() {
   };
 
   return (
-    <div
-      data-testid="users-page"
-      className="flex flex-col gap-6 p-6"
-      data-density="comfortable"
-    >
+    <div data-testid="users-page" className="flex flex-col gap-6 p-6" data-density="comfortable">
       <PageHeader
         eyebrow="Administration"
         title="Users"
         description="Internal and LSP users — manage roles and tenant scope."
         actions={
-          <Button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            data-slot="users-new-button"
-          >
+          <Button type="button" onClick={() => setCreateOpen(true)} data-slot="users-new-button">
             <Plus aria-hidden="true" className="size-4" />
             New user
           </Button>
@@ -320,11 +303,7 @@ export function UsersPage() {
         />
       ) : (
         <>
-          <UsersFilterBar
-            filters={filters}
-            onChange={setFilters}
-            lspOptions={lspOptions}
-          />
+          <UsersFilterBar filters={filters} onChange={setFilters} lspOptions={lspOptions} />
           {!list.isPending &&
           (list.data?.total ?? 0) === 0 &&
           !filters.q &&
@@ -359,9 +338,7 @@ export function UsersPage() {
         createdUsername={revealedTempPassword?.username ?? null}
         onAcknowledgePassword={handleCreateAcknowledge}
         loading={create.isPending}
-        errorMessage={
-          create.isError ? extractErrorMessage(create.error) : null
-        }
+        errorMessage={create.isError ? extractErrorMessage(create.error) : null}
       />
 
       <UserEditDialog
@@ -371,9 +348,7 @@ export function UsersPage() {
         lspOptions={lspOptions}
         onConfirm={handleEditConfirm}
         loading={update.isPending}
-        errorMessage={
-          update.isError ? extractErrorMessage(update.error) : null
-        }
+        errorMessage={update.isError ? extractErrorMessage(update.error) : null}
       />
 
       <ResetPasswordDialog
@@ -381,11 +356,7 @@ export function UsersPage() {
         onOpenChange={handleResetOpenChange}
         username={resetTarget?.username ?? ""}
         onConfirm={handleResetConfirm}
-        temporaryPassword={
-          resetTarget !== null
-            ? revealedTempPassword?.password ?? null
-            : null
-        }
+        temporaryPassword={resetTarget !== null ? (revealedTempPassword?.password ?? null) : null}
         onAcknowledgePassword={handleResetAcknowledge}
         loading={reset.isPending}
         errorMessage={reset.isError ? extractErrorMessage(reset.error) : null}

@@ -73,10 +73,7 @@ export function ForeclosureSummaryCard({
               Quote stale
             </Badge>
           ) : (
-            <span
-              data-slot="quote-fresh-indicator"
-              className="text-foreground-muted text-xs"
-            >
+            <span data-slot="quote-fresh-indicator" className="text-foreground-muted text-xs">
               Quote fresh — expires{" "}
               <time dateTime={quoteValidUntil} className="tabular-nums">
                 {formattedValidUntil}

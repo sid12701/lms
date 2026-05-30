@@ -21,10 +21,7 @@ import {
   fetchLoanApplications,
   LoanApplicationListResponseSchema,
 } from "./api";
-import type {
-  LoanApplicationListItem,
-  LoanApplicationListResponse,
-} from "./types";
+import type { LoanApplicationListItem, LoanApplicationListResponse } from "./types";
 
 const ROW: LoanApplicationListItem = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -120,9 +117,7 @@ describe("LoanApplicationListResponseSchema", () => {
   });
 
   it("rejects negative totals", () => {
-    expect(() =>
-      LoanApplicationListResponseSchema.parse({ ...RESPONSE, total: -1 }),
-    ).toThrow();
+    expect(() => LoanApplicationListResponseSchema.parse({ ...RESPONSE, total: -1 })).toThrow();
   });
 
   it("rejects rows with an unknown status", () => {
@@ -136,14 +131,16 @@ describe("LoanApplicationListResponseSchema", () => {
 
 describe("fetchLoanApplications", () => {
   it("requests the backend pagination envelope with the enum value the API accepts", () => {
-    expect(backendQueryFromFilters({
-      page: 1,
-      pageSize: 10,
-      lspLoanId: "LSP-42",
-      bhawLoanId: "LMS-LN-42",
-      disbursalDateFrom: "2026-04-01",
-      disbursalDateTo: "2026-04-30",
-    })).toMatchObject({
+    expect(
+      backendQueryFromFilters({
+        page: 1,
+        pageSize: 10,
+        lspLoanId: "LSP-42",
+        bhawLoanId: "LMS-LN-42",
+        disbursalDateFrom: "2026-04-01",
+        disbursalDateTo: "2026-04-30",
+      }),
+    ).toMatchObject({
       lspLoanId: "LSP-42",
       bhawLoanId: "LMS-LN-42",
       disbursalDateFrom: "2026-04-01",
@@ -185,14 +182,10 @@ describe("fetchLoanApplications", () => {
     expect(expectedQuery).toContain("sortDir=asc");
 
     let captured: string | null = null;
-    registerRoute(
-      "GET",
-      `/api/v1/loan-applications?${expectedQuery}`,
-      (req: MockRequest) => {
-        captured = req.path;
-        return RESPONSE;
-      },
-    );
+    registerRoute("GET", `/api/v1/loan-applications?${expectedQuery}`, (req: MockRequest) => {
+      captured = req.path;
+      return RESPONSE;
+    });
     await fetchLoanApplications(filters);
     expect(captured).toBe(`/api/v1/loan-applications?${expectedQuery}`);
   });

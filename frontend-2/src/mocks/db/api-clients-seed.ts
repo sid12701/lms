@@ -75,12 +75,7 @@ const SEED_ROWS: readonly ApiClientSeedRow[] = [
     status: "ACTIVE",
     createdAt: SEED_TIMESTAMP,
     lastUsedAt: "2026-05-15T09:00:00.000Z",
-    ipAllowList: [
-      "10.10.0.0/16",
-      "10.20.0.0/16",
-      "10.30.0.0/16",
-      "203.0.113.0/24",
-    ],
+    ipAllowList: ["10.10.0.0/16", "10.20.0.0/16", "10.30.0.0/16", "203.0.113.0/24"],
   },
   {
     id: apiClientId(5),

@@ -89,10 +89,7 @@ export function RepaymentPostDialog({
   onConfirm,
   loading = false,
 }: RepaymentPostDialogProps) {
-  const schema = useMemo(
-    () => makeRepaymentPostSchema(outstandingAmount),
-    [outstandingAmount],
-  );
+  const schema = useMemo(() => makeRepaymentPostSchema(outstandingAmount), [outstandingAmount]);
 
   const initialPostedAt = defaultPostedAt ?? toLocalInputValue(new Date());
 
@@ -159,8 +156,8 @@ export function RepaymentPostDialog({
             <DialogTitle>Record repayment</DialogTitle>
           </div>
           <DialogDescription>
-            Post the full outstanding amount{subjectSuffix}. Per BR-13, partial
-            payments are not accepted — the amount must equal{" "}
+            Post the full outstanding amount{subjectSuffix}. Per BR-13, partial payments are not
+            accepted — the amount must equal{" "}
             <strong>{formatINR(outstandingAmount, { decimals: 2 })}</strong>.
           </DialogDescription>
         </DialogHeader>
@@ -200,10 +197,7 @@ export function RepaymentPostDialog({
               <FormItem>
                 <FormLabel>Posted at</FormLabel>
                 <FormControl>
-                  <Input
-                    type="datetime-local"
-                    {...field}
-                  />
+                  <Input type="datetime-local" {...field} />
                 </FormControl>
                 <FormDescription>
                   When the payment was actually received from the borrower.
@@ -220,15 +214,10 @@ export function RepaymentPostDialog({
               <FormItem>
                 <FormLabel>Bank reference (optional)</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="UTR / cheque no. / UPI tx id"
-                    maxLength={128}
-                    {...field}
-                  />
+                  <Input placeholder="UTR / cheque no. / UPI tx id" maxLength={128} {...field} />
                 </FormControl>
                 <FormDescription>
-                  Reconciliation reference — can be added later when the bank
-                  statement arrives.
+                  Reconciliation reference — can be added later when the bank statement arrives.
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -243,10 +232,7 @@ export function RepaymentPostDialog({
                 <FormLabel>Mode</FormLabel>
                 <Select value={field.value} onValueChange={field.onChange}>
                   <FormControl>
-                    <SelectTrigger
-                      aria-label="Repayment mode"
-                      className="w-full"
-                    >
+                    <SelectTrigger aria-label="Repayment mode" className="w-full">
                       <SelectValue placeholder="Select a mode" />
                     </SelectTrigger>
                   </FormControl>

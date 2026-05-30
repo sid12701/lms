@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  mapBackendPreviewRowToMisPreviewRow,
-  type BackendPreviewRow,
-} from "./api";
+import { mapBackendPreviewRowToMisPreviewRow, type BackendPreviewRow } from "./api";
 
 const BACKEND_ROW: BackendPreviewRow = {
   lspCode: "APEX",

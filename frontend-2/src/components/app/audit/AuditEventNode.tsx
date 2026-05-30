@@ -1,22 +1,11 @@
 import { forwardRef, type HTMLAttributes } from "react";
 import type { LucideIcon } from "lucide-react";
-import {
-  ArrowRightLeft,
-  Eye,
-  FileSearch,
-  FileText,
-  Package,
-} from "lucide-react";
+import { ArrowRightLeft, Eye, FileSearch, FileText, Package } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import type { Role } from "@/types";
-import {
-  AUDIT_STREAM_LABEL,
-  type AuditEvent,
-  type AuditStreamKind,
-  getAuditCommon,
-} from "./types";
+import { AUDIT_STREAM_LABEL, type AuditEvent, type AuditStreamKind, getAuditCommon } from "./types";
 
 export interface AuditEventNodeProps extends HTMLAttributes<HTMLLIElement> {
   entry: AuditEvent;
@@ -79,7 +68,10 @@ function summarize(entry: AuditEvent): { headline: string; detail: string | null
     case "DOCUMENT_ACCESS":
       return { headline: `Document ${entry.event.action.toLowerCase()}`, detail: null };
     case "PRODUCT":
-      return { headline: `Product ${entry.event.action.toLowerCase().replace(/_/g, " ")}`, detail: null };
+      return {
+        headline: `Product ${entry.event.action.toLowerCase().replace(/_/g, " ")}`,
+        detail: null,
+      };
   }
 }
 
@@ -115,7 +107,7 @@ export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
         <span
           aria-hidden="true"
           className={cn(
-            "border-border bg-surface absolute -left-2.5 top-3 inline-flex size-5 items-center justify-center rounded-full border",
+            "border-border bg-surface absolute top-3 -left-2.5 inline-flex size-5 items-center justify-center rounded-full border",
           )}
         >
           <Icon className={cn("size-3", "text-foreground-muted")} aria-hidden="true" />
@@ -125,7 +117,7 @@ export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
           <div className="flex flex-wrap items-center gap-2">
             <Badge
               data-slot="audit-event-kind"
-              className={cn("uppercase tracking-wide", KIND_CHIP_TONE[entry.kind])}
+              className={cn("tracking-wide uppercase", KIND_CHIP_TONE[entry.kind])}
             >
               {AUDIT_STREAM_LABEL[entry.kind]}
             </Badge>
@@ -141,10 +133,7 @@ export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
             </span>
             <span
               data-slot="audit-event-actor"
-              className={cn(
-                "text-foreground-muted",
-                compact ? "text-[11px]" : "text-xs",
-              )}
+              className={cn("text-foreground-muted", compact ? "text-[11px]" : "text-xs")}
               title={common.actorId}
             >
               {formatActor(common.actorId, common.actorRole)}
@@ -182,9 +171,7 @@ export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
           {detail ? (
             entry.kind === "PII_REVEAL" && detail.length > 60 ? (
               <details data-slot="audit-event-detail" className="text-foreground-muted text-xs">
-                <summary className="cursor-pointer select-none">
-                  {detail.slice(0, 60)}…
-                </summary>
+                <summary className="cursor-pointer select-none">{detail.slice(0, 60)}…</summary>
                 <p className="mt-1 leading-relaxed">{detail}</p>
               </details>
             ) : (

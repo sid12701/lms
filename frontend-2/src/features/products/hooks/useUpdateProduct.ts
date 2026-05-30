@@ -1,11 +1,7 @@
 /**
  * Mutation — update a loan product (any subset of mutable fields).
  */
-import {
-  useMutation,
-  useQueryClient,
-  type UseMutationResult,
-} from "@tanstack/react-query";
+import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { updateProduct } from "../api";
 import type { ProductMutationResponse, UpdateProductInput } from "../types";

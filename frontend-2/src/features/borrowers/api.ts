@@ -172,8 +172,7 @@ function backendToDetail(payload: BackendBorrowerDetail): BorrowerDetail {
     fathersName: payload.fatherName ?? "",
     spouseName: payload.spouseName,
     address: {
-      residential:
-        [payload.addressLine1, payload.addressLine2].filter(Boolean).join(", ") || "",
+      residential: [payload.addressLine1, payload.addressLine2].filter(Boolean).join(", ") || "",
       city: payload.city ?? "",
       state: payload.state ?? "",
       zip: payload.addressZipCode ?? "",
@@ -189,8 +188,7 @@ function backendToDetail(payload: BackendBorrowerDetail): BorrowerDetail {
       organization: payload.organizationName,
       employeeId: payload.employeeId,
       location:
-        [payload.employmentCity, payload.employmentState].filter(Boolean).join(", ") ||
-        null,
+        [payload.employmentCity, payload.employmentState].filter(Boolean).join(", ") || null,
       monthlyIncome: toNumber(payload.monthlyIncome),
       annualIncome: toNumber(payload.annualIncome),
     },
@@ -251,4 +249,3 @@ export async function fetchBorrowerDetail(id: string): Promise<BorrowerDetail> {
     BorrowerDetailSchema,
   );
 }
-

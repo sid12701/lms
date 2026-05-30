@@ -14,21 +14,13 @@ import {
 } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DataTable } from "@/components/app/data/DataTable";
 import { DataTablePagination } from "@/components/app/data/DataTablePagination";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { formatINR } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type {
-  ProductRow,
-  ProductsListFilters,
-  ProductsListResponse,
-} from "../types";
+import type { ProductRow, ProductsListFilters, ProductsListResponse } from "../types";
 
 export interface ProductsTableProps {
   data: ProductsListResponse | undefined;
@@ -68,10 +60,7 @@ export function ProductsTable({
         id: "code",
         header: "Code",
         cell: ({ row }) => (
-          <span
-            data-slot="products-code"
-            className="text-foreground font-mono text-sm font-medium"
-          >
+          <span data-slot="products-code" className="text-foreground font-mono text-sm font-medium">
             {row.original.code}
           </span>
         ),
@@ -81,9 +70,7 @@ export function ProductsTable({
         header: "Name",
         cell: ({ row }) => (
           <div className="flex flex-col gap-0.5">
-            <span className="text-foreground text-sm font-medium">
-              {row.original.name}
-            </span>
+            <span className="text-foreground text-sm font-medium">{row.original.name}</span>
             <span className="text-foreground-muted text-xs">
               {row.original.lspNames.length === 0
                 ? "Not mapped to any LSP"
@@ -120,11 +107,8 @@ export function ProductsTable({
         header: "Principal range",
         meta: { numeric: true },
         cell: ({ row }) => (
-          <span className="text-foreground tabular-nums text-sm">
-            {formatPrincipalRange(
-              row.original.principalMin,
-              row.original.principalMax,
-            )}
+          <span className="text-foreground text-sm tabular-nums">
+            {formatPrincipalRange(row.original.principalMin, row.original.principalMax)}
           </span>
         ),
       },
@@ -133,7 +117,7 @@ export function ProductsTable({
         header: "Interest",
         meta: { numeric: true },
         cell: ({ row }) => (
-          <span className="text-foreground tabular-nums text-sm">
+          <span className="text-foreground text-sm tabular-nums">
             {row.original.interestRatePct.toFixed(2)}%
           </span>
         ),
@@ -143,11 +127,8 @@ export function ProductsTable({
         header: "Tenure",
         meta: { numeric: true },
         cell: ({ row }) => (
-          <span className="text-foreground tabular-nums text-sm">
-            {formatTenureRange(
-              row.original.tenureMinMonths,
-              row.original.tenureMaxMonths,
-            )}
+          <span className="text-foreground text-sm tabular-nums">
+            {formatTenureRange(row.original.tenureMinMonths, row.original.tenureMaxMonths)}
           </span>
         ),
       },

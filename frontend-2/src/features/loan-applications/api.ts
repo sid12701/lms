@@ -44,7 +44,9 @@ const STATUS_PASS_THROUGH = new Set<LoanApplicationListItem["status"]>([
   "FORECLOSED",
 ]);
 
-export function mapBackendStatus(status: string | null | undefined): LoanApplicationListItem["status"] {
+export function mapBackendStatus(
+  status: string | null | undefined,
+): LoanApplicationListItem["status"] {
   if (!status) return "INITIALIZED";
   if (STATUS_PASS_THROUGH.has(status as LoanApplicationListItem["status"])) {
     return status as LoanApplicationListItem["status"];
@@ -77,9 +79,7 @@ function mapFrontendStatus(value: LoanApplicationListItem["status"]): string {
  * pass-through; legacy frontend-only values fold to their canonical
  * equivalents.
  */
-export function mapFrontendStatusToBackend(
-  value: LoanApplicationListItem["status"],
-): string {
+export function mapFrontendStatusToBackend(value: LoanApplicationListItem["status"]): string {
   switch (value) {
     case "INITIATED":
       return "INITIALIZED";
@@ -179,20 +179,20 @@ const FALLBACK_ITEM_SCHEMA = z.object({
   updatedAt: z.string().min(1),
 });
 
-export const LoanApplicationListResponseSchema: z.ZodType<LoanApplicationListResponse> = z.object(
-  {
-    items: z.array(FALLBACK_ITEM_SCHEMA).readonly(),
-    total: z.number().int().nonnegative(),
-    page: z.number().int().nonnegative(),
-    pageSize: z.number().int().positive(),
-  },
-);
+export const LoanApplicationListResponseSchema: z.ZodType<LoanApplicationListResponse> = z.object({
+  items: z.array(FALLBACK_ITEM_SCHEMA).readonly(),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().nonnegative(),
+  pageSize: z.number().int().positive(),
+});
 
 export function buildLoanApplicationsQuery(filters: LoanApplicationListFilters): string {
   const params = new URLSearchParams();
   if (filters.q && filters.q.trim() !== "") params.set("q", filters.q);
-  if (filters.lspLoanId && filters.lspLoanId.trim() !== "") params.set("lspLoanId", filters.lspLoanId);
-  if (filters.bhawLoanId && filters.bhawLoanId.trim() !== "") params.set("bhawLoanId", filters.bhawLoanId);
+  if (filters.lspLoanId && filters.lspLoanId.trim() !== "")
+    params.set("lspLoanId", filters.lspLoanId);
+  if (filters.bhawLoanId && filters.bhawLoanId.trim() !== "")
+    params.set("bhawLoanId", filters.bhawLoanId);
   if (filters.disbursalDateFrom) params.set("disbursalDateFrom", filters.disbursalDateFrom);
   if (filters.disbursalDateTo) params.set("disbursalDateTo", filters.disbursalDateTo);
   if (filters.status && filters.status.length > 0) {
@@ -212,8 +212,7 @@ export async function fetchLoanApplications(
 ): Promise<LoanApplicationListResponse> {
   const session = loadStoredSession();
   const role = session?.user.role;
-  const isInternal =
-    role === "SYSTEM_ADMIN" || role === "OPS_USER" || role === "PRODUCT_ADMIN";
+  const isInternal = role === "SYSTEM_ADMIN" || role === "OPS_USER" || role === "PRODUCT_ADMIN";
 
   if (isInternal) {
     try {
@@ -222,7 +221,7 @@ export async function fetchLoanApplications(
       const items = Array.isArray(payload)
         ? payload.map(toListItem)
         : (payload.items ?? []).map(toListItem);
-      const total = Array.isArray(payload) ? items.length : payload.totalCount ?? items.length;
+      const total = Array.isArray(payload) ? items.length : (payload.totalCount ?? items.length);
       const pageSize = filters.pageSize ?? 25;
       const page = filters.page ?? 0;
       return { items, total, page, pageSize };

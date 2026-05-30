@@ -112,8 +112,7 @@ describe("DevTopBarTools — Phase 7 lifecycle automation menu", () => {
 
     for (const item of [scheduleItem, foreclosureItem, lifecycleItem]) {
       const disabled =
-        item.getAttribute("aria-disabled") === "true" ||
-        item.hasAttribute("data-disabled");
+        item.getAttribute("aria-disabled") === "true" || item.hasAttribute("data-disabled");
       expect(disabled).toBe(true);
     }
   }, 15_000);
@@ -174,8 +173,6 @@ describe("DevTopBarTools — Phase 7 lifecycle automation menu", () => {
     // The dropdown trigger is rendered without a surrounding landmark in this
     // unit-test harness (in the real app it lives inside the TopBar / AppShell
     // landmarks). Disable the `region` rule for this isolated render.
-    expect(
-      await axe(baseElement, { rules: { region: { enabled: false } } }),
-    ).toHaveNoViolations();
+    expect(await axe(baseElement, { rules: { region: { enabled: false } } })).toHaveNoViolations();
   }, 15_000);
 });

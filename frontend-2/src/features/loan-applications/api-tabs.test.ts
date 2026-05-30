@@ -43,14 +43,10 @@ afterEach(() => {
 describe("fetchLoanApplicationSchedule", () => {
   it("dispatches GET to the schedule endpoint", async () => {
     let capturedPath: string | null = null;
-    registerRoute(
-      "GET",
-      "/api/v1/loan-applications/:id/schedule",
-      (req: MockRequest) => {
-        capturedPath = req.path;
-        return { schedule: null, installments: [] };
-      },
-    );
+    registerRoute("GET", "/api/v1/loan-applications/:id/schedule", (req: MockRequest) => {
+      capturedPath = req.path;
+      return { schedule: null, installments: [] };
+    });
     const result = await fetchLoanApplicationSchedule(APPLICATION_ID);
     expect(capturedPath).toBe(`/api/v1/loan-applications/${APPLICATION_ID}/schedule`);
     expect(result).toEqual({ schedule: null, installments: [] });
@@ -58,11 +54,10 @@ describe("fetchLoanApplicationSchedule", () => {
 
   it("returns installments when present", async () => {
     const inst = { id: "i-1", number: 1 };
-    registerRoute(
-      "GET",
-      "/api/v1/loan-applications/:id/schedule",
-      () => ({ schedule: { id: "s-1" }, installments: [inst] }),
-    );
+    registerRoute("GET", "/api/v1/loan-applications/:id/schedule", () => ({
+      schedule: { id: "s-1" },
+      installments: [inst],
+    }));
     const result = await fetchLoanApplicationSchedule(APPLICATION_ID);
     expect(result.installments).toHaveLength(1);
   });
@@ -77,14 +72,10 @@ describe("fetchLoanApplicationSchedule", () => {
 describe("fetchLoanApplicationDocuments", () => {
   it("dispatches GET to the documents endpoint", async () => {
     let capturedPath: string | null = null;
-    registerRoute(
-      "GET",
-      "/api/v1/loan-applications/:id/documents",
-      (req: MockRequest) => {
-        capturedPath = req.path;
-        return { documents: [] };
-      },
-    );
+    registerRoute("GET", "/api/v1/loan-applications/:id/documents", (req: MockRequest) => {
+      capturedPath = req.path;
+      return { documents: [] };
+    });
     const result = await fetchLoanApplicationDocuments(APPLICATION_ID);
     expect(capturedPath).toBe(`/api/v1/loan-applications/${APPLICATION_ID}/documents`);
     expect(result).toEqual({ documents: [] });
@@ -172,14 +163,10 @@ describe("fetchLoanApplicationDocuments", () => {
 describe("fetchLoanApplicationRepayments", () => {
   it("dispatches GET to the repayments endpoint", async () => {
     let capturedPath: string | null = null;
-    registerRoute(
-      "GET",
-      "/api/v1/loan-applications/:id/repayments",
-      (req: MockRequest) => {
-        capturedPath = req.path;
-        return { payments: [] };
-      },
-    );
+    registerRoute("GET", "/api/v1/loan-applications/:id/repayments", (req: MockRequest) => {
+      capturedPath = req.path;
+      return { payments: [] };
+    });
     const result = await fetchLoanApplicationRepayments(APPLICATION_ID);
     expect(capturedPath).toBe(`/api/v1/loan-applications/${APPLICATION_ID}/repayments`);
     expect(result).toEqual({ payments: [] });

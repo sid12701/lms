@@ -32,9 +32,7 @@ describe("<EscalateToAdminDialog />", () => {
     await user.click(titleInput);
     await user.paste("  Loan stuck in DISBURSEMENT_RETRY ");
     await user.click(messageInput);
-    await user.paste(
-      "  Disbursement adapter has failed repeatedly; please intervene.  ",
-    );
+    await user.paste("  Disbursement adapter has failed repeatedly; please intervene.  ");
     await user.click(await findByRole("button", { name: "Send escalation" }));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
@@ -44,9 +42,7 @@ describe("<EscalateToAdminDialog />", () => {
       idempotencyKey: string;
     };
     expect(args.title).toBe("Loan stuck in DISBURSEMENT_RETRY");
-    expect(args.message).toBe(
-      "Disbursement adapter has failed repeatedly; please intervene.",
-    );
+    expect(args.message).toBe("Disbursement adapter has failed repeatedly; please intervene.");
     expect(args.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
   });
 

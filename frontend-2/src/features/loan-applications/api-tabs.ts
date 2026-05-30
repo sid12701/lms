@@ -85,12 +85,7 @@ interface BackendScheduleRow {
   createdAt: string;
 }
 
-const INSTALLMENT_STATUSES = new Set([
-  "DUE",
-  "PARTIALLY_PAID",
-  "PAID",
-  "OVERDUE",
-]);
+const INSTALLMENT_STATUSES = new Set(["DUE", "PARTIALLY_PAID", "PAID", "OVERDUE"]);
 const DELINQUENCY_BUCKETS = new Set(["B0", "B1_30", "B31_60", "B61_90", "B90_PLUS"]);
 
 function safeInstallmentStatus(value: string): RepaymentInstallment["status"] {
@@ -217,11 +212,11 @@ function safeDocumentStatus(value: string): LoanDocument["status"] {
   // rows in the DB onto UPLOADED so existing data stays visible. NOT_REQUIRED
   // surfaces as PENDING in the UI (optional placeholder).
   if (
-    value === "SUBMITTED"
-    || value === "UPLOADED"
-    || value === "PENDING_REVIEW"
-    || value === "VERIFIED"
-    || value === "REJECTED"
+    value === "SUBMITTED" ||
+    value === "UPLOADED" ||
+    value === "PENDING_REVIEW" ||
+    value === "VERIFIED" ||
+    value === "REJECTED"
   ) {
     return "UPLOADED";
   }

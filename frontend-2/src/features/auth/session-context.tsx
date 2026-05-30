@@ -43,7 +43,9 @@ export function SessionProvider({
   skipBootstrap = false,
   initialSession = null,
 }: SessionProviderProps): ReactElement {
-  const [session, setSession] = useState<Session | null>(() => initialSession ?? loadStoredSession());
+  const [session, setSession] = useState<Session | null>(
+    () => initialSession ?? loadStoredSession(),
+  );
   const [isLoading, setIsLoading] = useState<boolean>(
     !skipBootstrap && initialSession === null && loadStoredSession() === null,
   );

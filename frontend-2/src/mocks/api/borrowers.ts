@@ -124,18 +124,15 @@ function todayIsoDate(): string {
 }
 
 /** Sum overdue installment outstanding amounts across this borrower's accounts. */
-function computeActiveOverdue(
-  db: MockDb,
-  accountIds: ReadonlyArray<string>,
-): number {
+function computeActiveOverdue(db: MockDb, accountIds: ReadonlyArray<string>): number {
   if (accountIds.length === 0) return 0;
   const today = todayIsoDate();
   let total = 0;
   for (const acctId of accountIds) {
-    const installments: ReadonlyArray<RepaymentInstallment> =
-      db.installments.get(acctId) ?? [];
+    const installments: ReadonlyArray<RepaymentInstallment> = db.installments.get(acctId) ?? [];
     for (const inst of installments) {
-      const isOverdue = inst.status === "OVERDUE" || (inst.dueDate < today && inst.status !== "PAID");
+      const isOverdue =
+        inst.status === "OVERDUE" || (inst.dueDate < today && inst.status !== "PAID");
       if (isOverdue) {
         total += inst.outstandingAmount > 0 ? inst.outstandingAmount : inst.installmentAmount;
       }
@@ -242,11 +239,7 @@ function detailHandler(req: MockRequest, db: MockDb, correlationId: string): Bor
   return projectDetail(db, borrower);
 }
 
-function loansHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): BorrowerLoansResponse {
+function loansHandler(req: MockRequest, db: MockDb, correlationId: string): BorrowerLoansResponse {
   const session = requireSession(db, correlationId);
   const id = req.params?.["id"] ?? "";
   const borrower = loadBorrowerForSession(db, session, id, correlationId);

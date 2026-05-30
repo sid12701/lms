@@ -7,11 +7,7 @@
  */
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
-import {
-  KpiSkeleton,
-  CardSkeleton,
-  ChartSkeleton,
-} from "@/components/app/feedback/Skeletons";
+import { KpiSkeleton, CardSkeleton, ChartSkeleton } from "@/components/app/feedback/Skeletons";
 import { useSession } from "@/features/auth/session-context";
 import { defaultLandingFor } from "@/lib/role-gates";
 import { Navigate } from "react-router-dom";

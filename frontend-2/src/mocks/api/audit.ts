@@ -284,8 +284,7 @@ function applyFilters(rows: ReadonlyArray<AuditRow>, filters: ListFilters): Audi
     const needle = filters.q.toLowerCase();
     out = out.filter(
       (r) =>
-        r.headline.toLowerCase().includes(needle) ||
-        r.actorName.toLowerCase().includes(needle),
+        r.headline.toLowerCase().includes(needle) || r.actorName.toLowerCase().includes(needle),
     );
   }
   return out;
@@ -293,11 +292,7 @@ function applyFilters(rows: ReadonlyArray<AuditRow>, filters: ListFilters): Audi
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
-function eventsHandler(
-  req: MockRequest,
-  db: MockDb,
-  correlationId: string,
-): AuditEventsResponse {
+function eventsHandler(req: MockRequest, db: MockDb, correlationId: string): AuditEventsResponse {
   requireSystemAdmin(db, correlationId);
   const filters = parseQuery(req, correlationId);
 
@@ -348,9 +343,7 @@ interface RequestOptions {
   correlationId?: string;
 }
 
-function buildAuditEventsQueryParams(
-  query: AuditEventsQuery,
-): Record<string, string> {
+function buildAuditEventsQueryParams(query: AuditEventsQuery): Record<string, string> {
   const out: Record<string, string> = {};
   if (query.streams && query.streams.length > 0) {
     out["streams"] = query.streams.join(",");

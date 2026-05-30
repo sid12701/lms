@@ -65,9 +65,7 @@ describe("OverviewTab", () => {
 
   it("surfaces both gates with the right state", () => {
     const { getByText, getAllByText } = renderWithProviders(
-      <OverviewTab
-        detail={{ ...DETAIL, docsComplete: true, scheduleValid: false }}
-      />,
+      <OverviewTab detail={{ ...DETAIL, docsComplete: true, scheduleValid: false }} />,
     );
     expect(getByText(/Docs complete/)).toBeInTheDocument();
     expect(getAllByText(/Schedule missing/)[0]).toBeInTheDocument();

@@ -77,11 +77,7 @@ describe("DownloadAllAsZipButton", () => {
 
   it("is disabled when documents is empty", () => {
     const { getByRole } = renderWithProviders(
-      <DownloadAllAsZipButton
-        documents={[]}
-        onBeforeAccess={() => {}}
-        onZipReady={() => {}}
-      />,
+      <DownloadAllAsZipButton documents={[]} onBeforeAccess={() => {}} onZipReady={() => {}} />,
     );
     expect(getByRole("button", { name: /Download all \(0\)/ })).toBeDisabled();
   });
@@ -139,16 +135,11 @@ describe("DownloadAllAsZipButton", () => {
     const onZipReady = vi.fn();
     const docs = makeDocs(2);
     const { getByRole } = renderWithProviders(
-      <DownloadAllAsZipButton
-        documents={docs}
-        onBeforeAccess={() => {}}
-        onZipReady={onZipReady}
-      />,
+      <DownloadAllAsZipButton documents={docs} onBeforeAccess={() => {}} onZipReady={onZipReady} />,
     );
     await userEvent.click(getByRole("button"));
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
-    const blobArg = (URL.createObjectURL as unknown as ReturnType<typeof vi.fn>).mock
-      .calls[0]![0];
+    const blobArg = (URL.createObjectURL as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(blobArg).toBeInstanceOf(Blob);
     expect((blobArg as Blob).type).toBe("application/zip");
     expect(onZipReady).toHaveBeenCalledTimes(1);
@@ -190,9 +181,7 @@ describe("DownloadAllAsZipButton", () => {
     );
     await userEvent.click(getByRole("button"));
     expect(onZipReady).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(
-      expect.stringContaining("audit write failed"),
-    );
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("audit write failed"));
   });
 
   it("handles a non-Error thrown value with a generic message", async () => {
@@ -207,9 +196,7 @@ describe("DownloadAllAsZipButton", () => {
     );
     await userEvent.click(getByRole("button"));
     expect(onZipReady).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to prepare download"),
-    );
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Failed to prepare download"));
   });
 
   it("includes filename, mime, and size for each document in the synthesised blob", async () => {
@@ -223,11 +210,7 @@ describe("DownloadAllAsZipButton", () => {
       }),
     ];
     const { getByRole } = renderWithProviders(
-      <DownloadAllAsZipButton
-        documents={docs}
-        onBeforeAccess={() => {}}
-        onZipReady={onZipReady}
-      />,
+      <DownloadAllAsZipButton documents={docs} onBeforeAccess={() => {}} onZipReady={onZipReady} />,
     );
     await userEvent.click(getByRole("button"));
     const blob = (URL.createObjectURL as unknown as ReturnType<typeof vi.fn>).mock
