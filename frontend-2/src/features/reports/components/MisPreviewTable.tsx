@@ -110,7 +110,7 @@ export function MisPreviewTable({
     [pageIndex, pageSize],
   );
 
-  const rows = data?.items ?? [];
+  const rows = useMemo(() => data?.items ?? [], [data?.items]);
 
   const maxInstallments = useMemo(() => {
     let max = 0;

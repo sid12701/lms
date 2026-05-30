@@ -10,7 +10,10 @@
  * Submit mints a BR-5 idempotency key. Pre-fills from `initialSubscription`
  * when an existing subscription is present (or empty defaults otherwise).
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useSyncOnOpen } from "@/lib/hooks/use-sync-on-open";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Check, Webhook } from "lucide-react";
@@ -109,15 +112,9 @@ export function LspWebhookSubscriptionDialog({
     };
   }, [initialSubscription]);
 
-  useEffect(() => {
-    if (!open) {
-      form.reset(DEFAULT_VALUES);
-      return;
-    }
-    form.reset(initialValues);
-    const id = window.setTimeout(() => urlRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open, initialValues, form]);
+  useFlushOnClose(open, () => form.reset(DEFAULT_VALUES));
+  useSyncOnOpen(open, () => form.reset(initialValues));
+  useFocusOnOpen(open, urlRef);
 
   const handleSubmit = async (values: WebhookSubscriptionFormValues) => {
     if (!lspId) return;

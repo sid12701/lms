@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
 import { Link, useParams } from "react-router-dom";
 import {
   AlertTriangle,
@@ -98,14 +99,12 @@ function MarkInvalidDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      setReasonCode("");
-      setReasonText("");
-      setError(null);
-      setBusy(false);
-    }
-  }, [open]);
+  useFlushOnClose(open, () => {
+    setReasonCode("");
+    setReasonText("");
+    setError(null);
+    setBusy(false);
+  });
 
   const selected = useMemo(
     () => reasons.find((row) => row.code === reasonCode) ?? null,
@@ -237,7 +236,7 @@ function MaskedBorrowerCard({ detail }: MaskedBorrowerCardProps) {
             <h2 className="text-base font-semibold">Borrower PII (masked)</h2>
           </div>
           <p className="text-foreground-muted text-xs">
-            Identity numbers are masked everywhere. Re-issue the application if the borrower's
+            Identity numbers are masked everywhere. Re-issue the application if the borrower&apos;s
             identity needs to be re-verified.
           </p>
         </div>
@@ -508,11 +507,16 @@ export function MyLoanDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [markInvalidOpen, setMarkInvalidOpen] = useState(false);
 
+  const [prevId, setPrevId] = useState(id);
+  if (id !== prevId) {
+    setPrevId(id);
+    setLoading(true);
+    setError(null);
+  }
+
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     void fetchMyLoanDetail(id)
       .then((payload) => {
         if (!cancelled) setDetail(payload);

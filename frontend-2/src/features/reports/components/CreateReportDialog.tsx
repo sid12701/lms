@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FileBarChart2 } from "lucide-react";
@@ -75,17 +77,8 @@ export function CreateReportDialog({
 
   const lspIdRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      form.reset(defaults);
-      return;
-    }
-    // Focus the first input after Radix mounts the portaled dialog.
-    // useRef + setTimeout(0) keeps jsx-a11y/no-autofocus happy (project rule).
-    const id = window.setTimeout(() => lspIdRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- defaults derived from props each open
-  }, [open]);
+  useFlushOnClose(open, () => form.reset(defaults));
+  useFocusOnOpen(open, lspIdRef);
 
   const handleSubmit = async (values: CreateReportRequestFormValues) => {
     const trim = (v?: string) => (v && v.trim() !== "" ? v.trim() : null);

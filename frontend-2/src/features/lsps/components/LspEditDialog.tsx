@@ -4,7 +4,10 @@
  * `code` is shown as a read-only field (immutable post-create).
  * Only `name` and `status` flow through to the PATCH handler.
  */
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useSyncOnOpen } from "@/lib/hooks/use-sync-on-open";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Building2 } from "lucide-react";
@@ -71,15 +74,11 @@ export function LspEditDialog({
 
   const nameRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!open || !lsp) {
-      form.reset({ name: "", status: "ACTIVE" });
-      return;
-    }
-    form.reset({ name: lsp.name, status: lsp.status });
-    const id = window.setTimeout(() => nameRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open, lsp, form]);
+  useFlushOnClose(open, () => form.reset({ name: "", status: "ACTIVE" }));
+  useSyncOnOpen(open, () => {
+    if (lsp) form.reset({ name: lsp.name, status: lsp.status });
+  });
+  useFocusOnOpen(open, nameRef);
 
   const handleSubmit = async (values: EditLspFormValues) => {
     if (!lsp) return;

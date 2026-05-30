@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
+import { LOGIN_PAGE_HEADING } from "@/lib/product-branding";
 import { App } from "./App";
 
 describe("App", () => {
@@ -8,7 +9,7 @@ describe("App", () => {
     window.localStorage.removeItem("bhawana-lms-session");
     render(<App />);
     expect(
-      await screen.findByRole("heading", { level: 1, name: /bhawana capital lms/i }),
+      await screen.findByRole("heading", { level: 1, name: LOGIN_PAGE_HEADING }),
     ).toBeInTheDocument();
   });
 });

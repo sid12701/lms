@@ -538,7 +538,7 @@ const SCHEDULE_SUBMIT_ROLES = new Set<Role>([
 ]);
 
 // LSP-API foreclosure: the LSP supplies the final settlement amounts and the
-// LMS marks the loan FORECLOSED → CLOSED in a single shot.
+// LMS marks the loan application FORECLOSED (terminal; account also FORECLOSED).
 const CompleteForeclosureBodySchema = z.object({
   outstandingPrincipal: MoneyINR,
   accruedInterest: MoneyINR,
@@ -1083,8 +1083,8 @@ function submitScheduleHandler(
  *     only meaningful against a disbursed loan)
  *   - appends an `ADJUSTMENT` PaymentTransaction for the settlement total
  *   - marks every non-PAID installment PAID
- *   - records two transitions: status → FORECLOSED, then → CLOSED
- *   - closes the loan account with closureReason = "FORECLOSED"
+ *   - records a single terminal transition to FORECLOSED (aligned with backend Option B)
+ *   - closes the loan account as FORECLOSED with closureReason = "FORECLOSED"
  */
 function forecloseHandler(
   req: MockRequest,
@@ -1155,7 +1155,7 @@ function forecloseHandler(
   );
   db.installments.set(account.id, updatedInstallments);
 
-  // 3: transition app → FORECLOSED, then → CLOSED.
+  // 3: terminal application status FORECLOSED (no second transition to CLOSED).
   recordTransition(
     db,
     app,
@@ -1166,23 +1166,11 @@ function forecloseHandler(
     correlationId,
     "lsp-api.foreclose",
   );
-  const afterForeclosed = db.applications.get(app.id);
-  if (!afterForeclosed) throw new NotFoundError(correlationId, "application disappeared");
-  recordTransition(
-    db,
-    afterForeclosed,
-    "CLOSED",
-    session.userId,
-    "SYSTEM_ADMIN",
-    null,
-    correlationId,
-    "auto-close.foreclosed",
-  );
 
-  // 4: close the account.
+  // 4: close the account as FORECLOSED.
   const closedAccount: LoanAccount = {
     ...account,
-    accountStatus: "CLOSED",
+    accountStatus: "FORECLOSED",
     closedAt: parsed.data.settledAt,
     closureReason: "FORECLOSED",
   };
@@ -1190,7 +1178,7 @@ function forecloseHandler(
 
   return {
     applicationId: app.id,
-    finalStatus: "CLOSED",
+    finalStatus: "FORECLOSED",
     totalSettled: total,
   };
 }

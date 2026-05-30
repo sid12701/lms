@@ -4,7 +4,8 @@
  * RHF + Zod simply for symmetry with the other dialogs; the form payload is
  * a single `lspIds` array. The mock router emits a MAPPING_CHANGED audit row.
  */
-import { useEffect, useRef } from "react";
+import { useRef, useState } from "react";
+import { useSyncOnOpen } from "@/lib/hooks/use-sync-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Network } from "lucide-react";
@@ -65,19 +66,26 @@ export function ProductMappingDialog({
 
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    form.reset({ lspIds: [...initialLspIds] });
-    const id = window.setTimeout(() => {
-      // Focus the dropdown trigger for keyboard users.
+  const focusMappingTrigger = () => {
+    window.setTimeout(() => {
       const trigger = containerRef.current?.querySelector<HTMLButtonElement>(
         "[data-slot='lsp-multi-select-trigger']",
       );
       trigger?.focus();
     }, 0);
-    return () => window.clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- defaults rebuilt on open
-  }, [open, product?.id, initialLspIds.join(",")]);
+  };
+
+  useSyncOnOpen(open, () => {
+    form.reset({ lspIds: [...initialLspIds] });
+    focusMappingTrigger();
+  });
+
+  const mappingKey = `${product?.id ?? ""}:${initialLspIds.join(",")}`;
+  const [prevMappingKey, setPrevMappingKey] = useState(mappingKey);
+  if (open && mappingKey !== prevMappingKey) {
+    setPrevMappingKey(mappingKey);
+    form.reset({ lspIds: [...initialLspIds] });
+  }
 
   const handleSubmit = async (values: ProductMappingFormValues) => {
     await onConfirm({

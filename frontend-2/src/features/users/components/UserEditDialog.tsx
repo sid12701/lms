@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useSyncOnOpen } from "@/lib/hooks/use-sync-on-open";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { UserCog } from "lucide-react";
@@ -101,26 +103,19 @@ export function UserEditDialog({
 
   const emailRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!open || !user) {
-      return;
+  useSyncOnOpen(open, () => {
+    if (user) {
+      form.reset({
+        email: user.email,
+        role: user.role,
+        lspId: user.lspId,
+        status: user.status,
+      });
     }
-    form.reset({
-      email: user.email,
-      role: user.role,
-      lspId: user.lspId,
-      status: user.status,
-    });
-    const id = window.setTimeout(() => emailRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open, user, form]);
+  });
+  useFocusOnOpen(open, emailRef);
 
   const role = form.watch("role");
-  useEffect(() => {
-    if (!isTenantScopedRole(role) && form.getValues("lspId") !== null) {
-      form.setValue("lspId", null, { shouldValidate: false });
-    }
-  }, [role, form]);
 
   const handleSubmit = async (values: EditUserFormValues) => {
     await onConfirm({
@@ -178,7 +173,16 @@ export function UserEditDialog({
               <FormItem>
                 <FormLabel>Role</FormLabel>
                 <FormControl>
-                  <Select value={field.value} onValueChange={(v) => field.onChange(v as Role)}>
+                  <Select
+                    value={field.value}
+                    onValueChange={(v) => {
+                      const next = v as Role;
+                      field.onChange(next);
+                      if (!isTenantScopedRole(next)) {
+                        form.setValue("lspId", null, { shouldValidate: false });
+                      }
+                    }}
+                  >
                     <SelectTrigger aria-label="Role" data-slot="user-edit-role">
                       <SelectValue />
                     </SelectTrigger>

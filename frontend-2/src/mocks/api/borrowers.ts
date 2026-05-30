@@ -395,7 +395,7 @@ const BorrowerSummarySchema = z.object({
   visibleLspIds: z.array(z.string()).readonly(),
 });
 
-const BorrowerSummaryArraySchema = z.array(BorrowerSummarySchema);
+const _BorrowerSummaryArraySchema = z.array(BorrowerSummarySchema);
 
 let registered = false;
 export function registerBorrowerRoutes(): void {

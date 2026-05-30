@@ -33,12 +33,51 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      "react-refresh/only-export-components": [
+        "warn",
+        { allowConstantExport: true, allowExportNames: ["badgeVariants", "buttonVariants"] },
+      ],
       "react/react-in-jsx-scope": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+    },
+  },
+  {
+    files: [
+      "**/*Table*.tsx",
+      "**/DataTable.tsx",
+      "**/components-sandbox.tsx",
+      "**/ScheduleTable.tsx",
+      "**/LoansTab.tsx",
+    ],
+    rules: {
+      "react-hooks/incompatible-library": "off",
+    },
+  },
+  {
+    files: ["**/*-context.tsx", "**/session-context.tsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  {
+    files: ["**/*Dialog.tsx"],
+    rules: {
+      "react-hooks/incompatible-library": "off",
+    },
+  },
+  {
+    files: [
+      "src/components/ui/**",
+      "src/components/app/documents/DocumentChecklistRow.tsx",
+      "src/components/app/lifecycle/TransitionDisabledTooltip.tsx",
+      "src/features/alerts/components/AlertsTable.tsx",
+      "src/features/loan-applications/components/detail-tabs/DocumentsTab.tsx",
+    ],
+    rules: {
+      "react-refresh/only-export-components": "off",
     },
   },
   {

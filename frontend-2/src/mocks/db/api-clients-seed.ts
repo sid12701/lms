@@ -32,9 +32,7 @@ export function apiClientId(i: number): string {
   return `05000000-${pad4(i)}-4000-8000-000000000000`;
 }
 
-interface ApiClientSeedRow extends ApiClient {
-  // No extra fields — the seed row is the wire shape.
-}
+type ApiClientSeedRow = ApiClient;
 
 const SEED_ROWS: readonly ApiClientSeedRow[] = [
   {

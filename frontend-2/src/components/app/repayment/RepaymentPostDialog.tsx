@@ -1,4 +1,7 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useSyncOnOpen } from "@/lib/hooks/use-sync-on-open";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Receipt } from "lucide-react";
@@ -106,30 +109,26 @@ export function RepaymentPostDialog({
 
   const amountRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      form.reset({
-        amount: outstandingAmount,
-        postedAt: initialPostedAt,
-        mode: defaultMode,
-        reference: "",
-      });
-      return;
-    }
-    // Refresh defaults when the dialog re-opens against a different row.
+  const resetForm = useCallback(() => {
     form.reset({
       amount: outstandingAmount,
       postedAt: initialPostedAt,
       mode: defaultMode,
       reference: "",
     });
-    // Move focus to the amount input after Radix mounts the dialog. Using a
-    // ref + setTimeout(0) keeps jsx-a11y/no-autofocus happy.
-    const id = window.setTimeout(() => amountRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-    // We intentionally re-run on every open, plus when outstanding/mode change
-    // so the form picks up a fresh outstanding total without a parent remount.
-  }, [open, outstandingAmount, defaultMode, initialPostedAt, form]);
+  }, [form, outstandingAmount, initialPostedAt, defaultMode]);
+
+  useFlushOnClose(open, resetForm);
+  useSyncOnOpen(open, resetForm);
+
+  const formDepsKey = `${outstandingAmount}:${initialPostedAt}:${defaultMode}`;
+  const [prevFormDepsKey, setPrevFormDepsKey] = useState(formDepsKey);
+  if (open && formDepsKey !== prevFormDepsKey) {
+    setPrevFormDepsKey(formDepsKey);
+    resetForm();
+  }
+
+  useFocusOnOpen(open, amountRef);
 
   const handleSubmit = async (values: RepaymentPostValues) => {
     // The `<input type="datetime-local">` value omits seconds + timezone

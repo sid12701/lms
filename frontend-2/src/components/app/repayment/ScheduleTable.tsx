@@ -63,7 +63,6 @@ export function ScheduleTable({
     return firstUnpaid?.id;
   }, [installments, nextDueInstallmentId]);
 
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table is the project-mandated table primitive
   const table = useReactTable({
     data: installments,
     columns: COLUMNS,

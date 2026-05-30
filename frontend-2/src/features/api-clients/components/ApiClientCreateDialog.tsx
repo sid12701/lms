@@ -12,7 +12,9 @@
  * dialog unmounts (acknowledge or cancel), the cleartext is gone forever.
  * No persistence; no debug logging.
  */
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { KeyRound } from "lucide-react";
@@ -95,15 +97,11 @@ export function ApiClientCreateDialog({
 
   const nameRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      form.reset({ name: "", lspId: "", ipAllowList: [] });
-      setRevealed(null);
-      return;
-    }
-    const t = window.setTimeout(() => nameRef.current?.focus(), 0);
-    return () => window.clearTimeout(t);
-  }, [open, form]);
+  useFlushOnClose(open, () => {
+    form.reset({ name: "", lspId: "", ipAllowList: [] });
+    setRevealed(null);
+  });
+  useFocusOnOpen(open, nameRef);
 
   const handleSubmit = async (values: CreateApiClientValues) => {
     try {

@@ -185,7 +185,6 @@ export function DataTable<TData, TValue>({
     ...(onPaginationChange ? { onPaginationChange } : {}),
   };
 
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table is the project-mandated table primitive
   const table = useReactTable(tableOptions);
   const rows = table.getRowModel().rows;
 

@@ -404,10 +404,7 @@ describe("products.audit-sample", () => {
       "STATUS_CHANGED",
       "MAPPING_CHANGED",
     ]);
-    // Dump the sample for the report.
-    // eslint-disable-next-line no-console
     if (process.env["DUMP_AUDIT"] === "1") {
-      // eslint-disable-next-line no-console
       console.log(JSON.stringify(audits, null, 2));
     }
   });

@@ -500,7 +500,6 @@ function DataTableScaffold<TData>({
 }) {
   // Owns a live TanStack table instance so the toolbar (view options) and
   // pagination row can both read/write the same pagination + visibility state.
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table is the project-mandated table primitive
   const table = useReactTable<TData>({
     data: rows,
     columns,

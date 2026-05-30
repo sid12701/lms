@@ -146,7 +146,7 @@ export function AuditPage() {
 
   const query = useAuditEvents(queryFilters, { enabled: isSystemAdmin });
 
-  const rows = query.data?.items ?? [];
+  const rows = useMemo(() => query.data?.items ?? [], [query.data?.items]);
   const actorOptions = useMemo(() => distinctActorOptions(rows), [rows]);
 
   const selectedEvent = useMemo<AuditRow | null>(() => {

@@ -124,7 +124,7 @@ export function MisSummaryCards({
           className,
         )}
       >
-        Couldn't load portfolio KPIs. Try again in a moment.
+        Couldn&apos;t load portfolio KPIs. Try again in a moment.
       </div>
     );
   }

@@ -1,4 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useRef, useState } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useSyncOnOpen } from "@/lib/hooks/use-sync-on-open";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertTriangle, ArrowRight, CheckCircle2, type LucideIcon } from "lucide-react";
@@ -91,16 +94,14 @@ export function TransitionConfirmDialog({
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      form.reset({ reason: "" });
-      return;
-    }
-    // Move focus to the reason field after Radix mounts the dialog. Using
-    // a ref + setTimeout(0) (instead of `autoFocus`) keeps jsx-a11y happy.
-    const id = window.setTimeout(() => textareaRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open, form, action?.id]);
+  useFlushOnClose(open, () => form.reset({ reason: "" }));
+  useSyncOnOpen(open, () => form.reset({ reason: "" }));
+  const [prevActionId, setPrevActionId] = useState(action?.id);
+  if (open && action?.id !== prevActionId) {
+    setPrevActionId(action?.id);
+    form.reset({ reason: "" });
+  }
+  useFocusOnOpen(open, textareaRef);
 
   if (!action) {
     return (

@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { BellRing } from "lucide-react";
@@ -62,16 +64,8 @@ export function AcknowledgeAlertDialog({
 
   const noteRef = useRef<HTMLTextAreaElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      form.reset({ note: "" });
-      return;
-    }
-    // Focus the note textarea after Radix mounts. useRef + setTimeout(0)
-    // keeps jsx-a11y/no-autofocus happy (project rule).
-    const id = window.setTimeout(() => noteRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open, form]);
+  useFlushOnClose(open, () => form.reset({ note: "" }));
+  useFocusOnOpen(open, noteRef);
 
   const handleSubmit = async (values: AcknowledgeAlertValues) => {
     const note = values.note?.trim() ? values.note.trim() : null;

@@ -5,7 +5,7 @@
  * code/name search. Density: comfortable.
  */
 import { Search, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useDebouncedControlledText } from "@/lib/hooks/use-debounced-controlled-text";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ProductStatus } from "@/schemas/product";
@@ -26,31 +26,11 @@ export interface ProductsFilterBarProps {
 }
 
 export function ProductsFilterBar({ filters, onChange, className }: ProductsFilterBarProps) {
-  const [search, setSearch] = useState<string>(filters.q ?? "");
-  const debounceRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    setSearch(filters.q ?? "");
-  }, [filters.q]);
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
-    };
-  }, []);
-
-  const onSearchChange = (next: string) => {
-    setSearch(next);
-    if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => {
-      const trimmed = next.trim();
-      onChange({
-        ...filters,
-        q: trimmed === "" ? undefined : trimmed,
-        page: 0,
-      });
-    }, SEARCH_DEBOUNCE_MS);
-  };
+  const searchField = useDebouncedControlledText(
+    filters.q,
+    (q) => onChange({ ...filters, q, page: 0 }),
+    SEARCH_DEBOUNCE_MS,
+  );
 
   const setStatusTab = (next: ProductStatus | "ALL") => {
     onChange({
@@ -61,8 +41,8 @@ export function ProductsFilterBar({ filters, onChange, className }: ProductsFilt
   };
 
   const clearAll = () => {
-    if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
-    setSearch("");
+    searchField.clearPending();
+    searchField.onChange("");
     onChange({ page: 0 });
   };
 
@@ -109,8 +89,8 @@ export function ProductsFilterBar({ filters, onChange, className }: ProductsFilt
         <input
           type="search"
           data-slot="products-search"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
+          value={searchField.value}
+          onChange={(e) => searchField.onChange(e.target.value)}
           placeholder="Search code or name"
           aria-label="Search products"
           className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pr-2 pl-7.5 text-sm outline-none focus-visible:ring-[3px]"

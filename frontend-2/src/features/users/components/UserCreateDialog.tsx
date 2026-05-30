@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { UserPlus } from "lucide-react";
@@ -107,36 +109,24 @@ export function UserCreateDialog({
 
   const usernameRef = useRef<HTMLInputElement | null>(null);
   const [revealed, setRevealed] = useState<boolean>(false);
-
-  // Sync external mutation success → swap to reveal-once card.
-  useEffect(() => {
+  const [prevTemporaryPassword, setPrevTemporaryPassword] = useState(temporaryPassword);
+  if (temporaryPassword !== prevTemporaryPassword) {
+    setPrevTemporaryPassword(temporaryPassword);
     if (temporaryPassword) setRevealed(true);
-  }, [temporaryPassword]);
+  }
 
-  useEffect(() => {
-    if (!open) {
-      form.reset({
-        username: "",
-        email: "",
-        role: "OPS_USER",
-        lspId: null,
-      });
-      setRevealed(false);
-      return;
-    }
-    // Focus the username field after Radix mounts (no autoFocus per rule).
-    const id = window.setTimeout(() => usernameRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open, form]);
+  useFlushOnClose(open, () => {
+    form.reset({
+      username: "",
+      email: "",
+      role: "OPS_USER",
+      lspId: null,
+    });
+    setRevealed(false);
+  });
+  useFocusOnOpen(open, usernameRef);
 
-  // When the role changes, snap lspId back to null if the new role is not
-  // tenant-scoped. (The schema would reject otherwise.)
   const role = form.watch("role");
-  useEffect(() => {
-    if (!isTenantScopedRole(role) && form.getValues("lspId") !== null) {
-      form.setValue("lspId", null, { shouldValidate: false });
-    }
-  }, [role, form]);
 
   const handleSubmit = async (values: CreateUserFormValues) => {
     await onConfirm({
@@ -219,7 +209,16 @@ export function UserCreateDialog({
                 <FormItem>
                   <FormLabel>Role</FormLabel>
                   <FormControl>
-                    <Select value={field.value} onValueChange={(v) => field.onChange(v as Role)}>
+                    <Select
+                      value={field.value}
+                      onValueChange={(v) => {
+                        const next = v as Role;
+                        field.onChange(next);
+                        if (!isTenantScopedRole(next)) {
+                          form.setValue("lspId", null, { shouldValidate: false });
+                        }
+                      }}
+                    >
                       <SelectTrigger aria-label="Role" data-slot="user-create-role">
                         <SelectValue />
                       </SelectTrigger>

@@ -20,7 +20,6 @@ export function useLspChoices(): LspChoice[] {
 
   useEffect(() => {
     bootstrapMockApi();
-    setChoices(readLsps());
     void listLspOptions()
       .then((rows) => {
         setChoices(

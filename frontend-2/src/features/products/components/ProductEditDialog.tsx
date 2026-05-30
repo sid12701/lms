@@ -5,7 +5,9 @@
  * (immutable) and adds a `status` select. The mock router maps a status-only
  * delta to a STATUS_CHANGED audit event; all other deltas map to UPDATED.
  */
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useSyncOnOpen } from "@/lib/hooks/use-sync-on-open";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Edit2 } from "lucide-react";
@@ -74,13 +76,10 @@ export function ProductEditDialog({
 
   const nameRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    form.reset(defaultsFor(product));
-    const id = window.setTimeout(() => nameRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- defaults rebuilt from product on open
-  }, [open, product?.id]);
+  useSyncOnOpen(open, () => {
+    if (product) form.reset(defaultsFor(product));
+  });
+  useFocusOnOpen(open, nameRef);
 
   const handleSubmit = async (values: EditProductFormValues) => {
     await onConfirm({

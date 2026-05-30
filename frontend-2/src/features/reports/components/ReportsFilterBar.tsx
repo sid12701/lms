@@ -11,7 +11,7 @@
  * query cache stable.
  */
 import { Calendar, Search, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useSyncedState } from "@/lib/hooks/use-synced-state";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ReportsPageFilters } from "../types";
@@ -23,12 +23,7 @@ export interface ReportsFilterBarProps {
 }
 
 export function ReportsFilterBar({ filters, onChange, className }: ReportsFilterBarProps) {
-  const [lspIdDraft, setLspIdDraft] = useState<string>(filters.lspId ?? "");
-
-  // Keep local draft in sync if parent resets filters.
-  useEffect(() => {
-    setLspIdDraft(filters.lspId ?? "");
-  }, [filters.lspId]);
+  const [lspIdDraft, setLspIdDraft] = useSyncedState(filters.lspId ?? "");
 
   const commitLspId = () => {
     const next = lspIdDraft.trim();

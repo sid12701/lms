@@ -38,12 +38,11 @@ function HomeLoadingSkeleton() {
 export function HomePage() {
   const { session } = useSession();
   const role = session?.user.role;
+  const query = useHomeKpis();
 
   if (role && role !== "SYSTEM_ADMIN") {
     return <Navigate to={defaultLandingFor(role)} replace />;
   }
-
-  const query = useHomeKpis();
 
   return (
     <div className="flex flex-col gap-6 p-6">

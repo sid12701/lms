@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertTriangle } from "lucide-react";
@@ -63,17 +65,8 @@ export function ForeclosureRequestDialog({
 
   const reasonRef = useRef<HTMLTextAreaElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      form.reset({ reason: "", note: "" });
-      return;
-    }
-    // Move focus to the reason field once Radix has mounted the dialog.
-    // Using a ref + setTimeout(0) instead of `autoFocus` keeps jsx-a11y
-    // happy and matches the TransitionConfirmDialog pattern.
-    const id = window.setTimeout(() => reasonRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open, form]);
+  useFlushOnClose(open, () => form.reset({ reason: "", note: "" }));
+  useFocusOnOpen(open, reasonRef);
 
   const handleSubmit = async (values: ForeclosureRequestValues) => {
     const trimmedReason = values.reason.trim();

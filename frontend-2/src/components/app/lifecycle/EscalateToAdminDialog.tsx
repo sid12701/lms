@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { AlertTriangle } from "lucide-react";
 import {
   Dialog,
@@ -54,17 +56,13 @@ export function EscalateToAdminDialog({
   const [messageError, setMessageError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      setEscalationTitle("");
-      setMessage("");
-      setTitleError(null);
-      setMessageError(null);
-      return;
-    }
-    const id = window.setTimeout(() => titleRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open]);
+  useFlushOnClose(open, () => {
+    setEscalationTitle("");
+    setMessage("");
+    setTitleError(null);
+    setMessageError(null);
+  });
+  useFocusOnOpen(open, titleRef);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

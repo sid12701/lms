@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- context module co-exports a Provider, hook, and Context */
 import {
   createContext,
   useCallback,
@@ -46,9 +45,10 @@ export function SessionProvider({
   const [session, setSession] = useState<Session | null>(
     () => initialSession ?? loadStoredSession(),
   );
-  const [isLoading, setIsLoading] = useState<boolean>(
-    !skipBootstrap && initialSession === null && loadStoredSession() === null,
-  );
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (skipBootstrap || initialSession !== null) return false;
+    return loadStoredSession() !== null;
+  });
   const didBootstrap = useRef<boolean>(false);
   const sessionRef = useRef<Session | null>(session);
 
@@ -82,7 +82,6 @@ export function SessionProvider({
 
     const persisted = loadStoredSession();
     if (!persisted) {
-      setIsLoading(false);
       return;
     }
     // Attempt a silent refresh; if the backend rejects, persisted session is cleared.

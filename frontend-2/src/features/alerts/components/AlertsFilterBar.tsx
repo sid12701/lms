@@ -6,7 +6,7 @@
  * The bar emits the filter delta via `onChange`.
  */
 import { Check, ChevronDown, Search, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useDebouncedControlledText } from "@/lib/hooks/use-debounced-controlled-text";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -133,31 +133,11 @@ function SeverityMultiSelect({
 }
 
 export function AlertsFilterBar({ filters, onChange, className }: AlertsFilterBarProps) {
-  const [search, setSearch] = useState<string>(filters.q ?? "");
-  const debounceRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    setSearch(filters.q ?? "");
-  }, [filters.q]);
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
-    };
-  }, []);
-
-  const onSearchChange = (next: string) => {
-    setSearch(next);
-    if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => {
-      const trimmed = next.trim();
-      onChange({
-        ...filters,
-        q: trimmed === "" ? undefined : trimmed,
-        page: 0,
-      });
-    }, SEARCH_DEBOUNCE_MS);
-  };
+  const searchField = useDebouncedControlledText(
+    filters.q,
+    (q) => onChange({ ...filters, q, page: 0 }),
+    SEARCH_DEBOUNCE_MS,
+  );
 
   const setStatusTab = (next: AlertStatus | "ALL") => {
     onChange({
@@ -184,8 +164,8 @@ export function AlertsFilterBar({ filters, onChange, className }: AlertsFilterBa
   };
 
   const clearAll = () => {
-    if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
-    setSearch("");
+    searchField.clearPending();
+    searchField.onChange("");
     onChange({ page: 0 });
   };
 
@@ -261,8 +241,8 @@ export function AlertsFilterBar({ filters, onChange, className }: AlertsFilterBa
         <input
           type="search"
           data-slot="alerts-search"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
+          value={searchField.value}
+          onChange={(e) => searchField.onChange(e.target.value)}
           placeholder="Search title or message"
           aria-label="Search alerts"
           className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pr-2 pl-7.5 text-sm outline-none focus-visible:ring-[3px]"

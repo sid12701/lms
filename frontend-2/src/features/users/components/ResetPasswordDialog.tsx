@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { KeyRound } from "lucide-react";
 import {
   Dialog,
@@ -46,19 +48,14 @@ export function ResetPasswordDialog({
 }: ResetPasswordDialogProps) {
   const confirmRef = useRef<HTMLButtonElement | null>(null);
   const [revealed, setRevealed] = useState<boolean>(false);
-
-  useEffect(() => {
+  const [prevTemporaryPassword, setPrevTemporaryPassword] = useState(temporaryPassword);
+  if (temporaryPassword !== prevTemporaryPassword) {
+    setPrevTemporaryPassword(temporaryPassword);
     if (temporaryPassword) setRevealed(true);
-  }, [temporaryPassword]);
+  }
 
-  useEffect(() => {
-    if (!open) {
-      setRevealed(false);
-      return;
-    }
-    const id = window.setTimeout(() => confirmRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open]);
+  useFlushOnClose(open, () => setRevealed(false));
+  useFocusOnOpen(open, confirmRef);
 
   const handleConfirm = async () => {
     await onConfirm({ idempotencyKey: newIdempotencyKey() });

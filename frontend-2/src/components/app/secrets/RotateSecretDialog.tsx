@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ShieldAlert } from "lucide-react";
@@ -59,17 +61,8 @@ export function RotateSecretDialog({
   });
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      form.reset({ reason: "" });
-      return;
-    }
-    // Move focus to the reason field on open via ref + setTimeout instead of
-    // `autoFocus`. Lets Radix finish mounting before we steal focus and keeps
-    // jsx-a11y/no-autofocus happy.
-    const id = window.setTimeout(() => textareaRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open, form]);
+  useFlushOnClose(open, () => form.reset({ reason: "" }));
+  useFocusOnOpen(open, textareaRef);
 
   const handleSubmit = async (values: RotateSecretValues) => {
     await onConfirm({ reason: values.reason, idempotencyKey: newIdempotencyKey() });

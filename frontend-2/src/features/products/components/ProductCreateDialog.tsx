@@ -6,7 +6,9 @@
  * principalMin, tenureMaxMonths < tenureMinMonths) so inline messages appear
  * before the mock router ever sees the payload.
  */
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Layers } from "lucide-react";
@@ -76,14 +78,8 @@ export function ProductCreateDialog({
 
   const codeRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      form.reset(DEFAULTS);
-      return;
-    }
-    const id = window.setTimeout(() => codeRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open, form]);
+  useFlushOnClose(open, () => form.reset(DEFAULTS));
+  useFocusOnOpen(open, codeRef);
 
   const handleSubmit = async (values: CreateProductFormValues) => {
     await onConfirm({

@@ -6,7 +6,7 @@
  * input by 200ms before it reaches the URL so the cache key doesn't
  * churn with every keystroke.
  */
-import { useEffect, useRef, useState } from "react";
+import { useDebouncedControlledText } from "@/lib/hooks/use-debounced-controlled-text";
 import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUrlFilters } from "@/lib/url-state";
@@ -21,28 +21,15 @@ export interface BorrowersFilterBarProps {
 
 export function BorrowersFilterBar({ className }: BorrowersFilterBarProps) {
   const [filters, setFilters] = useUrlFilters(BorrowerListFilters);
-  const [search, setSearch] = useState(filters.q ?? "");
-  const debounceRef = useRef<number | null>(null);
-
-  // Keep the input in sync if filters arrive from a back/forward navigation.
-  useEffect(() => {
-    setSearch(filters.q ?? "");
-  }, [filters.q]);
-
-  const onSearchChange = (next: string) => {
-    setSearch(next);
-    if (debounceRef.current != null) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => {
-      const trimmed = next.trim();
-      setFilters({
-        q: trimmed === "" ? undefined : trimmed,
-        page: 0,
-      });
-    }, SEARCH_DEBOUNCE_MS);
-  };
+  const searchField = useDebouncedControlledText(
+    filters.q,
+    (q) => setFilters({ q, page: 0 }),
+    SEARCH_DEBOUNCE_MS,
+  );
 
   const clearAll = () => {
-    setSearch("");
+    searchField.clearPending();
+    searchField.onChange("");
     setFilters({ q: undefined, page: 0 });
   };
 
@@ -67,8 +54,8 @@ export function BorrowersFilterBar({ className }: BorrowersFilterBarProps) {
         <input
           type="search"
           data-slot="borrowers-search"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
+          value={searchField.value}
+          onChange={(e) => searchField.onChange(e.target.value)}
           placeholder="Search by name, PAN, mobile, or email"
           aria-label="Search borrowers"
           className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pr-2 pl-7.5 text-sm outline-none focus-visible:ring-[3px]"

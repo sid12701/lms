@@ -10,7 +10,8 @@
  * for now; agents wiring `useLsps()` / `useProducts()` swap the option
  * lists in a follow-up without changing this component's contract.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
+import { useDebouncedControlledText } from "@/lib/hooks/use-debounced-controlled-text";
 import { Calendar, Check, ChevronDown, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -194,36 +195,15 @@ export function LoanApplicationsFilterBar({
   const [filters, setFilters] = useUrlFilters(LoanApplicationListFilters);
 
   // Search input: locally controlled, debounced into the URL.
-  const [search, setSearch] = useState<string>(filters.q ?? "");
-  const debounceRef = useRef<number | null>(null);
-
-  // Re-sync the local input when the URL changes from outside (e.g. clear).
-  useEffect(() => {
-    setSearch(filters.q ?? "");
-  }, [filters.q]);
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
-    };
-  }, []);
-
-  const onSearchChange = (next: string) => {
-    setSearch(next);
-    if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => {
-      const trimmed = next.trim();
-      // Reset to page 0 whenever the search predicate changes.
-      setFilters({
-        q: trimmed === "" ? undefined : trimmed,
-        page: 0,
-      });
-    }, SEARCH_DEBOUNCE_MS);
-  };
+  const searchField = useDebouncedControlledText(
+    filters.q,
+    (q) => setFilters({ q, page: 0 }),
+    SEARCH_DEBOUNCE_MS,
+  );
 
   const clearAll = () => {
-    if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
-    setSearch("");
+    searchField.clearPending();
+    searchField.onChange("");
     setFilters({
       q: undefined,
       lspLoanId: undefined,
@@ -258,8 +238,8 @@ export function LoanApplicationsFilterBar({
         <input
           type="search"
           data-slot="loan-applications-search"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
+          value={searchField.value}
+          onChange={(e) => searchField.onChange(e.target.value)}
           placeholder="Search borrower, PAN, mobile, city"
           aria-label="Search loan applications"
           className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pr-2 pl-7.5 text-sm outline-none focus-visible:ring-[3px]"

@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Banknote } from "lucide-react";
@@ -71,16 +73,8 @@ export function DisbursementInitiateDialog({
   });
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      form.reset({ note: "" });
-      return;
-    }
-    // Focus the note textarea on open via ref + setTimeout (not autoFocus) so
-    // Radix finishes mounting first and jsx-a11y/no-autofocus stays clean.
-    const id = window.setTimeout(() => textareaRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open, form]);
+  useFlushOnClose(open, () => form.reset({ note: "" }));
+  useFocusOnOpen(open, textareaRef);
 
   const handleSubmit = async (values: DisbursementInitiateValues) => {
     const trimmed = (values.note ?? "").trim();

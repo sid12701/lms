@@ -16,7 +16,8 @@
  * range is a filter, not a form field, and there is no `Calendar` primitive
  * on disk yet.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
+import { useDebouncedControlledText } from "@/lib/hooks/use-debounced-controlled-text";
 import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,53 +62,22 @@ export function AuditPageFilterBar({
   actorOptions = [],
   className,
 }: AuditPageFilterBarProps) {
-  const [q, setQ] = useState<string>(value.q ?? "");
-  const [correlationId, setCorrelationId] = useState<string>(value.correlationId ?? "");
-  const qTimer = useRef<number | null>(null);
-  const corrTimer = useRef<number | null>(null);
-
-  // Re-sync local inputs when the URL changes from outside (clear button etc.).
-  useEffect(() => {
-    setQ(value.q ?? "");
-  }, [value.q]);
-  useEffect(() => {
-    setCorrelationId(value.correlationId ?? "");
-  }, [value.correlationId]);
-
-  useEffect(() => {
-    return () => {
-      if (qTimer.current !== null) window.clearTimeout(qTimer.current);
-      if (corrTimer.current !== null) window.clearTimeout(corrTimer.current);
-    };
-  }, []);
-
-  const onQChange = (next: string) => {
-    setQ(next);
-    if (qTimer.current !== null) window.clearTimeout(qTimer.current);
-    qTimer.current = window.setTimeout(() => {
-      const trimmed = next.trim();
-      onChange({ ...value, q: trimmed === "" ? undefined : trimmed, page: 0 });
-    }, SEARCH_DEBOUNCE_MS);
-  };
-
-  const onCorrelationChange = (next: string) => {
-    setCorrelationId(next);
-    if (corrTimer.current !== null) window.clearTimeout(corrTimer.current);
-    corrTimer.current = window.setTimeout(() => {
-      const trimmed = next.trim();
-      onChange({
-        ...value,
-        correlationId: trimmed === "" ? undefined : trimmed,
-        page: 0,
-      });
-    }, SEARCH_DEBOUNCE_MS);
-  };
+  const qField = useDebouncedControlledText(
+    value.q,
+    (q) => onChange({ ...value, q, page: 0 }),
+    SEARCH_DEBOUNCE_MS,
+  );
+  const correlationField = useDebouncedControlledText(
+    value.correlationId,
+    (correlationId) => onChange({ ...value, correlationId, page: 0 }),
+    SEARCH_DEBOUNCE_MS,
+  );
 
   const clearAll = () => {
-    if (qTimer.current !== null) window.clearTimeout(qTimer.current);
-    if (corrTimer.current !== null) window.clearTimeout(corrTimer.current);
-    setQ("");
-    setCorrelationId("");
+    qField.clearPending();
+    correlationField.clearPending();
+    qField.onChange("");
+    correlationField.onChange("");
     onChange({
       ...value,
       q: undefined,
@@ -131,7 +101,7 @@ export function AuditPageFilterBar({
         className,
       )}
     >
-      <label className="relative min-w-[200px] flex-1">
+      <div className="relative min-w-[200px] flex-1">
         <span className="sr-only">Search audit log</span>
         <Search
           aria-hidden="true"
@@ -140,13 +110,13 @@ export function AuditPageFilterBar({
         <Input
           type="search"
           data-slot="audit-search"
-          value={q}
-          onChange={(e) => onQChange(e.target.value)}
+          value={qField.value}
+          onChange={(e) => qField.onChange(e.target.value)}
           placeholder="Search by headline or actor"
           aria-label="Search audit log"
           className="h-8 pr-2 pl-7.5 text-sm"
         />
-      </label>
+      </div>
 
       <Select
         value={value.actorId ?? ALL_ACTORS}
@@ -176,14 +146,17 @@ export function AuditPageFilterBar({
         </SelectContent>
       </Select>
 
-      <label className="flex items-center gap-1.5">
-        <span className="text-foreground-muted text-xs font-medium tracking-wide uppercase">
+      <div className="flex items-center gap-1.5">
+        <span
+          id="audit-date-from-label"
+          className="text-foreground-muted text-xs font-medium tracking-wide uppercase"
+        >
           From
         </span>
         <Input
           type="date"
           data-slot="audit-date-from"
-          aria-label="From date"
+          aria-labelledby="audit-date-from-label"
           value={value.dateFrom ?? ""}
           onChange={(e) =>
             onChange({
@@ -194,15 +167,18 @@ export function AuditPageFilterBar({
           }
           className="h-8 w-36 px-2 text-xs tabular-nums"
         />
-      </label>
-      <label className="flex items-center gap-1.5">
-        <span className="text-foreground-muted text-xs font-medium tracking-wide uppercase">
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span
+          id="audit-date-to-label"
+          className="text-foreground-muted text-xs font-medium tracking-wide uppercase"
+        >
           To
         </span>
         <Input
           type="date"
           data-slot="audit-date-to"
-          aria-label="To date"
+          aria-labelledby="audit-date-to-label"
           value={value.dateTo ?? ""}
           onChange={(e) =>
             onChange({
@@ -213,22 +189,25 @@ export function AuditPageFilterBar({
           }
           className="h-8 w-36 px-2 text-xs tabular-nums"
         />
-      </label>
+      </div>
 
-      <label className="flex items-center gap-1.5">
-        <span className="text-foreground-muted text-xs font-medium tracking-wide uppercase">
+      <div className="flex items-center gap-1.5">
+        <span
+          id="audit-correlation-label"
+          className="text-foreground-muted text-xs font-medium tracking-wide uppercase"
+        >
           Correlation
         </span>
         <Input
           type="text"
           data-slot="audit-correlation-id"
-          aria-label="Correlation id"
-          value={correlationId}
-          onChange={(e) => onCorrelationChange(e.target.value)}
+          aria-labelledby="audit-correlation-label"
+          value={correlationField.value}
+          onChange={(e) => correlationField.onChange(e.target.value)}
           placeholder="correlation id"
           className="h-8 w-48 px-2 text-xs"
         />
-      </label>
+      </div>
 
       <div className="flex-1" />
 

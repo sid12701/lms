@@ -4,7 +4,9 @@
  * Submits mint a BR-5 idempotency key. `code` is canonicalised to uppercase
  * on submit so accidental lowercase input passes the regex.
  */
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
+import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Building2 } from "lucide-react";
@@ -59,14 +61,8 @@ export function LspCreateDialog({
 
   const codeRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!open) {
-      form.reset({ code: "", name: "" });
-      return;
-    }
-    const id = window.setTimeout(() => codeRef.current?.focus(), 0);
-    return () => window.clearTimeout(id);
-  }, [open, form]);
+  useFlushOnClose(open, () => form.reset({ code: "", name: "" }));
+  useFocusOnOpen(open, codeRef);
 
   const handleSubmit = async (values: CreateLspFormValues) => {
     await onConfirm({

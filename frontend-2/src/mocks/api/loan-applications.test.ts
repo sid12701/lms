@@ -917,15 +917,15 @@ describe("LSP-API foreclosure completion", () => {
     });
 
     expect(res.applicationId).toBe(APP_DISBURSED_BHAW);
-    expect(res.finalStatus).toBe("CLOSED");
+    expect(res.finalStatus).toBe("FORECLOSED");
     expect(res.totalSettled).toBe(307_000);
 
-    // Application is CLOSED.
-    expect(db.applications.get(APP_DISBURSED_BHAW)?.status).toBe("CLOSED");
+    // Application is FORECLOSED (terminal; no auto-close to CLOSED).
+    expect(db.applications.get(APP_DISBURSED_BHAW)?.status).toBe("FORECLOSED");
 
-    // Account is CLOSED with closureReason FORECLOSED.
+    // Account is FORECLOSED with closureReason FORECLOSED.
     const account = db.accounts.get(acctId8);
-    expect(account?.accountStatus).toBe("CLOSED");
+    expect(account?.accountStatus).toBe("FORECLOSED");
     expect(account?.closureReason).toBe("FORECLOSED");
     expect(account?.closedAt).toBe(settledAt);
 
@@ -946,13 +946,11 @@ describe("LSP-API foreclosure completion", () => {
     expect(adjustments[0]?.idempotencyKey).toBe("fc-key-1");
     expect(db.payments.length).toBe(paymentsBefore + 1);
 
-    // Two new audit rows: foreclose then auto-close.
-    expect(db.auditApplication.length).toBe(auditBefore + 2);
+    // One audit row for the foreclosure transition.
+    expect(db.auditApplication.length).toBe(auditBefore + 1);
     const newRows = db.auditApplication.slice(auditBefore);
     expect(newRows[0]?.action).toBe("lsp-api.foreclose");
     expect(newRows[0]?.toStatus).toBe("FORECLOSED");
-    expect(newRows[1]?.action).toBe("auto-close.foreclosed");
-    expect(newRows[1]?.toStatus).toBe("CLOSED");
   });
 
   it("status guard: rejects foreclose against APPROVED_PENDING_DISBURSAL", async () => {

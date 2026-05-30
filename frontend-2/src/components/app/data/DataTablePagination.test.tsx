@@ -24,7 +24,6 @@ function Harness({ initialPageSize = 10 }: { initialPageSize?: number }) {
     pageIndex: 0,
     pageSize: initialPageSize,
   });
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table is the project-mandated table primitive
   const table = useReactTable({
     data: rows,
     columns,

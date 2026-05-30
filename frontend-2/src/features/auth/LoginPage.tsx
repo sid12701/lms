@@ -11,6 +11,7 @@ import { SEED_USERS, type SeedUser } from "@/mocks/db/seed";
 import { cn } from "@/lib/utils";
 import { PageEyebrow } from "@/components/app/layout/PageEyebrow";
 import { ApiError } from "@/lib/api/http-client";
+import { LOGIN_PAGE_HEADING } from "@/lib/product-branding";
 
 interface RoleCardCopy {
   title: string;
@@ -109,7 +110,7 @@ export function LoginPage() {
           <div>
             <PageEyebrow className="mb-1.5">Sign in</PageEyebrow>
             <h1 className="text-foreground text-2xl leading-8 font-semibold tracking-tight sm:text-[26px]">
-              Bhawana Capital — Loan Management
+              {LOGIN_PAGE_HEADING}
             </h1>
             <p className="text-foreground-muted mx-auto mt-2 max-w-sm text-sm leading-6">
               Sign in with your backend credentials to access the platform.
