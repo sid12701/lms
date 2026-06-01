@@ -3,7 +3,8 @@ import { axe } from "vitest-axe";
 import { renderWithProviders } from "@/test/utils";
 import { STATUS_META } from "@/lib/lifecycle";
 import type { LoanAccountStatus, LoanStatus } from "@/types";
-import { StatusBadge, resolveStatusMeta } from "./StatusBadge";
+import { StatusBadge } from "./StatusBadge";
+import { resolveStatusMeta } from "./statusBadgeMeta";
 
 const ACCOUNT_STATUSES: LoanAccountStatus[] = [
   "PENDING_DISBURSEMENT",

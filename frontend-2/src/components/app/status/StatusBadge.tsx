@@ -17,10 +17,10 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { STATUS_META, type Intent } from "@/lib/lifecycle";
-import type { LoanAccountStatus, LoanStatus } from "@/types";
+import type { Intent } from "@/lib/lifecycle";
+import { resolveStatusMeta, type AnyStatus } from "./statusBadgeMeta";
 
-export type AnyStatus = LoanStatus | LoanAccountStatus;
+export type { AnyStatus } from "./statusBadgeMeta";
 export type StatusBadgeVariant = "default" | "subtle";
 
 export interface StatusBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
@@ -29,38 +29,6 @@ export interface StatusBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, 
   /** Hide the leading icon (color + label still convey meaning). */
   hideIcon?: boolean;
   className?: string;
-}
-
-interface ResolvedMeta {
-  label: string;
-  intent: Intent;
-}
-
-/**
- * Loan-account statuses live in a separate enum from `LoanStatus` and are
- * not present in `STATUS_META`. We map them onto the same intent vocabulary
- * here so a single component can render both.
- */
-const ACCOUNT_STATUS_META: Record<LoanAccountStatus, ResolvedMeta> = {
-  PENDING_DISBURSEMENT: { label: "Pending disbursement", intent: "progress" },
-  ACTIVE: { label: "Active", intent: "success" },
-  CLOSED: { label: "Closed", intent: "neutral" },
-  FORECLOSED: { label: "Foreclosed", intent: "neutral" },
-};
-
-/** Lookup that succeeds for either enum. Always returns a non-empty meta. */
-export function resolveStatusMeta(status: AnyStatus): ResolvedMeta {
-  if (status in STATUS_META) {
-    const m = STATUS_META[status as LoanStatus];
-    return { label: m.label, intent: m.intent };
-  }
-  if (status in ACCOUNT_STATUS_META) {
-    return ACCOUNT_STATUS_META[status as LoanAccountStatus];
-  }
-  // Should be unreachable thanks to the AnyStatus union, but a defensive
-  // fallback keeps colour-rendering from blowing up if a new enum value lands
-  // before the meta tables are updated.
-  return { label: String(status), intent: "neutral" };
 }
 
 const INTENT_ICON: Record<Intent, LucideIcon> = {
@@ -73,11 +41,6 @@ const INTENT_ICON: Record<Intent, LucideIcon> = {
   revoked: CircleSlash,
 };
 
-/**
- * Per-status icon overrides — chosen for semantic clarity in the LMS
- * lifecycle (e.g. "Initiated" reads better with a Send icon than a generic
- * neutral dot). Falls through to `INTENT_ICON` when no override exists.
- */
 const STATUS_ICON: Partial<Record<AnyStatus, LucideIcon>> = {
   INITIATED: Send,
   KYC_PENDING: FileSearch,
@@ -95,7 +58,6 @@ const STATUS_ICON: Partial<Record<AnyStatus, LucideIcon>> = {
   INVALIDATED: CircleSlash,
 };
 
-/** Solid + subtle Tailwind class triplets keyed by intent. */
 const INTENT_CLASSES: Record<Intent, { default: string; subtle: string; iconColor: string }> = {
   success: {
     default: "border-transparent bg-success text-white",
@@ -134,12 +96,6 @@ const INTENT_CLASSES: Record<Intent, { default: string; subtle: string; iconColo
   },
 };
 
-/**
- * Generic status pill for both `LoanStatus` and `LoanAccountStatus` values.
- *
- * Color is never the only signal — every badge ships with text, and (unless
- * `hideIcon` is set) a Lucide icon matched to the lifecycle intent.
- */
 export const StatusBadge = forwardRef<HTMLSpanElement, StatusBadgeProps>(function StatusBadge(
   { status, variant = "subtle", hideIcon = false, className, ...rest },
   ref,

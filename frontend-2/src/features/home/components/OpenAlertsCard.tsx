@@ -7,23 +7,21 @@ import { formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AlertSeverity } from "@/schemas/alert";
 import type { HomeAlertSummary } from "../types";
+import type { OpenAlertsSeverityToken } from "./openAlertsSeverity";
 
 export interface OpenAlertsCardProps {
   alerts: readonly HomeAlertSummary[];
   className?: string;
 }
 
-type Token = "danger" | "warning" | "info" | "neutral";
-
 interface SeverityMeta {
   icon: LucideIcon;
-  token: Token;
+  token: OpenAlertsSeverityToken;
   label: string;
   classes: string;
   iconClass: string;
 }
 
-/** Severity → icon + token mapping. Color is never the sole signal. */
 const SEVERITY_META: Record<AlertSeverity, SeverityMeta> = {
   CRITICAL: {
     icon: AlertTriangle,
@@ -55,18 +53,6 @@ const SEVERITY_META: Record<AlertSeverity, SeverityMeta> = {
   },
 };
 
-export const SEVERITY_TOKEN: Record<AlertSeverity, Token> = {
-  CRITICAL: "danger",
-  HIGH: "warning",
-  MEDIUM: "info",
-  LOW: "neutral",
-};
-
-/**
- * Compact feed of open operational alerts. Rows include severity (icon
- * + label), short title, subject (LOAN_APPLICATION rows link through to
- * the detail page), and a relative timestamp.
- */
 export const OpenAlertsCard = forwardRef<HTMLDivElement, OpenAlertsCardProps>(
   function OpenAlertsCard({ alerts, className }, ref) {
     return (

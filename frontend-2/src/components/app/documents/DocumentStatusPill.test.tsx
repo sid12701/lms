@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { axe } from "vitest-axe";
 import { renderWithProviders } from "@/test/utils";
 import type { DocumentStatus } from "@/schemas/document";
-import { DocumentStatusPill, resolveDocumentStatusMeta } from "./DocumentStatusPill";
+import { DocumentStatusPill } from "./DocumentStatusPill";
+import { resolveDocumentStatusMeta } from "./documentStatusMeta";
 
 const CASES: Array<{
   status: DocumentStatus;

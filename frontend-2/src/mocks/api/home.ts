@@ -26,6 +26,7 @@ import type {
   InternalHomeKpis,
 } from "@/features/home/types";
 import type { DelinquencyBucket } from "@/schemas/loan-account";
+import { MOCK_REFERENCE_NOW } from "@/mocks/db/reference-now";
 import type {
   LoanAccount,
   LoanApplication,
@@ -350,7 +351,7 @@ function homeKpisHandler(_req: MockRequest, db: MockDb, correlationId: string): 
     throw new UnauthorizedError(correlationId, "user no longer exists");
   }
 
-  const now = new Date();
+  const now = MOCK_REFERENCE_NOW;
   const today = now.toISOString().slice(0, 10);
 
   if (user.role === HOME_ADMIN_ROLE) {

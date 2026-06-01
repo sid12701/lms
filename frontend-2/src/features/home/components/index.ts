@@ -10,8 +10,10 @@ export type { LoansByDpdBucketCardProps } from "./LoansByDpdBucketCard";
 export { RecentApplicationsCard } from "./RecentApplicationsCard";
 export type { RecentApplicationsCardProps } from "./RecentApplicationsCard";
 
-export { OpenAlertsCard, SEVERITY_TOKEN } from "./OpenAlertsCard";
+export { OpenAlertsCard } from "./OpenAlertsCard";
 export type { OpenAlertsCardProps } from "./OpenAlertsCard";
+export { SEVERITY_TOKEN } from "./openAlertsSeverity";
+export type { OpenAlertsSeverityToken } from "./openAlertsSeverity";
 
 export { LspKpiSummary } from "./LspKpiSummary";
 export type { LspKpiSummaryProps } from "./LspKpiSummary";

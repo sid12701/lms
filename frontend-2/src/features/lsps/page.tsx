@@ -5,7 +5,7 @@
  * and webhook subscription dialogs. All writes go to the live backend under
  * `/api/v1/internal/admin/lsps`.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Building2, Plus, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/layout/PageHeader";
@@ -100,12 +100,6 @@ export function LspsPage() {
   const upsertWebhook = useUpsertLspWebhookSubscription();
   const webhookQuery = useLspWebhookSubscription(webhookTarget?.id ?? null);
   const auditQuery = useLspAuditEvents(auditTarget?.id ?? null, auditTarget !== null);
-
-  useEffect(() => {
-    if (auditTarget) {
-      void auditQuery.refetch();
-    }
-  }, [auditTarget?.id]);
 
   const handleCreateOpenChange = (open: boolean) => {
     if (!open) {

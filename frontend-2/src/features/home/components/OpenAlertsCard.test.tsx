@@ -4,7 +4,8 @@ import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/test/utils";
 import type { AlertSeverity } from "@/schemas/alert";
 import type { HomeAlertSummary } from "../types";
-import { OpenAlertsCard, SEVERITY_TOKEN } from "./OpenAlertsCard";
+import { OpenAlertsCard } from "./OpenAlertsCard";
+import { SEVERITY_TOKEN } from "./openAlertsSeverity";
 
 const NOW = Date.now();
 

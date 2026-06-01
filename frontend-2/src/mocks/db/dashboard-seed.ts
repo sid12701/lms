@@ -50,8 +50,9 @@ import {
   USER_OPS_ADMIN,
   USER_OPS_USER,
 } from "./seed";
+import { MOCK_REFERENCE_NOW } from "./reference-now";
 
-const NOW = new Date("2026-05-09T00:00:00.000Z");
+const NOW = MOCK_REFERENCE_NOW;
 const MS_PER_DAY = 86_400_000;
 const MS_PER_HOUR = 3_600_000;
 

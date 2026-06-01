@@ -1,13 +1,12 @@
-import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from "react";
-import { createBrowserRouter, Outlet, type RouteObject } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Suspense, type ComponentType } from "react";
+import { createBrowserRouter, type RouteObject } from "react-router-dom";
 import { LandingRedirect } from "@/routes/landing-redirect";
 import { NotFoundPage } from "@/routes/not-found";
-import { RequireAuth, RequireInternal, RequireLsp, RequireRole } from "@/routes/guards";
-import { AppShell } from "@/components/app/shell/AppShell";
+import { RequireInternal, RequireLsp, RequireRole } from "@/routes/guards";
 import type { Role } from "@/types";
-
-// ─── Role allow-lists per route (per IA in plan §4) ──────────────────────────
+import { lazyPage } from "@/routes/lazy-page";
+import { RouteFallback } from "@/routes/route-fallback";
+import { AuthenticatedLayout } from "@/routes/authenticated-layout";
 
 const INTERNAL_ALL: readonly Role[] = ["SYSTEM_ADMIN", "OPS_USER", "PRODUCT_ADMIN"] as const;
 const SYSTEM_ADMIN_ONLY: readonly Role[] = ["SYSTEM_ADMIN"] as const;
@@ -21,29 +20,6 @@ const ALL_AUTHENTICATED: readonly Role[] = [
   "LSP_UI_WRITE",
 ] as const;
 const LSP_UI_ALL: readonly Role[] = ["LSP_UI_READ", "LSP_UI_WRITE"] as const;
-
-// ─── Lazy page components ────────────────────────────────────────────────────
-//
-// Each page module exports both a default and a named `Component`. The
-// `lazyPage` helper resolves either, then wraps the dynamic import in
-// React.lazy at module load time so the resulting component identity is
-// stable across renders (this is what react-hooks/static-components requires).
-
-interface PageModule {
-  default?: ComponentType;
-  Component?: ComponentType;
-}
-
-function lazyPage(load: () => Promise<PageModule>): LazyExoticComponent<ComponentType> {
-  return lazy(async () => {
-    const mod = await load();
-    const Resolved = mod.Component ?? mod.default;
-    if (!Resolved) {
-      throw new Error("Lazy route module is missing a default or Component export");
-    }
-    return { default: Resolved };
-  });
-}
 
 const HomePage = lazyPage(() => import("@/features/home/page"));
 const LoanApplicationsPage = lazyPage(() => import("@/features/loan-applications/page"));
@@ -62,15 +38,6 @@ const AuditPage = lazyPage(() => import("@/features/audit/page"));
 const MyLoansPage = lazyPage(() => import("@/features/my-loans/page"));
 const MyLoanDetailPage = lazyPage(() => import("@/features/my-loans/detail-page"));
 
-function RouteFallback() {
-  return (
-    <div className="flex min-h-[60vh] items-center justify-center">
-      <Loader2 aria-hidden="true" className="text-foreground-muted h-5 w-5 animate-spin" />
-      <span className="sr-only">Loading page</span>
-    </div>
-  );
-}
-
 function withSuspense(node: ComponentType) {
   const Comp = node;
   return (
@@ -80,25 +47,6 @@ function withSuspense(node: ComponentType) {
   );
 }
 
-/**
- * The shared authenticated layout: gate on session, render the app shell,
- * and let the matched child route fill the outlet.
- */
-function AuthenticatedLayout() {
-  return (
-    <RequireAuth>
-      <AppShell>
-        <Outlet />
-      </AppShell>
-    </RequireAuth>
-  );
-}
-
-/**
- * Build the route tree. Authenticated routes use lazy code-splitting per
- * feature folder; auth surfaces are eager because they're tiny and on the
- * critical bootstrap path.
- */
 export function createAppRouter() {
   const routes: RouteObject[] = [
     { path: "/", element: <LandingRedirect /> },
@@ -119,13 +67,10 @@ export function createAppRouter() {
     {
       element: <AuthenticatedLayout />,
       children: [
-        // Home — dual-purpose (internal + LSP). The page branches on role.
         {
           path: "/home",
           element: <RequireRole roles={ALL_AUTHENTICATED}>{withSuspense(HomePage)}</RequireRole>,
         },
-
-        // Internal-only routes ──────────────────────────────────────────────
         {
           path: "/loan-applications",
           element: (
@@ -218,8 +163,6 @@ export function createAppRouter() {
             </RequireInternal>
           ),
         },
-
-        // LSP-only routes ───────────────────────────────────────────────────
         {
           path: "/my-loans",
           element: (
@@ -241,7 +184,6 @@ export function createAppRouter() {
     { path: "*", element: <NotFoundPage /> },
   ];
 
-  // DEV-only: components sandbox at /dev/components, no auth guards.
   if (import.meta.env.DEV) {
     routes.splice(routes.length - 1, 0, {
       path: "/dev/components",

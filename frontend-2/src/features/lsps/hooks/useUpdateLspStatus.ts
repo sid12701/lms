@@ -21,15 +21,18 @@ export function useUpdateLspStatus(): UseMutationResult<
   return useMutation<LspMutationResponse, Error, UpdateLspStatusVariables>({
     mutationFn: ({ id, ...rest }) => updateLspStatus(id, rest),
     onSuccess: async (res, vars) => {
-      queryClient.setQueriesData<LspsListResponse>({ queryKey: [...LSPS_LIST_QUERY_KEY] }, (cached) => {
-        if (!cached) return cached;
-        return {
-          ...cached,
-          items: cached.items.map((row) =>
-            row.id === vars.id ? { ...row, ...res.lsp, status: res.lsp.status } : row,
-          ),
-        };
-      });
+      queryClient.setQueriesData<LspsListResponse>(
+        { queryKey: [...LSPS_LIST_QUERY_KEY] },
+        (cached) => {
+          if (!cached) return cached;
+          return {
+            ...cached,
+            items: cached.items.map((row) =>
+              row.id === vars.id ? { ...row, ...res.lsp, status: res.lsp.status } : row,
+            ),
+          };
+        },
+      );
       await queryClient.refetchQueries({ queryKey: [...LSPS_LIST_QUERY_KEY] });
       await queryClient.fetchQuery({
         queryKey: lspAuditEventsQueryKey(vars.id),

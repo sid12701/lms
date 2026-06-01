@@ -1,9 +1,9 @@
 export {
   DocumentStatusPill,
-  resolveDocumentStatusMeta,
   type DocumentStatusPillProps,
   type DocumentStatusPillTone,
 } from "./DocumentStatusPill";
+export { resolveDocumentStatusMeta } from "./documentStatusMeta";
 export {
   DocumentChecklistRow,
   formatBytes,

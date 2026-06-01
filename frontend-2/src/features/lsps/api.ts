@@ -7,14 +7,8 @@
  * apiClientCount) are filled in with safe defaults so the existing UI
  * continues to render.
  */
-import { requestJson, buildQueryPath } from "@/lib/api/http-client";
-import type {
-  Lsp,
-  LspOperationalStatus,
-  LspStatus,
-  LspStatusChangeReason,
-  LspWebhookSubscription,
-} from "@/schemas/lsp";
+import { requestJson } from "@/lib/api/http-client";
+import type { Lsp, LspStatus, LspStatusChangeReason, LspWebhookSubscription } from "@/schemas/lsp";
 import type {
   CreateLspInput,
   LspAuditEventRow,

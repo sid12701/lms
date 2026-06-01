@@ -120,8 +120,9 @@ export function LspStatusChangeDialog({
           <DialogDescription>
             {lsp ? (
               <>
-                Update operational status for <span className="font-mono font-medium">{lsp.code}</span>.
-                Disabling revokes all outstanding API tokens and deactivates API clients under this tenant.
+                Update operational status for{" "}
+                <span className="font-mono font-medium">{lsp.code}</span>. Disabling revokes all
+                outstanding API tokens and deactivates API clients under this tenant.
               </>
             ) : (
               "Select a target status, reason, and audit note."
@@ -181,8 +182,8 @@ export function LspStatusChangeDialog({
               className="border-warning/30 bg-warning/5 text-foreground rounded-md border p-3 text-sm"
               data-slot="lsp-reactivate-warning"
             >
-              Reactivating restores LSP access only. API clients stay inactive until their secrets are
-              rotated from the API clients admin surface.
+              Reactivating restores LSP access only. API clients stay inactive until their secrets
+              are rotated from the API clients admin surface.
             </div>
           ) : null}
 
@@ -268,9 +269,7 @@ export function LspStatusChangeDialog({
               disabled={loading || !lsp || unchanged}
               data-slot="lsp-status-change-submit"
             >
-              {loading
-                ? "Saving…"
-                : lspStatusChangeActionLabel(currentOperational, targetStatus)}
+              {loading ? "Saving…" : lspStatusChangeActionLabel(currentOperational, targetStatus)}
             </Button>
           </DialogFooter>
         </FormShell>

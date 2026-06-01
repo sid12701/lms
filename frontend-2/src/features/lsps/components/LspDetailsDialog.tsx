@@ -68,7 +68,8 @@ export function LspDetailsDialog({
                 data-slot="lsp-details-status"
                 className={cn(
                   lsp?.status === "ACTIVE" && "border-success/30 bg-success/10 text-success",
-                  lsp?.status === "INACTIVE" && "border-border bg-surface-muted text-foreground-muted",
+                  lsp?.status === "INACTIVE" &&
+                    "border-border bg-surface-muted text-foreground-muted",
                   lsp?.status === "SUSPENDED" && "border-warning/30 bg-warning/10 text-warning",
                 )}
               >

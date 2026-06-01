@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createEmptyDb } from "./state";
 import { seedAuthFixtures } from "./seed";
 import { seedDashboardFixtures } from "./dashboard-seed";
+import { MOCK_REFERENCE_NOW } from "./reference-now";
 import type { MockDb } from "./state";
 
 let db: MockDb;
@@ -67,13 +68,14 @@ describe("seedDashboardFixtures", () => {
 
   it("seeds payments — some this month, some prior", () => {
     expect(db.payments.length).toBeGreaterThanOrEqual(20);
-    const now = new Date();
     const thisMonth = db.payments.filter((p) => {
       const d = new Date(p.postedAt);
-      return d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() === now.getUTCMonth();
+      return (
+        d.getUTCFullYear() === MOCK_REFERENCE_NOW.getUTCFullYear() &&
+        d.getUTCMonth() === MOCK_REFERENCE_NOW.getUTCMonth()
+      );
     });
-    // Some MTD payments must exist for MTD KPI to be non-zero.
-    expect(thisMonth.length).toBeGreaterThanOrEqual(0);
+    expect(thisMonth.length).toBeGreaterThan(0);
   });
 
   it("seeds alerts with a mix of open and acknowledged states", () => {
