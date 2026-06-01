@@ -375,6 +375,18 @@ public class Borrower {
         }
     }
 
+    public void updateBankDetails(
+            String bankAccountNumber,
+            String bankName,
+            String ifscCode,
+            String accountHolderName
+    ) {
+        this.bankAccountNumber = normalizeOptional(bankAccountNumber);
+        this.bankName = normalizeOptional(bankName);
+        this.ifscCode = normalizeCodedValue(ifscCode);
+        this.accountHolderName = normalizeOptional(accountHolderName);
+    }
+
     public String getFullName() {
         return fullName;
     }

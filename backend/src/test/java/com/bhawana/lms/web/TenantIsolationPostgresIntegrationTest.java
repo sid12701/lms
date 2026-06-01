@@ -28,6 +28,7 @@ import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
+import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.support.PostgresDataJpaTestSupport;
 import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
@@ -136,9 +137,20 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
     @Autowired
     private LspRepository lspRepository;
 
+    @Autowired
+    private LspAuditEventRepository lspAuditEventRepository;
+
+    @Autowired
+    private com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository loanDisbursementBankMismatchLogRepository;
+
+    @Autowired
+    private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
+
     @BeforeEach
     void setUp() {
         jdbcTemplate.execute("delete from report_request");
+        loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
+        borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
@@ -160,6 +172,7 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
         loanProductAuditEventRepository.deleteAllInBatch();
         loanProductLspMappingRepository.deleteAllInBatch();
         loanProductRepository.deleteAllInBatch();
+        lspAuditEventRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
     }
 

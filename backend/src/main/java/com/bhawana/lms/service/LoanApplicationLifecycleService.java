@@ -52,6 +52,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -73,6 +74,7 @@ public class LoanApplicationLifecycleService {
     private final BorrowerActiveLoanChecker borrowerActiveLoanChecker;
     private final WebhookOutboxService webhookOutboxService;
     private final LoanAutoApprovalRuleEngine loanAutoApprovalRuleEngine;
+    private final AlertRuleEvaluationService alertRuleEvaluationService;
     private final ObjectMapper objectMapper;
 
     public LoanApplicationLifecycleService(
@@ -91,6 +93,7 @@ public class LoanApplicationLifecycleService {
             BorrowerActiveLoanChecker borrowerActiveLoanChecker,
             WebhookOutboxService webhookOutboxService,
             LoanAutoApprovalRuleEngine loanAutoApprovalRuleEngine,
+            @Lazy AlertRuleEvaluationService alertRuleEvaluationService,
             ObjectMapper objectMapper
     ) {
         this.borrowerRepository = borrowerRepository;
@@ -108,6 +111,7 @@ public class LoanApplicationLifecycleService {
         this.borrowerActiveLoanChecker = borrowerActiveLoanChecker;
         this.webhookOutboxService = webhookOutboxService;
         this.loanAutoApprovalRuleEngine = loanAutoApprovalRuleEngine;
+        this.alertRuleEvaluationService = alertRuleEvaluationService;
         this.objectMapper = objectMapper;
     }
 
@@ -216,6 +220,9 @@ public class LoanApplicationLifecycleService {
 
         LoanApplicationStatusReasonCode resolvedReasonCode = validateTransitionReasonCode(targetStatus, reasonCode);
         String resolvedNote = resolveTransitionNote(note, currentStatus, targetStatus);
+        if (targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL) {
+            resolvedNote = recordManualRuleEngineOverride(application, actorUsername, resolvedNote);
+        }
         LoanApplication savedApplication = updateApplicationStatus(
                 application,
                 targetStatus,
@@ -274,14 +281,38 @@ public class LoanApplicationLifecycleService {
                 reasonCode,
                 "Manual status reason code is required."
         );
+        String resolvedNote = recordManualRuleEngineOverride(
+                application,
+                actorUsername,
+                "Manual override: " + requireNote(note)
+        );
         return updateApplicationStatus(
                 application,
                 targetStatus,
                 actorUsername,
-                "Manual override: " + requireNote(note),
+                resolvedNote,
                 resolvedReasonCode,
                 LoanApplicationAuditAction.MANUAL_STATUS_OVERRIDE
         );
+    }
+
+    private String recordManualRuleEngineOverride(
+            LoanApplication application,
+            String actorUsername,
+            String note
+    ) {
+        LoanAutoApprovalRuleEngine.Evaluation evaluation = loanAutoApprovalRuleEngine.evaluate(application);
+        alertRuleEvaluationService.emitManualRuleEngineOverride(application, actorUsername, evaluation, note);
+        String failedRuleList = evaluation.failedRules().stream()
+                .map(Enum::name)
+                .reduce((left, right) -> left + "," + right)
+                .orElse("none");
+        return note
+                + " [ruleEngineApproved="
+                + evaluation.approved()
+                + "; failedRules="
+                + failedRuleList
+                + "]";
     }
 
     @Transactional

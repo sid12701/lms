@@ -66,8 +66,16 @@ class LoanProductAdminControllerTest {
     @Autowired
     private LoanProductLspMappingRepository loanProductLspMappingRepository;
 
+    @Autowired
+    private com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository loanDisbursementBankMismatchLogRepository;
+
+    @Autowired
+    private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
+
     @BeforeEach
     void setUp() {
+        loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
+        borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         loanApplicationAssignmentEventRepository.deleteAll();
         loanApplicationStatusTransitionRepository.deleteAll();
         loanApplicationIntakeAuditRepository.deleteAll();

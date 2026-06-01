@@ -29,6 +29,7 @@ import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
+import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -112,14 +113,25 @@ class HomeDashboardControllerTest {
     private LspRepository lspRepository;
 
     @Autowired
+    private LspAuditEventRepository lspAuditEventRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private OpsAlertRepository opsAlertRepository;
 
+    @Autowired
+    private com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository loanDisbursementBankMismatchLogRepository;
+
+    @Autowired
+    private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
+
     @BeforeEach
     void setUp() {
         opsAlertRepository.deleteAllInBatch();
+        loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
+        borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
@@ -136,6 +148,7 @@ class HomeDashboardControllerTest {
         loanProductAuditEventRepository.deleteAllInBatch();
         loanProductLspMappingRepository.deleteAllInBatch();
         loanProductRepository.deleteAllInBatch();
+        lspAuditEventRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
     }
 
@@ -150,7 +163,7 @@ class HomeDashboardControllerTest {
         JsonNode northLoan = createApplication(north.id(), product.id(), "NORTH-HOME-001", "ZXCVB1234N");
         JsonNode queuedLoan = createApplication(apex.id(), product.id(), "APEX-HOME-002", "PQRST5678K");
 
-        transitionApplication(queuedLoan.get("id").asText(), "AWAITING_APPROVAL", "Queued for approval", opsUser());
+        transitionApplication(queuedLoan.get("id").asText(), "AWAITING_APPROVAL", "Queued for approval", systemAdmin());
 
         approveLoan(apexLoan.get("id").asText());
         approveLoan(northLoan.get("id").asText());
@@ -206,9 +219,9 @@ class HomeDashboardControllerTest {
                 .andExpect(jsonPath("$.applicationsByStatus[?(@.status == 'AWAITING_APPROVAL')].count").value(1))
                 .andExpect(jsonPath("$.applicationsByStatus[?(@.status == 'DISBURSED')].count").value(2))
                 .andExpect(jsonPath("$.dpdBuckets[?(@.bucket == 'DPD_90_PLUS')].count").value(1))
-                .andExpect(jsonPath("$.openAlerts").value(1))
-                .andExpect(jsonPath("$.openAlertSummaries", hasSize(1)))
-                .andExpect(jsonPath("$.openAlertSummaries[0].title").value("Duplicate PAN detected"));
+                .andExpect(jsonPath("$.openAlerts").value(3))
+                .andExpect(jsonPath("$.openAlertSummaries", hasSize(3)))
+                .andExpect(jsonPath("$.openAlertSummaries[?(@.title == 'Duplicate PAN detected')]").exists());
     }
 
     @Test
@@ -283,7 +296,7 @@ class HomeDashboardControllerTest {
     }
 
     private void approveLoan(String applicationId) throws Exception {
-        transitionApplication(applicationId, "AWAITING_APPROVAL", "Ready for approval", opsUser());
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Ready for approval", systemAdmin());
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for dashboard coverage", systemAdmin());
     }

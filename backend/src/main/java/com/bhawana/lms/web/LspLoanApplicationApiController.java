@@ -57,21 +57,21 @@ public class LspLoanApplicationApiController {
     private final LoanApplicationService loanApplicationService;
     private final LoanDocumentService loanDocumentService;
     private final LoanRepaymentScheduleService loanRepaymentScheduleService;
-    private final LoanDisbursementService loanDisbursementService;
     private final LspApiIdempotencyService lspApiIdempotencyService;
+    private final LoanDisbursementService loanDisbursementService;
 
     public LspLoanApplicationApiController(
             LoanApplicationService loanApplicationService,
             LoanDocumentService loanDocumentService,
             LoanRepaymentScheduleService loanRepaymentScheduleService,
-            LoanDisbursementService loanDisbursementService,
-            LspApiIdempotencyService lspApiIdempotencyService
+            LspApiIdempotencyService lspApiIdempotencyService,
+            LoanDisbursementService loanDisbursementService
     ) {
         this.loanApplicationService = loanApplicationService;
         this.loanDocumentService = loanDocumentService;
         this.loanRepaymentScheduleService = loanRepaymentScheduleService;
-        this.loanDisbursementService = loanDisbursementService;
         this.lspApiIdempotencyService = lspApiIdempotencyService;
+        this.loanDisbursementService = loanDisbursementService;
     }
 
     @GetMapping
@@ -395,23 +395,20 @@ public class LspLoanApplicationApiController {
                 .toList();
     }
 
-    @PostMapping("/{applicationId}/disbursement")
+    @PostMapping("/{applicationId}/disbursement-bank-check")
     @PreAuthorize("hasRole('LSP_API_CLIENT')")
-    public LspLoanApplicationDetailResponse requestDisbursement(
+    public void verifyDisbursementBankDetails(
             Authentication authentication,
             @PathVariable UUID applicationId,
             @Valid @RequestBody LspLoanDisbursementRequest request
     ) {
-        LoanApplication application = loanDisbursementService.requestDisbursementForLsp(
+        loanDisbursementService.verifyDisbursementBankDetailsForLsp(
                 LspAuthenticationSupport.authenticatedLspId(authentication),
                 applicationId,
-                authentication.getName(),
-                request.disbursalAmount(),
                 request.bankAccountNumber(),
                 request.ifscCode(),
                 request.accountHolderName()
         );
-        return LspLoanApplicationResponses.toDetailResponse(application, loanApplicationService);
     }
 
     public record LspLoanApplicationRequest(

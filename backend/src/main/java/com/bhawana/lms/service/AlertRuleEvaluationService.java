@@ -2,6 +2,7 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.AlertRule;
+import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
@@ -112,6 +113,119 @@ public class AlertRuleEvaluationService {
                 "WEBHOOK_DELIVERY",
                 event.getId(),
                 "webhook-dead-letter:" + event.getId(),
+                contextJson
+        );
+    }
+
+    public void emitManualRuleEngineOverride(
+            LoanApplication application,
+            String actorUsername,
+            LoanAutoApprovalRuleEngine.Evaluation evaluation,
+            String transitionNote
+    ) {
+        String lspCode = application.getLsp() != null ? application.getLsp().getCode() : "unknown";
+        String failedRules = evaluation.failedRules().stream()
+                .map(Enum::name)
+                .reduce((left, right) -> left + "," + right)
+                .orElse("");
+        String contextJson = "{\"applicationId\":\""
+                + application.getId()
+                + "\",\"lspCode\":\""
+                + escapeJson(lspCode)
+                + "\",\"actorUsername\":\""
+                + escapeJson(actorUsername)
+                + "\",\"ruleEngineApproved\":"
+                + evaluation.approved()
+                + ",\"failedRules\":["
+                + evaluation.failedRules().stream()
+                        .map(rule -> "\"" + rule.name() + "\"")
+                        .reduce((left, right) -> left + "," + right)
+                        .orElse("")
+                + "]}";
+        opsAlertService.createAlert(
+                OpsAlertType.MANUAL_RULE_ENGINE_OVERRIDE,
+                OpsAlertSeverity.HIGH,
+                "Manual rule-engine override: " + application.getExternalLoanId(),
+                transitionNote,
+                "LOAN_APPLICATION",
+                application.getId(),
+                CorrelationIdHolder.get(),
+                contextJson
+        );
+    }
+
+    public void emitLspBoundViolation(
+            LoanApplication application,
+            String violationType,
+            String message,
+            Map<String, String> details
+    ) {
+        String lspCode = application.getLsp() != null ? application.getLsp().getCode() : "unknown";
+        StringBuilder context = new StringBuilder("{\"applicationId\":\"")
+                .append(application.getId())
+                .append("\",\"lspCode\":\"")
+                .append(escapeJson(lspCode))
+                .append("\",\"violationType\":\"")
+                .append(escapeJson(violationType))
+                .append("\"");
+        if (details != null) {
+            for (Map.Entry<String, String> entry : details.entrySet()) {
+                context.append(",\"")
+                        .append(escapeJson(entry.getKey()))
+                        .append("\":\"")
+                        .append(escapeJson(entry.getValue()))
+                        .append("\"");
+            }
+        }
+        context.append("}");
+        opsAlertService.createAlertIfAbsent(
+                OpsAlertType.LSP_BOUND_VIOLATION,
+                OpsAlertSeverity.HIGH,
+                "LSP bound violation: " + violationType,
+                message,
+                "LOAN_APPLICATION",
+                application.getId(),
+                "lsp-bound:" + application.getId() + ":" + violationType,
+                context.toString()
+        );
+    }
+
+    public void emitBorrowerBankDetailsVelocity(Borrower borrower, int updateCount) {
+        String contextJson = "{\"borrowerId\":\""
+                + borrower.getId()
+                + "\",\"updateCount\":"
+                + updateCount
+                + "}";
+        opsAlertService.createAlertIfAbsent(
+                OpsAlertType.BORROWER_BANK_DETAILS_VELOCITY,
+                OpsAlertSeverity.HIGH,
+                "Borrower bank details updated frequently",
+                "Borrower "
+                        + borrower.getPan()
+                        + " had "
+                        + updateCount
+                        + " bank-detail updates in the configured velocity window.",
+                "BORROWER",
+                borrower.getId(),
+                "borrower-bank-velocity:" + borrower.getId(),
+                contextJson
+        );
+    }
+
+    public void emitDisbursementRetryExhausted(LoanApplication application, int attemptCount) {
+        String contextJson = "{\"applicationId\":\""
+                + application.getId()
+                + "\",\"attemptCount\":"
+                + attemptCount
+                + "}";
+        opsAlertService.createAlertIfAbsent(
+                OpsAlertType.DISBURSEMENT_RETRY_EXHAUSTED,
+                OpsAlertSeverity.HIGH,
+                "Disbursement retries exhausted",
+                "Automated disbursement failed after " + attemptCount + " attempts.",
+                "LOAN_APPLICATION",
+                application.getId(),
+                "disbursement-retry-exhausted:" + application.getId(),
                 contextJson
         );
     }

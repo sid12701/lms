@@ -1,0 +1,272 @@
+package com.bhawana.lms.web;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
+import com.bhawana.lms.domain.LoanApplicationStatus;
+import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
+import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
+import com.bhawana.lms.service.LoanDisbursementWorkerService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+
+/**
+ * Issue #62 PR (b) — worker-driven disbursement and #63 deferred worker/disable tests.
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class Issue62DisbursementWorkerIntegrationTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private LoanApplicationRepository loanApplicationRepository;
+
+    @Autowired
+    private LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
+
+    @Autowired
+    private LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
+
+    @Autowired
+    private LoanDisbursementWorkerService loanDisbursementWorkerService;
+
+    @Test
+    void workerPicksUpApprovedApplicationAndDisburses() throws Exception {
+        String applicationId = seedApprovedPendingApplication();
+        loanDisbursementWorkerService.processApplication(UUID.fromString(applicationId));
+        assertEquals(
+                LoanApplicationStatus.DISBURSED,
+                loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow().getStatus()
+        );
+        assertTrue(loanDisbursementRequestLogRepository.count() > 0);
+    }
+
+    @Test
+    void workerSkipsDisbursementWhenLspDisabled() throws Exception {
+        String lspId = createLspViaAdmin("DISABLE-LSP");
+        String productId = createProductViaAdmin();
+        mapProductToLsp(productId, lspId);
+        String applicationId = createApplicationViaOps(lspId, productId);
+        transitionToAwaitingApproval(applicationId);
+        markKycComplete(applicationId);
+        transitionToApproved(applicationId);
+
+        disableLsp(lspId);
+        loanDisbursementWorkerService.processApplication(UUID.fromString(applicationId));
+        assertEquals(
+                LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
+                loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow().getStatus()
+        );
+
+        reactivateLsp(lspId);
+        loanDisbursementWorkerService.processApplication(UUID.fromString(applicationId));
+        assertEquals(
+                LoanApplicationStatus.DISBURSED,
+                loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow().getStatus()
+        );
+    }
+
+    private String seedApprovedPendingApplication() throws Exception {
+        String lspId = createLspViaAdmin("WORKER-LSP");
+        String productId = createProductViaAdmin();
+        mapProductToLsp(productId, lspId);
+        String applicationId = createApplicationViaOps(lspId, productId);
+        transitionToAwaitingApproval(applicationId);
+        markKycComplete(applicationId);
+        transitionToApproved(applicationId);
+        return applicationId;
+    }
+
+    private String createLspViaAdmin(String codeSuffix) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/internal/admin/lsps")
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "code", "LSP-" + codeSuffix,
+                                "name", "Worker LSP " + codeSuffix,
+                                "status", "ACTIVE"
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
+    }
+
+    private String createProductViaAdmin() throws Exception {
+        String code = "PROD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        MvcResult result = mockMvc.perform(post("/api/v1/internal/admin/products")
+                        .with(productAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "code", code,
+                                "name", "Worker product " + code,
+                                "minPrincipal", new BigDecimal("5000.00"),
+                                "maxPrincipal", new BigDecimal("250000.00"),
+                                "interestRate", new BigDecimal("18.50"),
+                                "processingFeeRate", new BigDecimal("2.25"),
+                                "minTenureMonths", 6,
+                                "maxTenureMonths", 24,
+                                "status", "ACTIVE"
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
+    }
+
+    private void mapProductToLsp(String productId, String lspId) throws Exception {
+        mockMvc.perform(put("/api/v1/internal/admin/product-lsp-mappings/{productId}", productId)
+                        .with(productAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("lspIds", List.of(lspId)))))
+                .andExpect(status().isOk());
+    }
+
+    private String createApplicationViaOps(String lspId, String productId) throws Exception {
+        String borrowerPan = uniquePan();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("lspId", lspId);
+        payload.put("productId", productId);
+        payload.put("externalLoanId", "EXT-" + UUID.randomUUID().toString().substring(0, 8));
+        payload.put("sourceChannel", "API");
+        payload.put("borrowerPan", borrowerPan);
+        payload.put("borrowerFullName", "Worker Borrower");
+        payload.put("borrowerMobile", mobileForPan(borrowerPan));
+        payload.put("borrowerEmail", "worker+" + borrowerPan.toLowerCase() + "@example.com");
+        payload.put("borrowerDateOfBirth", LocalDate.of(1990, 1, 1));
+        payload.put("borrowerCity", "Mumbai");
+        payload.put("borrowerState", "Maharashtra");
+        payload.put("borrowerEmploymentType", "SALARIED");
+        payload.put("borrowerMonthlyIncome", new BigDecimal("50000.00"));
+        payload.put("requestedAmount", new BigDecimal("45000.00"));
+        payload.put("tenureMonths", 12);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
+    }
+
+    private void transitionToAwaitingApproval(String applicationId) throws Exception {
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "AWAITING_APPROVAL",
+                                "note", "Ready for approval"
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    private void transitionToApproved(String applicationId) throws Exception {
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetStatus", "APPROVED_PENDING_DISBURSAL",
+                                "note", "Approved for worker test"
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    private void markKycComplete(String applicationId) {
+        UUID applicationUuid = UUID.fromString(applicationId);
+        loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(applicationUuid)
+                .forEach(item -> {
+                    if (!item.isRequired()) {
+                        return;
+                    }
+                    String documentKey = item.getDocumentType().name().toLowerCase();
+                    item.update(
+                            LoanApplicationDocumentChecklistStatus.SUBMITTED,
+                            "Uploaded for worker test",
+                            "ops.user",
+                            documentKey + ".pdf",
+                            "storage://" + applicationId + "/" + documentKey + ".pdf",
+                            null,
+                            "application/pdf",
+                            1024L,
+                            "checksum-" + documentKey,
+                            "storage-key/" + applicationId + "/" + documentKey,
+                            true
+                    );
+                    loanApplicationDocumentChecklistRepository.save(item);
+                });
+    }
+
+    private static String uniquePan() {
+        int suffix = Math.abs(UUID.randomUUID().hashCode()) % 10_000;
+        return String.format("ABCDE%04dF", suffix);
+    }
+
+    private static String mobileForPan(String pan) {
+        int hash = Math.abs(pan.hashCode());
+        return "9" + String.format("%09d", hash % 1_000_000_000);
+    }
+
+    private void disableLsp(String lspId) throws Exception {
+        mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/status", lspId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "status", "INACTIVE",
+                                "reason", "SECURITY_INCIDENT",
+                                "note", "Disable for worker test"
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    private void reactivateLsp(String lspId) throws Exception {
+        mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/status", lspId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "status", "ACTIVE",
+                                "reason", "OPERATIONAL",
+                                "note", "Reactivate for worker test"
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor systemAdmin() {
+        return jwt().jwt(token -> token.subject("ops.admin").claim("roles", List.of("SYSTEM_ADMIN")))
+                .authorities(() -> "ROLE_SYSTEM_ADMIN");
+    }
+
+    private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor productAdmin() {
+        return jwt().jwt(token -> token.subject("product.admin").claim("roles", List.of("PRODUCT_ADMIN")))
+                .authorities(() -> "ROLE_PRODUCT_ADMIN");
+    }
+
+    private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor opsUser() {
+        return jwt().jwt(token -> token.subject("ops.user").claim("roles", List.of("OPS_USER")))
+                .authorities(() -> "ROLE_OPS_USER");
+    }
+}

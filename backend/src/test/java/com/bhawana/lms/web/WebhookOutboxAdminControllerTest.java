@@ -33,6 +33,7 @@ import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
+import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
 import com.bhawana.lms.repo.WebhookEventOutboxRepository;
@@ -129,8 +130,19 @@ class WebhookOutboxAdminControllerTest {
     @Autowired
     private LspRepository lspRepository;
 
+    @Autowired
+    private LspAuditEventRepository lspAuditEventRepository;
+
+    @Autowired
+    private com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository loanDisbursementBankMismatchLogRepository;
+
+    @Autowired
+    private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
+
     @BeforeEach
     void setUp() {
+        loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
+        borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         webhookEventDeliveryAttemptRepository.deleteAllInBatch();
         webhookEventOutboxRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
@@ -148,6 +160,7 @@ class WebhookOutboxAdminControllerTest {
         loanProductAuditEventRepository.deleteAllInBatch();
         loanProductLspMappingRepository.deleteAllInBatch();
         loanProductRepository.deleteAllInBatch();
+        lspAuditEventRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
     }
 
@@ -572,7 +585,7 @@ class WebhookOutboxAdminControllerTest {
     }
 
     private void transitionApplication(String applicationId, String targetStatus) throws Exception {
-        transitionApplication(applicationId, targetStatus, opsUser());
+        transitionApplication(applicationId, targetStatus, systemAdmin());
     }
 
     private void transitionApplication(

@@ -10,6 +10,7 @@ import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -36,9 +37,13 @@ class BorrowerAdminControllerTest {
     @Autowired
     private LspRepository lspRepository;
 
+    @Autowired
+    private LspAuditEventRepository lspAuditEventRepository;
+
     @BeforeEach
     void setUp() {
         borrowerRepository.deleteAllInBatch();
+        lspAuditEventRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
     }
 

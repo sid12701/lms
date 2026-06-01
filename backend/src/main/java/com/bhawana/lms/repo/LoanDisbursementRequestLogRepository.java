@@ -10,4 +10,6 @@ public interface LoanDisbursementRequestLogRepository extends JpaRepository<Loan
     List<LoanDisbursementRequestLog> findTop20ByLoanAccount_IdOrderByCreatedAtDesc(UUID loanAccountId);
 
     java.util.Optional<LoanDisbursementRequestLog> findTopByLoanAccount_IdOrderByCreatedAtDesc(UUID loanAccountId);
+
+    long countByLoanAccount_Id(UUID loanAccountId);
 }

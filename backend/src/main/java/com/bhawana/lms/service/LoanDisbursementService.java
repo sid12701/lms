@@ -19,15 +19,90 @@ public class LoanDisbursementService {
     private final LoanApplicationService loanApplicationService;
     private final LoanApprovalService loanApprovalService;
     private final LoanRepaymentScheduleService loanRepaymentScheduleService;
+    private final BorrowerBankDetailsService borrowerBankDetailsService;
 
     public LoanDisbursementService(
             LoanApplicationService loanApplicationService,
             LoanApprovalService loanApprovalService,
-            LoanRepaymentScheduleService loanRepaymentScheduleService
+            LoanRepaymentScheduleService loanRepaymentScheduleService,
+            BorrowerBankDetailsService borrowerBankDetailsService
     ) {
         this.loanApplicationService = loanApplicationService;
         this.loanApprovalService = loanApprovalService;
         this.loanRepaymentScheduleService = loanRepaymentScheduleService;
+        this.borrowerBankDetailsService = borrowerBankDetailsService;
+    }
+
+    /**
+     * Validates submitted disbursement bank details against the borrower profile without mutating bank data.
+     */
+    @Transactional
+    public void verifyDisbursementBankDetailsForLsp(
+            UUID lspId,
+            UUID applicationId,
+            String requestBankAccountNumber,
+            String requestIfscCode,
+            String requestAccountHolderName
+    ) {
+        LoanApplication application = loanApplicationService.getApplicationForLsp(lspId, applicationId);
+        Map<String, String> violations = new LinkedHashMap<>();
+        validateDisbursementBankDetails(
+                application.getBorrower(),
+                requestBankAccountNumber,
+                requestIfscCode,
+                requestAccountHolderName,
+                violations
+        );
+        if (violations.containsKey("bankAccount")
+                || violations.containsKey("accountHolderName")
+                || violations.containsKey("borrowerBank")) {
+            borrowerBankDetailsService.recordDisbursementBankMismatch(
+                    application,
+                    lspId,
+                    requestBankAccountNumber,
+                    requestIfscCode,
+                    requestAccountHolderName
+            );
+        }
+        if (!violations.isEmpty()) {
+            throw new BusinessRuleViolationException(
+                    "DISBURSEMENT_VALIDATION_FAILED",
+                    "Disbursement bank details failed compliance checks.",
+                    violations
+            );
+        }
+    }
+
+    /**
+     * Last-line validation before the automated disbursement worker calls the adapter.
+     */
+    public Map<String, String> validateAutomatedDisbursement(LoanApplication application, LoanAccount loanAccount) {
+        Map<String, String> violations = new LinkedHashMap<>();
+        if (!loanApplicationService.hasAllRequiredLmsManagedDocuments(application.getId(), false)) {
+            violations.put("documents", "All required documents must be uploaded into LMS-managed storage.");
+        }
+        if (loanAccount == null) {
+            violations.put("loanAccount", "Loan account is not available for disbursement.");
+            return violations;
+        }
+        try {
+            loanRepaymentScheduleService.validatePersistedScheduleForDisbursement(loanAccount);
+        } catch (BusinessRuleViolationException exception) {
+            violations.putAll(exception.getFieldErrors());
+        }
+        BigDecimal principalAmount = scaleCurrency(loanAccount.getPrincipalAmount());
+        BigDecimal scaledDisbursalAmount = principalAmount;
+        BigDecimal shortfall = scaleCurrency(principalAmount.subtract(scaledDisbursalAmount));
+        BigDecimal allowedShortfall = scaleCurrency(principalAmount
+                .multiply(loanAccount.getLoanProduct().getProcessingFeeRate())
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+        if (shortfall.compareTo(allowedShortfall) > 0) {
+            violations.put(
+                    "disbursalAmount",
+                    "Disbursement shortfall exceeds the configured processing fee cap of " + allowedShortfall + "."
+            );
+        }
+        return violations;
     }
 
     @Transactional

@@ -42,6 +42,12 @@ app:
       enabled: false
   rate-limit:
     enabled: false
+  borrower:
+    bank-details:
+      velocity-max-updates: 2
+      velocity-window-days: 7
+      mismatch-max-attempts: 3
+      mismatch-window-minutes: 15
   alert-rules:
     scheduler-enabled: false
   storage:

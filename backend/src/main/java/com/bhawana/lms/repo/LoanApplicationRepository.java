@@ -22,6 +22,9 @@ public interface LoanApplicationRepository extends JpaRepository<LoanApplication
     @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
     Optional<LoanApplication> findDetailedByLsp_IdAndExternalLoanIdIgnoreCase(UUID lspId, String externalLoanId);
 
+    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
+    Optional<LoanApplication> findTopByBorrower_IdAndLsp_IdOrderByCreatedAtDesc(UUID borrowerId, UUID lspId);
+
     Optional<LoanApplication> findByLsp_IdAndExternalLoanIdIgnoreCase(UUID lspId, String externalLoanId);
 
     @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})

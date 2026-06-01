@@ -28,6 +28,7 @@ import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
+import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.ReportRequestRepository;
 import com.bhawana.lms.service.ReportRequestService;
@@ -120,6 +121,9 @@ class ReportAdminControllerTest extends MinioTestSupport {
     private LspRepository lspRepository;
 
     @Autowired
+    private LspAuditEventRepository lspAuditEventRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -131,8 +135,16 @@ class ReportAdminControllerTest extends MinioTestSupport {
     @MockitoBean
     private JavaMailSender javaMailSender;
 
+    @Autowired
+    private com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository loanDisbursementBankMismatchLogRepository;
+
+    @Autowired
+    private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
+
     @BeforeEach
     void setUp() {
+        loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
+        borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
@@ -150,6 +162,7 @@ class ReportAdminControllerTest extends MinioTestSupport {
         loanProductLspMappingRepository.deleteAllInBatch();
         loanProductRepository.deleteAllInBatch();
         reportRequestRepository.deleteAllInBatch();
+        lspAuditEventRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
     }
 
@@ -396,7 +409,7 @@ class ReportAdminControllerTest extends MinioTestSupport {
     }
 
     private void approveLoan(String applicationId) throws Exception {
-        transitionApplication(applicationId, "AWAITING_APPROVAL", "Ready for approval", opsUser());
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Ready for approval", systemAdmin());
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for report coverage", systemAdmin());
     }

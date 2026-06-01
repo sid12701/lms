@@ -1,6 +1,8 @@
 package com.bhawana.lms.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -9,7 +11,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentAccessAuditRepository;
@@ -29,6 +33,7 @@ import com.bhawana.lms.repo.ApiClientAuditEventRepository;
 import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppUserRepository;
+import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
 import com.bhawana.lms.repo.WebhookEventOutboxRepository;
@@ -130,6 +135,9 @@ class LoanApplicationOpsControllerTest {
     private LspRepository lspRepository;
 
     @Autowired
+    private LspAuditEventRepository lspAuditEventRepository;
+
+    @Autowired
     private WebhookEventOutboxRepository webhookEventOutboxRepository;
 
     @Autowired
@@ -138,8 +146,20 @@ class LoanApplicationOpsControllerTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private OpsAlertRepository opsAlertRepository;
+
+    @Autowired
+    private com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository loanDisbursementBankMismatchLogRepository;
+
+    @Autowired
+    private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
+
     @BeforeEach
     void setUp() {
+        opsAlertRepository.deleteAllInBatch();
+        loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
+        borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         webhookEventDeliveryAttemptRepository.deleteAllInBatch();
         webhookEventOutboxRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
@@ -162,6 +182,7 @@ class LoanApplicationOpsControllerTest {
         loanProductAuditEventRepository.deleteAllInBatch();
         loanProductLspMappingRepository.deleteAllInBatch();
         loanProductRepository.deleteAllInBatch();
+        lspAuditEventRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
     }
 
@@ -489,7 +510,8 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].fromStatus").value("AWAITING_APPROVAL"))
                 .andExpect(jsonPath("$[0].toStatus").value("APPROVED_PENDING_DISBURSAL"))
                 .andExpect(jsonPath("$[0].reasonCode").doesNotExist())
-                .andExpect(jsonPath("$[0].note").value("Approved after validation"))
+                .andExpect(jsonPath("$[0].note", containsString("Approved after validation")))
+                .andExpect(jsonPath("$[0].note", containsString("failedRules=")))
                 .andExpect(jsonPath("$[1].fromStatus").value("INITIALIZED"))
                 .andExpect(jsonPath("$[1].toStatus").value("AWAITING_APPROVAL"))
                 .andExpect(jsonPath("$[1].reasonCode").doesNotExist())
@@ -569,14 +591,15 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].fromStatus").value("AWAITING_APPROVAL"))
                 .andExpect(jsonPath("$[0].toStatus").value("DISBURSEMENT_RETRY"))
                 .andExpect(jsonPath("$[0].reasonCode").value("MANUAL_ADMIN_OVERRIDE"))
-                .andExpect(jsonPath("$[0].note").value("Manual override: Escalating to manual exception queue"))
+                .andExpect(jsonPath("$[0].note", containsString("Manual override: Escalating to manual exception queue")))
+                .andExpect(jsonPath("$[0].note", containsString("failedRules=")))
                 .andExpect(jsonPath("$[0].actorUsername").value("ops.admin"))
                 .andExpect(jsonPath("$[1].action").value("STATUS_TRANSITION"))
                 .andExpect(jsonPath("$[1].fromStatus").value("INITIALIZED"))
                 .andExpect(jsonPath("$[1].toStatus").value("AWAITING_APPROVAL"))
                 .andExpect(jsonPath("$[1].reasonCode").doesNotExist())
                 .andExpect(jsonPath("$[1].note").value("Picked up for review"))
-                .andExpect(jsonPath("$[1].actorUsername").value("ops.user"));
+                .andExpect(jsonPath("$[1].actorUsername").value("ops.admin"));
     }
 
     @Test
@@ -1457,7 +1480,7 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
-    void opsUserCanOnlyMoveLoanApplicationsIntoAwaitingApproval() throws Exception {
+    void opsUserCannotManuallyTransitionStatus() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
         mapProductToLsp(product.id(), lsp.id());
@@ -1472,9 +1495,8 @@ class LoanApplicationOpsControllerTest {
                                 "targetStatus", "AWAITING_APPROVAL",
                                 "note", "Started review"
                         ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("AWAITING_APPROVAL"))
-                .andExpect(jsonPath("$.lastActivity.summary").value("Moved from INITIALIZED to AWAITING_APPROVAL"));
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("ACCESS_DENIED"));
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/status-transitions", applicationId)
                         .with(opsUser())
@@ -1516,7 +1538,14 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("AWAITING_APPROVAL"))
                 .andExpect(jsonPath("$.lastActivity.summary").value("Moved from REJECTED to AWAITING_APPROVAL"))
-                .andExpect(jsonPath("$.lastActivity.detail").value("Manual override: Reopening after borrower appeal [MANUAL_ADMIN_OVERRIDE]"));
+                .andExpect(jsonPath("$.lastActivity.detail", containsString("Manual override: Reopening after borrower appeal")))
+                .andExpect(jsonPath("$.lastActivity.detail", containsString("failedRules=")))
+                .andExpect(jsonPath("$.lastActivity.detail", containsString("[MANUAL_ADMIN_OVERRIDE]")));
+
+        assertTrue(
+                opsAlertRepository.findAll().stream()
+                        .anyMatch(alert -> alert.getType() == OpsAlertType.MANUAL_RULE_ENGINE_OVERRIDE)
+        );
     }
 
     @Test
@@ -2177,7 +2206,7 @@ class LoanApplicationOpsControllerTest {
     }
 
     private JsonNode transitionApplication(String applicationId, String targetStatus, String note) throws Exception {
-        return transitionApplication(applicationId, targetStatus, note, null, opsUser());
+        return transitionApplication(applicationId, targetStatus, note, null, systemAdmin());
     }
 
     private JsonNode transitionApplication(

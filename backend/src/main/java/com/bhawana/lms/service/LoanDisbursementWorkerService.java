@@ -1,0 +1,188 @@
+package com.bhawana.lms.service;
+
+import com.bhawana.lms.domain.LoanAccount;
+import com.bhawana.lms.domain.LoanAccountStatus;
+import com.bhawana.lms.domain.LoanApplication;
+import com.bhawana.lms.domain.LoanApplicationAuditAction;
+import com.bhawana.lms.domain.LoanApplicationStatus;
+import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
+import com.bhawana.lms.domain.LspStatus;
+import com.bhawana.lms.domain.MockDisbursementOutcome;
+import com.bhawana.lms.repo.LoanAccountRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
+import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
+import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * Issue #62 — automated disbursement for approved applications (replaces LSP-initiated disbursement).
+ */
+@Service
+public class LoanDisbursementWorkerService {
+
+    public static final String WORKER_ACTOR = "SYSTEM_DISBURSEMENT_WORKER";
+
+    private static final Logger log = LoggerFactory.getLogger(LoanDisbursementWorkerService.class);
+
+    private final LoanApplicationRepository loanApplicationRepository;
+    private final LoanAccountRepository loanAccountRepository;
+    private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
+    private final LoanApplicationService loanApplicationService;
+    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
+    private final LoanDisbursementService loanDisbursementService;
+    private final AlertRuleEvaluationService alertRuleEvaluationService;
+    private final LoanDisbursementWorkerProperties properties;
+
+    public LoanDisbursementWorkerService(
+            LoanApplicationRepository loanApplicationRepository,
+            LoanAccountRepository loanAccountRepository,
+            LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
+            LoanApplicationService loanApplicationService,
+            LoanApplicationLifecycleService loanApplicationLifecycleService,
+            LoanDisbursementService loanDisbursementService,
+            AlertRuleEvaluationService alertRuleEvaluationService,
+            LoanDisbursementWorkerProperties properties
+    ) {
+        this.loanApplicationRepository = loanApplicationRepository;
+        this.loanAccountRepository = loanAccountRepository;
+        this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
+        this.loanApplicationService = loanApplicationService;
+        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
+        this.loanDisbursementService = loanDisbursementService;
+        this.alertRuleEvaluationService = alertRuleEvaluationService;
+        this.properties = properties;
+    }
+
+    @Transactional
+    public int processPendingDisbursements() {
+        TenantDataAccessContextHolder.useAdmin();
+        try {
+            int processed = 0;
+            processed += processStatus(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL);
+            processed += processStatus(LoanApplicationStatus.DISBURSEMENT_RETRY);
+            return processed;
+        } finally {
+            TenantDataAccessContextHolder.useAdmin();
+        }
+    }
+
+    private int processStatus(LoanApplicationStatus status) {
+        List<LoanApplication> applications = loanApplicationRepository.findByStatus(status);
+        int processed = 0;
+        for (LoanApplication application : applications) {
+            if (processApplication(application.getId())) {
+                processed++;
+            }
+        }
+        return processed;
+    }
+
+    /**
+     * @return true when the worker took action (processed, rejected, or exhausted retries); false when skipped.
+     */
+    @Transactional
+    public boolean processApplication(UUID applicationId) {
+        TenantDataAccessContextHolder.useAdmin();
+        LoanApplication application = loanApplicationService.getApplication(applicationId);
+        if (application.getLsp() == null || application.getLsp().getStatus() != LspStatus.ACTIVE) {
+            return false;
+        }
+        if (application.getStatus() != LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
+                && application.getStatus() != LoanApplicationStatus.DISBURSEMENT_RETRY) {
+            return false;
+        }
+
+        LoanAccount loanAccount = loanAccountRepository.findByLoanApplication_Id(applicationId).orElse(null);
+        if (loanAccount == null) {
+            rejectForBoundViolation(application, "MISSING_LOAN_ACCOUNT", "Loan account is not available for disbursement.");
+            return true;
+        }
+        if (loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED) {
+            return false;
+        }
+
+        Map<String, String> violations = loanDisbursementService.validateAutomatedDisbursement(application, loanAccount);
+        if (!violations.isEmpty()) {
+            rejectForBoundViolation(application, "AUTOMATED_DISBURSEMENT_VALIDATION", violations);
+            return true;
+        }
+
+        long priorAttempts = loanDisbursementRequestLogRepository.countByLoanAccount_Id(loanAccount.getId());
+        if (priorAttempts >= properties.getMaxAttempts()) {
+            if (application.getStatus() != LoanApplicationStatus.DISBURSEMENT_RETRY) {
+                loanApplicationLifecycleService.updateApplicationStatus(
+                        application,
+                        LoanApplicationStatus.DISBURSEMENT_RETRY,
+                        WORKER_ACTOR,
+                        "Automated disbursement retries exhausted.",
+                        LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
+                        LoanApplicationAuditAction.STATUS_TRANSITION
+                );
+                alertRuleEvaluationService.emitDisbursementRetryExhausted(application, (int) priorAttempts);
+            }
+            return true;
+        }
+
+        try {
+            loanApplicationService.initiateDisbursement(applicationId, WORKER_ACTOR);
+            if (properties.isAutoResolveMockOutcome()) {
+                LoanAccount refreshedAccount = loanAccountRepository.findByLoanApplication_Id(applicationId).orElse(loanAccount);
+                if (refreshedAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED) {
+                    loanApplicationService.resolveMockDisbursementOutcome(
+                            applicationId,
+                            WORKER_ACTOR,
+                            MockDisbursementOutcome.DISBURSED
+                    );
+                }
+            }
+            return true;
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "Automated disbursement attempt failed for application {}: {}",
+                    applicationId,
+                    exception.getMessage()
+            );
+            long attemptsAfterFailure = loanDisbursementRequestLogRepository.countByLoanAccount_Id(loanAccount.getId());
+            if (attemptsAfterFailure >= properties.getMaxAttempts()) {
+                loanApplicationLifecycleService.updateApplicationStatus(
+                        application,
+                        LoanApplicationStatus.DISBURSEMENT_RETRY,
+                        WORKER_ACTOR,
+                        "Automated disbursement retries exhausted after adapter failure.",
+                        LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
+                        LoanApplicationAuditAction.STATUS_TRANSITION
+                );
+                alertRuleEvaluationService.emitDisbursementRetryExhausted(application, (int) attemptsAfterFailure);
+            }
+            return true;
+        }
+    }
+
+    private void rejectForBoundViolation(
+            LoanApplication application,
+            String violationType,
+            Map<String, String> violations
+    ) {
+        String message = violations.values().stream().findFirst().orElse("Automated disbursement validation failed.");
+        alertRuleEvaluationService.emitLspBoundViolation(application, violationType, message, violations);
+        loanApplicationLifecycleService.updateApplicationStatus(
+                application,
+                LoanApplicationStatus.REJECTED,
+                WORKER_ACTOR,
+                "Rejected by disbursement worker: " + message,
+                LoanApplicationStatusReasonCode.FAILED_VERIFICATION,
+                LoanApplicationAuditAction.STATUS_TRANSITION
+        );
+    }
+
+    private void rejectForBoundViolation(LoanApplication application, String violationType, String message) {
+        rejectForBoundViolation(application, violationType, Map.of("summary", message));
+    }
+}

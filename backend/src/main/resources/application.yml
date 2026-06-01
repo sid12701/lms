@@ -88,6 +88,18 @@ app:
   rate-limit:
     auth-per-minute: ${APP_RATE_LIMIT_AUTH_PER_MINUTE:10}
     lsp-write-per-minute: ${APP_RATE_LIMIT_LSP_WRITE_PER_MINUTE:60}
+  disbursement:
+    worker:
+      enabled: ${APP_DISBURSEMENT_WORKER_ENABLED:true}
+      fixed-delay-ms: ${APP_DISBURSEMENT_WORKER_FIXED_DELAY_MS:30000}
+      max-attempts: ${APP_DISBURSEMENT_WORKER_MAX_ATTEMPTS:5}
+      auto-resolve-mock-outcome: ${APP_DISBURSEMENT_WORKER_AUTO_RESOLVE_MOCK:true}
+  borrower:
+    bank-details:
+      velocity-max-updates: ${APP_BORROWER_BANK_DETAILS_VELOCITY_MAX_UPDATES:3}
+      velocity-window-days: ${APP_BORROWER_BANK_DETAILS_VELOCITY_WINDOW_DAYS:7}
+      mismatch-max-attempts: ${APP_BORROWER_BANK_DETAILS_MISMATCH_MAX_ATTEMPTS:3}
+      mismatch-window-minutes: ${APP_BORROWER_BANK_DETAILS_MISMATCH_WINDOW_MINUTES:15}
   alert-rules:
     scheduler-enabled: ${APP_ALERT_RULES_SCHEDULER_ENABLED:true}
     scheduler-fixed-delay-ms: ${APP_ALERT_RULES_SCHEDULER_FIXED_DELAY_MS:300000}

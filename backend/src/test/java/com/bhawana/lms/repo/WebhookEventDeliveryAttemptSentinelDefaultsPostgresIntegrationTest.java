@@ -39,6 +39,9 @@ class WebhookEventDeliveryAttemptSentinelDefaultsPostgresIntegrationTest
     private LspRepository lspRepository;
 
     @Autowired
+    private LspAuditEventRepository lspAuditEventRepository;
+
+    @Autowired
     private WebhookEventOutboxRepository webhookEventOutboxRepository;
 
     @Autowired
@@ -50,6 +53,7 @@ class WebhookEventDeliveryAttemptSentinelDefaultsPostgresIntegrationTest
     void seedOutboxParent() {
         deliveryAttemptRepository.deleteAllInBatch();
         webhookEventOutboxRepository.deleteAllInBatch();
+        lspAuditEventRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
 
         Lsp lsp = lspRepository.saveAndFlush(new Lsp(

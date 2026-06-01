@@ -118,6 +118,12 @@ class AuditExplorerControllerTest {
     @Autowired
     private LoanProductLspMappingRepository loanProductLspMappingRepository;
 
+    @Autowired
+    private com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository loanDisbursementBankMismatchLogRepository;
+
+    @Autowired
+    private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
+
     private Lsp lspA;
     private Lsp lspB;
     private LoanProduct product;
@@ -144,6 +150,8 @@ class AuditExplorerControllerTest {
         // *not* cleared here because app_user.lsp_id (seeded by other test
         // classes) would block the delete — leftover LSPs are harmless since
         // every seed() uses random LSP codes.
+        loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
+        borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
         loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();

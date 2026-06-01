@@ -342,13 +342,6 @@ public class LoanApplicationOpsController {
         if (actorRoles.contains("SYSTEM_ADMIN")) {
             return;
         }
-
-        if (actorRoles.contains("OPS_USER")
-                && currentStatus == LoanApplicationStatus.INITIALIZED
-                && targetStatus == LoanApplicationStatus.AWAITING_APPROVAL) {
-            return;
-        }
-
         throw new AccessDeniedException("Your role cannot perform this loan status transition.");
     }
 
