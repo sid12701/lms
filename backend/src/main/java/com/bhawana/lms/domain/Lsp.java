@@ -51,6 +51,12 @@ public class Lsp {
     @Column(name = "token_version", nullable = false)
     private long tokenVersion;
 
+    @Column(name = "enforce_ui_allowlist", nullable = false)
+    private boolean enforceUiAllowlist;
+
+    @Column(name = "enforce_api_allowlist", nullable = false)
+    private boolean enforceApiAllowlist;
+
     protected Lsp() {
     }
 
@@ -62,6 +68,8 @@ public class Lsp {
         this.webhookEnabled = false;
         this.webhookEventTypes = "";
         this.tokenVersion = 0L;
+        this.enforceUiAllowlist = false;
+        this.enforceApiAllowlist = false;
     }
 
     @PrePersist
@@ -105,6 +113,19 @@ public class Lsp {
 
     public void revokeAllSessions() {
         this.tokenVersion++;
+    }
+
+    public boolean isEnforceUiAllowlist() {
+        return enforceUiAllowlist;
+    }
+
+    public boolean isEnforceApiAllowlist() {
+        return enforceApiAllowlist;
+    }
+
+    public void updateAllowlistEnforcement(boolean enforceUiAllowlist, boolean enforceApiAllowlist) {
+        this.enforceUiAllowlist = enforceUiAllowlist;
+        this.enforceApiAllowlist = enforceApiAllowlist;
     }
 
     public boolean isWebhookEnabled() {

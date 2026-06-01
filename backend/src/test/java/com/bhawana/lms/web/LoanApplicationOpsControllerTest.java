@@ -30,7 +30,6 @@ import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
-import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspAuditEventRepository;
@@ -57,7 +56,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import static org.hamcrest.Matchers.containsString;
 import java.time.ZoneOffset;
 
 @SpringBootTest
@@ -123,9 +121,6 @@ class LoanApplicationOpsControllerTest {
     private ApiClientAuditEventRepository apiClientAuditEventRepository;
 
     @Autowired
-    private ApiClientIpAllowlistRepository apiClientIpAllowlistRepository;
-
-    @Autowired
     private ApiClientRepository apiClientRepository;
 
     @Autowired
@@ -175,7 +170,6 @@ class LoanApplicationOpsControllerTest {
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
-        apiClientIpAllowlistRepository.deleteAllInBatch();
         apiClientAuditEventRepository.deleteAllInBatch();
         apiClientRepository.deleteAllInBatch();
         appUserRepository.deleteAllInBatch();

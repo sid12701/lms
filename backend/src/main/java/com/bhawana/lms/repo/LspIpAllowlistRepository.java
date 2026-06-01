@@ -10,4 +10,6 @@ public interface LspIpAllowlistRepository extends JpaRepository<LspIpAllowlistEn
     List<LspIpAllowlistEntry> findByLsp_Id(UUID lspId);
 
     boolean existsByLsp_IdAndCidr(UUID lspId, String cidr);
+
+    long countByLsp_Id(UUID lspId);
 }

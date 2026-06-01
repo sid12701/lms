@@ -142,6 +142,14 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", exception.getMessage(), request, Map.of());
     }
 
+    @ExceptionHandler(LspSurfaceIpAccessDeniedException.class)
+    public ResponseEntity<ApiError> handleLspSurfaceIpAccessDenied(
+            LspSurfaceIpAccessDeniedException exception,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.FORBIDDEN, exception.getErrorCode(), exception.getMessage(), request, Map.of());
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<ApiError> handleBadCredentials(BadCredentialsException exception, HttpServletRequest request) {
         return build(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Invalid credentials", request, Map.of());

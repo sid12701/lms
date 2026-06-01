@@ -8,7 +8,11 @@ import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
 import com.bhawana.lms.security.ApiClientJwtSessionValidator;
 import com.bhawana.lms.security.SecurityProperties;
+import com.bhawana.lms.domain.AppRole;
+import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.service.ApiClientAuthenticationService;
+import com.bhawana.lms.service.LspSurfaceIpAllowlistService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -60,6 +64,7 @@ public class AuthController {
     private final ApiClientAuthenticationService apiClientAuthenticationService;
     private final RefreshTokenRepository refreshTokenRepository;
     private final ApiClientRepository apiClientRepository;
+    private final LspSurfaceIpAllowlistService lspSurfaceIpAllowlistService;
 
     public AuthController(
             AuthenticationManager authenticationManager,
@@ -69,7 +74,8 @@ public class AuthController {
             PasswordEncoder passwordEncoder,
             ApiClientAuthenticationService apiClientAuthenticationService,
             RefreshTokenRepository refreshTokenRepository,
-            ApiClientRepository apiClientRepository
+            ApiClientRepository apiClientRepository,
+            LspSurfaceIpAllowlistService lspSurfaceIpAllowlistService
     ) {
         this.authenticationManager = authenticationManager;
         this.jwtEncoder = jwtEncoder;
@@ -79,19 +85,26 @@ public class AuthController {
         this.apiClientAuthenticationService = apiClientAuthenticationService;
         this.refreshTokenRepository = refreshTokenRepository;
         this.apiClientRepository = apiClientRepository;
+        this.lspSurfaceIpAllowlistService = lspSurfaceIpAllowlistService;
     }
 
     @PostMapping("/login")
-    public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
-        TokenResponse tokenResponse = issuePasswordToken(request);
+    public ResponseEntity<TokenResponse> login(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        TokenResponse tokenResponse = issuePasswordToken(request, httpRequest.getRemoteAddr());
         return ResponseEntity.ok()
                 .headers(headers -> issueRefreshCookieForUsername(request.username(), headers))
                 .body(tokenResponse);
     }
 
     @PostMapping("/token")
-    public ResponseEntity<TokenResponse> token(@Valid @RequestBody ClientCredentialsRequest request) {
-        TokenResponse tokenResponse = issueClientCredentialsToken(request);
+    public ResponseEntity<TokenResponse> token(
+            @Valid @RequestBody ClientCredentialsRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        TokenResponse tokenResponse = issueClientCredentialsToken(request, httpRequest.getRemoteAddr());
         ApiClient apiClient = apiClientRepository.findByClientId(request.clientId().trim())
                 .orElseThrow(() -> new IllegalStateException("API client missing after successful authentication."));
         String rawRefreshToken = generateAndStoreRefreshTokenForApiClient(apiClient);
@@ -290,22 +303,28 @@ public class AuthController {
         );
     }
 
-    private TokenResponse issuePasswordToken(LoginRequest request) {
+    private TokenResponse issuePasswordToken(LoginRequest request, String remoteAddress) {
         requireField(request.username(), "username");
         requireField(request.password(), "password");
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.username(), request.password())
         );
+        appUserRepository.findByUsername(request.username()).ifPresent(user -> {
+            if (user.getLsp() != null && hasLspUiRole(user)) {
+                lspSurfaceIpAllowlistService.assertUiLoginAllowed(user.getLsp().getId(), remoteAddress);
+            }
+        });
         return mintTokenResponse(authentication);
     }
 
-    private TokenResponse issueClientCredentialsToken(ClientCredentialsRequest request) {
+    private TokenResponse issueClientCredentialsToken(ClientCredentialsRequest request, String remoteAddress) {
         ApiClientAuthenticationService.AuthenticatedApiClient apiClient = apiClientAuthenticationService.authenticate(
                 request.clientId(),
                 request.clientSecret()
         );
         ApiClient freshClient = apiClientRepository.findByClientId(apiClient.clientId())
                 .orElseThrow(() -> new IllegalStateException("API client missing after authentication."));
+        lspSurfaceIpAllowlistService.assertApiTokenIssuanceAllowed(freshClient.getLsp().getId(), remoteAddress);
         return mintTokenResponse(
                 apiClient.clientId(),
                 List.of("LSP_API_CLIENT"),
@@ -403,6 +422,16 @@ public class AuthController {
                     return claims;
                 })
                 .orElseGet(Map::of);
+    }
+
+    private static boolean hasLspUiRole(AppUser user) {
+        for (AppRole role : user.getRoles()) {
+            RoleCode code = role.getCode();
+            if (code == RoleCode.LSP_UI_READ || code == RoleCode.LSP_UI_WRITE) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String requireField(String value, String fieldName) {

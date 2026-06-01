@@ -15,8 +15,8 @@ import java.util.UUID;
 
 @Entity
 @Table(
-        name = "lsp_ip_allowlist",
-        uniqueConstraints = @UniqueConstraint(name = "uk_lsp_ip_allowlist_lsp_cidr", columnNames = {"lsp_id", "cidr"})
+        name = "lsp_api_ip_allowlist",
+        uniqueConstraints = @UniqueConstraint(name = "uk_lsp_api_ip_allowlist_lsp_cidr", columnNames = {"lsp_id", "cidr"})
 )
 public class LspIpAllowlistEntry {
 

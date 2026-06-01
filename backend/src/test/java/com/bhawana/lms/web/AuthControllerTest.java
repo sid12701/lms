@@ -14,7 +14,6 @@ import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
-import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
@@ -67,9 +66,6 @@ class AuthControllerTest {
     private ApiClientAuditEventRepository apiClientAuditEventRepository;
 
     @Autowired
-    private ApiClientIpAllowlistRepository apiClientIpAllowlistRepository;
-
-    @Autowired
     private ApiClientRepository apiClientRepository;
 
     @Autowired
@@ -81,7 +77,6 @@ class AuthControllerTest {
     @BeforeEach
     void setUpManagedUser() {
         appUserRepository.deleteAll();
-        apiClientIpAllowlistRepository.deleteAll();
         apiClientAuditEventRepository.deleteAll();
         apiClientRepository.deleteAll();
         lspAuditEventRepository.deleteAllInBatch();

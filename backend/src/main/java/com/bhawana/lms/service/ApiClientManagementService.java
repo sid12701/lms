@@ -3,27 +3,22 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.ApiClientAuditEvent;
-import com.bhawana.lms.domain.ApiClientIpAllowlistEntry;
 import com.bhawana.lms.domain.ApiClientStatus;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
-import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.security.SecureRandom;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.web.util.matcher.IpAddressMatcher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,7 +30,6 @@ public class ApiClientManagementService {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final ApiClientRepository apiClientRepository;
-    private final ApiClientIpAllowlistRepository apiClientIpAllowlistRepository;
     private final ApiClientAuditEventRepository apiClientAuditEventRepository;
     private final LspRepository lspRepository;
     private final PasswordEncoder passwordEncoder;
@@ -43,14 +37,12 @@ public class ApiClientManagementService {
 
     public ApiClientManagementService(
             ApiClientRepository apiClientRepository,
-            ApiClientIpAllowlistRepository apiClientIpAllowlistRepository,
             ApiClientAuditEventRepository apiClientAuditEventRepository,
             LspRepository lspRepository,
             PasswordEncoder passwordEncoder,
             ObjectMapper objectMapper
     ) {
         this.apiClientRepository = apiClientRepository;
-        this.apiClientIpAllowlistRepository = apiClientIpAllowlistRepository;
         this.apiClientAuditEventRepository = apiClientAuditEventRepository;
         this.lspRepository = lspRepository;
         this.passwordEncoder = passwordEncoder;
@@ -84,20 +76,17 @@ public class ApiClientManagementService {
         );
 
         ApiClient saved = apiClientRepository.save(apiClient);
-        return new CreatedApiClient(saved, clientSecret, List.of());
+        return new CreatedApiClient(saved, clientSecret);
     }
 
     @Transactional(readOnly = true)
     public List<ApiClientView> listClients() {
-        List<ApiClient> clients = apiClientRepository.findAll().stream()
+        return apiClientRepository.findAll().stream()
                 .sorted(java.util.Comparator
                         .comparing(ApiClient::getCreatedAt)
                         .reversed()
                         .thenComparing(ApiClient::getClientId))
-                .toList();
-        Map<UUID, List<String>> allowlistsByClientId = loadAllowlists(clients);
-        return clients.stream()
-                .map(client -> new ApiClientView(client, allowlistsByClientId.getOrDefault(client.getId(), List.of())))
+                .map(ApiClientView::new)
                 .toList();
     }
 
@@ -107,13 +96,12 @@ public class ApiClientManagementService {
             String actorUsername,
             String name,
             String description,
-            ApiClientStatus status,
-            List<String> ipAllowlist
+            ApiClientStatus status
     ) {
         ApiClient client = apiClientRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown API client id: " + id));
 
-        Map<String, Object> before = auditSnapshot(client, loadAllowlist(client.getId()));
+        Map<String, Object> before = auditSnapshot(client);
 
         client.updateManagedProfile(
                 name,
@@ -122,19 +110,14 @@ public class ApiClientManagementService {
         );
         ApiClient saved = apiClientRepository.save(client);
 
-        List<String> resolvedAllowlist = loadAllowlist(saved.getId());
-        if (ipAllowlist != null) {
-            resolvedAllowlist = replaceAllowlist(saved, ipAllowlist);
-        }
-
         recordAudit(
                 saved,
                 actorUsername,
                 "CLIENT_UPDATED",
-                Map.of("before", before, "after", auditSnapshot(saved, resolvedAllowlist))
+                Map.of("before", before, "after", auditSnapshot(saved))
         );
 
-        return new ApiClientView(saved, resolvedAllowlist);
+        return new ApiClientView(saved);
     }
 
     @Transactional
@@ -171,67 +154,16 @@ public class ApiClientManagementService {
         }
         recordAudit(saved, actorUsername, "SECRET_ROTATED", rotateDetails);
 
-        return new RotatedApiClient(
-                new ApiClientView(saved, loadAllowlist(saved.getId())),
-                newSecret,
-                previousValidUntil
-        );
+        return new RotatedApiClient(new ApiClientView(saved), newSecret, previousValidUntil);
     }
 
-    @Transactional(readOnly = true)
-    public List<String> loadAllowlist(UUID apiClientId) {
-        return apiClientIpAllowlistRepository.findByApiClient_IdOrderByCidrAsc(apiClientId).stream()
-                .map(ApiClientIpAllowlistEntry::getCidr)
-                .toList();
-    }
-
-    private List<String> replaceAllowlist(ApiClient client, List<String> ipAllowlist) {
-        List<String> normalized = normalizeAllowlist(ipAllowlist);
-        apiClientIpAllowlistRepository.deleteByApiClient_Id(client.getId());
-        for (String cidr : normalized) {
-            apiClientIpAllowlistRepository.save(new ApiClientIpAllowlistEntry(client, cidr));
-        }
-        return normalized;
-    }
-
-    private Map<UUID, List<String>> loadAllowlists(List<ApiClient> clients) {
-        if (clients.isEmpty()) {
-            return Map.of();
-        }
-        List<UUID> ids = clients.stream().map(ApiClient::getId).toList();
-        Map<UUID, List<String>> grouped = new LinkedHashMap<>();
-        for (ApiClientIpAllowlistEntry entry : apiClientIpAllowlistRepository.findByApiClient_IdInOrderByCidrAsc(ids)) {
-            grouped.computeIfAbsent(entry.getApiClient().getId(), ignored -> new ArrayList<>())
-                    .add(entry.getCidr());
-        }
-        return grouped;
-    }
-
-    private static List<String> normalizeAllowlist(List<String> ipAllowlist) {
-        LinkedHashSet<String> normalized = new LinkedHashSet<>();
-        for (String cidr : ipAllowlist) {
-            if (cidr == null || cidr.isBlank()) {
-                continue;
-            }
-            String trimmed = cidr.trim();
-            try {
-                new IpAddressMatcher(trimmed);
-            } catch (IllegalArgumentException exception) {
-                throw new IllegalArgumentException("Invalid CIDR: " + cidr);
-            }
-            normalized.add(trimmed);
-        }
-        return List.copyOf(normalized);
-    }
-
-    private Map<String, Object> auditSnapshot(ApiClient client, List<String> allowlist) {
+    private Map<String, Object> auditSnapshot(ApiClient client) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("clientId", client.getClientId());
         snapshot.put("name", client.getName());
         snapshot.put("description", client.getDescription());
         snapshot.put("status", client.getStatus().name());
         snapshot.put("lspId", client.getLsp().getId().toString());
-        snapshot.put("ipAllowlist", allowlist);
         return snapshot;
     }
 
@@ -268,10 +200,10 @@ public class ApiClientManagementService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    public record ApiClientView(ApiClient client, List<String> ipAllowlist) {
+    public record ApiClientView(ApiClient client) {
     }
 
-    public record CreatedApiClient(ApiClient client, String rawSecret, List<String> ipAllowlist) {
+    public record CreatedApiClient(ApiClient client, String rawSecret) {
     }
 
     public record RotatedApiClient(ApiClientView clientView, String rawSecret, Instant oldSecretValidUntil) {

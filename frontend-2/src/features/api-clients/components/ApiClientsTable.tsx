@@ -98,19 +98,6 @@ export function ApiClientsTable({
         },
       },
       {
-        id: "ipAllowlistCount",
-        header: () => <span>IP rules</span>,
-        cell: ({ row }) => (
-          <span
-            data-slot="api-clients-ip-count"
-            className="text-foreground-muted text-xs tabular-nums"
-          >
-            {row.original.ipAllowlistCount}{" "}
-            {row.original.ipAllowlistCount === 1 ? "entry" : "entries"}
-          </span>
-        ),
-      },
-      {
         id: "lastUsedAt",
         header: "Last used",
         cell: ({ row }) => {

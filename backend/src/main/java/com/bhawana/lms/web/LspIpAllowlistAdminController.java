@@ -2,9 +2,11 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspIpAllowlistEntry;
+import com.bhawana.lms.domain.LspIpAllowlistSurface;
 import com.bhawana.lms.repo.LspIpAllowlistRepository;
 import com.bhawana.lms.repo.LspRepository;
-import com.bhawana.lms.security.LspIpAllowlistFilter;
+import com.bhawana.lms.security.IpAllowlistCacheInvalidation;
+import com.bhawana.lms.security.LspSurfaceIpAllowlistFilter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -25,18 +27,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/v1/internal/admin/lsps/{lspId}/ip-allowlist")
+@RequestMapping("/api/v1/internal/admin/lsps/{lspId}/api-ip-allowlist")
 @PreAuthorize("hasRole('SYSTEM_ADMIN')")
 public class LspIpAllowlistAdminController {
 
     private final LspRepository lspRepository;
     private final LspIpAllowlistRepository allowlistRepository;
-    private final LspIpAllowlistFilter allowlistFilter;
+    private final LspSurfaceIpAllowlistFilter allowlistFilter;
 
     public LspIpAllowlistAdminController(
             LspRepository lspRepository,
             LspIpAllowlistRepository allowlistRepository,
-            LspIpAllowlistFilter allowlistFilter
+            LspSurfaceIpAllowlistFilter allowlistFilter
     ) {
         this.lspRepository = lspRepository;
         this.allowlistRepository = allowlistRepository;
@@ -68,7 +70,7 @@ public class LspIpAllowlistAdminController {
 
         LspIpAllowlistEntry entry = new LspIpAllowlistEntry(lsp, normalizedCidr, request.description());
         LspIpAllowlistEntry saved = allowlistRepository.save(entry);
-        allowlistFilter.invalidateCache(lspId);
+        IpAllowlistCacheInvalidation.afterCommit(allowlistFilter, lspId, LspIpAllowlistSurface.API);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(saved));
     }
@@ -84,7 +86,7 @@ public class LspIpAllowlistAdminController {
         }
 
         allowlistRepository.delete(entry);
-        allowlistFilter.invalidateCache(lspId);
+        IpAllowlistCacheInvalidation.afterCommit(allowlistFilter, lspId, LspIpAllowlistSurface.API);
         return ResponseEntity.noContent().build();
     }
 
@@ -98,7 +100,7 @@ public class LspIpAllowlistAdminController {
         return trimmed;
     }
 
-    private static LspIpAllowlistEntryResponse toResponse(LspIpAllowlistEntry entry) {
+    static LspIpAllowlistEntryResponse toResponse(LspIpAllowlistEntry entry) {
         return new LspIpAllowlistEntryResponse(
                 entry.getId().toString(),
                 entry.getLsp().getId().toString(),

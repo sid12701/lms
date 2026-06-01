@@ -14,7 +14,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.bhawana.lms.domain.WebhookEventOutbox;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
-import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
@@ -115,9 +114,7 @@ class LspLoanApplicationApiControllerTest {
     @Autowired
     private ApiClientAuditEventRepository apiClientAuditEventRepository;
 
-    @Autowired
-    private ApiClientIpAllowlistRepository apiClientIpAllowlistRepository;
-
+    /** Per-client IP allowlist removed (#64); API clients use LSP-level API surface allowlists. */
     @Autowired
     private ApiClientRepository apiClientRepository;
 
@@ -172,7 +169,6 @@ class LspLoanApplicationApiControllerTest {
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
-        apiClientIpAllowlistRepository.deleteAllInBatch();
         apiClientAuditEventRepository.deleteAllInBatch();
         apiClientRepository.deleteAllInBatch();
         loanProductAuditEventRepository.deleteAllInBatch();

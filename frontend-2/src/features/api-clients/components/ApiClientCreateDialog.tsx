@@ -46,7 +46,6 @@ import {
 import { FormShell } from "@/components/app/forms/FormShell";
 import { ApiClientSecretMeta, ApiSecretReveal } from "@/components/app/secrets";
 import { newIdempotencyKey } from "@/lib/idempotency";
-import { IpAllowListEditor } from "./IpAllowListEditor";
 import { CreateApiClientSchema, type CreateApiClientValues } from "./schema";
 import type { ApiClientRow, CreateApiClientResponse } from "../types";
 
@@ -66,7 +65,6 @@ export interface ApiClientCreateDialogProps {
   onCreate: (input: {
     name: string;
     lspId: string;
-    ipAllowList: string[];
     idempotencyKey: string;
   }) => Promise<CreateApiClientResponse>;
   /** Called when the operator confirms the cleartext secret has been saved. */
@@ -91,14 +89,14 @@ export function ApiClientCreateDialog({
 
   const form = useForm<CreateApiClientValues>({
     resolver: zodResolver(CreateApiClientSchema),
-    defaultValues: { name: "", lspId: "", ipAllowList: [] },
+    defaultValues: { name: "", lspId: "" },
     mode: "onSubmit",
   });
 
   const nameRef = useRef<HTMLInputElement | null>(null);
 
   useFlushOnClose(open, () => {
-    form.reset({ name: "", lspId: "", ipAllowList: [] });
+    form.reset({ name: "", lspId: "" });
     setRevealed(null);
   });
   useFocusOnOpen(open, nameRef);
@@ -108,7 +106,6 @@ export function ApiClientCreateDialog({
       const res = await onCreate({
         name: values.name,
         lspId: values.lspId,
-        ipAllowList: values.ipAllowList,
         idempotencyKey: newIdempotencyKey(),
       });
       setRevealed({ client: res.client, clientSecret: res.clientSecret });
@@ -151,7 +148,7 @@ export function ApiClientCreateDialog({
               keyIdPrefix={revealed.client.clientId}
               createdAt={revealed.client.createdAt}
               lastRotatedAt={null}
-              ipAllowlistCount={revealed.client.ipAllowlistCount}
+              ipAllowlistCount={0}
             />
           </div>
         ) : (
@@ -200,23 +197,6 @@ export function ApiClientCreateDialog({
                     </Select>
                   </FormControl>
                   <FormDescription>The LSP this credential authorises against.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="ipAllowList"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>IP allow-list</FormLabel>
-                  <FormControl>
-                    <IpAllowListEditor value={field.value} onChange={field.onChange} />
-                  </FormControl>
-                  <FormDescription>
-                    Optional. Each entry is an IPv4 address or CIDR (BR-8).
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

@@ -142,12 +142,7 @@ export function ApiClientsPage() {
       setCreateOpen(true);
     }
   };
-  const handleCreate = async (input: {
-    name: string;
-    lspId: string;
-    ipAllowList: string[];
-    idempotencyKey: string;
-  }) => {
+  const handleCreate = async (input: { name: string; lspId: string; idempotencyKey: string }) => {
     // `ApiClientCreateDialog` renders its own `ApiSecretReveal` inside the
     // dialog body on success — but we also surface the secret as a banner on
     // the page so it persists if the operator closes the dialog before

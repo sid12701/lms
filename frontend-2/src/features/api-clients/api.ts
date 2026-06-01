@@ -34,7 +34,6 @@ interface BackendApiClientResponse {
   createdAt: string;
   lastUsedAt: string | null;
   lastRotatedAt?: string | null;
-  ipAllowlist: string[];
 }
 
 interface BackendCreatedApiClientResponse extends BackendApiClientResponse {
@@ -64,7 +63,7 @@ function toApiClient(payload: BackendApiClientResponse): ApiClient {
     status: frontendStatus(payload.status),
     createdAt: payload.createdAt,
     lastUsedAt: payload.lastUsedAt,
-    ipAllowList: payload.ipAllowlist ?? [],
+    ipAllowList: [],
   };
 }
 
@@ -73,7 +72,7 @@ function toRow(payload: BackendApiClientResponse): ApiClientRow {
   return {
     ...client,
     lspName: payload.lspName,
-    ipAllowlistCount: (payload.ipAllowlist ?? []).length,
+    ipAllowlistCount: 0,
   };
 }
 
@@ -121,13 +120,6 @@ export async function createApiClient(
     { idempotencyKey: input.idempotencyKey },
   );
   const row = toRow(payload);
-  if (input.ipAllowList.length > 0) {
-    const updated = await updateApiClient(payload.id, {
-      ipAllowList: input.ipAllowList,
-      idempotencyKey: input.idempotencyKey,
-    });
-    return { client: updated.client, clientSecret: payload.clientSecret };
-  }
   return { client: row, clientSecret: payload.clientSecret };
 }
 
@@ -138,7 +130,6 @@ export async function updateApiClient(
   const body: Record<string, unknown> = {};
   if (input.name) body.name = input.name;
   if (input.status) body.status = backendStatus(input.status);
-  if (input.ipAllowList) body.ipAllowlist = input.ipAllowList;
 
   const payload = await requestJson<BackendApiClientResponse>(
     `${BASE}/${id}`,

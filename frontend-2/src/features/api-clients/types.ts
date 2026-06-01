@@ -52,7 +52,8 @@ export interface ApiClientsListResponse {
 export interface CreateApiClientInput {
   name: string;
   lspId: string;
-  ipAllowList: string[];
+  /** @deprecated Per-client allowlists removed — use LSP surface allowlists. Mock router only. */
+  ipAllowList?: string[];
   idempotencyKey: string;
 }
 
@@ -65,6 +66,7 @@ export interface CreateApiClientResponse {
 export interface UpdateApiClientInput {
   name?: string;
   status?: z.infer<typeof ApiClientStatus>;
+  /** @deprecated Mock router only. */
   ipAllowList?: string[];
   idempotencyKey: string;
 }
