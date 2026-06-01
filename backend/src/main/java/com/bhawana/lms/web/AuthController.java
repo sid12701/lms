@@ -6,6 +6,7 @@ import com.bhawana.lms.domain.RefreshToken;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
+import com.bhawana.lms.security.ApiClientJwtSessionValidator;
 import com.bhawana.lms.security.SecurityProperties;
 import com.bhawana.lms.service.ApiClientAuthenticationService;
 import jakarta.validation.Valid;
@@ -219,16 +220,20 @@ public class AuthController {
     private TokenResponse mintTokenForApiClient(ApiClient apiClient) {
         ApiClientAuthenticationService.AuthenticatedApiClient view =
                 apiClientAuthenticationService.lookupByClientId(apiClient.getClientId());
+        ApiClient freshClient = apiClientRepository.findByClientId(view.clientId())
+                .orElseThrow(() -> new IllegalStateException("API client missing after lookup."));
         return mintTokenResponse(
                 view.clientId(),
                 List.of("LSP_API_CLIENT"),
                 new ManagedUserState(false, Instant.EPOCH, 0L),
                 Map.of(
-                        "authType", "API_CLIENT",
+                        ApiClientJwtSessionValidator.AUTH_TYPE_CLAIM, ApiClientJwtSessionValidator.AUTH_TYPE_API_CLIENT,
                         "clientId", view.clientId(),
                         "clientName", view.clientName(),
                         "lspId", view.lspId().toString(),
-                        "lspCode", view.lspCode()
+                        "lspCode", view.lspCode(),
+                        ApiClientJwtSessionValidator.TV_LSP_CLAIM, freshClient.getLsp().getTokenVersion(),
+                        ApiClientJwtSessionValidator.TV_API_CLIENT_CLAIM, freshClient.getTokenVersion()
                 )
         );
     }
@@ -299,16 +304,20 @@ public class AuthController {
                 request.clientId(),
                 request.clientSecret()
         );
+        ApiClient freshClient = apiClientRepository.findByClientId(apiClient.clientId())
+                .orElseThrow(() -> new IllegalStateException("API client missing after authentication."));
         return mintTokenResponse(
                 apiClient.clientId(),
                 List.of("LSP_API_CLIENT"),
                 new ManagedUserState(false, Instant.EPOCH, 0L),
                 Map.of(
-                        "authType", "API_CLIENT",
+                        ApiClientJwtSessionValidator.AUTH_TYPE_CLAIM, ApiClientJwtSessionValidator.AUTH_TYPE_API_CLIENT,
                         "clientId", apiClient.clientId(),
                         "clientName", apiClient.clientName(),
                         "lspId", apiClient.lspId().toString(),
-                        "lspCode", apiClient.lspCode()
+                        "lspCode", apiClient.lspCode(),
+                        ApiClientJwtSessionValidator.TV_LSP_CLAIM, freshClient.getLsp().getTokenVersion(),
+                        ApiClientJwtSessionValidator.TV_API_CLIENT_CLAIM, freshClient.getTokenVersion()
                 )
         );
     }

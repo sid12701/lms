@@ -93,6 +93,8 @@ export interface RequestOptions {
   authenticated?: boolean;
   accessToken?: string;
   idempotencyKey?: string;
+  /** When false, concurrent GETs are not coalesced (use for frequently invalidated reads). */
+  dedupe?: boolean;
   _retried?: boolean;
 }
 
@@ -119,6 +121,7 @@ function buildJsonDedupeKey(
   init: RequestInit,
   options: RequestOptions,
 ): string | null {
+  if (options.dedupe === false) return null;
   const method = (init.method ?? "GET").toUpperCase();
   if (method !== "GET" || init.body || options._retried) return null;
   const authenticated = options.authenticated ?? true;

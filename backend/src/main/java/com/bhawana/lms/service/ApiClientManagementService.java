@@ -6,6 +6,7 @@ import com.bhawana.lms.domain.ApiClientAuditEvent;
 import com.bhawana.lms.domain.ApiClientIpAllowlistEntry;
 import com.bhawana.lms.domain.ApiClientStatus;
 import com.bhawana.lms.domain.Lsp;
+import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
 import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
@@ -158,6 +159,9 @@ public class ApiClientManagementService {
                 previousSecretHash,
                 previousValidUntil
         );
+        if (client.getLsp().getStatus() == LspStatus.ACTIVE) {
+            client.updateManagedProfile(null, null, ApiClientStatus.ACTIVE);
+        }
         ApiClient saved = apiClientRepository.save(client);
 
         Map<String, Object> rotateDetails = new LinkedHashMap<>();

@@ -110,6 +110,8 @@ Detailed response and error examples are documented in [api-standards.md](C:/Use
 | GET | `/` | List all LSPs |
 | GET | `/{lspId}` | Get LSP detail |
 | POST | `/` | Create LSP (code, name, status) |
+| PUT | `/{lspId}/status` | Change operational status (`ACTIVE` / `INACTIVE`; `DISABLED` alias). Body: `status`, `reason` (`SECURITY_INCIDENT` \| `COMPLIANCE` \| `OFFBOARDING` \| `OPERATIONAL`), `note`. Disable revokes JWTs and deactivates API clients. |
+| GET | `/{lspId}/audit-events` | List LSP status-change audit events (newest first) |
 | PUT | `/{lspId}/webhook-subscription` | Update webhook config (enabled, endpointUrl, signingSecret, eventTypes) |
 
 ### Product Management (`/internal/admin/products`) - SYSTEM_ADMIN, PRODUCT_ADMIN

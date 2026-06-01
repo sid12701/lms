@@ -1,5 +1,5 @@
 /**
- * Mutation hook — creates a new LSP via the mock admin router.
+ * Mutation hook — creates a new LSP via the live admin API.
  *
  * Invalidates every cached `lsps` query on success + surfaces a sonner toast.
  * The caller mints the BR-5 idempotency key (the dialog does this at submit).

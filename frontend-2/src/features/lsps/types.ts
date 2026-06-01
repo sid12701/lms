@@ -10,10 +10,17 @@
  * are upsert-style — there's one subscription per LSP per blueprint §11.
  */
 import { z } from "zod";
-import { Lsp, LspStatus, LspWebhookSubscription, WebhookEventType } from "@/schemas/lsp";
+import {
+  Lsp,
+  LspOperationalStatus,
+  LspStatus,
+  LspStatusChangeReason,
+  LspWebhookSubscription,
+  WebhookEventType,
+} from "@/schemas/lsp";
 
 export type { Lsp, LspWebhookSubscription };
-export { LspStatus, WebhookEventType };
+export { LspOperationalStatus, LspStatus, LspStatusChangeReason, WebhookEventType };
 
 /** Server-side filter shape for the list page. URL-bound via `useSearchParams`. */
 export const LspsListFilters = z.object({
@@ -46,11 +53,24 @@ export interface CreateLspInput {
   idempotencyKey: string;
 }
 
-/** Update-LSP form input. Status changes go through the same path. */
-export interface UpdateLspInput {
-  name?: string;
-  status?: z.infer<typeof LspStatus>;
+/** `PUT …/lsps/{id}/status` — reason and note are required by the backend. */
+export interface UpdateLspStatusInput {
+  status: z.infer<typeof LspOperationalStatus>;
+  reason: z.infer<typeof LspStatusChangeReason>;
+  note: string;
   idempotencyKey: string;
+}
+
+export interface LspAuditEventRow {
+  id: string;
+  lspId: string;
+  action: string;
+  actorUsername: string;
+  reason: z.infer<typeof LspStatusChangeReason> | null;
+  note: string | null;
+  cascadedClientCount: number;
+  correlationId: string | null;
+  createdAt: string;
 }
 
 export interface LspMutationResponse {

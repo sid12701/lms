@@ -52,6 +52,9 @@ import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.oauth2.jwt.JwtValidationException;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -106,13 +109,19 @@ public class SecurityConfig {
     }
 
     @Bean
-    JwtDecoder jwtDecoder(SecretKey jwtSigningKey, AppUserRepository appUserRepository, SecurityProperties securityProperties) {
+    JwtDecoder jwtDecoder(
+            SecretKey jwtSigningKey,
+            AppUserRepository appUserRepository,
+            ApiClientJwtSessionValidator apiClientJwtSessionValidator,
+            SecurityProperties securityProperties
+    ) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(jwtSigningKey)
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                 JwtValidators.createDefaultWithIssuer(securityProperties.getJwt().getIssuer()),
-                managedUserSessionValidator(appUserRepository)
+                managedUserSessionValidator(appUserRepository),
+                apiClientJwtSessionValidator
         ));
         return decoder;
     }
@@ -166,7 +175,19 @@ public class SecurityConfig {
                         })
                         .anyRequest().authenticated()
                 )
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
+                        .authenticationEntryPoint((request, response, authenticationException) -> {
+                            ResolvedAuthError resolved = resolveAuthenticationError(authenticationException);
+                            writeApiError(
+                                    response,
+                                    objectMapper,
+                                    401,
+                                    resolved.code(),
+                                    resolved.message(),
+                                    request.getRequestURI()
+                            );
+                        }))
                 .exceptionHandling(ex -> ex
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
                             boolean passwordChangeRequired = SecurityContextHolder.getContext().getAuthentication() != null
@@ -180,14 +201,19 @@ public class SecurityConfig {
 
                             writeApiError(response, objectMapper, status, code, message, request.getRequestURI());
                         })
-                        .authenticationEntryPoint((request, response, authenticationException) -> writeApiError(
-                                response,
-                                objectMapper,
-                                401,
-                                "UNAUTHORIZED",
-                                "Authentication is required to access this resource.",
-                                request.getRequestURI()
-                        )))
+                        .authenticationEntryPoint((request, response, authenticationException) -> {
+                            String code = "UNAUTHORIZED";
+                            String message = "Authentication is required to access this resource.";
+                            Throwable cause = authenticationException.getCause();
+                            if (cause instanceof OAuth2AuthenticationException oauth2) {
+                                String errorCode = oauth2.getError().getErrorCode();
+                                if (errorCode != null && !errorCode.isBlank() && !"invalid_token".equals(errorCode)) {
+                                    code = errorCode;
+                                    message = oauth2.getError().getDescription();
+                                }
+                            }
+                            writeApiError(response, objectMapper, 401, code, message, request.getRequestURI());
+                        }))
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .addFilterAfter(lspIpAllowlistFilter, org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class);
@@ -233,6 +259,12 @@ public class SecurityConfig {
 
     private OAuth2TokenValidator<Jwt> managedUserSessionValidator(AppUserRepository appUserRepository) {
         return jwt -> {
+            if (ApiClientJwtSessionValidator.AUTH_TYPE_API_CLIENT.equals(
+                    jwt.getClaimAsString(ApiClientJwtSessionValidator.AUTH_TYPE_CLAIM)
+            )) {
+                return OAuth2TokenValidatorResult.success();
+            }
+
             String username = jwt.getSubject();
             if (username == null || username.isBlank()) {
                 return OAuth2TokenValidatorResult.success();
@@ -319,6 +351,35 @@ public class SecurityConfig {
                 .accountLocked(false)
                 .credentialsExpired(false)
                 .build();
+    }
+
+    private static ResolvedAuthError resolveAuthenticationError(AuthenticationException authenticationException) {
+        Throwable current = authenticationException;
+        while (current != null) {
+            if (current instanceof OAuth2AuthenticationException oauth2) {
+                OAuth2Error error = oauth2.getError();
+                String code = error.getErrorCode();
+                if (code != null && !code.isBlank() && !"invalid_token".equals(code)) {
+                    return new ResolvedAuthError(code, error.getDescription());
+                }
+            }
+            if (current instanceof JwtValidationException jwtValidation) {
+                for (OAuth2Error error : jwtValidation.getErrors()) {
+                    String code = error.getErrorCode();
+                    if (code != null && !code.isBlank() && !"invalid_token".equals(code)) {
+                        return new ResolvedAuthError(code, error.getDescription());
+                    }
+                }
+            }
+            current = current.getCause();
+        }
+        return new ResolvedAuthError(
+                "UNAUTHORIZED",
+                "Authentication is required to access this resource."
+        );
+    }
+
+    private record ResolvedAuthError(String code, String message) {
     }
 
     private static void writeApiError(

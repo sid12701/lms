@@ -14,7 +14,7 @@ export function useLsps(filters: LspsListFilters): UseQueryResult<LspsListRespon
   return useQuery({
     queryKey: [...LSPS_LIST_QUERY_KEY, filters],
     queryFn: () => listLsps(filters),
-    staleTime: 30_000,
-    placeholderData: (previousData) => previousData,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 }

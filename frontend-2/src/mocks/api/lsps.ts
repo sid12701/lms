@@ -34,10 +34,17 @@ import type {
   LspRow,
   LspsListFilters,
   LspsListResponse,
-  UpdateLspInput,
   UpsertWebhookSubscriptionInput,
   WebhookSubscriptionResponse,
 } from "@/features/lsps/types";
+import type { LspStatus } from "@/schemas/lsp";
+
+/** Mock-router PATCH body (legacy `/api/v1/admin/lsps/:id` — not the live status API). */
+export interface MockUpdateLspInput {
+  name?: string;
+  status?: LspStatus;
+  idempotencyKey: string;
+}
 
 // ─── Role helpers ────────────────────────────────────────────────────────────
 
@@ -324,7 +331,7 @@ export async function createLsp(input: CreateLspInput): Promise<LspMutationRespo
   );
 }
 
-export async function updateLsp(id: string, input: UpdateLspInput): Promise<LspMutationResponse> {
+export async function updateLsp(id: string, input: MockUpdateLspInput): Promise<LspMutationResponse> {
   return dispatch(
     {
       method: "PATCH",

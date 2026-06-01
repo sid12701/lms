@@ -15,4 +15,6 @@ public interface ApiClientRepository extends JpaRepository<ApiClient, UUID> {
     boolean existsByClientId(String clientId);
 
     java.util.Optional<ApiClient> findByClientId(String clientId);
+
+    java.util.List<ApiClient> findByLsp_Id(UUID lspId);
 }

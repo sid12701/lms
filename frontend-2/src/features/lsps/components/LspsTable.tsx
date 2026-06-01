@@ -3,8 +3,7 @@
  *
  * Status is colour-coded via a small intent-mapped `Badge` (LSP status is a
  * separate enum from LoanStatus, so we don't reuse `StatusBadge` here).
- * Row actions: Edit (opens edit dialog) + Webhook (opens subscription
- * dialog). Both delegate to the parent via callbacks.
+ * Row actions: Details, Status, Audit, Webhook — delegated to the parent.
  */
 import { useMemo } from "react";
 import {
@@ -50,7 +49,9 @@ export interface LspsTableProps {
   isLoading: boolean;
   filters: LspsListFilters;
   onFiltersChange: (next: LspsListFilters) => void;
-  onEdit: (row: LspRow) => void;
+  onDetails: (row: LspRow) => void;
+  onChangeStatus: (row: LspRow) => void;
+  onViewAudit: (row: LspRow) => void;
   onEditWebhook: (row: LspRow) => void;
   className?: string;
 }
@@ -60,7 +61,9 @@ export function LspsTable({
   isLoading,
   filters,
   onFiltersChange,
-  onEdit,
+  onDetails,
+  onChangeStatus,
+  onViewAudit,
   onEditWebhook,
   className,
 }: LspsTableProps) {
@@ -147,15 +150,33 @@ export function LspsTable({
         id: "actions",
         header: () => <span className="sr-only">Actions</span>,
         cell: ({ row }) => (
-          <div className="flex items-center justify-end gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-1">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              data-slot="lsps-edit-button"
-              onClick={() => onEdit(row.original)}
+              data-slot="lsps-details-button"
+              onClick={() => onDetails(row.original)}
             >
-              Edit
+              Details
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-slot="lsps-status-button"
+              onClick={() => onChangeStatus(row.original)}
+            >
+              Status
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-slot="lsps-audit-button"
+              onClick={() => onViewAudit(row.original)}
+            >
+              Audit
             </Button>
             <Button
               type="button"
@@ -170,7 +191,7 @@ export function LspsTable({
         ),
       },
     ],
-    [onEdit, onEditWebhook],
+    [onDetails, onChangeStatus, onViewAudit, onEditWebhook],
   );
 
   const pagination = useMemo<PaginationState>(

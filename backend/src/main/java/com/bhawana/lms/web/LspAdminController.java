@@ -1,15 +1,21 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.web.LspStatusUpdateException;
 import com.bhawana.lms.domain.Lsp;
+import com.bhawana.lms.domain.LspAuditEvent;
 import com.bhawana.lms.domain.LspStatus;
+import com.bhawana.lms.domain.LspStatusChangeReason;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.service.AdminDirectoryService;
+import com.bhawana.lms.service.LspStatusService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -24,9 +30,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class LspAdminController {
 
     private final AdminDirectoryService adminDirectoryService;
+    private final LspStatusService lspStatusService;
 
-    public LspAdminController(AdminDirectoryService adminDirectoryService) {
+    public LspAdminController(AdminDirectoryService adminDirectoryService, LspStatusService lspStatusService) {
         this.adminDirectoryService = adminDirectoryService;
+        this.lspStatusService = lspStatusService;
     }
 
     @GetMapping
@@ -45,6 +53,30 @@ public class LspAdminController {
     public LspResponse createLsp(@Valid @RequestBody CreateLspRequest request) {
         Lsp lsp = adminDirectoryService.createLsp(request.code(), request.name(), request.status());
         return toResponse(lsp);
+    }
+
+    @PutMapping("/{lspId}/status")
+    public LspResponse updateStatus(
+            @PathVariable UUID lspId,
+            @Valid @RequestBody UpdateLspStatusRequest request,
+            @AuthenticationPrincipal Jwt principal
+    ) {
+        String actorUsername = principal == null ? "unknown" : principal.getSubject();
+        Lsp lsp = lspStatusService.updateStatus(
+                lspId,
+                request.resolvedStatus(),
+                request.resolvedReason(),
+                request.note(),
+                actorUsername
+        );
+        return toResponse(lsp);
+    }
+
+    @GetMapping("/{lspId}/audit-events")
+    public List<LspAuditEventResponse> listAuditEvents(@PathVariable UUID lspId) {
+        return lspStatusService.listAuditEvents(lspId).stream()
+                .map(event -> toAuditEventResponse(lspId, event))
+                .toList();
     }
 
     @PutMapping("/{lspId}/webhook-subscription")
@@ -124,6 +156,20 @@ public class LspAdminController {
         );
     }
 
+    private static LspAuditEventResponse toAuditEventResponse(UUID lspId, LspAuditEvent event) {
+        return new LspAuditEventResponse(
+                event.getId().toString(),
+                lspId.toString(),
+                event.getAction(),
+                event.getActorUsername(),
+                event.getReason() == null ? null : event.getReason().name(),
+                event.getNote(),
+                event.getCascadedClientCount(),
+                event.getCorrelationId(),
+                event.getCreatedAt().toString()
+        );
+    }
+
     private static PortfolioSummaryResponse toPortfolioSummaryResponse(AdminDirectoryService.LspPortfolioSummary summary) {
         return new PortfolioSummaryResponse(
                 summary.loanApplicationCount(),
@@ -146,11 +192,49 @@ public class LspAdminController {
         }
     }
 
+    public record UpdateLspStatusRequest(
+            @NotBlank String status,
+            String reason,
+            String note
+    ) {
+        public LspStatus resolvedStatus() {
+            return switch (status.trim().toUpperCase()) {
+                case "ACTIVE" -> LspStatus.ACTIVE;
+                case "INACTIVE", "DISABLED" -> LspStatus.INACTIVE;
+                default -> throw new IllegalArgumentException("Unknown LSP status: " + status);
+            };
+        }
+
+        public LspStatusChangeReason resolvedReason() {
+            if (reason == null || reason.isBlank()) {
+                throw new LspStatusUpdateException("REASON_REQUIRED", "Status change reason is required.");
+            }
+            try {
+                return LspStatusChangeReason.valueOf(reason.trim().toUpperCase());
+            } catch (IllegalArgumentException exception) {
+                throw new LspStatusUpdateException("INVALID_REASON", "Unknown status change reason: " + reason);
+            }
+        }
+    }
+
     public record UpdateWebhookSubscriptionRequest(
             boolean enabled,
             @Size(max = 500) String endpointUrl,
             @Size(max = 255) String signingSecret,
             List<WebhookEventType> eventTypes
+    ) {
+    }
+
+    public record LspAuditEventResponse(
+            String id,
+            String lspId,
+            String action,
+            String actorUsername,
+            String reason,
+            String note,
+            int cascadedClientCount,
+            String correlationId,
+            String createdAt
     ) {
     }
 

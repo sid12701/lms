@@ -58,6 +58,9 @@ public class ApiClient {
     @Column(name = "last_rotated_at")
     private Instant lastRotatedAt;
 
+    @Column(name = "token_version", nullable = false)
+    private long tokenVersion;
+
     protected ApiClient() {
     }
 
@@ -76,6 +79,7 @@ public class ApiClient {
         this.description = description;
         this.secretHash = secretHash;
         this.status = status;
+        this.tokenVersion = 0L;
     }
 
     @PrePersist
@@ -112,6 +116,10 @@ public class ApiClient {
 
     public ApiClientStatus getStatus() {
         return status;
+    }
+
+    public long getTokenVersion() {
+        return tokenVersion;
     }
 
     public String getSecretHash() {
@@ -156,6 +164,14 @@ public class ApiClient {
         if (status != null) {
             this.status = status;
         }
+    }
+
+    public void deactivate() {
+        this.status = ApiClientStatus.INACTIVE;
+    }
+
+    public void revokeAllSessions() {
+        this.tokenVersion++;
     }
 
     public void rotateSecret(String newSecretHash, String previousSecretHash, Instant previousSecretValidUntil) {
