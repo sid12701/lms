@@ -124,10 +124,6 @@ public class AlertRuleEvaluationService {
             String transitionNote
     ) {
         String lspCode = application.getLsp() != null ? application.getLsp().getCode() : "unknown";
-        String failedRules = evaluation.failedRules().stream()
-                .map(Enum::name)
-                .reduce((left, right) -> left + "," + right)
-                .orElse("");
         String contextJson = "{\"applicationId\":\""
                 + application.getId()
                 + "\",\"lspCode\":\""

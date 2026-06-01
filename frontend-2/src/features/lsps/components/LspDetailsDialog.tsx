@@ -30,6 +30,7 @@ export interface LspDetailsDialogProps {
   lsp: LspRow | null;
   onChangeStatus: () => void;
   onViewAudit: () => void;
+  onManageIpAllowlists: () => void;
 }
 
 export function LspDetailsDialog({
@@ -38,6 +39,7 @@ export function LspDetailsDialog({
   lsp,
   onChangeStatus,
   onViewAudit,
+  onManageIpAllowlists,
 }: LspDetailsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -86,6 +88,9 @@ export function LspDetailsDialog({
             </Button>
             <Button type="button" variant="outline" onClick={onViewAudit} disabled={!lsp}>
               Audit trail
+            </Button>
+            <Button type="button" variant="outline" onClick={onManageIpAllowlists} disabled={!lsp}>
+              IP allowlists
             </Button>
           </div>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

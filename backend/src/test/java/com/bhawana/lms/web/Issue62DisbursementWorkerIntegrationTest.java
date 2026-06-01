@@ -13,7 +13,6 @@ import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.bhawana.lms.service.LoanDisbursementWorkerService;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;

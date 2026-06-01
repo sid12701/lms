@@ -132,7 +132,7 @@ public class SecurityConfig {
             Converter<Jwt, ? extends AbstractAuthenticationToken> jwtAuthenticationConverter,
             ObjectMapper objectMapper,
             ObjectProvider<RateLimitFilter> rateLimitFilterProvider,
-            LspIpAllowlistFilter lspIpAllowlistFilter
+            LspSurfaceIpAllowlistFilter lspSurfaceIpAllowlistFilter
     ) throws Exception {
         RateLimitFilter rateLimitFilter = rateLimitFilterProvider.getIfAvailable();
         http
@@ -216,7 +216,7 @@ public class SecurityConfig {
                         }))
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
-                .addFilterAfter(lspIpAllowlistFilter, org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class);
+                .addFilterAfter(lspSurfaceIpAllowlistFilter, org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class);
 
         if (rateLimitFilter != null) {
             http.addFilterAfter(rateLimitFilter, org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class);

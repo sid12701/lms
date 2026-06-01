@@ -222,7 +222,7 @@ Shipped in three vertical slices (a → b → c) per the agreed design above. Ba
 
 **Explicitly deferred to other issues (not forgotten):**
 
-- **#64** — IP allowlist on `PATCH /bank-details` (and other LSP routes).
+- **#64** — IP allowlist on `PATCH /bank-details` (and other LSP routes). **CLOSED** (2026-06-01) — surface-split UI/API allowlists; see § #64 below.
 - **#81** — Rate limit on `PATCH /bank-details` and `/mock-outcome`.
 - **#71 / #155** — Audit-row schema hardening for new audit tables.
 - **#129** — Webhook signing format.
@@ -383,8 +383,8 @@ Tracer first; each subsequent test extends what the previous proved.
 | 13 (regression on `LoanApplicationLifecycleService` INACTIVE check) | **Not added** as separate test; existing service check unchanged |
 
 **Deliberately unchanged (still true post-merge):**
-- Per-IP allowlist → **#64**.
-- Multi-replica LSP/client cache invalidation → **#83** / **#142** pattern if needed later.
+- Per-IP allowlist → **#64** (**CLOSED** 2026-06-01 — see § #64).
+- Multi-replica LSP/client cache invalidation → **#142** (process-local cache invalidation on allowlist mutations shipped in #64; Redis-shared cache deferred).
 - Disbursement worker in-flight behaviour → **#62** (tests 10–11 above).
 
 **Tracker doc only:** this closure block; implementation lives on `main` as above.
@@ -394,9 +394,11 @@ Tracer first; each subsequent test extends what the previous proved.
 ---
 
 ### #64 — Per-client IP allowlist stored but not enforced
-**Labels:** gap, security, rbac · **Link:** https://github.com/sid12701/lms/issues/64
+**Labels:** gap, security, rbac · **Link:** https://github.com/sid12701/lms/issues/64 · **Status:** **CLOSED** — merged 2026-06-01 (surface-split UI/API allowlists; per-client table removed)
 
-**Problem (plain English):** The admin UI lets you set "this API client may only call from these IPs," but the filter only enforces at the LSP level, not per-client. A leaked client secret can be used from anywhere.
+**Problem (plain English):** The admin UI let you set "this API client may only call from these IPs," but the filter only enforced at the LSP level, not per-client. A leaked client secret could be used from anywhere.
+
+**Resolution (shipped):** Implemented **Flavour A — surface split** (see detailed design below), not GitHub's per-client matcher path. Two LSP-level lists (`lsp_ui_ip_allowlist`, `lsp_api_ip_allowlist`); `api_client_ip_allowlist` dropped with Flyway migration of rows into the parent LSP API list. Enforcement at **token issuance** (login + client-credentials) and on `/api/v1/lsp/**` via `LspSurfaceIpAllowlistFilter`. Per-surface flags `enforce_ui_allowlist` / `enforce_api_allowlist` with `422 ALLOWLIST_EMPTY_CANNOT_ENFORCE` guard. Cache invalidated after commit on mutations (**#83** delta for allowlist). **frontend-2:** LSP admin **IP allowlists** dialog (UI + API sections); per-client allowlist editor removed from API client create/table.
 
 **Possible fixes:**
 1. **Add per-client matcher path; fall back to LSP rules** — keeps current LSP rules valid while adding granularity.
@@ -507,6 +509,34 @@ Tracer first; each subsequent test responds to what the previous proved.
 - Independent of #62 and #63 functionally. Can ship first, parallel, or last.
 - Per-card deletion happens in this PR's migration; downstream consumers (UI screens) need to drop the per-card display in lockstep.
 - If #63 ships first, the auth-filter changes there compose cleanly (status + tokenVersion + IP check in one filter chain).
+
+---
+
+**Implementation status — CLOSED (2026-06-01)**
+
+| Field | Value |
+|-------|--------|
+| **GitHub** | [#64](https://github.com/sid12701/lms/issues/64) closed after merge |
+| **Migration** | `V79__lsp_surface_ip_allowlist.sql` — `lsp_ui_ip_allowlist`; rename `lsp_ip_allowlist` → `lsp_api_ip_allowlist`; migrate + drop `api_client_ip_allowlist`; `enforce_ui_allowlist` / `enforce_api_allowlist` on `lsp` |
+| **Backend** | `LspSurfaceIpAllowlistService`, `LspSurfaceIpAllowlistFilter`, `IpAllowlistCacheInvalidation`; `AuthController` IP checks on LSP UI login + API token; admin routes `/ui-ip-allowlist`, `/api-ip-allowlist`, `/allowlist-enforcement`; removed `ApiClientIpAllowlist*` |
+| **Tests** | `Issue64LspSurfaceIpAllowlistIntegrationTest` (5 tracer slices: token reject/allow, surface separation on LSP route, empty-list enforce guard, immediate cache invalidation) |
+| **frontend-2** | `LspIpAllowlistDialog`, `useLspIpAllowlistAdmin`; `LspDetailsDialog` entry point; API client create/table no longer expose per-client `ipAllowlist` |
+| **Deferred** | Full 17-test TDD matrix; rejection/mutation audit rows (#154 remainder); Redis multi-replica cache (#142); internal staff IP allowlist |
+
+**TDD checklist (tracker vs shipped):**
+
+| Planned test | Status |
+|--------------|--------|
+| 1 — API token from non-allowed IP when enforce on | **Done** |
+| 2 — UI login from non-allowed IP | **Deferred** |
+| 3 — Per-request filter after valid token | **Partial** — covered indirectly via LSP route + surface test |
+| 4–5 — UI vs API surface separation | **Partial** — test 4 via `apiClientTokenUsedFromUiAllowedButApiDisallowedIpIsRejectedOnLspRoute` |
+| 6–7 — empty list enforce off/on | **Partial** — test 8 (cannot enable on empty list) |
+| 8–10 — admin enforcement guard / recovery | **Partial** — test 8 |
+| 11–12 — immediate cache invalidation | **Done** — test 5 |
+| 13–17 — audit rows, alerts, migration, API contract | **Deferred** |
+
+**Tracker doc only:** this closure block; implementation on `main` after merge.
 
 ---
 

@@ -61,8 +61,7 @@ public class ApiClientAdminController {
                 actorUsername,
                 request.name(),
                 request.description(),
-                request.resolvedStatus(),
-                request.ipAllowlist()
+                request.resolvedStatus()
         );
         return toResponse(updated);
     }
@@ -88,10 +87,10 @@ public class ApiClientAdminController {
     }
 
     private static ApiClientResponse toResponse(ApiClientManagementService.ApiClientView view) {
-        return toResponse(view.client(), view.ipAllowlist());
+        return toResponse(view.client());
     }
 
-    private static ApiClientResponse toResponse(ApiClient apiClient, List<String> ipAllowlist) {
+    private static ApiClientResponse toResponse(ApiClient apiClient) {
         return new ApiClientResponse(
                 apiClient.getId().toString(),
                 apiClient.getClientId(),
@@ -102,13 +101,12 @@ public class ApiClientAdminController {
                 apiClient.getLsp().getName(),
                 apiClient.getCreatedAt(),
                 apiClient.getLastUsedAt(),
-                apiClient.getLastRotatedAt(),
-                ipAllowlist
+                apiClient.getLastRotatedAt()
         );
     }
 
     private static CreatedApiClientResponse toCreatedResponse(ApiClientManagementService.CreatedApiClient created) {
-        ApiClientResponse base = toResponse(created.client(), created.ipAllowlist());
+        ApiClientResponse base = toResponse(created.client());
         return new CreatedApiClientResponse(
                 base.id(),
                 base.clientId(),
@@ -120,8 +118,7 @@ public class ApiClientAdminController {
                 base.lspName(),
                 base.createdAt(),
                 base.lastUsedAt(),
-                base.lastRotatedAt(),
-                base.ipAllowlist()
+                base.lastRotatedAt()
         );
     }
 
@@ -141,8 +138,7 @@ public class ApiClientAdminController {
     public record UpdateApiClientRequest(
             String name,
             String description,
-            String status,
-            List<String> ipAllowlist
+            String status
     ) {
         public ApiClientStatus resolvedStatus() {
             if (status == null || status.isBlank()) {
@@ -169,8 +165,7 @@ public class ApiClientAdminController {
             String lspName,
             Instant createdAt,
             Instant lastUsedAt,
-            Instant lastRotatedAt,
-            List<String> ipAllowlist
+            Instant lastRotatedAt
     ) {
     }
 
@@ -185,8 +180,7 @@ public class ApiClientAdminController {
             String lspName,
             Instant createdAt,
             Instant lastUsedAt,
-            Instant lastRotatedAt,
-            List<String> ipAllowlist
+            Instant lastRotatedAt
     ) {
     }
 

@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
-import com.bhawana.lms.repo.ApiClientIpAllowlistRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
@@ -120,9 +119,6 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
     private ApiClientAuditEventRepository apiClientAuditEventRepository;
 
     @Autowired
-    private ApiClientIpAllowlistRepository apiClientIpAllowlistRepository;
-
-    @Autowired
     private ApiClientRepository apiClientRepository;
 
     @Autowired
@@ -166,7 +162,6 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
-        apiClientIpAllowlistRepository.deleteAllInBatch();
         apiClientAuditEventRepository.deleteAllInBatch();
         apiClientRepository.deleteAllInBatch();
         loanProductAuditEventRepository.deleteAllInBatch();

@@ -16,6 +16,7 @@ import { LspsFilterBar } from "./components/LspsFilterBar";
 import { LspsTable } from "./components/LspsTable";
 import { LspCreateDialog } from "./components/LspCreateDialog";
 import { LspDetailsDialog } from "./components/LspDetailsDialog";
+import { LspIpAllowlistDialog } from "./components/LspIpAllowlistDialog";
 import { LspStatusChangeDialog } from "./components/LspStatusChangeDialog";
 import { LspAuditEventsDialog } from "./components/LspAuditEventsDialog";
 import { LspWebhookSubscriptionDialog } from "./components/LspWebhookSubscriptionDialog";
@@ -93,6 +94,7 @@ export function LspsPage() {
   const [statusTarget, setStatusTarget] = useState<LspRow | null>(null);
   const [auditTarget, setAuditTarget] = useState<LspRow | null>(null);
   const [webhookTarget, setWebhookTarget] = useState<LspRow | null>(null);
+  const [allowlistTarget, setAllowlistTarget] = useState<LspRow | null>(null);
 
   const list = useLsps(filters);
   const create = useCreateLsp();
@@ -282,6 +284,20 @@ export function LspsPage() {
         lsp={detailsTarget}
         onChangeStatus={openStatusFromDetails}
         onViewAudit={openAuditFromDetails}
+        onManageIpAllowlists={() => {
+          if (detailsTarget) {
+            setAllowlistTarget(detailsTarget);
+            setDetailsTarget(null);
+          }
+        }}
+      />
+
+      <LspIpAllowlistDialog
+        open={allowlistTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setAllowlistTarget(null);
+        }}
+        lsp={allowlistTarget}
       />
 
       <LspStatusChangeDialog

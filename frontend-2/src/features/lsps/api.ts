@@ -11,7 +11,10 @@ import { requestJson } from "@/lib/api/http-client";
 import type { Lsp, LspStatus, LspStatusChangeReason, LspWebhookSubscription } from "@/schemas/lsp";
 import type {
   CreateLspInput,
+  LspAllowlistEnforcement,
   LspAuditEventRow,
+  LspIpAllowlistEntry,
+  LspIpAllowlistSurface,
   LspMutationResponse,
   LspRow,
   LspsListFilters,
@@ -232,4 +235,84 @@ export async function upsertLspWebhookSubscription(
     { idempotencyKey: input.idempotencyKey },
   );
   return { subscription: projectWebhookSubscription(id, payload.webhookSubscription) };
+}
+
+interface BackendIpAllowlistEntry {
+  id: string;
+  lspId: string;
+  cidr: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function projectAllowlistEntry(payload: BackendIpAllowlistEntry): LspIpAllowlistEntry {
+  return {
+    id: payload.id,
+    lspId: payload.lspId,
+    cidr: payload.cidr,
+    description: payload.description,
+    createdAt: payload.createdAt,
+    updatedAt: payload.updatedAt,
+  };
+}
+
+function allowlistBase(lspId: string, surface: LspIpAllowlistSurface): string {
+  const segment = surface === "ui" ? "ui-ip-allowlist" : "api-ip-allowlist";
+  return `${BACKEND_BASE}/${encodeURIComponent(lspId)}/${segment}`;
+}
+
+export async function listLspIpAllowlist(
+  lspId: string,
+  surface: LspIpAllowlistSurface,
+): Promise<LspIpAllowlistEntry[]> {
+  const rows = await requestJson<BackendIpAllowlistEntry[]>(allowlistBase(lspId, surface), {
+    cache: "no-store",
+  });
+  return rows.map(projectAllowlistEntry);
+}
+
+export async function addLspIpAllowlistEntry(
+  lspId: string,
+  surface: LspIpAllowlistSurface,
+  input: { cidr: string; description?: string },
+): Promise<LspIpAllowlistEntry> {
+  const payload = await requestJson<BackendIpAllowlistEntry>(allowlistBase(lspId, surface), {
+    method: "POST",
+    body: JSON.stringify({
+      cidr: input.cidr,
+      description: input.description ?? null,
+    }),
+  });
+  return projectAllowlistEntry(payload);
+}
+
+export async function removeLspIpAllowlistEntry(
+  lspId: string,
+  surface: LspIpAllowlistSurface,
+  entryId: string,
+): Promise<void> {
+  await requestJson<void>(`${allowlistBase(lspId, surface)}/${encodeURIComponent(entryId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getLspAllowlistEnforcement(lspId: string): Promise<LspAllowlistEnforcement> {
+  return requestJson<LspAllowlistEnforcement>(
+    `${BACKEND_BASE}/${encodeURIComponent(lspId)}/allowlist-enforcement`,
+    { cache: "no-store" },
+  );
+}
+
+export async function updateLspAllowlistEnforcement(
+  lspId: string,
+  input: Partial<LspAllowlistEnforcement>,
+): Promise<LspAllowlistEnforcement> {
+  return requestJson<LspAllowlistEnforcement>(
+    `${BACKEND_BASE}/${encodeURIComponent(lspId)}/allowlist-enforcement`,
+    {
+      method: "PUT",
+      body: JSON.stringify(input),
+    },
+  );
 }

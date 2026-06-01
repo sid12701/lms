@@ -46,6 +46,22 @@ export interface LspsListResponse {
   pageSize: number;
 }
 
+export interface LspIpAllowlistEntry {
+  id: string;
+  lspId: string;
+  cidr: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LspAllowlistEnforcement {
+  enforceUi: boolean;
+  enforceApi: boolean;
+}
+
+export type LspIpAllowlistSurface = "ui" | "api";
+
 /** Create-LSP form input (operator submits code + name; status defaults to ACTIVE). */
 export interface CreateLspInput {
   code: string;

@@ -1,7 +1,6 @@
 package com.bhawana.lms.web;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -89,7 +88,7 @@ class ApiClientAdminControllerTest {
     }
 
     @Test
-    void systemAdminCanUpdateApiClientMetadataAndAllowlist() throws Exception {
+    void systemAdminCanUpdateApiClientMetadata() throws Exception {
         CreatedClientFixture fixture = createActiveClient();
 
         mockMvc.perform(put("/api/v1/internal/admin/api-clients/{id}", fixture.id())
@@ -97,18 +96,12 @@ class ApiClientAdminControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "description", "Updated integration client",
-                                "status", "DISABLED",
-                                "ipAllowlist", List.of("10.0.0.0/8", "192.168.1.10/32")
+                                "status", "DISABLED"
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.description").value("Updated integration client"))
                 .andExpect(jsonPath("$.status").value("INACTIVE"))
-                .andExpect(jsonPath("$.ipAllowlist", hasSize(2)))
                 .andExpect(jsonPath("$.clientSecret").doesNotExist());
-
-        mockMvc.perform(get("/api/v1/internal/admin/api-clients").with(systemAdmin()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].ipAllowlist", hasSize(2)));
 
         assertTrue(apiClientAuditEventRepository.count() >= 1);
     }

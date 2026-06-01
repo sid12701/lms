@@ -29,7 +29,6 @@ describe("ApiClientCreateDialog", () => {
         (input: {
           name: string;
           lspId: string;
-          ipAllowList: string[];
           idempotencyKey: string;
         }) => Promise<CreateApiClientResponse>
       >()
@@ -60,7 +59,6 @@ describe("ApiClientCreateDialog", () => {
     expect(onCreate.mock.calls[0]?.[0]).toMatchObject({
       name: createdClient.name,
       lspId: LSP_ID,
-      ipAllowList: [],
     });
     expect(onCreate.mock.calls[0]?.[0].idempotencyKey).toEqual(expect.any(String));
 
