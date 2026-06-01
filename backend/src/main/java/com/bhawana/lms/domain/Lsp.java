@@ -48,6 +48,9 @@ public class Lsp {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "token_version", nullable = false)
+    private long tokenVersion;
+
     protected Lsp() {
     }
 
@@ -58,6 +61,7 @@ public class Lsp {
         this.status = status;
         this.webhookEnabled = false;
         this.webhookEventTypes = "";
+        this.tokenVersion = 0L;
     }
 
     @PrePersist
@@ -86,6 +90,21 @@ public class Lsp {
 
     public LspStatus getStatus() {
         return status;
+    }
+
+    public long getTokenVersion() {
+        return tokenVersion;
+    }
+
+    public void updateStatus(LspStatus status) {
+        if (status == null) {
+            throw new IllegalArgumentException("LSP status is required.");
+        }
+        this.status = status;
+    }
+
+    public void revokeAllSessions() {
+        this.tokenVersion++;
     }
 
     public boolean isWebhookEnabled() {

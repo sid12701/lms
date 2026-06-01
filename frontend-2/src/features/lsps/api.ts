@@ -8,14 +8,21 @@
  * continues to render.
  */
 import { requestJson, buildQueryPath } from "@/lib/api/http-client";
-import type { Lsp, LspStatus, LspWebhookSubscription } from "@/schemas/lsp";
+import type {
+  Lsp,
+  LspOperationalStatus,
+  LspStatus,
+  LspStatusChangeReason,
+  LspWebhookSubscription,
+} from "@/schemas/lsp";
 import type {
   CreateLspInput,
+  LspAuditEventRow,
   LspMutationResponse,
   LspRow,
   LspsListFilters,
   LspsListResponse,
-  UpdateLspInput,
+  UpdateLspStatusInput,
   UpsertWebhookSubscriptionInput,
   WebhookSubscriptionResponse,
 } from "./types";
@@ -41,7 +48,9 @@ const BACKEND_TO_FRONTEND_EVENT: Record<string, LspWebhookSubscription["eventTyp
 const SUPPORTED_BACKEND_STATUSES = new Set(["ACTIVE", "SUSPENDED", "INACTIVE"]);
 
 function normaliseStatus(value: string): LspStatus {
-  if (SUPPORTED_BACKEND_STATUSES.has(value)) return value as LspStatus;
+  const upper = value.trim().toUpperCase();
+  if (upper === "DISABLED") return "INACTIVE";
+  if (SUPPORTED_BACKEND_STATUSES.has(upper)) return upper as LspStatus;
   return "ACTIVE";
 }
 
@@ -96,7 +105,11 @@ function projectWebhookSubscription(
 }
 
 export async function listLsps(filters: LspsListFilters = {}): Promise<LspsListResponse> {
-  const all = await requestJson<BackendLspResponse[]>(BACKEND_BASE);
+  const all = await requestJson<BackendLspResponse[]>(
+    BACKEND_BASE,
+    { cache: "no-store" },
+    { dedupe: false },
+  );
   const filtered = all.filter((row) => {
     if (filters.status && normaliseStatus(row.status) !== filters.status) return false;
     if (filters.q) {
@@ -126,14 +139,73 @@ export async function createLsp(input: CreateLspInput): Promise<LspMutationRespo
   return { lsp: projectLspRow(payload) };
 }
 
-export async function updateLsp(id: string, input: UpdateLspInput): Promise<LspMutationResponse> {
-  // The backend only exposes webhook updates today; name + status edits stay client-side.
-  const path = buildQueryPath(`${BACKEND_BASE}/${id}`, {});
-  const payload = await requestJson<BackendLspResponse>(path, { method: "GET" });
-  const projected = projectLspRow(payload);
-  if (input.name) projected.name = input.name;
-  if (input.status) projected.status = input.status;
-  return { lsp: projected };
+export async function updateLspStatus(
+  id: string,
+  input: UpdateLspStatusInput,
+): Promise<LspMutationResponse> {
+  const statusPayload = await requestJson<BackendLspResponse>(
+    `${BACKEND_BASE}/${encodeURIComponent(id)}/status`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        status: input.status,
+        reason: input.reason,
+        note: input.note.trim(),
+      }),
+      cache: "no-store",
+    },
+    { idempotencyKey: input.idempotencyKey, dedupe: false },
+  );
+  return { lsp: projectLspRow(statusPayload) };
+}
+
+interface BackendLspAuditEventResponse {
+  id: string;
+  lspId: string;
+  action: string;
+  actorUsername: string;
+  reason: string | null;
+  note: string | null;
+  cascadedClientCount: number;
+  correlationId: string | null;
+  createdAt: string;
+}
+
+const AUDIT_REASONS = new Set<LspStatusChangeReason>([
+  "SECURITY_INCIDENT",
+  "COMPLIANCE",
+  "OFFBOARDING",
+  "OPERATIONAL",
+]);
+
+function projectAuditEvent(payload: BackendLspAuditEventResponse): LspAuditEventRow {
+  const reason =
+    payload.reason && AUDIT_REASONS.has(payload.reason as LspStatusChangeReason)
+      ? (payload.reason as LspStatusChangeReason)
+      : null;
+  return {
+    id: payload.id,
+    lspId: payload.lspId,
+    action: payload.action,
+    actorUsername: payload.actorUsername,
+    reason,
+    note: payload.note,
+    cascadedClientCount: payload.cascadedClientCount,
+    correlationId: payload.correlationId,
+    createdAt: payload.createdAt,
+  };
+}
+
+export async function listLspAuditEvents(lspId: string): Promise<LspAuditEventRow[]> {
+  const rows = await requestJson<BackendLspAuditEventResponse[]>(
+    `${BACKEND_BASE}/${encodeURIComponent(lspId)}/audit-events`,
+    { cache: "no-store" },
+    { dedupe: false },
+  );
+  if (!Array.isArray(rows)) {
+    throw new Error("Unexpected audit-events response shape (expected JSON array).");
+  }
+  return rows.map(projectAuditEvent);
 }
 
 export async function getLspWebhookSubscription(id: string): Promise<WebhookSubscriptionResponse> {

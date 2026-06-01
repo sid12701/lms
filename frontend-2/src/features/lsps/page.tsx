@@ -1,20 +1,11 @@
 /**
  * Phase 9 — `/lsps` admin surface (SYSTEM_ADMIN-only).
  *
- * Composes:
- *   - `LspsFilterBar` (URL-bound filters via `useSearchParams`)
- *   - `LspsTable` (server-paged TanStack table with row actions)
- *   - `LspCreateDialog` (POST /api/v1/admin/lsps)
- *   - `LspEditDialog` (PATCH /api/v1/admin/lsps/:id — name + status)
- *   - `LspWebhookSubscriptionDialog` (PUT subscription upsert)
- *
- * Role enforcement is server-side (mock handler 401s non-admin) AND
- * client-side (router-level RequireRole). When a non-admin somehow lands
- * here we surface a friendly EmptyState instead of an ErrorState.
- *
- * Density default = comfortable per D7 (LSP list is short).
+ * Composes list filters, table, create, status change (kill chain), audit trail,
+ * and webhook subscription dialogs. All writes go to the live backend under
+ * `/api/v1/internal/admin/lsps`.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Building2, Plus, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/layout/PageHeader";
@@ -24,11 +15,14 @@ import { Button } from "@/components/ui/button";
 import { LspsFilterBar } from "./components/LspsFilterBar";
 import { LspsTable } from "./components/LspsTable";
 import { LspCreateDialog } from "./components/LspCreateDialog";
-import { LspEditDialog } from "./components/LspEditDialog";
+import { LspDetailsDialog } from "./components/LspDetailsDialog";
+import { LspStatusChangeDialog } from "./components/LspStatusChangeDialog";
+import { LspAuditEventsDialog } from "./components/LspAuditEventsDialog";
 import { LspWebhookSubscriptionDialog } from "./components/LspWebhookSubscriptionDialog";
 import { useLsps } from "./hooks/useLsps";
 import { useCreateLsp } from "./hooks/useCreateLsp";
-import { useUpdateLsp } from "./hooks/useUpdateLsp";
+import { useUpdateLspStatus } from "./hooks/useUpdateLspStatus";
+import { useLspAuditEvents } from "./hooks/useLspAuditEvents";
 import { useLspWebhookSubscription } from "./hooks/useLspWebhookSubscription";
 import { useUpsertLspWebhookSubscription } from "./hooks/useUpsertLspWebhookSubscription";
 import type { LspRow, LspsListFilters } from "./types";
@@ -95,16 +89,24 @@ export function LspsPage() {
   };
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<LspRow | null>(null);
+  const [detailsTarget, setDetailsTarget] = useState<LspRow | null>(null);
+  const [statusTarget, setStatusTarget] = useState<LspRow | null>(null);
+  const [auditTarget, setAuditTarget] = useState<LspRow | null>(null);
   const [webhookTarget, setWebhookTarget] = useState<LspRow | null>(null);
 
   const list = useLsps(filters);
   const create = useCreateLsp();
-  const update = useUpdateLsp();
+  const updateStatus = useUpdateLspStatus();
   const upsertWebhook = useUpsertLspWebhookSubscription();
   const webhookQuery = useLspWebhookSubscription(webhookTarget?.id ?? null);
+  const auditQuery = useLspAuditEvents(auditTarget?.id ?? null, auditTarget !== null);
 
-  // ── Create dialog handlers ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (auditTarget) {
+      void auditQuery.refetch();
+    }
+  }, [auditTarget?.id]);
+
   const handleCreateOpenChange = (open: boolean) => {
     if (!open) {
       if (create.isPending) return;
@@ -132,35 +134,40 @@ export function LspsPage() {
     }
   };
 
-  // ── Edit dialog handlers ────────────────────────────────────────────────────
-  const handleEditOpenChange = (open: boolean) => {
+  const handleDetailsOpenChange = (open: boolean) => {
+    if (!open) setDetailsTarget(null);
+  };
+
+  const handleStatusOpenChange = (open: boolean) => {
     if (!open) {
-      if (update.isPending) return;
-      setEditTarget(null);
-      update.reset();
+      if (updateStatus.isPending) return;
+      setStatusTarget(null);
+      updateStatus.reset();
     }
   };
-  const handleEditConfirm = async ({
-    id,
-    name,
-    status,
-    idempotencyKey,
-  }: {
+  const handleStatusConfirm = async (args: {
     id: string;
-    name: string;
-    status: LspStatus;
+    status: import("@/schemas/lsp").LspOperationalStatus;
+    reason: import("@/schemas/lsp").LspStatusChangeReason;
+    note: string;
     idempotencyKey: string;
   }) => {
+    const lspRow = statusTarget;
     try {
-      await update.mutateAsync({ id, name, status, idempotencyKey });
-      setEditTarget(null);
-      update.reset();
+      await updateStatus.mutateAsync(args);
+      setStatusTarget(null);
+      setDetailsTarget(null);
+      updateStatus.reset();
+      if (lspRow) setAuditTarget(lspRow);
     } catch {
-      // Surfaced via update.error.
+      // Surfaced via updateStatus.error.
     }
   };
 
-  // ── Webhook dialog handlers ─────────────────────────────────────────────────
+  const handleAuditOpenChange = (open: boolean) => {
+    if (!open) setAuditTarget(null);
+  };
+
   const handleWebhookOpenChange = (open: boolean) => {
     if (!open) {
       if (upsertWebhook.isPending) return;
@@ -199,12 +206,24 @@ export function LspsPage() {
     }
   };
 
+  const openStatusFromDetails = () => {
+    if (!detailsTarget) return;
+    setStatusTarget(detailsTarget);
+    setDetailsTarget(null);
+  };
+
+  const openAuditFromDetails = () => {
+    if (!detailsTarget) return;
+    setAuditTarget(detailsTarget);
+    setDetailsTarget(null);
+  };
+
   return (
     <div data-testid="lsps-page" className="flex flex-col gap-6 p-6" data-density="comfortable">
       <PageHeader
         eyebrow="Administration"
         title="LSPs"
-        description="Manage Loan Service Provider tenants and their webhook subscriptions."
+        description="Manage Loan Service Provider tenants, operational status, and webhook subscriptions."
         actions={
           <Button type="button" onClick={() => setCreateOpen(true)} data-slot="lsps-new-button">
             <Plus aria-hidden="true" className="size-4" />
@@ -246,7 +265,9 @@ export function LspsPage() {
               isLoading={list.isPending}
               filters={filters}
               onFiltersChange={setFilters}
-              onEdit={(row) => setEditTarget(row)}
+              onDetails={(row) => setDetailsTarget(row)}
+              onChangeStatus={(row) => setStatusTarget(row)}
+              onViewAudit={(row) => setAuditTarget(row)}
               onEditWebhook={(row) => setWebhookTarget(row)}
             />
           )}
@@ -261,13 +282,33 @@ export function LspsPage() {
         errorMessage={create.isError ? extractErrorMessage(create.error) : null}
       />
 
-      <LspEditDialog
-        open={editTarget !== null}
-        onOpenChange={handleEditOpenChange}
-        lsp={editTarget}
-        onConfirm={handleEditConfirm}
-        loading={update.isPending}
-        errorMessage={update.isError ? extractErrorMessage(update.error) : null}
+      <LspDetailsDialog
+        open={detailsTarget !== null}
+        onOpenChange={handleDetailsOpenChange}
+        lsp={detailsTarget}
+        onChangeStatus={openStatusFromDetails}
+        onViewAudit={openAuditFromDetails}
+      />
+
+      <LspStatusChangeDialog
+        open={statusTarget !== null}
+        onOpenChange={handleStatusOpenChange}
+        lsp={statusTarget}
+        onConfirm={handleStatusConfirm}
+        loading={updateStatus.isPending}
+        errorMessage={updateStatus.isError ? extractErrorMessage(updateStatus.error) : null}
+      />
+
+      <LspAuditEventsDialog
+        open={auditTarget !== null}
+        onOpenChange={handleAuditOpenChange}
+        lsp={auditTarget}
+        events={auditQuery.data}
+        isLoading={auditQuery.isPending}
+        isError={auditQuery.isError}
+        onRetry={() => {
+          void auditQuery.refetch();
+        }}
       />
 
       <LspWebhookSubscriptionDialog

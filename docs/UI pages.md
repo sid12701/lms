@@ -311,7 +311,11 @@ Data sources:
 - LSP options invalidation: `/api/v1/internal/admin/lsp-options`.
 - LSP detail: `/api/v1/internal/admin/lsps/{lspId}`.
 - Create LSP: `POST /api/v1/internal/admin/lsps`.
+- Status change (disable / reactivate): `PUT /api/v1/internal/admin/lsps/{lspId}/status` with `reason` + `note` (see ADR `docs/adr/0002-lsp-disable-kill-chain.md`, issue **#63**).
+- Status audit trail: `GET /api/v1/internal/admin/lsps/{lspId}/audit-events`.
 - Webhook save: `PUT /api/v1/internal/admin/lsps/{lspId}/webhook-subscription`.
+
+**`frontend-2` (`/lsps`)** — table with **Details**, **Status**, **Audit**, **Webhook**. Use **Status** (not a generic edit form) to disable; audit dialog shows `LSP_DISABLED` / `LSP_REACTIVATED` rows.
 
 Presented data:
 

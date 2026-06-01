@@ -2,6 +2,8 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.ApiClientStatus;
+import com.bhawana.lms.domain.Lsp;
+import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.ApiClientRepository;
 import java.time.Instant;
 import java.util.UUID;
@@ -32,9 +34,7 @@ public class ApiClientAuthenticationService {
         ApiClient apiClient = apiClientRepository.findByClientId(normalizedClientId)
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
 
-        if (apiClient.getStatus() != ApiClientStatus.ACTIVE) {
-            throw new BadCredentialsException("Invalid credentials");
-        }
+        validateActive(apiClient);
 
         Instant now = Instant.now();
         apiClient.clearExpiredPreviousSecret(now);
@@ -56,12 +56,23 @@ public class ApiClientAuthenticationService {
     public AuthenticatedApiClient lookupByClientId(String clientId) {
         ApiClient apiClient = apiClientRepository.findByClientId(clientId)
                 .orElseThrow(() -> new BadCredentialsException("Unknown API client: " + clientId));
+        validateActive(apiClient);
         return new AuthenticatedApiClient(
                 apiClient.getClientId(),
                 apiClient.getName(),
                 apiClient.getLsp().getId(),
                 apiClient.getLsp().getCode()
         );
+    }
+
+    private static void validateActive(ApiClient apiClient) {
+        if (apiClient.getStatus() != ApiClientStatus.ACTIVE) {
+            throw new BadCredentialsException("Invalid credentials");
+        }
+        Lsp lsp = apiClient.getLsp();
+        if (lsp == null || lsp.getStatus() != LspStatus.ACTIVE) {
+            throw new BadCredentialsException("Invalid credentials");
+        }
     }
 
     private boolean matchesAnyActiveSecret(ApiClient apiClient, String clientSecret) {
