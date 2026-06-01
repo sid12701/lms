@@ -394,7 +394,7 @@ Tracer first; each subsequent test extends what the previous proved.
 ---
 
 ### #64 — Per-client IP allowlist stored but not enforced
-**Labels:** gap, security, rbac · **Link:** https://github.com/sid12701/lms/issues/64 · **Status:** **CLOSED** — merged 2026-06-01 (surface-split UI/API allowlists; per-client table removed)
+**Labels:** gap, security, rbac · **Link:** https://github.com/sid12701/lms/issues/64 · **Status:** **CLOSED** — [PR #170](https://github.com/sid12701/lms/pull/170) merged 2026-06-01 (surface-split UI/API allowlists; per-client table removed)
 
 **Problem (plain English):** The admin UI let you set "this API client may only call from these IPs," but the filter only enforced at the LSP level, not per-client. A leaked client secret could be used from anywhere.
 
@@ -516,7 +516,7 @@ Tracer first; each subsequent test responds to what the previous proved.
 
 | Field | Value |
 |-------|--------|
-| **GitHub** | [#64](https://github.com/sid12701/lms/issues/64) closed after merge |
+| **GitHub** | [#64](https://github.com/sid12701/lms/issues/64) closed via [PR #170](https://github.com/sid12701/lms/pull/170) |
 | **Migration** | `V79__lsp_surface_ip_allowlist.sql` — `lsp_ui_ip_allowlist`; rename `lsp_ip_allowlist` → `lsp_api_ip_allowlist`; migrate + drop `api_client_ip_allowlist`; `enforce_ui_allowlist` / `enforce_api_allowlist` on `lsp` |
 | **Backend** | `LspSurfaceIpAllowlistService`, `LspSurfaceIpAllowlistFilter`, `IpAllowlistCacheInvalidation`; `AuthController` IP checks on LSP UI login + API token; admin routes `/ui-ip-allowlist`, `/api-ip-allowlist`, `/allowlist-enforcement`; removed `ApiClientIpAllowlist*` |
 | **Tests** | `Issue64LspSurfaceIpAllowlistIntegrationTest` (5 tracer slices: token reject/allow, surface separation on LSP route, empty-list enforce guard, immediate cache invalidation) |
