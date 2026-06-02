@@ -12,6 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import type { ReactNode } from "react";
 import { renderWithProviders } from "@/test/utils";
+import { ApiError } from "@/lib/api/http-client";
 import type { LoanApplicationListResponse } from "./types";
 
 const refetchMock = vi.fn();
@@ -115,6 +116,21 @@ describe("LoanApplicationsPage", () => {
     });
     renderPage();
     expect(screen.getByTestId("triage-table-loading")).toHaveTextContent("loading");
+  });
+
+  it("renders a no-permission EmptyState when the query returns 403", () => {
+    useLoanApplicationsMock.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      isSuccess: false,
+      error: new ApiError("Access denied", 403, "", "FORBIDDEN"),
+      refetch: refetchMock,
+    });
+    renderPage();
+    expect(screen.getByText(/No access to loan applications/i)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("triage-table")).not.toBeInTheDocument();
   });
 
   it("renders an ErrorState with retry when the query errors", () => {

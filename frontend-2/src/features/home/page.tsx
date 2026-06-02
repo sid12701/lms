@@ -5,8 +5,11 @@
  * `defaultLandingFor`. KPI cards live in `./components/*`; this file owns
  * wiring, loading, and error states.
  */
+import { ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/layout/PageHeader";
+import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
+import { isUnauthorizedApiError } from "@/lib/api/api-errors";
 import { KpiSkeleton, CardSkeleton, ChartSkeleton } from "@/components/app/feedback/Skeletons";
 import { useSession } from "@/features/auth/session-context";
 import { defaultLandingFor } from "@/lib/role-gates";
@@ -54,6 +57,13 @@ export function HomePage() {
 
       {query.isPending ? (
         <HomeLoadingSkeleton />
+      ) : query.isError && isUnauthorizedApiError(query.error) ? (
+        <EmptyState
+          variant="no-permission"
+          icon={ShieldAlert}
+          title="No access to this dashboard"
+          description="The operational home summary is restricted to system administrators."
+        />
       ) : query.isError ? (
         <ErrorState
           title="Couldn't load your dashboard"

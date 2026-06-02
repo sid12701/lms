@@ -184,12 +184,12 @@ Each PR has its own tracer bullet + incremental tests. Listed in execution order
 - Disbursement becomes fully system-driven once approved (≤30s worker delay; configurable). Aligns with user's "automated process" stance.
 - Ops gains an alert stream attributable to specific LSPs for product-bound violations. Disabling a misbehaving LSP becomes data-driven (the alert thread is the evidence) — ties cleanly into #63.
 - `OPS_USER` loses manual status-transition power. May need user-comms inside the org (separate from LSP partner comms).
-- #85 closes as side-effect of PR (b). #135 (caller-defensive auto-approval safety) becomes moot because the only caller path through the disbursement TX no longer exists.
+- #85's disbursement-TX entry-point is gone (the LSP `POST /disbursement` endpoint was removed). However, the structurally-buggy method `LoanDisbursementService.requestDisbursementForLsp` was **not** deleted — it remains in the source as orphaned dead code with zero callers, still `@Transactional` and still calling `autoApproveIfEligibleForLsp` inline. The same pattern is also alive in `LoanDocumentService.submitStoredDocumentForLsp` (method header line 107; `autoApprove` call at line 133) and `submitStoredDocumentsForLsp` (method header line 138; `autoApprove` call at line 168), both `@Transactional` and both calling `autoApproveIfEligibleForLsp` inside that TX. **#85 and #135 remain OPEN on GitHub** — see § #85 for the follow-up plan.
 
 **Dependencies / sequencing:**
 - (a) → (b) → (c).
 - (a) ships independently.
-- (b) closes #85, depends on #61's adapter-seam decision being upheld.
+- (b) removes the disbursement entry-point that triggered #85, but does not fully close #85 (orphaned method body + sibling pattern in `LoanDocumentService`); depends on #61's adapter-seam decision being upheld.
 - (c) provides the alert backbone that #63 (LSP disable), #81 (rate limits), #155 (failed-auth alerts) hook into; landing it earlier is helpful.
 - Per #61's framing, `/mock-outcome` continues to serve as the simulated provider callback. Under PR (b), the worker fires the request; `/mock-outcome` still flips the application from `DISBURSEMENT_REQUESTED` to `DISBURSED`. That's intentional symmetry with the eventual real callback shape.
 
@@ -214,7 +214,7 @@ Shipped in three vertical slices (a → b → c) per the agreed design above. Ba
 | PR (b) 4 — `DISBURSEMENT_RETRY` after cap + alert | **Deferred** — exhaustion test not written |
 | PR (b) 5 — worker bound violation + reject | **Deferred** — last-line principal test not written |
 | PR (b) 6 — removed LSP disbursement → 404 | **Done** — LSP compliance / integration coverage |
-| PR (b) 7 — auto-approval not in disbursement path (#85) | **Done by design** — LSP `POST /disbursement` removed; worker does not re-run auto-approval; **#85** can be closed on that basis |
+| PR (b) 7 — auto-approval not in disbursement path (#85) | **Partial** — LSP `POST /disbursement` removed and worker does not re-run auto-approval, **but** `LoanDisbursementService.requestDisbursementForLsp` was retained as orphaned dead code (still `@Transactional`, still calls `autoApproveIfEligibleForLsp`); same pattern also alive in `LoanDocumentService.submitStoredDocumentForLsp` (method header line 107; `autoApprove` call line 133) and `submitStoredDocumentsForLsp` (method header line 138; `autoApprove` call line 168). **#85 stays OPEN** — see § #85 |
 | PR (b) extra — worker skips when LSP disabled (#63) | **Done** — `Issue62DisbursementWorkerIntegrationTest` |
 | PR (c) 1–5 — bank PATCH audit/webhook, no cooldown, bank-check, mismatch + velocity alerts | **Done** — `Issue62BorrowerBankDetailsIntegrationTest` |
 | PR (c) 6 — principal exceed → `LSP_BOUND_VIOLATION` alert | **Deferred** — 422 remains; alert layer not added (worker path validates bounds separately) |
@@ -229,7 +229,7 @@ Shipped in three vertical slices (a → b → c) per the agreed design above. Ba
 - **#137** — LSP-provided schedule principal-sum validator + `LSP_BOUND_VIOLATION` on schedule mismatch.
 - **PR (b) tests 2–5** — Worker adapter retry, in-flight dedupe, bound-violation on worker (optional hardening; core worker path is covered).
 
-**#85 / #135:** Close **#85** as side-effect of removing the LSP disbursement transaction that re-ran auto-approval. **#135** is moot for the removed path.
+**#85 / #135 — correction (2026-06-02 follow-up audit):** PR (b) removed the LSP `POST /disbursement` endpoint that called `requestDisbursementForLsp`, but the method body itself was NOT deleted (`LoanDisbursementService.java:109`, still `@Transactional`, still calls `autoApproveIfEligibleForLsp` at line 118 — orphaned dead code, zero callers). Additionally, `LoanDocumentService.submitStoredDocumentForLsp` (method header `LoanDocumentService.java:107`; `autoApprove` call at line 133) and `submitStoredDocumentsForLsp` (method header line 138; `autoApprove` call at line 168) are both `@Transactional` and both call `autoApproveIfEligibleForLsp` inside that TX — the same structural pattern #85/#135 named. Both **#85 and #135 stay OPEN** on GitHub. Follow-up scope (under #135's bundle): delete the orphan `requestDisbursementForLsp` body, and push the auto-approve guard into the state machine so the document-upload callers can't induce the same half-state.
 
 ---
 
@@ -885,14 +885,23 @@ Tracer bullet first; each subsequent test responds to what the previous slice re
 
 **Detailed solution after discussion (2026-05-31):**
 
-**Closes with #62 PR (b) — no separate PR.** Per the audited code, the bug is structural: `LoanDisbursementService.java:33` is `@Transactional`, line 43 calls `loanApprovalService.autoApproveIfEligibleForLsp` inside that same TX, and the rest of the method writes the disbursement attempt. A reject decision commits before the throw it triggers. #62 PR (b) deletes `requestDisbursementForLsp` entirely; the bug evaporates because the offending method evaporates.
+**Originally framed as: closes with #62 PR (b) — no separate PR.** Per the audited code, the bug was structural: `LoanDisbursementService` was `@Transactional`, called `loanApprovalService.autoApproveIfEligibleForLsp` inside that same TX, and the rest of the method wrote the disbursement attempt. A reject decision committed before the throw it triggered. The plan was that #62 PR (b) would delete `requestDisbursementForLsp` entirely, evaporating the offending method.
 
-**Caller audit (so the PR's blast radius is verified):**
-- `requestDisbursementForLsp` has **exactly one production caller**: `LspLoanApplicationApiController.java:406` (the LSP `POST /disbursement` endpoint).
-- Zero callers in `LocalDemoPortfolioSeedService`, zero in `LoanApplicationService` / `LoanApplicationLifecycleService` / `LoanDocumentService` / `LoanApprovalService` / `LoanAutoApprovalRuleEngine` (those files match `autoApproveIfEligibleForLsp` only — a different method that the new worker will continue to use during its eligibility pre-check, but never inside the disbursement TX).
-- Zero integration tests reference `requestDisbursementForLsp` directly. Test surface is the LSP controller; once the controller endpoint is deleted in #62 PR (b), the test removal/update sits within that PR.
+**2026-06-02 follow-up audit — what actually shipped:**
+- ✅ The **entry-point** (`POST /api/v1/lsp/loan-applications/{id}/disbursement` in `LspLoanApplicationApiController`) was removed in PR #168 / `7f085bf`. There is no longer any live caller of `requestDisbursementForLsp`.
+- ❌ The **method body** was NOT deleted. `LoanDisbursementService.requestDisbursementForLsp` still exists at line 109, still annotated `@Transactional` (line 108), still calls `loanApprovalService.autoApproveIfEligibleForLsp(applicationId, actorUsername)` inside that TX (line 118). It is now dead code, but the buggy shape sits in the source verbatim — any future caller resurrects the bug.
+- ❌ The same `@Transactional` + inline-`autoApproveIfEligibleForLsp` pattern is alive in `LoanDocumentService.submitStoredDocumentForLsp` (method header line 107; `@Transactional` at line 106; `autoApprove` call at line 133) and `LoanDocumentService.submitStoredDocumentsForLsp` (method header line 138; `@Transactional` at line 137; `autoApprove` call at line 168). Both are entered via the LSP and admin document-upload paths. The structural #85/#135 pattern is therefore still live on a production path, not merely retained as dead code.
 
-**No interim safety patch needed.** Pre-launch, no LSP partners hit `POST /disbursement` in production. Shipping a 1-line patch (delete line 43) ahead of #62 PR (b) would only obscure the structural fix — and would mean two reviews of the same code in close succession. #62 PR (b) is the right vehicle.
+**Caller audit (2026-06-02):**
+- `requestDisbursementForLsp` — zero callers in `backend/src` (grep-confirmed). Dead code.
+- `autoApproveIfEligibleForLsp` — live callers in `LoanDocumentService:133, :168` (both inside `@Transactional`), `LoanApprovalService:18-19`, `LoanApplicationService:652-653` (these last two are thin pass-throughs to `LoanApplicationLifecycleService.autoApproveIfEligibleForLsp`).
+- Zero integration tests reference `requestDisbursementForLsp` directly.
+
+**Closing condition (updated):**
+- #85 closes when either (a) the orphaned `requestDisbursementForLsp` method body is deleted **and** the document-upload pattern is hardened (e.g., the guard is pushed into the state machine per #135), or (b) the document-upload callers are moved out of `@Transactional` scope, removing the half-state risk on every remaining live path.
+- Until then, **#85 stays OPEN on GitHub**. The disbursement entry-point removal is meaningful risk reduction but is not a structural fix.
+
+**Why a 1-line patch is now appropriate (revised):** with no live caller on the disbursement side, deleting the orphan method body is a safe, isolated cleanup that can ship without coordinating with #62. It does not change behaviour; it only removes a footgun for future callers. Recommend bundling that delete with the #135 work that pushes the guard into the state machine.
 
 **TDD plan (lives in #62 PR (b); listed here so #85's closing condition is testable):**
 
@@ -913,14 +922,14 @@ Both tests drive the public service layer (`LoanDisbursementWorker.tick()` or eq
 - Option 2 keeps the coupling and adds a second TX boundary; you still have two writes from one HTTP call, and the test space grows to cover "engine commits but disburser throws" interleavings. Worse semantic, more tests, same overall shape.
 - Option 3 (the 1-line delete) is technically correct but ships a patch that #62 PR (b) immediately deletes anyway. Net cost: an extra PR, no durable benefit.
 
-**Effect on app (re-stated under #62 PR (b)'s frame):**
-- `LoanDisbursementService.requestDisbursementForLsp` is gone. `@Transactional` no longer wraps a rule-engine call.
-- The worker reads `APPROVED_PENDING_DISBURSAL`, never calls the rule engine inside its TX. The half-rollback class of bugs disappears structurally.
+**Effect on app (re-stated under #62 PR (b)'s frame, corrected 2026-06-02):**
+- `LoanDisbursementService.requestDisbursementForLsp` is **dead but not deleted** — `@Transactional` still wraps a rule-engine call in the source, just with no caller. Future contributors can resurrect the bug by adding a new caller without realising the method's shape is broken.
+- The worker reads `APPROVED_PENDING_DISBURSAL`, never calls the rule engine inside its TX. The half-rollback class of bugs is **gone on the disbursement path**, not gone structurally — the same shape persists in `LoanDocumentService` (the document-upload paths).
 - LSP API surface: `POST /api/v1/lsp/loan-applications/{id}/disbursement` returns 404. No partner comms pre-launch.
 
-**Dependencies / sequencing:**
-- Strictly blocked by **#62 PR (b)**. No standalone PR.
-- Closes as part of #62 PR (b)'s merge. No follow-up issue.
+**Dependencies / sequencing (corrected 2026-06-02):**
+- #62 PR (b) removed the disbursement entry-point but did not close #85 structurally.
+- Follow-up scope: (1) delete the orphan `requestDisbursementForLsp` method body; (2) bundle with #135 to push the auto-approve guard into the state machine so the `LoanDocumentService` callers can't induce the same half-state. Standalone PR is now appropriate (no live caller to coordinate with).
 - No relationship to #61 (mock adapter — different layer) or #78 (frontend fallback — different system).
 
 ---
@@ -1033,7 +1042,7 @@ Both tests drive the public service layer (`LoanDisbursementWorker.tick()` or eq
 
 ---
 
-## P1 — High priority (33)
+## P1 — High priority (38)
 
 ### #68 — No audited internal admin PII reveal endpoint (frontend falls through to mock)
 **Labels:** gap, auditability, security, mocked-flow · **Link:** https://github.com/sid12701/lms/issues/68
@@ -1473,8 +1482,24 @@ The four decisions are coupled: the at-rest choice (1) constrains the migration 
 
 ---
 
-### #79 — Disabled LSP_API_CLIENT keeps working until access token expires (no tv check) [SOLVED 2026-06-01]
-**Labels:** gap, security, rbac · **Link:** https://github.com/sid12701/lms/issues/79
+### #79 — Disabled LSP_API_CLIENT keeps working until access token expires (no tv check) [PARTIAL — 2026-06-01; Slice 2 still open as of 2026-06-02]
+**Labels:** gap, security, rbac · **Link:** https://github.com/sid12701/lms/issues/79 · **Status:** **PARTIAL** — shipped via #63 PR #169 (Slices 1, 3, 4, 5, 6); Slice 2 (rotate-secret revoke) NOT shipped (2026-06-02 follow-up audit)
+
+> **2026-06-02 follow-up audit — what shipped vs what didn't:**
+>
+> Shipped (via #63's `LspStatusKillChain` bundle):
+> - ✅ `api_client.token_version` column (V77).
+> - ✅ `ApiClient.revokeAllSessions()` bumps `tokenVersion` (line 173-175).
+> - ✅ LSP-disable cascade through `LspStatusService` bumps every child client's `tokenVersion` and flips status to INACTIVE.
+> - ✅ `ApiClientJwtSessionValidator` checks `authType==API_CLIENT`, then `tvLsp`, `tvApiClient`, `lsp.status==ACTIVE`, `apiClient.status==ACTIVE`.
+> - ✅ `ApiClientAuthenticationService.lookupByClientId` rejects when `status != ACTIVE` (line 69 — closes #93).
+> - ✅ Admin per-client disable via `PUT /api-clients/{id}` works because the validator's status check (line 66) catches the disabled client — even though `ApiClientManagementService.updateClient` does not itself bump `tokenVersion`. Belt-and-braces.
+>
+> **NOT shipped — Slice 2 of the original plan ("Secret rotation kills outstanding tokens"):**
+> - ❌ `ApiClient.rotateSecret(...)` (line 177) does NOT call `revokeAllSessions()` / bump `tokenVersion`. A secret rotation today leaves outstanding access JWTs valid until natural expiry. The `grace_seconds` window on the OLD secret only affects new authentication attempts, not already-minted access tokens.
+> - ❌ No test asserting "mint JWT → rotate secret → re-issue → 401".
+>
+> **Recommended:** add a one-line `this.tokenVersion++;` (or call `revokeAllSessions()`) inside `ApiClient.rotateSecret(...)`, plus a regression test. Until then, the rotate-secret kill chain is broken even though disable/cascade works.
 
 **Problem (plain English):** When admin disables an LSP API client, the client's existing access token still works until it naturally expires. Same for refresh. So "disable" is really "disable in N minutes."
 
@@ -1681,8 +1706,18 @@ Untouched (deliberately):
 
 ---
 
-### #86 — [B-4] Repayment idempotency-key race surfaces 500 instead of 409 [SOLVED 2026-06-01]
-**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/86
+### #86 — [B-4] Repayment idempotency-key race surfaces 500 instead of 409
+**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/86 · **Status:** **OPEN** — plan grilled 2026-06-01, **NOT shipped** (2026-06-02 follow-up audit)
+
+> **2026-06-02 follow-up audit:** the `[SOLVED 2026-06-01]` marker on this entry was incorrect. The plan below was grilled in detail but never implemented. Specifically:
+> - No `V{n+1}__loan_payment_transaction_request_fingerprint.sql` migration exists; last migration is `V79`.
+> - `LoanPaymentTransaction` has no `requestFingerprint` field (grep for `requestFingerprint` returns zero hits in entity/service).
+> - `LoanRepaymentCommandService` has no `DataIntegrityViolationException` catch-and-recover around `save()`; the race still surfaces as a 500.
+> - `LspApiIdempotencyService.execute` already has the body fingerprint comparison (line 49) but is missing the race-recovery `try { save } catch (DataIntegrityViolationException) { re-query }`. The 500-instead-of-409 race is still live there too.
+> - Neither `LoanRepaymentCommandServiceIdempotencyTest` nor `LspApiIdempotencyServiceRaceTest` exists.
+> - `git log --all --grep="#86"` returns nothing.
+>
+> **Recommended:** ship the plan below as written; remove this banner once verified on `main`.
 
 **Problem (plain English):** Two concurrent calls with the same idempotency key both check "does it exist?", both see no, both insert. The database unique index catches the second one — but it surfaces as a generic 500 with a stack trace, not a clean 409.
 
@@ -1801,8 +1836,17 @@ Untouched (deliberately):
 
 ---
 
-### #87 — [B-5] WebhookOutboxService.dispatchPending holds batch TX during slow deliveries [SOLVED 2026-06-01]
-**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/87
+### #87 — [B-5] WebhookOutboxService.dispatchPending holds batch TX during slow deliveries
+**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/87 · **Status:** **OPEN** — plan grilled 2026-06-01, **NOT shipped** (2026-06-02 follow-up audit)
+
+> **2026-06-02 follow-up audit:** the `[SOLVED 2026-06-01]` marker on this entry was incorrect. The plan below was grilled in detail but never implemented. Specifically:
+> - No `V{n+1}__webhook_event_outbox_claim_expires_at.sql` migration exists.
+> - `WebhookEventOutbox` has no `claimExpiresAt` field; no `claim(Instant)` method.
+> - `WebhookOutboxService.dispatchPending` (line 111) is still a single `@Transactional` method that loops `dispatchEvent(event)` synchronously (line 126); the HTTP call at line 162 still happens inside that one transaction.
+> - No `webhookDeliveryExecutor` `ThreadPoolTaskExecutor` bean.
+> - Connection-pool starvation under slow-partner outage and crash-stranding of `IN_FLIGHT` rows both still live.
+>
+> **Recommended:** ship the plan below as written; remove this banner once verified on `main`.
 
 **Problem (plain English):** The webhook worker claims a batch of 100 events and then delivers them one-by-one, all inside one transaction. If one partner is slow (or down), the whole transaction stays open and holds row locks. Under outage you can lock the connection pool.
 
@@ -2150,7 +2194,17 @@ Untouched (deliberately):
 
 **Effect on app:** No runtime change unless the annotation is actually missing. If it is, your prod has demo data right now and we need to clean it up.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-02 follow-up audit):**
+
+**Verification complete — partial intentional exception found.**
+
+| Class | Annotation | Status |
+|---|---|---|
+| `LocalDemoPortfolioSeedService` (line 32) | `@Profile("local")` | ✅ correctly gated |
+| `SampleCatalogSeedService` (line 23) | `@Profile({"local", "test"})` | ✅ correctly gated |
+| `LocalBootstrapAdminSyncService` (line 25) | **no `@Profile`** | ⚠️ **intentional** — see comment at lines 20-23: "F-19: refresh_token rows FK to app_user, so the configured bootstrap admin must exist as a real app_user row in every profile (not just 'local'). Demo-portfolio seeding stays guarded by the `app.seed.demo-portfolio.enabled` property so production profiles do not seed sample data." The "Local" prefix is misleading but the behaviour is intentional. The bootstrap admin's password comes from `${APP_SECURITY_BOOTSTRAP_PASSWORD}` env var (not weak/hardcoded), so prod is safe. |
+
+**Recommended close:** rename `LocalBootstrapAdminSyncService` → `BootstrapAdminSyncService` (remove the misleading "Local" prefix) and add a brief class-level Javadoc pointing at the F-19 reasoning. Then close #107 and #161 as verified.
 
 ---
 
@@ -3354,7 +3408,7 @@ Untouched (deliberately):
 ### #161 — [V-1] Verify Local* services are @Profile("local")
 **Link:** https://github.com/sid12701/lms/issues/161
 
-**Detailed solution after discussion:** _(pending — bundle with #107)_
+**Detailed solution after discussion (2026-06-02 follow-up audit):** Verified — see § #107. `LocalDemoPortfolioSeedService` and `SampleCatalogSeedService` are correctly profile-gated; `LocalBootstrapAdminSyncService` is intentionally not gated (must run in every profile per F-19; bootstrap password from env var). **Close as verified, optionally rename `LocalBootstrapAdminSyncService` → `BootstrapAdminSyncService` to remove the misleading "Local" prefix.**
 
 ---
 
@@ -3371,7 +3425,7 @@ Untouched (deliberately):
 
 **Effect on app:** Local-dev setup needs env vars (one-time pain). History scan reveals what to rotate elsewhere too.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-02 follow-up audit):** Verified — `application-local.yml` reads every credential from environment variables (`${LMS_DB_PASSWORD}`, `${LMS_RABBITMQ_PASSWORD:lms}`, `${APP_SECURITY_BOOTSTRAP_PASSWORD}`, `${APP_SECURITY_JWT_SECRET}`, `${APP_TENANT_DATASOURCE_PASSWORD}`). No plaintext credentials in the committed file today. Still need to: (a) confirm via `git log -p backend/src/main/resources/application-local.yml` that nothing was committed in history, and (b) rotate anything that ever appeared in git history (Option 1's "compromised forever" property). **Close once the history audit is done.**
 
 ---
 
@@ -3417,7 +3471,7 @@ Untouched (deliberately):
 
 ---
 
-## P2 — Medium priority (60)
+## P2 — Medium priority (55)
 
 ### #67 — No LSP UI loan-create form (POST is API-client-only)
 **Labels:** gap, rbac · **Link:** https://github.com/sid12701/lms/issues/67
@@ -3560,7 +3614,7 @@ Untouched (deliberately):
 ---
 
 ### #82 — Verify SSRF protection wired into webhook URL update path
-**Labels:** gap, security, verification · **Link:** https://github.com/sid12701/lms/issues/82
+**Labels:** gap, security, verification · **Link:** https://github.com/sid12701/lms/issues/82 · **Status:** **VERIFICATION PASSES — CLOSE** (audited 2026-06-02)
 
 **Problem (plain English):** `SsrfSafeUrlValidator` exists; need to verify every webhook URL write path calls it. Otherwise admin can point a webhook at `169.254.169.254` and exfil cloud metadata.
 
@@ -3571,7 +3625,18 @@ Untouched (deliberately):
 
 **Effect on app:** SSRF closed in this surface area.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-02 audit) — VERIFICATION PASSES:**
+
+SSRF is wired at **both** layers (defence in depth):
+
+1. **Write-time** — `AdminDirectoryService.updateWebhookSubscription` line 212 calls `SsrfSafeUrlValidator.validate(normalizedEndpointUrl)` before mutating the LSP entity. This is the **only** path that touches `Lsp.webhookEndpointUrl` — verified by grepping every caller of `updateWebhookSubscription` (only `LspAdminController:83` → `AdminDirectoryService:191`; no other writes to the column anywhere in `backend/src/main/java`). `LspAdminController.updateWebhookSubscription` is `SYSTEM_ADMIN`-only and routes through this validating service.
+2. **Dispatch-time** — `HttpWebhookDeliveryClient.deliver` line 28 calls `SsrfSafeUrlValidator.validate(request.endpointUrl())` before opening the HTTP connection, so even if a stale or pre-migration row carried an unvalidated URL it cannot reach the network.
+
+**Minor residual:** when the admin updates with `enabled=false`, the URL is saved without validation (line 205 guards validation behind `if (enabled)`). This is benign because the dispatch path (a) requires `lsp.isWebhookEnabled()` to even attempt delivery and (b) revalidates at delivery time via the dispatch-time check above. Toggling enabled later re-routes through the same `updateWebhookSubscription` and re-validates.
+
+**Action:** close the ticket as verified. Optional follow-up: add a unit test against `AdminDirectoryService` that asserts `SsrfSafeUrlValidator.validate` is invoked for the metadata-IMDS IP `169.254.169.254`, plus a guard test pointing at the in-cluster service `localhost`. Not required for closure; nice-to-have for regression protection.
+
+**Closes as duplicates (same evidence):** **#143 [SEC-Δ-5]** and **#162 [V-2]** — both ask for the same verification.
 
 ---
 
@@ -3723,7 +3788,7 @@ These tests are valuable on their own; they describe the invariant the code alre
 2. **Trigger surface is narrower post-#62 than the audit doc described.** Audit said "doc upload, field update, and disbursement request." Current callers in code:
    - `LoanDocumentService:133` (single doc upload completion path)
    - `LoanDocumentService:168` (batch / patch doc-status path)
-   - `LoanDisbursementService:43` — **removed as part of #62 PR (b)**; once that ships, this caller is gone. After #62 lands, the engine fires only on document-state changes.
+   - `LoanDisbursementService:118` (was line 43 pre-#62 PR (b)) — **NOT removed by #62 PR (b).** PR (b) removed the LSP `POST /disbursement` endpoint and re-routed disbursement through the new worker, but the `requestDisbursementForLsp` method body itself was retained as orphaned dead code (still `@Transactional`, still calls `autoApproveIfEligibleForLsp` at line 118). Zero production callers, but the live code still references the engine through this path. See § #62 "Implementation status" follow-up note and § #85 / § #135 for the planned cleanup. After **#85 / #135 / #116 bundle lands**, this caller goes; until then, the engine fires from disbursement code that nobody calls but the compiler still tracks.
    - No "field-update" caller exists today. The audit doc may have anticipated one; today there isn't one.
 3. **Cost picture relative to its caller.** Doc-upload paths are already paying R2 upload + audit row + document-row insert (typically 100–500 ms total). Adding 3 indexed reads (~5–15 ms typical, possibly more on the cross-LSP query for borrowers with long history) is <5 % of the surrounding work. **Not a hot path; not a bug at current scale.**
 4. **`findOpenLoansAcrossAllLsps` index check — done.** `idx_loan_account_borrower (borrower_id)` exists since V17. The query is `existsByBorrower_IdAndStatusIn` / `findByBorrower_IdAndStatusIn`. The planner uses the borrower index, then filters in memory on status. A composite `(borrower_id, status)` index would be marginally faster but is **not** needed at current scale — single-column borrower index is fine while typical borrowers have ≤5 open loans across LSPs. Capture as a follow-up only if EXPLAIN shows the in-memory status filter dominating.
@@ -3973,7 +4038,7 @@ Net effect today:
 
 **Detailed solution after discussion (2026-06-01) — IMPLEMENT (GREEN-LIT): part of bundled "mock disbursement hygiene" PR with #84 + #96.**
 
-**Problem in detail:** `LoanApplicationService.resolveMockDisbursementOutcome` (line 757) guards with:
+**Problem in detail:** `LoanApplicationService.resolveMockDisbursementOutcome` (line 724 as of 2026-06-02; line 757 in the original audit) guards with:
 ```java
 if (loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_REQUESTED) {
     throw new IllegalArgumentException("Mock disbursement outcome can only be applied after a request is raised.");
@@ -3987,14 +4052,14 @@ That message is misleading on the most common cause — admin double-clicked "Ma
 - **Request never raised → 400 with clear code.** When the account is still in `PENDING_DISBURSEMENT` (no request raised yet), return 400 with `code = "MOCK_DISBURSEMENT_NO_REQUEST_RAISED"`. Distinguishes the "wrong state for this transition" case from the "already resolved" case.
 
 **Implementation outline (in `LoanApplicationService.resolveMockDisbursementOutcome`):**
-1. Replace the line-768 guard with a three-way switch on `loanAccount.getStatus()`:
+1. Replace the line-735 guard (was line 768 in the original audit; shifted as the file shrank) with a three-way switch on `loanAccount.getStatus()`:
    - `PENDING_DISBURSEMENT` → throw a new `BusinessRuleViolationException` with code `MOCK_DISBURSEMENT_NO_REQUEST_RAISED` (HTTP 400 via existing mapping).
    - `DISBURSEMENT_REQUESTED` → proceed with the existing happy path.
    - Any terminal/post-request state (`DISBURSED`, `DISBURSEMENT_FAILED`, `DISBURSEMENT_PENDING_RECONCILIATION`):
      - If the requested outcome maps to the current state → return the existing application and log a debug breadcrumb. No mutation, no audit, no webhook.
      - If the requested outcome maps to a different state → throw `BusinessRuleViolationException` with code `MOCK_DISBURSEMENT_OUTCOME_CONFLICT` (HTTP 409 via existing mapping; if mapping is missing, add it in `GlobalExceptionHandler`).
 2. Use the existing `LoanAccountStatus → MockDisbursementOutcome` round-trip already implied by lines 778–782 to check whether the current state corresponds to the requested outcome.
-3. The controller layer (`LoanApplicationOpsController.applyMockDisbursementOutcome` line 385) needs no change — it just propagates whatever the service returns or throws.
+3. The controller layer (`LoanApplicationOpsController.applyMockDisbursementOutcome` line 377 as of 2026-06-02; line 385 in the original audit) needs no change — it just propagates whatever the service returns or throws.
 
 **TDD (subset of the bundled PR's tests):**
 - TRACER — `double_resolve_same_outcome_returns_200_idempotent`. Apply `DISBURSED`; apply `DISBURSED` again. Second call returns 200 with same response. Exactly one `LoanApplicationStatusTransition` row, one `DISBURSEMENT_COMPLETED` webhook event in the outbox.
@@ -4020,7 +4085,7 @@ That message is misleading on the most common cause — admin double-clicked "Ma
 
 **Detailed solution after discussion (2026-06-01) — IMPLEMENT (GREEN-LIT): part of bundled "mock disbursement hygiene" PR with #84 + #95.**
 
-**Problem in detail:** The `/mock-outcome` endpoint (`LoanApplicationOpsController.applyMockDisbursementOutcome` line 385) currently accepts a `MockDisbursementOutcomeRequest` body with no required `Idempotency-Key` header. Other money-moving endpoints (`/payments`) require one and dedup via the existing idempotency infrastructure (per #86's solution). Mock-outcome is the only resolve-money-state endpoint that doesn't.
+**Problem in detail:** The `/mock-outcome` endpoint (`LoanApplicationOpsController.applyMockDisbursementOutcome` line 377 as of 2026-06-02; line 385 in the original audit) currently accepts a `MockDisbursementOutcomeRequest` body with no required `Idempotency-Key` header. Other money-moving endpoints (`/payments`) require one and dedup via the existing idempotency infrastructure (per #86's solution). Mock-outcome is the only resolve-money-state endpoint that doesn't.
 
 Why this matters:
 - Network blips during the response trip cause clients to retry; without a key, retries become new transitions (caught by #95's state guard for repeat outcomes, but only after the second call hits the DB).
@@ -4036,7 +4101,7 @@ Why this matters:
 **Implementation outline:**
 1. Wire the existing idempotency service into the mock-outcome handler — same pattern as `LoanRepaymentCommandController` (or wherever the canonical pattern lives). The service exposes a `runOrReplay(key, requestFingerprint, supplier)` style API; the handler wraps the `resolveMockDisbursementOutcome` call in it.
 2. The request fingerprint is `(applicationId, outcome)` — exclude actor / timestamp so genuine retries from the same client dedup correctly.
-3. Update `LocalDemoPortfolioSeedService` (lines 237, 260, 270, 292) to pass deterministic idempotency keys derived from the seed application IDs. Each call already runs at most once during seeding, so any deterministic key works.
+3. Update `LocalDemoPortfolioSeedService` (lines 236, 259, 269, 291 as of 2026-06-02; lines 237, 260, 270, 292 in the original audit) to pass deterministic idempotency keys derived from the seed application IDs. Each call already runs at most once during seeding, so any deterministic key works.
 4. Update `LoanApplicationOpsControllerTest` mock-outcome tests to include the header.
 
 **Layering with #95:**
@@ -4187,7 +4252,17 @@ Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/fe
 
 **Effect on app:** One fewer indirection layer. Caller files change imports.
 
-**Detailed solution after discussion:** _(pending — bundle with #98)_
+**Detailed solution after discussion (2026-06-02 audit) — framing overstated; re-scope before grilling:**
+
+The audit doc claims `LoanApplicationService` "forwards almost every call to focused services." The current code does not match that claim:
+
+- File is 1,047 lines and exposes **51 public methods**.
+- Only **15 methods** are pure one-line delegates to one of the four focused collaborators (`LoanApplicationLifecycleService`, `LoanApplicationQueryService`, `LoanRepaymentCommandService`, `LoanForeclosureCommandService`). That's ~30%.
+- The other ~70% do real work: direct repository access (e.g., `getApplication`, `listAuditEvents`, `listDisbursementRequests`, `listForeclosureQuotes`), multi-source projection logic (e.g., `getLatestActivity`'s 3-way candidate stream merging intake / status-transition / document-update activity), aggregation helpers (`getLoanRepaymentScheduleSummary`, `getLoanDelinquencySummary`), and several static utility methods.
+
+It is a chunky service, not a useless facade. Bundling with #98 (god-class decomposition) still makes sense, but the right scope is **"extract the 15 pure-delegate methods and have callers depend on the focused services directly"** — not "delete the facade." The 70% of methods that do real work need to either move into the focused services (probably the right call, sized per method) or stay where they are, but they cannot just be deleted.
+
+**Action:** re-scope before the grill; the grill prompt should ask "which of these 51 methods belongs in `LoanApplicationService`, which belongs in a focused service, and which belongs in a new home (e.g., projection / read-model class)?" not "should we delete the facade?"
 
 ---
 
@@ -4216,7 +4291,7 @@ Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/fe
 ---
 
 ### #103 — [Q-6] webhook_event_outbox.payload_json still text — partial jsonb migration
-**Labels:** code-quality, database · **Link:** https://github.com/sid12701/lms/issues/103
+**Labels:** code-quality, database · **Link:** https://github.com/sid12701/lms/issues/103 · **Status:** **ALREADY FIXED — CLOSE** (audited 2026-06-02)
 
 **Problem (plain English):** Last text payload column blocking query-by-JSON.
 
@@ -4227,7 +4302,22 @@ Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/fe
 
 **Effect on app:** Ad-hoc ops queries on payload contents become feasible.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-02 audit) — ALREADY FIXED:**
+
+`backend/src/main/resources/db/migration/V72__json_text_columns_to_jsonb.sql` performed the migration. Specifically (lines 7–10 of V72):
+
+```sql
+ALTER TABLE webhook_event_outbox
+    ALTER COLUMN payload_json TYPE jsonb USING payload_json::jsonb,
+    ADD CONSTRAINT chk_webhook_event_outbox_payload_json_object
+        CHECK (jsonb_typeof(payload_json) = 'object');
+```
+
+Same V72 migration also flipped the sibling text-JSON columns the audit doc had grouped under this issue: `loan_disbursement_request_log.{request,response}_payload_json`, `loan_application.rejection_reason_json`, plus several other `*_json` columns across the schema. Every column carries a `jsonb_typeof = 'object'` check so malformed payloads now fail at write time.
+
+The doc's framing "Last text payload column blocking query-by-JSON" is stale — written before V72 landed.
+
+**Action:** close as FIXED. **Optional follow-up (out of scope for closure):** if production telemetry shows ad-hoc ops queries scanning `payload_json` filtered by `eventType` or specific JSON paths, add a GIN index — but only with evidence. Don't pre-emptively index a non-existent query pattern.
 
 ---
 
@@ -4313,7 +4403,7 @@ Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/fe
 ---
 
 ### #110 — [Q-13] Webhook outbox index bloat
-**Labels:** code-quality, database, scale-risk · **Link:** https://github.com/sid12701/lms/issues/110
+**Labels:** code-quality, database, scale-risk · **Link:** https://github.com/sid12701/lms/issues/110 · **Status:** **FRAMING OVERSTATED — re-scope or close** (audited 2026-06-02)
 
 **Problem (plain English):** Indexes accumulated across V57/V58/V61/V66. Write amplification on a hot table.
 
@@ -4324,7 +4414,23 @@ Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/fe
 
 **Effect on app:** Faster writes; smaller table.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-02 audit) — FRAMING OVERSTATED:**
+
+The "V57/V58/V61/V66" trail in the issue title is not accurate against `main`:
+
+- **V57** (`home_dashboard_query_indexes.sql`) — does NOT touch `webhook_event_outbox` (it indexes loan-application / loan-account tables for the home dashboard query). Grep on `webhook_event_outbox` in V57 returns no matches.
+- **V58** (`webhook_outbox_loan_application_id.sql`) — adds **1** index: `idx_webhook_event_outbox_loan_application_created_at (loan_application_id, created_at DESC)` (line 33). Needed for the per-loan webhook view.
+- **V61** (`prune_redundant_indexes.sql`) — does NOT touch `webhook_event_outbox`; it prunes redundant loan_application / loan_account / borrower indexes (see V61 lines 16–22).
+- **V66** (`webhook_outbox_loan_application_fk.sql`) — adds the FK only; no new index.
+
+Net total on `webhook_event_outbox`:
+1. `idx_webhook_event_outbox_created_at (created_at DESC)` — V24, dispatcher-claim scan.
+2. `idx_webhook_event_outbox_lsp_created_at (lsp_id, created_at DESC)` — V24, admin list-by-LSP.
+3. `idx_webhook_event_outbox_loan_application_created_at (loan_application_id, created_at DESC)` — V58, per-loan view.
+
+Three indexes for three distinct query patterns is not "bloat." None are redundant against any of the others. The FK from V66 also creates a backing index implicitly only on some PG versions — confirm with `\d webhook_event_outbox` on production once data exists.
+
+**Action:** **re-scope** the issue. The real follow-up (if any) is "once production has measurable write volume, run `pg_stat_user_indexes` to see if any of the three are genuinely cold, and only then drop." There is no current bloat to fix. Suggest closing as **not-applicable** with a note to revisit if `pg_stat_user_indexes.idx_scan = 0` for any index after sustained production load.
 
 ---
 
@@ -4345,9 +4451,20 @@ Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/fe
 ---
 
 ### #113 — [Q-16] Verify frontend/dist + frontend-2/dist are gitignored
-**Link:** https://github.com/sid12701/lms/issues/113
+**Link:** https://github.com/sid12701/lms/issues/113 · **Status:** **VERIFICATION PASSES — CLOSE** (audited 2026-06-02)
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-02 audit) — VERIFICATION PASSES:**
+
+Three independent `.gitignore` rules cover the dist directories:
+- Repo-root `.gitignore` line 27: `frontend/dist/`
+- `frontend/.gitignore` lines 11–12: `dist` + `dist-ssr`
+- `frontend-2/.gitignore` line 5: `dist/`
+
+`git ls-files | grep -E "^(frontend|frontend-2)/dist/"` returns **0 tracked files**, so neither dist directory is committed even though local build artefacts exist on disk.
+
+**Action:** close as VERIFICATION PASSES.
+
+**Closes as duplicate (same evidence):** **#165 [V-5]** — explicitly framed as the verification dup of this issue.
 
 ---
 
@@ -4398,16 +4515,32 @@ Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/fe
 ---
 
 ### #120 — [D-7] AuthController carries 9 nested records — extract AuthService
-**Link:** https://github.com/sid12701/lms/issues/120
+**Link:** https://github.com/sid12701/lms/issues/120 · **Status:** **NUMBER WRONG — re-scope** (audited 2026-06-02)
 
-**Detailed solution after discussion:** _(pending — bundle with #98)_
+**Detailed solution after discussion (2026-06-02 audit) — number is wrong:**
+
+`AuthController.java` (447 LoC on `main`) carries **4** public nested records, not 9 (`grep -c "public record"` returns 4; the records are `LoginRequest` (line 200), `ClientCredentialsRequest` (line 206), `TokenResponse` (line 212), `ChangePasswordRequest` (line 220)).
+
+The controller has shrunk since the audit doc was written — bundled fixes for #63 and #64 routed claims/error handling through helper services, and previous nested records appear to have been deleted along the way (no separate `AuthService` extraction happened — they were just removed). The remaining 4 are slim public-API DTOs.
+
+**Action:** **re-scope or close.** The bundling rationale ("extract `AuthService` to clean the controller") still has merit purely from a controller-size standpoint (447 LoC for an auth controller is moderate-to-high, and the auth/refresh/token methods do mint JWTs inline with cookie-building helpers), but the "9 nested records" hook the doc used to motivate the bundle no longer exists. Bundle with #98 only if #98's god-class scope still considers a 447-LoC controller in-scope; otherwise close.
 
 ---
 
 ### #121 — [D-8] Verify WebhookEventOutboxRepositoryImpl custom shim is still needed
-**Link:** https://github.com/sid12701/lms/issues/121
+**Link:** https://github.com/sid12701/lms/issues/121 · **Status:** **VERIFICATION PASSES — shim is still needed** (audited 2026-06-02)
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-02 audit) — VERIFICATION PASSES:**
+
+The custom shim in `backend/src/main/java/com/bhawana/lms/repo/WebhookEventOutboxRepositoryImpl.java` is still load-bearing because **H2 does not support `FOR UPDATE SKIP LOCKED`**, but the production Postgres dispatcher path needs exactly that semantic to claim a batch without blocking on rows already claimed by a sibling replica.
+
+The shim does this split (lines 30, 53, 72–84):
+- **H2 (test) branch** — JPQL `SELECT … WITH PESSIMISTIC_WRITE` (blocks rather than skips). Acceptable in tests because they run single-threaded against H2.
+- **Postgres (prod) branch** — native SQL `select id … for update skip locked limit :batchSize`, then a second fetch by id list to materialize the entities with `lsp` joined. Required so two `WebhookOutboxDispatchWorker` replicas don't both grab the same rows.
+
+If we ever rip out the H2 test path (move everything to Testcontainers PG), the shim collapses to a single Postgres-only implementation but does not go away — Spring Data JPA does not generate `FOR UPDATE SKIP LOCKED` from its method-name vocabulary.
+
+**Action:** **close as VERIFICATION PASSES; the shim is still needed.** Optional follow-up captured in [[#106]] (PG-only schema tests / Testcontainers): if H2 disappears from the test path, simplify the shim to the Postgres branch only. No urgent work.
 
 ---
 
@@ -4513,12 +4646,20 @@ Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/fe
 
 **Recommended:** Option 1.
 
-**Detailed solution after discussion:** _(pending — bundle with #116)_
+**Detailed solution after discussion (2026-06-02 follow-up audit):**
+
+**#135 is NOT moot.** #62 PR (b) was previously expected to make this moot by removing the only caller path through a disbursement TX. The follow-up audit found that `LoanDocumentService.submitStoredDocumentForLsp` (method header line 107; `autoApprove` call at line 133) and `submitStoredDocumentsForLsp` (method header line 138; `autoApprove` call at line 168) are both `@Transactional` and both call `autoApproveIfEligibleForLsp` inside that TX — the same caller-defensive-only pattern this issue names, just on the document-upload path rather than the disbursement path. Plus the dead `LoanDisbursementService.requestDisbursementForLsp` body still sits in the source as a footgun for future callers.
+
+**Plan (bundle with #116 single status-mutation entry point, and with #85's orphan-method cleanup):**
+1. Push the guard into the state machine (or into `LoanApplicationStatusTransitioner`) so a caller that forgets the precondition gets an exception, not a silent no-op.
+2. Remove caller-defensive `if (status outside {INITIALIZED, AWAITING_APPROVAL}) return` checks from `LoanApplicationLifecycleService.autoApproveIfEligibleForLsp`.
+3. Delete the orphaned `LoanDisbursementService.requestDisbursementForLsp` method body as part of the same PR (closes the #85 footgun).
+4. Test: forge a call from `LoanDocumentService` against an already-REJECTED app → expect exception, not silent no-op.
 
 ---
 
 ### #136 — [F-13] Verify V58 webhook_event_outbox.loan_application_id backfill is complete
-**Labels:** fragile-logic, database, verification · **Link:** https://github.com/sid12701/lms/issues/136
+**Labels:** fragile-logic, database, verification · **Link:** https://github.com/sid12701/lms/issues/136 · **Status:** **VERIFICATION PASSES — CLOSE** (audited 2026-06-02)
 
 **Problem (plain English):** Need to verify backfill is complete; per-loan view may be partial otherwise.
 
@@ -4527,7 +4668,31 @@ Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/fe
 
 **Recommended:** Option 1.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-02 audit) — VERIFICATION PASSES:**
+
+V66 (`webhook_outbox_loan_application_fk.sql`) added the FK on `loan_application_id` AND ran a pre-flight orphan check that **fails the migration** if any orphan exists. From V66 lines 11–29:
+
+```sql
+DO $$
+DECLARE orphan_count BIGINT;
+BEGIN
+    SELECT COUNT(*) INTO orphan_count
+    FROM webhook_event_outbox outbox
+    WHERE outbox.loan_application_id IS NOT NULL
+      AND NOT EXISTS (
+          SELECT 1 FROM loan_application app WHERE app.id = outbox.loan_application_id
+      );
+    IF orphan_count > 0 THEN
+        RAISE EXCEPTION 'webhook_event_outbox has % orphan loan_application_id row(s); investigate before adding FK (see F-03)', orphan_count;
+    END IF;
+END$$;
+```
+
+If V66 succeeded on any environment, the backfill from V58 has held — orphans cannot exist while V66 is in place because the FK with `ON DELETE RESTRICT` prevents `loan_application` rows being deleted without first cleaning up referencing outbox rows.
+
+**Residual nuance:** V58's UPDATE statements only set `loan_application_id` for rows where `aggregate_type IN ('LOAN_APPLICATION', 'LOAN_ACCOUNT', 'LOAN_PAYMENT_TRANSACTION')`. Rows of any other `aggregate_type` keep `loan_application_id = NULL`, which is fine (the column is nullable on purpose — non-loan-tied webhook events legitimately have no application linkage; the per-loan view filters by `loan_application_id = ?` and excludes them by design).
+
+**Action:** close as VERIFICATION PASSES.
 
 ---
 
@@ -4546,9 +4711,9 @@ Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/fe
 ---
 
 ### #143 — [SEC-Δ-5] Verify SsrfSafeUrlValidator wired
-**Link:** https://github.com/sid12701/lms/issues/143
+**Link:** https://github.com/sid12701/lms/issues/143 · **Status:** **CLOSE AS DUPLICATE OF #82** (audited 2026-06-02)
 
-**Detailed solution after discussion:** _(pending — bundle with #82)_
+**Detailed solution after discussion (2026-06-02 audit):** verification passes per § #82 (write-time validation in `AdminDirectoryService:212` + dispatch-time validation in `HttpWebhookDeliveryClient:28`). Close as duplicate.
 
 ---
 
@@ -4610,21 +4775,21 @@ Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/fe
 ---
 
 ### #162 — [V-2] Verify SsrfSafeUrlValidator wired (dup of #82)
-**Link:** https://github.com/sid12701/lms/issues/162
+**Link:** https://github.com/sid12701/lms/issues/162 · **Status:** **CLOSE AS DUPLICATE OF #82** (audited 2026-06-02)
 
-**Detailed solution after discussion:** _(pending — bundle with #82)_
+**Detailed solution after discussion (2026-06-02 audit):** verification passes per § #82. Close as duplicate.
 
 ---
 
 ### #165 — [V-5] Verify frontend/dist + frontend-2/dist gitignored (dup of #113)
-**Link:** https://github.com/sid12701/lms/issues/165
+**Link:** https://github.com/sid12701/lms/issues/165 · **Status:** **CLOSE AS DUPLICATE OF #113** (audited 2026-06-02)
 
-**Detailed solution after discussion:** _(pending — bundle with #113)_
+**Detailed solution after discussion (2026-06-02 audit):** verification passes per § #113. Close as duplicate.
 
 ---
 
 ### #166 — [V-6] Decide fate of Redis + RabbitMQ in docker-compose
-**Labels:** verification · **Link:** https://github.com/sid12701/lms/issues/166
+**Labels:** verification · **Link:** https://github.com/sid12701/lms/issues/166 · **Status:** **FRAMING HALF-WRONG — re-scope** (audited 2026-06-02)
 
 **Problem (plain English):** Compose runs Redis + RabbitMQ but no current backend code uses them.
 
@@ -4634,7 +4799,21 @@ Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/fe
 
 **Recommended:** Option 1 if there is a Phase 8/9 dependency; otherwise Option 2.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-02 audit) — framing half-wrong, split the decision:**
+
+The doc says "no current backend code uses them" — that's only true for one of the two.
+
+- **Redis IS used** — `backend/src/main/java/com/bhawana/lms/security/RateLimitConfig.java` wires a `RedisClient` (lines 21–27) and a Lettuce-backed Bucket4j `ProxyManager` (lines 35–42) consumed by `RateLimitFilter`. Configuration toggle: `app.rate-limit.enabled` (defaults true). So Redis is **production-load-bearing** for distributed rate limiting across replicas. Removing it would break the rate limiter unless you also flip the rate limit to in-memory bucket4j (acceptable for local dev, **not** for multi-replica prod).
+  - **Action for Redis:** keep in compose. Optionally rename the compose service comment to call out the rate-limit dependency.
+
+- **RabbitMQ is genuinely unused in code** — `pom.xml` line 45 still pulls `spring-boot-starter-amqp` as a dependency, but no Java code imports `RabbitTemplate`, `@RabbitListener`, `amqp.*`, or any AMQP API (grep across `backend/src/main/java` returns zero matches). The starter is dead weight bringing in transitive deps.
+  - **Action for RabbitMQ:** drop the compose service AND remove `spring-boot-starter-amqp` from `pom.xml`. If a future phase needs an event bus, re-add intentionally with a real consumer. Keeping unused infrastructure on the dev stack signals "use this" to new contributors and adds noise to startup time.
+
+**Recommended split:**
+- Keep Redis (load-bearing for rate limiting).
+- Remove RabbitMQ from `infra/docker-compose.yml` AND the AMQP starter from `backend/pom.xml` in the same PR.
+
+Both halves are small. Bundle them or ship as two trivial PRs.
 
 ---
 

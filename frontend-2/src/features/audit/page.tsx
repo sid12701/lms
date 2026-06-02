@@ -27,6 +27,8 @@ import { useSearchParams } from "react-router-dom";
 import { Lock, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
+import { ErrorState } from "@/components/app/feedback/ErrorState";
+import { isUnauthorizedApiError } from "@/lib/api/api-errors";
 import { useSession } from "@/features/auth/session-context";
 import { useAuditEvents } from "./hooks/useAuditEvents";
 import { AUDIT_STREAMS, type AuditEventsFilters, type AuditRow, type AuditStream } from "./types";
@@ -98,14 +100,6 @@ function serializeFiltersToUrl(filters: AuditEventsFilters): URLSearchParams {
   }
   if (filters.eventId) params.set("eventId", filters.eventId);
   return params;
-}
-
-function isUnauthorizedError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const code = (error as { code?: unknown }).code;
-  if (code === "UNAUTHORIZED" || code === "FORBIDDEN") return true;
-  const status = (error as { httpStatus?: unknown }).httpStatus;
-  return status === 401 || status === 403;
 }
 
 function distinctActorOptions(rows: ReadonlyArray<AuditRow>): ActorOption[] {
@@ -195,7 +189,8 @@ export function AuditPage() {
     );
   }
 
-  const unauthorized = query.isError && isUnauthorizedError(query.error);
+  const unauthorized = query.isError && isUnauthorizedApiError(query.error);
+  const loadFailed = query.isError && !unauthorized;
 
   return (
     <div className="flex flex-col gap-6 p-6" data-testid="audit-page">
@@ -211,6 +206,17 @@ export function AuditPage() {
           icon={ShieldAlert}
           title="Restricted to system administrators"
           description="Your session is no longer authorised to read the audit log."
+        />
+      ) : loadFailed ? (
+        <ErrorState
+          title="Couldn't load audit events"
+          description="The audit log couldn't be fetched. Try again in a moment."
+          retry={{
+            label: "Retry",
+            onClick: () => {
+              void query.refetch();
+            },
+          }}
         />
       ) : (
         <>

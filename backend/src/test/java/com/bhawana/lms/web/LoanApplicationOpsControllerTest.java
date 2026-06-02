@@ -33,7 +33,9 @@ import com.bhawana.lms.repo.ApiClientAuditEventRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspAuditEventRepository;
+import com.bhawana.lms.repo.LspIpAllowlistRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.repo.LspUiIpAllowlistRepository;
 import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
 import com.bhawana.lms.repo.WebhookEventOutboxRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -130,6 +132,12 @@ class LoanApplicationOpsControllerTest {
     private LspRepository lspRepository;
 
     @Autowired
+    private LspIpAllowlistRepository lspIpAllowlistRepository;
+
+    @Autowired
+    private LspUiIpAllowlistRepository lspUiIpAllowlistRepository;
+
+    @Autowired
     private LspAuditEventRepository lspAuditEventRepository;
 
     @Autowired
@@ -177,6 +185,8 @@ class LoanApplicationOpsControllerTest {
         loanProductLspMappingRepository.deleteAllInBatch();
         loanProductRepository.deleteAllInBatch();
         lspAuditEventRepository.deleteAllInBatch();
+        lspIpAllowlistRepository.deleteAllInBatch();
+        lspUiIpAllowlistRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
     }
 

@@ -14,6 +14,9 @@ import {
 } from "@/mocks/router";
 import { setLatencyOverride } from "@/mocks/latency";
 import { scenario } from "@/mocks/scenarios";
+import { ApiError } from "@/lib/api/http-client";
+import { clearStoredSession } from "@/lib/api/session-storage";
+import { saveInternalSession, saveLspSession } from "@/test/internal-session";
 import {
   fetchLoanApplicationActivity,
   fetchLoanApplicationDetail,
@@ -134,6 +137,109 @@ describe("fetchLoanApplicationDetail", () => {
     });
     await fetchLoanApplicationDetail("app/with slash");
     expect(seen[0]).toContain("app%2Fwith%20slash");
+  });
+});
+
+const BACKEND_DETAIL_FIXTURE = {
+  id: "11111111-1111-4111-8111-111111111111",
+  borrowerId: "22222222-2222-4222-8222-222222222222",
+  borrowerFullName: "Test User",
+  borrowerPan: null,
+  borrowerMobile: null,
+  borrowerEmail: null,
+  borrowerDateOfBirth: null,
+  borrowerCity: null,
+  borrowerState: null,
+  borrowerEmploymentType: null,
+  borrowerMonthlyIncome: null,
+  lspId: "33333333-3333-4333-8333-333333333333",
+  lspCode: "APEX",
+  lspName: "Apex NBFC",
+  productId: "44444444-4444-4444-8444-444444444444",
+  productCode: "PL-A",
+  productName: "Personal Loan A",
+  externalLoanId: null,
+  sourceChannel: "UI",
+  requestedAmount: 250_000,
+  tenureMonths: 12,
+  status: "INITIATED",
+  invalidReasonCode: null,
+  invalidReasonText: null,
+  invalidatedByUsername: null,
+  invalidatedAt: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  loanAccount: null,
+};
+
+describe("fetchLoanApplicationDetail internal session (#78)", () => {
+  const applicationId = BACKEND_DETAIL_FIXTURE.id;
+
+  beforeEach(() => {
+    clearStoredSession();
+    saveInternalSession();
+    _clearIdempotencyCacheForTests();
+  });
+
+  afterEach(() => {
+    clearStoredSession();
+    vi.unstubAllGlobals();
+  });
+
+  it("propagates 403 on detail instead of returning mock data", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ code: "FORBIDDEN", message: "Access denied" }), {
+            status: 403,
+            headers: { "content-type": "application/json" },
+          }),
+        ),
+      ),
+    );
+
+    await expect(fetchLoanApplicationDetail(applicationId)).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof ApiError && error.status === 403 && error.code === "FORBIDDEN",
+    );
+  });
+
+  it("propagates checklist 401 instead of empty docsComplete", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/kyc-documents")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ code: "AUTH_EXPIRED", message: "Session expired" }), {
+              status: 401,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return Promise.resolve(
+          new Response(JSON.stringify(BACKEND_DETAIL_FIXTURE), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }),
+    );
+
+    await expect(fetchLoanApplicationDetail(applicationId)).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof ApiError && error.status === 401 && error.code === "AUTH_EXPIRED",
+    );
+  });
+
+  it("still dispatches mock for LSP-role session", async () => {
+    clearStoredSession();
+    saveLspSession();
+    registerRoute("GET", "/api/v1/loan-applications/:id", () => DETAIL_FIXTURE);
+
+    const result = await fetchLoanApplicationDetail("app-1");
+    expect(result.application.id).toBe("app-1");
   });
 });
 

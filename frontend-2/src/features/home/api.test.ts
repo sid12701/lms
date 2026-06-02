@@ -16,8 +16,50 @@ import {
 import { setLatencyOverride } from "@/mocks/latency";
 import { scenario } from "@/mocks/scenarios";
 import { clearStoredSession, saveStoredSession } from "@/lib/api/session-storage";
+import { saveInternalSession } from "@/test/internal-session";
 import { fetchHomeKpis, HomeKpisSchema } from "./api";
 import type { HomeKpis } from "./types";
+
+const BACKEND_OVERVIEW_FIXTURE = {
+  totalDisbursedAmount: 4_750_000,
+  totalOutstandingAmount: 0,
+  dpd90PlusAmount: 125_000,
+  dpd90PlusLoanCount: 3,
+  applicationsAwaitingApproval: 12,
+  applicationsInDisbursement: 4,
+  avgApprovalTatHours: 18.5,
+  applicationsByStatus: [
+    { status: "AWAITING_APPROVAL", count: 12 },
+    { status: "UNDER_REPAYMENT", count: 47 },
+  ],
+  dpdBuckets: [
+    { bucket: "CURRENT", count: 41 },
+    { bucket: "DPD_1_30", count: 3 },
+  ],
+  openAlerts: 1,
+  openAlertSummaries: [
+    {
+      id: "alert-1",
+      severity: "HIGH",
+      title: "Webhook delivery failing",
+      subjectType: "WEBHOOK_DELIVERY",
+      subjectId: "wd-1",
+      createdAt: "2026-05-11T07:00:00.000Z",
+    },
+  ],
+  priorityAccounts: [
+    {
+      applicationId: "loan-1",
+      externalLoanId: "EXT-001",
+      customerName: "Aanya Devi",
+      lspCode: "Acme NBFC",
+      principalAmount: 250_000,
+      overdueAmount: 0,
+      daysPastDue: 0,
+      loanStatusDisplay: "AWAITING_APPROVAL",
+    },
+  ],
+};
 
 const INTERNAL_FIXTURE: HomeKpis = {
   kind: "internal",
@@ -78,26 +120,7 @@ const LSP_FIXTURE: HomeKpis = {
 
 beforeEach(() => {
   clearStoredSession();
-  saveStoredSession({
-    user: {
-      id: "22222222-2222-4222-8222-222222222222",
-      username: "ops.admin",
-      role: "SYSTEM_ADMIN",
-      lspId: null,
-      mustChangePassword: false,
-    },
-    accessToken: "access-token",
-    expiresAt: "2026-05-26T10:00:00.000Z",
-  });
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ code: "NOT_FOUND", message: "not found" }), {
-        status: 404,
-        headers: { "content-type": "application/json" },
-      }),
-    ),
-  );
+  saveInternalSession();
   setLatencyOverride(0);
   scenario.reset();
   _clearIdempotencyCacheForTests();
@@ -112,14 +135,21 @@ afterEach(() => {
 });
 
 describe("fetchHomeKpis", () => {
-  it("returns the internal-shape payload parsed against HomeKpisSchema", async () => {
-    registerRoute("GET", "/api/v1/home/kpis", () => INTERNAL_FIXTURE);
+  it("returns the internal-shape payload from the live backend overview", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(BACKEND_OVERVIEW_FIXTURE), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
     const result = await fetchHomeKpis();
     expect(result.kind).toBe("internal");
     if (result.kind !== "internal") throw new Error("narrow failed");
     expect(result.data.applicationsAwaitingApproval).toBe(12);
     expect(result.data.applicationsByStatus).toHaveLength(2);
-    // Parse-trip — proves the schema mirrors the type.
     expect(() => HomeKpisSchema.parse(result)).not.toThrow();
   });
 
@@ -143,17 +173,20 @@ describe("fetchHomeKpis", () => {
     });
   });
 
-  it("rejects malformed handler payloads (drift detection)", async () => {
-    registerRoute("GET", "/api/v1/home/kpis", () => ({
-      kind: "internal",
-      data: { wrong: "shape" },
-    }));
-    await expect(fetchHomeKpis()).rejects.toBeDefined();
-  });
-
-  it("surfaces NotFoundError when no route is registered", async () => {
-    // No route registered → router throws NotFoundError.
-    await expect(fetchHomeKpis()).rejects.toMatchObject({ code: "NOT_FOUND" });
+  it("propagates backend 404 instead of falling through to mock (#78)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ code: "NOT_FOUND", message: "not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    await expect(fetchHomeKpis()).rejects.toMatchObject({
+      status: 404,
+      code: "NOT_FOUND",
+    });
   });
 });
 

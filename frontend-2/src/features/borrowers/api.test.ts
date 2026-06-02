@@ -16,6 +16,9 @@ import {
 } from "@/mocks/router";
 import { setLatencyOverride } from "@/mocks/latency";
 import { scenario } from "@/mocks/scenarios";
+import { ApiError } from "@/lib/api/http-client";
+import { clearStoredSession } from "@/lib/api/session-storage";
+import { saveInternalSession, saveLspSession } from "@/test/internal-session";
 import { fetchBorrowerDetail } from "./api";
 import type { BorrowerDetail } from "./types";
 
@@ -94,5 +97,46 @@ describe("fetchBorrowerDetail", () => {
     });
     await fetchBorrowerDetail("bor/with slash");
     expect(seen[0]).toContain("bor%2Fwith%20slash");
+  });
+});
+
+describe("fetchBorrowerDetail internal session (#78)", () => {
+  const borrowerId = "11111111-1111-4111-8111-111111111111";
+
+  beforeEach(() => {
+    clearStoredSession();
+    saveInternalSession();
+    _clearIdempotencyCacheForTests();
+  });
+
+  afterEach(() => {
+    clearStoredSession();
+    vi.unstubAllGlobals();
+  });
+
+  it("propagates 401 instead of returning mock data", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ code: "AUTH_EXPIRED", message: "Session expired" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    await expect(fetchBorrowerDetail(borrowerId)).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof ApiError && error.status === 401 && error.code === "AUTH_EXPIRED",
+    );
+  });
+
+  it("still dispatches mock for LSP-role session", async () => {
+    clearStoredSession();
+    saveLspSession();
+    registerRoute("GET", "/api/v1/borrowers/:id", () => DETAIL_FIXTURE);
+
+    const result = await fetchBorrowerDetail("bor-1");
+    expect(result.totals.lifetimeDisbursedAmount).toBe(350_000);
   });
 });

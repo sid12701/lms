@@ -1,8 +1,10 @@
 import { useCallback, useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { FileText } from "lucide-react";
+import { FileText, ShieldAlert } from "lucide-react";
+import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { PermissionDeniedState } from "@/components/app/feedback/PermissionDeniedState";
+import { isNotFoundApiError, isUnauthorizedApiError } from "@/lib/api/api-errors";
 import { RightRail } from "@/components/app/layout/RightRail";
 import { StatusBadge } from "@/components/app/status/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -64,12 +66,6 @@ function useTabParam(): readonly [
   );
 
   return [active, setTab] as const;
-}
-
-function isNotFoundError(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
-  const code = (err as { code?: unknown }).code;
-  return code === "NOT_FOUND";
 }
 
 function DetailSkeleton() {
@@ -176,7 +172,23 @@ export function LoanApplicationDetailPage() {
   }
 
   if (detailQuery.isError) {
-    if (isNotFoundError(detailQuery.error)) {
+    if (isUnauthorizedApiError(detailQuery.error)) {
+      return (
+        <div
+          className="flex flex-col gap-6 p-6"
+          data-testid="loan-application-detail"
+          data-state="forbidden"
+        >
+          <EmptyState
+            variant="no-permission"
+            icon={ShieldAlert}
+            title="No access to this application"
+            description="You don't have permission to view this loan application."
+          />
+        </div>
+      );
+    }
+    if (isNotFoundApiError(detailQuery.error)) {
       return (
         <div
           className="flex flex-col gap-6 p-6"

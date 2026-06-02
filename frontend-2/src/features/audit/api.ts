@@ -13,7 +13,7 @@
  * For non-SYSTEM_ADMIN sessions the call falls back to the mock router so
  * local dev / Storybook flows still work.
  */
-import { ApiError, buildQueryPath, requestJson } from "@/lib/api/http-client";
+import { buildQueryPath, requestJson } from "@/lib/api/http-client";
 import { dispatch } from "@/mocks/router";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import {
@@ -176,21 +176,15 @@ async function fetchFromBackend(filters: AuditEventsFilters): Promise<AuditEvent
 /**
  * Fetch the audit-events page for the active session.
  *
- * SYSTEM_ADMIN sessions hit the live unified backend endpoint; everything
- * else falls back to the mock router so non-admin contexts (Storybook,
- * tests, dev fixtures) still render.
+ * SYSTEM_ADMIN sessions hit the live unified backend endpoint; non-admin
+ * contexts use the mock router (Storybook, tests, LSP demo) per #78.
  */
 export async function fetchAuditEvents(filters: AuditEventsFilters): Promise<AuditEventsResponse> {
   if (isSystemAdmin()) {
-    try {
-      return await fetchFromBackend(filters);
-    } catch (error) {
-      // Surface auth + server failures to the caller, but fall through to
-      // the mock for 4xx domain errors so the dev experience stays usable.
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-    }
+    return fetchFromBackend(filters);
   }
 
+  // Non-admin / Storybook: mock-router demo path (#78).
   return dispatch(
     {
       method: "GET",
