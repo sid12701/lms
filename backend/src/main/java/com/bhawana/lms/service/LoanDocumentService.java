@@ -56,7 +56,7 @@ public class LoanDocumentService {
     public record RetrievedDocumentContent(String fileName, String contentType, byte[] content) {
     }
 
-    public byte[] buildDocumentZip(UUID applicationId) {
+    public ZipBuildResult buildDocumentZip(UUID applicationId) {
         loanApplicationService.getApplication(applicationId);
         List<LoanApplicationDocumentChecklist> downloadableDocuments = loanApplicationDocumentChecklistRepository
                 .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
@@ -69,7 +69,9 @@ public class LoanDocumentService {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
              ZipOutputStream zos = new ZipOutputStream(baos)) {
             Set<String> zipEntryNames = new HashSet<>();
+            List<LoanApplicationDocumentType> includedTypes = new java.util.ArrayList<>();
             for (LoanApplicationDocumentChecklist checklistItem : downloadableDocuments) {
+                includedTypes.add(checklistItem.getDocumentType());
                 String entryName = resolveZipEntryName(checklistItem, zipEntryNames);
                 byte[] content = loanDocumentStorageService.retrieve(checklistItem.getStorageKey());
                 zos.putNextEntry(new ZipEntry(entryName));
@@ -77,10 +79,13 @@ public class LoanDocumentService {
                 zos.closeEntry();
             }
             zos.finish();
-            return baos.toByteArray();
+            return new ZipBuildResult(baos.toByteArray(), includedTypes);
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to build ZIP archive for application " + applicationId, exception);
         }
+    }
+
+    public record ZipBuildResult(byte[] content, List<LoanApplicationDocumentType> includedTypes) {
     }
 
     private static String resolveZipEntryName(

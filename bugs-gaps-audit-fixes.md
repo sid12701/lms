@@ -1179,7 +1179,7 @@ Untouched (deliberately):
 ---
 
 ### #70 — Document download (single + ZIP) not audited
-**Labels:** gap, auditability, security · **Link:** https://github.com/sid12701/lms/issues/70
+**Labels:** gap, auditability, security · **Link:** https://github.com/sid12701/lms/issues/70 · **Status:** **CLOSED** — merged to `main` 2026-06-02 (closes **#150** duplicate)
 
 **Problem (plain English):** Downloading a KYC document — one file or a zip of all of them — leaves no trace. An insider scraping documents is invisible to the audit.
 
@@ -1305,6 +1305,29 @@ Untouched (deliberately):
 - **#92** ("[B-10] Document download swallows IllegalStateException — storage outage masked as 404") — independent. This PR does not change the 404-on-storage-error behaviour; Slice 3 just confirms that path leaves the audit clean. When #92 lands and stops swallowing the exception, the audit logic does not need to change (it sits after retrieve succeeds).
 - **#105** ("[Q-8] LoanApplicationOpsController has ~500 LoC of nested record DTOs") — the controller picks up ~10 lines from this PR (delegation + IP/correlation extraction). Not enough to materially affect #105's refactor calculus.
 - **#98 / #99** (god-class refactors) — explicitly **not** addressed by this PR. The audit writes stay inline in `LoanApplicationService` to avoid mixing scope; when #98 / #99 land, a `LoanApplicationDocumentAccessAuditService` is the natural extraction target and will absorb all four call sites (`CHECKLIST_VIEWED`, `INTAKE_AUDITS_VIEWED`, `SINGLE_DOCUMENT_DOWNLOADED`, `BULK_ZIP_DOWNLOADED`) in one move.
+
+**Implementation status (2026-06-02, `main`):**
+
+Shipped per grilled design (Slices 1–3). Backend test suite green including full-suite run with `LoanApplicationOpsControllerDocumentDownloadAuditTest`.
+
+| Delivered | Primary code |
+|-----------|--------------|
+| Migration **`V80`**: `actor_ip`, `byte_count` on `loan_application_document_access_audit` | `V80__document_access_audit_actor_ip_byte_count.sql` |
+| Enum: `SINGLE_DOCUMENT_DOWNLOADED`, `BULK_ZIP_DOWNLOADED` | `LoanApplicationDocumentAccessAuditAction.java` |
+| `downloadDocumentContent` / `downloadDocumentZip` with inline audit writes; `@Lazy LoanDocumentService` breaks cycle | `LoanApplicationService.java` |
+| `ZipBuildResult` from `buildDocumentZip` (included document types for bulk row) | `LoanDocumentService.java` |
+| HTTP: `ClientIpAddresses.resolve`, `CorrelationIdHolder`, auth principal; API exposes `actorIp` / `byteCount` | `LoanApplicationOpsController.java`, `LoanApplicationOpsResponses.java` |
+| Integration tests: single + ZIP audit rows; failed download writes nothing | `LoanApplicationOpsControllerDocumentDownloadAuditTest.java` |
+
+**TDD checklist (tracker vs shipped):**
+
+| Slice | Status |
+|-------|--------|
+| 1 — single download audit row (IP, byte count, correlation) | **Done** |
+| 2 — bulk ZIP one row with all packed types | **Done** |
+| 3 — failed downloads leave audit table unchanged | **Done** |
+
+**Out of scope (unchanged):** failed-download audit rows; Audit Explorer FE wiring (#159 already has `DOCUMENT_ACCESS` stream on BE); #92 storage-error → 404 behaviour.
 
 ---
 
@@ -2689,9 +2712,11 @@ Untouched (deliberately):
 ---
 
 ### #150 — [AUD-4] Document download + ZIP not audited
-**Link:** https://github.com/sid12701/lms/issues/150
+**Link:** https://github.com/sid12701/lms/issues/150 · **Status:** **CLOSED** — duplicate of **#70**; closed on same delivery 2026-06-02
 
 **Detailed solution after discussion (2026-06-01):** Close as duplicate of **#70**. Single-doc and ZIP-bundle download audit rows (actor, IP, correlationId, application + document IDs, byte-count, outcome) are written by #70's solution. No separate scope.
+
+**Implementation status (2026-06-02):** Resolved by § **#70** above. No additional code.
 
 ---
 

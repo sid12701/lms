@@ -8,10 +8,13 @@ import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.common.web.PagedResult;
 import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.common.web.PaginationResponseBuilder;
+import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
 import com.bhawana.lms.service.LoanApplicationService;
 import com.bhawana.lms.service.LoanApplicationWebhookEventProjection;
 import com.bhawana.lms.service.LoanDocumentService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.DecimalMin;
@@ -50,14 +53,9 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','OPS_USER')")
 public class LoanApplicationOpsController {
     private final LoanApplicationService loanApplicationService;
-    private final LoanDocumentService loanDocumentService;
 
-    public LoanApplicationOpsController(
-            LoanApplicationService loanApplicationService,
-            LoanDocumentService loanDocumentService
-    ) {
+    public LoanApplicationOpsController(LoanApplicationService loanApplicationService) {
         this.loanApplicationService = loanApplicationService;
-        this.loanDocumentService = loanDocumentService;
     }
 
     @GetMapping
@@ -196,13 +194,23 @@ public class LoanApplicationOpsController {
     }
 
     @GetMapping("/{applicationId}/kyc-documents/download-all")
-    public ResponseEntity<byte[]> downloadAllDocuments(@PathVariable UUID applicationId) {
-        byte[] zipContent;
+    public ResponseEntity<byte[]> downloadAllDocuments(
+            Authentication authentication,
+            HttpServletRequest request,
+            @PathVariable UUID applicationId
+    ) {
+        LoanDocumentService.ZipBuildResult zipResult;
         try {
-            zipContent = loanDocumentService.buildDocumentZip(applicationId);
+            zipResult = loanApplicationService.downloadDocumentZip(
+                    applicationId,
+                    authentication.getName(),
+                    ClientIpAddresses.resolve(request),
+                    CorrelationIdHolder.get()
+            );
         } catch (IllegalStateException exception) {
             return ResponseEntity.notFound().build();
         }
+        byte[] zipContent = zipResult.content();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"loan-" + applicationId + "-documents.zip\"")
                 .contentType(MediaType.parseMediaType("application/zip"))
@@ -212,22 +220,21 @@ public class LoanApplicationOpsController {
 
     @GetMapping("/{applicationId}/kyc-documents/{documentType}/content")
     public ResponseEntity<byte[]> downloadDocumentContent(
+            Authentication authentication,
+            HttpServletRequest request,
             @PathVariable UUID applicationId,
             @PathVariable LoanApplicationDocumentType documentType
     ) {
-        LoanApplicationDocumentChecklist checklistItem;
-        try {
-            checklistItem = loanApplicationService.getDocumentChecklistItem(applicationId, documentType);
-        } catch (jakarta.persistence.EntityNotFoundException exception) {
-            return ResponseEntity.notFound().build();
-        }
-        if (!checklistItem.isLmsManagedContent() || checklistItem.getStorageKey() == null) {
-            return ResponseEntity.notFound().build();
-        }
         LoanDocumentService.RetrievedDocumentContent content;
         try {
-            content = loanDocumentService.retrieveDocumentContent(applicationId, documentType);
-        } catch (IllegalStateException exception) {
+            content = loanApplicationService.downloadDocumentContent(
+                    applicationId,
+                    documentType,
+                    authentication.getName(),
+                    ClientIpAddresses.resolve(request),
+                    CorrelationIdHolder.get()
+            );
+        } catch (jakarta.persistence.EntityNotFoundException | IllegalStateException exception) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok()
@@ -775,6 +782,8 @@ public class LoanApplicationOpsController {
             String summary,
             List<String> documentTypes,
             String correlationId,
+            String actorIp,
+            Long byteCount,
             String createdAt
     ) {
     }

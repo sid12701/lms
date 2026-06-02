@@ -50,6 +50,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -74,6 +75,7 @@ public class LoanApplicationService {
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final LoanRepaymentCommandService loanRepaymentCommandService;
     private final LoanForeclosureCommandService loanForeclosureCommandService;
+    private final LoanDocumentService loanDocumentService;
     private final ObjectMapper objectMapper;
 
     public LoanApplicationService(
@@ -95,6 +97,7 @@ public class LoanApplicationService {
             LoanApplicationLifecycleService loanApplicationLifecycleService,
             LoanRepaymentCommandService loanRepaymentCommandService,
             LoanForeclosureCommandService loanForeclosureCommandService,
+            @Lazy LoanDocumentService loanDocumentService,
             ObjectMapper objectMapper
     ) {
         this.loanAccountRepository = loanAccountRepository;
@@ -115,6 +118,7 @@ public class LoanApplicationService {
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.loanRepaymentCommandService = loanRepaymentCommandService;
         this.loanForeclosureCommandService = loanForeclosureCommandService;
+        this.loanDocumentService = loanDocumentService;
         this.objectMapper = objectMapper;
     }
 
@@ -489,6 +493,52 @@ public class LoanApplicationService {
     public List<LoanApplicationDocumentAccessAudit> listDocumentAccessAudits(UUID applicationId) {
         getApplication(applicationId);
         return loanApplicationDocumentAccessAuditRepository.findTop20ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
+    }
+
+    @Transactional
+    public LoanDocumentService.RetrievedDocumentContent downloadDocumentContent(
+            UUID applicationId,
+            LoanApplicationDocumentType documentType,
+            String actorUsername,
+            String actorIp,
+            String correlationId
+    ) {
+        LoanApplication application = getApplication(applicationId);
+        LoanDocumentService.RetrievedDocumentContent content =
+                loanDocumentService.retrieveDocumentContent(applicationId, documentType);
+        loanApplicationDocumentAccessAuditRepository.save(new LoanApplicationDocumentAccessAudit(
+                application,
+                LoanApplicationDocumentAccessAuditAction.SINGLE_DOCUMENT_DOWNLOADED,
+                normalizeActorUsername(actorUsername),
+                "Downloaded " + documentType.name(),
+                List.of(documentType),
+                correlationId,
+                actorIp,
+                (long) content.content().length
+        ));
+        return content;
+    }
+
+    @Transactional
+    public LoanDocumentService.ZipBuildResult downloadDocumentZip(
+            UUID applicationId,
+            String actorUsername,
+            String actorIp,
+            String correlationId
+    ) {
+        LoanApplication application = getApplication(applicationId);
+        LoanDocumentService.ZipBuildResult zipResult = loanDocumentService.buildDocumentZip(applicationId);
+        loanApplicationDocumentAccessAuditRepository.save(new LoanApplicationDocumentAccessAudit(
+                application,
+                LoanApplicationDocumentAccessAuditAction.BULK_ZIP_DOWNLOADED,
+                normalizeActorUsername(actorUsername),
+                "Downloaded ZIP with " + zipResult.includedTypes().size() + " documents",
+                zipResult.includedTypes(),
+                correlationId,
+                actorIp,
+                (long) zipResult.content().length
+        ));
+        return zipResult;
     }
 
     /**
