@@ -56,6 +56,12 @@ public class LoanApplicationDocumentAccessAudit {
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
 
+    @Column(name = "actor_ip", length = 64)
+    private String actorIp;
+
+    @Column(name = "byte_count")
+    private Long byteCount;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -82,6 +88,23 @@ public class LoanApplicationDocumentAccessAudit {
                 ? new LinkedHashSet<>()
                 : new LinkedHashSet<>(documentTypes);
         this.correlationId = correlationId;
+        this.actorIp = null;
+        this.byteCount = null;
+    }
+
+    public LoanApplicationDocumentAccessAudit(
+            LoanApplication loanApplication,
+            LoanApplicationDocumentAccessAuditAction action,
+            String actorUsername,
+            String summary,
+            List<LoanApplicationDocumentType> documentTypes,
+            String correlationId,
+            String actorIp,
+            Long byteCount
+    ) {
+        this(loanApplication, action, actorUsername, summary, documentTypes, correlationId);
+        this.actorIp = actorIp;
+        this.byteCount = byteCount;
     }
 
     @PrePersist
@@ -129,6 +152,14 @@ public class LoanApplicationDocumentAccessAudit {
 
     public String getCorrelationId() {
         return correlationId;
+    }
+
+    public String getActorIp() {
+        return actorIp;
+    }
+
+    public Long getByteCount() {
+        return byteCount;
     }
 
     public Instant getCreatedAt() {

@@ -302,6 +302,8 @@ public final class LoanApplicationOpsResponses {
                 audit.getSummary(),
                 audit.getDocumentTypes().stream().map(Enum::name).toList(),
                 audit.getCorrelationId(),
+                audit.getActorIp(),
+                audit.getByteCount(),
                 audit.getCreatedAt().toString()
         );
     }
