@@ -898,7 +898,7 @@ Tracer bullet first; each subsequent test responds to what the previous slice re
 ---
 
 ### #85 — [B-3] Auto-approval runs inside disbursement TX → auto-reject persists despite throw
-**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/85 · **Status:** **CLOSED** — resolved with #135 in follow-up PR (2026-06-02; PR link added on merge)
+**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/85 · **Status:** **CLOSED** — resolved with #135 in [PR #172](https://github.com/sid12701/lms/pull/172) (2026-06-02)
 
 **Problem (plain English):** When an LSP requests disbursement, the same transaction first re-runs auto-approval. If approval decides "reject," the reject row is committed and then the disbursement code throws a confusing error. You end up with a rejected loan AND a half-failed disbursement attempt.
 
