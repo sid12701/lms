@@ -184,7 +184,7 @@ Each PR has its own tracer bullet + incremental tests. Listed in execution order
 - Disbursement becomes fully system-driven once approved (≤30s worker delay; configurable). Aligns with user's "automated process" stance.
 - Ops gains an alert stream attributable to specific LSPs for product-bound violations. Disabling a misbehaving LSP becomes data-driven (the alert thread is the evidence) — ties cleanly into #63.
 - `OPS_USER` loses manual status-transition power. May need user-comms inside the org (separate from LSP partner comms).
-- #85's disbursement-TX entry-point is gone (the LSP `POST /disbursement` endpoint was removed). However, the structurally-buggy method `LoanDisbursementService.requestDisbursementForLsp` was **not** deleted — it remains in the source as orphaned dead code with zero callers, still `@Transactional` and still calling `autoApproveIfEligibleForLsp` inline. The same pattern is also alive in `LoanDocumentService.submitStoredDocumentForLsp` (method header line 107; `autoApprove` call at line 133) and `submitStoredDocumentsForLsp` (method header line 138; `autoApprove` call at line 168), both `@Transactional` and both calling `autoApproveIfEligibleForLsp` inside that TX. **#85 and #135 remain OPEN on GitHub** — see § #85 for the follow-up plan.
+- **#85 / #135 — CLOSED** (2026-06-02) — orphan `requestDisbursementForLsp` removed; document upload persists then auto-approves outside the persist TX; `LoanApplicationStatusTransitioner` enforces lifecycle edges. See § #85 / § #135.
 
 **Dependencies / sequencing:**
 - (a) → (b) → (c).
@@ -214,7 +214,7 @@ Shipped in three vertical slices (a → b → c) per the agreed design above. Ba
 | PR (b) 4 — `DISBURSEMENT_RETRY` after cap + alert | **Deferred** — exhaustion test not written |
 | PR (b) 5 — worker bound violation + reject | **Deferred** — last-line principal test not written |
 | PR (b) 6 — removed LSP disbursement → 404 | **Done** — LSP compliance / integration coverage |
-| PR (b) 7 — auto-approval not in disbursement path (#85) | **Partial** — LSP `POST /disbursement` removed and worker does not re-run auto-approval, **but** `LoanDisbursementService.requestDisbursementForLsp` was retained as orphaned dead code (still `@Transactional`, still calls `autoApproveIfEligibleForLsp`); same pattern also alive in `LoanDocumentService.submitStoredDocumentForLsp` (method header line 107; `autoApprove` call line 133) and `submitStoredDocumentsForLsp` (method header line 138; `autoApprove` call line 168). **#85 stays OPEN** — see § #85 |
+| PR (b) 7 — auto-approval not in disbursement path (#85) | **Done** — worker path + follow-up PR § #85 (orphan method deleted, document TX split, integration tests) |
 | PR (b) extra — worker skips when LSP disabled (#63) | **Done** — `Issue62DisbursementWorkerIntegrationTest` |
 | PR (c) 1–5 — bank PATCH audit/webhook, no cooldown, bank-check, mismatch + velocity alerts | **Done** — `Issue62BorrowerBankDetailsIntegrationTest` |
 | PR (c) 6 — principal exceed → `LSP_BOUND_VIOLATION` alert | **Deferred** — 422 remains; alert layer not added (worker path validates bounds separately) |
@@ -229,7 +229,7 @@ Shipped in three vertical slices (a → b → c) per the agreed design above. Ba
 - **#137** — LSP-provided schedule principal-sum validator + `LSP_BOUND_VIOLATION` on schedule mismatch.
 - **PR (b) tests 2–5** — Worker adapter retry, in-flight dedupe, bound-violation on worker (optional hardening; core worker path is covered).
 
-**#85 / #135 — correction (2026-06-02 follow-up audit):** PR (b) removed the LSP `POST /disbursement` endpoint that called `requestDisbursementForLsp`, but the method body itself was NOT deleted (`LoanDisbursementService.java:109`, still `@Transactional`, still calls `autoApproveIfEligibleForLsp` at line 118 — orphaned dead code, zero callers). Additionally, `LoanDocumentService.submitStoredDocumentForLsp` (method header `LoanDocumentService.java:107`; `autoApprove` call at line 133) and `submitStoredDocumentsForLsp` (method header line 138; `autoApprove` call at line 168) are both `@Transactional` and both call `autoApproveIfEligibleForLsp` inside that TX — the same structural pattern #85/#135 named. Both **#85 and #135 stay OPEN** on GitHub. Follow-up scope (under #135's bundle): delete the orphan `requestDisbursementForLsp` body, and push the auto-approve guard into the state machine so the document-upload callers can't induce the same half-state.
+**#85 / #135 — closed (2026-06-02):** Follow-up PR landed (see § #85 / § #135). Orphan `requestDisbursementForLsp` deleted; `LoanDocumentService` splits persist vs auto-approve; `LoanApplicationStatusTransitioner` centralises transition and auto-approval guards (`STANDARD` / `MANUAL_OVERRIDE` / `WORKER` contexts).
 
 ---
 
@@ -898,7 +898,7 @@ Tracer bullet first; each subsequent test responds to what the previous slice re
 ---
 
 ### #85 — [B-3] Auto-approval runs inside disbursement TX → auto-reject persists despite throw
-**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/85
+**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/85 · **Status:** **CLOSED** — resolved with #135 in [PR #172](https://github.com/sid12701/lms/pull/172) (2026-06-02)
 
 **Problem (plain English):** When an LSP requests disbursement, the same transaction first re-runs auto-approval. If approval decides "reject," the reject row is committed and then the disbursement code throws a confusing error. You end up with a rejected loan AND a half-failed disbursement attempt.
 
@@ -915,19 +915,21 @@ Tracer bullet first; each subsequent test responds to what the previous slice re
 
 **Originally framed as: closes with #62 PR (b) — no separate PR.** Per the audited code, the bug was structural: `LoanDisbursementService` was `@Transactional`, called `loanApprovalService.autoApproveIfEligibleForLsp` inside that same TX, and the rest of the method wrote the disbursement attempt. A reject decision committed before the throw it triggered. The plan was that #62 PR (b) would delete `requestDisbursementForLsp` entirely, evaporating the offending method.
 
-**2026-06-02 follow-up audit — what actually shipped:**
-- ✅ The **entry-point** (`POST /api/v1/lsp/loan-applications/{id}/disbursement` in `LspLoanApplicationApiController`) was removed in PR #168 / `7f085bf`. There is no longer any live caller of `requestDisbursementForLsp`.
-- ❌ The **method body** was NOT deleted. `LoanDisbursementService.requestDisbursementForLsp` still exists at line 109, still annotated `@Transactional` (line 108), still calls `loanApprovalService.autoApproveIfEligibleForLsp(applicationId, actorUsername)` inside that TX (line 118). It is now dead code, but the buggy shape sits in the source verbatim — any future caller resurrects the bug.
-- ❌ The same `@Transactional` + inline-`autoApproveIfEligibleForLsp` pattern is alive in `LoanDocumentService.submitStoredDocumentForLsp` (method header line 107; `@Transactional` at line 106; `autoApprove` call at line 133) and `LoanDocumentService.submitStoredDocumentsForLsp` (method header line 138; `@Transactional` at line 137; `autoApprove` call at line 168). Both are entered via the LSP and admin document-upload paths. The structural #85/#135 pattern is therefore still live on a production path, not merely retained as dead code.
+**2026-06-02 follow-up audit — gap (now closed):**
+- ✅ The **entry-point** (`POST /api/v1/lsp/loan-applications/{id}/disbursement`) was removed in PR #168 / `7f085bf`.
+- ✅ **Structural fix shipped:** `requestDisbursementForLsp` deleted from `LoanDisbursementService`. `LoanDocumentService.submit*` persists in `@Transactional` `persistStored*` helpers, then calls auto-approve **after** commit. Worker path unchanged (no rule engine inside disbursement TX).
+
+**Implementation shipped (2026-06-02, bundled with #135):**
+- `LoanDisbursementService` — orphan disbursement+auto-approve method removed; validation helpers retained for worker/bank-check.
+- `LoanDocumentService` — `persistStoredDocument(s)ForLsp` vs public `submitStored*` split.
+- Tests: `Issue85AutoApprovalIntegrationTest`, `Issue85Issue135LspDocumentUploadIntegrationTest` (HTTP 422 `AUTO_APPROVAL_NOT_ALLOWED` on rejected app).
 
 **Caller audit (2026-06-02):**
 - `requestDisbursementForLsp` — zero callers in `backend/src` (grep-confirmed). Dead code.
 - `autoApproveIfEligibleForLsp` — live callers in `LoanDocumentService:133, :168` (both inside `@Transactional`), `LoanApprovalService:18-19`, `LoanApplicationService:652-653` (these last two are thin pass-throughs to `LoanApplicationLifecycleService.autoApproveIfEligibleForLsp`).
 - Zero integration tests reference `requestDisbursementForLsp` directly.
 
-**Closing condition (updated):**
-- #85 closes when either (a) the orphaned `requestDisbursementForLsp` method body is deleted **and** the document-upload pattern is hardened (e.g., the guard is pushed into the state machine per #135), or (b) the document-upload callers are moved out of `@Transactional` scope, removing the half-state risk on every remaining live path.
-- Until then, **#85 stays OPEN on GitHub**. The disbursement entry-point removal is meaningful risk reduction but is not a structural fix.
+**Closing condition:** Met — (a) orphan method deleted and (b) document upload hardened via separate TX + #135 state-machine guard.
 
 **Why a 1-line patch is now appropriate (revised):** with no live caller on the disbursement side, deleting the orphan method body is a safe, isolated cleanup that can ship without coordinating with #62. It does not change behaviour; it only removes a footgun for future callers. Recommend bundling that delete with the #135 work that pushes the guard into the state machine.
 
@@ -4665,7 +4667,7 @@ If we ever rip out the H2 test path (move everything to Testcontainers PG), the 
 ---
 
 ### #135 — [F-12] autoApproveIfEligibleForLsp safety is caller-defensive, not state-machine enforced
-**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/135
+**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/135 · **Status:** **CLOSED** — resolved with #85 in follow-up PR (2026-06-02; PR link added on merge)
 
 **Problem (plain English):** A caller that forgets the pre-check induces an invalid transition silently.
 
@@ -4683,6 +4685,13 @@ If we ever rip out the H2 test path (move everything to Testcontainers PG), the 
 2. Remove caller-defensive `if (status outside {INITIALIZED, AWAITING_APPROVAL}) return` checks from `LoanApplicationLifecycleService.autoApproveIfEligibleForLsp`.
 3. Delete the orphaned `LoanDisbursementService.requestDisbursementForLsp` method body as part of the same PR (closes the #85 footgun).
 4. Test: forge a call from `LoanDocumentService` against an already-REJECTED app → expect exception, not silent no-op.
+
+**Implementation shipped (2026-06-02, bundled with #85):**
+- `LoanApplicationStatusTransitioner` — `enforceTransition` (contexts: `STANDARD`, `MANUAL_OVERRIDE`, `WORKER`) on all `updateApplicationStatus` mutations; `enforceAutoApprovalAllowed` throws `AUTO_APPROVAL_NOT_ALLOWED` outside `{INITIALIZED, AWAITING_APPROVAL}`.
+- `LoanApplicationStatus` — servicing edges (`DISBURSED` → `CLOSED` / `FORECLOSED`); worker-only `APPROVED_PENDING_DISBURSAL` → `REJECTED` via `WORKER` context (ops transitions still blocked).
+- Tests: `LoanApplicationStatusTransitionerTest`, `Issue135AutoApprovalStateMachineIntegrationTest`, plus #85 integration tests.
+
+**Residual / #116:** Single status-mutation entry point for ops/manual/worker remains a future consolidation; guards are centralised in the transitioner.
 
 ---
 

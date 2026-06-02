@@ -17,18 +17,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class LoanDisbursementService {
 
     private final LoanApplicationService loanApplicationService;
-    private final LoanApprovalService loanApprovalService;
     private final LoanRepaymentScheduleService loanRepaymentScheduleService;
     private final BorrowerBankDetailsService borrowerBankDetailsService;
 
     public LoanDisbursementService(
             LoanApplicationService loanApplicationService,
-            LoanApprovalService loanApprovalService,
             LoanRepaymentScheduleService loanRepaymentScheduleService,
             BorrowerBankDetailsService borrowerBankDetailsService
     ) {
         this.loanApplicationService = loanApplicationService;
-        this.loanApprovalService = loanApprovalService;
         this.loanRepaymentScheduleService = loanRepaymentScheduleService;
         this.borrowerBankDetailsService = borrowerBankDetailsService;
     }
@@ -103,74 +100,6 @@ public class LoanDisbursementService {
             );
         }
         return violations;
-    }
-
-    @Transactional
-    public LoanApplication requestDisbursementForLsp(
-            UUID lspId,
-            UUID applicationId,
-            String actorUsername,
-            BigDecimal disbursalAmount,
-            String requestBankAccountNumber,
-            String requestIfscCode,
-            String requestAccountHolderName
-    ) {
-        loanApprovalService.autoApproveIfEligibleForLsp(applicationId, actorUsername);
-        LoanApplication application = loanApplicationService.getApplicationForLsp(lspId, applicationId);
-        LoanAccount loanAccount = loanApplicationService.getLoanAccount(applicationId).orElse(null);
-
-        Map<String, String> violations = new LinkedHashMap<>();
-        if (!loanApplicationService.hasAllRequiredLmsManagedDocuments(applicationId, false)) {
-            violations.put("documents", "All required documents must be uploaded into LMS-managed storage.");
-        }
-        if (loanAccount == null) {
-            violations.put("loanAccount", "Loan account is not available for disbursement.");
-        }
-
-        validateDisbursementBankDetails(
-                application.getBorrower(),
-                requestBankAccountNumber,
-                requestIfscCode,
-                requestAccountHolderName,
-                violations
-        );
-
-        if (loanAccount != null) {
-            try {
-                loanRepaymentScheduleService.validatePersistedScheduleForDisbursement(loanAccount);
-            } catch (BusinessRuleViolationException exception) {
-                violations.putAll(exception.getFieldErrors());
-            }
-        }
-
-        BigDecimal scaledDisbursalAmount = scaleCurrency(disbursalAmount);
-        if (loanAccount != null) {
-            BigDecimal principalAmount = scaleCurrency(loanAccount.getPrincipalAmount());
-            if (scaledDisbursalAmount.compareTo(principalAmount) > 0) {
-                violations.put("disbursalAmount", "Disbursal amount cannot exceed the approved principal amount.");
-            } else {
-                BigDecimal shortfall = scaleCurrency(principalAmount.subtract(scaledDisbursalAmount));
-                BigDecimal allowedShortfall = scaleCurrency(principalAmount
-                        .multiply(loanAccount.getLoanProduct().getProcessingFeeRate())
-                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
-                if (shortfall.compareTo(allowedShortfall) > 0) {
-                    violations.put(
-                            "disbursalAmount",
-                            "Disbursal shortfall exceeds the configured processing fee cap of " + allowedShortfall + "."
-                    );
-                }
-            }
-        }
-
-        if (!violations.isEmpty()) {
-            throw new BusinessRuleViolationException(
-                    "DISBURSEMENT_VALIDATION_FAILED",
-                    "Disbursement request failed compliance checks.",
-                    violations
-            );
-        }
-
-        return loanApplicationService.initiateDisbursement(applicationId, actorUsername, scaledDisbursalAmount);
     }
 
     private static BigDecimal scaleCurrency(BigDecimal value) {

@@ -177,7 +177,9 @@ public class LoanDisbursementWorkerService {
                 WORKER_ACTOR,
                 "Rejected by disbursement worker: " + message,
                 LoanApplicationStatusReasonCode.FAILED_VERIFICATION,
-                LoanApplicationAuditAction.STATUS_TRANSITION
+                LoanApplicationAuditAction.STATUS_TRANSITION,
+                null,
+                LoanApplicationStatusTransitioner.TransitionContext.WORKER
         );
     }
 
