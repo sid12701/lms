@@ -575,7 +575,7 @@ Tracer first; each subsequent test responds to what the previous proved.
 **Audit findings preserved for the future PR (so the homework isn't lost):**
 - `LspLoanApplicationResponses.maskAadharNumber` (line 175) is the only masking helper in the entire backend. PAN, bank account, IFSC, account holder, address, employer, income — all raw in both list (line 79–125) and detail (line 13–77) builders.
 - **No reveal endpoint exists.** Grep for `borrower-pii`, `revealBorrowerPii`, `maskPan`, `maskBank`, `maskIfsc` returns nothing. The audit doc's reference to "the existing borrower-PII-reveal pattern" was aspirational — the pattern needs to be built first.
-- The frontend's silent mock fallback (#78 / #145) hides this from operators today by synthesising reveal responses when the (non-existent) backend endpoint 404s.
+- ~~The frontend's silent mock fallback (#78 / #145) hides this from operators today~~ **(fixed 2026-06-02, PR #171)** — internal sessions now surface real 4xx errors; LSP-role still uses the intentional mock router. Reveal endpoint work under #68/#65 remains deferred.
 
 **Sketch of the eventual fix (to be elaborated when the trigger fires):**
 1. Build a `BorrowerPiiProjection` at the projection layer (not the response builder) — so every consumer (LSP list/detail, admin list/detail, MIS preview, MIS CSV, reports) inherits the same masking. Aligns with the "one projection, two formatters" pattern that #123 calls for.
@@ -726,7 +726,7 @@ When the trigger fires, the tracer is straightforward: `payment_of_one_installme
 ---
 
 ### #78 — Frontend MOCK_FALLBACK paths return synthesized data on backend 4xx
-**Labels:** gap, mocked-flow, security · **Link:** https://github.com/sid12701/lms/issues/78
+**Labels:** gap, mocked-flow, security · **Link:** https://github.com/sid12701/lms/issues/78 · **Status:** **CLOSED** — [PR #171](https://github.com/sid12701/lms/pull/171) merged 2026-06-02
 
 **Problem (plain English):** The web app has 5+ places where, if the backend returns a 401, 403, or 404, it silently falls back to a built-in mock and shows fake data. An ops user denied permission can still see "data" — but it's invented.
 
@@ -867,6 +867,34 @@ Tracer bullet first; each subsequent test responds to what the previous slice re
 - Closes: **#78, #102, #117, #145**. References from #61's bundle on `/mock-outcome` (which is backend, not FE) are unaffected.
 - Does **not** unblock or block #68 (audited internal admin PII reveal endpoint) — that's an additive endpoint, independent of the FE fallback decision.
 
+**Implementation status (2026-06-02, `main` via PR #171):**
+
+| Area | Delivered |
+|------|-----------|
+| **Transport (#78 core)** | Removed inline `try { backend } catch (4xx) { dispatch(mock) }` at all internal-session API sites (`borrowers`, `loan-applications`, `home`, `audit`). Internal paths are straight `requestJson` / `fetchFromBackend` calls that throw `ApiError` on failure. |
+| **Checklist sub-bug** | `fetchChecklistSafely` → `fetchChecklist`; checklist 401/403 propagates (no silent `[]` → false `docsComplete`). |
+| **LSP-role demo** | `if (isInternalSession()) { backend } else { dispatch(mock) }` preserved for LSP-role sessions only. |
+| **Deps** | Removed unused `msw` from `frontend-2/package.json`. |
+| **UX follow-up** | `isUnauthorizedApiError` / `isNotFoundApiError` in `frontend-2/src/lib/api/api-errors.ts`. List pages: 403 → `EmptyState` (borrowers, loans, home). Detail pages: 403 vs 404 split. Audit page: `ErrorState` + retry when query fails with non-auth errors (no empty table on 5xx). |
+| **Tests** | `frontend-2/src/test/internal-session.ts`; transport tests in `borrowers/api.test.ts`, `loan-applications/api-detail.test.ts`, `home/api.test.ts`; page tests for borrowers/loans/home/audit error surfaces. |
+| **Backend (test hygiene)** | `LoanApplicationOpsControllerTest` clears `lsp_ip_allowlist` / `lsp_ui_ip_allowlist` before `lsp` delete so full-suite teardown does not FK-fail. |
+
+**TDD checklist (tracker vs shipped):**
+
+| Test (tracker) | Status |
+|----------------|--------|
+| Tracer — `fetchBorrowerDetail` 401 propagates | **Done** — `borrowers/api.test.ts` |
+| LSP-role mock regression | **Done** — same file |
+| `fetchLoanApplicationDetail` 403 / checklist 401 | **Done** — `api-detail.test.ts` |
+| Slices 3–16 (one test per remaining API site) | **Partial** — pattern established on tracer sites; remaining sites covered by deletion + full Vitest suite (1076 tests) rather than one test per file |
+| `fetchChecklist` empty on 200 | **Done** — implied by `api-detail` internal-session tests |
+| `loan_detail_does_not_render_docsComplete_true_after_checklist_401` | **Deferred** — UI-level slice; transport layer rejects via `Promise.all` |
+| Eight `lsp_role_path_uses_mock_router` guards | **Partial** — LSP regression on borrower detail + loan detail tests |
+
+**Verification:** `cd frontend-2 && npm run verify` (typecheck, lint, format, test, build); `cd backend && mvnw clean verify` (332 tests). Full Vitest: 1076 passed.
+
+**GitHub:** [#78](https://github.com/sid12701/lms/issues/78), [#102](https://github.com/sid12701/lms/issues/102), [#117](https://github.com/sid12701/lms/issues/117), [#145](https://github.com/sid12701/lms/issues/145) — close on merge referencing PR #171.
+
 ---
 
 ### #85 — [B-3] Auto-approval runs inside disbursement TX → auto-reject persists despite throw
@@ -935,7 +963,7 @@ Both tests drive the public service layer (`LoanDisbursementWorker.tick()` or eq
 ---
 
 ### #102 — [Q-5] FE mock-fallback boilerplate duplicated at every call site
-**Labels:** code-quality, mocked-flow, security, duplicate-code · **Link:** https://github.com/sid12701/lms/issues/102
+**Labels:** code-quality, mocked-flow, security, duplicate-code · **Link:** https://github.com/sid12701/lms/issues/102 · **Status:** **CLOSED** — resolved by [PR #171](https://github.com/sid12701/lms/pull/171) (#78)
 
 **Problem (plain English):** The mock-fallback pattern from #78 is hand-copied at every API call site. Even if you remove it from one file, the next developer adds it back from muscle memory.
 
@@ -948,18 +976,18 @@ Both tests drive the public service layer (`LoanDisbursementWorker.tick()` or eq
 
 **Effect on app:** Same as #78; this issue is the code-quality angle. Adding new endpoints stops being a "remember the fallback dance" exercise.
 
-**Detailed solution after discussion (2026-05-31):** Closes with #78. The duplication is the inline `try { backend } catch (4xx) { dispatch(mock) }` boilerplate copied at 14 sites. Per #78's decision the boilerplate is **deleted, not centralised** — there is nothing left to extract once each internal-session site is a single `return await requestJson(...)`. No `fallbackOrThrow` helper, no lint rule. The only shared shape remaining is the `if (isInternalSession()) … else dispatch(...)` role-routing decision (2 lines per site), which is intentionally kept inline — extracting it would hide the "real backend vs. LSP-role demo" concept behind an abstraction. **Close as resolved-by-#78 PR; not as duplicate, since the framings differ ([Q-5] is code-quality, #78 is security — same fix closes both).**
+**Detailed solution after discussion (2026-05-31):** Closes with #78. The duplication is the inline `try { backend } catch (4xx) { dispatch(mock) }` boilerplate copied at 14 sites. Per #78's decision the boilerplate is **deleted, not centralised** — there is nothing left to extract once each internal-session site is a single `return await requestJson(...)`. No `fallbackOrThrow` helper, no lint rule. The only shared shape remaining is the `if (isInternalSession()) … else dispatch(...)` role-routing decision (2 lines per site), which is intentionally kept inline — extracting it would hide the "real backend vs. LSP-role demo" concept behind an abstraction. **Closed 2026-06-02 via PR #171** (same delivery as #78).
 
 ---
 
 ### #117 — [D-4] FE mock fallback boilerplate replicated at every call site (duplication framing)
-**Labels:** duplicate-code, mocked-flow · **Link:** https://github.com/sid12701/lms/issues/117
+**Labels:** duplicate-code, mocked-flow · **Link:** https://github.com/sid12701/lms/issues/117 · **Status:** **CLOSED** — duplicate of #102; [PR #171](https://github.com/sid12701/lms/pull/171)
 
 **Problem (plain English):** Same as #102; filed under the duplication taxonomy.
 
 **Possible fixes / Recommended / Effect:** See #102. Close as duplicate when #102 lands.
 
-**Detailed solution after discussion (2026-05-31):** Close as duplicate of **#102** (which itself closes with the **#78** PR). Same boilerplate; no separate fix.
+**Detailed solution after discussion (2026-05-31):** Close as duplicate of **#102** (which itself closes with the **#78** PR). Same boilerplate; no separate fix. **Closed 2026-06-02 via PR #171.**
 
 ---
 
@@ -1017,11 +1045,11 @@ Both tests drive the public service layer (`LoanDisbursementWorker.tick()` or eq
 ---
 
 ### #145 — [SEC-Δ-7] Mock-fallback masks 401/403 (dup of #78)
-**Link:** https://github.com/sid12701/lms/issues/145
+**Link:** https://github.com/sid12701/lms/issues/145 · **Status:** **CLOSED** — duplicate of #78; [PR #171](https://github.com/sid12701/lms/pull/171)
 
 **Problem / Fixes / Recommendation / Effect:** Same as #78; this issue is the security framing. Close as duplicate.
 
-**Detailed solution after discussion (2026-05-31):** Close as duplicate of **#78**. The deletion of the 4xx → mock fallback at all 14 sites resolves the 401/403 masking surface that this issue describes.
+**Detailed solution after discussion (2026-05-31):** Close as duplicate of **#78**. The deletion of the 4xx → mock fallback at all 14 sites resolves the 401/403 masking surface that this issue describes. **Closed 2026-06-02 via PR #171.**
 
 ---
 
@@ -2856,7 +2884,7 @@ A pivot during grilling: the user wants **end-to-end audit using live endpoints,
 | `api_client_audit_event` | `domain/ApiClientAuditEvent.java` | **Written today (CLIENT_UPDATED, SECRET_ROTATED) and by #149's new writes (CLIENT_CREATED, CLIENT_DISABLED, CLIENT_ENABLED); not in any AuditStream value; no live read path.** |
 | Mock-outcome path | `LoanApplicationService.resolveMockDisbursementOutcome` (line 757) + `LoanApplicationOpsController.applyMockDisbursementOutcome` (line 385) | Writes (a) `LoanDisbursementRequestLog.outcome_response_json` carrying actor + outcome serialized; (b) `LoanApplicationAuditEvent` row with `action=STATUS_TRANSITION`, actor, fromStatus, toStatus, correlationId. **The STATUS_TRANSITION row IS visible in the Audit Explorer today** — but it doesn't distinguish "/mock-outcome endpoint origin" from "future real-provider callback origin" and doesn't capture actor_ip. |
 | `LoanApplicationAuditAction` enum | `domain/LoanApplicationAuditAction.java` | `STATUS_TRANSITION`, `MANUAL_STATUS_OVERRIDE`, `INVALIDATED`, `FORECLOSURE_EXECUTED`, `PAYMENT_RECORDED`. No first-class disbursement-outcome label. |
-| FE Audit Explorer | `frontend-2/src/features/audit/api.ts:36-41` + `features/audit/page.tsx` + `components/app/audit/AuditEventNode.tsx` | Hits the live endpoint **only for SYSTEM_ADMIN sessions**; non-admin sessions silently dispatch to the mock router (the MOCK_FALLBACK anti-pattern from #78). Hard-codes `BACKEND_STREAMS` to the same 4 values. Subject-projection logic (`subjectFor`) handles only `LOAN_PRODUCT` and `LOAN_APPLICATION`. |
+| FE Audit Explorer | `frontend-2/src/features/audit/api.ts` + `features/audit/page.tsx` + `components/app/audit/AuditEventNode.tsx` | Hits the live endpoint **only for SYSTEM_ADMIN sessions** (no 4xx→mock fallback on internal sessions since **#78 / PR #171**). Non-admin sessions use role gate + `EmptyState`, not fake audit data. Hard-codes `BACKEND_STREAMS` to the same 4 values. Subject-projection logic (`subjectFor`) handles only `LOAN_PRODUCT` and `LOAN_APPLICATION`. |
 | `loan_application_pii_reveal_audit` | `domain/LoanApplicationPiiRevealAudit.java` | Per FE comment: "Gap #1 retired the reveal endpoint; the underlying table is forensic-only and no longer surfaced." Write-only **by intent** — stays out of the explorer. |
 | `loan_disbursement_request_log` | `domain/LoanDisbursementRequestLog.java` | Carries provider_name + outcome_response_json. **Not an audit table by design** — it's a request log. Data the operator cares about is captured but it's not the right home for the disbursement audit stream. |
 
@@ -2885,7 +2913,7 @@ A pivot during grilling: the user wants **end-to-end audit using live endpoints,
 6. **The Audit Explorer's projection shape grows.** `BackendUnifiedAuditEvent` needs a path to express the new subject types. Cleanest: add a generic `subjectType` + `subjectId` on the backend projection (BE already projects this implicitly via `productId` vs `loanApplicationId`; the FE's `subjectFor` already encodes the rule). Extend `subjectFor` in `frontend-2/src/features/audit/api.ts` with two new branches (`APP_USER` → user id, `API_CLIENT` → client id). No schema change to the unified projection envelope — `appUserId` and `apiClientId` are not added as first-class envelope fields; instead, the existing `borrowerId` + `lspId` + `productId` + `loanApplicationId` slots remain, and APP_USER / API_CLIENT rows surface their subject id in `detail` JSON.
 7. **No new write semantics for #148/#149's audit rows under PR (a).** PR (a) only adds *read* projections over the existing tables. The action/eventType derivation pulls from existing columns (`api_client_audit_event.action` for API_CLIENT) or from after-state JSON (`app_user_audit_event.after_state_json->>'eventType'`, defaulting to `USER_UPDATED` when absent).
 8. **Actor IP on the existing STATUS_TRANSITION rows is OUT OF SCOPE.** `loan_application_audit_event` does not gain `actor_ip` in this PR — that touches every status-transition audit row in the system and is its own conversation. The new `disbursement_outcome_audit` table captures actor_ip; that's the new disbursement audit's home. A separate ticket can later backfill IP on the existing audit table if needed.
-9. **MOCK_FALLBACK paths on the audit page are not removed here.** #78 owns the broader removal; PR (a) and PR (b) leave the existing fallback wiring intact. Tests do not assert "mock fallback is gone."
+9. ~~**MOCK_FALLBACK paths on the audit page are not removed here.**~~ **Done under #78 (PR #171, 2026-06-02)** — internal-session 4xx no longer falls through to mock data; audit page shows `ErrorState` on load failure. #152 PRs (a)/(b) did not need to carry that scope.
 10. **The /mock-outcome endpoint is NOT moved behind a profile guard.** Per #61's grilled resolution, the mock stays in prod by design until provider approval. This PR adds the audit row regardless of profile — the audit fires in every environment that hits /mock-outcome.
 
 #### TDD plan — PR (a): APP_USER + API_CLIENT streams
@@ -3035,7 +3063,7 @@ Untouched (deliberately):
 - `loan_disbursement_request_log` — stays as the request log. The new audit table joins to it by `provider_request_id` for forensic correlation; the log itself is not re-surfaced.
 - `loan_application_pii_reveal_audit` — write-only by intent; stays out of the explorer.
 - /mock-outcome endpoint profile-guarding — per #61's grilled resolution; mock stays in prod.
-- MOCK_FALLBACK paths in `audit/api.ts` — owned by #78.
+- ~~MOCK_FALLBACK paths in `audit/api.ts`~~ — **removed (#78, PR #171).**
 
 #### Effect on app
 
@@ -3057,7 +3085,7 @@ Untouched (deliberately):
 - **#61** (Mock disbursement adapter wired into production runtime — [REFRAMED 2026-05-31]) — PR (b) adds the audit signal that #61's solution called for via cross-link. When #61's eventual real-provider adapter ships, the new `REAL_PROVIDER_CALLBACK` source value is the same migration's enum and the audit pipeline already handles it.
 - **#71** (`auth_event_audit` for login/refresh/etc.) — orthogonal table; not part of #152's expansion. If SOC wants `auth_event_audit` in the explorer too, file a follow-up ticket — natural 8th stream.
 - **#155** ([AUD-9] Failed-auth lockout) — orthogonal; uses `auth_event_audit`. Independent of #152.
-- **#78** (Frontend MOCK_FALLBACK paths return mock data on 4xx) — orthogonal; #152's FE changes do NOT remove the existing fallback wiring (would expand scope unproductively).
+- **#78** (Frontend MOCK_FALLBACK paths return mock data on 4xx) — **CLOSED** (PR #171, 2026-06-02). #152 shipped before/alongside; audit FE now surfaces real errors for SYSTEM_ADMIN sessions.
 - **#62 PR (b)** (worker-driven disbursement, removes LSP /disbursement endpoint) — orthogonal. After #62 PR (b) ships, the worker will eventually invoke /mock-outcome's logic via internal call (or replace it). At that point, the actor on the audit row becomes `SYSTEM` (or the worker's internal-actor token). The audit table accommodates this — `actor_username` is plain text — without schema change.
 
 #### Dependencies / sequencing
