@@ -1179,7 +1179,7 @@ Untouched (deliberately):
 ---
 
 ### #70 — Document download (single + ZIP) not audited
-**Labels:** gap, auditability, security · **Link:** https://github.com/sid12701/lms/issues/70 · **Status:** **CLOSED** — merged to `main` 2026-06-02 (closes **#150** duplicate)
+**Labels:** gap, auditability, security · **Link:** https://github.com/sid12701/lms/issues/70 · **Status:** **CLOSED** — [PR #173](https://github.com/sid12701/lms/pull/173) merged 2026-06-02 (closes **#150** duplicate)
 
 **Problem (plain English):** Downloading a KYC document — one file or a zip of all of them — leaves no trace. An insider scraping documents is invisible to the audit.
 
@@ -2712,7 +2712,7 @@ Untouched (deliberately):
 ---
 
 ### #150 — [AUD-4] Document download + ZIP not audited
-**Link:** https://github.com/sid12701/lms/issues/150 · **Status:** **CLOSED** — duplicate of **#70**; closed on same delivery 2026-06-02
+**Link:** https://github.com/sid12701/lms/issues/150 · **Status:** **CLOSED** — duplicate of **#70**; [PR #173](https://github.com/sid12701/lms/pull/173) merged 2026-06-02
 
 **Detailed solution after discussion (2026-06-01):** Close as duplicate of **#70**. Single-doc and ZIP-bundle download audit rows (actor, IP, correlationId, application + document IDs, byte-count, outcome) are written by #70's solution. No separate scope.
 
