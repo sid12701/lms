@@ -11,8 +11,11 @@
  * Role enforcement lives in the router (`RequireRole` for `INTERNAL_ALL`);
  * this page does not duplicate the gate.
  */
+import { ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/layout/PageHeader";
+import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
+import { isUnauthorizedApiError } from "@/lib/api/api-errors";
 import { useUrlFilters } from "@/lib/url-state";
 import { listLspOptions } from "@/features/lsps/options";
 import { LoanApplicationsFilterBar, LoanApplicationsTable } from "./components";
@@ -66,7 +69,14 @@ export function LoanApplicationsPage() {
 
       <LoanApplicationsFilterBar lspOptions={lspOptions} productOptions={productOptions} />
 
-      {query.isError ? (
+      {query.isError && isUnauthorizedApiError(query.error) ? (
+        <EmptyState
+          variant="no-permission"
+          icon={ShieldAlert}
+          title="No access to loan applications"
+          description="The triage list is restricted to internal users with the appropriate permissions."
+        />
+      ) : query.isError ? (
         <ErrorState
           title="Couldn't load applications"
           description="The triage list couldn't be fetched. Try again in a moment."

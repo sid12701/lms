@@ -28,7 +28,9 @@ import { setLatencyOverride } from "@/mocks/latency";
 // to make this test self-contained.
 import "@/mocks/api/audit";
 import { USER_OPS_ADMIN, USER_OPS_USER } from "@/mocks/db/seed";
+import { ApiError } from "@/lib/api/http-client";
 import { AuditPage } from "./page";
+import * as auditHooks from "./hooks/useAuditEvents";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -97,6 +99,7 @@ beforeEach(async () => {
 afterEach(() => {
   setLatencyOverride(null);
   vi.clearAllMocks();
+  vi.restoreAllMocks();
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -134,6 +137,35 @@ describe("AuditPage — SYSTEM_ADMIN happy path", () => {
       }),
     ).toHaveNoViolations();
   }, 15_000);
+});
+
+describe("AuditPage — load failure", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders ErrorState with retry when the query fails with a non-auth error", async () => {
+    const session = await auth.login({ username: "ops.admin", password: "demo" });
+    const refetchMock = vi.fn();
+    vi.spyOn(auditHooks, "useAuditEvents").mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      isSuccess: false,
+      error: new ApiError("Server error", 500, "", null),
+      refetch: refetchMock,
+      isFetching: false,
+      isLoading: false,
+      status: "error",
+      fetchStatus: "idle",
+    } as unknown as ReturnType<typeof auditHooks.useAuditEvents>);
+
+    renderPage({ session });
+
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText(/Couldn't load audit events/i)).toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: /Audit stream/i })).not.toBeInTheDocument();
+  });
 });
 
 describe("AuditPage — role gate", () => {

@@ -12,7 +12,7 @@
  * backend for internal roles (Gap #17).
  */
 import { z } from "zod";
-import { ApiError, requestJson } from "@/lib/api/http-client";
+import { requestJson } from "@/lib/api/http-client";
 import { dispatch } from "@/mocks/router";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import type {
@@ -137,20 +137,17 @@ export async function fetchLoanApplicationSchedule(
   id: string,
 ): Promise<LoanApplicationScheduleResponse> {
   if (isInternalSession()) {
-    try {
-      const rows = await requestJson<BackendScheduleRow[]>(
-        `${BACKEND_BASE}/${encodeURIComponent(id)}/repayment-schedule`,
-      );
-      const installments = rows.map(toInstallment);
-      return {
-        schedule: synthesiseSchedule(installments),
-        installments,
-      };
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-    }
+    const rows = await requestJson<BackendScheduleRow[]>(
+      `${BACKEND_BASE}/${encodeURIComponent(id)}/repayment-schedule`,
+    );
+    const installments = rows.map(toInstallment);
+    return {
+      schedule: synthesiseSchedule(installments),
+      installments,
+    };
   }
 
+  // LSP-role: mock-router demo path (#78).
   return dispatch(
     {
       method: "GET",
@@ -253,16 +250,13 @@ export async function fetchLoanApplicationDocuments(
   id: string,
 ): Promise<LoanApplicationDocumentsResponse> {
   if (isInternalSession()) {
-    try {
-      const rows = await requestJson<BackendChecklistRow[]>(
-        `${BACKEND_BASE}/${encodeURIComponent(id)}/kyc-documents`,
-      );
-      return { documents: rows.map(toDocument) };
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-    }
+    const rows = await requestJson<BackendChecklistRow[]>(
+      `${BACKEND_BASE}/${encodeURIComponent(id)}/kyc-documents`,
+    );
+    return { documents: rows.map(toDocument) };
   }
 
+  // LSP-role: mock-router demo path (#78).
   return dispatch(
     {
       method: "GET",
@@ -327,16 +321,13 @@ export async function fetchLoanApplicationRepayments(
   id: string,
 ): Promise<LoanApplicationRepaymentsResponse> {
   if (isInternalSession()) {
-    try {
-      const rows = await requestJson<BackendPaymentRow[]>(
-        `${BACKEND_BASE}/${encodeURIComponent(id)}/payments`,
-      );
-      return { payments: rows.map(toPaymentTransaction) };
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-    }
+    const rows = await requestJson<BackendPaymentRow[]>(
+      `${BACKEND_BASE}/${encodeURIComponent(id)}/payments`,
+    );
+    return { payments: rows.map(toPaymentTransaction) };
   }
 
+  // LSP-role: mock-router demo path (#78).
   return dispatch(
     {
       method: "GET",

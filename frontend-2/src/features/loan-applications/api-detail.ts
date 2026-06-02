@@ -8,13 +8,11 @@
  * tab projects rows from the admin webhook outbox filtered by
  * `aggregateId`.
  *
- * On a 4xx from the backend (typically: backend not running locally), the
- * client falls through to the legacy mock router so dev sessions remain
- * usable. LSP-role sessions always go to the mock router because they
- * have no access to the internal ops endpoint.
+ * Internal sessions surface real backend errors (#78). LSP-role sessions
+ * use the mock router because they have no access to the internal ops endpoint.
  *
- * Lifecycle mutations (`postTransition`, `postDisbursement`) are wired to
- * the backend in issue #6 and currently still route to the mock router.
+ * Lifecycle mutations (`postTransition`, `postDisbursement`) call the
+ * live backend for internal sessions; LSP-role sessions use the mock router.
  */
 import { z } from "zod";
 import { ApiError, requestJson } from "@/lib/api/http-client";
@@ -322,14 +320,10 @@ function backendToDetail(
   };
 }
 
-async function fetchChecklistSafely(id: string): Promise<readonly BackendChecklistRow[]> {
-  try {
-    return await requestJson<readonly BackendChecklistRow[]>(
-      `${BACKEND_BASE}/${encodeURIComponent(id)}/kyc-documents`,
-    );
-  } catch {
-    return [];
-  }
+async function fetchChecklist(id: string): Promise<readonly BackendChecklistRow[]> {
+  return requestJson<readonly BackendChecklistRow[]>(
+    `${BACKEND_BASE}/${encodeURIComponent(id)}/kyc-documents`,
+  );
 }
 
 // ─── Public surface ──────────────────────────────────────────────────────────
@@ -337,18 +331,14 @@ async function fetchChecklistSafely(id: string): Promise<readonly BackendCheckli
 /** Fetch the full detail payload for one loan application. */
 export async function fetchLoanApplicationDetail(id: string): Promise<LoanApplicationDetail> {
   if (isInternalSession()) {
-    try {
-      const [payload, checklist] = await Promise.all([
-        requestJson<BackendLoanApplicationDetail>(`${BACKEND_BASE}/${encodeURIComponent(id)}`),
-        fetchChecklistSafely(id),
-      ]);
-      return backendToDetail(payload, checklist);
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-      // Fall through to mock on 4xx — typically backend down in dev.
-    }
+    const [payload, checklist] = await Promise.all([
+      requestJson<BackendLoanApplicationDetail>(`${BACKEND_BASE}/${encodeURIComponent(id)}`),
+      fetchChecklist(id),
+    ]);
+    return backendToDetail(payload, checklist);
   }
 
+  // LSP-role: mock-router demo path (#78).
   return dispatch(
     {
       method: "GET",
@@ -398,16 +388,13 @@ export async function fetchLoanApplicationActivity(
   id: string,
 ): Promise<LoanApplicationActivityResponse> {
   if (isInternalSession()) {
-    try {
-      const rows = await requestJson<BackendAuditEvent[]>(
-        `${BACKEND_BASE}/${encodeURIComponent(id)}/audit-events`,
-      );
-      return { events: rows.map(toAuditEvent) };
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-    }
+    const rows = await requestJson<BackendAuditEvent[]>(
+      `${BACKEND_BASE}/${encodeURIComponent(id)}/audit-events`,
+    );
+    return { events: rows.map(toAuditEvent) };
   }
 
+  // LSP-role: mock-router demo path (#78).
   return dispatch(
     {
       method: "GET",
@@ -454,16 +441,13 @@ export async function fetchLoanApplicationWebhooks(
   id: string,
 ): Promise<LoanApplicationWebhooksResponse> {
   if (isInternalSession()) {
-    try {
-      const rows = await requestJson<BackendWebhookEventDeliveryRow[]>(
-        `${BACKEND_BASE}/${encodeURIComponent(id)}/webhook-events`,
-      );
-      return { deliveries: rows.map(toWebhookDelivery) };
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-    }
+    const rows = await requestJson<BackendWebhookEventDeliveryRow[]>(
+      `${BACKEND_BASE}/${encodeURIComponent(id)}/webhook-events`,
+    );
+    return { deliveries: rows.map(toWebhookDelivery) };
   }
 
+  // LSP-role: mock-router demo path (#78).
   return dispatch(
     {
       method: "GET",
@@ -534,7 +518,7 @@ async function postBackendTransition(
     }
   }
 
-  const checklist = await fetchChecklistSafely(id);
+  const checklist = await fetchChecklist(id);
   const detail = backendToDetail(payload, checklist);
   return {
     application: detail.application,
@@ -558,13 +542,10 @@ export async function postTransition(
       : newIdempotencyKey();
 
   if (isInternalSession()) {
-    try {
-      return await postBackendTransition(id, input, idempotencyKey);
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-    }
+    return postBackendTransition(id, input, idempotencyKey);
   }
 
+  // LSP-role: mock-router demo path (#78).
   return dispatch(
     {
       method: "POST",
@@ -587,23 +568,20 @@ export async function postDisbursement(
       : newIdempotencyKey();
 
   if (isSystemAdmin()) {
-    try {
-      const payload = await requestJson<BackendLoanApplicationDetail>(
-        `${BACKEND_BASE}/${encodeURIComponent(id)}/disbursement-requests`,
-        { method: "POST", body: JSON.stringify({}) },
-        { idempotencyKey },
-      );
-      const checklist = await fetchChecklistSafely(id);
-      const detail = backendToDetail(payload, checklist);
-      return {
-        application: detail.application,
-        events: [synthesiseTransitionEvent(detail, null, input.note)],
-      };
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-    }
+    const payload = await requestJson<BackendLoanApplicationDetail>(
+      `${BACKEND_BASE}/${encodeURIComponent(id)}/disbursement-requests`,
+      { method: "POST", body: JSON.stringify({}) },
+      { idempotencyKey },
+    );
+    const checklist = await fetchChecklist(id);
+    const detail = backendToDetail(payload, checklist);
+    return {
+      application: detail.application,
+      events: [synthesiseTransitionEvent(detail, null, input.note)],
+    };
   }
 
+  // LSP-role: mock-router demo path (#78).
   return dispatch(
     {
       method: "POST",

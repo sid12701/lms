@@ -12,7 +12,7 @@
  * there is no audited PII reveal endpoint — values are always masked.
  */
 import { z } from "zod";
-import { ApiError, requestJson } from "@/lib/api/http-client";
+import { requestJson } from "@/lib/api/http-client";
 import { dispatch } from "@/mocks/router";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import type { BorrowerDetail } from "./types";
@@ -231,16 +231,13 @@ function backendToDetail(payload: BackendBorrowerDetail): BorrowerDetail {
 /** Fetch the joined borrower-detail payload for `/borrowers/:id`. */
 export async function fetchBorrowerDetail(id: string): Promise<BorrowerDetail> {
   if (isInternalSession()) {
-    try {
-      const payload = await requestJson<BackendBorrowerDetail>(
-        `${BACKEND_BASE}/${encodeURIComponent(id)}`,
-      );
-      return backendToDetail(payload);
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-    }
+    const payload = await requestJson<BackendBorrowerDetail>(
+      `${BACKEND_BASE}/${encodeURIComponent(id)}`,
+    );
+    return backendToDetail(payload);
   }
 
+  // LSP-role: mock-router demo path — real LSP read API is a future workstream (#78).
   return dispatch(
     {
       method: "GET",

@@ -12,7 +12,7 @@
  * the older statuses surfaced by the frontend; unknown values fall
  * through to `INITIATED` so the table keeps rendering.
  */
-import { ApiError, buildQueryPath, requestJson } from "@/lib/api/http-client";
+import { buildQueryPath, requestJson } from "@/lib/api/http-client";
 import { dispatch } from "@/mocks/router";
 import { z } from "zod";
 import { loadStoredSession } from "@/lib/api/session-storage";
@@ -215,23 +215,18 @@ export async function fetchLoanApplications(
   const isInternal = role === "SYSTEM_ADMIN" || role === "OPS_USER" || role === "PRODUCT_ADMIN";
 
   if (isInternal) {
-    try {
-      const path = buildQueryPath(BACKEND_BASE, backendQueryFromFilters(filters));
-      const payload = await requestJson<BackendApplicationResponse[] | BackendListEnvelope>(path);
-      const items = Array.isArray(payload)
-        ? payload.map(toListItem)
-        : (payload.items ?? []).map(toListItem);
-      const total = Array.isArray(payload) ? items.length : (payload.totalCount ?? items.length);
-      const pageSize = filters.pageSize ?? 25;
-      const page = filters.page ?? 0;
-      return { items, total, page, pageSize };
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-      // Fall through to mock on 4xx — typically backend down in dev.
-    }
+    const path = buildQueryPath(BACKEND_BASE, backendQueryFromFilters(filters));
+    const payload = await requestJson<BackendApplicationResponse[] | BackendListEnvelope>(path);
+    const items = Array.isArray(payload)
+      ? payload.map(toListItem)
+      : (payload.items ?? []).map(toListItem);
+    const total = Array.isArray(payload) ? items.length : (payload.totalCount ?? items.length);
+    const pageSize = filters.pageSize ?? 25;
+    const page = filters.page ?? 0;
+    return { items, total, page, pageSize };
   }
 
-  // LSP roles and unauthenticated dev sessions still go to the mock.
+  // LSP roles and unauthenticated dev sessions still go to the mock (#78).
   const query = buildLoanApplicationsQuery(filters);
   const path = `/api/v1/loan-applications${query ? `?${query}` : ""}`;
   return dispatch({ method: "GET", path }, LoanApplicationListResponseSchema);

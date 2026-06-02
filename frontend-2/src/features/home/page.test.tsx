@@ -16,6 +16,7 @@ import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "@/test/utils";
 import { SessionContext, type SessionContextValue } from "@/features/auth/session-context";
 import type { Session } from "@/mocks/api/auth";
+import { ApiError } from "@/lib/api/http-client";
 import type { HomeKpis } from "./types";
 
 // ─── Stub the cards barrel (agent B's territory) ────────────────────────────
@@ -233,6 +234,22 @@ describe("HomePage — loading state", () => {
     expect(screen.getByTestId("home-page-loading")).toBeInTheDocument();
     // KpiSkeleton + CardSkeleton each render role=status.
     expect(screen.getAllByRole("status").length).toBeGreaterThan(0);
+  });
+});
+
+describe("HomePage — unauthorized", () => {
+  it("renders a no-permission EmptyState when the query returns 403", () => {
+    useHomeKpisMock.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isError: true,
+      isSuccess: false,
+      error: new ApiError("Access denied", 403, "", "FORBIDDEN"),
+      refetch: refetchMock,
+    });
+    renderHome(makeSession("SYSTEM_ADMIN"));
+    expect(screen.getByText(/No access to this dashboard/i)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 

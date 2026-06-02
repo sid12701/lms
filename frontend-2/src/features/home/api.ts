@@ -9,7 +9,6 @@
  * `@/mocks/api/home.ts` (agent A).
  */
 import { z } from "zod";
-import { dispatch } from "@/mocks/router";
 import { AlertSeverity, AlertSubjectType } from "@/schemas/alert";
 import { LoanStatus } from "@/schemas/loan-application";
 import { DelinquencyBucket } from "@/schemas/loan-account";
@@ -231,21 +230,6 @@ export async function fetchHomeKpis(): Promise<HomeKpis> {
       "FORBIDDEN",
     );
   }
-  try {
-    const overview = await requestJson<BackendHomeOverview>("/api/v1/internal/home/overview");
-    return { kind: "internal", data: mapBackendHomeOverviewToInternalKpis(overview) };
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.status >= 500) {
-      throw error;
-    }
-    // Fall through to mock on 4xx — most often when the backend isn't running
-    // in this dev session. Lets the rest of the surface stay clickable.
-  }
-  return dispatch(
-    {
-      method: "GET",
-      path: "/api/v1/home/kpis",
-    },
-    HomeKpisSchema,
-  );
+  const overview = await requestJson<BackendHomeOverview>("/api/v1/internal/home/overview");
+  return { kind: "internal", data: mapBackendHomeOverviewToInternalKpis(overview) };
 }

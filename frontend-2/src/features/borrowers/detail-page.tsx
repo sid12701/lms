@@ -1,8 +1,10 @@
 import { useCallback, useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Users } from "lucide-react";
+import { ShieldAlert, Users } from "lucide-react";
+import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { PermissionDeniedState } from "@/components/app/feedback/PermissionDeniedState";
+import { isNotFoundApiError, isUnauthorizedApiError } from "@/lib/api/api-errors";
 import { RightRail } from "@/components/app/layout/RightRail";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatINR } from "@/lib/format";
@@ -42,12 +44,6 @@ function useBorrowerTabParam(): readonly [BorrowerDetailTab, (next: BorrowerDeta
   );
 
   return [active, setTab] as const;
-}
-
-function isNotFoundError(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
-  const code = (err as { code?: unknown }).code;
-  return code === "NOT_FOUND";
 }
 
 function DetailSkeleton() {
@@ -116,7 +112,23 @@ export function BorrowerDetailPage() {
   }
 
   if (detailQuery.isError) {
-    if (isNotFoundError(detailQuery.error)) {
+    if (isUnauthorizedApiError(detailQuery.error)) {
+      return (
+        <div
+          className="flex flex-col gap-6 p-6"
+          data-testid="borrower-detail"
+          data-state="forbidden"
+        >
+          <EmptyState
+            variant="no-permission"
+            icon={ShieldAlert}
+            title="No access to this borrower"
+            description="You don't have permission to view this borrower record."
+          />
+        </div>
+      );
+    }
+    if (isNotFoundApiError(detailQuery.error)) {
       return (
         <div
           className="flex flex-col gap-6 p-6"

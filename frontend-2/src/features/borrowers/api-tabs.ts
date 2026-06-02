@@ -7,7 +7,7 @@
  * the Activity tab is removed; only the Loans tab data fetch remains.
  */
 import { z } from "zod";
-import { ApiError, requestJson } from "@/lib/api/http-client";
+import { requestJson } from "@/lib/api/http-client";
 import { dispatch } from "@/mocks/router";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import { mapBackendStatus } from "@/features/loan-applications/api";
@@ -74,16 +74,13 @@ function toLoanRow(row: BackendBorrowerLoanRow): BorrowerLoanRow {
 /** GET `/api/v1/borrowers/:id/loans` — Loans tab data. */
 export async function fetchBorrowerLoans(id: string): Promise<BorrowerLoansResponse> {
   if (isInternalSession()) {
-    try {
-      const payload = await requestJson<BackendBorrowerDetailLoans>(
-        `${BACKEND_BASE}/${encodeURIComponent(id)}`,
-      );
-      return { loans: (payload.loans ?? []).map(toLoanRow) };
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-    }
+    const payload = await requestJson<BackendBorrowerDetailLoans>(
+      `${BACKEND_BASE}/${encodeURIComponent(id)}`,
+    );
+    return { loans: (payload.loans ?? []).map(toLoanRow) };
   }
 
+  // LSP-role: mock-router demo path (#78).
   return dispatch(
     {
       method: "GET",

@@ -13,7 +13,7 @@
  * header-driven totals without changing the page contract.
  */
 import { z } from "zod";
-import { ApiError, requestJson } from "@/lib/api/http-client";
+import { requestJson } from "@/lib/api/http-client";
 import { dispatch } from "@/mocks/router";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import type { BorrowerListFilters, BorrowerListResponse, BorrowerSummary } from "./list-types";
@@ -84,17 +84,13 @@ export async function fetchBorrowersList(
   const query = buildBorrowersListQuery(filters);
 
   if (isInternalSession()) {
-    try {
-      const path = `${BACKEND_BASE}${query ? `?${query}` : ""}`;
-      const body = await requestJson<BorrowerSummary[]>(path);
-      const items = BorrowerSummaryArraySchema.parse(body);
-      return toResponse(items, filters);
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status >= 500) throw error;
-      // Fall through to mock when the live backend returns a 4xx in dev.
-    }
+    const path = `${BACKEND_BASE}${query ? `?${query}` : ""}`;
+    const body = await requestJson<BorrowerSummary[]>(path);
+    const items = BorrowerSummaryArraySchema.parse(body);
+    return toResponse(items, filters);
   }
 
+  // LSP-role: mock-router demo path (#78).
   // The mock router matches paths literally (no query-string stripping),
   // so we keep the path clean and pass the search term via `req.query`
   // which the list handler reads.
