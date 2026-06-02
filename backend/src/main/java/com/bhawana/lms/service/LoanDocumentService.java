@@ -103,8 +103,46 @@ public class LoanDocumentService {
         return folderName + "/" + counter + "-" + baseName;
     }
 
-    @Transactional
     public LoanApplicationDocumentChecklist submitStoredDocumentForLsp(
+            UUID lspId,
+            UUID applicationId,
+            LoanApplicationDocumentType documentType,
+            String actorUsername,
+            String note,
+            String sourceReference,
+            MultipartFile file
+    ) {
+        LoanApplicationDocumentChecklist checklistItem = persistStoredDocumentForLsp(
+                lspId,
+                applicationId,
+                documentType,
+                actorUsername,
+                note,
+                sourceReference,
+                file
+        );
+        loanApprovalService.autoApproveIfEligibleForLsp(applicationId, actorUsername);
+        return checklistItem;
+    }
+
+    public List<LoanApplicationDocumentChecklist> submitStoredDocumentsForLsp(
+            UUID lspId,
+            UUID applicationId,
+            String actorUsername,
+            List<BatchDocumentUpload> documents
+    ) {
+        List<LoanApplicationDocumentChecklist> uploaded = persistStoredDocumentsForLsp(
+                lspId,
+                applicationId,
+                actorUsername,
+                documents
+        );
+        loanApprovalService.autoApproveIfEligibleForLsp(applicationId, actorUsername);
+        return uploaded;
+    }
+
+    @Transactional
+    LoanApplicationDocumentChecklist persistStoredDocumentForLsp(
             UUID lspId,
             UUID applicationId,
             LoanApplicationDocumentType documentType,
@@ -115,7 +153,7 @@ public class LoanDocumentService {
     ) {
         loanApplicationService.getApplicationForLsp(lspId, applicationId);
         StoredDocument storedDocument = loanDocumentStorageService.store(applicationId, documentType, file);
-        LoanApplicationDocumentChecklist checklistItem = loanApplicationService.updateDocumentChecklistItem(
+        return loanApplicationService.updateDocumentChecklistItem(
                 applicationId,
                 documentType,
                 actorUsername,
@@ -130,12 +168,10 @@ public class LoanDocumentService {
                 storedDocument.storageKey(),
                 true
         );
-        loanApprovalService.autoApproveIfEligibleForLsp(applicationId, actorUsername);
-        return checklistItem;
     }
 
     @Transactional
-    public List<LoanApplicationDocumentChecklist> submitStoredDocumentsForLsp(
+    List<LoanApplicationDocumentChecklist> persistStoredDocumentsForLsp(
             UUID lspId,
             UUID applicationId,
             String actorUsername,
@@ -147,14 +183,14 @@ public class LoanDocumentService {
         }
 
         Set<LoanApplicationDocumentType> seenDocumentTypes = new HashSet<>();
-        List<LoanApplicationDocumentChecklist> uploaded = documents.stream()
+        return documents.stream()
                 .map(document -> {
                     if (!seenDocumentTypes.add(document.documentType())) {
                         throw new IllegalArgumentException(
                                 "Duplicate document type in batch upload: " + document.documentType().name()
                         );
                     }
-                    return submitStoredDocumentForLsp(
+                    return persistStoredDocumentForLsp(
                             lspId,
                             applicationId,
                             document.documentType(),
@@ -165,8 +201,6 @@ public class LoanDocumentService {
                     );
                 })
                 .toList();
-        loanApprovalService.autoApproveIfEligibleForLsp(applicationId, actorUsername);
-        return uploaded;
     }
 
     public record BatchDocumentUpload(

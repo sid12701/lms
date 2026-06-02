@@ -39,7 +39,9 @@ public enum LoanApplicationStatus {
             case DISBURSEMENT_RETRY -> targetStatus == DISBURSED
                     || targetStatus == DISBURSEMENT_RETRY
                     || targetStatus == INVALID;
-            case DISBURSED -> targetStatus == UNDER_REPAYMENT;
+            case DISBURSED -> targetStatus == UNDER_REPAYMENT
+                    || targetStatus == CLOSED
+                    || targetStatus == FORECLOSED;
             case UNDER_REPAYMENT -> targetStatus == CLOSED
                     || targetStatus == FORECLOSED;
             case REJECTED, INVALID, CLOSED, FORECLOSED -> false;

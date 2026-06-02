@@ -2,6 +2,7 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import com.bhawana.lms.common.web.DocumentUploadRequiredException;
 import com.bhawana.lms.common.web.KycCompletionRequiredException;
 import com.bhawana.lms.domain.Borrower;
@@ -208,11 +209,7 @@ public class LoanApplicationLifecycleService {
         if (currentStatus == targetStatus) {
             throw new IllegalArgumentException("Loan application is already in status " + currentStatus.name() + ".");
         }
-        if (!currentStatus.canTransitionTo(targetStatus)) {
-            throw new IllegalArgumentException(
-                    "Cannot transition loan application from " + currentStatus.name() + " to " + targetStatus.name() + "."
-            );
-        }
+        LoanApplicationStatusTransitioner.enforceTransition(currentStatus, targetStatus);
         if (currentStatus == LoanApplicationStatus.AWAITING_APPROVAL
                 && targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL) {
             validateKycCompletionBeforeApproval(applicationId);
@@ -292,7 +289,9 @@ public class LoanApplicationLifecycleService {
                 actorUsername,
                 resolvedNote,
                 resolvedReasonCode,
-                LoanApplicationAuditAction.MANUAL_STATUS_OVERRIDE
+                LoanApplicationAuditAction.MANUAL_STATUS_OVERRIDE,
+                null,
+                LoanApplicationStatusTransitioner.TransitionContext.MANUAL_OVERRIDE
         );
     }
 
@@ -386,19 +385,13 @@ public class LoanApplicationLifecycleService {
      * forward through {@code INITIALIZED → AWAITING_APPROVAL →
      * APPROVED_PENDING_DISBURSAL}. On failure from {@code AWAITING_APPROVAL}:
      * transitions to {@code REJECTED} with a structured
-     * {@code rejection_reason_json} listing the failed rule codes. Callers
-     * outside the {@code INITIALIZED | AWAITING_APPROVAL} window short-circuit
-     * to a no-op for backward compatibility (the disbursement service still
-     * calls this method even after approval).
+     * {@code rejection_reason_json} listing the failed rule codes.
      */
     @Transactional
     public LoanApplication autoApproveIfEligibleForLsp(UUID applicationId, String actorUsername) {
         LoanApplication application = getApplication(applicationId);
         LoanApplicationStatus currentStatus = application.getStatus();
-        if (currentStatus != LoanApplicationStatus.INITIALIZED
-                && currentStatus != LoanApplicationStatus.AWAITING_APPROVAL) {
-            return application;
-        }
+        LoanApplicationStatusTransitioner.enforceAutoApprovalAllowed(currentStatus);
 
         LoanAutoApprovalRuleEngine.Evaluation evaluation = loanAutoApprovalRuleEngine.evaluate(application);
 
@@ -539,7 +532,16 @@ public class LoanApplicationLifecycleService {
             LoanApplicationStatusReasonCode reasonCode,
             LoanApplicationAuditAction auditAction
     ) {
-        return updateApplicationStatus(application, targetStatus, actorUsername, note, reasonCode, auditAction, null);
+        return updateApplicationStatus(
+                application,
+                targetStatus,
+                actorUsername,
+                note,
+                reasonCode,
+                auditAction,
+                null,
+                LoanApplicationStatusTransitioner.TransitionContext.STANDARD
+        );
     }
 
     public LoanApplication updateApplicationStatus(
@@ -551,11 +553,34 @@ public class LoanApplicationLifecycleService {
             LoanApplicationAuditAction auditAction,
             String rejectionReasonJson
     ) {
+        return updateApplicationStatus(
+                application,
+                targetStatus,
+                actorUsername,
+                note,
+                reasonCode,
+                auditAction,
+                rejectionReasonJson,
+                LoanApplicationStatusTransitioner.TransitionContext.STANDARD
+        );
+    }
+
+    public LoanApplication updateApplicationStatus(
+            LoanApplication application,
+            LoanApplicationStatus targetStatus,
+            String actorUsername,
+            String note,
+            LoanApplicationStatusReasonCode reasonCode,
+            LoanApplicationAuditAction auditAction,
+            String rejectionReasonJson,
+            LoanApplicationStatusTransitioner.TransitionContext transitionContext
+    ) {
         LoanApplicationStatus currentStatus = application.getStatus();
         if (currentStatus == targetStatus) {
             return application;
         }
 
+        LoanApplicationStatusTransitioner.enforceTransition(currentStatus, targetStatus, transitionContext);
         application.transitionTo(targetStatus);
         LoanApplication savedApplication = loanApplicationRepository.save(application);
         String resolvedNote = normalizeOptional(note) == null
