@@ -75,18 +75,20 @@ export function AppShell({ children, rightRail, className }: AppShellProps) {
         is the canonical pattern for skip links because the target is a
         fragment identifier (#main) rather than a click action.
       */}
-      <a
-        href="#main"
-        data-slot="skip-to-main"
-        className={cn(
-          "sr-only",
-          "focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50",
-          "focus:bg-surface focus:shadow-e2 focus:rounded focus:px-3 focus:py-2 focus:text-sm",
-          "focus:outline focus:outline-2 focus:outline-[var(--color-ring)]",
-        )}
-      >
-        Skip to main content
-      </a>
+      <nav aria-label="Skip navigation">
+        <a
+          href="#main"
+          data-slot="skip-to-main"
+          className={cn(
+            "sr-only",
+            "focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50",
+            "focus:bg-surface focus:shadow-e2 focus:rounded focus:px-3 focus:py-2 focus:text-sm",
+            "focus:outline focus:outline-2 focus:outline-[var(--color-ring)]",
+          )}
+        >
+          Skip to main content
+        </a>
+      </nav>
 
       {tier !== "mobile" ? <Sidebar collapsed={tier === "compact"} /> : null}
 
@@ -96,6 +98,15 @@ export function AppShell({ children, rightRail, className }: AppShellProps) {
 
         <div className="flex min-h-0 flex-1">
           <main id="main" className="min-w-0 flex-1 overflow-y-auto" tabIndex={-1}>
+            <div
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              data-slot="route-announcer"
+              className="sr-only"
+            >
+              {liveLabel}
+            </div>
             {children}
           </main>
           {rightRail ? (
@@ -107,17 +118,6 @@ export function AppShell({ children, rightRail, className }: AppShellProps) {
             </aside>
           ) : null}
         </div>
-      </div>
-
-      {/* Route-change announcer — polite live region updates on navigation. */}
-      <div
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        data-slot="route-announcer"
-        className="sr-only"
-      >
-        {liveLabel}
       </div>
 
       {/* Mobile slide-over (< lg). Dialog handles focus trap + Escape. */}

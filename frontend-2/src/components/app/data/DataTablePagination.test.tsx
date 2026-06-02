@@ -59,4 +59,17 @@ describe("DataTablePagination", () => {
     const { container } = renderWithProviders(<Harness />);
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  it("shows Loading… in the range label when loading", () => {
+    function LoadingHarness() {
+      const table = useReactTable({
+        data: [],
+        columns,
+        getCoreRowModel: getCoreRowModel(),
+      });
+      return <DataTablePagination table={table} totalRows={0} loading />;
+    }
+    const { getByText } = renderWithProviders(<LoadingHarness />);
+    expect(getByText("Loading…")).toBeInTheDocument();
+  });
 });

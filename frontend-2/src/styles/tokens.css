@@ -27,7 +27,7 @@
 
   /* ---------- Foreground tiers (project-specific) ---------- */
   --color-foreground-muted: #5e6680;
-  --color-foreground-subtle: #8a92a8;
+  --color-foreground-subtle: #5e6680;
 
   /* ---------- Semantic intents (color + icon + text — never color alone) ---------- */
   --color-success: #0f7a4a;

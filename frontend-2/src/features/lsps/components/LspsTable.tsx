@@ -250,7 +250,7 @@ export function LspsTable({
           />
         }
       />
-      <DataTablePagination table={table} totalRows={total} />
+      <DataTablePagination table={table} totalRows={total} loading={isLoading} />
     </div>
   );
 }

@@ -16,6 +16,8 @@ export interface DataTablePaginationProps<TData> {
   pageSizeOptions?: number[];
   /** Total row count if the table is in `manualPagination` mode. */
   totalRows?: number;
+  /** When true, the range label shows a loading state instead of "No rows". */
+  loading?: boolean;
   className?: string;
 }
 
@@ -30,6 +32,7 @@ export function DataTablePagination<TData>({
   table,
   pageSizeOptions = [...DEFAULT_PAGE_SIZES],
   totalRows,
+  loading = false,
   className,
 }: DataTablePaginationProps<TData>) {
   const pageIndex = table.getState().pagination.pageIndex;
@@ -82,11 +85,13 @@ export function DataTablePagination<TData>({
         data-slot="page-range-label"
         className="text-foreground-muted text-center text-sm tabular-nums sm:text-left"
       >
-        {total === 0
-          ? "No rows"
-          : `Showing ${startRow.toLocaleString("en-IN")}–${endRow.toLocaleString(
-              "en-IN",
-            )} of ${total.toLocaleString("en-IN")}`}
+        {loading
+          ? "Loading…"
+          : total === 0
+            ? "No rows"
+            : `Showing ${startRow.toLocaleString("en-IN")}–${endRow.toLocaleString(
+                "en-IN",
+              )} of ${total.toLocaleString("en-IN")}`}
       </p>
 
       <div className="flex items-center justify-end gap-1">

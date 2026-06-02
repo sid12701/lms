@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.RefreshToken;
@@ -93,7 +94,7 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest httpRequest
     ) {
-        TokenResponse tokenResponse = issuePasswordToken(request, httpRequest.getRemoteAddr());
+        TokenResponse tokenResponse = issuePasswordToken(request, ClientIpAddresses.resolve(httpRequest));
         return ResponseEntity.ok()
                 .headers(headers -> issueRefreshCookieForUsername(request.username(), headers))
                 .body(tokenResponse);
@@ -104,7 +105,7 @@ public class AuthController {
             @Valid @RequestBody ClientCredentialsRequest request,
             HttpServletRequest httpRequest
     ) {
-        TokenResponse tokenResponse = issueClientCredentialsToken(request, httpRequest.getRemoteAddr());
+        TokenResponse tokenResponse = issueClientCredentialsToken(request, ClientIpAddresses.resolve(httpRequest));
         ApiClient apiClient = apiClientRepository.findByClientId(request.clientId().trim())
                 .orElseThrow(() -> new IllegalStateException("API client missing after successful authentication."));
         String rawRefreshToken = generateAndStoreRefreshTokenForApiClient(apiClient);

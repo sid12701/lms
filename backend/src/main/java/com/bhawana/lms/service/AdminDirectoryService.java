@@ -455,6 +455,7 @@ public class AdminDirectoryService {
             Integer limit,
             boolean includePaginationDetails
     ) {
+        String normalizedQuery = normalizeBorrowerSearchQuery(query);
         boolean paginationRequested = PaginationResponseBuilder.isPaginationRequested(
                 offset, limit, includePaginationDetails);
         int resolvedOffset = PaginationResponseBuilder.resolveOffset(offset, paginationRequested);
@@ -463,19 +464,35 @@ public class AdminDirectoryService {
         Sort sort = Sort.by(Sort.Direction.ASC, "fullName").and(Sort.by(Sort.Direction.ASC, "id"));
 
         if (!paginationRequested) {
-            List<Borrower> all = borrowerRepository.searchBorrowers(
-                    query,
+            List<Borrower> all = listBorrowerPage(
+                    normalizedQuery,
                     PageRequest.of(0, Integer.MAX_VALUE, sort)
             ).getContent();
             return new PagedResult<>(all, all.size(), 0, all.size());
         }
 
         int pageNumber = resolvedOffset / Math.max(resolvedLimit, 1);
-        Page<Borrower> page = borrowerRepository.searchBorrowers(
-                query,
+        Page<Borrower> page = listBorrowerPage(
+                normalizedQuery,
                 PageRequest.of(pageNumber, Math.max(resolvedLimit, 1), sort)
         );
         return new PagedResult<>(page.getContent(), page.getTotalElements(), resolvedOffset, resolvedLimit);
+    }
+
+    private Page<Borrower> listBorrowerPage(String normalizedQuery, PageRequest pageRequest) {
+        if (normalizedQuery == null) {
+            return borrowerRepository.findAllBorrowers(pageRequest);
+        }
+        return borrowerRepository.searchBorrowers(normalizedQuery, pageRequest);
+    }
+
+    /** Blank search means "return all" — keep null out of TRIM/LIKE so PostgreSQL binds text, not bytea. */
+    private static String normalizeBorrowerSearchQuery(String query) {
+        if (query == null) {
+            return null;
+        }
+        String trimmed = query.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     @Transactional(readOnly = true)

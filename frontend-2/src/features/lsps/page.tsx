@@ -97,6 +97,7 @@ export function LspsPage() {
   const [allowlistTarget, setAllowlistTarget] = useState<LspRow | null>(null);
 
   const list = useLsps(filters);
+  const listLoading = list.isPending || (list.isFetching && list.data === undefined);
   const create = useCreateLsp();
   const updateStatus = useUpdateLspStatus();
   const upsertWebhook = useUpsertLspWebhookSubscription();
@@ -249,7 +250,7 @@ export function LspsPage() {
       ) : (
         <>
           <LspsFilterBar filters={filters} onChange={setFilters} />
-          {!list.isPending && (list.data?.total ?? 0) === 0 && !filters.q && !filters.status ? (
+          {!listLoading && (list.data?.total ?? 0) === 0 && !filters.q && !filters.status ? (
             <EmptyState
               icon={Building2}
               title="No LSPs yet"
@@ -258,7 +259,7 @@ export function LspsPage() {
           ) : (
             <LspsTable
               data={list.data}
-              isLoading={list.isPending}
+              isLoading={listLoading}
               filters={filters}
               onFiltersChange={setFilters}
               onDetails={(row) => setDetailsTarget(row)}

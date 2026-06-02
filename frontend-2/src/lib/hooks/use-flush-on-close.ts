@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 
-/** Run `flush` when `open` transitions from true → false (render phase, not an effect). */
+/** Run `flush` after `open` transitions from true → false (never during render). */
 export function useFlushOnClose(open: boolean, flush: () => void): void {
-  const [wasOpen, setWasOpen] = useState(open);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (!open) flush();
-  }
+  const wasOpenRef = useRef(open);
+
+  useEffect(() => {
+    if (wasOpenRef.current && !open) {
+      flush();
+    }
+    wasOpenRef.current = open;
+  }, [open, flush]);
 }

@@ -1,6 +1,7 @@
 package com.bhawana.lms.security;
 
 import com.bhawana.lms.common.api.ApiError;
+import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.LspIpAllowlistSurface;
 import com.bhawana.lms.service.LspSurfaceIpAllowlistService;
@@ -65,7 +66,8 @@ public class LspSurfaceIpAllowlistFilter extends OncePerRequestFilter {
             return;
         }
 
-        AccessDecision decision = evaluate(lspId, surface, request.getRemoteAddr());
+        String clientIp = ClientIpAddresses.resolve(request);
+        AccessDecision decision = evaluate(lspId, surface, clientIp);
         if (decision == AccessDecision.ALLOW) {
             filterChain.doFilter(request, response);
             return;
@@ -78,7 +80,7 @@ public class LspSurfaceIpAllowlistFilter extends OncePerRequestFilter {
                 ? "IP allowlist enforcement is enabled but no CIDR entries are configured for this surface."
                 : "Source IP is not in the LSP allowlist for this surface.";
 
-        log.warn("Rejecting LSP {} request from {} for lsp {} — {}", surface, request.getRemoteAddr(), lspId, code);
+        log.warn("Rejecting LSP {} request from {} for lsp {} — {}", surface, clientIp, lspId, code);
         writeApiError(response, HttpServletResponse.SC_FORBIDDEN, code, message, request.getRequestURI());
     }
 

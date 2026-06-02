@@ -187,7 +187,7 @@ export function ApiClientsTable({
           />
         }
       />
-      <DataTablePagination table={table} totalRows={total} />
+      <DataTablePagination table={table} totalRows={total} loading={isLoading} />
     </div>
   );
 }

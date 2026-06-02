@@ -4667,7 +4667,7 @@ If we ever rip out the H2 test path (move everything to Testcontainers PG), the 
 ---
 
 ### #135 — [F-12] autoApproveIfEligibleForLsp safety is caller-defensive, not state-machine enforced
-**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/135 · **Status:** **CLOSED** — resolved with #85 in follow-up PR (2026-06-02; PR link added on merge)
+**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/135 · **Status:** **CLOSED** — resolved with #85 in [PR #172](https://github.com/sid12701/lms/pull/172) (2026-06-02)
 
 **Problem (plain English):** A caller that forgets the pre-check induces an invalid transition silently.
 

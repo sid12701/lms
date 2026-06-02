@@ -116,6 +116,7 @@ export function ApiClientsPage() {
   } | null>(null);
 
   const list = useApiClients(filters);
+  const listLoading = list.isPending || (list.isFetching && list.data === undefined);
   const create = useCreateApiClient();
   const rotate = useRotateApiClientSecret();
 
@@ -199,7 +200,7 @@ export function ApiClientsPage() {
       <PageHeader
         eyebrow="Administration"
         title="API clients"
-        description="LSP API credentials, IP allow-lists, and rotation history."
+        description="LSP API credentials and secret rotation. IP allowlists are managed per LSP under Administration → LSPs."
         actions={
           <Button
             type="button"
@@ -241,7 +242,7 @@ export function ApiClientsPage() {
       ) : (
         <>
           <ApiClientsFilterBar filters={filters} onChange={setFilters} lspOptions={lspOptions} />
-          {!list.isPending &&
+          {!listLoading &&
           (list.data?.total ?? 0) === 0 &&
           !filters.q &&
           !filters.status &&
@@ -254,7 +255,7 @@ export function ApiClientsPage() {
           ) : (
             <ApiClientsTable
               data={list.data}
-              isLoading={list.isPending}
+              isLoading={listLoading}
               filters={filters}
               onFiltersChange={setFilters}
               onSelect={(row) => setRotateTarget(row)}

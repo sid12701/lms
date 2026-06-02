@@ -102,11 +102,12 @@ describe("AppShell", () => {
     it("exists in the DOM as the first focusable descendant of the shell", () => {
       const { container } = renderShell();
       const shell = container.querySelector('[data-slot="app-shell"]');
+      const skipNav = shell?.querySelector('nav[aria-label="Skip navigation"]');
       const skip = container.querySelector('[data-slot="skip-to-main"]');
+      expect(skipNav).not.toBeNull();
       expect(skip).not.toBeNull();
-      // It must be a descendant of the app-shell root and precede the
-      // first interactive element in DOM order (so Tab from the top hits it).
-      expect(shell?.firstElementChild).toBe(skip);
+      // Skip nav is the first landmark in the shell so Tab from the top hits the link.
+      expect(shell?.firstElementChild).toBe(skipNav);
       expect(skip?.getAttribute("href")).toBe("#main");
       expect(skip?.textContent).toBe("Skip to main content");
     });
@@ -128,7 +129,7 @@ describe("AppShell", () => {
   describe("route-change live region", () => {
     it("renders an aria-live polite announcer with the current page label", () => {
       const { container } = renderShell();
-      const announcer = container.querySelector('[data-slot="route-announcer"]');
+      const announcer = container.querySelector('main [data-slot="route-announcer"]');
       expect(announcer).not.toBeNull();
       expect(announcer?.getAttribute("aria-live")).toBe("polite");
       expect(announcer?.className).toContain("sr-only");

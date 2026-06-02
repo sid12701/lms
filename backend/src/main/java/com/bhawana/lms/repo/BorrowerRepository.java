@@ -28,16 +28,19 @@ public interface BorrowerRepository extends JpaRepository<Borrower, UUID> {
 
     List<Borrower> findTop10ByMobileOrderByUpdatedAtDesc(String mobile);
 
+    /** Unfiltered directory page — separate from search so PostgreSQL never binds null into LIKE. */
+    @EntityGraph(attributePaths = "visibleLspIds")
+    @Query("SELECT b FROM Borrower b")
+    Page<Borrower> findAllBorrowers(Pageable pageable);
+
     /**
      * Case-insensitive substring search across the borrower identity columns
      * exposed on the admin borrowers list page (name, PAN, mobile, email).
-     * `q` is null or blank to return every borrower.
+     * Call only with a non-blank {@code q}; use {@link #findAllBorrowers} for the full directory.
      */
     @Query("""
             SELECT b FROM Borrower b
-            WHERE :q IS NULL
-               OR LENGTH(TRIM(:q)) = 0
-               OR LOWER(b.fullName) LIKE LOWER(CONCAT('%', :q, '%'))
+            WHERE LOWER(b.fullName) LIKE LOWER(CONCAT('%', :q, '%'))
                OR LOWER(b.pan)      LIKE LOWER(CONCAT('%', :q, '%'))
                OR b.mobile          LIKE CONCAT('%', :q, '%')
                OR LOWER(b.email)    LIKE LOWER(CONCAT('%', :q, '%'))

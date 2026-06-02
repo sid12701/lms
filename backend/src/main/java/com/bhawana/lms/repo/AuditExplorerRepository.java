@@ -95,8 +95,8 @@ public class AuditExplorerRepository {
                 from loan_application_document_access_audit_type audit_type
                 join loan_application_document_access_audit audit
                   on audit.id = audit_type.audit_id
-                where (:__since is null or audit.created_at >= :__since)
-                  and (:__until is null or audit.created_at <= :__until)
+                where (cast(:__since as timestamp) is null or audit.created_at >= cast(:__since as timestamp))
+                  and (cast(:__until as timestamp) is null or audit.created_at <= cast(:__until as timestamp))
                 group by audit_type.document_type
                 order by audit_type.document_type asc
                 """, new MapSqlParameterSource(parameters),
@@ -159,12 +159,12 @@ public class AuditExplorerRepository {
                       cast(null as varchar(500)) as document_types
                     from loan_application_audit_event e
                     join loan_application la on la.id = e.loan_application_id
-                    where (:__actorUsername is null or e.actor_username = :__actorUsername)
-                      and (:__lspId is null or la.lsp_id = :__lspId)
-                      and (:__loanApplicationId is null or e.loan_application_id = :__loanApplicationId)
-                      and (:__borrowerId is null or la.borrower_id = :__borrowerId)
-                      and (:__since is null or e.created_at >= :__since)
-                      and (:__until is null or e.created_at <= :__until)
+                    where (cast(:__actorUsername as varchar(255)) is null or e.actor_username = cast(:__actorUsername as varchar(255)))
+                      and (cast(:__lspId as uuid) is null or la.lsp_id = cast(:__lspId as uuid))
+                      and (cast(:__loanApplicationId as uuid) is null or e.loan_application_id = cast(:__loanApplicationId as uuid))
+                      and (cast(:__borrowerId as uuid) is null or la.borrower_id = cast(:__borrowerId as uuid))
+                      and (cast(:__since as timestamp) is null or e.created_at >= cast(:__since as timestamp))
+                      and (cast(:__until as timestamp) is null or e.created_at <= cast(:__until as timestamp))
                     """);
         }
 
@@ -189,12 +189,12 @@ public class AuditExplorerRepository {
                       cast(null as varchar(500)) as document_types
                     from loan_application_intake_audit i
                     join loan_application la on la.id = i.loan_application_id
-                    where (:__actorUsername is null or i.actor_username = :__actorUsername)
-                      and (:__lspId is null or la.lsp_id = :__lspId)
-                      and (:__loanApplicationId is null or i.loan_application_id = :__loanApplicationId)
-                      and (:__borrowerId is null or la.borrower_id = :__borrowerId)
-                      and (:__since is null or i.created_at >= :__since)
-                      and (:__until is null or i.created_at <= :__until)
+                    where (cast(:__actorUsername as varchar(255)) is null or i.actor_username = cast(:__actorUsername as varchar(255)))
+                      and (cast(:__lspId as uuid) is null or la.lsp_id = cast(:__lspId as uuid))
+                      and (cast(:__loanApplicationId as uuid) is null or i.loan_application_id = cast(:__loanApplicationId as uuid))
+                      and (cast(:__borrowerId as uuid) is null or la.borrower_id = cast(:__borrowerId as uuid))
+                      and (cast(:__since as timestamp) is null or i.created_at >= cast(:__since as timestamp))
+                      and (cast(:__until as timestamp) is null or i.created_at <= cast(:__until as timestamp))
                     """);
         }
 
@@ -219,12 +219,12 @@ public class AuditExplorerRepository {
                       cast(d.document_types as varchar(500)) as document_types
                     from loan_application_document_access_audit d
                     join loan_application la on la.id = d.loan_application_id
-                    where (:__actorUsername is null or d.actor_username = :__actorUsername)
-                      and (:__lspId is null or la.lsp_id = :__lspId)
-                      and (:__loanApplicationId is null or d.loan_application_id = :__loanApplicationId)
-                      and (:__borrowerId is null or la.borrower_id = :__borrowerId)
-                      and (:__since is null or d.created_at >= :__since)
-                      and (:__until is null or d.created_at <= :__until)
+                    where (cast(:__actorUsername as varchar(255)) is null or d.actor_username = cast(:__actorUsername as varchar(255)))
+                      and (cast(:__lspId as uuid) is null or la.lsp_id = cast(:__lspId as uuid))
+                      and (cast(:__loanApplicationId as uuid) is null or d.loan_application_id = cast(:__loanApplicationId as uuid))
+                      and (cast(:__borrowerId as uuid) is null or la.borrower_id = cast(:__borrowerId as uuid))
+                      and (cast(:__since as timestamp) is null or d.created_at >= cast(:__since as timestamp))
+                      and (cast(:__until as timestamp) is null or d.created_at <= cast(:__until as timestamp))
                     """);
         }
 
@@ -248,10 +248,10 @@ public class AuditExplorerRepository {
                       cast(null as text) as payload_json,
                       cast(null as varchar(500)) as document_types
                     from loan_product_audit_event p
-                    where (:__actorUsername is null or p.actor_username = :__actorUsername)
-                      and (:__productId is null or p.loan_product_id = :__productId)
-                      and (:__since is null or p.created_at >= :__since)
-                      and (:__until is null or p.created_at <= :__until)
+                    where (cast(:__actorUsername as varchar(255)) is null or p.actor_username = cast(:__actorUsername as varchar(255)))
+                      and (cast(:__productId as uuid) is null or p.loan_product_id = cast(:__productId as uuid))
+                      and (cast(:__since as timestamp) is null or p.created_at >= cast(:__since as timestamp))
+                      and (cast(:__until as timestamp) is null or p.created_at <= cast(:__until as timestamp))
                     """);
         }
 

@@ -24,7 +24,17 @@ export function Providers({ children, queryClient }: ProvidersProps): ReactEleme
             <MockScenarioProvider>
               <TooltipProvider delayDuration={150}>
                 {children}
-                <Toaster position="top-right" richColors closeButton />
+                <section
+                  aria-label="Notifications"
+                  className="pointer-events-none fixed inset-0 z-[100]"
+                >
+                  <Toaster
+                    position="top-right"
+                    richColors
+                    closeButton
+                    className="pointer-events-auto"
+                  />
+                </section>
               </TooltipProvider>
             </MockScenarioProvider>
           </SessionProvider>

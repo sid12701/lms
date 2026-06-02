@@ -106,6 +106,26 @@ class Issue64LspSurfaceIpAllowlistIntegrationTest {
   }
 
   @Test
+  void apiClientTokenRejectsXForwardedForWhenRemoteAddrWouldPass() throws Exception {
+    Seed seed = seedLspAndApiClient();
+    addApiCidr(seed.lspId(), "10.0.0.0/24");
+    enableApiEnforcement(seed.lspId());
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/token")
+                .with(remoteAddr(ALLOWED_IP))
+                .header("X-Forwarded-For", BLOCKED_IP)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    objectMapper.writeValueAsString(
+                        new AuthController.ClientCredentialsRequest(
+                            seed.clientId(), seed.clientSecret()))))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.error").value("API_CLIENT_IP_NOT_ALLOWED"));
+  }
+
+  @Test
   void addingApiCidrTakesEffectOnNextTokenRequestWithoutWaitingForCacheTtl() throws Exception {
     Seed seed = seedLspAndApiClient();
     addApiCidr(seed.lspId(), "10.0.0.0/24");
