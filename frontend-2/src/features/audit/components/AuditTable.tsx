@@ -60,9 +60,11 @@ function truncateMiddle(value: string, head = 6, tail = 4): string {
 const STREAM_BADGE_TONE: Record<AuditStream, string> = {
   APPLICATION: "bg-info/15 text-info-foreground border-info/40",
   INTAKE: "bg-success/15 text-success-foreground border-success/40",
-  PII_REVEAL: "bg-destructive/15 text-destructive border-destructive/40",
   DOCUMENT_ACCESS: "bg-warning/15 text-warning-foreground border-warning/40",
   PRODUCT: "bg-muted text-foreground-muted border-border",
+  APP_USER: "bg-primary/10 text-primary border-primary/30",
+  API_CLIENT: "bg-secondary/15 text-secondary-foreground border-secondary/40",
+  DISBURSEMENT: "bg-accent/15 text-accent-foreground border-accent/40",
 };
 
 function subjectHref(row: AuditRow): string | null {
@@ -74,6 +76,10 @@ function subjectHref(row: AuditRow): string | null {
       return `/borrowers/${row.subjectId}`;
     case "LOAN_PRODUCT":
       return `/admin/products/${row.subjectId}`;
+    case "APP_USER":
+      return `/users`;
+    case "API_CLIENT":
+      return `/api-clients`;
     case "LOAN_DOCUMENT":
       // Documents live under their application — there is no standalone
       // doc page yet; the sheet still exposes the raw id for cross-ref.
@@ -92,6 +98,10 @@ function subjectLabel(row: AuditRow): string {
       return `Borrower ${truncateMiddle(row.subjectId)}`;
     case "LOAN_PRODUCT":
       return `Product ${truncateMiddle(row.subjectId)}`;
+    case "APP_USER":
+      return `User ${truncateMiddle(row.subjectId)}`;
+    case "API_CLIENT":
+      return `Client ${truncateMiddle(row.subjectId)}`;
     case "LOAN_DOCUMENT":
       return `Document ${truncateMiddle(row.subjectId)}`;
     default:

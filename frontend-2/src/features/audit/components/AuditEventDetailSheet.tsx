@@ -36,6 +36,10 @@ function subjectHref(row: AuditRow): string | null {
       return `/borrowers/${row.subjectId}`;
     case "LOAN_PRODUCT":
       return `/admin/products/${row.subjectId}`;
+    case "APP_USER":
+      return `/users`;
+    case "API_CLIENT":
+      return `/api-clients`;
     case "LOAN_DOCUMENT":
     default:
       return null;
@@ -51,6 +55,10 @@ function subjectLabel(row: AuditRow): string | null {
       return "View borrower";
     case "LOAN_PRODUCT":
       return "View product";
+    case "APP_USER":
+      return "View users";
+    case "API_CLIENT":
+      return "View API clients";
     case "LOAN_DOCUMENT":
       return "Document (no standalone view)";
     default:

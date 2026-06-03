@@ -124,6 +124,9 @@ class AuditExplorerControllerTest {
     @Autowired
     private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
 
+    @Autowired
+    private com.bhawana.lms.repo.DisbursementOutcomeAuditRepository disbursementOutcomeAuditRepository;
+
     private Lsp lspA;
     private Lsp lspB;
     private LoanProduct product;
@@ -150,6 +153,7 @@ class AuditExplorerControllerTest {
         // *not* cleared here because app_user.lsp_id (seeded by other test
         // classes) would block the delete — leftover LSPs are harmless since
         // every seed() uses random LSP codes.
+        disbursementOutcomeAuditRepository.deleteAllInBatch();
         loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
         borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
@@ -264,6 +268,7 @@ class AuditExplorerControllerTest {
     void searchReturnsAllFourStreamsForSystemAdmin() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
+                        .queryParam("streams", "APPLICATION,INTAKE,DOCUMENT_ACCESS,PRODUCT")
                         .queryParam("paginationDetails", "true"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(5))
