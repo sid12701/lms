@@ -6,5 +6,5 @@ import java.util.List;
 
 public interface WebhookEventOutboxRepositoryCustom {
 
-    List<WebhookEventOutbox> claimDispatchBatch(Instant now, int batchSize);
+    List<WebhookEventOutbox> claimDispatchBatch(Instant now, int batchSize, Instant claimExpiresAt);
 }

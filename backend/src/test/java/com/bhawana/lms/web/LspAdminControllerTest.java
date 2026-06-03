@@ -7,10 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.bhawana.lms.repo.AppUserRepository;
-import com.bhawana.lms.repo.LoanProductLspMappingRepository;
-import com.bhawana.lms.repo.LspAuditEventRepository;
-import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -38,31 +35,11 @@ class LspAdminControllerTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private LspRepository lspRepository;
-
-    @Autowired
-    private LspAuditEventRepository lspAuditEventRepository;
-
-    @Autowired
-    private AppUserRepository appUserRepository;
-
-    @Autowired
-    private LoanProductLspMappingRepository loanProductLspMappingRepository;
-
-    @Autowired
-    private com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository loanDisbursementBankMismatchLogRepository;
-
-    @Autowired
-    private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
+    private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
 
     @BeforeEach
     void setUp() {
-        loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
-        borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
-        appUserRepository.deleteAllInBatch();
-        loanProductLspMappingRepository.deleteAllInBatch();
-        lspAuditEventRepository.deleteAllInBatch();
-        lspRepository.deleteAll();
+        integrationTestDatabaseCleaner.cleanIntegrationTestData();
     }
 
     @Test

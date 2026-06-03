@@ -19,6 +19,7 @@ import { Iso8601, IsoDate, Uuid } from "@/schemas/common";
 export const AUDIT_STREAMS = [
   "APPLICATION",
   "INTAKE",
+  "PII_REVEAL",
   "DOCUMENT_ACCESS",
   "PRODUCT",
   "APP_USER",
@@ -32,6 +33,7 @@ export type AuditStream = z.infer<typeof AuditStreamSchema>;
 export const AUDIT_STREAM_LABEL: Record<AuditStream, string> = {
   APPLICATION: "Application",
   INTAKE: "Intake",
+  PII_REVEAL: "PII reveal",
   DOCUMENT_ACCESS: "Document access",
   PRODUCT: "Product",
   APP_USER: "App user",

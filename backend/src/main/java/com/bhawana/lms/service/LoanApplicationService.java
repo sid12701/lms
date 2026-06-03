@@ -438,7 +438,7 @@ public class LoanApplicationService {
 
     private static String mapOutboxStatusToDeliveryStatus(com.bhawana.lms.domain.WebhookEventOutboxStatus status) {
         return switch (status) {
-            case PENDING -> "PENDING";
+            case PENDING, IN_FLIGHT -> "PENDING";
             case DELIVERED -> "DELIVERED";
             case RETRYABLE_FAILURE -> "FAILED";
             case PERMANENT_FAILURE -> "DEAD_LETTERED";
