@@ -2440,7 +2440,7 @@ Untouched (deliberately):
 ---
 
 ### #148 — [AUD-2] Admin reset-password writes no audit row
-**Labels:** auditability, security · **Link:** https://github.com/sid12701/lms/issues/148
+**Labels:** auditability, security · **Link:** https://github.com/sid12701/lms/issues/148 · **Status:** **CLOSED** — [PR #174](https://github.com/sid12701/lms/pull/174) (2026-06-02)
 
 **Problem (plain English):** Admin resets a user's password and the system writes no audit row. Privileged account takeover is invisible.
 
@@ -2544,10 +2544,10 @@ Untouched (deliberately):
 
 #### Effect on app
 
-- Every admin-initiated password reset writes one row to `app_user_audit_event` visible immediately to SOC / Audit Explorer with `eventType=PASSWORD_RESET_BY_ADMIN`, actor username, actor IP, and correlation ID.
+- Every admin-initiated password reset writes one row to `app_user_audit_event` with `eventType=PASSWORD_RESET_BY_ADMIN`, actor username, actor IP, and correlation ID. Rows are queryable on the **APP_USER** Audit Explorer stream (#159 / #152 PR (a)).
 - New `actor_ip` column starts populating for the existing `updateUser` writes too — same migration, no cost.
 - Extending `UserAuditSnapshot` with `passwordChangeRequired` makes the reset event's diff visible (false → true) instead of a confusing no-op snapshot diff.
-- No user-visible UI change in this PR. The Audit Explorer (#159) can later add an `eventType` filter; until then, SOC filters by JSON expression.
+- Audit Explorer shows resets under APP_USER; dedicated `eventType` filter chips remain a follow-up under #159.
 - Temporary password is never persisted to any audit/log surface (Slice 3 regression-guards this).
 - 400-on-unknown-userId path is forensically silent by design (Slice 4 regression-guards this).
 - Tiny per-reset overhead: one DB insert and one JSON serialization, in the same `@Transactional` boundary as the user save.
@@ -2557,7 +2557,7 @@ Untouched (deliberately):
 - **#71** (`auth_event_audit` table for login/refresh/logout/password-change) — orthogonal. `#71` covers the **self-service** password-change path (`PASSWORD_CHANGED`). `#148` covers the **admin-driven reset** path. Different actor models, different tables, no overlap. PRs are independent.
 - **#149** (API-client create/rotate/reveal audit) — sibling AUD-class issue. Its grilling is the next task. The `actor_ip` precedent set here may flow into `ApiClientAuditEvent` too; decision deferred to #149's grill.
 - **#155** (`AUTH_BRUTE_FORCE` lockout) — uses `auth_event_audit`, not `app_user_audit_event`. Independent.
-- **#159** (Audit Explorer streams) — `app_user_audit_event` is already one of the 4 streams. After this PR, Explorer rows for resets render with their current shape; surfacing `eventType` as a filter chip is a follow-up enhancement under #159's scope.
+- **#159** (Audit Explorer streams) — **CLOSED** with [PR #174](https://github.com/sid12701/lms/pull/174). `APP_USER` stream surfaces reset rows; `eventType` filter chips deferred.
 - **#98 / #99** (god-class refactors of `AdminDirectoryService`) — the new helper `writeUserAuditEvent` plus the snapshot extension stay inline in `AdminDirectoryService`. When #98/#99 land, the natural extraction is an `AppUserAuditEventWriter` collaborator absorbing both call sites; out of scope here.
 
 #### Dependencies / sequencing
@@ -2565,10 +2565,19 @@ Untouched (deliberately):
 - Independent of all other AUD-class work; can ship first or anywhere in the AUD-class PR train.
 - The follow-up email-notify ticket is non-blocking; file in the same PR description.
 
+**Implementation status — CLOSED (2026-06-02, [PR #174](https://github.com/sid12701/lms/pull/174)):**
+
+| Delivered | Primary code |
+|-----------|--------------|
+| Migration **V81**: `actor_ip` on `app_user_audit_event` | `V81__app_user_audit_event_actor_ip.sql` |
+| `PASSWORD_RESET_BY_ADMIN` in after-state JSON; snapshot includes `passwordChangeRequired` | `AdminDirectoryService.java` |
+| `Jwt` + `ClientIpAddresses.resolve` on reset-password | `UserAdminController.java` |
+| Integration tests (slices 1–4) | `UserAdminControllerTest.java` |
+
 ---
 
 ### #149 — [AUD-3] API-client create/rotate/reveal moments not audited
-**Labels:** auditability, security · **Link:** https://github.com/sid12701/lms/issues/149
+**Labels:** auditability, security · **Link:** https://github.com/sid12701/lms/issues/149 · **Status:** **CLOSED** — [PR #174](https://github.com/sid12701/lms/pull/174) (2026-06-02)
 
 **Problem (plain English):** Creating an API client, rotating its secret, or revealing it leaves no audit trail.
 
@@ -2706,6 +2715,15 @@ Untouched (deliberately):
 
 - Independent of all other AUD-class work; can ship in any order within the AUD-class PR train.
 - No prerequisite on #71 or #148. Cleanly parallelizable.
+
+**Implementation status — CLOSED (2026-06-02, [PR #174](https://github.com/sid12701/lms/pull/174)):**
+
+| Delivered | Primary code |
+|-----------|--------------|
+| Migration **V83**: `actor_ip` on `api_client_audit_event` | `V83__api_client_audit_event_actor_ip.sql` |
+| `CLIENT_CREATED` on create; `CLIENT_DISABLED` / `CLIENT_ENABLED` on status flip | `ApiClientManagementService.java` |
+| `actor_ip` + `ClientIpAddresses.resolve` on create / update / rotate | `ApiClientAdminController.java` |
+| Integration tests (6 slices) | `ApiClientAdminControllerCreateAuditTest.java` |
 
 ---
 
@@ -2883,7 +2901,7 @@ Untouched (deliberately):
 ---
 
 ### #152 — [AUD-6] Mock-outcome disbursement endpoint not audited
-**Labels:** auditability, mocked-flow · **Link:** https://github.com/sid12701/lms/issues/152
+**Labels:** auditability, mocked-flow · **Link:** https://github.com/sid12701/lms/issues/152 · **Status:** **CLOSED** — [PR #174](https://github.com/sid12701/lms/pull/174) (2026-06-02)
 
 **Problem (plain English):** The mock-outcome endpoint (which after #61 lives in prod by design until provider approval) writes no audit. Fabricated outcomes go untraced. ALSO — the audit rows already being written by #148 / #149 are not visible via any live read endpoint because the Audit Explorer covers only 4 of the 6+ audit tables.
 
@@ -3120,6 +3138,18 @@ Untouched (deliberately):
 - PR (a) is independent of #148 and #149 — they can ship in any order. If #148 / #149 land first, PR (a) immediately surfaces their new rows. If PR (a) lands first, the existing `USER_UPDATED` / `SECRET_ROTATED` / `CLIENT_UPDATED` rows surface; #148 / #149 then add their new action labels on top.
 - PR (b) depends on no other ticket (it adds a new write + new read path).
 - PR (a) → PR (b) is the natural shipping order: (a) lays the FE filter-chip + AuditStream-expansion plumbing that (b) reuses for the DISBURSEMENT chip. But they can technically ship in parallel — the AuditStream enum, FE type, and filter-chip arrays accept additive enum values without conflict.
+
+**Implementation status — CLOSED (2026-06-02, [PR #174](https://github.com/sid12701/lms/pull/174)):**
+
+Shipped as grilled PR (a) + (b) together with **#159** on one branch (four commits: #148, #149, #152, #159).
+
+| Slice | Delivered | Primary code |
+|-------|-----------|--------------|
+| (a) | `APP_USER` + `API_CLIENT` UNION branches; stream integration tests | `AuditExplorerRepository.java`, `AuditExplorerController*StreamTest.java` |
+| (b) | `disbursement_outcome_audit` (V82); mock-outcome write; `DISBURSEMENT` stream | `DisbursementOutcomeAuditService.java`, `LoanApplicationService.java`, `LoanApplicationOpsControllerMockOutcomeAuditTest.java` |
+| Tests | H2 parity for every `AuditStream`; FK-safe teardown (`disbursement_outcome_audit` before `loan_account`) | `AuditExplorerStreamProjectionParityTest.java`, integration `@BeforeEach` cleanup |
+
+Cross-ref § **#159** for frontend stream tabs and out-of-scope 8th-stream checklist.
 
 ---
 
@@ -4809,16 +4839,44 @@ If V66 succeeded on any environment, the backfill from V58 has held — orphans 
 ---
 
 ### #159 — [R-4] Audit Explorer only covers 4 streams
-**Labels:** dashboard-risk, auditability · **Link:** https://github.com/sid12701/lms/issues/159
+**Labels:** dashboard-risk, auditability · **Link:** https://github.com/sid12701/lms/issues/159 · **Status:** **CLOSED** — [PR #174](https://github.com/sid12701/lms/pull/174) (2026-06-02)
 
 **Problem (plain English):** Login/webhook/user-mgmt audit streams aren't searchable in Explorer.
 
 **Possible fixes:**
 1. **Add streams as the underlying audit tables land (#71, #149, #153)** — incremental.
 
-**Recommended:** Option 1.
+**Recommended:** Option 1 — implemented per the grilled **§#152 two-PR plan** (not “wire every audit table in one shot”).
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-02):** Canonical design lives in **§#152** ([AUD-6]). #159 closes when the Explorer exposes **7 streams** on the live `GET /api/v1/internal/admin/audit-events` endpoint.
+
+| Stream | Source table | PR slice |
+|--------|----------------|----------|
+| APPLICATION | `loan_application_audit_event` | pre-existing |
+| INTAKE | `loan_application_intake_audit` | pre-existing |
+| DOCUMENT_ACCESS | `loan_application_document_access_audit` | pre-existing |
+| PRODUCT | `loan_product_audit_event` | pre-existing |
+| APP_USER | `app_user_audit_event` | #152 (a) |
+| API_CLIENT | `api_client_audit_event` | #152 (a) |
+| DISBURSEMENT | `disbursement_outcome_audit` | #152 (b) |
+
+**Out of scope for #159 (follow-ups):** AUTH (`#71`), LSP/webhook config (`#153`), REPORT_ACCESS (`#151`), server-side `correlationId` / free-text `q` (`#76`), `LSP_AUDIT` / `lsp_audit_event` (8th stream after `#153` lands).
+
+**Implementation notes (locked):**
+- `ClientIpAddresses.resolve` on mock-outcome (not raw `getRemoteAddr()`).
+- `userId` / `apiClientId` surface in `detail` JSON; FE `subjectFor` extended; unified envelope unchanged.
+- FE `PII_REVEAL` tab removed from `/audit` (no backend stream; forensic table stays write-only).
+- Parity: `AuditExplorerStreamProjectionParityTest` — every `AuditStream` branch executes on H2.
+
+**Implementation status — CLOSED (2026-06-02, [PR #174](https://github.com/sid12701/lms/pull/174)):**
+
+| Area | Delivered |
+|------|-----------|
+| Backend | `AuditStream` 4→7; UNION branches + projection in `AuditExplorerRepository` / `AuditExplorerService` |
+| Frontend | `frontend-2/src/features/audit/` — stream types, tabs, `subjectFor`, detail sheet |
+| Tests | `AuditExplorerController*StreamTest`, `AuditExplorerStreamProjectionParityTest`, audit `page.test.tsx` stream cases |
+
+**8th+ streams checklist (for GitHub issue body):** AUTH, LSP_AUDIT, REPORT_ACCESS, server-side correlation/q filter, optional per-app disbursement drill-down.
 
 ---
 
