@@ -1,7 +1,9 @@
 package com.bhawana.lms.web;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -12,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
+import com.bhawana.lms.domain.AppUserAuditEvent;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.repo.AppRoleRepository;
@@ -23,6 +26,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +42,8 @@ import org.springframework.test.web.servlet.MvcResult;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class UserAdminControllerTest {
+
+    private static final String CLIENT_IP = "203.0.113.50";
 
     @Autowired
     private MockMvc mockMvc;
@@ -217,6 +223,86 @@ class UserAdminControllerTest {
         AppUser stored = appUserRepository.findByUsername("MIXED.CASE.USER").orElseThrow();
         assertEquals("mixed.case.user", stored.getUsername());
         assertEquals("mixed.case@example.com", stored.getEmail());
+    }
+
+    @Test
+    void adminResetPasswordWritesAuditRowWithExpectedShape() throws Exception {
+        AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
+        assertFalse(managedUser.isPasswordChangeRequired());
+
+        mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/reset-password", managedUser.getId())
+                        .with(systemAdmin())
+                        .header("X-Forwarded-For", CLIENT_IP))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.temporaryPassword").isString());
+
+        AppUserAuditEvent auditEvent = appUserAuditEventRepository
+                .findTopByUser_IdOrderByCreatedAtDesc(managedUser.getId())
+                .orElseThrow();
+
+        assertEquals("ops.admin", auditEvent.getActorUsername());
+        assertEquals(CLIENT_IP, auditEvent.getActorIp());
+        assertNotNull(auditEvent.getCorrelationId());
+        assertFalse(auditEvent.getCorrelationId().isBlank());
+        assertEquals("false", auditEvent.getBeforeStateJson().get("passwordChangeRequired").asText());
+        assertEquals("true", auditEvent.getAfterStateJson().get("passwordChangeRequired").asText());
+        assertEquals("PASSWORD_RESET_BY_ADMIN", auditEvent.getAfterStateJson().get("eventType").asText());
+        assertFalse(auditEvent.getBeforeStateJson().has("eventType"));
+    }
+
+    @Test
+    void updateUserAuditRowIncludesActorIpWithoutEventType() throws Exception {
+        AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
+
+        mockMvc.perform(put("/api/v1/internal/admin/users/{userId}", managedUser.getId())
+                        .with(systemAdmin())
+                        .header("X-Forwarded-For", CLIENT_IP)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", "updated.user@bhawana.local"))))
+                .andExpect(status().isOk());
+
+        AppUserAuditEvent auditEvent = appUserAuditEventRepository
+                .findTopByUser_IdOrderByCreatedAtDesc(managedUser.getId())
+                .orElseThrow();
+
+        assertEquals(CLIENT_IP, auditEvent.getActorIp());
+        assertFalse(auditEvent.getAfterStateJson().has("eventType"));
+    }
+
+    @Test
+    void resetPasswordAuditRowDoesNotContainTemporaryPassword() throws Exception {
+        AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
+
+        MvcResult resetResult = mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/reset-password", managedUser.getId())
+                        .with(systemAdmin())
+                        .header("X-Forwarded-For", CLIENT_IP))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String temporaryPassword = objectMapper.readTree(resetResult.getResponse().getContentAsString())
+                .get("temporaryPassword")
+                .asText();
+
+        AppUserAuditEvent auditEvent = appUserAuditEventRepository
+                .findTopByUser_IdOrderByCreatedAtDesc(managedUser.getId())
+                .orElseThrow();
+
+        String beforeJson = auditEvent.getBeforeStateJson().toString();
+        String afterJson = auditEvent.getAfterStateJson().toString();
+        assertFalse(beforeJson.contains(temporaryPassword));
+        assertFalse(afterJson.contains(temporaryPassword));
+    }
+
+    @Test
+    void resetPasswordForUnknownUserDoesNotWriteAuditRow() throws Exception {
+        long beforeCount = appUserAuditEventRepository.count();
+        UUID unknownUserId = UUID.fromString("00000000-0000-0000-0000-000000000099");
+
+        mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/reset-password", unknownUserId)
+                        .with(systemAdmin()))
+                .andExpect(status().isBadRequest());
+
+        assertEquals(beforeCount, appUserAuditEventRepository.count());
     }
 
     @Test

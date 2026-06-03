@@ -20,6 +20,7 @@ import com.bhawana.lms.repo.AppUserAuditEventRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
@@ -272,6 +273,7 @@ public class AdminDirectoryService {
     public AppUser updateUser(
             UUID userId,
             String actorUsername,
+            String actorIp,
             String email,
             UserStatus status,
             UUID lspId,
@@ -326,27 +328,47 @@ public class AdminDirectoryService {
         AppUser saved = appUserRepository.save(user);
 
         UserAuditSnapshot afterSnapshot = toAuditSnapshot(saved);
-        appUserAuditEventRepository.save(new AppUserAuditEvent(
+        writeUserAuditEvent(
                 saved,
                 actorUsername,
-                serializeAuditSnapshot(beforeSnapshot),
-                serializeAuditSnapshot(afterSnapshot),
-                CorrelationIdHolder.get()
-        ));
+                actorIp,
+                CorrelationIdHolder.get(),
+                beforeSnapshot,
+                afterSnapshot,
+                null
+        );
 
         return saved;
     }
 
     @Transactional
-    public ResetPasswordResult resetUserPassword(UUID userId) {
+    public ResetPasswordResult resetUserPassword(
+            UUID userId,
+            String actorUsername,
+            String actorIp,
+            String correlationId
+    ) {
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown user id: " + userId));
 
+        UserAuditSnapshot beforeSnapshot = toAuditSnapshot(user);
+
         String temporaryPassword = generateTemporaryPassword();
         user.requirePasswordChange(passwordEncoder.encode(temporaryPassword));
-        appUserRepository.save(user);
+        AppUser saved = appUserRepository.save(user);
 
-        return new ResetPasswordResult(user, temporaryPassword);
+        UserAuditSnapshot afterSnapshot = toAuditSnapshot(saved);
+        writeUserAuditEvent(
+                saved,
+                actorUsername,
+                actorIp,
+                correlationId,
+                beforeSnapshot,
+                afterSnapshot,
+                "PASSWORD_RESET_BY_ADMIN"
+        );
+
+        return new ResetPasswordResult(saved, temporaryPassword);
     }
 
     private void enforceSelfEditGuards(
@@ -392,8 +414,28 @@ public class AdminDirectoryService {
                 user.getEmail(),
                 user.getStatus().name(),
                 user.getLsp() == null ? null : user.getLsp().getId().toString(),
-                user.getRoles().stream().map(role -> role.getCode().name()).sorted().toList()
+                user.getRoles().stream().map(role -> role.getCode().name()).sorted().toList(),
+                user.isPasswordChangeRequired()
         );
+    }
+
+    private void writeUserAuditEvent(
+            AppUser user,
+            String actorUsername,
+            String actorIp,
+            String correlationId,
+            UserAuditSnapshot beforeSnapshot,
+            UserAuditSnapshot afterSnapshot,
+            String eventType
+    ) {
+        appUserAuditEventRepository.save(new AppUserAuditEvent(
+                user,
+                actorUsername,
+                serializeAuditSnapshot(beforeSnapshot),
+                serializeAuditPayload(afterSnapshot, eventType),
+                correlationId,
+                actorIp
+        ));
     }
 
     private String serializeAuditSnapshot(UserAuditSnapshot snapshot) {
@@ -404,7 +446,25 @@ public class AdminDirectoryService {
         }
     }
 
-    private record UserAuditSnapshot(String email, String status, String lspId, List<String> roles) {
+    private String serializeAuditPayload(UserAuditSnapshot snapshot, String eventType) {
+        try {
+            ObjectNode node = objectMapper.valueToTree(snapshot);
+            if (eventType != null && !eventType.isBlank()) {
+                node.put("eventType", eventType);
+            }
+            return objectMapper.writeValueAsString(node);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to serialize user audit payload.", exception);
+        }
+    }
+
+    private record UserAuditSnapshot(
+            String email,
+            String status,
+            String lspId,
+            List<String> roles,
+            boolean passwordChangeRequired
+    ) {
     }
 
     private static String generateTemporaryPassword() {
