@@ -16,6 +16,7 @@ import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppRoleRepository;
+import com.bhawana.lms.repo.AppUserAuditEventRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
@@ -51,6 +52,9 @@ class AuthControllerTest {
     private AppUserRepository appUserRepository;
 
     @Autowired
+    private AppUserAuditEventRepository appUserAuditEventRepository;
+
+    @Autowired
     private AppRoleRepository appRoleRepository;
 
     @Autowired
@@ -76,6 +80,7 @@ class AuthControllerTest {
 
     @BeforeEach
     void setUpManagedUser() {
+        appUserAuditEventRepository.deleteAll();
         appUserRepository.deleteAll();
         apiClientAuditEventRepository.deleteAll();
         apiClientRepository.deleteAll();
@@ -188,7 +193,12 @@ class AuthControllerTest {
         AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
         String oldPasswordHash = managedUser.getPasswordHash();
 
-        AdminDirectoryService.ResetPasswordResult resetResult = adminDirectoryService.resetUserPassword(managedUser.getId());
+        AdminDirectoryService.ResetPasswordResult resetResult = adminDirectoryService.resetUserPassword(
+                managedUser.getId(),
+                "ops.admin",
+                "127.0.0.1",
+                "test-reset-login"
+        );
 
         assertNotEquals(oldPasswordHash, appUserRepository.findById(managedUser.getId()).orElseThrow().getPasswordHash());
 
@@ -205,7 +215,12 @@ class AuthControllerTest {
     @Test
     void managedUserMustChangePasswordAfterAdminReset() throws Exception {
         AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
-        AdminDirectoryService.ResetPasswordResult resetResult = adminDirectoryService.resetUserPassword(managedUser.getId());
+        AdminDirectoryService.ResetPasswordResult resetResult = adminDirectoryService.resetUserPassword(
+                managedUser.getId(),
+                "ops.admin",
+                "127.0.0.1",
+                "test-reset-must-change"
+        );
 
         MvcResult resetLoginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -310,7 +325,9 @@ class AuthControllerTest {
                 "Apex Machine Client",
                 null,
                 lsp.getId(),
-                com.bhawana.lms.domain.ApiClientStatus.ACTIVE
+                com.bhawana.lms.domain.ApiClientStatus.ACTIVE,
+                "test.setup",
+                null
         );
 
         MvcResult result = mockMvc.perform(post("/api/v1/auth/token")
@@ -373,7 +390,9 @@ class AuthControllerTest {
                 "Apex Machine Client",
                 null,
                 lsp.getId(),
-                com.bhawana.lms.domain.ApiClientStatus.ACTIVE
+                com.bhawana.lms.domain.ApiClientStatus.ACTIVE,
+                "test.setup",
+                null
         );
 
         MvcResult tokenResult = mockMvc.perform(post("/api/v1/auth/token")
