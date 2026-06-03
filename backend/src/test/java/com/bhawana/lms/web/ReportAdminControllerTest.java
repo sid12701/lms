@@ -141,8 +141,12 @@ class ReportAdminControllerTest extends MinioTestSupport {
     @Autowired
     private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
 
+    @Autowired
+    private com.bhawana.lms.repo.DisbursementOutcomeAuditRepository disbursementOutcomeAuditRepository;
+
     @BeforeEach
     void setUp() {
+        disbursementOutcomeAuditRepository.deleteAllInBatch();
         loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
         borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
