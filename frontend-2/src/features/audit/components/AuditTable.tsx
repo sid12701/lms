@@ -60,6 +60,7 @@ function truncateMiddle(value: string, head = 6, tail = 4): string {
 const STREAM_BADGE_TONE: Record<AuditStream, string> = {
   APPLICATION: "bg-info/15 text-info-foreground border-info/40",
   INTAKE: "bg-success/15 text-success-foreground border-success/40",
+  PII_REVEAL: "bg-warning/15 text-warning-foreground border-warning/40",
   DOCUMENT_ACCESS: "bg-warning/15 text-warning-foreground border-warning/40",
   PRODUCT: "bg-muted text-foreground-muted border-border",
   APP_USER: "bg-primary/10 text-primary border-primary/30",

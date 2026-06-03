@@ -1890,16 +1890,9 @@ Untouched (deliberately):
 ---
 
 ### #87 — [B-5] WebhookOutboxService.dispatchPending holds batch TX during slow deliveries
-**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/87 · **Status:** **OPEN** — plan grilled 2026-06-01, **NOT shipped** (2026-06-02 follow-up audit)
+**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/87 · **Status:** **CLOSED** — PR pending merge (2026-06-03)
 
-> **2026-06-02 follow-up audit:** the `[SOLVED 2026-06-01]` marker on this entry was incorrect. The plan below was grilled in detail but never implemented. Specifically:
-> - No `V{n+1}__webhook_event_outbox_claim_expires_at.sql` migration exists.
-> - `WebhookEventOutbox` has no `claimExpiresAt` field; no `claim(Instant)` method.
-> - `WebhookOutboxService.dispatchPending` (line 111) is still a single `@Transactional` method that loops `dispatchEvent(event)` synchronously (line 126); the HTTP call at line 162 still happens inside that one transaction.
-> - No `webhookDeliveryExecutor` `ThreadPoolTaskExecutor` bean.
-> - Connection-pool starvation under slow-partner outage and crash-stranding of `IN_FLIGHT` rows both still live.
->
-> **Recommended:** ship the plan below as written; remove this banner once verified on `main`.
+> **Shipped (2026-06-03):** `V80__webhook_event_outbox_claim_expires_at.sql`; `WebhookEventOutboxStatus.IN_FLIGHT` + `claimExpiresAt` / `claim()`; Postgres `claimDispatchBatch` CTE marks `IN_FLIGHT` with expiry; H2 JPA claim path; `WebhookOutboxDispatchExecutor` (separate bean for real `@Transactional` claim + `deliverOne`); `WebhookDispatchConfig` `webhookDeliveryExecutor` (pool size `app.webhooks.delivery.thread-pool-size`, default 10); `WebhookOutboxService.dispatchPending` orchestrates claim then parallel per-row delivery; `LoanApplicationService` maps `IN_FLIGHT` → UI `PENDING`; tests `WebhookOutboxServiceDispatchTest`; shared `IntegrationTestDatabaseCleaner` for FK-safe H2 teardown; audit mock `PII_REVEAL` stream restored in `frontend-2` types.
 
 **Problem (plain English):** The webhook worker claims a batch of 100 events and then delivers them one-by-one, all inside one transaction. If one partner is slow (or down), the whole transaction stays open and holds row locks. Under outage you can lock the connection pool.
 
@@ -3682,7 +3675,7 @@ Untouched (deliberately):
 ---
 
 ### #81 — Rate limiting missing on doc/report/mock-outcome/refresh/password endpoints
-**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/81
+**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/81 · **Status:** **OPEN** — plan grilled 2026-06-03, ready to implement. Closes **#127** as duplicate.
 
 **Problem (plain English):** Rate limit only covers auth + a few LSP write paths. Doc/report scraping and refresh/password brute-force are unbounded.
 
@@ -3694,7 +3687,198 @@ Untouched (deliberately):
 
 **Effect on app:** Abuse vectors capped. Legitimate use unchanged.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-03):**
+
+**Reframe of the audit-doc options.** The original framing — "Option 1 (extend matcher) now, Option 2 (switch to Redis) later if multi-replica drift shows up" — is stale. `backend/.../security/RateLimitConfig.java:39` already wires the Bucket4j proxy through Lettuce (`Bucket4jLettuce.casBasedBuilder(...)` with a 10-minute TTL). Buckets are already cluster-correct. "Switch to Redis" is not a future option; it is today's reality. The actual decision is **what to match, what budgets, and per-actor vs per-IP keying** — not the bucket store.
+
+#### Audit of linked surface area (done before deciding)
+
+| Surface | Path / Code | State |
+|---|---|---|
+| Filter | `security/RateLimitFilter.java:92` (`resolveTarget`) | Hardcoded `if`-chain: matches `POST /api/v1/auth/login`, `POST /api/v1/auth/token`, and any write under `/api/v1/lsp/**`. Anything else returns `null` → unbounded. |
+| Properties | `security/RateLimitProperties.java` | Two knobs: `authPerMinute=10`, `lspWritePerMinute=60`. No collection type; adding a third budget requires a new field. |
+| Bucket store | `security/RateLimitConfig.java:39` | Redis-backed `ProxyManager<String>` via `Bucket4jLettuce.casBasedBuilder`. **Cluster-correct today.** TTL 10 min. |
+| Alert plumbing | `service/AlertRuleEvaluationService.java:229` (`emitRateLimitBreach`) | Already fires `RATE_LIMIT_EXCEEDED` with `bucketKey`, `path`, `retryAfterSeconds`. Wired into the alert stream shipped by **#62 PR-(a)**. Visible in Audit Explorer. |
+| Auth endpoints | `web/AuthController.java:118` (`/refresh`), `:156` (`/password`), `:181` (`/logout`) | **All three unbounded.** Refresh brute-force, password rotation hammering, logout-spam under multi-tab races all uncapped. |
+| Admin password reset | `web/UserAdminController.java:79` (`POST /api/v1/internal/admin/users/{userId}/reset-password`) | Unbounded. Allows an attacker (compromised SYSTEM_ADMIN) to reset many users rapidly to obscure intent. |
+| Document GET (ops) | `web/LoanApplicationOpsController.java:186` (`/{id}/kyc-documents`), `:196` (`.../download-all`), `:221` (`.../{type}/content`) | Unbounded. #70's audit row is post-facto only. |
+| Document GET (LSP) | `web/LspLoanApplicationApiController.java:261` (`/{id}/documents`) | Unbounded. Bulk-scrape vector if an LSP credential leaks. |
+| Mock-outcome | `web/LoanApplicationOpsController.java:382` (`POST .../disbursement-requests/mock-outcome`) | Per #61, this is the **live disbursement-callback simulator**. Unbounded → an attacker can churn `DISBURSED → REFUNDED → DISBURSED` on the same loan to obscure the audit trail. #152's audit captures each call but does not gate volume. |
+| Reports | `web/ReportAdminController.java:42,58,67,82,103` (5 endpoints under `/api/v1/internal/reports/**`) | All unbounded. CSV at `:67` still leaks raw PAN (per #69), so scraping is also a data-exfil vector. |
+| Frontend 429 handling | `frontend-2/src/lib/api/http-client.ts` (`requestJson`, `requestBlob`) | **No 429 / `Retry-After` interceptor.** Hitting a bucket today produces a raw "Request failed" toast. Confirmed via grep: zero matches for `429`, `Retry-After`, or `RATE_LIMIT_EXCEEDED` across `frontend-2/**/*.ts`. |
+| Test profile | (existing `application-test.yml`) | Test profile inherits production budgets. Any loop test that exceeds 10/min or 60/min would already flap; adding new buckets multiplies the surface. |
+| Sibling issue | `#127 [F-4]` | Exact duplicate of #81. |
+| Adjacent (not merged) | `#155` (failed-auth → lockout pipeline) | Different semantics: lockout = "N failures → block account/IP"; rate limit = "N req/min → 429 + retry-after." They compose; this PR explicitly does not subsume #155. |
+| Adjacent (not merged) | `#142` (LSP allowlist cache process-local) | Different cache, different layer. Calling it out so future readers don't conflate it with the bucket store. |
+| Adjacent (not merged) | `#69` (MIS CSV unmasked PAN) | Rate limit on report download is defence-in-depth in addition to masking; #69 stays open. |
+| Adjacent (not merged) | `#80` (admin "log out everywhere"), `#133` (password history) | Both will likely add buckets later. Validates Option B (rules table) over the existing if-chain. |
+| Cluster controls relying on this | `#62 PR-(c)` alert stream | New buckets increase alert volume on the same plumbing; no new surface. |
+
+**Conclusion of audit:** the bucket store, the alert plumbing, and the 429 body shape are all already correct. The whole job is (a) replace the hardcoded matcher with a rules table, (b) add four new rule families with the right keying matrix, (c) close the FE UX gap so 429s don't surface as opaque errors, (d) keep CI green by raising test-profile budgets. #127 closes in the same PR.
+
+#### Decision (after grilling, 2026-06-03)
+
+1. **Matcher → config-driven rules table (Option B).** `RateLimitProperties` carries a `List<Rule>` of `{ id, pathPattern, methods, key, permitsPerMinute }`. The filter walks rules in order; first match wins. Existing three buckets (`auth-login`, `auth-token`, `lsp-write`) become rules; the hardcoded `if`-chain in `resolveTarget` is replaced by a single rule-table walk. Rejected: annotation-based (split-brain with the cross-cutting LSP-write rule; couples to Spring AOP); keep-the-if-chain (the queue of upcoming buckets — #80, #133, #155 — argues against hardcoding).
+2. **Keying matrix.** A new enum `KeyStrategy { IP, SUBJECT, LSP, CLIENT, IP_AND_SUBJECT, SUBJECT_AND_APPLICATION }`. Per surface:
+   - `auth-login`, `auth-token` — `IP` (unchanged from today).
+   - `lsp-write` — `LSP` (unchanged from today; key extracts `lspId` claim).
+   - `auth-refresh` — `IP_AND_SUBJECT` (both buckets must pass). Defeats both botnet IP rotation and credential rotation.
+   - `auth-password`, `admin-reset-password` — `SUBJECT` (account-targeted brute force; IP-only would be bypassable by botnet).
+   - `docs-ops` — `SUBJECT` (a compromised SYSTEM_ADMIN is one principal regardless of IP).
+   - `docs-lsp` — `LSP` (consistent with `lsp-write`).
+   - `reports` — `SUBJECT`.
+   - `mock-outcome` — `SUBJECT_AND_APPLICATION` (stacked: per-actor cap + per-application cap; catches both "one admin, many loans" and "many admins, one loan" patterns). Implemented as **two** rules with the same `pathPattern` and `methods`; the filter must consume *both* buckets before letting the request through.
+3. **Configured rules (initial YAML).** Budgets are starting points; tunable in `application.yml` without a release.
+   ```yaml
+   app.rate-limit.rules:
+     - { id: auth-login,          path: /api/v1/auth/login,                                                methods: [POST],            key: IP,                       permits: 10 }
+     - { id: auth-token,          path: /api/v1/auth/token,                                                methods: [POST],            key: IP,                       permits: 10 }
+     - { id: lsp-write,           path: /api/v1/lsp/**,                                                    methods: [POST,PUT,PATCH,DELETE], key: LSP,                permits: 60 }
+     - { id: auth-refresh,        path: /api/v1/auth/refresh,                                              methods: [POST],            key: IP_AND_SUBJECT,           permits: 30 }
+     - { id: auth-password,       path: /api/v1/auth/password,                                             methods: [POST],            key: SUBJECT,                  permits: 5  }
+     - { id: admin-reset-password,path: /api/v1/internal/admin/users/*/reset-password,                     methods: [POST],            key: SUBJECT,                  permits: 5  }
+     - { id: docs-ops,            path: /api/v1/internal/ops/loan-applications/*/kyc-documents/**,         methods: [GET],             key: SUBJECT,                  permits: 120 }
+     - { id: docs-lsp,            path: /api/v1/lsp/loan-applications/*/documents/**,                      methods: [GET],             key: LSP,                      permits: 120 }
+     - { id: reports,             path: /api/v1/internal/reports/**,                                       methods: [GET,POST],        key: SUBJECT,                  permits: 60 }
+     - { id: mock-outcome,        path: /api/v1/internal/ops/loan-applications/*/disbursement-requests/mock-outcome, methods: [POST], key: SUBJECT_AND_APPLICATION,  permits: 10/5 }
+   ```
+   Notation: `permits: 10/5` for `SUBJECT_AND_APPLICATION` means `subjectBucket=10/min`, `applicationBucket=5/min`. Encoded in YAML as two integers (`permitsSubject`, `permitsApplication`); the validator rejects single-int permits for that strategy and rejects two-int permits for any other strategy.
+4. **Alert taxonomy → single `RATE_LIMIT_EXCEEDED` only.** Reuse the existing `AlertRuleEvaluationService.emitRateLimitBreach(bucketKey, path, retryAfterSeconds)` untouched. The `bucketKey` (e.g., `docs-ops:subject:<uuid>`, `lsp-write:<lspId>`, `mock-outcome-app:<applicationId>`) already identifies actor/LSP/application; Audit Explorer reviewers filter by `alertType=RATE_LIMIT_EXCEEDED` and parse the key prefix. Rejected: surface-specific types (DOC_SCRAPE_DETECTED etc.) invent a new family per rule; reusing one type keeps the plumbing static while the rule table evolves.
+5. **Frontend 429 + `Retry-After` interceptor in the same PR.** `frontend-2/src/lib/api/http-client.ts`'s `requestJson` and `requestBlob` learn one new branch: on `response.status === 429`, read `Retry-After`, surface a typed `ApiError` with `code: "RATE_LIMIT_EXCEEDED"` and a `retryAfterSeconds: number` field, and expose a top-level toast helper that renders "Too many requests. Please wait N seconds." The error type is exported so call sites can override the message (e.g., on the report-download button to say "Report downloads are limited; please try again in N seconds"). No automatic retry — that's the user's job, not the client's.
+6. **Test-profile budgets — high overrides in `application-test.yml`.** Keep the filter wired so the wiring itself is verified by existing test runs. Override per-rule permits to a very high number (e.g., 100000/min) in `application-test.yml`. Breach-path tests opt into a dedicated `@TestPropertySource(properties = "app.rate-limit.rules[0].permitsPerMinute=2")` (or per-rule overrides) so they hit the limit in two requests. Rejected: disabling the filter entirely in tests (loses the in-process integration coverage that catches matcher regressions).
+7. **Bundle.** Close #127 in the same PR ("Closes #127 as duplicate of #81"). Single delivery, single review.
+
+#### TDD plan (vertical slices, one RED → GREEN at a time)
+
+Each slice exercises behaviour through a public surface (HTTP, the alert read interface, or the FE's typed error). No mocking of internal collaborators. The **tracer** boots first; each subsequent slice responds to what the previous revealed. Listed in execution order.
+
+**Slice 1 — TRACER: a request matching the existing `auth-login` rule still returns 429 after `permitsPerMinute` calls.**
+- RED: `RateLimitFilterIntegrationTest.authLoginRuleStillFiresAfterPortToRulesTable()`. `@SpringBootTest` with `app.rate-limit.rules[0].id=auth-login`, `path=/api/v1/auth/login`, `methods=[POST]`, `key=IP`, `permits=2`. Hit `/auth/login` three times. Assert third response is 429 with `Retry-After` header and `RATE_LIMIT_EXCEEDED` body code. Fails because `RateLimitProperties` has no rules-list field yet.
+- GREEN: introduce `RateLimitProperties.rules: List<Rule>` (and the `Rule` + `KeyStrategy` types). Make `RateLimitFilter.resolveTarget` walk the rules. Keep the hardcoded `if`-chain *as a fallback* for this slice only — both paths exist briefly. Test passes via the new rules path.
+- Refactor: none yet — Slice 2 retires the if-chain.
+
+**Slice 2 — Retire the hardcoded if-chain; existing `lsp-write` and `auth-token` rules still fire via the rules table.**
+- RED: extend the integration test to seed `auth-token` and `lsp-write` rules in YAML and assert they still return 429 after their limits. Tests pass via fallback today; **delete the hardcoded if-chain** and re-run — tests now fail (matcher returns null).
+- GREEN: remove the if-chain entirely from `resolveTarget`. All three pre-existing buckets now travel only through the rules table. Tests pass.
+- Refactor: rename `RateLimitTarget.permitsPerMinute` to `permits` (or keep) and confirm the `bucketKey` format (`<rule-id>:<key-strategy-specific-suffix>`) is stable — it appears in the `RATE_LIMIT_EXCEEDED` alert payload and `bucketKey`-prefix filtering depends on it.
+
+**Slice 3 — `auth-refresh` is `IP_AND_SUBJECT`-keyed.**
+- RED: `RateLimitFilterRefreshTest.refreshRule_consumes_both_ip_and_subject_buckets()`. Seed `auth-refresh` with `permits=2`. From IP A and subject U, make 2 calls (both pass). From IP A and subject V, make a 3rd call — passes (IP A's bucket reset? no, refilling). Specifically: from IP A and subject U make 3 calls in <1s — third returns 429. From IP A and subject V, first call returns 429 (IP-A bucket already empty). From IP B and subject U, first call returns 429 (subject-U bucket already empty). Fails because the filter consumes one bucket per request.
+- GREEN: in the filter, for `IP_AND_SUBJECT` strategy, build *two* `BucketProxy`s (key `auth-refresh:ip:<ip>` and `auth-refresh:subject:<uuid>`); call `tryConsumeAndReturnRemaining(1)` on **both**; emit 429 if *either* refuses. On refusal, return the higher of the two `retryAfterSeconds`. Tests pass.
+- Refactor: extract `KeyStrategy.resolveKeys(rule, request, authentication) → List<String>` so the filter is data-driven over the strategy.
+
+**Slice 4 — `/auth/password` rule is `SUBJECT`-keyed.**
+- RED: `RateLimitFilterPasswordTest.passwordChange_brute_force_from_rotating_ips_against_same_account_is_capped()`. Seed `auth-password` with `permits=3`. Make 4 calls as subject U from 4 different remote IPs (simulated via `MockHttpServletRequest.setRemoteAddr`). 4th returns 429. From subject V, first call passes. Fails because no rule exists for `/auth/password`.
+- GREEN: add the `auth-password` rule to the YAML. `KeyStrategy.SUBJECT.resolveKeys` returns the JWT subject claim. Test passes.
+- Refactor: none.
+
+**Slice 5 — Admin reset-password rule is `SUBJECT`-keyed against the *resetter*, not the target user.**
+- RED: `RateLimitFilterAdminResetPasswordTest`. Subject `admin-alice` resets passwords for 6 different `{userId}` paths in <1s with `permits=5`. Sixth call returns 429. Subject `admin-bob` first reset passes. Tests fail because no rule covers `/api/v1/internal/admin/users/*/reset-password`.
+- GREEN: add the `admin-reset-password` rule. Confirm that `SUBJECT` keying uses the *caller's* subject (not the path variable `{userId}`). Tests pass.
+- Refactor: the path-pattern matcher must handle Ant-style `*` correctly — verify Spring's `AntPathMatcher` is used (or a small wrapper) and add a unit test for the pattern in isolation.
+
+**Slice 6 — Document GETs are capped per actor (ops) and per LSP (LSP API).**
+- RED: `RateLimitFilterDocsTest`. (a) Ops: subject U downloads 6 docs across 6 different applications in <1s with `permits=5` — sixth returns 429. (b) LSP: tenant L downloads 6 docs in <1s with `permits=5` — sixth returns 429. (c) LSP: tenant L downloads 1 doc, tenant M downloads 6 docs — only M's sixth returns 429. Fails because no doc rules exist.
+- GREEN: add `docs-ops` and `docs-lsp` rules. Tests pass.
+- Refactor: confirm the ZIP path `/kyc-documents/download-all` matches the same rule as single-file GETs (same `docs-ops` rule, same bucket — the ZIP costs *one* bucket slot regardless of contents; the cap is on requests, not bytes, which matches the threat model: scrape detection, not bandwidth).
+
+**Slice 7 — Reports rule covers preview, summary, CSV, request-submit, request-download.**
+- RED: `RateLimitFilterReportsTest`. Subject U hits all five report endpoints (preview, summary, CSV, request-submit, request-download) in a tight loop with `permits=5` total — sixth returns 429. Fails — no rules.
+- GREEN: add the single `reports` rule with `path: /api/v1/internal/reports/**` and `methods: [GET,POST]`. All five endpoints share the bucket — a scraper alternating preview/CSV doesn't double their budget. Tests pass.
+- Refactor: confirm the path glob matches all five endpoints; add a parameterised assertion if drift looks likely.
+
+**Slice 8 — Mock-outcome consumes both subject and application buckets.**
+- RED: `RateLimitFilterMockOutcomeTest`. (a) Subject U calls `/mock-outcome` on 11 different applications in <1s with `permitsSubject=10` — eleventh returns 429. (b) 5 different subjects each call `/mock-outcome` on **the same** application — sixth returns 429 with `permitsApplication=5`. (c) Subject V on a different application from (a)'s 10 — passes (independent SUBJECT bucket, independent APPLICATION bucket). Fails — no rule exists for `SUBJECT_AND_APPLICATION`.
+- GREEN: implement `KeyStrategy.SUBJECT_AND_APPLICATION` to resolve **two** keys (one from subject claim, one from path variable `{applicationId}`). YAML rule carries two permit values; the filter consumes both buckets. Add the YAML rule. Tests pass.
+- Refactor: keep the two-permit field on `Rule` polymorphic (single int vs. pair) but validate at startup that the shape matches the strategy. Document in the `Rule` Javadoc.
+
+**Slice 9 — Breach fires `RATE_LIMIT_EXCEEDED` alert with the right `bucketKey`.**
+- RED: `RateLimitFilterAlertEmissionIntegrationTest`. Configure `permits=1` for `reports`. Make 2 GETs to `/api/v1/internal/reports/portfolio-mis/preview`. After the 429, query the alert read API (Audit Explorer's `alertType=RATE_LIMIT_EXCEEDED` filter) and assert exactly one alert with `bucketKey` starting `reports:subject:` and `path = /api/v1/internal/reports/portfolio-mis/preview`. **No mock** on `AlertRuleEvaluationService` — assertion via the public alert query interface. Fails today only if the rule isn't wired through Slice 7; otherwise asserts the existing emit-on-breach behaviour for the new rule.
+- GREEN: nothing new on the backend (the emit call already exists in `RateLimitFilter.java:79`). The test exercises end-to-end through the alert pipeline. If the alert isn't surfaced — likely cause: `bucketKey` format change in Slice 2 broke a downstream filter assumption — fix at the source.
+- Refactor: lock the `bucketKey` format with a dedicated unit test (`RateLimitBucketKeyFormatTest`) so a future refactor cannot silently change the alert-payload contract.
+
+**Slice 10 — Test-profile high budgets keep CI green.**
+- RED: run the full backend test suite under the new rules table with `application-test.yml` still carrying production budgets. Any test that loops calls to a now-protected endpoint goes red. Capture the list (likely culprits: AuthControllerTest's refresh loop, ReportAdminControllerTest's CSV loop).
+- GREEN: in `application-test.yml`, set `app.rate-limit.rules[*].permitsPerMinute=100000` (and `permitsSubject`/`permitsApplication` analogously). Suite returns to green. Slices 1–9 keep their dedicated low-budget overrides.
+- Refactor: pull the test budgets into a single `@TestConfiguration` if `application-test.yml` becomes noisy.
+
+**Slice 11 — Frontend 429 surfaces `Retry-After` as a typed error.**
+- RED: `frontend-2/src/lib/api/http-client.test.ts`. With a stubbed `fetch` returning 429 + `Retry-After: 30` + `{ code: "RATE_LIMIT_EXCEEDED", message: "..." }`, assert `requestJson` throws an `ApiError` with `status=429`, `code="RATE_LIMIT_EXCEEDED"`, and (new) `retryAfterSeconds=30`. Fails — `ApiError` has no `retryAfterSeconds` field today.
+- GREEN: add `retryAfterSeconds: number | null` to `ApiError`; read `Retry-After` in the 429 branch of `performJsonRequest` (and `requestBlob`) and pass it to the `ApiError`. Test passes.
+- Refactor: confirm the toast helper consumed by mutations / queries surfaces a friendly message when `error.retryAfterSeconds` is present; add one Playwright spec (or RTL component test) to confirm the toast renders the seconds value.
+
+**Slice 12 — Regression canary: an attempt to add a rule referencing an unknown `KeyStrategy` fails fast at boot.**
+- RED: `RateLimitPropertiesValidationTest`. Load context with a bogus `key: WRONG_STRATEGY`. Assert `ApplicationContextException` (or `BeanCreationException`) with a message naming the bad rule id. Fails today because the YAML binder accepts unknown enum values silently.
+- GREEN: add `@PostConstruct` validation to `RateLimitProperties.rules` (or a `Validator`) that rejects unknown strategies, duplicate ids, and `SUBJECT_AND_APPLICATION` rules without a `permitsApplication` value. Test passes.
+- Refactor: this slice is the receipt — it makes future rule additions safe by failing the deploy rather than silently disabling a bucket.
+
+**Order matters:** Slices 1 → 2 must land in the same commit (the if-chain leaves the file at the end of Slice 2). Slices 3–8 are independent but conventionally land in the listed order. Slices 9 + 12 are the integration capstones; 10 + 11 prevent collateral damage in CI and FE UX.
+
+**Mocking discipline (per the TDD philosophy):**
+- `ProxyManager<String>` — system boundary (Redis). For unit-style filter tests, swap in `Bucket4jLettuce`'s in-memory variant via a `@TestConfiguration` so tests don't require a real Redis. For `@SpringBootTest` integration tests, the real Redis from `docker-compose` is used.
+- `AlertRuleEvaluationService` — **internal collaborator, never mocked.** Slice 9 asserts via the public alert read API.
+- `Clock` — boundary, mocked in window-determinism tests if any window-precision assertions appear (Bucket4j refills greedily; we likely don't need a fake clock).
+- Repositories, lifecycle services, the rule engine — all internal; not mocked.
+
+**Tests we deliberately do NOT write here (owned elsewhere):**
+- Lockout-after-N-failures behaviour → #155.
+- Allowlist cache invalidation → #83 / #142.
+- Doc-download audit row content → #70 / #150.
+- Mock-outcome audit row content → #152.
+
+#### Files touched (final list)
+
+Add:
+- `backend/src/main/java/com/bhawana/lms/security/RateLimitRule.java` (record: `id`, `path`, `methods`, `key`, `permitsPerMinute`, `permitsApplication` (nullable)).
+- `backend/src/main/java/com/bhawana/lms/security/KeyStrategy.java` (enum + `resolveKeys` method).
+- `backend/src/main/java/com/bhawana/lms/security/RateLimitPropertiesValidator.java` (or `@PostConstruct` on `RateLimitProperties`).
+- `backend/src/test/java/com/bhawana/lms/security/RateLimitFilterIntegrationTest.java`
+- `backend/src/test/java/com/bhawana/lms/security/RateLimitFilterRefreshTest.java`
+- `backend/src/test/java/com/bhawana/lms/security/RateLimitFilterPasswordTest.java`
+- `backend/src/test/java/com/bhawana/lms/security/RateLimitFilterAdminResetPasswordTest.java`
+- `backend/src/test/java/com/bhawana/lms/security/RateLimitFilterDocsTest.java`
+- `backend/src/test/java/com/bhawana/lms/security/RateLimitFilterReportsTest.java`
+- `backend/src/test/java/com/bhawana/lms/security/RateLimitFilterMockOutcomeTest.java`
+- `backend/src/test/java/com/bhawana/lms/security/RateLimitFilterAlertEmissionIntegrationTest.java`
+- `backend/src/test/java/com/bhawana/lms/security/RateLimitBucketKeyFormatTest.java`
+- `backend/src/test/java/com/bhawana/lms/security/RateLimitPropertiesValidationTest.java`
+- `frontend-2/src/lib/api/http-client.test.ts` (new file or extension)
+
+Edit:
+- `backend/src/main/java/com/bhawana/lms/security/RateLimitProperties.java` — replace the two int knobs with `List<RateLimitRule> rules`. Keep deprecated getters/setters out (this is a breaking config change — the user has opted into the rules table). Add `@PostConstruct` validation.
+- `backend/src/main/java/com/bhawana/lms/security/RateLimitFilter.java` — `resolveTarget` walks `rules` in order; first match wins. `SUBJECT_AND_APPLICATION` returns *two* targets; the filter consumes both buckets atomically (atomic-enough: consume bucket A, then B; if B refuses, log but do **not** refund A — refund-on-second-failure is not in scope and adds little value at this scale).
+- `backend/src/main/java/com/bhawana/lms/security/RateLimitConfig.java` — likely unchanged; confirm no implicit dependency on the removed `authPerMinute`/`lspWritePerMinute` getters.
+- `backend/src/main/resources/application.yml` — replace the two budget knobs with the rules list shown above.
+- `backend/src/main/resources/application-test.yml` — high per-rule overrides.
+- `frontend-2/src/lib/api/http-client.ts` — `ApiError` gains `retryAfterSeconds: number | null`; `performJsonRequest` and `requestBlob` populate it on 429.
+- Any FE toast helper / mutation hook that displays `ApiError` — surface the seconds value if present. Identify call sites via grep for `ApiError` references in `frontend-2/src`.
+
+Untouched (deliberately):
+- `service/AlertRuleEvaluationService.java` — `emitRateLimitBreach` API unchanged; new buckets reuse it.
+- `common/api/ApiError.java` (backend) — 429 body shape already correct.
+- `security/RateLimitConfig.java` Redis wiring — already cluster-correct.
+- The audit-doc-suggested "switch to Redis" path — moot per the reframe.
+
+#### Effect on app (revised)
+
+- **Users / LSPs:** identical behaviour under normal load. Hitting a bucket → 429 + `Retry-After`; the FE renders a typed toast ("Too many requests. Please wait N seconds.") instead of the current opaque "Request failed".
+- **Security:** doc-scrape, report-scrape, refresh brute-force, password brute-force, mock-outcome churn all bounded. Per-rule keying matrix defeats the obvious bypasses (botnet IPs vs. credential rotation; one admin vs. many admins).
+- **Ops:** alert volume on `RATE_LIMIT_EXCEEDED` rises proportionally to attacker activity. Audit Explorer is the destination; no new dashboard. `bucketKey` prefix (`reports:subject:`, `mock-outcome-app:`, etc.) identifies the family in the alert payload.
+- **Perf:** one extra Redis CAS per matched request, plus a second for `IP_AND_SUBJECT` / `SUBJECT_AND_APPLICATION` rules. Already paid for the existing three rules; the marginal cost on new families is ~sub-millisecond against local Redis. No measurable impact at current scale.
+- **Partners (LSPs):** new GET cap on `/lsp/loan-applications/*/documents/**` at 120/min per LSP. Pre-launch, no partner comms required (per the #62 reframe). When real LSPs onboard, validate this against actual integration patterns; tune in YAML without a release.
+- **Risk accepted:** an attacker who controls multiple authenticated identities with multiple IPs can multiply their budget. This is the same residual risk every per-rule rate limit carries; lockout (#155) is the complementary control.
+
+#### Cluster impact / sequencing
+
+- **#127 [F-4]** — exact duplicate; closes in the same PR.
+- **#155** — independent. Lockout pipeline composes with rate limit (rate limit caps req/min; lockout blocks after N failures). Cross-reference in both directions in PR descriptions so future readers don't conflate them.
+- **#142** — independent. Different cache (allowlist vs. bucket store), different layer. Calling out the boundary in the PR description prevents conflation.
+- **#80, #133** — likely customers of the rules table when they land. The matcher abstraction this PR introduces is the seam they'll plug into. Slice 12's validation acts as the safety net for those future additions.
+- **#69** — stays open. Rate limit on report downloads is defence-in-depth, not a substitute for masking.
+- **#62 PR-(c)** — alert plumbing reused as-is; no new alert type.
+- **PR description note:** call out that this PR removes the original audit-doc "switch to Redis" option (already wired), introduces the rules table, and adds four new families + the FE interceptor. Single delivery, single review.
+
+**Dependencies / sequencing:** independent — ships standalone. No upstream blockers; #62's alert plumbing is already on `main`. Implementation order matches the slice order above.
 
 ---
 

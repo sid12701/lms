@@ -126,6 +126,9 @@ function subjectFor(event: BackendUnifiedAuditEvent): {
       subjectId: readDetailId(event.detail, "apiClientId"),
     };
   }
+  if (event.stream === "PII_REVEAL" && event.borrowerId) {
+    return { subjectType: "BORROWER", subjectId: event.borrowerId };
+  }
   if (event.loanApplicationId) {
     return { subjectType: "LOAN_APPLICATION", subjectId: event.loanApplicationId };
   }

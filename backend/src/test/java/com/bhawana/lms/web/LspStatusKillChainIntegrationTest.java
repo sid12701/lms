@@ -7,25 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.bhawana.lms.repo.ApiClientAuditEventRepository;
-import com.bhawana.lms.repo.ApiClientRepository;
-import com.bhawana.lms.repo.AppUserRepository;
-import com.bhawana.lms.repo.BorrowerRepository;
-import com.bhawana.lms.repo.LoanAccountRepository;
-import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
-import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
-import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
-import com.bhawana.lms.repo.LoanApplicationRepository;
-import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
-import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
-import com.bhawana.lms.repo.LoanForeclosureQuoteRepository;
-import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
-import com.bhawana.lms.repo.LoanProductLspMappingRepository;
-import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
-import com.bhawana.lms.repo.WebhookEventOutboxRepository;
-import com.bhawana.lms.repo.LspAuditEventRepository;
-import com.bhawana.lms.repo.LspRepository;
-import com.bhawana.lms.repo.OpsAlertRepository;
+import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
@@ -57,95 +39,11 @@ class LspStatusKillChainIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private LspRepository lspRepository;
-
-    @Autowired
-    private ApiClientRepository apiClientRepository;
-
-    @Autowired
-    private ApiClientAuditEventRepository apiClientAuditEventRepository;
-
-    @Autowired
-    private AppUserRepository appUserRepository;
-
-    @Autowired
-    private LoanProductLspMappingRepository loanProductLspMappingRepository;
-
-    @Autowired
-    private LspAuditEventRepository lspAuditEventRepository;
-
-    @Autowired
-    private OpsAlertRepository opsAlertRepository;
-
-    @Autowired
-    private WebhookEventOutboxRepository webhookEventOutboxRepository;
-
-    @Autowired
-    private LoanForeclosureQuoteRepository loanForeclosureQuoteRepository;
-
-    @Autowired
-    private LoanPaymentTransactionRepository loanPaymentTransactionRepository;
-
-    @Autowired
-    private LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
-
-    @Autowired
-    private LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
-
-    @Autowired
-    private LoanAccountRepository loanAccountRepository;
-
-    @Autowired
-    private LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
-
-    @Autowired
-    private LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
-
-    @Autowired
-    private LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
-
-    @Autowired
-    private LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
-
-    @Autowired
-    private LoanApplicationRepository loanApplicationRepository;
-
-    @Autowired
-    private BorrowerRepository borrowerRepository;
-
-    @Autowired
-    private com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository loanDisbursementBankMismatchLogRepository;
-
-    @Autowired
-    private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
-
-    @Autowired
-    private com.bhawana.lms.repo.DisbursementOutcomeAuditRepository disbursementOutcomeAuditRepository;
+    private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
 
     @BeforeEach
     void setUp() {
-        webhookEventOutboxRepository.deleteAllInBatch();
-        opsAlertRepository.deleteAllInBatch();
-        disbursementOutcomeAuditRepository.deleteAllInBatch();
-        loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
-        borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
-        loanForeclosureQuoteRepository.deleteAllInBatch();
-        loanPaymentTransactionRepository.deleteAllInBatch();
-        loanDisbursementRequestLogRepository.deleteAllInBatch();
-        loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
-        loanAccountRepository.deleteAllInBatch();
-        loanApplicationAuditEventRepository.deleteAllInBatch();
-        loanApplicationDocumentChecklistRepository.deleteAllInBatch();
-        loanApplicationStatusTransitionRepository.deleteAllInBatch();
-        loanApplicationIntakeAuditRepository.deleteAllInBatch();
-        loanApplicationRepository.deleteAllInBatch();
-        borrowerRepository.deleteAllInBatch();
-        lspAuditEventRepository.deleteAllInBatch();
-        apiClientAuditEventRepository.deleteAllInBatch();
-        apiClientRepository.deleteAllInBatch();
-        appUserRepository.deleteAllInBatch();
-        loanProductLspMappingRepository.deleteAllInBatch();
-        lspRepository.deleteAllInBatch();
+        integrationTestDatabaseCleaner.cleanIntegrationTestData();
     }
 
     @Test

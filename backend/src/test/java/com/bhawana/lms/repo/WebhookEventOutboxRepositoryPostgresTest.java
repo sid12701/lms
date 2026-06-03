@@ -54,8 +54,12 @@ class WebhookEventOutboxRepositoryPostgresTest extends PostgresDataJpaTestSuppor
         CountDownLatch releaseFirstWorker = new CountDownLatch(1);
 
         try {
+            Instant claimExpiresAt = Instant.now().plusSeconds(300);
+
             Future<List<UUID>> firstWorker = executor.submit(() -> transactionTemplate.execute(status -> {
-                List<UUID> claimed = webhookEventOutboxRepository.claimDispatchBatch(Instant.now(), 2).stream()
+                List<UUID> claimed = webhookEventOutboxRepository
+                        .claimDispatchBatch(Instant.now(), 2, claimExpiresAt)
+                        .stream()
                         .map(WebhookEventOutbox::getId)
                         .toList();
                 firstWorkerClaimed.countDown();
@@ -66,7 +70,7 @@ class WebhookEventOutboxRepositoryPostgresTest extends PostgresDataJpaTestSuppor
             assertThat(firstWorkerClaimed.await(5, TimeUnit.SECONDS)).isTrue();
 
             Future<List<UUID>> secondWorker = executor.submit(() -> transactionTemplate.execute(status ->
-                    webhookEventOutboxRepository.claimDispatchBatch(Instant.now(), 2).stream()
+                    webhookEventOutboxRepository.claimDispatchBatch(Instant.now(), 2, claimExpiresAt).stream()
                             .map(WebhookEventOutbox::getId)
                             .toList()
             ));

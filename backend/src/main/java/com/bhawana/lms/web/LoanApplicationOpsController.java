@@ -1,7 +1,6 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanApplication;
-import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;

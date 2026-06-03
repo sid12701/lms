@@ -2,28 +2,24 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.Lsp;
-import com.bhawana.lms.domain.WebhookEventDeliveryAttempt;
-import com.bhawana.lms.domain.WebhookEventDeliveryAttemptStatus;
 import com.bhawana.lms.domain.WebhookEventOutbox;
-import com.bhawana.lms.domain.WebhookEventOutboxStatus;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.LspRepository;
-import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
 import com.bhawana.lms.repo.WebhookEventOutboxRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.annotation.Lazy;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,28 +27,26 @@ import org.springframework.transaction.annotation.Transactional;
 public class WebhookOutboxService {
 
     private static final Logger log = LoggerFactory.getLogger(WebhookOutboxService.class);
+    private static final Duration CLAIM_TTL = Duration.ofMinutes(5);
 
     private final WebhookEventOutboxRepository webhookEventOutboxRepository;
-    private final WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
     private final LspRepository lspRepository;
-    private final WebhookDeliveryClient webhookDeliveryClient;
     private final ObjectMapper objectMapper;
-    private final AlertRuleEvaluationService alertRuleEvaluationService;
+    private final WebhookOutboxDispatchExecutor webhookOutboxDispatchExecutor;
+    private final ThreadPoolTaskExecutor webhookDeliveryExecutor;
 
     public WebhookOutboxService(
             WebhookEventOutboxRepository webhookEventOutboxRepository,
-            WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
             LspRepository lspRepository,
-            WebhookDeliveryClient webhookDeliveryClient,
             ObjectMapper objectMapper,
-            @Lazy AlertRuleEvaluationService alertRuleEvaluationService
+            WebhookOutboxDispatchExecutor webhookOutboxDispatchExecutor,
+            @Qualifier("webhookDeliveryExecutor") ThreadPoolTaskExecutor webhookDeliveryExecutor
     ) {
         this.webhookEventOutboxRepository = webhookEventOutboxRepository;
-        this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
         this.lspRepository = lspRepository;
-        this.webhookDeliveryClient = webhookDeliveryClient;
         this.objectMapper = objectMapper;
-        this.alertRuleEvaluationService = alertRuleEvaluationService;
+        this.webhookOutboxDispatchExecutor = webhookOutboxDispatchExecutor;
+        this.webhookDeliveryExecutor = webhookDeliveryExecutor;
     }
 
     @Transactional
@@ -82,7 +76,7 @@ public class WebhookOutboxService {
                 aggregateType,
                 aggregateId,
                 loanApplicationId,
-                WebhookEventOutboxStatus.PENDING,
+                com.bhawana.lms.domain.WebhookEventOutboxStatus.PENDING,
                 serializePayload(envelope),
                 CorrelationIdHolder.get()
         ));
@@ -108,29 +102,40 @@ public class WebhookOutboxService {
         return webhookEventOutboxRepository.findTop50ByLsp_IdOrderByCreatedAtDesc(lspId);
     }
 
-    @Transactional
     public DispatchSummary dispatchPending(int batchSize) {
         if (batchSize < 1 || batchSize > 100) {
             throw new IllegalArgumentException("Batch size must be between 1 and 100.");
         }
 
         long startedAt = System.nanoTime();
-        List<WebhookEventOutbox> batch = webhookEventOutboxRepository.claimDispatchBatch(
-                Instant.now(),
-                batchSize
-        );
+        Instant now = Instant.now();
+        Instant claimExpiresAt = now.plus(CLAIM_TTL);
+        List<WebhookEventOutbox> batch = webhookOutboxDispatchExecutor.claimBatch(now, batchSize, claimExpiresAt);
+
         int delivered = 0;
         int retryableFailures = 0;
         int permanentFailures = 0;
 
-        for (WebhookEventOutbox event : batch) {
-            DeliveryOutcome outcome = dispatchEvent(event);
-            if (outcome == DeliveryOutcome.DELIVERED) {
-                delivered += 1;
-            } else if (outcome == DeliveryOutcome.RETRYABLE_FAILURE) {
-                retryableFailures += 1;
-            } else {
-                permanentFailures += 1;
+        List<Future<DeliveryOutcome>> deliveries = batch.stream()
+                .map(event -> webhookDeliveryExecutor.submit(() ->
+                        webhookOutboxDispatchExecutor.deliverOne(event.getId())))
+                .toList();
+
+        for (Future<DeliveryOutcome> delivery : deliveries) {
+            try {
+                DeliveryOutcome outcome = delivery.get();
+                if (outcome == DeliveryOutcome.DELIVERED) {
+                    delivered += 1;
+                } else if (outcome == DeliveryOutcome.RETRYABLE_FAILURE) {
+                    retryableFailures += 1;
+                } else {
+                    permanentFailures += 1;
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Webhook delivery was interrupted.", exception);
+            } catch (ExecutionException exception) {
+                throw new IllegalStateException("Webhook delivery failed.", exception.getCause());
             }
         }
 
@@ -153,162 +158,7 @@ public class WebhookOutboxService {
         }
     }
 
-    private DeliveryOutcome dispatchEvent(WebhookEventOutbox event) {
-        Instant attemptedAt = Instant.now();
-        int attemptNumber = event.getAttemptCount() + 1;
-        WebhookDeliveryClient.WebhookDeliveryRequest request = buildDeliveryRequest(event, attemptedAt);
-
-        try {
-            WebhookDeliveryClient.WebhookDeliveryResponse response = webhookDeliveryClient.deliver(request);
-            WebhookEventDeliveryAttemptStatus attemptStatus = classify(response.statusCode());
-            webhookEventDeliveryAttemptRepository.save(new WebhookEventDeliveryAttempt(
-                    event,
-                    attemptNumber,
-                    request.endpointUrl(),
-                    request.eventType(),
-                    request.deliveryId(),
-                    request.timestamp(),
-                    request.signature(),
-                    response.statusCode(),
-                    response.responseBody(),
-                    null,
-                    attemptStatus
-            ));
-
-            if (attemptStatus == WebhookEventDeliveryAttemptStatus.SUCCESS) {
-                event.markDelivered(attemptedAt);
-                webhookEventOutboxRepository.save(event);
-                log.info(
-                        "webhook_outbox_event_processed eventId={} lspId={} eventType={} aggregateType={} aggregateId={} correlationId={} outcome={} attemptNumber={} httpStatus={}",
-                        event.getId(),
-                        event.getLsp().getId(),
-                        event.getEventType(),
-                        event.getAggregateType(),
-                        event.getAggregateId(),
-                        event.getCorrelationId(),
-                        DeliveryOutcome.DELIVERED,
-                        attemptNumber,
-                        response.statusCode()
-                );
-                return DeliveryOutcome.DELIVERED;
-            }
-
-            String errorMessage = "Webhook delivery failed with HTTP status " + response.statusCode() + ".";
-            if (attemptStatus == WebhookEventDeliveryAttemptStatus.RETRYABLE_FAILURE) {
-                event.markRetryableFailure(attemptedAt, attemptedAt.plusSeconds(calculateBackoffSeconds(attemptNumber)), errorMessage);
-                webhookEventOutboxRepository.save(event);
-                log.info(
-                        "webhook_outbox_event_processed eventId={} lspId={} eventType={} aggregateType={} aggregateId={} correlationId={} outcome={} attemptNumber={} httpStatus={}",
-                        event.getId(),
-                        event.getLsp().getId(),
-                        event.getEventType(),
-                        event.getAggregateType(),
-                        event.getAggregateId(),
-                        event.getCorrelationId(),
-                        DeliveryOutcome.RETRYABLE_FAILURE,
-                        attemptNumber,
-                        response.statusCode()
-                );
-                return DeliveryOutcome.RETRYABLE_FAILURE;
-            }
-
-            event.markPermanentFailure(attemptedAt, errorMessage);
-            webhookEventOutboxRepository.save(event);
-            alertRuleEvaluationService.emitWebhookDeadLetter(event, errorMessage);
-            log.info(
-                    "webhook_outbox_event_processed eventId={} lspId={} eventType={} aggregateType={} aggregateId={} correlationId={} outcome={} attemptNumber={} httpStatus={}",
-                    event.getId(),
-                    event.getLsp().getId(),
-                    event.getEventType(),
-                    event.getAggregateType(),
-                    event.getAggregateId(),
-                    event.getCorrelationId(),
-                    DeliveryOutcome.PERMANENT_FAILURE,
-                    attemptNumber,
-                    response.statusCode()
-            );
-            return DeliveryOutcome.PERMANENT_FAILURE;
-        } catch (RuntimeException exception) {
-            webhookEventDeliveryAttemptRepository.save(new WebhookEventDeliveryAttempt(
-                    event,
-                    attemptNumber,
-                    request.endpointUrl(),
-                    request.eventType(),
-                    request.deliveryId(),
-                    request.timestamp(),
-                    request.signature(),
-                    null,
-                    null,
-                    exception.getMessage(),
-                    WebhookEventDeliveryAttemptStatus.RETRYABLE_FAILURE
-            ));
-            event.markRetryableFailure(
-                    attemptedAt,
-                    attemptedAt.plusSeconds(calculateBackoffSeconds(attemptNumber)),
-                    exception.getMessage()
-            );
-            webhookEventOutboxRepository.save(event);
-            log.warn(
-                    "webhook_outbox_event_processed eventId={} lspId={} eventType={} aggregateType={} aggregateId={} correlationId={} outcome={} attemptNumber={} errorMessage={}",
-                    event.getId(),
-                    event.getLsp().getId(),
-                    event.getEventType(),
-                    event.getAggregateType(),
-                    event.getAggregateId(),
-                    event.getCorrelationId(),
-                    DeliveryOutcome.RETRYABLE_FAILURE,
-                    attemptNumber,
-                    exception.getMessage()
-            );
-            return DeliveryOutcome.RETRYABLE_FAILURE;
-        }
-    }
-
-    private WebhookDeliveryClient.WebhookDeliveryRequest buildDeliveryRequest(WebhookEventOutbox event, Instant attemptedAt) {
-        String timestamp = String.valueOf(attemptedAt.getEpochSecond());
-        String signature = signPayload(event.getLsp().getWebhookSigningSecret(), timestamp, event.getPayloadJson());
-        return new WebhookDeliveryClient.WebhookDeliveryRequest(
-                event.getLsp().getWebhookEndpointUrl(),
-                event.getPayloadJson(),
-                event.getCorrelationId(),
-                event.getEventType().name(),
-                event.getId().toString(),
-                timestamp,
-                "v1=" + signature
-        );
-    }
-
-    private static String signPayload(String signingSecret, String timestamp, String payloadJson) {
-        if (signingSecret == null || signingSecret.isBlank()) {
-            throw new IllegalStateException("Webhook signing secret is not configured.");
-        }
-
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(signingSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            byte[] signature = mac.doFinal((timestamp + "." + payloadJson).getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(signature);
-        } catch (Exception exception) {
-            throw new IllegalStateException("Unable to sign webhook payload.", exception);
-        }
-    }
-
-    private static WebhookEventDeliveryAttemptStatus classify(int statusCode) {
-        if (statusCode >= 200 && statusCode < 300) {
-            return WebhookEventDeliveryAttemptStatus.SUCCESS;
-        }
-        if (statusCode == 408 || statusCode == 429 || statusCode >= 500) {
-            return WebhookEventDeliveryAttemptStatus.RETRYABLE_FAILURE;
-        }
-        return WebhookEventDeliveryAttemptStatus.PERMANENT_FAILURE;
-    }
-
-    private static long calculateBackoffSeconds(int attemptNumber) {
-        int exponent = Math.min(Math.max(attemptNumber - 1, 0), 5);
-        return Math.min(60L * (1L << exponent), 3600L);
-    }
-
-    private enum DeliveryOutcome {
+    public enum DeliveryOutcome {
         DELIVERED,
         RETRYABLE_FAILURE,
         PERMANENT_FAILURE

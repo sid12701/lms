@@ -62,6 +62,9 @@ public class WebhookEventOutbox {
     @Column(name = "next_attempt_at")
     private Instant nextAttemptAt;
 
+    @Column(name = "claim_expires_at")
+    private Instant claimExpiresAt;
+
     @Column(name = "delivered_at")
     private Instant deliveredAt;
 
@@ -162,8 +165,17 @@ public class WebhookEventOutbox {
         return nextAttemptAt;
     }
 
+    public Instant getClaimExpiresAt() {
+        return claimExpiresAt;
+    }
+
     public Instant getDeliveredAt() {
         return deliveredAt;
+    }
+
+    public void claim(Instant claimExpiresAt) {
+        this.status = WebhookEventOutboxStatus.IN_FLIGHT;
+        this.claimExpiresAt = claimExpiresAt;
     }
 
     public String getLastError() {
@@ -187,6 +199,7 @@ public class WebhookEventOutbox {
         this.attemptCount += 1;
         this.lastAttemptAt = attemptedAt;
         this.nextAttemptAt = null;
+        this.claimExpiresAt = null;
         this.deliveredAt = attemptedAt;
         this.lastError = null;
     }
@@ -196,6 +209,7 @@ public class WebhookEventOutbox {
         this.attemptCount += 1;
         this.lastAttemptAt = attemptedAt;
         this.nextAttemptAt = retryAt;
+        this.claimExpiresAt = null;
         this.lastError = truncate(errorMessage);
     }
 
@@ -204,6 +218,7 @@ public class WebhookEventOutbox {
         this.attemptCount += 1;
         this.lastAttemptAt = attemptedAt;
         this.nextAttemptAt = null;
+        this.claimExpiresAt = null;
         this.lastError = truncate(errorMessage);
     }
 
