@@ -1,9 +1,12 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.service.AdminDirectoryService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -56,24 +59,36 @@ public class UserAdminController {
     @PutMapping("/{userId}")
     public UserResponse updateUser(
             @PathVariable UUID userId,
-            @Valid @RequestBody UpdateUserRequest request,
-            @AuthenticationPrincipal Jwt principal
+            @Valid @RequestBody UpdateUserRequest updateRequest,
+            @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest
     ) {
         String actorUsername = principal == null ? "unknown" : principal.getSubject();
         AppUser user = adminDirectoryService.updateUser(
                 userId,
                 actorUsername,
-                request.email(),
-                request.resolvedStatus(),
-                request.lspId(),
-                request.roles()
+                ClientIpAddresses.resolve(httpRequest),
+                updateRequest.email(),
+                updateRequest.resolvedStatus(),
+                updateRequest.lspId(),
+                updateRequest.roles()
         );
         return toResponse(user);
     }
 
     @PostMapping("/{userId}/reset-password")
-    public ResetPasswordResponse resetPassword(@PathVariable UUID userId) {
-        AdminDirectoryService.ResetPasswordResult result = adminDirectoryService.resetUserPassword(userId);
+    public ResetPasswordResponse resetPassword(
+            @PathVariable UUID userId,
+            @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest
+    ) {
+        String actorUsername = principal == null ? "unknown" : principal.getSubject();
+        AdminDirectoryService.ResetPasswordResult result = adminDirectoryService.resetUserPassword(
+                userId,
+                actorUsername,
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get()
+        );
         return new ResetPasswordResponse(
                 result.user().getId().toString(),
                 result.user().getUsername(),

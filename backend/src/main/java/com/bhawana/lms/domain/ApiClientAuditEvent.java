@@ -38,6 +38,9 @@ public class ApiClientAuditEvent {
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
 
+    @Column(name = "actor_ip", length = 64)
+    private String actorIp;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -51,16 +54,56 @@ public class ApiClientAuditEvent {
             String detailsJson,
             String correlationId
     ) {
+        this(apiClient, actorUsername, action, detailsJson, correlationId, null);
+    }
+
+    public ApiClientAuditEvent(
+            ApiClient apiClient,
+            String actorUsername,
+            String action,
+            String detailsJson,
+            String correlationId,
+            String actorIp
+    ) {
         this.id = UUID.randomUUID();
         this.apiClient = apiClient;
         this.actorUsername = actorUsername;
         this.action = action;
         this.detailsJson = JsonPayloads.requiredObject(detailsJson, "detailsJson");
         this.correlationId = correlationId;
+        this.actorIp = actorIp;
     }
 
     @PrePersist
     void onCreate() {
         createdAt = Instant.now();
+    }
+
+    public ApiClient getApiClient() {
+        return apiClient;
+    }
+
+    public String getActorUsername() {
+        return actorUsername;
+    }
+
+    public String getAction() {
+        return action;
+    }
+
+    public JsonNode getDetailsJson() {
+        return detailsJson;
+    }
+
+    public String getCorrelationId() {
+        return correlationId;
+    }
+
+    public String getActorIp() {
+        return actorIp;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
     }
 }

@@ -39,6 +39,9 @@ public class AppUserAuditEvent {
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
 
+    @Column(name = "actor_ip", length = 64)
+    private String actorIp;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -52,12 +55,24 @@ public class AppUserAuditEvent {
             String afterStateJson,
             String correlationId
     ) {
+        this(user, actorUsername, beforeStateJson, afterStateJson, correlationId, null);
+    }
+
+    public AppUserAuditEvent(
+            AppUser user,
+            String actorUsername,
+            String beforeStateJson,
+            String afterStateJson,
+            String correlationId,
+            String actorIp
+    ) {
         this.id = UUID.randomUUID();
         this.user = user;
         this.actorUsername = actorUsername;
         this.beforeStateJson = JsonPayloads.requiredObject(beforeStateJson, "beforeStateJson");
         this.afterStateJson = JsonPayloads.requiredObject(afterStateJson, "afterStateJson");
         this.correlationId = correlationId;
+        this.actorIp = actorIp;
     }
 
     @PrePersist
@@ -67,5 +82,29 @@ public class AppUserAuditEvent {
 
     public UUID getId() {
         return id;
+    }
+
+    public UUID getUserId() {
+        return user.getId();
+    }
+
+    public String getActorUsername() {
+        return actorUsername;
+    }
+
+    public JsonNode getBeforeStateJson() {
+        return beforeStateJson;
+    }
+
+    public JsonNode getAfterStateJson() {
+        return afterStateJson;
+    }
+
+    public String getCorrelationId() {
+        return correlationId;
+    }
+
+    public String getActorIp() {
+        return actorIp;
     }
 }

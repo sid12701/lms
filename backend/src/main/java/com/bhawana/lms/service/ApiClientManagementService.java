@@ -54,7 +54,9 @@ public class ApiClientManagementService {
             String name,
             String description,
             UUID lspId,
-            ApiClientStatus status
+            ApiClientStatus status,
+            String actorUsername,
+            String actorIp
     ) {
         ApiClientStatus effectiveStatus = status == null ? ApiClientStatus.ACTIVE : status;
         Lsp lsp = lspRepository.findById(lspId)
@@ -76,6 +78,13 @@ public class ApiClientManagementService {
         );
 
         ApiClient saved = apiClientRepository.save(apiClient);
+        recordAudit(
+                saved,
+                actorUsername,
+                "CLIENT_CREATED",
+                Map.of("snapshot", auditSnapshot(saved)),
+                actorIp
+        );
         return new CreatedApiClient(saved, clientSecret);
     }
 
@@ -94,6 +103,7 @@ public class ApiClientManagementService {
     public ApiClientView updateClient(
             UUID id,
             String actorUsername,
+            String actorIp,
             String name,
             String description,
             ApiClientStatus status
@@ -113,15 +123,21 @@ public class ApiClientManagementService {
         recordAudit(
                 saved,
                 actorUsername,
-                "CLIENT_UPDATED",
-                Map.of("before", before, "after", auditSnapshot(saved))
+                resolveUpdateAction(before, auditSnapshot(saved)),
+                Map.of("before", before, "after", auditSnapshot(saved)),
+                actorIp
         );
 
         return new ApiClientView(saved);
     }
 
     @Transactional
-    public RotatedApiClient rotateSecret(UUID id, String actorUsername, Integer graceSeconds) {
+    public RotatedApiClient rotateSecret(
+            UUID id,
+            String actorUsername,
+            String actorIp,
+            Integer graceSeconds
+    ) {
         ApiClient client = apiClientRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown API client id: " + id));
 
@@ -152,9 +168,21 @@ public class ApiClientManagementService {
         if (previousValidUntil != null) {
             rotateDetails.put("oldSecretValidUntil", previousValidUntil.toString());
         }
-        recordAudit(saved, actorUsername, "SECRET_ROTATED", rotateDetails);
+        recordAudit(saved, actorUsername, "SECRET_ROTATED", rotateDetails, actorIp);
 
         return new RotatedApiClient(new ApiClientView(saved), newSecret, previousValidUntil);
+    }
+
+    private static String resolveUpdateAction(Map<String, Object> before, Map<String, Object> after) {
+        String beforeStatus = String.valueOf(before.get("status"));
+        String afterStatus = String.valueOf(after.get("status"));
+        if ("ACTIVE".equals(beforeStatus) && "INACTIVE".equals(afterStatus)) {
+            return "CLIENT_DISABLED";
+        }
+        if ("INACTIVE".equals(beforeStatus) && "ACTIVE".equals(afterStatus)) {
+            return "CLIENT_ENABLED";
+        }
+        return "CLIENT_UPDATED";
     }
 
     private Map<String, Object> auditSnapshot(ApiClient client) {
@@ -167,14 +195,21 @@ public class ApiClientManagementService {
         return snapshot;
     }
 
-    private void recordAudit(ApiClient client, String actorUsername, String action, Map<String, Object> details) {
+    private void recordAudit(
+            ApiClient client,
+            String actorUsername,
+            String action,
+            Map<String, Object> details,
+            String actorIp
+    ) {
         try {
             apiClientAuditEventRepository.save(new ApiClientAuditEvent(
                     client,
                     actorUsername,
                     action,
                     objectMapper.writeValueAsString(details),
-                    CorrelationIdHolder.get()
+                    CorrelationIdHolder.get(),
+                    actorIp
             ));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Failed to serialize API client audit details.", exception);

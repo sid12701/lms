@@ -19,9 +19,11 @@ import { Iso8601, IsoDate, Uuid } from "@/schemas/common";
 export const AUDIT_STREAMS = [
   "APPLICATION",
   "INTAKE",
-  "PII_REVEAL",
   "DOCUMENT_ACCESS",
   "PRODUCT",
+  "APP_USER",
+  "API_CLIENT",
+  "DISBURSEMENT",
 ] as const;
 
 export const AuditStreamSchema = z.enum(AUDIT_STREAMS);
@@ -30,9 +32,11 @@ export type AuditStream = z.infer<typeof AuditStreamSchema>;
 export const AUDIT_STREAM_LABEL: Record<AuditStream, string> = {
   APPLICATION: "Application",
   INTAKE: "Intake",
-  PII_REVEAL: "PII reveal",
   DOCUMENT_ACCESS: "Document access",
   PRODUCT: "Product",
+  APP_USER: "App user",
+  API_CLIENT: "API client",
+  DISBURSEMENT: "Disbursement",
 };
 
 // ─── Subject discriminator (drives the deep-link button) ─────────────────────
@@ -42,6 +46,8 @@ export const AUDIT_SUBJECT_TYPES = [
   "BORROWER",
   "LOAN_DOCUMENT",
   "LOAN_PRODUCT",
+  "APP_USER",
+  "API_CLIENT",
 ] as const;
 
 export const AuditSubjectTypeSchema = z.enum(AUDIT_SUBJECT_TYPES);

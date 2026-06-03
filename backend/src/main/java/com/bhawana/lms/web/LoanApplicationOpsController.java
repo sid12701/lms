@@ -383,12 +383,15 @@ public class LoanApplicationOpsController {
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public LoanApplicationDetailResponse applyMockDisbursementOutcome(
             Authentication authentication,
+            HttpServletRequest httpRequest,
             @PathVariable UUID applicationId,
             @Valid @RequestBody MockDisbursementOutcomeRequest request
     ) {
         LoanApplication application = loanApplicationService.resolveMockDisbursementOutcome(
                 applicationId,
                 authentication.getName(),
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get(),
                 request.outcome()
         );
         return LoanApplicationOpsResponses.toDetailResponse(

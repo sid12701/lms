@@ -17,7 +17,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Native UNION ALL search across the four audit streams.
+ * Native UNION ALL search across the seven audit streams.
  *
  * <p>Gap #3 — Unified cross-domain audit search. Each enabled stream
  * contributes one SELECT branch with filters pushed down; the outer query
@@ -109,9 +109,15 @@ public class AuditExplorerRepository {
     private Set<AuditStream> effectiveStreams(AuditExplorerQuery query) {
         Set<AuditStream> active = EnumSet.copyOf(query.streams());
 
-        // PRODUCT branch carries no loan_application/borrower/lsp identity — if
-        // any of those filters are set, exclude PRODUCT entirely.
-        if (query.loanApplicationId() != null || query.borrowerId() != null || query.lspId() != null) {
+        // PRODUCT / APP_USER / API_CLIENT branches do not align with loan-scoped
+        // filters — exclude them when application or borrower identity is set.
+        if (query.loanApplicationId() != null || query.borrowerId() != null) {
+            active.remove(AuditStream.PRODUCT);
+            active.remove(AuditStream.APP_USER);
+            active.remove(AuditStream.API_CLIENT);
+        }
+        // PRODUCT carries no lsp_id — exclude when LSP filter is set.
+        if (query.lspId() != null) {
             active.remove(AuditStream.PRODUCT);
         }
         // productId filter only makes sense on PRODUCT — exclude every other
@@ -252,6 +258,92 @@ public class AuditExplorerRepository {
                       and (cast(:__productId as uuid) is null or p.loan_product_id = cast(:__productId as uuid))
                       and (cast(:__since as timestamp) is null or p.created_at >= cast(:__since as timestamp))
                       and (cast(:__until as timestamp) is null or p.created_at <= cast(:__until as timestamp))
+                    """);
+        }
+
+        if (streams.contains(AuditStream.APP_USER)) {
+            branches.add("""
+                    select
+                      cast('APP_USER' as varchar(32)) as stream,
+                      e.id as native_id,
+                      e.created_at as occurred_at,
+                      cast(e.actor_username as varchar(255)) as actor_username,
+                      cast(e.correlation_id as varchar(128)) as correlation_id,
+                      cast(null as uuid) as loan_application_id,
+                      cast(null as uuid) as borrower_id,
+                      u.lsp_id as lsp_id,
+                      cast(null as varchar(64)) as product_id,
+                      cast('USER_UPDATED' as varchar(64)) as action,
+                      cast(null as varchar(500)) as summary,
+                      cast(null as varchar(64)) as from_status,
+                      cast(null as varchar(64)) as to_status,
+                      cast(null as varchar(64)) as reason_code,
+                      cast(concat('{"userId":"', cast(u.id as varchar(36)), '","username":"', u.username, '","beforeState":', cast(e.before_state_json as varchar(10000)), ',"afterState":', cast(e.after_state_json as varchar(10000)), '}') as text) as payload_json,
+                      cast(null as varchar(500)) as document_types
+                    from app_user_audit_event e
+                    join app_user u on u.id = e.user_id
+                    where (cast(:__actorUsername as varchar(255)) is null or e.actor_username = cast(:__actorUsername as varchar(255)))
+                      and (cast(:__lspId as uuid) is null or u.lsp_id = cast(:__lspId as uuid))
+                      and (cast(:__since as timestamp) is null or e.created_at >= cast(:__since as timestamp))
+                      and (cast(:__until as timestamp) is null or e.created_at <= cast(:__until as timestamp))
+                    """);
+        }
+
+        if (streams.contains(AuditStream.API_CLIENT)) {
+            branches.add("""
+                    select
+                      cast('API_CLIENT' as varchar(32)) as stream,
+                      e.id as native_id,
+                      e.created_at as occurred_at,
+                      cast(e.actor_username as varchar(255)) as actor_username,
+                      cast(e.correlation_id as varchar(128)) as correlation_id,
+                      cast(null as uuid) as loan_application_id,
+                      cast(null as uuid) as borrower_id,
+                      c.lsp_id as lsp_id,
+                      cast(null as varchar(64)) as product_id,
+                      cast(e.action as varchar(64)) as action,
+                      cast(null as varchar(500)) as summary,
+                      cast(null as varchar(64)) as from_status,
+                      cast(null as varchar(64)) as to_status,
+                      cast(null as varchar(64)) as reason_code,
+                      cast(concat('{"apiClientId":"', cast(c.id as varchar(36)), '","clientId":"', c.client_id, '","details":', cast(e.details_json as varchar(10000)), '}') as text) as payload_json,
+                      cast(null as varchar(500)) as document_types
+                    from api_client_audit_event e
+                    join api_client c on c.id = e.api_client_id
+                    where (cast(:__actorUsername as varchar(255)) is null or e.actor_username = cast(:__actorUsername as varchar(255)))
+                      and (cast(:__lspId as uuid) is null or c.lsp_id = cast(:__lspId as uuid))
+                      and (cast(:__since as timestamp) is null or e.created_at >= cast(:__since as timestamp))
+                      and (cast(:__until as timestamp) is null or e.created_at <= cast(:__until as timestamp))
+                    """);
+        }
+
+        if (streams.contains(AuditStream.DISBURSEMENT)) {
+            branches.add("""
+                    select
+                      cast('DISBURSEMENT' as varchar(32)) as stream,
+                      d.id as native_id,
+                      d.created_at as occurred_at,
+                      cast(d.actor_username as varchar(255)) as actor_username,
+                      cast(d.correlation_id as varchar(128)) as correlation_id,
+                      d.loan_application_id as loan_application_id,
+                      la.borrower_id as borrower_id,
+                      la.lsp_id as lsp_id,
+                      cast(null as varchar(64)) as product_id,
+                      cast(concat('MOCK_OUTCOME_', d.outcome) as varchar(64)) as action,
+                      cast(null as varchar(500)) as summary,
+                      cast(null as varchar(64)) as from_status,
+                      cast(null as varchar(64)) as to_status,
+                      cast(null as varchar(64)) as reason_code,
+                      cast(concat('{"source":"', d.source, '","outcome":"', d.outcome, '","providerRequestId":"', coalesce(d.provider_request_id, ''), '","actorIp":"', coalesce(d.actor_ip, ''), '"}') as text) as payload_json,
+                      cast(null as varchar(500)) as document_types
+                    from disbursement_outcome_audit d
+                    join loan_application la on la.id = d.loan_application_id
+                    where (cast(:__actorUsername as varchar(255)) is null or d.actor_username = cast(:__actorUsername as varchar(255)))
+                      and (cast(:__lspId as uuid) is null or la.lsp_id = cast(:__lspId as uuid))
+                      and (cast(:__loanApplicationId as uuid) is null or d.loan_application_id = cast(:__loanApplicationId as uuid))
+                      and (cast(:__borrowerId as uuid) is null or la.borrower_id = cast(:__borrowerId as uuid))
+                      and (cast(:__since as timestamp) is null or d.created_at >= cast(:__since as timestamp))
+                      and (cast(:__until as timestamp) is null or d.created_at <= cast(:__until as timestamp))
                     """);
         }
 

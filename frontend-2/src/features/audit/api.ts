@@ -3,8 +3,8 @@
  *
  * Gap #3 — the backend now exposes a single unified endpoint at
  *   GET /api/v1/internal/admin/audit-events
- * that UNION-ALLs across the four supported audit streams (APPLICATION,
- * INTAKE, DOCUMENT_ACCESS, PRODUCT) on the server side. This module routes
+ * that UNION-ALLs across the seven supported audit streams on the server
+ * side. This module routes
  * the page's URL-bound filters into that request, projects each row into
  * the long-standing {@link AuditRow} shape so the table/sheet keep
  * rendering unchanged, and applies the few remaining client-side post-
@@ -28,21 +28,20 @@ import {
 const ENDPOINT = "/api/v1/internal/admin/audit-events";
 const DEFAULT_PAGE_SIZE = 25;
 
-/**
- * The four streams the backend supports — see Gap #3. PII_REVEAL is
- * intentionally absent (Gap #1 retired the reveal endpoint; the
- * underlying table is forensic-only and no longer surfaced).
- */
+/** Streams backed by the live unified audit endpoint (#159 / #152). */
 const BACKEND_STREAMS: ReadonlySet<AuditStream> = new Set<AuditStream>([
   "APPLICATION",
   "INTAKE",
   "DOCUMENT_ACCESS",
   "PRODUCT",
+  "APP_USER",
+  "API_CLIENT",
+  "DISBURSEMENT",
 ]);
 
 interface BackendUnifiedAuditEvent {
   id: string;
-  stream: "APPLICATION" | "INTAKE" | "DOCUMENT_ACCESS" | "PRODUCT";
+  stream: AuditStream;
   occurredAt: string;
   actorUsername: string;
   loanApplicationId: string | null;
@@ -103,12 +102,29 @@ function buildBackendQueryParams(
   return params;
 }
 
+function readDetailId(detail: Record<string, unknown>, key: string): string | null {
+  const value = detail[key];
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
 function subjectFor(event: BackendUnifiedAuditEvent): {
   subjectType: AuditSubjectType | null;
   subjectId: string | null;
 } {
   if (event.stream === "PRODUCT") {
     return { subjectType: "LOAN_PRODUCT", subjectId: event.productId };
+  }
+  if (event.stream === "APP_USER") {
+    return {
+      subjectType: "APP_USER",
+      subjectId: readDetailId(event.detail, "userId"),
+    };
+  }
+  if (event.stream === "API_CLIENT") {
+    return {
+      subjectType: "API_CLIENT",
+      subjectId: readDetailId(event.detail, "apiClientId"),
+    };
   }
   if (event.loanApplicationId) {
     return { subjectType: "LOAN_APPLICATION", subjectId: event.loanApplicationId };

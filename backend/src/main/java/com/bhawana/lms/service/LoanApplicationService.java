@@ -76,6 +76,7 @@ public class LoanApplicationService {
     private final LoanRepaymentCommandService loanRepaymentCommandService;
     private final LoanForeclosureCommandService loanForeclosureCommandService;
     private final LoanDocumentService loanDocumentService;
+    private final DisbursementOutcomeAuditService disbursementOutcomeAuditService;
     private final ObjectMapper objectMapper;
 
     public LoanApplicationService(
@@ -98,6 +99,7 @@ public class LoanApplicationService {
             LoanRepaymentCommandService loanRepaymentCommandService,
             LoanForeclosureCommandService loanForeclosureCommandService,
             @Lazy LoanDocumentService loanDocumentService,
+            DisbursementOutcomeAuditService disbursementOutcomeAuditService,
             ObjectMapper objectMapper
     ) {
         this.loanAccountRepository = loanAccountRepository;
@@ -119,6 +121,7 @@ public class LoanApplicationService {
         this.loanRepaymentCommandService = loanRepaymentCommandService;
         this.loanForeclosureCommandService = loanForeclosureCommandService;
         this.loanDocumentService = loanDocumentService;
+        this.disbursementOutcomeAuditService = disbursementOutcomeAuditService;
         this.objectMapper = objectMapper;
     }
 
@@ -776,6 +779,23 @@ public class LoanApplicationService {
             String actorUsername,
             MockDisbursementOutcome outcome
     ) {
+        return resolveMockDisbursementOutcome(
+                applicationId,
+                actorUsername,
+                null,
+                CorrelationIdHolder.get(),
+                outcome
+        );
+    }
+
+    @Transactional
+    public LoanApplication resolveMockDisbursementOutcome(
+            UUID applicationId,
+            String actorUsername,
+            String actorIp,
+            String correlationId,
+            MockDisbursementOutcome outcome
+    ) {
         if (outcome == null) {
             throw new IllegalArgumentException("Disbursement outcome is required.");
         }
@@ -840,6 +860,15 @@ public class LoanApplicationService {
                     loanApplicationLifecycleService.buildDisbursementPayload(application, loanAccount)
             );
         }
+        disbursementOutcomeAuditService.recordMockOutcomeApplied(
+                application,
+                loanAccount,
+                actorUsername,
+                actorIp,
+                correlationId,
+                outcome,
+                latestRequest.getProviderRequestId()
+        );
         return application;
     }
 

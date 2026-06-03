@@ -1,8 +1,10 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.ApiClientStatus;
 import com.bhawana.lms.service.ApiClientManagementService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -39,12 +41,19 @@ public class ApiClientAdminController {
     }
 
     @PostMapping
-    public CreatedApiClientResponse createApiClient(@Valid @RequestBody CreateApiClientRequest request) {
+    public CreatedApiClientResponse createApiClient(
+            @Valid @RequestBody CreateApiClientRequest request,
+            @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest
+    ) {
+        String actorUsername = principal == null ? "unknown" : principal.getSubject();
         ApiClientManagementService.CreatedApiClient created = apiClientManagementService.createClient(
                 request.name(),
                 request.description(),
                 request.lspId(),
-                request.status()
+                request.status(),
+                actorUsername,
+                ClientIpAddresses.resolve(httpRequest)
         );
         return toCreatedResponse(created);
     }
@@ -53,12 +62,14 @@ public class ApiClientAdminController {
     public ApiClientResponse updateApiClient(
             @PathVariable UUID id,
             @Valid @RequestBody UpdateApiClientRequest request,
-            @AuthenticationPrincipal Jwt principal
+            @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest
     ) {
         String actorUsername = principal == null ? "unknown" : principal.getSubject();
         ApiClientManagementService.ApiClientView updated = apiClientManagementService.updateClient(
                 id,
                 actorUsername,
+                ClientIpAddresses.resolve(httpRequest),
                 request.name(),
                 request.description(),
                 request.resolvedStatus()
@@ -70,13 +81,15 @@ public class ApiClientAdminController {
     public RotateSecretResponse rotateSecret(
             @PathVariable UUID id,
             @RequestBody(required = false) RotateSecretRequest request,
-            @AuthenticationPrincipal Jwt principal
+            @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest
     ) {
         String actorUsername = principal == null ? "unknown" : principal.getSubject();
         Integer graceSeconds = request == null ? null : request.graceSeconds();
         ApiClientManagementService.RotatedApiClient rotated = apiClientManagementService.rotateSecret(
                 id,
                 actorUsername,
+                ClientIpAddresses.resolve(httpRequest),
                 graceSeconds
         );
         return new RotateSecretResponse(

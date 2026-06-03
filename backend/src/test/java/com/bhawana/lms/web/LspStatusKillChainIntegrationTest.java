@@ -119,10 +119,14 @@ class LspStatusKillChainIntegrationTest {
     @Autowired
     private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
 
+    @Autowired
+    private com.bhawana.lms.repo.DisbursementOutcomeAuditRepository disbursementOutcomeAuditRepository;
+
     @BeforeEach
     void setUp() {
         webhookEventOutboxRepository.deleteAllInBatch();
         opsAlertRepository.deleteAllInBatch();
+        disbursementOutcomeAuditRepository.deleteAllInBatch();
         loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
         borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();

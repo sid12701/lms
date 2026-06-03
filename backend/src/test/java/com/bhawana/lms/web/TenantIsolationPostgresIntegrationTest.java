@@ -142,9 +142,13 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
     @Autowired
     private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
 
+    @Autowired
+    private com.bhawana.lms.repo.DisbursementOutcomeAuditRepository disbursementOutcomeAuditRepository;
+
     @BeforeEach
     void setUp() {
         jdbcTemplate.execute("delete from report_request");
+        disbursementOutcomeAuditRepository.deleteAllInBatch();
         loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
         borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();

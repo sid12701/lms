@@ -20,8 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Gap #3 — {@code GET /api/v1/internal/admin/audit-events}.
  *
- * <p>SYSTEM_ADMIN-only unified search across the four audit streams
- * (APPLICATION, INTAKE, DOCUMENT_ACCESS, PRODUCT). All filters are optional
+ * <p>SYSTEM_ADMIN-only unified search across the seven audit streams
+ * (APPLICATION, INTAKE, DOCUMENT_ACCESS, PRODUCT, APP_USER, API_CLIENT,
+ * DISBURSEMENT). All filters are optional
  * and AND'd together. Pagination is offset/limit (cap 500); totalCount is
  * opt-in via {@code paginationDetails=true} to keep the default path off the
  * expensive COUNT(*) wrap.
