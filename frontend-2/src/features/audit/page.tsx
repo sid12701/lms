@@ -177,7 +177,7 @@ export function AuditPage() {
         <PageHeader
           eyebrow="Administration"
           title="Audit log"
-          description="Application, intake, document access, product, app user, API client, and disbursement audit streams."
+          description="Application, intake, document access, product, app user, API client, disbursement, and report access audit streams."
         />
         <EmptyState
           variant="no-permission"
@@ -197,7 +197,7 @@ export function AuditPage() {
       <PageHeader
         eyebrow="Administration"
         title="Audit log"
-        description="Application, intake, document access, product, app user, API client, and disbursement audit streams."
+        description="Application, intake, document access, product, app user, API client, disbursement, and report access audit streams."
       />
 
       {unauthorized ? (

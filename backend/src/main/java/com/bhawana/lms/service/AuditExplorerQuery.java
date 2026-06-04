@@ -8,7 +8,7 @@ import java.util.UUID;
  * Filter snapshot for {@link AuditExplorerService#search(AuditExplorerQuery)}.
  *
  * <p>Gap #3 — Unified cross-domain audit search. The endpoint executes a
- * native UNION ALL across the seven supported audit tables; this record
+ * native UNION ALL across the eight supported audit tables; this record
  * carries the filter values that push down per branch.
  */
 public record AuditExplorerQuery(
@@ -25,7 +25,7 @@ public record AuditExplorerQuery(
         boolean includePaginationDetails
 ) {
 
-    /** All seven streams in canonical order. */
+    /** All eight streams in canonical order. */
     public static final Set<AuditStream> ALL_STREAMS = Set.of(
             AuditStream.APPLICATION,
             AuditStream.INTAKE,
@@ -33,7 +33,8 @@ public record AuditExplorerQuery(
             AuditStream.PRODUCT,
             AuditStream.APP_USER,
             AuditStream.API_CLIENT,
-            AuditStream.DISBURSEMENT
+            AuditStream.DISBURSEMENT,
+            AuditStream.REPORT_ACCESS
     );
 
     public AuditExplorerQuery {
@@ -58,6 +59,7 @@ public record AuditExplorerQuery(
         PRODUCT,
         APP_USER,
         API_CLIENT,
-        DISBURSEMENT
+        DISBURSEMENT,
+        REPORT_ACCESS
     }
 }

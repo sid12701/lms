@@ -116,6 +116,7 @@ public class AuditExplorerService {
             case APP_USER -> buildAppUserDetail(row.payloadJson());
             case API_CLIENT -> buildApiClientDetail(row.payloadJson());
             case DISBURSEMENT -> buildDisbursementDetail(row.payloadJson());
+            case REPORT_ACCESS -> buildReportAccessDetail(row.payloadJson());
         };
     }
 
@@ -173,6 +174,26 @@ public class AuditExplorerService {
         putIfPresent(map, "outcome", textOrNull(root, "outcome"));
         putIfPresent(map, "providerRequestId", textOrNull(root, "providerRequestId"));
         putIfPresent(map, "actorIp", textOrNull(root, "actorIp"));
+        return map;
+    }
+
+    private LinkedHashMap<String, Object> buildReportAccessDetail(String payloadJson) {
+        LinkedHashMap<String, Object> map = new LinkedHashMap<>();
+        JsonNode root = parsePayloadRoot(payloadJson);
+        if (root == null) {
+            return map;
+        }
+        putIfPresent(map, "reportType", textOrNull(root, "reportType"));
+        putIfPresent(map, "actorIp", textOrNull(root, "actorIp"));
+        putIfPresent(map, "reportRequestId", textOrNull(root, "reportRequestId"));
+        JsonNode byteCount = root.get("byteCount");
+        if (byteCount != null && !byteCount.isNull()) {
+            map.put("byteCount", byteCount.asLong());
+        }
+        JsonNode filterPayload = root.get("filterPayload");
+        if (filterPayload != null && !filterPayload.isNull()) {
+            map.put("filterPayload", objectMapper.convertValue(filterPayload, Map.class));
+        }
         return map;
     }
 
@@ -244,6 +265,7 @@ public class AuditExplorerService {
             case APP_USER -> buildAppUserSummary(row.payloadJson(), action);
             case API_CLIENT -> buildApiClientSummary(row.payloadJson(), action);
             case DISBURSEMENT -> buildDisbursementSummary(row.payloadJson(), action);
+            case REPORT_ACCESS -> buildReportAccessSummary(row.payloadJson(), action);
         };
     }
 
@@ -279,6 +301,36 @@ public class AuditExplorerService {
         return humanizeAction(action);
     }
 
+    private String buildReportAccessSummary(String payloadJson, String action) {
+        JsonNode root = parsePayloadRoot(payloadJson);
+        String reportType = root == null ? null : textOrNull(root, "reportType");
+        long byteCount = root == null || !root.has("byteCount") || root.get("byteCount").isNull()
+                ? -1L
+                : root.get("byteCount").asLong();
+        String label = switch (action) {
+            case "MIS_CSV_DOWNLOADED" -> "Portfolio MIS CSV downloaded";
+            case "MIS_REQUEST_DOWNLOADED" -> "Portfolio MIS report downloaded";
+            default -> humanizeAction(action);
+        };
+        if (reportType != null && !"PORTFOLIO_MIS".equals(reportType)) {
+            label = humanizeAction(reportType) + " downloaded";
+        }
+        if (byteCount >= 0) {
+            return label + " (" + formatByteCount(byteCount) + ")";
+        }
+        return label;
+    }
+
+    private static String formatByteCount(long byteCount) {
+        if (byteCount < 1024) {
+            return byteCount + " bytes";
+        }
+        if (byteCount < 1024 * 1024) {
+            return (byteCount / 1024) + " KB";
+        }
+        return String.format("%.1f MB", byteCount / (1024.0 * 1024.0));
+    }
+
     private String streamFallbackAction(AuditStream stream) {
         return switch (stream) {
             case INTAKE -> "INTAKE_RECORDED";
@@ -288,6 +340,7 @@ public class AuditExplorerService {
             case APP_USER -> "USER_UPDATED";
             case API_CLIENT -> "API_CLIENT_EVENT";
             case DISBURSEMENT -> "DISBURSEMENT_OUTCOME";
+            case REPORT_ACCESS -> "REPORT_DOWNLOAD";
         };
     }
 

@@ -37,11 +37,11 @@ import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { TABULAR_ATTR } from "@/lib/tabular-nums";
 import { cn } from "@/lib/utils";
 import {
+  AUDIT_STREAM_BADGE_TONE,
   AUDIT_STREAM_LABEL,
   type AuditEventsFilters,
   type AuditEventsResponse,
   type AuditRow,
-  type AuditStream,
 } from "../types";
 
 function safeRelative(iso: string): string {
@@ -56,17 +56,6 @@ function truncateMiddle(value: string, head = 6, tail = 4): string {
   if (value.length <= head + tail + 1) return value;
   return `${value.slice(0, head)}…${value.slice(-tail)}`;
 }
-
-const STREAM_BADGE_TONE: Record<AuditStream, string> = {
-  APPLICATION: "bg-info/15 text-info-foreground border-info/40",
-  INTAKE: "bg-success/15 text-success-foreground border-success/40",
-  PII_REVEAL: "bg-warning/15 text-warning-foreground border-warning/40",
-  DOCUMENT_ACCESS: "bg-warning/15 text-warning-foreground border-warning/40",
-  PRODUCT: "bg-muted text-foreground-muted border-border",
-  APP_USER: "bg-primary/10 text-primary border-primary/30",
-  API_CLIENT: "bg-secondary/15 text-secondary-foreground border-secondary/40",
-  DISBURSEMENT: "bg-accent/15 text-accent-foreground border-accent/40",
-};
 
 function subjectHref(row: AuditRow): string | null {
   if (!row.subjectId) return null;
@@ -167,7 +156,7 @@ export function AuditTable({
         cell: ({ row }) => (
           <Badge
             variant="outline"
-            className={cn("text-[10px] font-medium", STREAM_BADGE_TONE[row.original.stream])}
+            className={cn("text-[10px] font-medium", AUDIT_STREAM_BADGE_TONE[row.original.stream])}
           >
             {AUDIT_STREAM_LABEL[row.original.stream]}
           </Badge>

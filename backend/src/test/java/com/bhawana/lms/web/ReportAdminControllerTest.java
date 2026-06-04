@@ -30,6 +30,7 @@ import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.repo.ReportAccessAuditRepository;
 import com.bhawana.lms.repo.ReportRequestRepository;
 import com.bhawana.lms.service.ReportRequestService;
 import com.bhawana.lms.support.MinioTestSupport;
@@ -132,6 +133,9 @@ class ReportAdminControllerTest extends MinioTestSupport {
     @Autowired
     private ReportRequestRepository reportRequestRepository;
 
+    @Autowired
+    private ReportAccessAuditRepository reportAccessAuditRepository;
+
     @MockitoBean
     private JavaMailSender javaMailSender;
 
@@ -165,6 +169,7 @@ class ReportAdminControllerTest extends MinioTestSupport {
         loanProductAuditEventRepository.deleteAllInBatch();
         loanProductLspMappingRepository.deleteAllInBatch();
         loanProductRepository.deleteAllInBatch();
+        reportAccessAuditRepository.deleteAllInBatch();
         reportRequestRepository.deleteAllInBatch();
         lspAuditEventRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
