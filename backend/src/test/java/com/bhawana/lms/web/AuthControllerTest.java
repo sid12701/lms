@@ -14,6 +14,7 @@ import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
+import com.bhawana.lms.repo.AuthEventAuditRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserAuditEventRepository;
@@ -78,8 +79,12 @@ class AuthControllerTest {
     @Autowired
     private LspAuditEventRepository lspAuditEventRepository;
 
+    @Autowired
+    private AuthEventAuditRepository authEventAuditRepository;
+
     @BeforeEach
     void setUpManagedUser() {
+        authEventAuditRepository.deleteAllInBatch();
         appUserAuditEventRepository.deleteAll();
         appUserRepository.deleteAll();
         apiClientAuditEventRepository.deleteAll();

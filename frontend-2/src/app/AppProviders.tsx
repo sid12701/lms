@@ -26,7 +26,7 @@ export function Providers({ children, queryClient }: ProvidersProps): ReactEleme
                 {children}
                 <section
                   aria-label="Notifications"
-                  className="pointer-events-none fixed inset-0 z-[100]"
+                  className="pointer-events-none fixed inset-0 z-100"
                 >
                   <Toaster
                     position="top-right"

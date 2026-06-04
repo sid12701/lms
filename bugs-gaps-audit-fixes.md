@@ -1479,6 +1479,20 @@ Untouched (deliberately):
 - **#80** ("No admin 'log out everywhere' / global JWT revocation") — when that lands, it should emit a `LOGOUT` row per revoked session (or a single `FORCED_LOGOUT_ALL` event — add the value then). Not in scope here.
 - **#97** ("[B-9] Refresh-token rotation race logs out concurrent browser tabs") — orthogonal; refresh-token races will produce more `TOKEN_REFRESH_FAILED` rows once this PR lands, which is forensically correct (the user *was* logged out unexpectedly).
 
+**Implementation status — CLOSED (2026-06-03):**
+
+| Slice | Delivered | Primary code |
+|-------|-----------|--------------|
+| Schema | `auth_event_audit` (V84) + username/event_type/correlation indexes | `V84__auth_event_audit.sql` |
+| Write path | Manual audit on LSP UI login, API client token, refresh, logout, password change (success + typed failures) | `AuthController.java`, `AuthAuditService.java` |
+| Read path | `GET /api/v1/internal/ops/auth-audit` (SYSTEM_ADMIN; username + eventType filters) | `AuthAuditController.java` |
+| Supporting | `RefreshTokenRepository.findByTokenHash` (revoked vs missing refresh); `DisabledException` / `LockedException` → 401 | `RefreshTokenRepository.java`, `GlobalExceptionHandler.java` |
+| Tests | Login/token/refresh/logout/password audit slices | `AuthControllerAuthAuditTest.java`, `AuthControllerTest.java` |
+
+- Event types: `LOGIN_*`, `API_CLIENT_TOKEN_*`, `TOKEN_REFRESH_*`, `LOGOUT`, `PASSWORD_CHANGED`.
+- **#147** closes as duplicate of #71.
+- **Deferred:** Spring `AuthenticationEventPublisher` (filter-level failures); `PASSWORD_CHANGE_FAILED`; Audit Explorer AUTH stream (#159 9th stream); **#155** lockout job (prerequisite rows now exist).
+
 ---
 
 ### #72 — Webhook signing secret returned in admin GET responses (not one-shot) [DEFERRED 2026-06-01 — needs internal discussion]

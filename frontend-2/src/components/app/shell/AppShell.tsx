@@ -83,7 +83,7 @@ export function AppShell({ children, rightRail, className }: AppShellProps) {
             "sr-only",
             "focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50",
             "focus:bg-surface focus:shadow-e2 focus:rounded focus:px-3 focus:py-2 focus:text-sm",
-            "focus:outline focus:outline-2 focus:outline-[var(--color-ring)]",
+            "focus:outline-2 focus:outline-(--color-ring)",
           )}
         >
           Skip to main content
@@ -112,7 +112,7 @@ export function AppShell({ children, rightRail, className }: AppShellProps) {
           {rightRail ? (
             <aside
               aria-label="Detail context"
-              className="bg-surface hidden w-72 shrink-0 border-l border-[var(--color-border)] xl:block"
+              className="bg-surface hidden w-72 shrink-0 border-l border-(--color-border) xl:block"
             >
               {rightRail}
             </aside>
