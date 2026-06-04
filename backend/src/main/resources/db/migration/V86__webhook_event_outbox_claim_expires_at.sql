@@ -1,3 +1,4 @@
+-- Supabase applied a different script at V80; webhook claim expiry ships here.
 ALTER TABLE webhook_event_outbox
     ADD COLUMN IF NOT EXISTS claim_expires_at TIMESTAMPTZ;
 

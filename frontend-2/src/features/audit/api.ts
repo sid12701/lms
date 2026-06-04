@@ -3,7 +3,7 @@
  *
  * Gap #3 — the backend now exposes a single unified endpoint at
  *   GET /api/v1/internal/admin/audit-events
- * that UNION-ALLs across the seven supported audit streams on the server
+ * that UNION-ALLs across the eight supported audit streams on the server
  * side. This module routes
  * the page's URL-bound filters into that request, projects each row into
  * the long-standing {@link AuditRow} shape so the table/sheet keep
@@ -28,7 +28,7 @@ import {
 const ENDPOINT = "/api/v1/internal/admin/audit-events";
 const DEFAULT_PAGE_SIZE = 25;
 
-/** Streams backed by the live unified audit endpoint (#159 / #152). */
+/** Streams backed by the live unified audit endpoint (#159 / #151). */
 const BACKEND_STREAMS: ReadonlySet<AuditStream> = new Set<AuditStream>([
   "APPLICATION",
   "INTAKE",
@@ -37,6 +37,7 @@ const BACKEND_STREAMS: ReadonlySet<AuditStream> = new Set<AuditStream>([
   "APP_USER",
   "API_CLIENT",
   "DISBURSEMENT",
+  "REPORT_ACCESS",
 ]);
 
 interface BackendUnifiedAuditEvent {

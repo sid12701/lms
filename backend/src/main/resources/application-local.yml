@@ -1,8 +1,8 @@
-# Local profile: imports backend/.env for secrets. See application-local.yml.example.
+# Local profile: imports repo-root .env (run from backend/ or set env vars in the shell).
 
 spring:
   config:
-    import: optional:file:.env[.properties]
+    import: optional:file:../.env[.properties]
   datasource:
     url: ${LMS_DB_URL}
     username: ${LMS_DB_USERNAME}
@@ -47,6 +47,10 @@ springdoc:
     enabled: true
 
 app:
+  rate-limit:
+    # Off by default for local: avoids a hard Redis dependency at startup.
+    # Set APP_RATE_LIMIT_ENABLED=true when infra/redis is running (docker compose).
+    enabled: ${APP_RATE_LIMIT_ENABLED:false}
   security:
     bootstrap-user:
       username: ${APP_SECURITY_BOOTSTRAP_USERNAME}
@@ -55,7 +59,7 @@ app:
         - SYSTEM_ADMIN
         - OPS_USER
     jwt:
-      secret: ${APP_SECURITY_JWT_SECRET}
+      secret: ${APP_SECURITY_JWT_SECRET:local-dev-jwt-secret-at-least-32-characters}
       secure-cookies: false
   seed:
     sample-data:
@@ -74,12 +78,12 @@ app:
         region: ${APP_STORAGE_DOCUMENTS_R2_REGION:auto}
     reports:
       r2:
-        endpoint: ${APP_STORAGE_REPORTS_R2_ENDPOINT:}
-        access-key: ${APP_STORAGE_REPORTS_R2_ACCESS_KEY:}
-        secret-key: ${APP_STORAGE_REPORTS_R2_SECRET_KEY:}
-        bucket: ${APP_STORAGE_REPORTS_R2_BUCKET:}
-        region: ${APP_STORAGE_REPORTS_R2_REGION:auto}
+        endpoint: ${APP_STORAGE_REPORTS_R2_ENDPOINT:${APP_STORAGE_DOCUMENTS_R2_ENDPOINT:}}
+        access-key: ${APP_STORAGE_REPORTS_R2_ACCESS_KEY:${APP_STORAGE_DOCUMENTS_R2_ACCESS_KEY:}}
+        secret-key: ${APP_STORAGE_REPORTS_R2_SECRET_KEY:${APP_STORAGE_DOCUMENTS_R2_SECRET_KEY:}}
+        bucket: ${APP_STORAGE_REPORTS_R2_BUCKET:${APP_STORAGE_DOCUMENTS_R2_BUCKET:}}
+        region: ${APP_STORAGE_REPORTS_R2_REGION:${APP_STORAGE_DOCUMENTS_R2_REGION:auto}}
   datasource:
     tenant:
-      username: ${APP_TENANT_DATASOURCE_USERNAME}
-      password: ${APP_TENANT_DATASOURCE_PASSWORD}
+      username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
+      password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}

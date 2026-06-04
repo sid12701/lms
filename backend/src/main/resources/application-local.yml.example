@@ -1,9 +1,8 @@
-# Copy to application-local.yml and create backend/.env from backend/.env.example.
-# Secrets belong in backend/.env only (gitignored). Do not commit real credentials.
+# Copy to application-local.yml. Secrets belong in the repo-root .env (gitignored).
 
 spring:
   config:
-    import: optional:file:.env[.properties]
+    import: optional:file:../.env[.properties]
   datasource:
     url: ${LMS_DB_URL}
     username: ${LMS_DB_USERNAME}
@@ -48,6 +47,8 @@ springdoc:
     enabled: true
 
 app:
+  rate-limit:
+    enabled: ${APP_RATE_LIMIT_ENABLED:false}
   security:
     bootstrap-user:
       username: ${APP_SECURITY_BOOTSTRAP_USERNAME}

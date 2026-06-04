@@ -66,6 +66,16 @@ public class ReportRequestService {
 
     @Transactional(readOnly = true)
     public GeneratedStoredReport getCompletedReport(UUID requestId) {
+        CompletedReportDownload download = getCompletedReportDownload(requestId);
+        return new GeneratedStoredReport(
+                download.fileName(),
+                download.mediaType(),
+                download.content()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public CompletedReportDownload getCompletedReportDownload(UUID requestId) {
         ReportRequest reportRequest = reportRequestRepository.findById(requestId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown report request id: " + requestId));
         if (reportRequest.getStatus() != ReportRequestStatus.COMPLETED || reportRequest.getStorageKey() == null) {
@@ -73,7 +83,8 @@ public class ReportRequestService {
         }
 
         byte[] content = reportStorageService.retrieve(reportRequest.getStorageKey());
-        return new GeneratedStoredReport(
+        return new CompletedReportDownload(
+                reportRequest,
                 reportRequest.getFileName(),
                 reportRequest.getMediaType(),
                 content
@@ -178,6 +189,14 @@ public class ReportRequestService {
     }
 
     public record GeneratedStoredReport(
+            String fileName,
+            String mediaType,
+            byte[] content
+    ) {
+    }
+
+    public record CompletedReportDownload(
+            ReportRequest reportRequest,
             String fileName,
             String mediaType,
             byte[] content

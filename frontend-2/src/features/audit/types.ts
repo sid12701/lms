@@ -25,6 +25,7 @@ export const AUDIT_STREAMS = [
   "APP_USER",
   "API_CLIENT",
   "DISBURSEMENT",
+  "REPORT_ACCESS",
 ] as const;
 
 export const AuditStreamSchema = z.enum(AUDIT_STREAMS);
@@ -39,6 +40,20 @@ export const AUDIT_STREAM_LABEL: Record<AuditStream, string> = {
   APP_USER: "App user",
   API_CLIENT: "API client",
   DISBURSEMENT: "Disbursement",
+  REPORT_ACCESS: "Report access",
+};
+
+/** Tailwind classes for stream pills in {@link AuditTable}. */
+export const AUDIT_STREAM_BADGE_TONE: Record<AuditStream, string> = {
+  APPLICATION: "bg-info/15 text-info-foreground border-info/40",
+  INTAKE: "bg-success/15 text-success-foreground border-success/40",
+  PII_REVEAL: "bg-warning/15 text-warning-foreground border-warning/40",
+  DOCUMENT_ACCESS: "bg-warning/15 text-warning-foreground border-warning/40",
+  PRODUCT: "bg-muted text-foreground-muted border-border",
+  APP_USER: "bg-primary/10 text-primary border-primary/30",
+  API_CLIENT: "bg-secondary/15 text-secondary-foreground border-secondary/40",
+  DISBURSEMENT: "bg-accent/15 text-accent-foreground border-accent/40",
+  REPORT_ACCESS: "bg-chart-5/15 text-chart-5 border-chart-5/40",
 };
 
 // ─── Subject discriminator (drives the deep-link button) ─────────────────────

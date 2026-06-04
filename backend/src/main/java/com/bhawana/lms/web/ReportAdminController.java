@@ -1,8 +1,12 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.ReportRequest;
 import com.bhawana.lms.service.AdminReportingService;
+import com.bhawana.lms.service.ReportAccessAuditService;
 import com.bhawana.lms.service.ReportRequestService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import java.math.BigDecimal;
@@ -14,7 +18,9 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,13 +36,16 @@ public class ReportAdminController {
 
     private final AdminReportingService adminReportingService;
     private final ReportRequestService reportRequestService;
+    private final ReportAccessAuditService reportAccessAuditService;
 
     public ReportAdminController(
             AdminReportingService adminReportingService,
-            ReportRequestService reportRequestService
+            ReportRequestService reportRequestService,
+            ReportAccessAuditService reportAccessAuditService
     ) {
         this.adminReportingService = adminReportingService;
         this.reportRequestService = reportRequestService;
+        this.reportAccessAuditService = reportAccessAuditService;
     }
 
     @GetMapping("/portfolio-mis/preview")
@@ -66,6 +75,8 @@ public class ReportAdminController {
 
     @GetMapping(value = "/portfolio-mis", produces = "text/csv")
     public ResponseEntity<byte[]> downloadPortfolioMisReport(
+            @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest,
             @RequestParam(required = false) UUID lspId,
             @RequestParam(required = false) LocalDate disbursalDateFrom,
             @RequestParam(required = false) LocalDate disbursalDateTo
@@ -74,6 +85,16 @@ public class ReportAdminController {
                 lspId,
                 disbursalDateFrom,
                 disbursalDateTo
+        );
+
+        reportAccessAuditService.recordMisCsvDownloaded(
+                principal.getSubject(),
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get(),
+                lspId,
+                disbursalDateFrom,
+                disbursalDateTo,
+                report.content().length
         );
 
         return downloadResponse(report.fileName(), report.mediaType(), report.content());
@@ -101,9 +122,20 @@ public class ReportAdminController {
     }
 
     @GetMapping("/requests/{requestId}/download")
-    public ResponseEntity<byte[]> downloadGeneratedReport(@PathVariable UUID requestId) {
-        ReportRequestService.GeneratedStoredReport report = reportRequestService.getCompletedReport(requestId);
-        return downloadResponse(report.fileName(), report.mediaType(), report.content());
+    public ResponseEntity<byte[]> downloadGeneratedReport(
+            @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest,
+            @PathVariable UUID requestId
+    ) {
+        ReportRequestService.CompletedReportDownload download = reportRequestService.getCompletedReportDownload(requestId);
+        reportAccessAuditService.recordMisRequestDownloaded(
+                principal.getSubject(),
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get(),
+                download.reportRequest(),
+                download.content().length
+        );
+        return downloadResponse(download.fileName(), download.mediaType(), download.content());
     }
 
     private static ResponseEntity<byte[]> downloadResponse(String fileName, String mediaType, byte[] content) {

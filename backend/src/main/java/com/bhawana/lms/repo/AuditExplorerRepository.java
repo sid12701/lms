@@ -11,13 +11,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.sql.Connection;
+import java.sql.SQLException;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Native UNION ALL search across the seven audit streams.
+ * Native UNION ALL search across the eight audit streams.
  *
  * <p>Gap #3 — Unified cross-domain audit search. Each enabled stream
  * contributes one SELECT branch with filters pushed down; the outer query
@@ -29,9 +31,41 @@ import org.springframework.stereotype.Repository;
 public class AuditExplorerRepository {
 
     private final NamedParameterJdbcTemplate jdbc;
+    private final boolean h2Database;
 
     public AuditExplorerRepository(DataSource dataSource) {
         this.jdbc = new NamedParameterJdbcTemplate(dataSource);
+        this.h2Database = isH2(dataSource);
+    }
+
+    private static boolean isH2(DataSource dataSource) {
+        try (Connection connection = dataSource.getConnection()) {
+            return connection.getMetaData().getDatabaseProductName().toLowerCase().contains("h2");
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Unable to detect database product for audit explorer.", ex);
+        }
+    }
+
+    private static final String REPORT_ACCESS_LSP_ID_JSON_PATTERN =
+            "\"lspId\"\\s*:\\s*\"([0-9a-fA-F-]{36})\"";
+
+    private String reportAccessFilterPayloadLspIdExpression() {
+        if (h2Database) {
+            return "cast(regexp_substr(cast(r.filter_payload as varchar(10000)), '"
+                    + REPORT_ACCESS_LSP_ID_JSON_PATTERN
+                    + "', 1, 1, null, 1) as uuid)";
+        }
+        return "cast(substring(cast(r.filter_payload as text) from '"
+                + REPORT_ACCESS_LSP_ID_JSON_PATTERN
+                + "') as uuid)";
+    }
+
+    private String reportAccessLspIdExpression() {
+        return "coalesce(rr.lsp_id, " + reportAccessFilterPayloadLspIdExpression() + ")";
+    }
+
+    private String reportAccessLspFilterPredicate() {
+        return reportAccessFilterPayloadLspIdExpression() + " = cast(:__lspId as uuid)";
     }
 
     public PagedResult<UnifiedAuditEventRow> search(AuditExplorerQuery query) {
@@ -115,6 +149,7 @@ public class AuditExplorerRepository {
             active.remove(AuditStream.PRODUCT);
             active.remove(AuditStream.APP_USER);
             active.remove(AuditStream.API_CLIENT);
+            active.remove(AuditStream.REPORT_ACCESS);
         }
         // PRODUCT carries no lsp_id — exclude when LSP filter is set.
         if (query.lspId() != null) {
@@ -315,6 +350,36 @@ public class AuditExplorerRepository {
                       and (cast(:__since as timestamp) is null or e.created_at >= cast(:__since as timestamp))
                       and (cast(:__until as timestamp) is null or e.created_at <= cast(:__until as timestamp))
                     """);
+        }
+
+        if (streams.contains(AuditStream.REPORT_ACCESS)) {
+            branches.add("""
+                    select
+                      cast('REPORT_ACCESS' as varchar(32)) as stream,
+                      r.id as native_id,
+                      r.created_at as occurred_at,
+                      cast(r.actor_username as varchar(255)) as actor_username,
+                      cast(r.correlation_id as varchar(128)) as correlation_id,
+                      cast(null as uuid) as loan_application_id,
+                      cast(null as uuid) as borrower_id,
+                      %s as lsp_id,
+                      cast(null as varchar(64)) as product_id,
+                      cast(r.action as varchar(64)) as action,
+                      cast(null as varchar(500)) as summary,
+                      cast(null as varchar(64)) as from_status,
+                      cast(null as varchar(64)) as to_status,
+                      cast(null as varchar(64)) as reason_code,
+                      cast(concat('{"reportType":"', r.report_type, '","byteCount":', cast(r.byte_count as varchar(20)), ',"filterPayload":', cast(r.filter_payload as varchar(10000)), ',"reportRequestId":"', coalesce(cast(r.report_request_id as varchar(36)), ''), '","actorIp":"', coalesce(r.actor_ip, ''), '"}') as text) as payload_json,
+                      cast(null as varchar(500)) as document_types
+                    from report_access_audit r
+                    left join report_request rr on rr.id = r.report_request_id
+                    where (cast(:__actorUsername as varchar(255)) is null or r.actor_username = cast(:__actorUsername as varchar(255)))
+                      and (cast(:__lspId as uuid) is null
+                        or rr.lsp_id = cast(:__lspId as uuid)
+                        or %s)
+                      and (cast(:__since as timestamp) is null or r.created_at >= cast(:__since as timestamp))
+                      and (cast(:__until as timestamp) is null or r.created_at <= cast(:__until as timestamp))
+                    """.formatted(reportAccessLspIdExpression(), reportAccessLspFilterPredicate()));
         }
 
         if (streams.contains(AuditStream.DISBURSEMENT)) {

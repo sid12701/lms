@@ -2318,7 +2318,7 @@ Untouched (deliberately):
 ---
 
 ### #130 — [F-7] Webhook 404 classified as PERMANENT — silent loss on URL typos
-**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/130
+**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/130 · **Status:** **OPEN** — plan grilled 2026-06-03, ready to implement. Bundled with **#73** (redrive endpoint + UI) in a single feature PR.
 
 **Problem (plain English):** If a partner's webhook URL has a typo, every call returns 404, and we mark the event PERMANENT — never retry. Silent data loss until someone notices missing events.
 
@@ -2331,7 +2331,138 @@ Untouched (deliberately):
 
 **Effect on app:** Partner misconfigs surface as retry storms (with alerts) instead of silent silence. Outbox holds events longer; storage cost minor.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-03) — IMPLEMENT (GREEN-LIT): bundled PR for #130 + #73.**
+
+**Decision:** Ship #130 (classification fix) and #73 (manual redrive endpoint + admin UI) together in one feature PR. The two are complementary: classification gives the system a chance to auto-recover from typos within ~24h; redrive is the safety valve for the rare case where the partner fixes their config days later. Without redrive, #130 alone just delays silent loss by a day; without #130, every typo is a manual-recovery incident.
+
+**Audit findings that sharpened the framing:**
+
+The audit doc framed this as "404 → silent loss." Tracing the dispatcher path makes the surface area precise:
+
+| Layer | Where | Today |
+|---|---|---|
+| Classification | `WebhookOutboxService.classify` (`WebhookOutboxService.java:296-304`) | `408 / 429 / 5xx` → RETRYABLE; **every other 4xx** (incl. 404, 410, 401, 403, 422) → PERMANENT after one attempt. |
+| Dispatcher | `WebhookOutboxService.dispatchEvent` (`:156-265`) | Maps classify outcome → `markPermanentFailure` + dead-letter alert, or `markRetryableFailure` + backoff. |
+| Entity state | `WebhookEventOutbox.markPermanentFailure` (`:202-208`) | Sets status=`PERMANENT_FAILURE`, `nextAttemptAt=null`. |
+| Backoff | `calculateBackoffSeconds` (`:306-309`) | Exponential, capped at 1h after attempt ~6. **No max-attempts cap today for 5xx/408/429** — those retry indefinitely. |
+| Claim query | `WebhookEventOutboxRepositoryImpl.claimIds` (`:72-93`) | PG `for update skip locked`; picks `PENDING` + due `RETRYABLE_FAILURE`. PERMANENT is excluded — that's the "stop retrying" mechanism. |
+| Alert | `AlertRuleEvaluationService.emitWebhookDeadLetter` (`:88-118`) + `AlertRuleDataInitializer:72` | HIGH-severity ops alert, deduped per `webhook-dead-letter:<eventId>` key. Rule enabled by default. Already fires today on the (instant) PERMANENT transition. |
+| Admin surface | `WebhookOutboxAdminController` | Lists outbox, can re-dispatch batch (PENDING/RETRYABLE only). **No redrive of PERMANENT.** |
+| Worker | `WebhookOutboxDispatchWorker` | Scheduled call into `dispatchPending`. No behavioural change needed. |
+
+Net effect today: a partner go-live with a one-character typo in the webhook URL → every event PERMANENT on first dispatch within seconds → `WEBHOOK_DEAD_LETTER` alert per event → ops triages → no automatic recovery, no UI to redrive, hand-edit DB rows.
+
+**Locked design (post-grill answers):**
+
+1. **404 and 410 become RETRYABLE-with-cap; everything else unchanged.**
+   - `classify(int statusCode, int attemptCount)` becomes attempt-count-aware.
+   - 404 / 410 → RETRYABLE while `attemptCount < maxSoft4xxAttempts` (default **10**); after the cap → PERMANENT.
+   - 401 / 403 / 422 / other non-soft 4xx → PERMANENT immediately (today's behaviour preserved).
+   - 408 / 429 / 5xx → RETRYABLE indefinitely (today's behaviour preserved — deliberately NOT touching the 5xx cap in this PR; see "scope not changed").
+2. **Configuration:** `lms.webhook.soft-4xx.max-attempts: 10`, bound via `@ConfigurationProperties`. Backoff already caps at 1h after attempt ~6, so 10 attempts span ~24h naturally — no second knob needed.
+3. **Alert behaviour:** `WEBHOOK_DEAD_LETTER` fires only at final exhaustion (status moves to PERMANENT_FAILURE). Today's `emitWebhookDeadLetter` call site (`WebhookOutboxService:217`) is in the PERMANENT branch — naturally fires once via the existing `webhook-dead-letter:<eventId>` dedup key. No new alert type, no new noise.
+4. **Redrive endpoint (closes #73):**
+   - `POST /api/v1/internal/admin/webhook-outbox/{id}/redrive`, `hasRole('SYSTEM_ADMIN')`.
+   - New column `redrive_count INT NOT NULL DEFAULT 0` on `webhook_event_outbox` via Flyway migration.
+   - Per-event cap: **3 manual redrives.** 4th attempt → 422 `WEBHOOK_OUTBOX_REDRIVE_CAP_EXCEEDED`.
+   - Behaviour: status PERMANENT_FAILURE → PENDING; `attemptCount` reset to 0 (fresh 10-attempt budget after the partner fixes their config); `nextAttemptAt = null`; `lastError = null`; `redriveCount += 1`.
+   - Guards: 422 `WEBHOOK_OUTBOX_NOT_REDRIVABLE` if status is not PERMANENT_FAILURE.
+   - Audit row written via the existing audit infrastructure landed under #70 / #152, capturing actor, eventId, lspId, correlationId, redriveCount.
+5. **Frontend (admin Outbox UI):** surface `redriveCount / 3`, attempts so far, and a "Redrive" button enabled only on PERMANENT rows with budget remaining. Disabled "Cap reached" state at 3/3.
+6. **Backfill:** none. Existing PERMANENT events stay PERMANENT; recover only via the new redrive button. Clean cut-over, zero migration risk, avoids re-firing stale events with unknown downstream idempotency posture.
+
+**Scope deliberately NOT changed in this PR:**
+- **5xx retries-forever** stays. Same file, same `calculateBackoffSeconds` — but mixing the 5xx cap in dilutes the test signal. Ship as a follow-up once this is stable.
+- **No new outbox status (`EXHAUSTED`)** — `PERMANENT_FAILURE` + `attemptCount` + `lastError` is enough to tell "we gave up" from "this was never going to work".
+- **No bulk redrive.** Single-event only. Bulk waits for a real operational need.
+- **No partner-facing comms.** Pre-launch; no live LSPs; webhook contract unchanged from a receiver's POV (we just retry the same event longer).
+- **#87 (TX-held during slow deliveries)** — same file, separate concern, separate PR.
+- **#110 (outbox index bloat)** — adding ~10 RETRYABLE rows per dead-URL-day is negligible; revisit at scale.
+
+**Why not the alternatives we considered:**
+- **Option B (cap all soft failures incl. 5xx)** — tempting because it also caps the "retry forever" cousin, but mixing two behaviour changes in one PR hides regressions. Sequencing matters.
+- **Option C (per-status differential caps)** — six knobs for a problem we have one of. Premature configurability.
+- **Option D (alert-only, no classification change)** — already done today via `WEBHOOK_DEAD_LETTER`; doesn't move the needle. Visible ≠ recoverable.
+- **Option E (retry 404 forever)** — unbounded outbox growth for genuinely-dead URLs.
+- **Option F (defer #130, ship only #73)** — leaves auto-recovery on the table; every typo becomes a paged human action.
+
+**TDD plan (vertical slices, behaviour through public interfaces — per the TDD doc, tracer first then incremental):**
+
+All assertions through public surfaces: HTTP status + body for the controller, persisted `WebhookEventOutbox` row state via repository read, `WebhookOutboxService.DispatchSummary` return, and the alert query interface. Boundary mock is `WebhookDeliveryClient` (network); no internal collaborators mocked.
+
+Backend (`backend/src/test/java/com/bhawana/lms/service/WebhookOutboxServiceClassificationTest.java` + sibling tests, plus `WebhookOutboxAdminControllerRedriveIntegrationTest.java`):
+
+1. **TRACER — `webhook_404_does_not_become_permanent_on_first_attempt`.** Stage delivery client to return 404; run `dispatchPending(1)`; assert row's `status == RETRYABLE_FAILURE`, `attemptCount == 1`, `nextAttemptAt` set, **no `WEBHOOK_DEAD_LETTER` alert exists**. Locks in: today's instant-permanent path on 404 is dead.
+2. `webhook_404_retries_up_to_cap_then_permanents`. Loop dispatch 10× against persistent-404 stub; after the 10th: `status == PERMANENT_FAILURE`, `attemptCount == 10`, exactly **one** `WEBHOOK_DEAD_LETTER` alert exists for that event.
+3. `webhook_410_behaves_like_404`. Same shape for 410. Locks in 410 inclusion in the soft-4xx family.
+4. `webhook_401_403_422_remain_permanent_on_first_attempt`. Regression guard — non-soft 4xx still die instantly. Three parameterised cases.
+5. `webhook_404_recovers_when_partner_fixes_url_within_cap`. 3× 404 then deliver 200 → `status == DELIVERED`, no alert. Real-world happy path.
+6. `webhook_5xx_still_retries_indefinitely`. 50× 500 → never PERMANENT. Confirms we did NOT touch 5xx behaviour.
+7. `redrive_permanent_event_resets_to_pending_and_consumes_one_budget`. Drive event to PERMANENT (configurable cap=1 in test profile, or use 401); `POST /redrive` as SYSTEM_ADMIN → 200 with `redriveCount: 1`; row shows `status == PENDING`, `attemptCount == 0`, `redriveCount == 1`, `lastError == null`; audit row written with actor/eventId/lspId/correlationId.
+8. `redrive_rejected_when_event_is_not_permanent`. POST on PENDING / RETRYABLE / DELIVERED → 422, body code `WEBHOOK_OUTBOX_NOT_REDRIVABLE`. Three parameterised cases.
+9. `redrive_rejected_after_three_redrives`. Sequence: drive PERMANENT → redrive (1) → drive PERMANENT → redrive (2) → drive PERMANENT → redrive (3) → drive PERMANENT → 4th redrive → 422, body code `WEBHOOK_OUTBOX_REDRIVE_CAP_EXCEEDED`. Locks the cap in via the failure path.
+10. `redrive_endpoint_requires_system_admin`. OPS_USER → 403; SYSTEM_ADMIN → 200.
+11. `redriven_event_re_enters_the_normal_dispatch_loop`. After redrive, next `dispatchPending` picks it up via `claimDispatchBatch` and delivers cleanly. Proves the PENDING reset works end-to-end through the claim query, not just the entity field.
+12. `redrive_writes_audit_row_with_actor_eventId_lspId_correlationId`. Asserts via the audit-query interface (no direct repo poke).
+
+PG-only schema test:
+
+13. `schema_has_redrive_count_column_with_default_zero`. Extend `SchemaCheckConstraintsPostgresTest` to assert `redrive_count INT NOT NULL DEFAULT 0` on `webhook_event_outbox`. Locks the migration in.
+
+Frontend (`frontend-2/src/features/admin/webhook-outbox/`):
+
+14. `admin_outbox_view_shows_redrive_button_only_on_permanent_with_budget`. Playwright spec: PENDING row no button, PERMANENT row with `redriveCount=0` shows button, PERMANENT row with `redriveCount=3` shows "Cap reached" disabled state. Mocks fetch boundary only.
+
+**Mocking discipline:**
+- **Mock `WebhookDeliveryClient`** — system boundary (network to partner).
+- Use real `WebhookOutboxService`, real `WebhookEventOutboxRepository`, real `OpsAlertService`, real `AlertRuleEvaluationService`, real `WebhookEventDeliveryAttemptRepository`. All internal — no mocks.
+- Backend integration tests use H2; one PG-only schema test guards the column.
+- Frontend test mocks `fetch` only; no internal component mocking.
+- **Do NOT assert** which internal method threw, or call-order beyond "called once / twice." Tests describe behaviour through the public HTTP/persistence/alert interfaces.
+
+**Tests we deliberately do NOT write here (owned elsewhere):**
+- Webhook signing format / receiver verification → **#129**.
+- LSP self-service update of webhook URL → already covered by existing admin tests; we only consume the URL.
+- Backoff exact-seconds correctness → existing `calculateBackoffSeconds` tests cover this; no change to that function.
+- `enqueueIfSubscribed` TX behaviour → **#88** (deferred).
+- Dispatcher batch TX behaviour → **#87** (deferred).
+
+**Files touched:**
+
+| File | Change |
+|---|---|
+| `WebhookOutboxService.java` | `classify(int statusCode, int attemptCount)` signature; soft-4xx branch with cap. |
+| `WebhookOutboxService.java` | New `redrive(UUID eventId)` method (single-event, transactional, audit-row emit). |
+| `WebhookEventOutbox.java` | New `redriveCount` field + getter + `markRedrive()` method (resets status / attemptCount / nextAttemptAt / lastError; bumps redriveCount). |
+| `WebhookOutboxAdminController.java` | New `@PostMapping("/{id}/redrive")` returning the updated `WebhookOutboxEventResponse`; response record gains `int redriveCount`. |
+| Flyway migration `Vxx__webhook_event_outbox_redrive_count.sql` | `ALTER TABLE webhook_event_outbox ADD COLUMN redrive_count INT NOT NULL DEFAULT 0;` |
+| `WebhookOutboxProperties.java` (new) | `@ConfigurationProperties("lms.webhook")` binding `softFourxx.maxAttempts` (default 10). |
+| `application.yml` | `lms.webhook.soft-4xx.max-attempts: 10`. |
+| `frontend-2/src/features/admin/webhook-outbox/*.tsx` | Surface `redriveCount / 3`, attempts so far, redrive button on PERMANENT rows with budget. |
+| Tests (back) | `WebhookOutboxServiceClassificationTest`, `WebhookOutboxServiceRedriveTest`, `WebhookOutboxAdminControllerRedriveIntegrationTest`, `SchemaCheckConstraintsPostgresTest` extension. |
+| Tests (front) | `webhook-outbox-admin-redrive.spec.tsx` (Playwright). |
+
+**Cross-issue impact:**
+- **#73** — closed by this PR (the redrive endpoint + UI lives here).
+- **#87 (dispatchPending holds TX)** — same file; left untouched. Independent follow-up.
+- **#88 (enqueue in user-request TX)** — same file; DEFERRED per its own decision.
+- **#110 (outbox index bloat)** — minor increase in RETRYABLE rows per dead URL; well within current bounds.
+- **#129 (signing format docs)** — independent.
+- **#155 (failed-auth alert pipeline)** — `WEBHOOK_DEAD_LETTER` dedup means no double-firing. Worth confirming during #155's grill that webhook-side alerts don't get re-counted as auth failures.
+- **#159 (Audit Explorer 7 streams, just landed in PR #174)** — webhook-redrive audit rows should land under one of the existing streams (likely the admin-ops stream); confirm during implementation.
+
+**Effect on app:**
+- Partner go-live with a typo: receiver 404s, dispatcher quietly retries with exponential backoff for ~24h. Partner notices via their monitoring, fixes URL, next retry delivers. Zero ops involvement, zero data loss.
+- Partner's URL is genuinely dead: 10 attempts fail, `WEBHOOK_DEAD_LETTER` alert fires once, ops triages. If partner comes back, admin clicks Redrive (up to 3×).
+- 5xx behaviour unchanged this PR.
+- Outbox row count grows ~10 rows per dead-URL-day instead of 1 — negligible.
+- Pre-launch, partner-contract-safe — no observable change for receivers that work correctly.
+
+**Dependencies / sequencing:**
+- Single PR, standalone.
+- Depends on `WEBHOOK_DEAD_LETTER` alert plumbing (already shipped via #62) — no new alert infrastructure.
+- Depends on audit infrastructure (already shipped via #70 / #152) — no new audit plumbing.
+- Cross-link in PR description: closes **#130** and **#73**. Calls out #87 / 5xx-retry-cap as future follow-ups in the same file.
 
 ---
 
@@ -2890,6 +3021,17 @@ Untouched (deliberately):
 - Independent of all other AUD-class work; can ship in any order within the AUD-class PR train.
 - No prerequisite on #71, #148, or #149.
 - Follow-up tickets (row_count, alert rule) are non-blocking and depend on this PR.
+
+**Implementation status — CLOSED (2026-06-04):**
+
+| Slice | Delivered | Primary code |
+|-------|-----------|--------------|
+| Write path | `report_access_audit` (V87); `MIS_CSV_DOWNLOADED` / `MIS_REQUEST_DOWNLOADED` on successful sync + async downloads only | `ReportAccessAuditService`, `ReportAdminController`, `ReportRequestService.getCompletedReportDownload()` |
+| Tests | Five integration slices + `ReportAdminControllerTest` cleanup | `ReportAdminControllerDownloadAuditTest` |
+| Explorer (was #159 follow-up) | 8th stream `REPORT_ACCESS` on unified audit API + `/audit` UI tab | `AuditExplorerRepository`, `AuditExplorerService`, `frontend-2/src/features/audit/` |
+
+- Preview / summary / list / failed downloads remain audit-silent (perimeter tests green).
+- **Deferred:** `row_count` on audit rows; `BULK_PII_DOWNLOAD` alert rule; `auth_event_audit` as a 9th Explorer stream (#71).
 
 ---
 
@@ -3570,7 +3712,7 @@ Untouched (deliberately):
 ---
 
 ### #73 — No redrive path for PERMANENT_FAILURE webhook events
-**Labels:** gap · **Link:** https://github.com/sid12701/lms/issues/73
+**Labels:** gap · **Link:** https://github.com/sid12701/lms/issues/73 · **Status:** **OPEN** — plan grilled 2026-06-03 alongside **#130**, ready to implement. Bundled with #130 in a single feature PR.
 
 **Problem (plain English):** Once an event is PERMANENT, the only way to retry is hand-editing DB rows. No admin UI, no API.
 
@@ -3583,7 +3725,18 @@ Untouched (deliberately):
 
 **Effect on app:** Operators recover from typo/outage situations without DBA help.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-03) — IMPLEMENT (GREEN-LIT): bundled PR with #130.**
+
+Full design, decisions, test plan, and file list live in the **#130** entry above (single bundled PR, single set of TDD slices). Headline decisions specific to #73:
+
+- **Endpoint:** `POST /api/v1/internal/admin/webhook-outbox/{id}/redrive`, `hasRole('SYSTEM_ADMIN')` only.
+- **Per-event cap:** 3 manual redrives, tracked via new `redrive_count` column on `webhook_event_outbox`.
+- **Behaviour:** status `PERMANENT_FAILURE` → `PENDING`; `attemptCount = 0` (fresh 10-attempt budget post-fix); `nextAttemptAt = null`; `lastError = null`; `redriveCount += 1`.
+- **Guards:** 422 `WEBHOOK_OUTBOX_NOT_REDRIVABLE` for non-PERMANENT status; 422 `WEBHOOK_OUTBOX_REDRIVE_CAP_EXCEEDED` on the 4th attempt.
+- **Audit:** existing audit infrastructure (#70 / #152) records actor, eventId, lspId, correlationId, redriveCount.
+- **UI:** admin Outbox view in `frontend-2` shows `redriveCount / 3`, attempts so far, and a Redrive button enabled only on PERMANENT rows with budget remaining.
+- **Out of scope:** bulk redrive (single-event only; bulk waits for real operational need); auto-redrive (defeats classification, rejected); OPS_USER access (SYSTEM_ADMIN only for now).
+- **Closes #73** when the bundled #130 + #73 PR merges.
 
 ---
 
@@ -5043,8 +5196,11 @@ If V66 succeeded on any environment, the backfill from V58 has held — orphans 
 | APP_USER | `app_user_audit_event` | #152 (a) |
 | API_CLIENT | `api_client_audit_event` | #152 (a) |
 | DISBURSEMENT | `disbursement_outcome_audit` | #152 (b) |
+| REPORT_ACCESS | `report_access_audit` | #151 follow-up (2026-06-04) |
 
-**Out of scope for #159 (follow-ups):** AUTH (`#71`), LSP/webhook config (`#153`), REPORT_ACCESS (`#151`), server-side `correlationId` / free-text `q` (`#76`), `LSP_AUDIT` / `lsp_audit_event` (8th stream after `#153` lands).
+**Out of scope for #159 PR #174 (follow-ups):** AUTH (`#71`), LSP/webhook config (`#153`), server-side `correlationId` / free-text `q` (`#76`), `LSP_AUDIT` / `lsp_audit_event` (9th stream after `#153` lands).
+
+**Follow-up — REPORT_ACCESS stream (#151 audit table):** Shipped 2026-06-04 with #151. `REPORT_ACCESS` is the **8th** live Explorer stream (7 from #174 + report access). Backend UNION on `report_access_audit`; FE tab + `AUDIT_STREAM_BADGE_TONE`; `AuditExplorerControllerReportAccessStreamTest` + H2 parity.
 
 **Implementation notes (locked):**
 - `ClientIpAddresses.resolve` on mock-outcome (not raw `getRemoteAddr()`).

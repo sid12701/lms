@@ -1,5 +1,6 @@
 package com.bhawana.lms.support;
 
+import com.bhawana.lms.repo.AuthEventAuditRepository;
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppUserAuditEventRepository;
@@ -29,6 +30,7 @@ import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspIpAllowlistRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.LspUiIpAllowlistRepository;
+import com.bhawana.lms.repo.ReportAccessAuditRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
 import com.bhawana.lms.repo.WebhookEventOutboxRepository;
@@ -66,6 +68,7 @@ public class IntegrationTestDatabaseCleaner {
     private final LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final BorrowerRepository borrowerRepository;
+    private final AuthEventAuditRepository authEventAuditRepository;
     private final ApiClientAuditEventRepository apiClientAuditEventRepository;
     private final ApiClientRepository apiClientRepository;
     private final AppUserAuditEventRepository appUserAuditEventRepository;
@@ -77,6 +80,7 @@ public class IntegrationTestDatabaseCleaner {
     private final LspIpAllowlistRepository lspIpAllowlistRepository;
     private final LspUiIpAllowlistRepository lspUiIpAllowlistRepository;
     private final LspRepository lspRepository;
+    private final ReportAccessAuditRepository reportAccessAuditRepository;
 
     public IntegrationTestDatabaseCleaner(
             JdbcTemplate jdbcTemplate,
@@ -101,6 +105,7 @@ public class IntegrationTestDatabaseCleaner {
             LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository,
             LoanApplicationRepository loanApplicationRepository,
             BorrowerRepository borrowerRepository,
+            AuthEventAuditRepository authEventAuditRepository,
             ApiClientAuditEventRepository apiClientAuditEventRepository,
             ApiClientRepository apiClientRepository,
             AppUserAuditEventRepository appUserAuditEventRepository,
@@ -111,7 +116,8 @@ public class IntegrationTestDatabaseCleaner {
             LspAuditEventRepository lspAuditEventRepository,
             LspIpAllowlistRepository lspIpAllowlistRepository,
             LspUiIpAllowlistRepository lspUiIpAllowlistRepository,
-            LspRepository lspRepository) {
+            LspRepository lspRepository,
+            ReportAccessAuditRepository reportAccessAuditRepository) {
         this.jdbcTemplate = jdbcTemplate;
         this.opsAlertRepository = opsAlertRepository;
         this.disbursementOutcomeAuditRepository = disbursementOutcomeAuditRepository;
@@ -134,6 +140,7 @@ public class IntegrationTestDatabaseCleaner {
         this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.borrowerRepository = borrowerRepository;
+        this.authEventAuditRepository = authEventAuditRepository;
         this.apiClientAuditEventRepository = apiClientAuditEventRepository;
         this.apiClientRepository = apiClientRepository;
         this.appUserAuditEventRepository = appUserAuditEventRepository;
@@ -145,9 +152,11 @@ public class IntegrationTestDatabaseCleaner {
         this.lspIpAllowlistRepository = lspIpAllowlistRepository;
         this.lspUiIpAllowlistRepository = lspUiIpAllowlistRepository;
         this.lspRepository = lspRepository;
+        this.reportAccessAuditRepository = reportAccessAuditRepository;
     }
 
     public void cleanIntegrationTestData() {
+        reportAccessAuditRepository.deleteAllInBatch();
         jdbcTemplate.execute("DELETE FROM report_request");
         opsAlertRepository.deleteAllInBatch();
         disbursementOutcomeAuditRepository.deleteAllInBatch();
@@ -170,6 +179,7 @@ public class IntegrationTestDatabaseCleaner {
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
+        authEventAuditRepository.deleteAllInBatch();
         apiClientAuditEventRepository.deleteAllInBatch();
         apiClientRepository.deleteAllInBatch();
         appUserAuditEventRepository.deleteAllInBatch();
