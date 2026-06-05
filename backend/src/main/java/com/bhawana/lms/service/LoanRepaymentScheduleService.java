@@ -3,6 +3,7 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
+import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
@@ -24,15 +25,18 @@ public class LoanRepaymentScheduleService {
     private final LoanApplicationService loanApplicationService;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
+    private final AlertRuleEvaluationService alertRuleEvaluationService;
 
     public LoanRepaymentScheduleService(
             LoanApplicationService loanApplicationService,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
-            LoanPaymentTransactionRepository loanPaymentTransactionRepository
+            LoanPaymentTransactionRepository loanPaymentTransactionRepository,
+            AlertRuleEvaluationService alertRuleEvaluationService
     ) {
         this.loanApplicationService = loanApplicationService;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
+        this.alertRuleEvaluationService = alertRuleEvaluationService;
     }
 
     @Transactional
@@ -50,8 +54,21 @@ public class LoanRepaymentScheduleService {
             UUID applicationId,
             List<InstallmentDraft> installments
     ) {
+        LoanApplication application = loanApplicationService.getApplicationForLsp(lspId, applicationId);
         LoanAccount loanAccount = getMutableLoanAccountForLsp(lspId, applicationId);
-        validateProvidedInstallments(loanAccount, installments);
+        try {
+            validateProvidedInstallments(loanAccount, installments);
+        } catch (BusinessRuleViolationException exception) {
+            if ("REPAYMENT_SCHEDULE_INVALID".equals(exception.getErrorCode())) {
+                alertRuleEvaluationService.emitLspProvidedScheduleViolation(
+                        application,
+                        resolveScheduleViolationType(exception),
+                        exception.getMessage(),
+                        exception.getFieldErrors()
+                );
+            }
+            throw exception;
+        }
         loanRepaymentScheduleInstallmentRepository.deleteByLoanAccountId(loanAccount.getId());
         loanRepaymentScheduleInstallmentRepository.flush();
         return loanRepaymentScheduleInstallmentRepository.saveAll(installments.stream()
@@ -68,7 +85,7 @@ public class LoanRepaymentScheduleService {
                 .toList());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = BusinessRuleViolationException.class)
     public void validatePersistedScheduleForDisbursement(LoanAccount loanAccount) {
         List<LoanRepaymentScheduleInstallment> installments = loanRepaymentScheduleInstallmentRepository
                 .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId());
@@ -129,7 +146,11 @@ public class LoanRepaymentScheduleService {
                 installmentAmount = scaleCurrency(principalDue.add(interestDue));
             }
             BigDecimal closingPrincipal = scaleCurrency(openingPrincipal.subtract(principalDue));
-            if (closingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
+            if (installmentNumber == tenureMonths && closingPrincipal.compareTo(BigDecimal.ZERO) != 0) {
+                principalDue = scaleCurrency(principalDue.add(closingPrincipal));
+                installmentAmount = scaleCurrency(principalDue.add(interestDue));
+                closingPrincipal = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            } else if (closingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
                 closingPrincipal = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
             }
             installments.add(new LoanRepaymentScheduleInstallment(
@@ -163,49 +184,193 @@ public class LoanRepaymentScheduleService {
             String message
     ) {
         Map<String, String> violations = new LinkedHashMap<>();
+        ScheduleViolationType primaryViolationType = ScheduleViolationType.SCHEDULE_GENERIC;
         if (installments == null || installments.isEmpty()) {
-            violations.put("installments", "At least one installment is required.");
-            throw new BusinessRuleViolationException(errorCode, message, violations);
+            primaryViolationType = registerScheduleViolation(
+                    violations,
+                    primaryViolationType,
+                    ScheduleViolationType.SCHEDULE_GENERIC,
+                    "installments",
+                    "At least one installment is required."
+            );
+            throw scheduleViolation(errorCode, message, violations, primaryViolationType);
         }
         if (installments.size() != loanAccount.getTenureMonths()) {
-            violations.put("installments", "Installment count must match the approved tenure.");
+            primaryViolationType = registerScheduleViolation(
+                    violations,
+                    primaryViolationType,
+                    ScheduleViolationType.SCHEDULE_INSTALLMENT_COUNT_MISMATCH,
+                    "installments",
+                    "Installment count must match the approved tenure."
+            );
+        }
+
+        BigDecimal approvedPrincipal = scaleCurrency(loanAccount.getPrincipalAmount());
+        InstallmentDraft firstInstallment = installments.get(0);
+        if (scaleCurrency(firstInstallment.openingPrincipal()).compareTo(approvedPrincipal) != 0) {
+            primaryViolationType = registerScheduleViolation(
+                    violations,
+                    primaryViolationType,
+                    ScheduleViolationType.SCHEDULE_OPENING_MISMATCH,
+                    "installments[0].openingPrincipal",
+                    "Opening principal on the first installment must equal the approved principal amount."
+            );
         }
 
         BigDecimal totalPrincipal = BigDecimal.ZERO.setScale(2);
         LocalDate previousDueDate = null;
+        BigDecimal previousClosingPrincipal = null;
         for (int index = 0; index < installments.size(); index++) {
             InstallmentDraft installment = installments.get(index);
             String prefix = "installments[" + index + "]";
             if (installment.installmentNumber() != index + 1) {
-                violations.put(prefix + ".installmentNumber", "Installment numbers must be contiguous starting from 1.");
+                primaryViolationType = registerScheduleViolation(
+                        violations,
+                        primaryViolationType,
+                        ScheduleViolationType.SCHEDULE_GENERIC,
+                        prefix + ".installmentNumber",
+                        "Installment numbers must be contiguous starting from 1."
+                );
             }
             if (previousDueDate != null && !installment.dueDate().isAfter(previousDueDate)) {
-                violations.put(prefix + ".dueDate", "Due dates must be strictly increasing.");
+                primaryViolationType = registerScheduleViolation(
+                        violations,
+                        primaryViolationType,
+                        ScheduleViolationType.SCHEDULE_GENERIC,
+                        prefix + ".dueDate",
+                        "Due dates must be strictly increasing."
+                );
             }
             previousDueDate = installment.dueDate();
+
+            if (index > 0 && previousClosingPrincipal != null
+                    && scaleCurrency(installment.openingPrincipal()).compareTo(previousClosingPrincipal) != 0) {
+                primaryViolationType = registerScheduleViolation(
+                        violations,
+                        primaryViolationType,
+                        ScheduleViolationType.SCHEDULE_CHAIN_BROKEN,
+                        prefix + ".openingPrincipal",
+                        "Opening principal must equal the previous installment closing principal."
+                );
+            }
 
             if (hasNegativeValue(installment.openingPrincipal())
                     || hasNegativeValue(installment.principalDue())
                     || hasNegativeValue(installment.interestDue())
                     || hasNegativeValue(installment.installmentAmount())
                     || hasNegativeValue(installment.closingPrincipal())) {
-                violations.put(prefix, "Installment amounts cannot be negative.");
+                primaryViolationType = registerScheduleViolation(
+                        violations,
+                        primaryViolationType,
+                        ScheduleViolationType.SCHEDULE_GENERIC,
+                        prefix,
+                        "Installment amounts cannot be negative."
+                );
             }
 
             BigDecimal expectedInstallmentAmount = scaleCurrency(installment.principalDue().add(installment.interestDue()));
             if (scaleCurrency(installment.installmentAmount()).compareTo(expectedInstallmentAmount) != 0) {
-                violations.put(prefix + ".installmentAmount", "Principal due plus interest due must equal installment amount.");
+                primaryViolationType = registerScheduleViolation(
+                        violations,
+                        primaryViolationType,
+                        ScheduleViolationType.SCHEDULE_GENERIC,
+                        prefix + ".installmentAmount",
+                        "Principal due plus interest due must equal installment amount."
+                );
+            }
+
+            BigDecimal expectedPrincipalFromRow = scaleCurrency(
+                    installment.openingPrincipal().subtract(installment.closingPrincipal())
+            );
+            if (scaleCurrency(installment.principalDue()).compareTo(expectedPrincipalFromRow) != 0) {
+                primaryViolationType = registerScheduleViolation(
+                        violations,
+                        primaryViolationType,
+                        ScheduleViolationType.SCHEDULE_ROW_RECONCILE_FAILED,
+                        prefix + ".principalDue",
+                        "Principal due must equal opening principal minus closing principal for the installment."
+                );
             }
 
             totalPrincipal = scaleCurrency(totalPrincipal.add(installment.principalDue()));
+            previousClosingPrincipal = scaleCurrency(installment.closingPrincipal());
         }
 
-        if (totalPrincipal.compareTo(scaleCurrency(loanAccount.getPrincipalAmount())) != 0) {
-            violations.put("principalDueTotal", "Total principal due must equal the approved principal amount.");
+        if (totalPrincipal.compareTo(approvedPrincipal) != 0) {
+            primaryViolationType = registerScheduleViolation(
+                    violations,
+                    primaryViolationType,
+                    ScheduleViolationType.SCHEDULE_PRINCIPAL_NOT_CLOSED,
+                    "principalDueTotal",
+                    "Total principal due must equal the approved principal amount."
+            );
+        }
+
+        InstallmentDraft lastInstallment = installments.get(installments.size() - 1);
+        if (scaleCurrency(lastInstallment.closingPrincipal()).compareTo(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)) != 0) {
+            primaryViolationType = registerScheduleViolation(
+                    violations,
+                    primaryViolationType,
+                    ScheduleViolationType.SCHEDULE_FINAL_NONZERO,
+                    "installments[" + (installments.size() - 1) + "].closingPrincipal",
+                    "Final installment closing principal must be zero."
+            );
         }
 
         if (!violations.isEmpty()) {
-            throw new BusinessRuleViolationException(errorCode, message, violations);
+            throw scheduleViolation(errorCode, message, violations, primaryViolationType);
+        }
+    }
+
+    private static ScheduleViolationType registerScheduleViolation(
+            Map<String, String> violations,
+            ScheduleViolationType currentPrimary,
+            ScheduleViolationType candidateType,
+            String field,
+            String message
+    ) {
+        violations.put(field, message);
+        return higherPriorityScheduleViolation(currentPrimary, candidateType);
+    }
+
+    private static ScheduleViolationType higherPriorityScheduleViolation(
+            ScheduleViolationType current,
+            ScheduleViolationType candidate
+    ) {
+        return scheduleViolationPriority(candidate) < scheduleViolationPriority(current) ? candidate : current;
+    }
+
+    private static int scheduleViolationPriority(ScheduleViolationType type) {
+        return switch (type) {
+            case SCHEDULE_OPENING_MISMATCH -> 1;
+            case SCHEDULE_CHAIN_BROKEN -> 2;
+            case SCHEDULE_ROW_RECONCILE_FAILED -> 3;
+            case SCHEDULE_FINAL_NONZERO -> 4;
+            case SCHEDULE_PRINCIPAL_NOT_CLOSED -> 5;
+            case SCHEDULE_INSTALLMENT_COUNT_MISMATCH -> 6;
+            case SCHEDULE_GENERIC -> 7;
+        };
+    }
+
+    private static BusinessRuleViolationException scheduleViolation(
+            String errorCode,
+            String message,
+            Map<String, String> violations,
+            ScheduleViolationType primaryViolationType
+    ) {
+        violations.put("violationType", primaryViolationType.name());
+        return new BusinessRuleViolationException(errorCode, message, violations);
+    }
+
+    private static ScheduleViolationType resolveScheduleViolationType(BusinessRuleViolationException exception) {
+        String violationType = exception.getFieldErrors().get("violationType");
+        if (violationType == null) {
+            return ScheduleViolationType.SCHEDULE_GENERIC;
+        }
+        try {
+            return ScheduleViolationType.valueOf(violationType);
+        } catch (IllegalArgumentException ignored) {
+            return ScheduleViolationType.SCHEDULE_GENERIC;
         }
     }
 

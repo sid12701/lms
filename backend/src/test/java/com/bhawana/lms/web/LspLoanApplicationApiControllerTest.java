@@ -11,21 +11,27 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.domain.LoanApplicationStatus;
+import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.domain.WebhookEventOutbox;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationPiiRevealAuditRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
+import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.repo.WebhookEventOutboxRepository;
+import com.bhawana.lms.service.LoanDisbursementWorkerService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +45,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
@@ -80,6 +87,18 @@ class LspLoanApplicationApiControllerTest {
 
     @Autowired
     private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
+
+    @Autowired
+    private LoanApplicationRepository loanApplicationRepository;
+
+    @Autowired
+    private LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
+
+    @Autowired
+    private LoanDisbursementWorkerService loanDisbursementWorkerService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
@@ -1215,6 +1234,423 @@ class LspLoanApplicationApiControllerTest {
                                 "ifscCode", "HDFC0001234"
                         ))))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void lspSubmitsScheduleWithCorrectPrincipalSumButNonzeroFinalClosingIsRejected() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        JsonNode apiClient = createApiClient(apex.id(), "Schedule Final Closing");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-SCHED-FINAL-001");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        putProvidedRepaymentSchedule(accessToken, applicationId, fullyValidScheduleExceptFinalClosingNonZero())
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("REPAYMENT_SCHEDULE_INVALID"))
+                .andExpect(jsonPath("$.violations[?(@.field == 'violationType')].message")
+                        .value("SCHEDULE_FINAL_NONZERO"));
+    }
+
+    @Test
+    void lspSubmitsScheduleWithBrokenChainIsRejected() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        JsonNode apiClient = createApiClient(apex.id(), "Schedule Chain");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-SCHED-CHAIN-001");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        List<Map<String, Object>> installments = fullyValidProvidedSchedule();
+        Map<String, Object> second = new LinkedHashMap<>(installments.get(1));
+        BigDecimal wrongOpening = new BigDecimal("9999.99");
+        BigDecimal principalDue = new BigDecimal(second.get("principalDue").toString());
+        BigDecimal interestDue = new BigDecimal(second.get("interestDue").toString());
+        BigDecimal closing = wrongOpening.subtract(principalDue).setScale(2, RoundingMode.HALF_UP);
+        second.put("openingPrincipal", wrongOpening.toPlainString());
+        second.put("closingPrincipal", closing.toPlainString());
+        second.put("installmentAmount", principalDue.add(interestDue).setScale(2, RoundingMode.HALF_UP).toPlainString());
+        installments.set(1, second);
+
+        putProvidedRepaymentSchedule(accessToken, applicationId, installments)
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("REPAYMENT_SCHEDULE_INVALID"))
+                .andExpect(jsonPath("$.violations[?(@.field == 'violationType')].message")
+                        .value("SCHEDULE_CHAIN_BROKEN"));
+    }
+
+    @Test
+    void lspSubmitsScheduleWithWrongOpeningPrincipalIsRejected() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        JsonNode apiClient = createApiClient(apex.id(), "Schedule Opening");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-SCHED-OPEN-001");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        List<Map<String, Object>> installments = fullyValidProvidedSchedule();
+        Map<String, Object> first = new LinkedHashMap<>(installments.get(0));
+        BigDecimal wrongOpening = new BigDecimal("44000.00");
+        BigDecimal principalDue = new BigDecimal(first.get("principalDue").toString());
+        BigDecimal closing = wrongOpening.subtract(principalDue).setScale(2, RoundingMode.HALF_UP);
+        first.put("openingPrincipal", wrongOpening.toPlainString());
+        first.put("closingPrincipal", closing.toPlainString());
+        installments.set(0, first);
+        Map<String, Object> second = new LinkedHashMap<>(installments.get(1));
+        second.put("openingPrincipal", closing.toPlainString());
+        installments.set(1, second);
+
+        putProvidedRepaymentSchedule(accessToken, applicationId, installments)
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("REPAYMENT_SCHEDULE_INVALID"))
+                .andExpect(jsonPath("$.violations[?(@.field == 'violationType')].message")
+                        .value("SCHEDULE_OPENING_MISMATCH"));
+    }
+
+    @Test
+    void lspSubmitsScheduleWithRowReconcileFailureIsRejected() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        JsonNode apiClient = createApiClient(apex.id(), "Schedule Reconcile");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-SCHED-ROW-001");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        List<Map<String, Object>> installments = fullyValidProvidedSchedule();
+        Map<String, Object> third = new LinkedHashMap<>(installments.get(2));
+        third.put("principalDue", "1.00");
+        installments.set(2, third);
+
+        putProvidedRepaymentSchedule(accessToken, applicationId, installments)
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("REPAYMENT_SCHEDULE_INVALID"))
+                .andExpect(jsonPath("$.violations[?(@.field == 'violationType')].message")
+                        .value("SCHEDULE_ROW_RECONCILE_FAILED"));
+    }
+
+    @Test
+    void lspSubmitsFullyClosingProvidedScheduleIsAccepted() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        JsonNode apiClient = createApiClient(apex.id(), "Schedule Accept");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-SCHED-OK-001");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        putProvidedRepaymentSchedule(accessToken, applicationId, fullyValidProvidedSchedule())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(12));
+    }
+
+    @Test
+    void generatedSchedulePassesTightenedValidatorAcrossEdgeTenures() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture product = createProductWithMaxTenure("ACTIVE", 60);
+        mapProductToLsp(product.id(), apex.id());
+        JsonNode apiClient = createApiClient(apex.id(), "Generated Schedule Parity");
+        String token = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        int[] tenures = {12, 18, 24, 36, 60};
+        BigDecimal[] principals = {
+                new BigDecimal("10000.00"),
+                new BigDecimal("45000.00"),
+                new BigDecimal("100000.00")
+        };
+
+        int caseNumber = 0;
+        for (int tenure : tenures) {
+            for (BigDecimal principal : principals) {
+                caseNumber++;
+                LinkedHashMap<String, Object> payload = defaultExternalApplicationPayload(
+                        extractLspIdFromToken(token),
+                        product.id(),
+                        "GEN-" + caseNumber
+                );
+                payload.put("loanAmount", principal);
+                payload.put("loanTenure", tenure);
+                payload.put("panNumber", String.format("ABCDE%04dF", 1000 + caseNumber));
+                payload.put("mobileNumber", String.format("9%09d", 800_000_000 + caseNumber));
+                payload.put("emailAddress", "schedule-gen-" + caseNumber + "@example.com");
+                JsonNode application = createExternalApplication(token, payload);
+                uploadAllRequiredDocuments(token, application.get("id").asText());
+                mockMvc.perform(put("/api/v1/lsp/loan-applications/{applicationId}/repayment-schedule",
+                                application.get("id").asText())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("mode", "GENERATED"))))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.length()").value(tenure));
+            }
+        }
+    }
+
+    @Test
+    void rejectedLspScheduleSubmissionEmitsExactlyOneLspBoundViolationAlert() throws Exception {
+        opsAlertRepository.deleteAllInBatch();
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        JsonNode apiClient = createApiClient(apex.id(), "Schedule Alert");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-SCHED-ALERT-001");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        putProvidedRepaymentSchedule(accessToken, applicationId, fullyValidScheduleExceptFinalClosingNonZero())
+                .andExpect(status().isUnprocessableEntity());
+
+        assertEquals(
+                1,
+                countScheduleViolationAlerts(fetchOpsAlerts(), applicationId, "SCHEDULE_FINAL_NONZERO")
+        );
+    }
+
+    @Test
+    void acceptedLspScheduleSubmissionEmitsZeroScheduleViolationAlerts() throws Exception {
+        opsAlertRepository.deleteAllInBatch();
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        JsonNode apiClient = createApiClient(apex.id(), "Schedule No Alert");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-SCHED-NOALERT-001");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        putProvidedRepaymentSchedule(accessToken, applicationId, fullyValidProvidedSchedule())
+                .andExpect(status().isOk());
+
+        assertEquals(0, countScheduleViolationAlerts(fetchOpsAlerts(), applicationId, null));
+    }
+
+    @Test
+    void preDisbursementWorkerRejectsChainBreakIntroducedAfterPersist() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        JsonNode apiClient = createApiClient(apex.id(), "Schedule Worker Defence");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-SCHED-WORKER-001");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+        putProvidedRepaymentSchedule(accessToken, applicationId, fullyValidProvidedSchedule())
+                .andExpect(status().isOk());
+
+        UUID applicationUuid = UUID.fromString(applicationId);
+        assertEquals(
+                LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
+                loanApplicationRepository.findById(applicationUuid).orElseThrow().getStatus()
+        );
+
+        UUID loanAccountId = jdbcTemplate.queryForObject(
+                "select id from loan_account where loan_application_id = ?",
+                UUID.class,
+                applicationUuid
+        );
+        jdbcTemplate.update(
+                """
+                update loan_repayment_schedule_installment
+                set closing_principal = ?
+                where loan_account_id = ? and installment_number = ?
+                """,
+                new BigDecimal("0.01"),
+                loanAccountId,
+                1
+        );
+
+        assertTrue(loanDisbursementWorkerService.processApplication(applicationUuid));
+        assertEquals(
+                LoanApplicationStatus.REJECTED,
+                loanApplicationRepository.findById(applicationUuid).orElseThrow().getStatus()
+        );
+        assertEquals(0, loanDisbursementRequestLogRepository.countByLoanAccount_Id(loanAccountId));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions putProvidedRepaymentSchedule(
+            String accessToken,
+            String applicationId,
+            List<Map<String, Object>> installments
+    ) throws Exception {
+        return mockMvc.perform(put("/api/v1/lsp/loan-applications/{applicationId}/repayment-schedule", applicationId)
+                .header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(Map.of(
+                        "mode", "LSP_PROVIDED",
+                        "installments", installments
+                ))));
+    }
+
+    private List<Map<String, Object>> fullyValidScheduleExceptFinalClosingNonZero() {
+        List<Map<String, Object>> installments = fullyValidProvidedSchedule();
+        int lastIndex = installments.size() - 1;
+        int previousIndex = lastIndex - 1;
+
+        Map<String, Object> previous = new LinkedHashMap<>(installments.get(previousIndex));
+        BigDecimal previousOpening = new BigDecimal(previous.get("openingPrincipal").toString());
+        BigDecimal previousPrincipal = new BigDecimal(previous.get("principalDue").toString()).add(new BigDecimal("0.01"));
+        BigDecimal previousInterest = new BigDecimal(previous.get("interestDue").toString());
+        BigDecimal previousClosing = previousOpening.subtract(previousPrincipal).setScale(2, RoundingMode.HALF_UP);
+        previous.put("principalDue", previousPrincipal.toPlainString());
+        previous.put("closingPrincipal", previousClosing.toPlainString());
+        previous.put(
+                "installmentAmount",
+                previousPrincipal.add(previousInterest).setScale(2, RoundingMode.HALF_UP).toPlainString()
+        );
+        installments.set(previousIndex, previous);
+
+        Map<String, Object> last = new LinkedHashMap<>(installments.get(lastIndex));
+        BigDecimal lastOpening = previousClosing;
+        BigDecimal lastClosing = new BigDecimal("0.01");
+        BigDecimal lastPrincipal = lastOpening.subtract(lastClosing).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal lastInterest = new BigDecimal(last.get("interestDue").toString());
+        last.put("openingPrincipal", lastOpening.toPlainString());
+        last.put("principalDue", lastPrincipal.toPlainString());
+        last.put("closingPrincipal", lastClosing.toPlainString());
+        last.put(
+                "installmentAmount",
+                lastPrincipal.add(lastInterest).setScale(2, RoundingMode.HALF_UP).toPlainString()
+        );
+        installments.set(lastIndex, last);
+        return installments;
+    }
+
+    private List<Map<String, Object>> fullyValidProvidedSchedule() {
+        BigDecimal principal = new BigDecimal("45000.00");
+        int tenureMonths = 12;
+        List<Map<String, Object>> installments = new java.util.ArrayList<>();
+        BigDecimal opening = principal;
+        BigDecimal regularPrincipal = principal.divide(BigDecimal.valueOf(tenureMonths), 2, RoundingMode.HALF_UP);
+        LocalDate dueDate = LocalDate.now().plusMonths(1);
+
+        for (int installmentNumber = 1; installmentNumber <= tenureMonths; installmentNumber++) {
+            BigDecimal principalDue = installmentNumber == tenureMonths
+                    ? opening.setScale(2, RoundingMode.HALF_UP)
+                    : regularPrincipal;
+            BigDecimal interestDue = new BigDecimal("100.00");
+            BigDecimal closing = opening.subtract(principalDue).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal installmentAmount = principalDue.add(interestDue).setScale(2, RoundingMode.HALF_UP);
+            installments.add(providedInstallmentRow(
+                    installmentNumber,
+                    dueDate,
+                    opening,
+                    principalDue,
+                    interestDue,
+                    installmentAmount,
+                    closing
+            ));
+            opening = closing;
+            dueDate = dueDate.plusMonths(1);
+        }
+        return installments;
+    }
+
+    private Map<String, Object> providedInstallmentRow(
+            int installmentNumber,
+            LocalDate dueDate,
+            BigDecimal openingPrincipal,
+            BigDecimal principalDue,
+            BigDecimal interestDue,
+            BigDecimal installmentAmount,
+            BigDecimal closingPrincipal
+    ) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("installmentNumber", installmentNumber);
+        row.put("dueDate", dueDate.toString());
+        row.put("openingPrincipal", openingPrincipal.toPlainString());
+        row.put("principalDue", principalDue.toPlainString());
+        row.put("interestDue", interestDue.toPlainString());
+        row.put("installmentAmount", installmentAmount.toPlainString());
+        row.put("closingPrincipal", closingPrincipal.toPlainString());
+        return row;
+    }
+
+    private JsonNode fetchOpsAlerts() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private long countScheduleViolationAlerts(JsonNode alerts, String subjectApplicationId, String violationType) {
+        long count = 0;
+        for (JsonNode alert : alerts) {
+            if (!OpsAlertType.LSP_BOUND_VIOLATION.name().equals(alert.get("type").asText())) {
+                continue;
+            }
+            if (!subjectApplicationId.equals(alert.get("subjectId").asText())) {
+                continue;
+            }
+            String context = alert.get("contextJson").asText();
+            if (!context.contains("SCHEDULE_")) {
+                continue;
+            }
+            if (violationType != null && !context.contains("\"violationType\":\"" + violationType + "\"")) {
+                continue;
+            }
+            count++;
+        }
+        return count;
+    }
+
+    private ProductFixture createProductWithMaxTenure(String status, int maxTenureMonths) throws Exception {
+        String code = "PRODUCT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        MvcResult createResult = mockMvc.perform(post("/api/v1/internal/admin/products")
+                        .with(productAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "code", code,
+                                "name", "Product " + code,
+                                "minPrincipal", new BigDecimal("5000.00"),
+                                "maxPrincipal", new BigDecimal("2500000.00"),
+                                "interestRate", new BigDecimal("18.50"),
+                                "processingFeeRate", new BigDecimal("2.25"),
+                                "minTenureMonths", 6,
+                                "maxTenureMonths", maxTenureMonths,
+                                "status", status
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode createdJson = objectMapper.readTree(createResult.getResponse().getContentAsString());
+        return new ProductFixture(createdJson.get("id").asText(), createdJson.get("code").asText());
     }
 
     private JsonNode createInternalApplication(
