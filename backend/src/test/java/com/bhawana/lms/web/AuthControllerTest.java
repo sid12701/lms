@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.domain.ApiClientStatus;
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.Lsp;
@@ -26,7 +27,9 @@ import com.bhawana.lms.service.AdminDirectoryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -104,6 +107,22 @@ class AuthControllerTest {
                 null,
                 Set.of(opsUserRole)
         ));
+    }
+
+    @AfterEach
+    void tearDownSharedData() {
+        authEventAuditRepository.deleteAllInBatch();
+        appUserAuditEventRepository.deleteAll();
+        appUserRepository.deleteAll();
+        apiClientAuditEventRepository.deleteAll();
+        apiClientRepository.deleteAll();
+        lspAuditEventRepository.deleteAllInBatch();
+        lspRepository.deleteAll();
+    }
+
+    private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor systemAdmin() {
+        return jwt().jwt(jwt -> jwt.subject("test.admin").claim("roles", List.of("SYSTEM_ADMIN")))
+                .authorities(() -> "ROLE_SYSTEM_ADMIN");
     }
 
     @Test
@@ -352,6 +371,46 @@ class AuthControllerTest {
         mockMvc.perform(get("/api/v1/lsp/loan-applications")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void rotateSecretInvalidatesOutstandingAccessTokens() throws Exception {
+        Lsp lsp = lspRepository.save(new Lsp("APEX-ROTATE", "Apex Rotate", LspStatus.ACTIVE));
+        ApiClientManagementService.CreatedApiClient created = apiClientManagementService.createClient(
+                "Rotate Test Client",
+                null,
+                lsp.getId(),
+                ApiClientStatus.ACTIVE,
+                "test.setup",
+                null
+        );
+
+        MvcResult tokenResult = mockMvc.perform(post("/api/v1/auth/token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                                created.client().getClientId(),
+                                created.rawSecret()
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+        String accessToken = objectMapper.readTree(tokenResult.getResponse().getContentAsString())
+                .get("accessToken")
+                .asText();
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/internal/admin/api-clients/{id}/rotate-secret", created.client().getId())
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("graceSeconds", 300))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clientSecret").isString());
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
