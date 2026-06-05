@@ -22,8 +22,10 @@ cp .env.example .env.local   # set VITE_LOGIN_* credentials for your environment
 | `npm run dev`    | Dev server at http://localhost:5173      |
 | `npm run verify` | typecheck + lint + format + test + build |
 | `npm run test`   | Vitest unit/component tests              |
-| `npm run e2e`    | Playwright smoke tests                   |
+| `npm run e2e`    | Playwright smoke tests (see note below)  |
 | `npm run build`  | Production bundle → `dist/`              |
+
+**E2E:** `e2e/smoke.spec.ts` runs without a backend. Responsive and loan-lifecycle specs require the Spring Boot API (see `.env.example` credentials).
 
 ## Docs
 
