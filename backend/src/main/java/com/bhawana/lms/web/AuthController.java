@@ -1,8 +1,11 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.ClientIpAddresses;
+import com.bhawana.lms.common.web.LspSurfaceIpAccessDeniedException;
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.AppUser;
+import com.bhawana.lms.domain.AuthEventFailureReason;
 import com.bhawana.lms.domain.RefreshToken;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppUserRepository;
@@ -12,6 +15,7 @@ import com.bhawana.lms.security.SecurityProperties;
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.service.ApiClientAuthenticationService;
+import com.bhawana.lms.service.AuthAuditService;
 import com.bhawana.lms.service.LspSurfaceIpAllowlistService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -33,8 +37,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -66,6 +73,7 @@ public class AuthController {
     private final RefreshTokenRepository refreshTokenRepository;
     private final ApiClientRepository apiClientRepository;
     private final LspSurfaceIpAllowlistService lspSurfaceIpAllowlistService;
+    private final AuthAuditService authAuditService;
 
     public AuthController(
             AuthenticationManager authenticationManager,
@@ -76,7 +84,8 @@ public class AuthController {
             ApiClientAuthenticationService apiClientAuthenticationService,
             RefreshTokenRepository refreshTokenRepository,
             ApiClientRepository apiClientRepository,
-            LspSurfaceIpAllowlistService lspSurfaceIpAllowlistService
+            LspSurfaceIpAllowlistService lspSurfaceIpAllowlistService,
+            AuthAuditService authAuditService
     ) {
         this.authenticationManager = authenticationManager;
         this.jwtEncoder = jwtEncoder;
@@ -87,6 +96,7 @@ public class AuthController {
         this.refreshTokenRepository = refreshTokenRepository;
         this.apiClientRepository = apiClientRepository;
         this.lspSurfaceIpAllowlistService = lspSurfaceIpAllowlistService;
+        this.authAuditService = authAuditService;
     }
 
     @PostMapping("/login")
@@ -118,15 +128,49 @@ public class AuthController {
     @PostMapping("/refresh")
     @Transactional
     public ResponseEntity<TokenResponse> refresh(
-            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshCookie
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshCookie,
+            HttpServletRequest httpRequest
     ) {
+        String actorIp = ClientIpAddresses.resolve(httpRequest);
+        String correlationId = CorrelationIdHolder.get();
+
         if (refreshCookie == null || refreshCookie.isBlank()) {
+            authAuditService.recordTokenRefreshFailure(
+                    AuthAuditService.ANONYMOUS_USERNAME,
+                    AuthEventFailureReason.MISSING_REFRESH_COOKIE,
+                    actorIp,
+                    correlationId
+            );
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
         String tokenHash = sha256Hex(refreshCookie);
-        RefreshToken existing = refreshTokenRepository.findByTokenHashAndRevokedFalse(tokenHash).orElse(null);
-        if (existing == null || existing.getExpiresAt().isBefore(Instant.now())) {
+        RefreshToken existing = refreshTokenRepository.findByTokenHash(tokenHash).orElse(null);
+        if (existing == null) {
+            authAuditService.recordTokenRefreshFailure(
+                    AuthAuditService.UNKNOWN_USERNAME,
+                    AuthEventFailureReason.TOKEN_EXPIRED,
+                    actorIp,
+                    correlationId
+            );
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (existing.isRevoked()) {
+            authAuditService.recordTokenRefreshFailure(
+                    refreshSubjectUsername(existing),
+                    AuthEventFailureReason.TOKEN_REVOKED,
+                    actorIp,
+                    correlationId
+            );
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (existing.getExpiresAt().isBefore(Instant.now())) {
+            authAuditService.recordTokenRefreshFailure(
+                    refreshSubjectUsername(existing),
+                    AuthEventFailureReason.TOKEN_EXPIRED,
+                    actorIp,
+                    correlationId
+            );
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
@@ -135,17 +179,35 @@ public class AuthController {
 
         TokenResponse tokenResponse;
         String newRawRefreshToken;
+        AppUser refreshUser = null;
+        ApiClient refreshClient = null;
         if (existing.getAppUser() != null) {
             AppUser user = existing.getAppUser();
+            refreshUser = user;
             tokenResponse = mintTokenForAppUser(user);
             newRawRefreshToken = generateAndStoreRefreshTokenForAppUser(user);
         } else if (existing.getApiClient() != null) {
             ApiClient apiClient = existing.getApiClient();
+            refreshClient = apiClient;
             tokenResponse = mintTokenForApiClient(apiClient);
             newRawRefreshToken = generateAndStoreRefreshTokenForApiClient(apiClient);
         } else {
+            authAuditService.recordTokenRefreshFailure(
+                    AuthAuditService.UNKNOWN_USERNAME,
+                    AuthEventFailureReason.OTHER,
+                    actorIp,
+                    correlationId
+            );
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
+
+        authAuditService.recordTokenRefreshSuccess(
+                refreshSubjectUsername(existing),
+                refreshUser != null ? refreshUser.getId() : null,
+                refreshClient != null ? refreshClient.getId() : null,
+                actorIp,
+                correlationId
+        );
 
         ResponseCookie cookie = buildRefreshCookie(newRawRefreshToken, securityProperties.getJwt().getRefreshTtl().getSeconds());
         return ResponseEntity.ok()
@@ -156,7 +218,8 @@ public class AuthController {
     @PostMapping("/password")
     public ResponseEntity<TokenResponse> changePassword(
             Authentication authentication,
-            @Valid @RequestBody ChangePasswordRequest request
+            @Valid @RequestBody ChangePasswordRequest request,
+            HttpServletRequest httpRequest
     ) {
         AppUser user = appUserRepository.findByUsername(authentication.getName())
                 .orElseThrow(() -> new IllegalArgumentException("Password changes are only supported for managed users."));
@@ -171,6 +234,11 @@ public class AuthController {
 
         user.changePassword(passwordEncoder.encode(request.newPassword()));
         appUserRepository.save(user);
+        authAuditService.recordPasswordChanged(
+                user,
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get()
+        );
 
         TokenResponse tokenResponse = mintTokenResponse(authentication);
         return ResponseEntity.ok()
@@ -179,17 +247,44 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
+    @Transactional
     public ResponseEntity<Void> logout(
-            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshCookie
+            @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshCookie,
+            HttpServletRequest httpRequest
     ) {
+        String logoutUsername = AuthAuditService.ANONYMOUS_USERNAME;
+        UUID logoutUserId = null;
+
+        Authentication securityAuthentication = SecurityContextHolder.getContext().getAuthentication();
+        if (securityAuthentication != null
+                && securityAuthentication.isAuthenticated()
+                && securityAuthentication.getName() != null
+                && !"anonymousUser".equals(securityAuthentication.getName())) {
+            logoutUsername = securityAuthentication.getName();
+            logoutUserId = appUserRepository.findByUsername(logoutUsername).map(AppUser::getId).orElse(null);
+        }
+
         if (refreshCookie != null && !refreshCookie.isBlank()) {
             String tokenHash = sha256Hex(refreshCookie);
-            refreshTokenRepository.findByTokenHashAndRevokedFalse(tokenHash)
-                    .ifPresent(token -> {
-                        token.revoke();
-                        refreshTokenRepository.save(token);
-                    });
+            RefreshToken refreshToken = refreshTokenRepository.findByTokenHash(tokenHash).orElse(null);
+            if (refreshToken != null) {
+                logoutUsername = refreshSubjectUsername(refreshToken);
+                if (refreshToken.getAppUser() != null) {
+                    logoutUserId = refreshToken.getAppUser().getId();
+                }
+                if (!refreshToken.isRevoked()) {
+                    refreshToken.revoke();
+                    refreshTokenRepository.save(refreshToken);
+                }
+            }
         }
+
+        authAuditService.recordLogout(
+                logoutUsername,
+                logoutUserId,
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get()
+        );
 
         ResponseCookie clearCookie = buildRefreshCookie("", 0);
         return ResponseEntity.noContent()
@@ -307,39 +402,86 @@ public class AuthController {
     private TokenResponse issuePasswordToken(LoginRequest request, String remoteAddress) {
         requireField(request.username(), "username");
         requireField(request.password(), "password");
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.username(), request.password())
-        );
-        appUserRepository.findByUsername(request.username()).ifPresent(user -> {
-            if (user.getLsp() != null && hasLspUiRole(user)) {
-                lspSurfaceIpAllowlistService.assertUiLoginAllowed(user.getLsp().getId(), remoteAddress);
+        String correlationId = CorrelationIdHolder.get();
+        try {
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.username(), request.password())
+            );
+            AppUser user = appUserRepository.findByUsername(request.username()).orElse(null);
+            try {
+                if (user != null && user.getLsp() != null && hasLspUiRole(user)) {
+                    lspSurfaceIpAllowlistService.assertUiLoginAllowed(user.getLsp().getId(), remoteAddress);
+                }
+            } catch (LspSurfaceIpAccessDeniedException exception) {
+                authAuditService.recordLoginFailure(
+                        request.username(),
+                        AuthEventFailureReason.OTHER,
+                        remoteAddress,
+                        correlationId
+                );
+                throw exception;
             }
-        });
-        return mintTokenResponse(authentication);
+            authAuditService.recordLoginSuccess(request.username(), user, remoteAddress, correlationId);
+            return mintTokenResponse(authentication);
+        } catch (AuthenticationException exception) {
+            authAuditService.recordLoginFailureFromException(
+                    request.username(),
+                    exception,
+                    remoteAddress,
+                    correlationId
+            );
+            throw exception;
+        }
     }
 
     private TokenResponse issueClientCredentialsToken(ClientCredentialsRequest request, String remoteAddress) {
-        ApiClientAuthenticationService.AuthenticatedApiClient apiClient = apiClientAuthenticationService.authenticate(
-                request.clientId(),
-                request.clientSecret()
-        );
-        ApiClient freshClient = apiClientRepository.findByClientId(apiClient.clientId())
-                .orElseThrow(() -> new IllegalStateException("API client missing after authentication."));
-        lspSurfaceIpAllowlistService.assertApiTokenIssuanceAllowed(freshClient.getLsp().getId(), remoteAddress);
-        return mintTokenResponse(
-                apiClient.clientId(),
-                List.of("LSP_API_CLIENT"),
-                new ManagedUserState(false, Instant.EPOCH, 0L),
-                Map.of(
-                        ApiClientJwtSessionValidator.AUTH_TYPE_CLAIM, ApiClientJwtSessionValidator.AUTH_TYPE_API_CLIENT,
-                        "clientId", apiClient.clientId(),
-                        "clientName", apiClient.clientName(),
-                        "lspId", apiClient.lspId().toString(),
-                        "lspCode", apiClient.lspCode(),
-                        ApiClientJwtSessionValidator.TV_LSP_CLAIM, freshClient.getLsp().getTokenVersion(),
-                        ApiClientJwtSessionValidator.TV_API_CLIENT_CLAIM, freshClient.getTokenVersion()
-                )
-        );
+        String correlationId = CorrelationIdHolder.get();
+        String clientId = requireField(request.clientId(), "clientId");
+        try {
+            ApiClientAuthenticationService.AuthenticatedApiClient apiClient = apiClientAuthenticationService.authenticate(
+                    clientId,
+                    request.clientSecret()
+            );
+            ApiClient freshClient = apiClientRepository.findByClientId(apiClient.clientId())
+                    .orElseThrow(() -> new IllegalStateException("API client missing after authentication."));
+            lspSurfaceIpAllowlistService.assertApiTokenIssuanceAllowed(freshClient.getLsp().getId(), remoteAddress);
+            authAuditService.recordApiClientTokenSuccess(freshClient, remoteAddress, correlationId);
+            return mintTokenResponse(
+                    apiClient.clientId(),
+                    List.of("LSP_API_CLIENT"),
+                    new ManagedUserState(false, Instant.EPOCH, 0L),
+                    Map.of(
+                            ApiClientJwtSessionValidator.AUTH_TYPE_CLAIM,
+                            ApiClientJwtSessionValidator.AUTH_TYPE_API_CLIENT,
+                            "clientId", apiClient.clientId(),
+                            "clientName", apiClient.clientName(),
+                            "lspId", apiClient.lspId().toString(),
+                            "lspCode", apiClient.lspCode(),
+                            ApiClientJwtSessionValidator.TV_LSP_CLAIM, freshClient.getLsp().getTokenVersion(),
+                            ApiClientJwtSessionValidator.TV_API_CLIENT_CLAIM, freshClient.getTokenVersion()
+                    )
+            );
+        } catch (BadCredentialsException exception) {
+            authAuditService.recordApiClientTokenFailure(
+                    clientId,
+                    AuthEventFailureReason.INVALID_CREDENTIALS,
+                    remoteAddress,
+                    correlationId
+            );
+            throw exception;
+        }
+    }
+
+    private static String refreshSubjectUsername(RefreshToken refreshToken) {
+        AppUser appUser = refreshToken.getAppUser();
+        if (appUser != null) {
+            return appUser.getUsername();
+        }
+        ApiClient apiClient = refreshToken.getApiClient();
+        if (apiClient != null) {
+            return apiClient.getClientId();
+        }
+        return AuthAuditService.UNKNOWN_USERNAME;
     }
 
     private String generateAndStoreRefreshTokenForAppUser(AppUser user) {

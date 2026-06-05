@@ -2,7 +2,7 @@
 
 ## Status
 
-accepted
+accepted — **completed** (2026-06): legacy `frontend/` removed; former `frontend-2/` is now `frontend/`. In-app mock layer removed; app calls the live backend.
 
 (Supersedes an earlier same-session draft of this ADR, which proposed a frozen-backend adapter layer with the mock layer retained behind a `VITE_USE_MOCKS` flag.)
 

@@ -1,0 +1,214 @@
+/**
+ * `UsersTable` — TanStack-table view of the admin users list.
+ *
+ * Columns: Username, Email, Role, LSP, Status, Created. Row-level actions
+ * (Edit, Reset password, Disable / Enable) delegate to the parent via
+ * callbacks. Density is comfortable per D7.
+ *
+ * Username is NOT PII (per the agent prompt). Email is NOT masked on this
+ * admin surface (the admin already sees email in the auth seed).
+ */
+import { useCallback, useMemo } from "react";
+import type { ColumnDef, PaginationState } from "@tanstack/react-table";
+import { CheckCircle2, PauseCircle } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { AdminEntityDataTable } from "@/components/app/data/AdminEntityDataTable";
+import { EntityRowActions } from "@/components/app/data/EntityRowActions";
+import { EmptyState } from "@/components/app/feedback/EmptyState";
+import { formatDateTime, formatRelative } from "@/lib/format";
+import type { Role } from "@/schemas/role";
+import type { UserStatus } from "@/schemas/user";
+import type { UserRow, UsersListFilters, UsersListResponse } from "../types";
+
+const ROLE_LABEL: Record<Role, string> = {
+  SYSTEM_ADMIN: "System admin",
+  OPS_USER: "Ops user",
+  PRODUCT_ADMIN: "Product admin",
+  LSP_UI_READ: "LSP UI — read",
+  LSP_UI_WRITE: "LSP UI — write",
+  LSP_API_CLIENT: "LSP API client",
+};
+
+const STATUS_META: Record<
+  UserStatus,
+  { label: string; className: string; icon: typeof CheckCircle2 }
+> = {
+  ACTIVE: {
+    label: "Active",
+    icon: CheckCircle2,
+    className: "gap-1 border-success/30 bg-success/10 text-success",
+  },
+  DISABLED: {
+    label: "Disabled",
+    icon: PauseCircle,
+    className: "gap-1 border-border bg-surface-muted text-foreground-muted",
+  },
+};
+
+export interface UsersTableProps {
+  data: UsersListResponse | undefined;
+  isLoading: boolean;
+  filters: UsersListFilters;
+  onFiltersChange: (next: UsersListFilters) => void;
+  onEdit: (row: UserRow) => void;
+  onResetPassword: (row: UserRow) => void;
+  onToggleStatus: (row: UserRow) => void;
+  className?: string;
+}
+
+export function UsersTable({
+  data,
+  isLoading,
+  filters,
+  onFiltersChange,
+  onEdit,
+  onResetPassword,
+  onToggleStatus,
+  className,
+}: UsersTableProps) {
+  const rows = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const pageSize = filters.pageSize ?? 25;
+  const page = filters.page ?? 0;
+
+  const columns = useMemo<ColumnDef<UserRow>[]>(
+    () => [
+      {
+        id: "username",
+        header: "Username",
+        cell: ({ row }) => (
+          <div className="flex flex-col gap-0.5">
+            <span className="text-foreground text-sm font-medium" data-slot="users-username">
+              {row.original.username}
+            </span>
+            {row.original.mustChangePassword ? (
+              <span data-slot="users-must-change-flag" className="text-warning text-xs">
+                Must change password
+              </span>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        id: "email",
+        header: "Email",
+        cell: ({ row }) => (
+          <span className="text-foreground-muted text-xs">{row.original.email}</span>
+        ),
+      },
+      {
+        id: "role",
+        header: "Role",
+        cell: ({ row }) => (
+          <span className="text-foreground text-xs">{ROLE_LABEL[row.original.role]}</span>
+        ),
+      },
+      {
+        id: "lsp",
+        header: "LSP",
+        cell: ({ row }) => (
+          <span className="text-foreground-muted text-xs">{row.original.lspName ?? "—"}</span>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        cell: ({ row }) => {
+          const meta = STATUS_META[row.original.status];
+          const Icon = meta.icon;
+          return (
+            <Badge
+              data-slot="users-status-badge"
+              data-status={row.original.status}
+              className={meta.className}
+            >
+              <Icon aria-hidden="true" className="size-3" />
+              <span>{meta.label}</span>
+            </Badge>
+          );
+        },
+      },
+      {
+        id: "created",
+        header: "Created",
+        cell: ({ row }) => (
+          <span
+            title={formatDateTime(row.original.createdAt)}
+            className="text-foreground-muted text-xs"
+          >
+            {formatRelative(row.original.createdAt)}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: () => <span className="sr-only">Actions</span>,
+        cell: ({ row }) => {
+          const u = row.original;
+          const isDisabled = u.status === "DISABLED";
+          return (
+            <EntityRowActions
+              mode="inline"
+              items={[
+                {
+                  id: "edit",
+                  label: "Edit",
+                  dataSlot: "users-edit-button",
+                  onSelect: () => onEdit(u),
+                },
+                {
+                  id: "reset",
+                  label: "Reset password",
+                  dataSlot: "users-reset-button",
+                  onSelect: () => onResetPassword(u),
+                },
+                {
+                  id: "toggle",
+                  label: isDisabled ? "Enable" : "Disable",
+                  ariaLabel: isDisabled ? `Enable ${u.username}` : `Disable ${u.username}`,
+                  dataSlot: "users-toggle-status-button",
+                  onSelect: () => onToggleStatus(u),
+                },
+              ]}
+            />
+          );
+        },
+      },
+    ],
+    [onEdit, onResetPassword, onToggleStatus],
+  );
+
+  const handlePaginationChange = useCallback(
+    (next: PaginationState) => {
+      onFiltersChange({
+        ...filters,
+        page: next.pageIndex,
+        pageSize: next.pageSize,
+      });
+    },
+    [filters, onFiltersChange],
+  );
+
+  return (
+    <AdminEntityDataTable
+      dataSlot="users-table"
+      className={className}
+      columns={columns}
+      rows={rows}
+      total={total}
+      page={page}
+      pageSize={pageSize}
+      loading={isLoading}
+      rowIdKey="id"
+      ariaLabel="Admin users"
+      onPaginationChange={handlePaginationChange}
+      empty={
+        <EmptyState
+          variant="filtered-empty"
+          title="No users"
+          description="Loosen the filters or invite a new user."
+        />
+      }
+    />
+  );
+}

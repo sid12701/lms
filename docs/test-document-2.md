@@ -16,7 +16,7 @@ Use this legend everywhere in this document:
 |-----|---------|
 | **FULL** | Implemented end-to-end (backend + UI or API) and covered by automated tests at some layer |
 | **PARTIAL** | Core logic exists but UI/API integration, edge cases, or E2E coverage incomplete |
-| **MOCKED** | Behaviour exists only in `frontend-2` mock router / mock disbursement adapter, not production integrations |
+| **MOCKED** | Behaviour exists only in removed in-app mock router / mock disbursement adapter, not production integrations |
 | **BROKEN** | Known regression or documented failure |
 | **MISSING** | Not found in codebase or explicitly deferred |
 | **UNCLEAR** | Requires product/engineering confirmation |
@@ -28,9 +28,7 @@ Use this legend everywhere in this document:
 The Bhawana Capital **Loan Management System (LMS)** is a multi-tenant loan operations platform with:
 
 - **Spring Boot backend** (`backend/`) — PostgreSQL, Flyway (75+ migrations), JWT auth, LSP API, internal ops/admin APIs, webhooks (HMAC-signed outbox), alerts, MIS reports, document storage (MinIO/R2/local), tenant RLS.
-- **Two frontends:**
-  - **`frontend/`** — production-oriented SPA wired directly to the live backend (reference implementation per ADR-0001).
-  - **`frontend-2/`** — richer UI (1065+ Vitest tests, Playwright specs) built originally on an in-app mock layer; **hybrid integration** is in progress: auth, admin surfaces, alerts, reports, borrowers list, LSP `my-loans`, and parts of loan-applications call the real API; lifecycle **mutations** and several detail flows still **fall back to mocks** when the backend is down or for LSP sessions on internal routes.
+- **React frontend** (`frontend/`) — canonical SPA (formerly `frontend-2/`) integrated directly against the live backend per ADR-0001. In-app mock layer removed; Vitest + Playwright CI at repo root (`.github/workflows/frontend-ci.yml`).
 
 **Testing today:**
 
@@ -92,7 +90,6 @@ This document defines that suite: modules, coverage gaps, test data, a full case
 | Admin users | `/users` | SYSTEM_ADMIN | **FULL** live |
 | Admin API clients | `/api-clients` | SYSTEM_ADMIN | **FULL** live |
 | LSP portal | `/my-loans` | LSP_UI_READ, LSP_UI_WRITE | **FULL** live (LSP API) |
-| Legacy frontend | `frontend/` | Same roles | **FULL** live (reference) |
 
 ### 2.3 External integration points
 
@@ -145,9 +142,9 @@ Optional seeds: `app.seed.sample-data`, `app.seed.demo-portfolio` (disabled by d
 ### 3.3 Manual / docs coverage
 
 - `docs/API-references/api-spec.md` — endpoint catalogue  
-- `frontend-2/docs/Frontend/CURRENT-STATE.md` — UI phases (mock-first history)  
+- `frontend/docs/Frontend/CURRENT-STATE.md` — UI phases (mock-first history)  
 - `docs/adr/0001-adopt-frontend-2-direct-backend-integration.md` — target: remove mocks, MSW for unit tests  
-- Lighthouse a11y passes documented for frontend-2 routes (≥95)  
+- Lighthouse a11y passes documented for frontend routes (≥95)  
 
 ---
 
@@ -163,14 +160,14 @@ Optional seeds: `app.seed.sample-data`, `app.seed.demo-portfolio` (disabled by d
 | Real disbursement provider | **MOCKED** | Production bank integration not present |
 | LSP foreclosure **execute** via API | **MISSING** | LSP can request quote; **execute** is `SYSTEM_ADMIN` ops endpoint only |
 | Partial repayment | **MISSING** (by design) | Backend enforces **exact installment** amount (`validateExactInstallmentAmount`) |
-| frontend-2 lifecycle ActionBar vs backend statuses | **PARTIAL** | UI lifecycle components still know legacy mock statuses; adapter maps Gap #11 canonical 10 |
-| frontend-2 loan detail mutations | **MOCKED** for transitions/disbursement | `api-detail.ts`: `postTransition`, `postDisbursement` still use mock router |
+| frontend lifecycle ActionBar vs backend statuses | **PARTIAL** | UI lifecycle components still know legacy mock statuses; adapter maps Gap #11 canonical 10 |
+| frontend loan detail mutations | **MOCKED** for transitions/disbursement | `api-detail.ts`: `postTransition`, `postDisbursement` still use mock router |
 | OPS approval beyond INITIALIZED→AWAITING_APPROVAL | **PARTIAL** | `authorizeStatusTransition` — OPS cannot approve/reject on backend |
 | Reports for OPS / LSP UI | **MISSING** on UI | Reports route is SYSTEM_ADMIN only |
 | Webhook tab on loan detail | **PARTIAL** | Reads admin outbox when live; falls back to mock |
-| CI backend tests in frontend workflow | **MISSING** | `frontend-2/.github/workflows/ci.yml` does not run Maven tests |
+| CI backend tests in frontend workflow | **MISSING** | `frontend/.github/workflows/ci.yml` does not run Maven tests |
 
-### 4.2 Mock vs real matrix (frontend-2)
+### 4.2 Mock vs real matrix (frontend)
 
 | Feature API module | Live backend | Mock fallback |
 |------------------|-------------|---------------|
@@ -231,7 +228,7 @@ Optional seeds: `app.seed.sample-data`, `app.seed.demo-portfolio` (disabled by d
 | Unit | JUnit, Vitest | Business rules, adapters, pure functions |
 | API contract | MockMvc, OpenAPI diff, `openapi-typescript` drift check | Fast regression on DTOs |
 | Integration | Testcontainers Postgres, MinIO test support | DB constraints, RLS, repositories |
-| E2E UI | Playwright against `frontend-2` (post-integration) or `frontend` | Role-based journeys |
+| E2E UI | Playwright against `frontend` (post-integration) or `frontend` | Role-based journeys |
 | E2E API | Dedicated LSP client harness | Lifecycle without UI |
 | Non-functional | k6 / Gatling (later) | List/report performance |
 
@@ -301,7 +298,7 @@ Deploy **WireMock** or small Node receiver in compose; configure LSP webhook URL
 
 ## 7. User roles / personas
 
-| Role | Backend authority | UI access (frontend-2) | API access |
+| Role | Backend authority | UI access (frontend) | API access |
 |------|-------------------|--------------------------|------------|
 | `SYSTEM_ADMIN` | Full internal + manual status + disbursement + payments + foreclosure execute | All internal routes + audit | N/A (user JWT) |
 | `OPS_USER` | Read ops loans; transition **only** `INITIALIZED`→`AWAITING_APPROVAL`; alerts | Loans, borrowers, alerts — no admin mutations | N/A |
@@ -432,7 +429,7 @@ Detailed steps for representative cases are in §9–§21. This matrix lists **a
 | LC-017 | Invalid state transition rejected | Critical | **FULL** |
 | LC-018 | Loan stuck in DISBURSEMENT_RETRY triggers STUCK_DISBURSEMENT alert | High | **FULL** rule |
 | LC-019 | STALE_INTAKE alert for old INITIALIZED | Medium | **FULL** rule |
-| LC-020 | Full lifecycle UI walk (frontend-2) | Medium | **MOCKED** (Playwright mock only) |
+| LC-020 | Full lifecycle UI walk (frontend) | Medium | **MOCKED** (Playwright mock only) |
 
 ---
 
@@ -454,7 +451,7 @@ Detailed steps for representative cases are in §9–§21. This matrix lists **a
 | **Audit validation** | **UNCLEAR** — confirm LSP admin audit stream |
 | **Priority** | Critical |
 | **Automation** | Automated UI |
-| **Implementation** | API **FULL**; frontend-2 **FULL** |
+| **Implementation** | API **FULL**; frontend **FULL** |
 
 ### ADM-002 — Create API client with IP allowlist (BR-8)
 
@@ -772,7 +769,7 @@ Detailed steps for representative cases are in §9–§21. This matrix lists **a
 | DISB-010 | STUCK_DISBURSEMENT alert fires | High |
 | DISB-011 | Ops visibility on disbursement tab | High |
 | DISB-012 | LSP webhook on failure | High |
-| DISB-013 | Admin UI initiate uses correct endpoint | High (**PARTIAL** frontend-2) |
+| DISB-013 | Admin UI initiate uses correct endpoint | High (**PARTIAL** frontend) |
 | DISB-014 | LSP API disbursement without ops approve | Medium |
 | DISB-015 | Deduction cap / shortfall rules | High |
 
@@ -845,7 +842,7 @@ Detailed steps for representative cases are in §9–§21. This matrix lists **a
 | REP-008 | Late payment (past due date) allowed | Medium |
 | REP-009 | Early payment allowed | Medium |
 | REP-010 | Wrong installment id | High |
-| REP-011 | Admin UI repayment dialog (frontend-2) | High (**PARTIAL** live) |
+| REP-011 | Admin UI repayment dialog (frontend) | High (**PARTIAL** live) |
 | REP-012 | Ops cannot post payment via API | Critical |
 | REP-013 | Delinquency bucket update | High |
 | REP-014 | DPD dashboard bucket matches DB | High |
@@ -1028,7 +1025,7 @@ Detailed steps for representative cases are in §9–§21. This matrix lists **a
 | **Audit validation** | N/A |
 | **Priority** | Critical |
 | **Automation** | Automated API |
-| **Implementation** | Backend **FULL**; frontend-2 home **PARTIAL** hybrid |
+| **Implementation** | Backend **FULL**; frontend home **PARTIAL** hybrid |
 
 ### DSH-002 … DSH-008 (titles)
 
@@ -1134,10 +1131,10 @@ Detailed steps for representative cases are in §9–§21. This matrix lists **a
 |----------|-------|-----------|
 | **P0 — Critical** | LSP API lifecycle, disbursement+retry, repayment idempotency, tenant isolation, webhook HMAC, SEC-001–010, DISB-001–006, REP-001–007 | Money movement + data isolation |
 | **P1 — High** | Ops RBAC negatives, admin CRUD smoke, audit/document access, MIS reconciliation, alert rules | Operational safety |
-| **P2 — Medium** | UI regression (frontend-2 post-wiring), dashboard KPI, foreclosure, performance smoke | UX + reporting |
+| **P2 — Medium** | UI regression (frontend post-wiring), dashboard KPI, foreclosure, performance smoke | UX + reporting |
 | **P3 — Low** | a11y/responsive extended, edge locales, pen-test items | Quality polish |
 
-**Deprecate when live E2E exists:** mock-router Playwright lifecycle (`e2e/loan-lifecycle.spec.ts`) — keep until `frontend-2` mutations are fully backend-backed.
+**Deprecate when live E2E exists:** mock-router Playwright lifecycle (`e2e/loan-lifecycle.spec.ts`) — keep until `frontend` mutations are fully backend-backed.
 
 ---
 
@@ -1164,7 +1161,7 @@ Use before each release candidate (cannot be fully automated initially):
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| frontend-2 hybrid mock fallback masks integration bugs | High | Fail tests if backend required; remove fallback in CI |
+| frontend hybrid mock fallback masks integration bugs | High | Fail tests if backend required; remove fallback in CI |
 | Mock disbursement ≠ production provider | High | Adapter contract tests; provider sandbox phase |
 | OPS cannot approve loans in backend | Medium | Confirm product intent; tests reflect actual RBAC |
 | No “overcharged loan” implementation | Medium | Product decision; add rule or remove from BRD |
@@ -1173,7 +1170,7 @@ Use before each release candidate (cannot be fully automated initially):
 | Foreclosure execute admin-only | Medium | LSP flows stop at quote unless product changes |
 | Playwright CI without backend | High | Add compose job to pipeline |
 | PII reveal endpoint changes | Medium | Reconcile AUD-005 with latest API spec |
-| frontend vs frontend-2 divergence during migration | High | Complete ADR-0001; single E2E target |
+| frontend vs frontend divergence during migration | High | Complete ADR-0001; single E2E target |
 
 ---
 
@@ -1210,7 +1207,7 @@ Use before each release candidate (cannot be fully automated initially):
 
 ### Phase 3 — Admin/Ops UI E2E (2–3 weeks)
 
-- [ ] Complete frontend-2 wiring for loan mutations (remove mock fallback in CI)  
+- [ ] Complete frontend wiring for loan mutations (remove mock fallback in CI)  
 - [ ] Playwright against live stack: ADM-*, OPS-*  
 - [ ] Replace mock `loan-lifecycle.spec.ts` with backend-driven spec  
 
@@ -1260,9 +1257,9 @@ Implementation status: FULL | PARTIAL | MOCKED | BROKEN | MISSING | UNCLEAR
 | Status enum | `backend/.../LoanApplicationStatus.java` |
 | Webhook types | `backend/.../WebhookEventType.java` |
 | Alert rules | `backend/.../AlertRuleDataInitializer.java` |
-| frontend-2 HTTP client | `frontend-2/src/lib/api/http-client.ts` |
-| frontend-2 routes | `frontend-2/src/routes/router.tsx` |
-| Playwright (mock) | `frontend-2/e2e/loan-lifecycle.spec.ts` |
+| frontend HTTP client | `frontend/src/lib/api/http-client.ts` |
+| frontend routes | `frontend/src/routes/router.tsx` |
+| Playwright (mock) | `frontend/e2e/loan-lifecycle.spec.ts` |
 | Live frontend reference | `frontend/src/features/api/` |
 
 ## Appendix C — Suggested next review questions
@@ -1270,7 +1267,7 @@ Implementation status: FULL | PARTIAL | MOCKED | BROKEN | MISSING | UNCLEAR
 1. Should OPS users approve/reject loans, or only SYSTEM_ADMIN?  
 2. Is “overcharged loan” alert in scope? What defines overcharge?  
 3. Is LSP foreclosure execute required on API timeline?  
-4. Single canonical frontend for E2E: `frontend-2` after wiring or `frontend` today?  
+4. Single canonical frontend for E2E: `frontend` after wiring or `frontend` today?  
 5. Real disbursement provider timeline and sandbox availability?  
 
 ---

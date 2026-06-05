@@ -1,22 +1,30 @@
-# LMS Frontend
+# Bhawana LMS Frontend
 
-React + Vite frontend for the Bhawana LMS operations console.
+React SPA for internal operations and LSP-scoped surfaces. Talks to the Spring Boot backend at `/api/v1/*` (proxied in dev via Vite).
 
-## Current Scope
+## Prerequisites
 
-- bootstrap JWT login against `/api/v1/auth/token`
-- system context hydration from `/api/v1/internal/system/context`
-- LSP administration backed by `/api/v1/internal/admin/lsps`
-- user administration backed by `/api/v1/internal/admin/users`
-- form metadata from `/api/v1/internal/admin/metadata`
+- Node.js 20+
+- Running backend (default `http://localhost:8080`)
 
-## Local Commands
+## Setup
 
-- `npm run dev`
-- `npm run build`
-- `npm run lint`
+```bash
+cd frontend
+npm ci
+cp .env.example .env.local   # set VITE_LOGIN_* credentials for your environment
+```
 
-## Notes
+## Scripts
 
-- Set `VITE_API_BASE_URL` if the backend is not running on `http://localhost:8080`.
-- The current auth flow stores the access token in local storage for local development.
+| Command          | Purpose                                  |
+| ---------------- | ---------------------------------------- |
+| `npm run dev`    | Dev server at http://localhost:5173      |
+| `npm run verify` | typecheck + lint + format + test + build |
+| `npm run test`   | Vitest unit/component tests              |
+| `npm run e2e`    | Playwright smoke tests                   |
+| `npm run build`  | Production bundle → `dist/`              |
+
+## Docs
+
+Implementation notes and UI phase history live under `docs/Frontend/`.

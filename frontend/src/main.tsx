@@ -1,22 +1,15 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import { QueryClientProvider } from '@tanstack/react-query'
-import './index.css'
-import App from './App.tsx'
-import { AuthProvider } from './features/auth/auth-context.tsx'
-import { queryClient } from './features/api/query-client.ts'
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { App } from "@/app/App";
+import "@/styles/globals.css";
 
-const rootElement = document.getElementById('root')
-if (!rootElement) {
-  throw new Error('Root element not found')
+const rootEl = document.getElementById("root");
+if (!rootEl) {
+  throw new Error("Root element #root not found in index.html");
 }
 
-createRoot(rootElement).render(
+createRoot(rootEl).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </QueryClientProvider>
+    <App />
   </StrictMode>,
-)
+);
