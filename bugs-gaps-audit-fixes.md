@@ -218,7 +218,7 @@ Shipped in three vertical slices (a → b → c) per the agreed design above. Ba
 | PR (b) extra — worker skips when LSP disabled (#63) | **Done** — `Issue62DisbursementWorkerIntegrationTest` |
 | PR (c) 1–5 — bank PATCH audit/webhook, no cooldown, bank-check, mismatch + velocity alerts | **Done** — `Issue62BorrowerBankDetailsIntegrationTest` |
 | PR (c) 6 — principal exceed → `LSP_BOUND_VIOLATION` alert | **Deferred** — 422 remains; alert layer not added (worker path validates bounds separately) |
-| PR (c) 7 — schedule principal mismatch alert | **Deferred** — validator/alert detail under **#137** |
+| PR (c) 7 — schedule principal mismatch alert | **Done** — closed with **#137** (validator + LSP write-path `LSP_BOUND_VIOLATION` alerts) |
 
 **Explicitly deferred to other issues (not forgotten):**
 
@@ -226,7 +226,7 @@ Shipped in three vertical slices (a → b → c) per the agreed design above. Ba
 - **#81** — Rate limit on `PATCH /bank-details` and `/mock-outcome`.
 - **#71 / #155** — Audit-row schema hardening for new audit tables.
 - **#129** — Webhook signing format.
-- **#137** — LSP-provided schedule principal-sum validator + `LSP_BOUND_VIOLATION` on schedule mismatch.
+- **#137** — LSP-provided schedule principal-sum validator + `LSP_BOUND_VIOLATION` on schedule mismatch. **CLOSED** (2026-06-05) — see § #137 below.
 - **PR (b) tests 2–5** — Worker adapter retry, in-flight dedupe, bound-violation on worker (optional hardening; core worker path is covered).
 
 **#85 / #135 — closed (2026-06-02):** Follow-up PR landed (see § #85 / § #135). Orphan `requestDisbursementForLsp` deleted; `LoanDocumentService` splits persist vs auto-approve; `LoanApplicationStatusTransitioner` centralises transition and auto-approval guards (`STANDARD` / `MANUAL_OVERRIDE` / `WORKER` contexts).
@@ -2490,20 +2490,20 @@ Frontend (`frontend-2/src/features/admin/webhook-outbox/`):
 ---
 
 ### #137 — [F-14] No server-side validation that LSP_PROVIDED schedule arithmetic closes principal
-**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/137
+**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/137 · **Status:** **CLOSED** (2026-06-05) — closes #62 PR (c) schedule hand-off.
 
 **Problem (plain English):** When an LSP submits their own repayment schedule, we don't re-verify that the principal components sum to the loan amount or that the final closing principal is zero. A wrong schedule lands without warning.
 
-**Possible fixes:**
-1. **Check `sum(principalComponent) == principal` and `finalClosing == 0` within ±1 paisa** — minimal sanity.
-2. **Recompute the full schedule and reject if numbers don't match within tolerance** — strongest; rejects schedules that look right but won't close.
-3. **Compare against GENERATED mode output** — needs interest model parity; expensive.
+**Shipped solution:**
+- Extended `validateProvidedInstallments` with exact scale-2 checks: opening anchor, row chain, final closing zero, row reconcile (`principalDue = opening − closing`), plus existing sum/count/date rules.
+- `ScheduleViolationType` enum surfaced in `violations.violationType` on `REPAYMENT_SCHEDULE_INVALID`.
+- LSP write path: `emitLspProvidedScheduleViolation` → one `LSP_BOUND_VIOLATION` alert per rejection (`createAlert`, not deduped).
+- GENERATED schedules: final EMI absorbs rounding so generated rows pass the same validator.
+- Disbursement worker: `validatePersistedScheduleForDisbursement` inherits rules; `noRollbackFor = BusinessRuleViolationException` so worker rejection commits; corrupt persisted rows → `REJECTED` without disbursement.
 
-**Recommended:** Option 1. Catches the obvious wrongs; cheap. Option 2 if data shows partners still submit garbage.
+**Tests:** nine integration tests in `LspLoanApplicationApiControllerTest` (LSP reject/accept paths, GENERATED parity matrix, post-persist worker defence, alert emit/absence).
 
-**Effect on app:** LSP_PROVIDED schedules fail loudly when broken. Prevents an entire class of "loan closed wrong" follow-on bugs.
-
-**Detailed solution after discussion:** _(pending)_
+**Effect on app:** Broken `LSP_PROVIDED` schedules 422 at submit; ops sees `LSP_BOUND_VIOLATION` with `SCHEDULE_*` types; disbursement worker blocks drifted persisted schedules. No API contract change beyond richer `violations` map.
 
 ---
 

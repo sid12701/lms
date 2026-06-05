@@ -150,11 +150,30 @@ public class AlertRuleEvaluationService {
         );
     }
 
+    public void emitLspProvidedScheduleViolation(
+            LoanApplication application,
+            ScheduleViolationType violationType,
+            String message,
+            Map<String, String> details
+    ) {
+        emitLspBoundViolation(application, violationType.name(), message, details, true);
+    }
+
     public void emitLspBoundViolation(
             LoanApplication application,
             String violationType,
             String message,
             Map<String, String> details
+    ) {
+        emitLspBoundViolation(application, violationType, message, details, false);
+    }
+
+    private void emitLspBoundViolation(
+            LoanApplication application,
+            String violationType,
+            String message,
+            Map<String, String> details,
+            boolean alwaysCreate
     ) {
         String lspCode = application.getLsp() != null ? application.getLsp().getCode() : "unknown";
         StringBuilder context = new StringBuilder("{\"applicationId\":\"")
@@ -174,16 +193,29 @@ public class AlertRuleEvaluationService {
             }
         }
         context.append("}");
-        opsAlertService.createAlertIfAbsent(
-                OpsAlertType.LSP_BOUND_VIOLATION,
-                OpsAlertSeverity.HIGH,
-                "LSP bound violation: " + violationType,
-                message,
-                "LOAN_APPLICATION",
-                application.getId(),
-                "lsp-bound:" + application.getId() + ":" + violationType,
-                context.toString()
-        );
+        if (alwaysCreate) {
+            opsAlertService.createAlert(
+                    OpsAlertType.LSP_BOUND_VIOLATION,
+                    OpsAlertSeverity.HIGH,
+                    "LSP bound violation: " + violationType,
+                    message,
+                    "LOAN_APPLICATION",
+                    application.getId(),
+                    CorrelationIdHolder.get(),
+                    context.toString()
+            );
+        } else {
+            opsAlertService.createAlertIfAbsent(
+                    OpsAlertType.LSP_BOUND_VIOLATION,
+                    OpsAlertSeverity.HIGH,
+                    "LSP bound violation: " + violationType,
+                    message,
+                    "LOAN_APPLICATION",
+                    application.getId(),
+                    "lsp-bound:" + application.getId() + ":" + violationType,
+                    context.toString()
+            );
+        }
     }
 
     public void emitBorrowerBankDetailsVelocity(Borrower borrower, int updateCount) {
