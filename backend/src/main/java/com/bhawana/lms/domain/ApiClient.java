@@ -179,6 +179,7 @@ public class ApiClient {
         this.previousSecretValidUntil = previousSecretValidUntil;
         this.secretHash = newSecretHash;
         this.lastRotatedAt = Instant.now();
+        revokeAllSessions();
     }
 
     public void clearExpiredPreviousSecret(Instant now) {
