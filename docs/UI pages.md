@@ -315,7 +315,7 @@ Data sources:
 - Status audit trail: `GET /api/v1/internal/admin/lsps/{lspId}/audit-events`.
 - Webhook save: `PUT /api/v1/internal/admin/lsps/{lspId}/webhook-subscription`.
 
-**`frontend-2` (`/lsps`)** — table with **Details**, **Status**, **Audit**, **Webhook**. Use **Status** (not a generic edit form) to disable; audit dialog shows `LSP_DISABLED` / `LSP_REACTIVATED` rows.
+**`frontend` (`/lsps`)** — table with **Details**, **Status**, **Audit**, **Webhook**. Use **Status** (not a generic edit form) to disable; audit dialog shows `LSP_DISABLED` / `LSP_REACTIVATED` rows.
 
 Presented data:
 

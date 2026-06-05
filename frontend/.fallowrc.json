@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": ["src/index.{ts,tsx,js,jsx}", "src/main.{ts,tsx,js,jsx}"],
+  "duplicates": {
+    "minOccurrences": 3
+  },
+  "rules": {
+    "unused-dependencies": "warn"
+  },
+  "ignoreDependencies": ["axe-core"],
+  "ignoreExports": [
+    { "file": "src/features/alerts/page.tsx", "exports": ["*"] },
+    { "file": "src/features/api-clients/page.tsx", "exports": ["*"] },
+    { "file": "src/features/audit/page.tsx", "exports": ["*"] },
+    { "file": "src/features/auth/ChangePasswordPage.tsx", "exports": ["*"] },
+    { "file": "src/features/auth/LoginPage.tsx", "exports": ["*"] },
+    { "file": "src/features/borrowers/detail-page.tsx", "exports": ["*"] },
+    { "file": "src/features/borrowers/page.tsx", "exports": ["*"] },
+    { "file": "src/features/dev/components-sandbox.tsx", "exports": ["*"] },
+    { "file": "src/features/home/page.tsx", "exports": ["*"] },
+    { "file": "src/features/loan-applications/detail-page.tsx", "exports": ["*"] },
+    { "file": "src/features/loan-applications/page.tsx", "exports": ["*"] },
+    { "file": "src/features/lsps/page.tsx", "exports": ["*"] },
+    { "file": "src/features/my-loans/detail-page.tsx", "exports": ["*"] },
+    { "file": "src/features/my-loans/page.tsx", "exports": ["*"] },
+    { "file": "src/features/products/page.tsx", "exports": ["*"] },
+    { "file": "src/features/reports/page.tsx", "exports": ["*"] },
+    { "file": "src/features/users/page.tsx", "exports": ["*"] },
+    { "file": "src/routes/landing-redirect.tsx", "exports": ["*"] },
+    { "file": "src/routes/not-found.tsx", "exports": ["*"] },
+    { "file": "src/components/ui/**", "exports": ["*"] },
+    { "file": "src/features/auth/auth-service.ts", "exports": ["*"] },
+    { "file": "src/lib/api/auth-api.ts", "exports": ["*"] },
+    { "file": "src/types/index.ts", "exports": ["*"] }
+  ]
+}

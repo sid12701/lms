@@ -13,6 +13,7 @@ Loan Management System workspace for the Bhawana multi-tenant platform.
 
 ```text
 backend/  Spring Boot service and domain modules
+frontend/ React SPA (Vite) for internal ops and LSP surfaces
 docs/     Architecture, roadmap, and design references
 infra/    Local development infrastructure and deployment scaffolding
 ```

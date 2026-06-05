@@ -28,6 +28,10 @@ frontend/dist/
 frontend/node_modules/
 frontend/.cache/
 frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+frontend/.fallow-reports/
+frontend/.vitest-cache/
 
 infra/data/
 infra/volumes/
@@ -71,5 +75,5 @@ _COMMUNITY_*.md
 # Reference screenshots of the current frontend (regenerated locally)
 /docs/design/current-*.png
 
-# Ad-hoc screenshots dropped at the frontend-2 root (e.g. theme migration captures)
-/frontend-2/*.png
+# Ad-hoc screenshots dropped at the frontend root (e.g. theme migration captures)
+/frontend/*.png

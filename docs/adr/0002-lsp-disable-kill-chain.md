@@ -13,7 +13,7 @@ GitHub issue **#63** required a real admin path to disable an LSP such that:
 - Operators record a **reason** and **audit note**.
 - Status changes are visible in admin UI and queryable afterward.
 
-Previously, `frontend-2` called `PUT …/status` with hardcoded `OPERATIONAL` / generic notes, or (in stale bundles) never called the status API at all.
+Previously, the legacy UI called `PUT …/status` with hardcoded `OPERATIONAL` / generic notes, or (in stale bundles) never called the status API at all.
 
 ## Decision
 
@@ -26,7 +26,7 @@ Previously, `frontend-2` called `PUT …/status` with hardcoded `OPERATIONAL` / 
 5. **JWT validation** — `ApiClientJwtSessionValidator` enforces `tvLsp` / `tvApiClient` and inactive statuses (`LSP_TOKEN_REVOKED`, `LSP_INACTIVE`, `API_CLIENT_INACTIVE`, `API_CLIENT_TOKEN_REVOKED`).
 6. **No-op guard** — same target status → `400 STATUS_UNCHANGED` (no audit row).
 
-### Frontend (`frontend-2`)
+### Frontend (`frontend`)
 
 1. **`LspStatusChangeDialog`** — reason picker, required note, disable/reactivate warnings.
 2. **`LspAuditEventsDialog`** — reads `GET …/audit-events`.
@@ -36,11 +36,11 @@ Previously, `frontend-2` called `PUT …/status` with hardcoded `OPERATIONAL` / 
 
 ## Consequences
 
-- Operators must run backend and `frontend-2` from a build that includes this ADR; old backend returns **404** on `PUT …/status`.
+- Operators must run backend and `frontend` from a build that includes this ADR; old backend returns **404** on `PUT …/status`.
 - Database must be at **Flyway v77+** on the instance the backend uses.
 - Reactivate does not auto-enable API clients; use API client secret rotation when parent LSP is `ACTIVE`.
 
 ## References
 
 - `LspAdminController`, `LspStatusService`, `LspStatusKillChainIntegrationTest`
-- `frontend-2/src/features/lsps/`
+- `frontend/src/features/lsps/`
