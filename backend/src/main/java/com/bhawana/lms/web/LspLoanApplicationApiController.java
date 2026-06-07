@@ -6,6 +6,8 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanInvalidationReason;
+import com.bhawana.lms.service.BankDetailsCheckResult;
+import com.bhawana.lms.service.DisbursementBankDetailsValidation.BankDetailWarning;
 import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
 import com.bhawana.lms.service.LoanApplicationService;
 import com.bhawana.lms.service.LoanDisbursementService;
@@ -388,18 +390,19 @@ public class LspLoanApplicationApiController {
 
     @PostMapping("/{applicationId}/disbursement-bank-check")
     @PreAuthorize("hasRole('LSP_API_CLIENT')")
-    public void verifyDisbursementBankDetails(
+    public LspBankDetailsCheckResponse verifyDisbursementBankDetails(
             Authentication authentication,
             @PathVariable UUID applicationId,
             @Valid @RequestBody LspLoanDisbursementRequest request
     ) {
-        loanDisbursementService.verifyDisbursementBankDetailsForLsp(
+        BankDetailsCheckResult result = loanDisbursementService.verifyDisbursementBankDetailsForLsp(
                 LspAuthenticationSupport.authenticatedLspId(authentication),
                 applicationId,
                 request.bankAccountNumber(),
                 request.ifscCode(),
                 request.accountHolderName()
         );
+        return LspBankDetailsCheckResponse.from(result);
     }
 
     public record LspLoanApplicationRequest(
@@ -496,6 +499,24 @@ public class LspLoanApplicationApiController {
             @NotBlank @Pattern(regexp = "^[A-Za-z]{4}0[A-Za-z0-9]{6}$", message = "IFSC code must be valid") String ifscCode,
             @Size(max = 255) String accountHolderName
     ) {
+    }
+
+    public record LspBankDetailsCheckResponse(
+            String status,
+            List<LspBankDetailWarningResponse> warnings
+    ) {
+        static LspBankDetailsCheckResponse from(BankDetailsCheckResult result) {
+            return new LspBankDetailsCheckResponse(
+                    result.status(),
+                    result.warnings().stream().map(LspBankDetailWarningResponse::from).toList()
+            );
+        }
+    }
+
+    public record LspBankDetailWarningResponse(String field, String code, String message) {
+        static LspBankDetailWarningResponse from(BankDetailWarning warning) {
+            return new LspBankDetailWarningResponse(warning.field(), warning.code(), warning.message());
+        }
     }
 
     public record LspInvalidLoanRequest(

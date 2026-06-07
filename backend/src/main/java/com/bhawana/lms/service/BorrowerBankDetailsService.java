@@ -113,7 +113,7 @@ public class BorrowerBankDetailsService {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void recordDisbursementBankMismatch(
+    public void recordHardDisbursementBankMismatch(
             LoanApplication application,
             UUID lspId,
             String submittedBankAccountNumber,
@@ -127,11 +127,12 @@ public class BorrowerBankDetailsService {
                 submittedBankAccountNumber,
                 submittedIfscCode,
                 submittedAccountHolderName,
-                CorrelationIdHolder.get()
+                CorrelationIdHolder.get(),
+                false
         ));
 
         Instant since = clock.instant().minus(Duration.ofMinutes(properties.getMismatchWindowMinutes()));
-        long attempts = bankMismatchLogRepository.countByLoanApplication_IdAndLsp_IdAndCreatedAtAfter(
+        long attempts = bankMismatchLogRepository.countByLoanApplication_IdAndLsp_IdAndSoftIsFalseAndCreatedAtAfter(
                 application.getId(),
                 lspId,
                 since
@@ -154,6 +155,31 @@ public class BorrowerBankDetailsService {
                     details
             );
         }
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordSoftHolderNameMismatch(
+            LoanApplication application,
+            UUID lspId,
+            String submittedAccountHolderName,
+            String onFileAccountHolderName
+    ) {
+        Lsp lsp = lspRepository.findById(lspId).orElse(application.getLsp());
+        bankMismatchLogRepository.save(new LoanDisbursementBankMismatchLog(
+                application,
+                lsp,
+                null,
+                null,
+                submittedAccountHolderName,
+                CorrelationIdHolder.get(),
+                true
+        ));
+        alertRuleEvaluationService.emitHolderNameSoftMismatch(
+                application,
+                submittedAccountHolderName,
+                onFileAccountHolderName,
+                CorrelationIdHolder.get()
+        );
     }
 
     private Borrower updateBankDetails(

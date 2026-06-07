@@ -12,4 +12,10 @@ public interface LoanDisbursementBankMismatchLogRepository extends JpaRepository
             UUID lspId,
             Instant since
     );
+
+    long countByLoanApplication_IdAndLsp_IdAndSoftIsFalseAndCreatedAtAfter(
+            UUID loanApplicationId,
+            UUID lspId,
+            Instant since
+    );
 }
