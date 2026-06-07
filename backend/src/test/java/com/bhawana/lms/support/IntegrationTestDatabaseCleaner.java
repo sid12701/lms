@@ -34,6 +34,8 @@ import com.bhawana.lms.repo.ReportAccessAuditRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
 import com.bhawana.lms.repo.WebhookEventOutboxRepository;
+import com.bhawana.lms.repo.WebhookOutboxRedriveAuditRepository;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -53,6 +55,7 @@ public class IntegrationTestDatabaseCleaner {
     private final BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
     private final WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
     private final WebhookEventOutboxRepository webhookEventOutboxRepository;
+    private final WebhookOutboxRedriveAuditRepository webhookOutboxRedriveAuditRepository;
     private final LoanForeclosureQuoteRepository loanForeclosureQuoteRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
@@ -90,6 +93,7 @@ public class IntegrationTestDatabaseCleaner {
             BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository,
             WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
             WebhookEventOutboxRepository webhookEventOutboxRepository,
+            WebhookOutboxRedriveAuditRepository webhookOutboxRedriveAuditRepository,
             LoanForeclosureQuoteRepository loanForeclosureQuoteRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
             LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
@@ -125,6 +129,7 @@ public class IntegrationTestDatabaseCleaner {
         this.borrowerBankDetailsUpdateAuditRepository = borrowerBankDetailsUpdateAuditRepository;
         this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
         this.webhookEventOutboxRepository = webhookEventOutboxRepository;
+        this.webhookOutboxRedriveAuditRepository = webhookOutboxRedriveAuditRepository;
         this.loanForeclosureQuoteRepository = loanForeclosureQuoteRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
@@ -156,6 +161,10 @@ public class IntegrationTestDatabaseCleaner {
     }
 
     public void cleanIntegrationTestData() {
+        TenantScopedExecution.runAsAdmin(this::cleanIntegrationTestDataAsAdmin);
+    }
+
+    private void cleanIntegrationTestDataAsAdmin() {
         reportAccessAuditRepository.deleteAllInBatch();
         jdbcTemplate.execute("DELETE FROM report_request");
         opsAlertRepository.deleteAllInBatch();
@@ -163,12 +172,16 @@ public class IntegrationTestDatabaseCleaner {
         loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
         borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         webhookEventDeliveryAttemptRepository.deleteAllInBatch();
+        webhookOutboxRedriveAuditRepository.deleteAllInBatch();
         webhookEventOutboxRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
         loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
         loanAccountRepository.deleteAllInBatch();
+        jdbcTemplate.execute("DELETE FROM loan_application_document_access_audit_type");
+        jdbcTemplate.execute("DELETE FROM loan_application_document_access_audit");
+        jdbcTemplate.execute("DELETE FROM loan_application_audit_event");
         loanApplicationAuditEventRepository.deleteAllInBatch();
         loanApplicationDocumentAccessAuditRepository.deleteAllInBatch();
         loanApplicationAssignmentEventRepository.deleteAllInBatch();

@@ -1,5 +1,8 @@
 package com.bhawana.lms.repo;
 
+import com.bhawana.lms.support.TenantContextTestExecutionListener;
+import org.springframework.test.context.TestExecutionListeners;
+
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.bhawana.lms.service.AuditExplorerQuery;
@@ -16,6 +19,10 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest
 @ActiveProfiles("test")
+@TestExecutionListeners(
+        value = TenantContextTestExecutionListener.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
+)
 class AuditExplorerStreamProjectionParityTest {
 
     @Autowired

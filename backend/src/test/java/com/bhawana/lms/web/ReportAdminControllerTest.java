@@ -1,5 +1,8 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.support.TenantContextTestExecutionListener;
+import org.springframework.test.context.TestExecutionListeners;
+
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -62,6 +65,10 @@ import org.springframework.test.web.servlet.MvcResult;
 @SpringBootTest(properties = "app.reports.notifications.enabled=true")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@TestExecutionListeners(
+        value = TenantContextTestExecutionListener.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
+)
 class ReportAdminControllerTest extends MinioTestSupport {
 
     @Autowired

@@ -15,6 +15,7 @@ spring:
       write-dates-as-timestamps: false
   jpa:
     open-in-view: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
 
 management:
   endpoints:
@@ -51,6 +52,10 @@ app:
     sample-data:
       enabled: false
   webhooks:
+    soft-fourxx:
+      max-attempts: 10
+    redrive:
+      max-manual-redrives: 3
     delivery:
       enabled: true
       fixed-delay-ms: 60000
@@ -87,8 +92,59 @@ app:
       username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
       password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
   rate-limit:
-    auth-per-minute: ${APP_RATE_LIMIT_AUTH_PER_MINUTE:10}
-    lsp-write-per-minute: ${APP_RATE_LIMIT_LSP_WRITE_PER_MINUTE:60}
+    enabled: ${APP_RATE_LIMIT_ENABLED:true}
+    rules:
+      - id: auth-login
+        path: /api/v1/auth/login
+        methods: [POST]
+        key: IP
+        permits-per-minute: ${APP_RATE_LIMIT_AUTH_PER_MINUTE:10}
+      - id: auth-token
+        path: /api/v1/auth/token
+        methods: [POST]
+        key: IP
+        permits-per-minute: ${APP_RATE_LIMIT_AUTH_PER_MINUTE:10}
+      - id: lsp-write
+        path: /api/v1/lsp/**
+        methods: [POST, PUT, PATCH, DELETE]
+        key: LSP
+        permits-per-minute: ${APP_RATE_LIMIT_LSP_WRITE_PER_MINUTE:60}
+      - id: auth-refresh
+        path: /api/v1/auth/refresh
+        methods: [POST]
+        key: IP_AND_SUBJECT
+        permits-per-minute: 30
+      - id: auth-password
+        path: /api/v1/auth/password
+        methods: [POST]
+        key: SUBJECT
+        permits-per-minute: 5
+      - id: admin-reset-password
+        path: /api/v1/internal/admin/users/*/reset-password
+        methods: [POST]
+        key: SUBJECT
+        permits-per-minute: 5
+      - id: docs-ops
+        path: /api/v1/internal/ops/loan-applications/*/kyc-documents/**
+        methods: [GET]
+        key: SUBJECT
+        permits-per-minute: 120
+      - id: docs-lsp
+        path: /api/v1/lsp/loan-applications/*/documents/**
+        methods: [GET]
+        key: LSP
+        permits-per-minute: 120
+      - id: reports
+        path: /api/v1/internal/reports/**
+        methods: [GET, POST]
+        key: SUBJECT
+        permits-per-minute: 60
+      - id: mock-outcome
+        path: /api/v1/internal/ops/loan-applications/*/disbursement-requests/mock-outcome
+        methods: [POST]
+        key: SUBJECT_AND_APPLICATION
+        permits-subject: 10
+        permits-application: 5
   disbursement:
     worker:
       enabled: ${APP_DISBURSEMENT_WORKER_ENABLED:true}

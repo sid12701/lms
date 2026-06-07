@@ -71,6 +71,9 @@ public class WebhookEventOutbox {
     @Column(name = "last_error", length = 1000)
     private String lastError;
 
+    @Column(name = "redrive_count", nullable = false)
+    private int redriveCount;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -182,6 +185,10 @@ public class WebhookEventOutbox {
         return lastError;
     }
 
+    public int getRedriveCount() {
+        return redriveCount;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -220,6 +227,17 @@ public class WebhookEventOutbox {
         this.nextAttemptAt = null;
         this.claimExpiresAt = null;
         this.lastError = truncate(errorMessage);
+    }
+
+    public void markRedrive() {
+        this.status = WebhookEventOutboxStatus.PENDING;
+        this.attemptCount = 0;
+        this.lastAttemptAt = null;
+        this.nextAttemptAt = null;
+        this.claimExpiresAt = null;
+        this.deliveredAt = null;
+        this.lastError = null;
+        this.redriveCount += 1;
     }
 
     private static String truncate(String value) {

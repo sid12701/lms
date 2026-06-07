@@ -3,11 +3,11 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.repo.AppRoleRepository;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import java.util.Map;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class RoleBootstrapService implements ApplicationRunner {
@@ -28,12 +28,11 @@ public class RoleBootstrapService implements ApplicationRunner {
     }
 
     @Override
-    @Transactional
     public void run(ApplicationArguments args) {
-        DEFAULT_ROLES.forEach((code, description) -> {
+        TenantScopedExecution.runAsAdmin(() -> DEFAULT_ROLES.forEach((code, description) -> {
             if (!appRoleRepository.existsByCode(code)) {
                 appRoleRepository.save(new AppRole(code, description));
             }
-        });
+        }));
     }
 }

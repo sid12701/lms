@@ -1,12 +1,18 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.WebhookEventOutbox;
 import com.bhawana.lms.service.WebhookOutboxService;
+import jakarta.servlet.http.HttpServletRequest;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -40,7 +46,22 @@ public class WebhookOutboxAdminController {
         );
     }
 
-    private static WebhookOutboxEventResponse toResponse(WebhookEventOutbox event) {
+    @PostMapping("/{id}/redrive")
+    public WebhookOutboxEventResponse redrive(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest request
+    ) {
+        WebhookEventOutbox event = webhookOutboxService.redrive(
+                id,
+                principal.getSubject(),
+                request.getRemoteAddr(),
+                CorrelationIdHolder.get()
+        );
+        return toResponse(event);
+    }
+
+    static WebhookOutboxEventResponse toResponse(WebhookEventOutbox event) {
         return new WebhookOutboxEventResponse(
                 event.getId().toString(),
                 event.getLsp().getId().toString(),
@@ -56,38 +77,12 @@ public class WebhookOutboxAdminController {
                 toNullableString(event.getNextAttemptAt()),
                 toNullableString(event.getDeliveredAt()),
                 event.getLastError(),
-                event.getCreatedAt().toString()
+                event.getCreatedAt().toString(),
+                event.getRedriveCount()
         );
     }
 
-    private static String toNullableString(java.time.Instant value) {
+    private static String toNullableString(Instant value) {
         return value == null ? null : value.toString();
-    }
-
-    public record WebhookOutboxEventResponse(
-            String id,
-            String lspId,
-            String lspCode,
-            String eventType,
-            String aggregateType,
-            String aggregateId,
-            String status,
-            String payloadJson,
-            String correlationId,
-            int attemptCount,
-            String lastAttemptAt,
-            String nextAttemptAt,
-            String deliveredAt,
-            String lastError,
-            String createdAt
-    ) {
-    }
-
-    public record DispatchWebhookOutboxResponse(
-            int processed,
-            int delivered,
-            int retryableFailures,
-            int permanentFailures
-    ) {
     }
 }

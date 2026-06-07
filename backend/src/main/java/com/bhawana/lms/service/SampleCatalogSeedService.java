@@ -7,6 +7,7 @@ import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,7 +18,6 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @Profile({"local", "test"})
@@ -90,11 +90,12 @@ public class SampleCatalogSeedService implements ApplicationRunner {
     }
 
     @Override
-    @Transactional
     public void run(ApplicationArguments args) {
-        Map<String, Lsp> lspByCode = seedLsps();
-        Map<String, LoanProduct> productByCode = seedProducts();
-        seedMappings(productByCode, lspByCode);
+        TenantScopedExecution.runAsAdmin(() -> {
+            Map<String, Lsp> lspByCode = seedLsps();
+            Map<String, LoanProduct> productByCode = seedProducts();
+            seedMappings(productByCode, lspByCode);
+        });
     }
 
     private Map<String, Lsp> seedLsps() {

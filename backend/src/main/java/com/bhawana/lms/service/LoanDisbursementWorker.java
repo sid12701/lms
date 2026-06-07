@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -26,7 +27,7 @@ public class LoanDisbursementWorker {
         if (!properties.isEnabled()) {
             return;
         }
-        int processed = workerService.processPendingDisbursements();
+        int processed = TenantScopedExecution.callAsAdmin(workerService::processPendingDisbursements);
         if (processed > 0) {
             log.debug("Loan disbursement worker processed {} application(s).", processed);
         }

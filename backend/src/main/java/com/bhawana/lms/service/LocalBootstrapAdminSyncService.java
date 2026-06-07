@@ -7,6 +7,7 @@ import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.security.SecurityProperties;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -58,6 +59,10 @@ public class LocalBootstrapAdminSyncService implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        TenantScopedExecution.runAsAdmin(() -> bootstrapAdmin(args));
+    }
+
+    private void bootstrapAdmin(ApplicationArguments args) {
         // F-11: bootstrap username and derived email canonicalised to lowercase
         // so the unique indexes can satisfy the new raw-equality lookups.
         String username = securityProperties.getBootstrapUser().getUsername().trim().toLowerCase();

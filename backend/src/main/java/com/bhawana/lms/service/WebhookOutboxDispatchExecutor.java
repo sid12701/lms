@@ -34,17 +34,20 @@ public class WebhookOutboxDispatchExecutor {
     private final WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
     private final WebhookDeliveryClient webhookDeliveryClient;
     private final AlertRuleEvaluationService alertRuleEvaluationService;
+    private final WebhookOutboxProperties webhookOutboxProperties;
 
     public WebhookOutboxDispatchExecutor(
             WebhookEventOutboxRepository webhookEventOutboxRepository,
             WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
             WebhookDeliveryClient webhookDeliveryClient,
-            @Lazy AlertRuleEvaluationService alertRuleEvaluationService
+            @Lazy AlertRuleEvaluationService alertRuleEvaluationService,
+            WebhookOutboxProperties webhookOutboxProperties
     ) {
         this.webhookEventOutboxRepository = webhookEventOutboxRepository;
         this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
         this.webhookDeliveryClient = webhookDeliveryClient;
         this.alertRuleEvaluationService = alertRuleEvaluationService;
+        this.webhookOutboxProperties = webhookOutboxProperties;
     }
 
     @Transactional
@@ -88,7 +91,7 @@ public class WebhookOutboxDispatchExecutor {
 
         try {
             WebhookDeliveryClient.WebhookDeliveryResponse response = webhookDeliveryClient.deliver(request);
-            WebhookEventDeliveryAttemptStatus attemptStatus = classify(response.statusCode());
+            WebhookEventDeliveryAttemptStatus attemptStatus = classify(response.statusCode(), attemptNumber);
             webhookEventDeliveryAttemptRepository.save(new WebhookEventDeliveryAttempt(
                     event,
                     attemptNumber,
@@ -221,14 +224,22 @@ public class WebhookOutboxDispatchExecutor {
         }
     }
 
-    private static WebhookEventDeliveryAttemptStatus classify(int statusCode) {
+    private WebhookEventDeliveryAttemptStatus classify(int statusCode, int attemptNumber) {
         if (statusCode >= 200 && statusCode < 300) {
             return WebhookEventDeliveryAttemptStatus.SUCCESS;
         }
         if (statusCode == 408 || statusCode == 429 || statusCode >= 500) {
             return WebhookEventDeliveryAttemptStatus.RETRYABLE_FAILURE;
         }
+        if (isSoftFourxx(statusCode)
+                && attemptNumber < webhookOutboxProperties.getSoftFourxx().getMaxAttempts()) {
+            return WebhookEventDeliveryAttemptStatus.RETRYABLE_FAILURE;
+        }
         return WebhookEventDeliveryAttemptStatus.PERMANENT_FAILURE;
+    }
+
+    private static boolean isSoftFourxx(int statusCode) {
+        return statusCode == 404 || statusCode == 410;
     }
 
     private static long calculateBackoffSeconds(int attemptNumber) {

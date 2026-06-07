@@ -1,5 +1,8 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.support.TenantContextTestExecutionListener;
+import org.springframework.test.context.TestExecutionListeners;
+
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -14,6 +17,7 @@ import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertStatus;
 import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.repo.OpsAlertRepository;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +32,10 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@TestExecutionListeners(
+        value = TenantContextTestExecutionListener.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
+)
 class OpsAlertControllerTest {
 
     @Autowired
@@ -41,10 +49,11 @@ class OpsAlertControllerTest {
 
     @BeforeEach
     void resetAlerts() {
-        opsAlertRepository.deleteAllInBatch();
+        TenantScopedExecution.runAsAdmin(() -> opsAlertRepository.deleteAllInBatch());
     }
 
     private OpsAlert seedAlert() {
+        return TenantScopedExecution.callAsAdmin(() -> {
         OpsAlert alert = new OpsAlert(
                 OpsAlertType.BORROWER_IDENTITY_CONFLICT,
                 OpsAlertSeverity.HIGH,
@@ -55,7 +64,8 @@ class OpsAlertControllerTest {
                 "corr-1",
                 null
         );
-        return opsAlertRepository.save(alert);
+            return opsAlertRepository.save(alert);
+        });
     }
 
     @Test

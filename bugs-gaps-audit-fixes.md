@@ -2031,7 +2031,7 @@ Untouched (deliberately):
 ---
 
 ### #89 — [B-7] TenantDataAccessContextHolder defaults to ADMIN — silent cross-tenant leak risk in workers
-**Labels:** bug, security, data-isolation · **Link:** https://github.com/sid12701/lms/issues/89 · **Status:** **IMPLEMENTED — pending merge** (2026-06-06). Holder throws `MissingTenantContextException`; `TenantScopedExecution` + admin interceptor + worker tests on branch. Closes **#146** when merged.
+**Labels:** bug, security, data-isolation · **Link:** https://github.com/sid12701/lms/issues/89 · **Status:** **CLOSED** — see PR (pending merge). Holder throws `MissingTenantContextException`; `TenantScopedExecution` + admin interceptor + worker tests. Closes **#146**.
 
 **Problem (plain English):** If a background worker forgets to set tenant context, it silently runs as admin (reads/writes across all tenants). PG RLS won't save you when the connection enters admin mode. One forgotten worker = silent cross-LSP leak.
 
@@ -2474,7 +2474,7 @@ Also audit each file, component, module, and function linked to that feature, fi
 ---
 
 ### #130 — [F-7] Webhook 404 classified as PERMANENT — silent loss on URL typos
-**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/130 · **Status:** **OPEN** — plan grilled 2026-06-03, ready to implement. Bundled with **#73** (redrive endpoint + UI) in a single feature PR.
+**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/130 · **Status:** **CLOSED** — see PR (pending merge). Soft-4xx retry + bundled **#73** redrive.
 
 **Problem (plain English):** If a partner's webhook URL has a typo, every call returns 404, and we mark the event PERMANENT — never retry. Silent data loss until someone notices missing events.
 
@@ -2704,7 +2704,7 @@ Frontend (`frontend-2/src/features/admin/webhook-outbox/`):
 ---
 
 ### #146 — [SEC-Δ-8] Tenant context defaults to ADMIN in null state
-**Link:** https://github.com/sid12701/lms/issues/146 · **Status:** **OPEN — closes with #89 merge**
+**Link:** https://github.com/sid12701/lms/issues/146 · **Status:** **CLOSED** — duplicate of **#89** (same PR)
 
 **Problem / Fixes / Recommendation / Effect:** Duplicate of #89.
 
@@ -3868,7 +3868,7 @@ Untouched (deliberately):
 ---
 
 ### #73 — No redrive path for PERMANENT_FAILURE webhook events
-**Labels:** gap · **Link:** https://github.com/sid12701/lms/issues/73 · **Status:** **OPEN** — plan grilled 2026-06-03 alongside **#130**, ready to implement. Bundled with #130 in a single feature PR.
+**Labels:** gap · **Link:** https://github.com/sid12701/lms/issues/73 · **Status:** **CLOSED** — see PR (pending merge). Bundled with **#130** (redrive endpoint + audit + cap).
 
 **Problem (plain English):** Once an event is PERMANENT, the only way to retry is hand-editing DB rows. No admin UI, no API.
 
@@ -3984,7 +3984,7 @@ Full design, decisions, test plan, and file list live in the **#130** entry abov
 ---
 
 ### #81 — Rate limiting missing on doc/report/mock-outcome/refresh/password endpoints
-**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/81 · **Status:** **CLOSED — IMPLEMENTED** (2026-06-06). Closes **#127** as duplicate.
+**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/81 · **Status:** **CLOSED** — see PR (pending merge). Config-driven rules + FE `retryAfterSeconds`. Closes **#127** as duplicate.
 
 **Problem (plain English):** Rate limit only covers auth + a few LSP write paths. Doc/report scraping and refresh/password brute-force are unbounded.
 

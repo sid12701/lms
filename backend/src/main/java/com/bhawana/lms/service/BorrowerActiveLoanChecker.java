@@ -3,8 +3,8 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.repo.LoanAccountRepository;
+import com.bhawana.lms.tenant.TenantAccessContext;
 import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
-import com.bhawana.lms.tenant.TenantDataAccessMode;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -38,33 +38,23 @@ public class BorrowerActiveLoanChecker {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public boolean hasOpenLoanAcrossAllLsps(UUID borrowerId) {
-        TenantDataAccessMode previousMode = TenantDataAccessContextHolder.getMode();
-        UUID previousLspId = TenantDataAccessContextHolder.getCurrentLspId();
+        TenantAccessContext previous = TenantDataAccessContextHolder.snapshot();
         TenantDataAccessContextHolder.useAdmin();
         try {
             return loanAccountRepository.existsByBorrower_IdAndStatusIn(borrowerId, OPEN_STATUSES);
         } finally {
-            restoreContext(previousMode, previousLspId);
+            TenantDataAccessContextHolder.restore(previous);
         }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public List<LoanAccount> findOpenLoansAcrossAllLsps(UUID borrowerId) {
-        TenantDataAccessMode previousMode = TenantDataAccessContextHolder.getMode();
-        UUID previousLspId = TenantDataAccessContextHolder.getCurrentLspId();
+        TenantAccessContext previous = TenantDataAccessContextHolder.snapshot();
         TenantDataAccessContextHolder.useAdmin();
         try {
             return loanAccountRepository.findByBorrower_IdAndStatusIn(borrowerId, OPEN_STATUSES);
         } finally {
-            restoreContext(previousMode, previousLspId);
-        }
-    }
-
-    private static void restoreContext(TenantDataAccessMode previousMode, UUID previousLspId) {
-        if (previousMode == TenantDataAccessMode.TENANT && previousLspId != null) {
-            TenantDataAccessContextHolder.useTenant(previousLspId);
-        } else {
-            TenantDataAccessContextHolder.useAdmin();
+            TenantDataAccessContextHolder.restore(previous);
         }
     }
 }

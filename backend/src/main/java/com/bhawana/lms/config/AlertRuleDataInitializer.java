@@ -4,11 +4,11 @@ import com.bhawana.lms.domain.AlertRule;
 import com.bhawana.lms.domain.AlertRuleAudience;
 import com.bhawana.lms.domain.AlertRuleTriggerKind;
 import com.bhawana.lms.repo.AlertRuleRepository;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import java.util.UUID;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Ensures the seven Follow-up #2 alert rules exist. Flyway V60 seeds them for
@@ -25,8 +25,11 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
     }
 
     @Override
-    @Transactional
     public void run(ApplicationArguments args) {
+        TenantScopedExecution.runAsAdmin(() -> seedIfEmpty());
+    }
+
+    private void seedIfEmpty() {
         if (alertRuleRepository.count() > 0) {
             return;
         }

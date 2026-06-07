@@ -25,14 +25,29 @@ export class ApiError extends Error {
   status: number;
   body: string;
   code: string | null;
+  retryAfterSeconds: number | null;
 
-  constructor(message: string, status: number, body: string, code: string | null) {
+  constructor(
+    message: string,
+    status: number,
+    body: string,
+    code: string | null,
+    retryAfterSeconds: number | null = null,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
     this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+function readRetryAfterSeconds(response: Response): number | null {
+  const header = response.headers.get("Retry-After");
+  if (!header) return null;
+  const parsed = Number.parseInt(header, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function buildUrl(path: string): string {
@@ -158,11 +173,13 @@ async function performJsonRequest<T>(
   if (!response.ok) {
     const errorBody = await response.text();
     const { message, code } = readResponseError(errorBody);
+    const retryAfterSeconds = response.status === 429 ? readRetryAfterSeconds(response) : null;
     throw new ApiError(
       message || `Request failed with status ${response.status}`,
       response.status,
       errorBody,
       code,
+      retryAfterSeconds,
     );
   }
 
@@ -191,11 +208,13 @@ export async function requestBlob(
   if (!response.ok) {
     const errorBody = await response.text();
     const { message, code } = readResponseError(errorBody);
+    const retryAfterSeconds = response.status === 429 ? readRetryAfterSeconds(response) : null;
     throw new ApiError(
       message || `Request failed with status ${response.status}`,
       response.status,
       errorBody,
       code,
+      retryAfterSeconds,
     );
   }
 
