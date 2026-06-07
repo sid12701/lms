@@ -6,6 +6,7 @@ import org.springframework.test.context.TestExecutionListeners;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -119,7 +120,23 @@ class Issue85AutoApprovalIntegrationTest {
         transitionToAwaitingApproval(applicationId);
         markKycComplete(applicationId);
         transitionToApproved(applicationId);
+        seedBorrowerBankDetails(applicationId);
         return applicationId;
+    }
+
+    private void seedBorrowerBankDetails(String applicationId) throws Exception {
+        String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
+                .getBorrower().getId().toString();
+        mockMvc.perform(patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "123456789012",
+                                "bankName", "Issue 85 Bank",
+                                "ifscCode", "HDFC0001234",
+                                "accountHolderName", "Issue 85 Borrower"
+                        ))))
+                .andExpect(status().isOk());
     }
 
     private String createLspViaAdmin(String codeSuffix) throws Exception {

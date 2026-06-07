@@ -4,7 +4,6 @@ import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
-import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
@@ -118,9 +117,8 @@ public class LoanAutoApprovalRuleEngine {
         List<LoanApplicationDocumentChecklist> checklist = checklistRepository
                 .findByLoanApplication_IdOrderByCreatedAtAsc(application.getId());
         boolean docsComplete = !checklist.isEmpty() && checklist.stream()
-                .filter(item -> item.getDocumentType().isRequiredForApproval())
-                .allMatch(item -> item.getStatus() == LoanApplicationDocumentChecklistStatus.SUBMITTED
-                        || item.getStatus() == LoanApplicationDocumentChecklistStatus.NOT_REQUIRED);
+                .filter(item -> LoanApplicationDocumentRequirements.isIntakeRequired(item.getDocumentType()))
+                .allMatch(LoanApplicationDocumentRequirements::isChecklistItemComplete);
         if (!docsComplete) {
             failures.add(RuleCode.REQUIRED_DOCUMENTS_NOT_UPLOADED);
         }

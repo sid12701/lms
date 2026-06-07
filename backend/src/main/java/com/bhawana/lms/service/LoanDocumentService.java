@@ -22,18 +22,18 @@ public class LoanDocumentService {
     private final LoanApplicationService loanApplicationService;
     private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     private final LoanDocumentStorageService loanDocumentStorageService;
-    private final LoanApprovalService loanApprovalService;
+    private final LoanAutoApprovalGateService loanAutoApprovalGateService;
 
     public LoanDocumentService(
             LoanApplicationService loanApplicationService,
             LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
             LoanDocumentStorageService loanDocumentStorageService,
-            LoanApprovalService loanApprovalService
+            LoanAutoApprovalGateService loanAutoApprovalGateService
     ) {
         this.loanApplicationService = loanApplicationService;
         this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
         this.loanDocumentStorageService = loanDocumentStorageService;
-        this.loanApprovalService = loanApprovalService;
+        this.loanAutoApprovalGateService = loanAutoApprovalGateService;
     }
 
     @Transactional(readOnly = true)
@@ -117,7 +117,7 @@ public class LoanDocumentService {
             String sourceReference,
             MultipartFile file
     ) {
-        LoanApplicationDocumentChecklist checklistItem = persistStoredDocumentForLsp(
+        DocumentChecklistUpdateResult outcome = persistStoredDocumentForLsp(
                 lspId,
                 applicationId,
                 documentType,
@@ -126,8 +126,12 @@ public class LoanDocumentService {
                 sourceReference,
                 file
         );
-        loanApprovalService.autoApproveIfEligibleForLsp(applicationId, actorUsername);
-        return checklistItem;
+        loanAutoApprovalGateService.maybeTriggerAutoApproval(
+                applicationId,
+                actorUsername,
+                outcome.allRequiredDocumentsJustCompleted()
+        );
+        return outcome.checklistItem();
     }
 
     public List<LoanApplicationDocumentChecklist> submitStoredDocumentsForLsp(
@@ -136,18 +140,23 @@ public class LoanDocumentService {
             String actorUsername,
             List<BatchDocumentUpload> documents
     ) {
+        boolean wasComplete = loanApplicationService.hasAllRequiredDocumentsUploaded(applicationId);
         List<LoanApplicationDocumentChecklist> uploaded = persistStoredDocumentsForLsp(
                 lspId,
                 applicationId,
                 actorUsername,
                 documents
         );
-        loanApprovalService.autoApproveIfEligibleForLsp(applicationId, actorUsername);
+        loanAutoApprovalGateService.maybeTriggerAutoApproval(
+                applicationId,
+                actorUsername,
+                !wasComplete && loanApplicationService.hasAllRequiredDocumentsUploaded(applicationId)
+        );
         return uploaded;
     }
 
     @Transactional
-    LoanApplicationDocumentChecklist persistStoredDocumentForLsp(
+    DocumentChecklistUpdateResult persistStoredDocumentForLsp(
             UUID lspId,
             UUID applicationId,
             LoanApplicationDocumentType documentType,
@@ -203,7 +212,7 @@ public class LoanDocumentService {
                             document.note(),
                             document.sourceReference(),
                             document.file()
-                    );
+                    ).checklistItem();
                 })
                 .toList();
     }

@@ -76,6 +76,7 @@ public class LoanApplicationService {
     private final LoanRepaymentCommandService loanRepaymentCommandService;
     private final LoanForeclosureCommandService loanForeclosureCommandService;
     private final LoanDocumentService loanDocumentService;
+    private final LoanAutoApprovalGateService loanAutoApprovalGateService;
     private final DisbursementOutcomeAuditService disbursementOutcomeAuditService;
     private final ObjectMapper objectMapper;
 
@@ -99,6 +100,7 @@ public class LoanApplicationService {
             LoanRepaymentCommandService loanRepaymentCommandService,
             LoanForeclosureCommandService loanForeclosureCommandService,
             @Lazy LoanDocumentService loanDocumentService,
+            LoanAutoApprovalGateService loanAutoApprovalGateService,
             DisbursementOutcomeAuditService disbursementOutcomeAuditService,
             ObjectMapper objectMapper
     ) {
@@ -121,6 +123,7 @@ public class LoanApplicationService {
         this.loanRepaymentCommandService = loanRepaymentCommandService;
         this.loanForeclosureCommandService = loanForeclosureCommandService;
         this.loanDocumentService = loanDocumentService;
+        this.loanAutoApprovalGateService = loanAutoApprovalGateService;
         this.disbursementOutcomeAuditService = disbursementOutcomeAuditService;
         this.objectMapper = objectMapper;
     }
@@ -576,7 +579,7 @@ public class LoanApplicationService {
             String contentType
     ) {
         getApplicationForLsp(lspId, applicationId);
-        return updateDocumentChecklistItem(
+        DocumentChecklistUpdateResult outcome = updateDocumentChecklistItem(
                 applicationId,
                 documentType,
                 actorUsername,
@@ -587,6 +590,12 @@ public class LoanApplicationService {
                 sourceReference,
                 contentType
         );
+        loanAutoApprovalGateService.maybeTriggerAutoApproval(
+                applicationId,
+                actorUsername,
+                outcome.allRequiredDocumentsJustCompleted()
+        );
+        return outcome.checklistItem();
     }
 
     @Transactional
@@ -640,7 +649,7 @@ public class LoanApplicationService {
     }
 
     @Transactional
-    public LoanApplicationDocumentChecklist updateDocumentChecklistItem(
+    public DocumentChecklistUpdateResult updateDocumentChecklistItem(
             UUID applicationId,
             LoanApplicationDocumentType documentType,
             String actorUsername,
@@ -669,7 +678,7 @@ public class LoanApplicationService {
     }
 
     @Transactional
-    public LoanApplicationDocumentChecklist updateDocumentChecklistItem(
+    public DocumentChecklistUpdateResult updateDocumentChecklistItem(
             UUID applicationId,
             LoanApplicationDocumentType documentType,
             String actorUsername,
@@ -699,6 +708,11 @@ public class LoanApplicationService {
                 storageKey,
                 lmsManagedContent
         );
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasAllRequiredDocumentsUploaded(UUID applicationId) {
+        return loanApplicationLifecycleService.hasAllRequiredDocumentsUploaded(applicationId);
     }
 
     @Transactional

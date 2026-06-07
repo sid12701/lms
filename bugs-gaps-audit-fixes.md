@@ -4353,77 +4353,24 @@ These tests are valuable on their own; they describe the invariant the code alre
 ---
 
 ### #90 — [B-8] autoApproveIfEligibleForLsp re-evaluates 8 rule families on every call
-**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/90
+**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/90 · **Status:** **CLOSED** — PR #184 (2026-06-07). Edge-trigger auto-approval gate (`LoanAutoApprovalGateService`) fires the rule engine once when all eight intake-required documents (PAN through Loan Agreement) **just** complete; partial uploads increment `lms.auto_approval.gate{outcome=skipped_incomplete}`; re-uploads and non-intake statuses skip without re-eval. Shared eight-doc set via `LoanApplicationDocumentRequirements`; metadata JSON upload path wired; batch upload evaluates once per batch. Micrometer counter `lms.auto_approval.gate` tags: `fired`, `skipped_incomplete`, `skipped_status`. Tests: `LoanAutoApprovalGateServiceTest`, `LoanApplicationDocumentRequirementsTest`, `LspLoanApplicationApiControllerTest#serialDocumentUploadsEmitExpectedAutoApprovalGateMetrics`, updated ops/LSP integration tests.
 
-**Problem (plain English):** Same rule engine runs on doc upload, field update, and disbursement request — N+1 DB reads each time.
+**Problem (plain English):** Same rule engine ran on every document upload (and batch paths), re-evaluating eight rule families with fresh DB reads even when the checklist was still incomplete or the loan was already past approval.
 
-**Possible fixes:**
-1. **Debounce per loan (e.g., 2s)** — coalesces bursts.
-2. **Move to async worker observing a change-feed** — strongest; biggest refactor.
-3. **Profile first** — confirm bottleneck.
+**Resolution (2026-06-07):** Implemented **Option A + B hybrid** from the deferred plan — edge-trigger gate instead of debounce/async (preserves synchronous LSP UX). No engine refactor; callers route through `LoanAutoApprovalGateService.maybeTriggerAutoApproval(justCompleted)` instead of unconditional `autoApproveIfEligibleForLsp`.
 
-**Recommended:** Option 3, then Option 1 if needed.
+**What shipped:**
+1. **`LoanAutoApprovalGateService`** — increments Micrometer counter `lms.auto_approval.gate` with tag `outcome`: `skipped_incomplete` (checklist not yet complete), `skipped_status` (status ∉ `{INITIALIZED, AWAITING_APPROVAL}`), `fired` (edge-trigger → one engine call). Production watch: `fired` ≈ one per loan at intake completion; `skipped_incomplete` dominates partial uploads.
+2. **`LoanApplicationDocumentRequirements`** — single source for the eight intake-required types (`isRequiredForDisbursement()` set: PAN, Aadhaar, address, income, bank statement, selfie, KFS, loan agreement). Used by auto-approval rule engine, KYC-before-approval validation, webhook payload, and disbursement LMS-managed checks.
+3. **`DocumentChecklistUpdateResult`** — `updateDocumentChecklistItem` returns `{checklistItem, allRequiredDocumentsJustCompleted}` for edge detection.
+4. **Call-site wiring** — `LoanDocumentService` (single + batch), `LoanApplicationService.submitDocumentForLsp` (metadata JSON path). Batch path: `!wasComplete && isComplete` after loop, not per document.
+5. **#135 alignment** — uploads on rejected/approved applications save documents but gate skips (`skipped_status`); direct `autoApproveIfEligibleForLsp` still throws `AUTO_APPROVAL_NOT_ALLOWED` outside intake statuses.
 
-**Effect on app:** Possibly faster upload paths; minor risk that debounced eval is slightly stale.
+**Deferred (not in scope for #90):** debounce/async worker (Options C/D), composite `(borrower_id, status)` index (Option F), latency profiling under production load. Orphaned `LoanDisbursementService.requestDisbursementForLsp` dead code remains zero callers.
 
-**Detailed solution after discussion (2026-06-01) — DEFERRED, ISSUE STAYS OPEN; one concrete sub-task verified:**
+**Production note:** expose `metrics` (or Prometheus) on actuator to query `lms.auto_approval.gate`; default `application.yml` exposes only `health,info`.
 
-**Decision:** No engine refactor in this pass. Log the corrected cost picture and defer the architectural change pending production-load data. The one concrete sub-task — verify the cross-LSP open-loan index — was checked and is **already in place** (V17 line 16: `CREATE INDEX idx_loan_account_borrower ON loan_account (borrower_id)`), so no migration is required either. The candidate fixes below are the menu for the eventual production-data-driven decision.
-
-**Audit findings that change the framing:**
-
-1. **"N+1 DB reads" is not accurate.** Each `LoanAutoApprovalRuleEngine.evaluate(application)` call performs **exactly 3 DB reads**, not N+1:
-   - `mappingRepository.findByLsp_IdAndLoanProduct_Id(...)` — indexed.
-   - `checklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(...)` — indexed via the existing `loan_application_id` FK.
-   - `activeLoanChecker.findOpenLoansAcrossAllLsps(borrowerId)` — uses `idx_loan_account_borrower` (verified V17). Returns rows with `status ∈ OPEN_STATUSES`; the status filter is post-index, but bounded by borrower's loan count which is small in practice.
-   The other passes (`evaluateAmountTenureRate`, `evaluateBorrowerFields`) are pure in-memory checks on the already-loaded `LoanProduct` and `Borrower`. The "8 rule families" the audit named refers to the 8 `RuleCode` enum values, evaluated through 5 evaluation methods, costing 3 DB reads total.
-2. **Trigger surface is narrower post-#62 than the audit doc described.** Audit said "doc upload, field update, and disbursement request." Current callers in code:
-   - `LoanDocumentService:133` (single doc upload completion path)
-   - `LoanDocumentService:168` (batch / patch doc-status path)
-   - `LoanDisbursementService:118` (was line 43 pre-#62 PR (b)) — **NOT removed by #62 PR (b).** PR (b) removed the LSP `POST /disbursement` endpoint and re-routed disbursement through the new worker, but the `requestDisbursementForLsp` method body itself was retained as orphaned dead code (still `@Transactional`, still calls `autoApproveIfEligibleForLsp` at line 118). Zero production callers, but the live code still references the engine through this path. See § #62 "Implementation status" follow-up note and § #85 / § #135 for the planned cleanup. After **#85 / #135 / #116 bundle lands**, this caller goes; until then, the engine fires from disbursement code that nobody calls but the compiler still tracks.
-   - No "field-update" caller exists today. The audit doc may have anticipated one; today there isn't one.
-3. **Cost picture relative to its caller.** Doc-upload paths are already paying R2 upload + audit row + document-row insert (typically 100–500 ms total). Adding 3 indexed reads (~5–15 ms typical, possibly more on the cross-LSP query for borrowers with long history) is <5 % of the surrounding work. **Not a hot path; not a bug at current scale.**
-4. **`findOpenLoansAcrossAllLsps` index check — done.** `idx_loan_account_borrower (borrower_id)` exists since V17. The query is `existsByBorrower_IdAndStatusIn` / `findByBorrower_IdAndStatusIn`. The planner uses the borrower index, then filters in memory on status. A composite `(borrower_id, status)` index would be marginally faster but is **not** needed at current scale — single-column borrower index is fine while typical borrowers have ≤5 open loans across LSPs. Capture as a follow-up only if EXPLAIN shows the in-memory status filter dominating.
-5. **The audit doc's debounce recommendation has a UX cost the audit didn't surface.** Debouncing means the LSP-visible state transition from `AWAITING_APPROVAL → APPROVED_PENDING_DISBURSAL` is delayed by the debounce window. Today the transition is observable in the response of the doc-upload call (or the immediate follow-up GET). Eventually-consistent approval changes the LSP-facing contract; needs an "approval status pending evaluation" sentinel, plus a "your loan was approved" signal (poll / webhook / SSE). Not a free swap.
-
-**Why we are deferring (not closing):** two unknowns prevent a clean close:
-- Real-world batch doc-upload semantics in `LoanDocumentService:168` — if the controller loops one-document-per-evaluation, a 10-doc batch is 30 DB reads in a tight TX. Worth measuring under load before deciding whether a per-loan dedup makes sense.
-- The cross-LSP query cost scales with borrower history. We don't yet know the distribution of borrower-loan-count under production data. The index is right; the per-borrower row count is the unknown.
-Closing the issue would force a re-open the moment either dimension grew. Deferring with the audit findings preserves the context.
-
-**Candidate fixes on the table for the eventual implementation pass (in preference order):**
-
-- **Option A — Single-evaluation guard for batch doc operations.** In `LoanDocumentService:168` (and any future batch caller), evaluate once per batch instead of once per document. Smallest, most surgical fix; preserves the synchronous "your loan was approved" UX. Likely the highest-leverage change if profiling shows batch uploads dominate.
-- **Option B — Skip-eval-when-status-can't-have-flipped guard.** If `application.getStatus() != AWAITING_APPROVAL`, short-circuit the engine call from the caller side. The engine's transition logic already handles this internally (line 376 `LoanApplicationLifecycleService.autoApproveIfEligibleForLsp`), but the eval still runs. Adding a pre-check at the caller skips the 3 DB reads when the loan is already past the approval gate. Cheap and safe — caller-side `if` only.
-- **Option C — Debounce per `applicationId`** (audit doc Option 1). Window 2–5 s. Trades synchronous response semantics for evaluation coalescing. Requires UX changes to the LSP-facing contract (status response shape).
-- **Option D — Async worker on doc-state events** (audit doc Option 2). Largest refactor; fully eventual-consistent approval. Worth doing only if doc-upload latency genuinely becomes the user-visible bottleneck.
-- **Option E — Cache evaluation result by `(applicationId, version)`** with invalidation on relevant entity mutations. Adds a cache + invalidation surface; complexity not worth the saving at this scale.
-- **Option F — Composite `(borrower_id, status)` index on `loan_account`.** Marginal future optimization. Only ship if EXPLAIN shows the in-memory status filter is hurting at production scale.
-
-**Recommended starting point for the eventual fix:** Option B first (cheap, no contract change, ~5-line PR) then Option A if batch profiling shows it matters. Options C/D only if A+B don't move the needle on real load data.
-
-**Cross-issue impact:** **#135** ("caller-defensive auto-approval safety") becomes partially mooted by #62 PR (b), but the document-upload paths still call `autoApproveIfEligibleForLsp`, so #135's safety net isn't fully gone. The #135 write-up should explicitly note that #90's Option B and #135 cover the same caller-side guard rail and may close together.
-
-**TDD plan for the eventual implementation (captured for the next person; not executed now):**
-
-1. **TRACER — `doc_upload_completing_required_checklist_transitions_to_APPROVED_PENDING_DISBURSAL`.** Through the LSP controller, not the engine: upload the last required doc; assert (a) `getStatus() == APPROVED_PENDING_DISBURSAL`, (b) a status-transition row exists, (c) the worker from #62 PR (b) eventually picks the loan up.
-2. `doc_upload_with_other_rule_failures_does_not_transition`. Last doc uploaded but borrower-fields blank → status stays `AWAITING_APPROVAL`; failure list captured in the audit note.
-3. `batch_doc_upload_evaluates_at_most_once_per_batch` (Option A test). Upload N docs in one batch; assert only one status-transition row written; assert engine evaluation count is 1, not N (visible via a counter exposed on `/actuator/metrics`, not via mocking the engine).
-4. `doc_upload_on_already_approved_application_does_not_invoke_engine` (Option B test). Upload an extra "nice-to-have" doc on an `APPROVED_PENDING_DISBURSAL` application; assert the engine eval counter does not tick.
-5. `findOpenLoansAcrossAllLsps_uses_borrower_index` — a `@SqlExplain`-style integration test or an existing PG-only test that runs `EXPLAIN` and asserts the borrower-index is used. Locks in: nobody drops the V17 index thinking it's dead weight.
-
-**Mocking discipline:** the rule engine is an internal collaborator — **not mocked**. Tests assert the engine ran (or didn't) via Micrometer counter increments or via the existence of an audit row, not via mocked calls. Repositories, lifecycle service, document service — not mocked. Tests drive the LSP controller (the public interface).
-
-**Effect on app:**
-- Zero behavioural change from this deferral.
-- The index check confirms no perf cliff is hiding today.
-- When implemented (Option B + maybe A), doc-upload paths skip the eval when status can't transition. ~5–15 ms shaved per redundant call; meaningful only at high batch throughput.
-- Issue stays open as the home for production-load profiling once it exists.
-
-**Dependencies / sequencing:**
-- Depends on #62 PR (b) landing first (removes one of the three caller sites, simplifies the analysis).
-- Closely related: **#135** — the eventual #90 Option B PR and #135 may close together; cross-link in the eventual write-ups.
-- The composite index (Option F) is a strictly later concern; only ship if EXPLAIN evidence appears.
+**Cross-issue impact:** Partially overlaps #135 guard-rail intent; #135 remains open for state-machine enforcement on direct engine entry. #62 disbursement worker unchanged (no auto-approval in disbursement TX).
 
 ---
 

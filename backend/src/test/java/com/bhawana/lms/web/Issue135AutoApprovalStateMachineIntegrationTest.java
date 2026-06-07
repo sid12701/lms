@@ -4,15 +4,15 @@ import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanApplicationStatus;
+import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.service.LoanDocumentService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -57,33 +57,39 @@ class Issue135AutoApprovalStateMachineIntegrationTest {
     @Autowired
     private LoanDocumentService loanDocumentService;
 
+    @Autowired
+    private LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
+
     @Test
-    void documentUploadOnRejectedApplicationFailsWithAutoApprovalNotAllowed() throws Exception {
+    void documentUploadOnRejectedApplicationStoresDocumentWithoutAutoApproval() throws Exception {
         RejectedFixture fixture = seedRejectedApplication();
         UUID applicationUuid = UUID.fromString(fixture.applicationId());
 
-        BusinessRuleViolationException exception = assertThrows(
-                BusinessRuleViolationException.class,
-                () -> loanDocumentService.submitStoredDocumentForLsp(
-                        fixture.lspId(),
-                        applicationUuid,
-                        LoanApplicationDocumentType.PAN_CARD,
-                        "lsp.api",
-                        "post-reject upload",
-                        null,
-                        new MockMultipartFile(
-                                "file",
-                                "pan.pdf",
-                                "application/pdf",
-                                "%PDF-1.4".getBytes(StandardCharsets.UTF_8)
-                        )
+        loanDocumentService.submitStoredDocumentForLsp(
+                fixture.lspId(),
+                applicationUuid,
+                LoanApplicationDocumentType.PAN_CARD,
+                "lsp.api",
+                "post-reject upload",
+                null,
+                new MockMultipartFile(
+                        "file",
+                        "pan.pdf",
+                        "application/pdf",
+                        "%PDF-1.4".getBytes(StandardCharsets.UTF_8)
                 )
         );
 
-        assertEquals("AUTO_APPROVAL_NOT_ALLOWED", exception.getErrorCode());
         assertEquals(
                 LoanApplicationStatus.REJECTED,
                 loanApplicationRepository.findById(applicationUuid).orElseThrow().getStatus()
+        );
+        assertEquals(
+                LoanApplicationDocumentChecklistStatus.SUBMITTED,
+                loanApplicationDocumentChecklistRepository
+                        .findByLoanApplication_IdAndDocumentType(applicationUuid, LoanApplicationDocumentType.PAN_CARD)
+                        .orElseThrow()
+                        .getStatus()
         );
     }
 

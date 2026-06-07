@@ -29,6 +29,8 @@ import com.bhawana.lms.service.LoanDisbursementWorkerService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -99,6 +101,9 @@ class LspLoanApplicationApiControllerTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
@@ -1121,6 +1126,183 @@ class LspLoanApplicationApiControllerTest {
     }
 
     @Test
+    void serialDocumentUploadsEmitExpectedAutoApprovalGateMetrics() throws Exception {
+        double skippedBefore = gateMetricCount("skipped_incomplete");
+        double firedBefore = gateMetricCount("fired");
+        double skippedStatusBefore = gateMetricCount("skipped_status");
+
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Gate Metrics");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-GATE-METRICS-001");
+        String applicationId = createdApplication.get("id").asText();
+
+        List<String> requiredTypes = List.of(
+                "PAN_CARD",
+                "AADHAAR_FILE",
+                "ADDRESS_PROOF",
+                "INCOME_PROOF",
+                "BANK_STATEMENT",
+                "SELFIE_PHOTOGRAPH",
+                "KFS",
+                "LOAN_AGREEMENT"
+        );
+
+        for (int index = 0; index < requiredTypes.size() - 1; index++) {
+            uploadSingleDocument(accessToken, applicationId, requiredTypes.get(index));
+        }
+
+        assertEquals(
+                skippedBefore + 7,
+                gateMetricCount("skipped_incomplete"),
+                "Partial uploads should increment skipped_incomplete once per upload"
+        );
+        assertEquals(firedBefore, gateMetricCount("fired"), "Auto-approval must not fire before all eight docs");
+
+        uploadSingleDocument(accessToken, applicationId, requiredTypes.get(7));
+
+        assertEquals(skippedBefore + 7, gateMetricCount("skipped_incomplete"));
+        assertEquals(firedBefore + 1, gateMetricCount("fired"), "Exactly one fired event when intake completes");
+        assertEquals(skippedStatusBefore, gateMetricCount("skipped_status"));
+
+        uploadSingleDocument(accessToken, applicationId, "PAN_CARD");
+
+        assertEquals(
+                skippedBefore + 8,
+                gateMetricCount("skipped_incomplete"),
+                "Re-upload after completion should skip again without firing"
+        );
+        assertEquals(firedBefore + 1, gateMetricCount("fired"), "Re-upload must not fire auto-approval again");
+    }
+
+    @Test
+    void serialSingleDocumentUploadsAutoApproveOnlyAfterEighthDocument() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Serial Docs");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-SERIAL-DOCS-001");
+        String applicationId = createdApplication.get("id").asText();
+
+        List<String> requiredTypes = List.of(
+                "PAN_CARD",
+                "AADHAAR_FILE",
+                "ADDRESS_PROOF",
+                "INCOME_PROOF",
+                "BANK_STATEMENT",
+                "SELFIE_PHOTOGRAPH",
+                "KFS",
+                "LOAN_AGREEMENT"
+        );
+
+        for (int index = 0; index < requiredTypes.size() - 1; index++) {
+            uploadSingleDocument(accessToken, applicationId, requiredTypes.get(index));
+            JsonNode detail = getApplicationDetail(accessToken, applicationId);
+            assertEquals(
+                    LoanApplicationStatus.INITIALIZED.name(),
+                    detail.get("status").asText(),
+                    "Expected no approval before all eight documents are uploaded"
+            );
+        }
+
+        uploadSingleDocument(accessToken, applicationId, requiredTypes.get(7));
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED_PENDING_DISBURSAL"))
+                .andExpect(jsonPath("$.loanAccount.status").value("PENDING_DISBURSEMENT"));
+    }
+
+    @Test
+    void metadataDocumentUploadsAutoApproveWhenAllEightDocumentsComplete() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Metadata Docs");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-META-DOCS-001");
+        String applicationId = createdApplication.get("id").asText();
+
+        for (String documentType : List.of(
+                "PAN_CARD",
+                "AADHAAR_FILE",
+                "ADDRESS_PROOF",
+                "INCOME_PROOF",
+                "BANK_STATEMENT",
+                "SELFIE_PHOTOGRAPH",
+                "KFS"
+        )) {
+            uploadSingleDocument(accessToken, applicationId, documentType);
+        }
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "documentType", "LOAN_AGREEMENT",
+                                "note", "Loan agreement metadata upload",
+                                "fileName", "loan-agreement.pdf",
+                                "fileReference", "minio://tenant-apex/loan-agreement.pdf",
+                                "sourceReference", "los-doc-final",
+                                "contentType", "application/pdf"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentType").value("LOAN_AGREEMENT"));
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED_PENDING_DISBURSAL"));
+    }
+
+    @Test
+    void reuploadAfterApprovalDoesNotInvokeAutoApprovalAgain() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Reupload");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-REUPLOAD-001");
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+
+        JsonNode approvedDetail = getApplicationDetail(accessToken, applicationId);
+        String loanAccountId = approvedDetail.get("loanAccount").get("id").asText();
+
+        uploadSingleDocument(accessToken, applicationId, "PAN_CARD");
+
+        mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED_PENDING_DISBURSAL"))
+                .andExpect(jsonPath("$.loanAccount.id").value(loanAccountId));
+    }
+
+    @Test
     void multipartDocumentUploadsAutoApproveAndCreateLoanAccount() throws Exception {
         LspFixture apex = createLsp("ACTIVE");
         ProductFixture apexProduct = createProduct("ACTIVE");
@@ -1807,6 +1989,25 @@ class LspLoanApplicationApiControllerTest {
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
+    }
+
+    private void uploadSingleDocument(String accessToken, String applicationId, String documentType) throws Exception {
+        mockMvc.perform(multipart("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                documentType.toLowerCase() + ".pdf",
+                                "application/pdf",
+                                ("content-" + documentType).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                        ))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("documentType", documentType)
+                        .param("note", "Uploaded " + documentType))
+                .andExpect(status().isOk());
+    }
+
+    private double gateMetricCount(String outcome) {
+        Counter counter = meterRegistry.find("lms.auto_approval.gate").tag("outcome", outcome).counter();
+        return counter == null ? 0.0 : counter.count();
     }
 
     private void uploadAllRequiredDocuments(String accessToken, String applicationId) throws Exception {

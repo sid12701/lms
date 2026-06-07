@@ -624,7 +624,7 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.errorSource").value("Loan application cannot be approved until required KYC documents are complete."))
                 .andExpect(jsonPath("$.errors[0].errorReason").value("KYC_COMPLETION_REQUIRED"))
                 .andExpect(jsonPath("$.errors[0].field").value("PAN_CARD"))
-                .andExpect(jsonPath("$.violations.length()").value(6))
+                .andExpect(jsonPath("$.violations.length()").value(8))
                 .andExpect(jsonPath("$.violations[0].field").value("PAN_CARD"));
 
         markAllRequiredKycDocumentsVerified(applicationId);
@@ -1273,22 +1273,24 @@ class LoanApplicationOpsControllerTest {
         String applicationId = created.get("id").asText();
 
         transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
         loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(UUID.fromString(applicationId))
                 .forEach(item -> {
-                    if (item.getDocumentType().isRequiredForApproval()) {
+                    if (item.getDocumentType() == com.bhawana.lms.domain.LoanApplicationDocumentType.KFS
+                            || item.getDocumentType() == com.bhawana.lms.domain.LoanApplicationDocumentType.LOAN_AGREEMENT) {
                         item.update(
-                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                                "Uploaded for approval",
+                                com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus.PENDING,
+                                "Removed after approval for disbursement gate test",
                                 "ops.user",
-                                item.getFileName(),
-                                item.getFileReference(),
-                                item.getSourceReference(),
-                                item.getContentType()
+                                null,
+                                null,
+                                null,
+                                null
                         );
                         loanApplicationDocumentChecklistRepository.save(item);
                     }
                 });
-        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
