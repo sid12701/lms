@@ -2314,7 +2314,7 @@ Untouched (deliberately):
 ---
 
 ### #125 — [F-2] Bank-detail match too strict — fails on whitespace/punctuation/unicode
-**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/125 · **Status:** **CLOSED** — PR #___ (2026-06-07). `BankAccountHolderNameMatcher` (NFKD/whitespace/punctuation normalisation; honorific-only soft warn; initial expansion hard reject), pre-flight `LspBankDetailsCheckResponse`, worker holder-name checks, V90 `soft` column, `HOLDER_NAME_SOFT_MISMATCH` alert. Tests: `BankAccountHolderNameMatcherTest`, `Issue125BankDetailHolderNameMatchIntegrationTest`.
+**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/125 · **Status:** **CLOSED** — PR #183 (2026-06-07). `BankAccountHolderNameMatcher` (NFKD/whitespace/punctuation normalisation; honorific-only soft warn; initial expansion hard reject), pre-flight `LspBankDetailsCheckResponse`, worker holder-name checks, V90 `soft` column, `HOLDER_NAME_SOFT_MISMATCH` alert. Tests: `BankAccountHolderNameMatcherTest`, `Issue125BankDetailHolderNameMatchIntegrationTest`.
 
 **Problem (plain English):** Bank-account name match compares trimmed/upper-cased strings. Real bank records have "MR. JOHN K" vs the system's "John K." vs the LSP's "John Kumar". Any of these → 422 and the disbursement fails.
 
