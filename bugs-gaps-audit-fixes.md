@@ -3868,7 +3868,7 @@ Untouched (deliberately):
 ---
 
 ### #73 — No redrive path for PERMANENT_FAILURE webhook events
-**Labels:** gap · **Link:** https://github.com/sid12701/lms/issues/73 · **Status:** **CLOSED** — see PR (pending merge). Bundled with **#130** (redrive endpoint + audit + cap).
+**Labels:** gap · **Link:** https://github.com/sid12701/lms/issues/73 · **Status:** **CLOSED** — [PR #182](https://github.com/sid12701/lms/pull/182) merged 2026-06-07. Bundled with **#130** (redrive endpoint + audit + cap).
 
 **Problem (plain English):** Once an event is PERMANENT, the only way to retry is hand-editing DB rows. No admin UI, no API.
 
@@ -3984,7 +3984,7 @@ Full design, decisions, test plan, and file list live in the **#130** entry abov
 ---
 
 ### #81 — Rate limiting missing on doc/report/mock-outcome/refresh/password endpoints
-**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/81 · **Status:** **CLOSED** — see PR (pending merge). Config-driven rules + FE `retryAfterSeconds`. Closes **#127** as duplicate.
+**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/81 · **Status:** **CLOSED** — [PR #182](https://github.com/sid12701/lms/pull/182) merged 2026-06-07. Config-driven rules + FE `retryAfterSeconds`. Closes **#127** as duplicate.
 
 **Problem (plain English):** Rate limit only covers auth + a few LSP write paths. Doc/report scraping and refresh/password brute-force are unbounded.
 
