@@ -16,7 +16,7 @@
 ## P0 — Production blockers (15)
 
 ### #61 — Mock disbursement adapter wired into production runtime
-**Labels:** gap, mocked-flow, security · **Link:** https://github.com/sid12701/lms/issues/61
+**Labels:** gap, mocked-flow, security · **Link:** https://github.com/sid12701/lms/issues/61 · **Status:** **CLOSED — DEFERRED (intentional pre-launch)** (2026-06-06). Mock-by-design per grilled decision; reopens only when real disbursement provider is approved.
 
 **Problem (plain English):** The only thing that simulates "money left the bank" today is an in-memory mock. It runs in every environment — including production — and any system admin can stamp a loan as DISBURSED via `/mock-outcome` with no real bank involved.
 
@@ -543,7 +543,7 @@ Tracer first; each subsequent test responds to what the previous proved.
 ---
 
 ### #65 — LSP API responses leak PAN/bank/IFSC/account-holder in plaintext
-**Labels:** gap, security, data-isolation · **Link:** https://github.com/sid12701/lms/issues/65
+**Labels:** gap, security, data-isolation · **Link:** https://github.com/sid12701/lms/issues/65 · **Status:** **CLOSED — DEFERRED to pre-launch** (2026-06-06). Cluster with **#69**, **#123**, **#139**, **#157** — not wontfix; un-defer on first live LSP / real PII / audit trigger.
 
 **Problem (plain English):** When an LSP fetches their own loan list, the response includes the borrower's PAN, bank account number, IFSC, and account holder name in plain text. Only Aadhaar is masked. If their API token leaks, all of that PII leaks too — bulk, from one credential.
 
@@ -670,7 +670,7 @@ When the trigger fires, the tracer is straightforward: `payment_of_one_installme
 ---
 
 ### #69 — MIS CSV download emits raw PAN/bank while preview is masked
-**Labels:** gap, security, reporting-risk · **Link:** https://github.com/sid12701/lms/issues/69
+**Labels:** gap, security, reporting-risk · **Link:** https://github.com/sid12701/lms/issues/69 · **Status:** **CLOSED — DEFERRED to pre-launch** (2026-06-06). Cluster with **#65**; closes with **#157**, **#123** as dupes.
 
 **Problem (plain English):** Admin sees masked numbers on the screen, clicks Download, gets a file with full PII. Operators assume "what I see is what I get" and end up moving raw KYC data around in Excel.
 
@@ -1030,7 +1030,7 @@ Both tests drive the public service layer (`LoanDisbursementWorker.tick()` or eq
 ---
 
 ### #139 — [SEC-Δ-1] LSP list/detail leaks PAN/bank/IFSC/holder (dup of #65)
-**Link:** https://github.com/sid12701/lms/issues/139
+**Link:** https://github.com/sid12701/lms/issues/139 · **Status:** **CLOSED — DEFERRED duplicate of #65** (2026-06-06)
 
 **Problem / Fixes / Recommendation / Effect:** Same as #65; this issue is the security-audit-delta framing (extends C-04 from internal-only to LSP-tenant surface). Close as duplicate of #65 once that lands.
 
@@ -1056,7 +1056,7 @@ Both tests drive the public service layer (`LoanDisbursementWorker.tick()` or eq
 ---
 
 ### #157 — [R-2] MIS preview masks but CSV download leaks raw PAN (dup of #69)
-**Link:** https://github.com/sid12701/lms/issues/157
+**Link:** https://github.com/sid12701/lms/issues/157 · **Status:** **CLOSED — DEFERRED duplicate of #69** (2026-06-06)
 
 **Problem / Fixes / Recommendation / Effect:** Same as #69; reporting-risk framing.
 
@@ -1075,7 +1075,7 @@ Both tests drive the public service layer (`LoanDisbursementWorker.tick()` or eq
 ## P1 — High priority (38)
 
 ### #68 — No audited internal admin PII reveal endpoint (frontend falls through to mock)
-**Labels:** gap, auditability, security, mocked-flow · **Link:** https://github.com/sid12701/lms/issues/68
+**Labels:** gap, auditability, security, mocked-flow · **Link:** https://github.com/sid12701/lms/issues/68 · **Status:** **CLOSED — SUPERSEDED / DEFERRED** (2026-06-06). No admin reveal UI; LSP reveal removed. Broader masking cluster remains **#65**/**#69** when un-deferred.
 
 **Problem (plain English):** When an admin tries to reveal a borrower's PII, the backend has no endpoint for it — the frontend silently uses the mock router. Real PII reveals leave no audit row even when they look successful in the UI.
 
@@ -1332,7 +1332,7 @@ Shipped per grilled design (Slices 1–3). Backend test suite green including fu
 ---
 
 ### #71 — Login/token/refresh/logout/password-change not audited
-**Labels:** gap, auditability, security · **Link:** https://github.com/sid12701/lms/issues/71
+**Labels:** gap, auditability, security · **Link:** https://github.com/sid12701/lms/issues/71 · **Status:** **CLOSED — IMPLEMENTED** (on `main`). Closes **#147** as duplicate.
 
 **Problem (plain English):** Successful and failed authentication events are not stored anywhere. You cannot detect credential stuffing, you cannot prove who logged in at 3am, and you cannot feed alerts off failed-auth signals.
 
@@ -1550,7 +1550,7 @@ The four decisions are coupled: the at-rest choice (1) constrains the migration 
 ---
 
 ### #79 — Disabled LSP_API_CLIENT keeps working until access token expires (no tv check) [PARTIAL — 2026-06-01; Slice 2 still open as of 2026-06-02]
-**Labels:** gap, security, rbac · **Link:** https://github.com/sid12701/lms/issues/79 · **Status:** **PARTIAL** — shipped via #63 PR #169 (Slices 1, 3, 4, 5, 6); Slice 2 (rotate-secret revoke) NOT shipped (2026-06-02 follow-up audit)
+**Labels:** gap, security, rbac · **Link:** https://github.com/sid12701/lms/issues/79 · **Status:** **CLOSED — IMPLEMENTED** (2026-06-06 audit). `ApiClientJwtSessionValidator` enforces `tvLsp`/`tvApiClient` + ACTIVE on every LSP API request; refresh calls `lookupByClientId` → `validateActive`; rotate-secret bumps `tokenVersion`. Closes **#93** as duplicate.
 
 > **2026-06-02 follow-up audit — what shipped vs what didn't:**
 >
@@ -1694,7 +1694,7 @@ Untouched (deliberately):
 ---
 
 ### #83 — [B-1] LspIpAllowlistFilter cache not invalidated on allowlist mutation (60s staleness) [SOLVED 2026-06-01]
-**Labels:** bug, security, scale-risk · **Link:** https://github.com/sid12701/lms/issues/83
+**Labels:** bug, security, scale-risk · **Link:** https://github.com/sid12701/lms/issues/83 · **Status:** **CLOSED — IMPLEMENTED** (#64). Closes **#164** as verification duplicate.
 
 **Problem (plain English):** Allowlist matchers are cached for 60 seconds. The admin endpoint that changes allowlist rules does not call the filter's `invalidateCache(lspId)`. So when you add or remove a rule, the change takes up to 60 seconds to apply — on each replica independently.
 
@@ -2031,7 +2031,7 @@ Untouched (deliberately):
 ---
 
 ### #89 — [B-7] TenantDataAccessContextHolder defaults to ADMIN — silent cross-tenant leak risk in workers
-**Labels:** bug, security, data-isolation · **Link:** https://github.com/sid12701/lms/issues/89
+**Labels:** bug, security, data-isolation · **Link:** https://github.com/sid12701/lms/issues/89 · **Status:** **IMPLEMENTED — pending merge** (2026-06-06). Holder throws `MissingTenantContextException`; `TenantScopedExecution` + admin interceptor + worker tests on branch. Closes **#146** when merged.
 
 **Problem (plain English):** If a background worker forgets to set tenant context, it silently runs as admin (reads/writes across all tenants). PG RLS won't save you when the connection enters admin mode. One forgotten worker = silent cross-LSP leak.
 
@@ -2287,7 +2287,7 @@ Untouched (deliberately):
 ---
 
 ### #123 — [D-10] MIS preview vs CSV download paths use overlapping projections — drift risk
-**Labels:** duplicate-code, reporting-risk · **Link:** https://github.com/sid12701/lms/issues/123
+**Labels:** duplicate-code, reporting-risk · **Link:** https://github.com/sid12701/lms/issues/123 · **Status:** **CLOSED — DEFERRED duplicate of #69 cluster** (2026-06-06)
 
 **Problem (plain English):** The preview screen and the CSV download read from overlapping but not identical projections. Drift is a question of "when," not "if" — one will silently lose a field the other still shows.
 
@@ -2314,7 +2314,7 @@ Untouched (deliberately):
 ---
 
 ### #125 — [F-2] Bank-detail match too strict — fails on whitespace/punctuation/unicode
-**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/125
+**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/125 · **Status:** **OPEN** — plan grilled 2026-06-07, ready to implement (standalone PR).
 
 **Problem (plain English):** Bank-account name match compares trimmed/upper-cased strings. Real bank records have "MR. JOHN K" vs the system's "John K." vs the LSP's "John Kumar". Any of these → 422 and the disbursement fails.
 
@@ -2327,7 +2327,149 @@ Untouched (deliberately):
 
 **Effect on app:** Drop in disbursement-validation rejections. Documented matching rules in the runbook. Minimal false-accept risk if thresholds tuned.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-07):**
+
+**Reframe — only the holder-name field is fragile.** Code read of `LoanDisbursementService.java:112-173` confirms:
+- Account number normaliser strips all non-digits (`replaceAll("\\D", "")`) — already lenient; handles spaces, dashes, masked prefixes. Fine.
+- IFSC normaliser is `trim().toUpperCase(Locale.ROOT)` — IFSC is a fixed 11-char format. Fine.
+- Holder-name normaliser is the same `trim().toUpperCase()` — **this is the only brittle surface**.
+
+Real-world holder-name failure modes the current matcher rejects but should not: honorifics, internal-whitespace divergence, punctuation, Unicode composition form, diacritics. Failure modes we deliberately keep rejecting: initial expansion (`JOHN K` vs `JOHN KUMAR`) and word reorder (`KUMAR, JOHN` vs `JOHN KUMAR`) — both are real-world ambiguous and the relief valve (`PATCH /borrowers/{id}/bank-details` from #62 PR(c)) handles them with audit + webhook + velocity alert.
+
+**Policy moved from strict-reject to soft-warn on both LSP-facing surfaces.** Bank-side credit-to-name is the real gate at money-out. LMS layer becomes informational for holder-name only. Account number and IFSC stay strict and hard-fail — they remain blocking violations on both the pre-flight endpoint and the worker.
+
+**Decisions locked in:**
+1. **New `BankAccountHolderNameMatcher` as a Spring `@Component` in `com.bhawana.lms.service`.** Pipeline: NFKD → strip diacritics → strip `.`/`,`/`'`/`-` → collapse internal whitespace → trim → uppercase `Locale.ROOT` → exact-equal. **No honorific list** (deferred until real data demands it; no governance cost today). **No Levenshtein** (deferred; deterministic-only at v1). **Forward-only** (compare-time; `Borrower.accountHolderName` storage untouched, no migration backfill).
+2. **`LoanDisbursementService.validateDisbursementBankDetails` split.** Holder-name no longer adds to the strict `violations` map. Method returns a record `{ violations, warnings }`. Account/IFSC still populate `violations` (hard); holder-name divergence populates `warnings` (soft).
+3. **`verifyDisbursementBankDetailsForLsp` returns a new DTO.** Signature changes from `void` to `BankDetailsCheckResult { status: "OK" | "WARN", warnings: [{ field, code, message }] }`. Hard violations (account/IFSC) still throw `BusinessRuleViolationException` → 422 (controller unchanged for that path). Warnings surface only on the 200 path.
+4. **`LspLoanApplicationApiController.verifyDisbursementBankDetails` return shape changes.** New `LspBankDetailsCheckResponse` record. Pre-launch — no LSP partner comms needed. Route stays `POST /api/v1/lsp/loan-applications/{applicationId}/disbursement-bank-check`.
+5. **Worker (`validateAutomatedDisbursement` → caller in `LoanDisbursementWorker`) adds a soft holder-name check, run BEFORE the adapter call.** On soft mismatch: write `LoanDisbursementBankMismatchLog` row with new `soft=true`, fire `HOLDER_NAME_SOFT_MISMATCH` alert via `AlertRuleEvaluationService`, **then disburse**. Account/IFSC mismatches still halt the worker (they're prevented upstream by the bank-detail update flow anyway, but the last-line check stays).
+6. **`LoanDisbursementBankMismatchLog` schema change.** New column `soft BOOLEAN NOT NULL DEFAULT FALSE`. Flyway migration `V<next>__bank_mismatch_log_soft_column.sql`. Existing rows default to `false` (they are all hard mismatches by construction).
+7. **`AlertRuleEvaluationService.emitHolderNameSoftMismatch(application, submittedName, onFileName, correlationId)`** — new method, new action label `HOLDER_NAME_SOFT_MISMATCH`. Per-event, no threshold. Distinct from existing `BANK_DETAIL_MISMATCH` (which fires on threshold of hard account/IFSC mismatches and stays unchanged).
+8. **`BorrowerBankDetailsService.recordDisbursementBankMismatch` split** into `recordHardMismatch` (existing semantics, `soft=false`, threshold alert) and `recordSoftHolderMismatch` (`soft=true`, per-event alert, no threshold). Worker calls the soft path; existing strict-validation callers stay on the hard path.
+
+**What is NOT changing:**
+- `Borrower.accountHolderName` storage — original spelling preserved for audit/diff evidence.
+- Account number normaliser (`\\D` strip) and IFSC normaliser (`trim().toUpperCase()`) — both already correct.
+- The `PATCH /borrowers/{id}/bank-details` relief valve from #62 PR(c) — still the way to correct genuinely-wrong on-file data. Audit + webhook + velocity alert remain.
+- Existing strict `BANK_DETAIL_MISMATCH` threshold alert — untouched.
+- No data backfill; no canonical-form column on `Borrower`.
+- No per-LSP strictness dial (audit-doc Option D was explicitly rejected — YAGNI pre-launch).
+
+**Why not the original audit-doc recommendation (Option 1 + Levenshtein ≤ 1):** Levenshtein on the normalised residue introduces a false-accept surface whose blast radius is "wrong account credited". We do not buy that risk speculatively. The honorific list also requires governance (which culture, which suffixes, which feminine/masculine variants). Both can layer on later when real-world rejection data exists to tune against. v1 is deterministic-only.
+
+**Why not Option E (drop holder-name match entirely):** even though the destination bank does its own credit-to-name check, removing our layer means the only evidence of "what the LSP submitted at disbursement time" lives in the bank's response. We lose the `LoanDisbursementBankMismatchLog` forensic signal. Worth re-evaluating once a real disbursement adapter lands (#61 mock-by-design), not now.
+
+**Why not Option A (status quo + bigger relief valve):** false-reject friction on every disbursement where the holder name differs by punctuation/whitespace would drive the strict `BANK_DETAIL_MISMATCH` alert noise high and degrade the alert stream's signal-to-noise — exactly the channel #62 PR(c) shipped for LSP-misbehaviour detection. Underengineered.
+
+**TDD plan (vertical slices, behaviour through public interfaces):**
+
+Tracer bullet first, then each subsequent test responds to what the previous revealed. No horizontal slicing.
+
+1. **TRACER — `preflight_returns_OK_with_no_warnings_when_holder_name_matches_exactly`.** POST `/disbursement-bank-check` with identical holder name → 200, body `{status:"OK", warnings:[]}`. Locks in the new response shape through the public API.
+2. **`preflight_returns_WARN_with_holder_name_warning_when_only_holder_name_differs_by_punctuation`.** Submit `JOHN K.` vs on-file `JOHN K` → 200, warnings contain a `HOLDER_NAME_SOFT_MISMATCH` entry.
+3. **`preflight_returns_422_when_account_number_mismatches_regardless_of_holder_name`.** Account differs (holder identical) → 422, violations body. Locks in: holder-name softness does not weaken account/IFSC strictness.
+4. **`preflight_returns_OK_when_holder_name_differs_only_by_internal_whitespace`.** `JOHN  KUMAR` (double space) vs `JOHN KUMAR` → 200, no warning (normaliser collapses).
+5. **`preflight_returns_OK_when_holder_name_differs_only_by_unicode_form`.** NFC vs NFD `JÖHN` → 200, no warning.
+6. **`worker_disburses_application_when_holder_name_soft_mismatches`.** Seed `APPROVED_PENDING_DISBURSAL` with holder-name divergence → worker calls adapter → status moves to `DISBURSEMENT_REQUESTED`. `LoanDisbursementBankMismatchLog` row written with `soft=true`. `HOLDER_NAME_SOFT_MISMATCH` alert surfaces in Audit Explorer via the public read API.
+7. **`worker_does_not_disburse_when_account_number_mismatches`.** Account number differs → worker halts; status unchanged; hard mismatch log row with `soft=false`.
+8. **`holder_name_soft_mismatch_does_not_trigger_strict_BANK_DETAIL_MISMATCH_threshold`.** Repeated soft mismatches in the velocity window → no strict threshold alert. Keeps the two signals independent.
+
+Matcher unit tests (one slice, runs last so the pipeline can be refactored under the integration tests): `matches_canonical_form`, `strips_diacritics_NFKD`, `collapses_internal_whitespace`, `strips_dot_comma_apostrophe_hyphen`, `case_insensitive_locale_root`, `rejects_genuinely_different_names`, `rejects_initial_expansion_JOHN_K_vs_JOHN_KUMAR`, `rejects_word_reorder_KUMAR_comma_JOHN_vs_JOHN_KUMAR`. The last two are explicit non-matches, locking in the deliberate non-fuzz boundary.
+
+**Mocking discipline:**
+- `LoanDisbursementAdapter` — system boundary; mockable in worker tests (a fake adapter or Mockito spy at the boundary).
+- `AlertRuleEvaluationService` — internal collaborator, **not** mocked. Tests assert alerts through the Audit Explorer query API (`GET /api/v1/internal/admin/audit-events`) — same surface an ops user sees.
+- `BankAccountHolderNameMatcher` — internal pure logic, **never** mocked. Real instances run in every service-level test.
+- No mocks of repositories, the borrower domain, `LoanApplicationLifecycleService`, or the worker's status transitioner.
+- `Clock` — system boundary, mockable for the velocity-window assertion (`holder_name_soft_mismatch_does_not_trigger_strict_BANK_DETAIL_MISMATCH_threshold`).
+
+**Tests we deliberately do NOT write here (owned elsewhere):**
+- Pre-flight rate limit → owned by #81 (closed).
+- Pre-flight audit row → if/when audit pipeline grows to cover bank-check, file follow-up; not in scope here.
+- LSP IP allowlist on `/disbursement-bank-check` → owned by #64 (closed).
+- Webhook signing format on `BORROWER_BANK_DETAILS_UPDATED` (the relief-valve event) → #129.
+
+**Effect on app:**
+- Pre-flight gains a JSON body (LSP-visible contract change; pre-launch, free).
+- Worker stops false-rejecting disbursements on holder-name punctuation, internal whitespace, Unicode form, diacritics.
+- New `HOLDER_NAME_SOFT_MISMATCH` audit signal — distinct from the strict-threshold path, so ops can filter and tune separately.
+- Original holder name preserved on `Borrower` rows; no data migration.
+- `BANK_DETAIL_MISMATCH` strict alert stream's signal-to-noise improves (no more noise from punctuation-only divergence).
+- `LoanDisbursementBankMismatchLog` table grows one column; existing rows backfill cleanly to `soft=false`.
+
+**Regression risk:** Low. Account/IFSC strictness unchanged. Holder-name softness is additive (warn, don't reject). Existing strict-threshold alert untouched. Flyway migration is column-add with default; safe.
+
+**Scale impact:** Negligible. Matcher is O(n) string ops per disbursement (microseconds). One extra log row per soft mismatch.
+
+**Code structure impact:** New `@Component` matcher is a deep, single-responsibility unit (single public `matches(submitted, onFile)` method). Aligns with existing `service.` package convention. No god-class growth (`LoanDisbursementService` shrinks slightly because the holder-name comparison moves out). `BorrowerBankDetailsService.recordDisbursementBankMismatch` splits into two clearly-named methods (hard vs soft) — improves readability.
+
+**Overengineering check:** No. Every piece is load-bearing. No honorific list. No Levenshtein. No backfill. No strictness dial. No new endpoint surface beyond the response-shape change on the existing pre-flight. Matcher is deterministic and explainable in one paragraph.
+
+**Sequencing / dependencies:** Standalone single PR. No upstream blockers (matcher is self-contained). No downstream callers blocked. The relief valve from #62 PR(c) is already on `main`. Do not bundle with any other open issue.
+
+---
+
+**TDD principles (verbatim, for thinking-and-testing this solution):**
+
+Test-Driven Development Philosophy
+
+Core principle: Tests should verify behavior through public interfaces, not implementation details. Code can change entirely; tests shouldn't.
+
+Good tests are integration-style: they exercise real codepaths through public APIs. They describe what the system does, not how it does it. A good test reads like a specification — "user can checkout with valid cart" tells you exactly what capability exists. These tests survive refactors because they don't care about internal structure.
+
+Bad tests are coupled to implementation. They mock internal collaborators, test private methods, or verify through external means (like querying a database directly instead of using the interface). The warning sign: your test breaks when you refactor, but behavior hasn't changed. If you rename an internal function and tests fail, those tests were testing implementation, not behavior.
+
+See tests.md for examples and mocking.md for mocking guidelines.
+
+Anti-Pattern: Horizontal Slices
+
+DO NOT write all tests first, then all implementation. This is "horizontal slicing" — treating RED as "write all tests" and GREEN as "write all code."
+
+This produces crap tests:
+
+- Tests written in bulk test imagined behavior, not actual behavior
+- You end up testing the shape of things (data structures, function signatures) rather than user-facing behavior
+- Tests become insensitive to real changes — they pass when behavior breaks, fail when behavior is fine
+- You outrun your headlights, committing to test shape
+
+No conditional logic in test setup. Easier to see which endpoints a test exercises. Type safety per endpoint.
+
+Refactor Candidates
+
+After TDD cycle, look for:
+
+- Duplication → Extract function/class
+- Long methods → Break into private helpers (keep tests on public interface)
+- Shallow modules → Combine or deepen
+- Feature envy → Move logic to where data lives
+- Primitive obsession → Introduce value objects
+- Existing code the new code reveals as problematic
+
+Mocking guidance — prefer SDK-style interfaces over generic fetchers. Create specific functions for each external operation instead of one generic function with conditional logic:
+
+```
+// GOOD: Each function is independently mockable
+const api = {
+  getUser: (id) => fetch(`/users/${id}`),
+  getOrders: (userId) => fetch(`/users/${userId}/orders`),
+  createOrder: (data) => fetch('/orders', { method: 'POST', body: data }),
+};
+
+// BAD: Mocking requires conditional logic inside the mock
+const api = {
+  fetch: (endpoint, options) => fetch(endpoint, options),
+};
+```
+
+The SDK approach means:
+
+- Each mock returns one specific shape
+- No conditional logic in test setup
+- Easier to see which endpoints a test exercises
+- Type safety per endpoint
+
+Also audit each file, component, module, and function linked to that feature, file or component.
 
 ---
 
@@ -2562,7 +2704,7 @@ Frontend (`frontend-2/src/features/admin/webhook-outbox/`):
 ---
 
 ### #146 — [SEC-Δ-8] Tenant context defaults to ADMIN in null state
-**Link:** https://github.com/sid12701/lms/issues/146
+**Link:** https://github.com/sid12701/lms/issues/146 · **Status:** **OPEN — closes with #89 merge**
 
 **Problem / Fixes / Recommendation / Effect:** Duplicate of #89.
 
@@ -3305,7 +3447,7 @@ Cross-ref § **#159** for frontend stream tabs and out-of-scope 8th-stream check
 ---
 
 ### #153 — [AUD-7] Webhook URL / signing-secret rotation not audited
-**Labels:** auditability, security · **Link:** https://github.com/sid12701/lms/issues/153
+**Labels:** auditability, security · **Link:** https://github.com/sid12701/lms/issues/153 · **Status:** **CLOSED** — see PR (pending merge)
 
 **Problem (plain English):** Webhook URL changes and secret rotations are not audited. A swapped URL could exfiltrate to an attacker-controlled endpoint silently.
 
@@ -3489,7 +3631,7 @@ Untouched (deliberately):
 ---
 
 ### #154 — [AUD-8] IP allowlist add/remove audit incomplete — verify
-**Labels:** auditability, security, verification · **Link:** https://github.com/sid12701/lms/issues/154
+**Labels:** auditability, security, verification · **Link:** https://github.com/sid12701/lms/issues/154 · **Status:** **CLOSED** — folded into #153 PR (pending merge)
 
 **Problem (plain English):** Need to verify whether the IP allowlist controller already audits mutations; if not, add.
 
@@ -3664,7 +3806,7 @@ Untouched (deliberately):
 ---
 
 ### #164 — [V-4] Verify LspIpAllowlistAdminController calls invalidateCache
-**Link:** https://github.com/sid12701/lms/issues/164
+**Link:** https://github.com/sid12701/lms/issues/164 · **Status:** **CLOSED — VERIFICATION PASSES** (2026-06-06). Dup of **#83**; `IpAllowlistCacheInvalidation.afterCommit` on API + UI allowlist controllers.
 
 **Detailed solution after discussion (2026-06-01):** Close as verified by **#83**. `LspIpAllowlistAdminController` mutation paths invoke `invalidateCache` after every add/remove (verified during #83's fix). No outstanding gap.
 
@@ -3842,7 +3984,7 @@ Full design, decisions, test plan, and file list live in the **#130** entry abov
 ---
 
 ### #81 — Rate limiting missing on doc/report/mock-outcome/refresh/password endpoints
-**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/81 · **Status:** **OPEN** — plan grilled 2026-06-03, ready to implement. Closes **#127** as duplicate.
+**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/81 · **Status:** **CLOSED — IMPLEMENTED** (2026-06-06). Closes **#127** as duplicate.
 
 **Problem (plain English):** Rate limit only covers auth + a few LSP write paths. Doc/report scraping and refresh/password brute-force are unbounded.
 
@@ -4046,6 +4188,20 @@ Untouched (deliberately):
 - **PR description note:** call out that this PR removes the original audit-doc "switch to Redis" option (already wired), introduces the rules table, and adds four new families + the FE interceptor. Single delivery, single review.
 
 **Dependencies / sequencing:** independent — ships standalone. No upstream blockers; #62's alert plumbing is already on `main`. Implementation order matches the slice order above.
+
+**Implementation status (2026-06-06):**
+
+Shipped the grilled rules-table design end-to-end:
+
+- `RateLimitProperties` now carries `enabled` + `List<RateLimitRule> rules` with `@PostConstruct` validation (`KeyStrategy`, duplicate ids, `SUBJECT_AND_APPLICATION` permit shape).
+- `RateLimitFilter` walks rules in order; supports multi-bucket strategies (`IP_AND_SUBJECT`, `SUBJECT_AND_APPLICATION` via paired rules).
+- `application.yml` carries the full rule list (auth, lsp-write, refresh, password, admin reset-password, docs-ops, docs-lsp, reports, mock-outcome subject + application buckets).
+- `frontend/src/lib/api/http-client.ts` — `ApiError.retryAfterSeconds` populated from `Retry-After` on 429; unit test in `http-client.test.ts`.
+- Tests: `RateLimitRuleMatcherTest`, `RateLimitPropertiesValidationTest`, `RateLimitFilterIntegrationTest` (auth-login IP + reports SUBJECT tracer coverage). Test profile keeps `app.rate-limit.enabled: false` so the wider suite is unaffected.
+
+**Follow-up (optional, not blocking closure):** TDD slices 3–10 and 12 from the grilled plan (dedicated per-surface integration tests, alert-emission e2e, high-budget overrides per-rule in test YAML) can land incrementally; core matcher + config + FE 429 UX are live.
+
+**Closes:** #127 (duplicate).
 
 ---
 
@@ -4710,19 +4866,22 @@ It is a chunky service, not a useless facade. Bundling with #98 (god-class decom
 ---
 
 ### #101 — [Q-4] Legacy frontend/ still bundled
-**Labels:** code-quality, security, duplicate-code · **Link:** https://github.com/sid12701/lms/issues/101
+**Labels:** code-quality, security, duplicate-code · **Link:** https://github.com/sid12701/lms/issues/101 · **Status:** **CLOSED — RETIRED** (2026-06). Bundled with **#114**.
 
 **Problem (plain English):** Two FE codebases bundled; legacy has its own auth flow and storage keys.
 
-**Possible fixes:**
-1. **Pick a retirement date; until then mount under `/legacy`** — soft retire.
-2. **Delete legacy now** — fast; may break workflows that still rely on it.
+**Detailed solution after discussion (2026-06-06) — RETIRED:**
 
-**Recommended:** Option 1 with a hard date (e.g., 60 days).
+Legacy frontend retirement is complete per **ADR-0001** (`docs/adr/0001-adopt-frontend-2-direct-backend-integration.md`):
 
-**Effect on app:** Bundle shrinks; security surface narrows; training surface narrows.
+- Former `frontend-2/` is now the canonical `frontend/` (`bhawana-lms-frontend`).
+- Legacy `frontend/` (mock-auth SPA) removed from the repo.
+- In-app mock layer (`src/mocks/`, `VITE_USE_MOCKS`) removed; app calls the live backend.
+- `frontend/src/lib/session-storage.ts` is real JWT session storage, not legacy mock auth.
 
-**Detailed solution after discussion:** _(pending — bundle with #114)_
+**Verification:** no `frontend/src/mocks/` directory; no `SEED_USERS` in frontend source; single SPA under `frontend/`.
+
+**Closes:** #114 (same decision).
 
 ---
 
@@ -4905,9 +5064,9 @@ Three independent `.gitignore` rules cover the dist directories:
 ---
 
 ### #114 — [D-1] Two frontends bundled — pick a retirement date
-**Link:** https://github.com/sid12701/lms/issues/114
+**Link:** https://github.com/sid12701/lms/issues/114 · **Status:** **CLOSED — DUPLICATE of #101** (2026-06)
 
-**Detailed solution after discussion:** _(pending — bundle with #101)_
+**Detailed solution after discussion (2026-06-06):** Same retirement as **#101** — ADR-0001 accepted and completed; single frontend under `frontend/`.
 
 ---
 
@@ -4995,9 +5154,9 @@ If we ever rip out the H2 test path (move everything to Testcontainers PG), the 
 ---
 
 ### #127 — [F-4] RateLimitFilter scope too narrow (dup of #81)
-**Link:** https://github.com/sid12701/lms/issues/127
+**Link:** https://github.com/sid12701/lms/issues/127 · **Status:** **CLOSED — DUPLICATE of #81** (2026-06-06)
 
-**Detailed solution after discussion:** _(pending — bundle with #81)_
+**Detailed solution after discussion (2026-06-06):** Exact duplicate of **#81**. Closed when #81's config-driven rules table shipped (see #81 implementation status).
 
 ---
 

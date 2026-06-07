@@ -1,5 +1,7 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.common.web.LspStatusUpdateException;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspAuditEvent;
@@ -8,6 +10,7 @@ import com.bhawana.lms.domain.LspStatusChangeReason;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.service.AdminDirectoryService;
 import com.bhawana.lms.service.LspStatusService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -82,14 +85,20 @@ public class LspAdminController {
     @PutMapping("/{lspId}/webhook-subscription")
     public LspResponse updateWebhookSubscription(
             @PathVariable UUID lspId,
-            @Valid @RequestBody UpdateWebhookSubscriptionRequest request
+            @Valid @RequestBody UpdateWebhookSubscriptionRequest request,
+            @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest
     ) {
+        String actorUsername = principal == null ? "unknown" : principal.getSubject();
         Lsp lsp = adminDirectoryService.updateWebhookSubscription(
                 lspId,
                 request.enabled(),
                 request.endpointUrl(),
                 request.signingSecret(),
-                request.eventTypes()
+                request.eventTypes(),
+                actorUsername,
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get()
         );
         return toResponse(lsp);
     }
@@ -162,9 +171,11 @@ public class LspAdminController {
                 lspId.toString(),
                 event.getAction(),
                 event.getActorUsername(),
+                event.getActorIp(),
                 event.getReason() == null ? null : event.getReason().name(),
                 event.getNote(),
                 event.getCascadedClientCount(),
+                event.getDetailsJson() == null ? null : event.getDetailsJson().toString(),
                 event.getCorrelationId(),
                 event.getCreatedAt().toString()
         );
@@ -230,9 +241,11 @@ public class LspAdminController {
             String lspId,
             String action,
             String actorUsername,
+            String actorIp,
             String reason,
             String note,
             int cascadedClientCount,
+            String detailsJson,
             String correlationId,
             String createdAt
     ) {

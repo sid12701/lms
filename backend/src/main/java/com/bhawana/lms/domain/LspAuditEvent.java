@@ -50,6 +50,9 @@ public class LspAuditEvent {
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
 
+    @Column(name = "actor_ip", length = 64)
+    private String actorIp;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -66,6 +69,20 @@ public class LspAuditEvent {
             String detailsJson,
             String correlationId
     ) {
+        this(lsp, actorUsername, action, reason, note, cascadedClientCount, detailsJson, correlationId, null);
+    }
+
+    public LspAuditEvent(
+            Lsp lsp,
+            String actorUsername,
+            String action,
+            LspStatusChangeReason reason,
+            String note,
+            int cascadedClientCount,
+            String detailsJson,
+            String correlationId,
+            String actorIp
+    ) {
         this.id = UUID.randomUUID();
         this.lsp = lsp;
         this.actorUsername = actorUsername;
@@ -75,6 +92,7 @@ public class LspAuditEvent {
         this.cascadedClientCount = cascadedClientCount;
         this.detailsJson = JsonPayloads.requiredObject(detailsJson, "detailsJson");
         this.correlationId = correlationId;
+        this.actorIp = actorIp;
     }
 
     @PrePersist
@@ -112,6 +130,14 @@ public class LspAuditEvent {
 
     public String getCorrelationId() {
         return correlationId;
+    }
+
+    public JsonNode getDetailsJson() {
+        return detailsJson;
+    }
+
+    public String getActorIp() {
+        return actorIp;
     }
 
     public Instant getCreatedAt() {
