@@ -158,6 +158,15 @@ public class AlertRuleEvaluationService {
         emitLspBoundViolation(application, violationType.name(), message, details, true);
     }
 
+    public void emitLspForeclosureViolation(
+            LoanApplication application,
+            ForeclosureViolationType violationType,
+            String message,
+            Map<String, String> details
+    ) {
+        emitLspBoundViolation(application, violationType.name(), message, details, true);
+    }
+
     public void emitLspBoundViolation(
             LoanApplication application,
             String violationType,
