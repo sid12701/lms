@@ -2031,7 +2031,7 @@ Untouched (deliberately):
 ---
 
 ### #89 — [B-7] TenantDataAccessContextHolder defaults to ADMIN — silent cross-tenant leak risk in workers
-**Labels:** bug, security, data-isolation · **Link:** https://github.com/sid12701/lms/issues/89 · **Status:** **CLOSED** — see PR (pending merge). Holder throws `MissingTenantContextException`; `TenantScopedExecution` + admin interceptor + worker tests. Closes **#146**.
+**Labels:** bug, security, data-isolation · **Link:** https://github.com/sid12701/lms/issues/89 · **Status:** **CLOSED** — [PR #182](https://github.com/sid12701/lms/pull/182) merged 2026-06-07. Holder throws `MissingTenantContextException`; `TenantScopedExecution` + admin interceptor + worker tests. Closes **#146**.
 
 **Problem (plain English):** If a background worker forgets to set tenant context, it silently runs as admin (reads/writes across all tenants). PG RLS won't save you when the connection enters admin mode. One forgotten worker = silent cross-LSP leak.
 
@@ -2474,7 +2474,7 @@ Also audit each file, component, module, and function linked to that feature, fi
 ---
 
 ### #130 — [F-7] Webhook 404 classified as PERMANENT — silent loss on URL typos
-**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/130 · **Status:** **CLOSED** — see PR (pending merge). Soft-4xx retry + bundled **#73** redrive.
+**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/130 · **Status:** **CLOSED** — [PR #182](https://github.com/sid12701/lms/pull/182) merged 2026-06-07. Soft-4xx retry + bundled **#73** redrive.
 
 **Problem (plain English):** If a partner's webhook URL has a typo, every call returns 404, and we mark the event PERMANENT — never retry. Silent data loss until someone notices missing events.
 
@@ -2704,7 +2704,7 @@ Frontend (`frontend-2/src/features/admin/webhook-outbox/`):
 ---
 
 ### #146 — [SEC-Δ-8] Tenant context defaults to ADMIN in null state
-**Link:** https://github.com/sid12701/lms/issues/146 · **Status:** **CLOSED** — duplicate of **#89** (same PR)
+**Link:** https://github.com/sid12701/lms/issues/146 · **Status:** **CLOSED** — duplicate of **#89** ([PR #182](https://github.com/sid12701/lms/pull/182))
 
 **Problem / Fixes / Recommendation / Effect:** Duplicate of #89.
 
