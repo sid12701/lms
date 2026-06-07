@@ -36,6 +36,7 @@ public class LoanDisbursementWorkerService {
     private final LoanApplicationService loanApplicationService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final LoanDisbursementService loanDisbursementService;
+    private final BorrowerBankDetailsService borrowerBankDetailsService;
     private final AlertRuleEvaluationService alertRuleEvaluationService;
     private final LoanDisbursementWorkerProperties properties;
 
@@ -46,6 +47,7 @@ public class LoanDisbursementWorkerService {
             LoanApplicationService loanApplicationService,
             LoanApplicationLifecycleService loanApplicationLifecycleService,
             LoanDisbursementService loanDisbursementService,
+            BorrowerBankDetailsService borrowerBankDetailsService,
             AlertRuleEvaluationService alertRuleEvaluationService,
             LoanDisbursementWorkerProperties properties
     ) {
@@ -55,6 +57,7 @@ public class LoanDisbursementWorkerService {
         this.loanApplicationService = loanApplicationService;
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.loanDisbursementService = loanDisbursementService;
+        this.borrowerBankDetailsService = borrowerBankDetailsService;
         this.alertRuleEvaluationService = alertRuleEvaluationService;
         this.properties = properties;
     }
@@ -111,6 +114,21 @@ public class LoanDisbursementWorkerService {
         if (!violations.isEmpty()) {
             rejectForBoundViolation(application, "AUTOMATED_DISBURSEMENT_VALIDATION", violations);
             return true;
+        }
+
+        DisbursementBankDetailsValidation bankValidation =
+                loanDisbursementService.validateWorkerDisbursementBankDetails(application.getBorrower());
+        if (!bankValidation.violations().isEmpty()) {
+            rejectForBoundViolation(application, "AUTOMATED_DISBURSEMENT_BANK_VALIDATION", bankValidation.violations());
+            return true;
+        }
+        if (!bankValidation.warnings().isEmpty()) {
+            borrowerBankDetailsService.recordSoftHolderNameMismatch(
+                    application,
+                    application.getLsp().getId(),
+                    application.getBorrower().getFullName(),
+                    application.getBorrower().getAccountHolderName()
+            );
         }
 
         long priorAttempts = loanDisbursementRequestLogRepository.countByLoanAccount_Id(loanAccount.getId());

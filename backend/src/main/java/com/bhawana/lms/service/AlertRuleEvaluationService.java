@@ -218,6 +218,35 @@ public class AlertRuleEvaluationService {
         }
     }
 
+    public void emitHolderNameSoftMismatch(
+            LoanApplication application,
+            String submittedName,
+            String onFileName,
+            String correlationId
+    ) {
+        String lspCode = application.getLsp() != null ? application.getLsp().getCode() : "unknown";
+        String contextJson = "{\"applicationId\":\""
+                + application.getId()
+                + "\",\"lspCode\":\""
+                + escapeJson(lspCode)
+                + "\",\"violationType\":\"HOLDER_NAME_SOFT_MISMATCH\""
+                + ",\"submittedAccountHolderName\":\""
+                + escapeJson(submittedName)
+                + "\",\"onFileAccountHolderName\":\""
+                + escapeJson(onFileName)
+                + "\"}";
+        opsAlertService.createAlert(
+                OpsAlertType.LSP_BOUND_VIOLATION,
+                OpsAlertSeverity.HIGH,
+                "LSP bound violation: HOLDER_NAME_SOFT_MISMATCH",
+                "Account holder name soft mismatch for loan " + application.getExternalLoanId() + ".",
+                "LOAN_APPLICATION",
+                application.getId(),
+                correlationId,
+                contextJson
+        );
+    }
+
     public void emitBorrowerBankDetailsVelocity(Borrower borrower, int updateCount) {
         String contextJson = "{\"borrowerId\":\""
                 + borrower.getId()

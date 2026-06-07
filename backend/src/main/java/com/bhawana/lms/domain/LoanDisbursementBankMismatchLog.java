@@ -38,6 +38,9 @@ public class LoanDisbursementBankMismatchLog {
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
 
+    @Column(name = "soft", nullable = false)
+    private boolean soft;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -52,6 +55,18 @@ public class LoanDisbursementBankMismatchLog {
             String submittedAccountHolderName,
             String correlationId
     ) {
+        this(loanApplication, lsp, submittedBankAccountNumber, submittedIfscCode, submittedAccountHolderName, correlationId, false);
+    }
+
+    public LoanDisbursementBankMismatchLog(
+            LoanApplication loanApplication,
+            Lsp lsp,
+            String submittedBankAccountNumber,
+            String submittedIfscCode,
+            String submittedAccountHolderName,
+            String correlationId,
+            boolean soft
+    ) {
         this.id = UUID.randomUUID();
         this.loanApplication = loanApplication;
         this.lsp = lsp;
@@ -59,6 +74,7 @@ public class LoanDisbursementBankMismatchLog {
         this.submittedIfscCode = submittedIfscCode;
         this.submittedAccountHolderName = submittedAccountHolderName;
         this.correlationId = correlationId;
+        this.soft = soft;
     }
 
     @PrePersist
@@ -68,5 +84,13 @@ public class LoanDisbursementBankMismatchLog {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public boolean isSoft() {
+        return soft;
+    }
+
+    public String getSubmittedAccountHolderName() {
+        return submittedAccountHolderName;
     }
 }

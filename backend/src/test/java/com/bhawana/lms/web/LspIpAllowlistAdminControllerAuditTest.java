@@ -4,7 +4,6 @@ import com.bhawana.lms.domain.LspAuditEvent;
 import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Comparator;
 import java.util.List;
