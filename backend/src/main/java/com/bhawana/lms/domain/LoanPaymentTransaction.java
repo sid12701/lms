@@ -46,6 +46,9 @@ public class LoanPaymentTransaction {
     @Column(name = "idempotency_key", length = 36)
     private String idempotencyKey;
 
+    @Column(name = "request_fingerprint", length = 64)
+    private String requestFingerprint;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 64)
     private LoanPaymentChannel channel;
@@ -88,6 +91,36 @@ public class LoanPaymentTransaction {
             String correlationId,
             String idempotencyKey
     ) {
+        this(
+                loanAccount,
+                repaymentInstallment,
+                actorUsername,
+                amount,
+                paymentDate,
+                reference,
+                channel,
+                status,
+                note,
+                correlationId,
+                idempotencyKey,
+                null
+        );
+    }
+
+    public LoanPaymentTransaction(
+            LoanAccount loanAccount,
+            LoanRepaymentScheduleInstallment repaymentInstallment,
+            String actorUsername,
+            BigDecimal amount,
+            LocalDate paymentDate,
+            String reference,
+            LoanPaymentChannel channel,
+            LoanPaymentStatus status,
+            String note,
+            String correlationId,
+            String idempotencyKey,
+            String requestFingerprint
+    ) {
         this.id = UUID.randomUUID();
         this.loanAccount = loanAccount;
         this.repaymentInstallment = repaymentInstallment;
@@ -102,6 +135,7 @@ public class LoanPaymentTransaction {
         this.note = note;
         this.correlationId = correlationId;
         this.idempotencyKey = idempotencyKey;
+        this.requestFingerprint = requestFingerprint;
     }
 
     @PrePersist
@@ -170,6 +204,10 @@ public class LoanPaymentTransaction {
 
     public String getIdempotencyKey() {
         return idempotencyKey;
+    }
+
+    public String getRequestFingerprint() {
+        return requestFingerprint;
     }
 
     public Instant getCreatedAt() {

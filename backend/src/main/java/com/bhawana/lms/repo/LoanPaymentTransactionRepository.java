@@ -8,7 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface LoanPaymentTransactionRepository extends JpaRepository<LoanPaymentTransaction, UUID> {
 
-    Optional<LoanPaymentTransaction> findByIdempotencyKey(String idempotencyKey);
+    Optional<LoanPaymentTransaction> findFirstByIdempotencyKeyOrderByCreatedAtAsc(String idempotencyKey);
 
     List<LoanPaymentTransaction> findTop50ByLoanAccount_IdOrderByPaymentDateDescCreatedAtDesc(UUID loanAccountId);
 

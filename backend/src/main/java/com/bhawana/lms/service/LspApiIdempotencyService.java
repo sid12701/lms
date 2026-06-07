@@ -5,10 +5,6 @@ import com.bhawana.lms.domain.LspApiIdempotencyRecord;
 import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.springframework.stereotype.Service;
@@ -17,17 +13,18 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class LspApiIdempotencyService {
 
-    private static final HexFormat HEX = HexFormat.of();
-
     private final LspApiIdempotencyRecordRepository lspApiIdempotencyRecordRepository;
     private final ObjectMapper objectMapper;
+    private final IdempotencyClaimService idempotencyClaimService;
 
     public LspApiIdempotencyService(
             LspApiIdempotencyRecordRepository lspApiIdempotencyRecordRepository,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            IdempotencyClaimService idempotencyClaimService
     ) {
         this.lspApiIdempotencyRecordRepository = lspApiIdempotencyRecordRepository;
         this.objectMapper = objectMapper;
+        this.idempotencyClaimService = idempotencyClaimService;
     }
 
     @Transactional
@@ -57,7 +54,7 @@ public class LspApiIdempotencyService {
 
         T response = action.get();
         String serializedBody = serialize(response);
-        lspApiIdempotencyRecordRepository.save(new LspApiIdempotencyRecord(
+        boolean claimed = idempotencyClaimService.claimLspApiIdempotencyRecord(new LspApiIdempotencyRecord(
                 lspId,
                 operationKey,
                 normalizedKey,
@@ -65,7 +62,37 @@ public class LspApiIdempotencyService {
                 200,
                 serializedBody
         ));
+        if (!claimed) {
+            return recoverAfterIdempotencyRace(
+                    lspId,
+                    operationKey,
+                    normalizedKey,
+                    requestFingerprint,
+                    responseType
+            );
+        }
         return response;
+    }
+
+    private <T> T recoverAfterIdempotencyRace(
+            UUID lspId,
+            String operationKey,
+            String normalizedKey,
+            String requestFingerprint,
+            Class<T> responseType
+    ) {
+        LspApiIdempotencyRecord racedRecord = lspApiIdempotencyRecordRepository
+                .findByLspIdAndOperationKeyAndIdempotencyKey(lspId, operationKey, normalizedKey)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Idempotency row missing after unique violation for key " + normalizedKey
+                ));
+        if (!racedRecord.getRequestFingerprint().equals(requestFingerprint)) {
+            throw new ApiConflictException(
+                    "IDEMPOTENCY_CONFLICT",
+                    "Idempotency-Key has already been used for a different request."
+            );
+        }
+        return deserialize(racedRecord.getResponseBody(), responseType);
     }
 
     public String requireUuidV4(String idempotencyKey) {
@@ -85,16 +112,7 @@ public class LspApiIdempotencyService {
     }
 
     private String fingerprint(Object requestFingerprintSource) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] payload = objectMapper.writeValueAsString(requestFingerprintSource)
-                    .getBytes(StandardCharsets.UTF_8);
-            return HEX.formatHex(digest.digest(payload));
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Unable to serialize idempotency fingerprint payload.", exception);
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 digest is not available.", exception);
-        }
+        return IdempotencyFingerprinter.fingerprint(objectMapper, requestFingerprintSource);
     }
 
     private String serialize(Object response) {

@@ -886,7 +886,6 @@ public class LoanApplicationService {
         return application;
     }
 
-    @Transactional
     public LoanPaymentTransaction recordPaymentTransaction(
             UUID applicationId,
             String actorUsername,
@@ -897,16 +896,28 @@ public class LoanApplicationService {
             String reference,
             LoanPaymentChannel channel
     ) {
-        return loanRepaymentCommandService.recordPaymentTransaction(
-                applicationId,
-                actorUsername,
-                idempotencyKey,
-                targetInstallmentId,
-                amount,
-                postedAt,
-                reference,
-                channel
-        );
+        try {
+            return loanRepaymentCommandService.recordPaymentTransaction(
+                    applicationId,
+                    actorUsername,
+                    idempotencyKey,
+                    targetInstallmentId,
+                    amount,
+                    postedAt,
+                    reference,
+                    channel
+            );
+        } catch (org.springframework.orm.ObjectOptimisticLockingFailureException exception) {
+            return loanRepaymentCommandService.recoverPaymentAfterConcurrentWrite(
+                    applicationId,
+                    idempotencyKey,
+                    targetInstallmentId,
+                    amount,
+                    postedAt,
+                    reference,
+                    channel
+            );
+        }
     }
 
     @Transactional

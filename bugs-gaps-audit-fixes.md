@@ -1774,19 +1774,28 @@ Untouched (deliberately):
 ---
 
 ### #86 — [B-4] Repayment idempotency-key race surfaces 500 instead of 409
-**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/86 · **Status:** **OPEN** — plan grilled 2026-06-01, **NOT shipped** (2026-06-02 follow-up audit)
+**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/86 · **Status:** **CLOSED** — PR #TBD (2026-06-07). Repayment and LSP API idempotency now fingerprint request bodies, return **409 `IDEMPOTENCY_CONFLICT`** on key/body mismatch, and recover concurrent duplicate inserts without 500s. Migration **V92** adds `request_fingerprint` and a full `UNIQUE (idempotency_key)` constraint. Shared claim path via `IdempotencyClaimService` (`REQUIRES_NEW` + `saveAndFlush`); losers skip payment side effects. Legacy rows with NULL fingerprint accept retries. Tests: `Issue86RepaymentIdempotencyIntegrationTest`, `LspApiIdempotencyServiceRaceTest`.
 
-> **2026-06-02 follow-up audit:** the `[SOLVED 2026-06-01]` marker on this entry was incorrect. The plan below was grilled in detail but never implemented. Specifically:
-> - No `V{n+1}__loan_payment_transaction_request_fingerprint.sql` migration exists; last migration is `V79`.
-> - `LoanPaymentTransaction` has no `requestFingerprint` field (grep for `requestFingerprint` returns zero hits in entity/service).
-> - `LoanRepaymentCommandService` has no `DataIntegrityViolationException` catch-and-recover around `save()`; the race still surfaces as a 500.
-> - `LspApiIdempotencyService.execute` already has the body fingerprint comparison (line 49) but is missing the race-recovery `try { save } catch (DataIntegrityViolationException) { re-query }`. The 500-instead-of-409 race is still live there too.
-> - Neither `LoanRepaymentCommandServiceIdempotencyTest` nor `LspApiIdempotencyServiceRaceTest` exists.
-> - `git log --all --grep="#86"` returns nothing.
->
-> **Recommended:** ship the plan below as written; remove this banner once verified on `main`.
+**Problem (plain English):** Two concurrent calls with the same idempotency key both check "does it exist?", both see no, both insert. The database unique index catches the second one — but it surfaced as a generic 500 with a stack trace, not a clean 409. Same-key/different-body retries silently returned the original payment.
 
-**Problem (plain English):** Two concurrent calls with the same idempotency key both check "does it exist?", both see no, both insert. The database unique index catches the second one — but it surfaces as a generic 500 with a stack trace, not a clean 409.
+**Resolution (2026-06-07):** Implemented the grilled plan (Option 1 catch-and-recover + body fingerprint) for both `LoanRepaymentCommandService` and `LspApiIdempotencyService`.
+
+**What shipped:**
+1. **`request_fingerprint VARCHAR(64)`** on `loan_payment_transaction` — SHA-256 of `(applicationId, targetInstallmentId, amount, postedAt, reference, channel)` via `IdempotencyFingerprinter` / `PaymentIdempotencyFingerprint`. NULL legacy rows treated as match.
+2. **`IdempotencyClaimService`** — `TransactionTemplate` + `REQUIRES_NEW` + `saveAndFlush`; catches `DataIntegrityViolationException`, returns empty so caller re-queries. No side effects on recover.
+3. **`LoanRepaymentCommandService`** — fingerprint compare on lookup; double-checked lock on idempotency key; claim-before-side-effects; `LoanApplicationService` catches optimistic-lock races and reloads existing payment.
+4. **`LspApiIdempotencyService`** — same claim helper for `lsp_api_idempotency_record` race recovery (fingerprint compare was already present).
+5. **`LoanServicingSupportService.ensurePaymentBelongsToApplication`** — wrong-loan mismatch now **409 `IDEMPOTENCY_CONFLICT`** (was `IllegalArgumentException`).
+6. **V92 migration** — adds column; replaces partial unique index with `UNIQUE (idempotency_key)`.
+
+**Cross-issue impact:** **#128** (FE idempotency key without body fingerprint) will now receive 409 on body change — correct behaviour; FE should mint a fresh key when the form changes. **#96** (mock disbursement without idempotency) remains independent.
+
+**Historical plan (2026-06-01):** retained below for audit trail.
+
+<details>
+<summary>Original grilled plan and TDD slices (2026-06-01)</summary>
+
+> **2026-06-02 follow-up audit:** the `[SOLVED 2026-06-01]` marker on this entry was incorrect at that time. Shipped 2026-06-07 per resolution above.
 
 **Possible fixes:**
 1. **Catch `DataIntegrityViolationException`, re-query, return existing row** — minimal change; idiomatic.
@@ -1870,20 +1879,19 @@ Per the prompt's philosophy: tests describe what the system *does*, exercise the
 #### Files touched (final list)
 
 Add:
-- `backend/src/main/resources/db/migration/V{n+1}__loan_payment_transaction_request_fingerprint.sql`
-- `backend/src/test/java/com/bhawana/lms/service/LoanRepaymentCommandServiceIdempotencyTest.java`
+- `backend/src/main/resources/db/migration/V92__loan_payment_idempotency_fingerprint_and_unique.sql`
+- `backend/src/test/java/com/bhawana/lms/web/Issue86RepaymentIdempotencyIntegrationTest.java`
 - `backend/src/test/java/com/bhawana/lms/service/LspApiIdempotencyServiceRaceTest.java`
+- `backend/src/main/java/com/bhawana/lms/service/IdempotencyClaimService.java`
+- `backend/src/main/java/com/bhawana/lms/service/IdempotencyFingerprinter.java`
+- `backend/src/main/java/com/bhawana/lms/service/PaymentIdempotencyFingerprint.java`
 
 Edit:
 - `backend/src/main/java/com/bhawana/lms/domain/LoanPaymentTransaction.java` — add `requestFingerprint` field + getter + overloaded constructor.
-- `backend/src/main/java/com/bhawana/lms/service/LoanRepaymentCommandService.java` — add fingerprint helper; modify `recordPaymentTransaction` to compare fingerprint after lookup; wrap `save()` in `createInstallmentPayment` with catch-and-recover.
-- `backend/src/main/java/com/bhawana/lms/service/LspApiIdempotencyService.java` — wrap the `save()` on lines 60-67 with the same catch-and-recover; reuse the existing fingerprint comparison.
-- `backend/src/main/java/com/bhawana/lms/service/LoanServicingSupportService.java` — possibly add the shared fingerprint helper if it lives there; otherwise keep it private to the command service.
-
-Untouched (deliberately):
-- The unique index on `loan_payment_transaction.idempotency_key` — already exists and is doing its job (it's what catches the race in the first place).
-- The HTTP-layer exception mapper that turns `ApiConflictException` into a 409 response — already wired.
-- The actor / audit / webhook side-effects in `createInstallmentPayment` — they all sit *after* the `save()` call. The catch-and-recover path returns the existing row without re-running them, which is correct (we don't want duplicate audit rows or duplicate webhook events for the same idempotent operation).
+- `backend/src/main/java/com/bhawana/lms/service/LoanRepaymentCommandService.java` — fingerprint helper; claim-before-side-effects; race recovery.
+- `backend/src/main/java/com/bhawana/lms/service/LspApiIdempotencyService.java` — claim helper for race recovery.
+- `backend/src/main/java/com/bhawana/lms/service/LoanApplicationService.java` — OOLE retry wrapper (non-`@Transactional`).
+- `backend/src/main/java/com/bhawana/lms/service/LoanServicingSupportService.java` — wrong-loan mismatch → 409.
 
 #### Effect on app
 
@@ -1900,6 +1908,8 @@ Untouched (deliberately):
 - **#96** ("[B-14] applyMockDisbursementOutcome has no Idempotency-Key support") — different endpoint, different vulnerability (no idempotency at all vs. broken idempotency). Independent. May benefit from the same `fingerprint()` helper if extracted to a shared service.
 - **#128** ("[F-5] FE idempotency-key doesn't fingerprint body") — frontend twin of this bug. The FE auto-generates idempotency keys but doesn't change them when the body changes, so a user editing-then-retrying a form silently hits the original record. Once #86 lands, the FE will start getting 409s in that situation — which is the correct behaviour and forces the FE to handle it (mint a fresh key on body change). Cross-link in both PR descriptions.
 - **#149** ("[AUD-3] API-client create/rotate/reveal moments not audited") — the catch-and-recover branch could optionally emit an audit row ("idempotency race recovered") for forensic visibility. Out of scope; flag for future.
+
+</details>
 
 ---
 
@@ -3933,7 +3943,7 @@ Full design, decisions, test plan, and file list live in the **#130** entry abov
 ---
 
 ### #76 — Audit Explorer free-text + correlationId filter is client-side only
-**Labels:** gap, auditability · **Link:** https://github.com/sid12701/lms/issues/76
+**Labels:** gap, auditability · **Link:** https://github.com/sid12701/lms/issues/76 · **Status:** **OPEN** — plan grilled 2026-06-07, ready to implement (correlationId-focused; q pushdown deferred).
 
 **Problem (plain English):** The UI filters apply only to the currently-loaded page of audit rows. Cross-page searches are impossible from the UI.
 
@@ -3945,7 +3955,191 @@ Full design, decisions, test plan, and file list live in the **#130** entry abov
 
 **Effect on app:** Investigations work across the whole stream. Negligible perf cost.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-07):**
+
+**Reframe — split the audit doc's "push down both filters" into three parts: ship correlationId, ship loanApplicationId on the FE filter bar, drop the q input entirely.** The audit doc framed `q` and `correlationId` as the same kind of fix. They're not.
+
+Code read confirms the current state:
+- **Backend** (`AuditExplorerController.java:44-76`): accepts `streams`, `actorUsername`, `lspId`, `loanApplicationId`, `borrowerId`, `productId`, `since`, `until`, `offset`, `limit`, `paginationDetails`. **No `correlationId`. No `q`.**
+- **Backend query DTO** (`AuditExplorerQuery.java:14-26`): same field set as the controller. **No `correlationId`. No `q`.**
+- **Frontend** (`frontend/src/features/audit/api.ts:1-12` docstring + `passesClientFilters` at lines 152-161): explicitly applies `correlationId` and `q` filters in the browser, on the currently-loaded page only. The alert deep-link `/audit?correlationId=X` is silently broken cross-page — if the match is past row 25, the user sees an empty result and concludes "no audit trail exists."
+- **Underlying schema**: every one of the 8 audit branches projects a `correlation_id` column (verified from `AuditExplorerRepository.java:209/239/269/299/326/354/382/412` — all branches have the column under the unified projection alias).
+
+**Why this split is the right cut, not "push down both":**
+
+| Concern | Disposition | Reasoning |
+|---|---|---|
+| `correlationId` push-down | **Ship** | High-selectivity equality lookup; sub-ms at any volume. Fixes the broken alert deep-link UX. Aligned with `correlationId`'s role as the request-chain key across audit rows / webhooks / alerts. |
+| `loanApplicationId` on FE filter bar | **Ship** | Backend already supports it (`AuditExplorerController.java:49`); FE filter bar just doesn't expose it. Cheapest UX win in this ticket: lets ops answer "show me everything that touched this loan" without leaving the page. |
+| Free-text `q` push-down | **Drop entirely; defer indefinitely** | ILIKE on 8 UNION ALL branches is sequential-scan-per-branch — the wrong tool for this codebase. Free-text search is a log-stream concern, not a structured-audit concern. **No PG ILIKE code, no trigram index.** Remove the misleading FE search box rather than half-fix it. |
+| Trigram index | **Skip** | No volume data justifying it. Speculative.# |
+
+**Decisions locked in:**
+1. **Push down `correlationId`** to the backend as an exact-match filter. Nullable-pass-through idiom: omitted/blank → unfiltered.
+2. **Expose `loanApplicationId`** on the FE Audit Explorer filter bar. Backend already accepts the param; FE adds a text input and wires the value into the existing fetch call.
+3. **Remove the `q` free-text search input** from the FE entirely. Don't half-fix it; don't write a PG ILIKE we plan to retire; don't leave a misleading control.
+4. **Delete `passesClientFilters`** from `frontend/src/features/audit/api.ts`. Once `correlationId` moves to the backend and `q` is removed from the UI, the function has nothing left to filter. Eliminates the footgun pattern for future contributors.
+5. **No new index, no Flyway migration, no `pg_trgm` extension, no JSON-field traversal.** This is a wiring PR on top of existing primitives.
+6. **ES / Grafana / Loki wiring**: deliberately deferred from this pass. Out of #76's scope. See "Sequencing / dependencies" for the explicit defer note.
+
+**Code changes (per file/class):**
+
+Backend:
+- **`AuditExplorerQuery` (record)** — add one field: `String correlationId`. Compact-constructor validation unchanged (null is the unfiltered case).
+- **`AuditExplorerController.search(...)`** — add `@RequestParam(required = false) String correlationId`; normalise blank → null via existing `normalizeBlank` helper; pass through to the query record.
+- **`AuditExplorerRepository`** — in **each of the 8 SELECT branches** of the native UNION ALL builder, append:
+  ```sql
+  AND (:correlationId IS NULL OR correlation_id = CAST(:correlationId AS varchar))
+  ```
+  Standard nullable-filter idiom; engine-agnostic (works on PG and H2 identically); no schema change.
+- **`AuditExplorerService.search(...)`** — signature already accepts the query record; the new field flows through automatically. No logic change.
+
+Frontend (`frontend/src/features/audit/api.ts`):
+- **`buildBackendQueryParams`** — add `correlationId` to the params sent to the backend (when present).
+- **Delete `passesClientFilters` function** (lines 152-161) and its call site at line 170 (`const visible = projected.filter(...)`). Replace with `const visible = projected;`.
+- **Update the docstring** (lines 1-12): remove the "applies the few remaining client-side post-filters" sentence; replace with a one-liner noting that all filters are server-side as of this PR.
+
+Frontend — Audit Explorer filter bar React component (wherever it lives):
+- **Remove the `q` (free-text) search input element.**
+- **Add a `loanApplicationId` text input** to the filter bar.
+- Wire `loanApplicationId` into the filters state and into the `fetchAuditEvents` call. Backend already accepts the param.
+
+Frontend — `frontend/src/features/audit/types.ts` (`AuditEventsFilters`):
+- Remove `q?: string`.
+- Add `loanApplicationId?: string`.
+
+**What is NOT changing:**
+- The 8 audit stream tables, their schemas, or any column.
+- The `correlationId` infrastructure (`CorrelationIdFilter`, `CorrelationIdHolder`, MDC, `ApiError.correlationId`) — already correct; this PR just consumes what's already plumbed.
+- Structured filters (`actorUsername`, `lspId`, `loanApplicationId`, `borrowerId`, `productId`, `since`, `until`, `streams`) on the backend — already pushed down.
+- The `paginationDetails` opt-in and the 500-row hard limit — untouched.
+- The Audit Explorer's role — still the structured PG view. No conflation with logs.
+- No Flyway migration. No trigram. No `pg_trgm` extension. No ILIKE. No JSON-field traversal.
+- No alert change. No FE deep-link change. (Alert `/audit?correlationId=X` links continue to work — and now *correctly* find matches across pages, not just the current one. That's the user-facing fix.)
+
+**Why not push down `q` in this pass:**
+Free-text search on 8 UNION ALL'd tables via ILIKE is the wrong tool for this codebase. It's slow at scale (sequential scans per branch), expensive to maintain (8 branches × predicate), and addresses a workflow that fits a log-stream tool better than a structured-audit tool. Defer the question until either (a) ops asks with usage data, or (b) a log-search surface lands and makes the PG version obsolete before it's written. Removing the FE input rather than leaving a half-broken control is the honest move.
+
+**Why expose `loanApplicationId` on FE:**
+It's the cheapest UX win in this ticket. The backend already does the work (`@RequestParam loanApplicationId` at `AuditExplorerController.java:49`, propagated through to the 8-branch SQL). The FE just needs an input field and to pass the value. Ops gets "show me everything that touched this loan" without leaving the page.
+
+**Why delete `passesClientFilters`:**
+Once `correlationId` is BE-handled and `q` is removed from the UI, the function has nothing left to filter. Leaving it in (even as defensive code) seeds a "client-side filtering is OK" pattern that future contributors may extend. Deleting it makes server-as-source-of-truth explicit.
+
+**TDD plan (vertical slices, behaviour through public interfaces):**
+
+Tracer first; each test exercises the public `GET /audit-events` endpoint or the public FE page behaviour.
+
+1. **TRACER — `correlationId_filter_returns_match_from_a_later_page`.** Seed 200 audit rows; row #150 has `correlation_id = 'corr-deep'`. GET `?correlationId=corr-deep&limit=25` → 200, response includes that row. The canonical test that proves the cross-page bug is fixed.
+2. **`correlationId_filter_returns_rows_across_streams_sharing_same_id`.** Seed 3 audit rows across different streams (APPLICATION, APP_USER, WEBHOOK_DELIVERY) all sharing `correlationId = 'corr-multi'`, plus 200 noise rows. GET `?correlationId=corr-multi` → exactly the 3 rows, regardless of stream. Locks in: predicate applies on every branch.
+3. **`correlationId_filter_returns_empty_when_no_match`.** GET `?correlationId=corr-doesnt-exist` → empty page, `totalCount=0`.
+4. **`correlationId_filter_combines_with_existing_filters_via_AND`.** GET `?correlationId=corr-multi&streams=APPLICATION` → only the APPLICATION-stream match. Regression guard for existing-filter compatibility.
+5. **`empty_correlationId_param_returns_unfiltered_page`.** GET `?correlationId=` or omitted → identical to no filter. Locks in `normalizeBlank → null → predicate becomes pass-through`.
+6. **`alert_deep_link_to_audit_correlationId_now_finds_match_across_pages`.** Simulate the alert UX: seed an alert with `correlation_id = X` whose corresponding audit row is on page 7; navigate to `/audit?correlationId=X` → FE displays the audit row, not an empty page. End-to-end proof of the alert deep-link fix.
+7. **`loanApplicationId_filter_input_on_FE_sends_param_to_backend`.** Type a loan UUID into the new filter input → assert the network call includes `loanApplicationId=<uuid>`. Locks in the new FE plumbing.
+8. **`q_search_input_is_no_longer_rendered_on_FE`.** Component test that the filter bar has no input with the prior `q` label / placeholder. Locks in the removal.
+9. **`fe_no_longer_post_filters_results_client_side`.** Unit test that the response payload from `fetchAuditEvents` returns the BE-projected rows untouched (no `passesClientFilters` reduction). Defends the deletion against a future contributor reintroducing it.
+10. **`non_system_admin_cannot_search_audit_events`.** RBAC matrix carried over: OPS_USER → 403, PRODUCT_ADMIN → 403, etc. Regression guard for the existing `@PreAuthorize`.
+
+**Mocking discipline:**
+- `AuditExplorerService` / `AuditExplorerRepository` — internal collaborators, **not** mocked. Tests assert via the real `GET /audit-events` endpoint, H2 in unit slices, real PG in integration slices.
+- The 8 underlying audit-write services — never mocked. Tests seed rows via each stream's normal write path or direct repo writes.
+- FE: standard React Testing Library. FE tests verify what the FE sends and renders given a stubbed HTTP response; backend correctness lives in BE tests.
+
+**Tests deliberately NOT written here (owned elsewhere):**
+- Free-text `q` search → out of scope; if/when a log-search surface lands, free-text moves there.
+- Trigram index correctness → no index added.
+- Audit row write-side semantics → owned by #71 / #148 / #149 / #151 / #152 / #155.
+- The 8-stream UNION ALL builder refactor → owned by #91.
+- `correlationId` infrastructure (filter, holder, MDC, error body) → already in place; no test added here for what's already correct.
+
+**Effect on app:**
+- Alert deep-links to `/audit?correlationId=X` work cross-page (today silently broken once the match is past row 25). Same goes for error-body → audit pivot from an LSP support ticket.
+- Ops gains a `loanApplicationId` filter on the audit page — "show me everything that touched this loan" without navigating away.
+- The misleading `q` search box is removed so ops doesn't expect cross-page free-text from a control that never delivered it.
+- `passesClientFilters` deletion eliminates a footgun pattern.
+
+**Regression risk:** Low. `correlationId` nullable-pass-through is additive; existing callers omit the param and get prior behaviour. `passesClientFilters` deletion is safe because `correlationId` is now BE-handled and `q` is removed from the FE input set. RBAC unchanged.
+
+**Scale impact:** `correlation_id` is high-selectivity. Single equality lookup per branch; sub-millisecond at any realistic volume. Effectively free.
+
+**Code structure impact:** `AuditExplorerQuery` gains one field. `AuditExplorerRepository`'s 8 branches each gain one one-line predicate (~8 LoC added). FE `audit/api.ts` shrinks (`passesClientFilters` removed). FE filter-bar: −1 `q` input, +1 `loanApplicationId` input. Net negative LoC overall.
+
+**Overengineering check:** No. Deliberately narrow. No `q` push-down, no trigram, no JSON-field traversal, no log-store wiring.
+
+**Sequencing / dependencies:** Standalone single PR. No upstream blockers.
+
+**Explicitly deferred and out of scope for this pass (do not reopen #76 to reintroduce):**
+- ES / Grafana / Loki wiring — separate observability work; no schedule captured here.
+- Free-text `q` pushdown to PG — deferred until either ops asks with usage data or a log-search surface emerges.
+- Trigram indexes — no perf data yet justifies them.
+- `#91` SQL-builder refactor — independent.
+- `#106` H2/PG schema test parity — this PR doesn't add anything that bites it.
+
+The role division this PR locks in: **PG / Audit Explorer is the structured audit view (entity IDs, time windows, streams, correlationId);** any future log-stream tool (Grafana/Loki/ES) will own free-text and request-thread log correlation. The two surfaces complement, not compete.
+
+---
+
+**TDD principles (verbatim, for thinking-and-testing this solution):**
+
+Test-Driven Development Philosophy
+
+Core principle: Tests should verify behavior through public interfaces, not implementation details. Code can change entirely; tests shouldn't.
+
+Good tests are integration-style: they exercise real codepaths through public APIs. They describe what the system does, not how it does it. A good test reads like a specification — "user can checkout with valid cart" tells you exactly what capability exists. These tests survive refactors because they don't care about internal structure.
+
+Bad tests are coupled to implementation. They mock internal collaborators, test private methods, or verify through external means (like querying a database directly instead of using the interface). The warning sign: your test breaks when you refactor, but behavior hasn't changed. If you rename an internal function and tests fail, those tests were testing implementation, not behavior.
+
+See tests.md for examples and mocking.md for mocking guidelines.
+
+Anti-Pattern: Horizontal Slices
+
+DO NOT write all tests first, then all implementation. This is "horizontal slicing" — treating RED as "write all tests" and GREEN as "write all code."
+
+This produces crap tests:
+
+- Tests written in bulk test imagined behavior, not actual behavior
+- You end up testing the shape of things (data structures, function signatures) rather than user-facing behavior
+- Tests become insensitive to real changes — they pass when behavior breaks, fail when behavior is fine
+- You outrun your headlights, committing to test shape
+
+No conditional logic in test setup. Easier to see which endpoints a test exercises. Type safety per endpoint.
+
+Refactor Candidates
+
+After TDD cycle, look for:
+
+- Duplication → Extract function/class
+- Long methods → Break into private helpers (keep tests on public interface)
+- Shallow modules → Combine or deepen
+- Feature envy → Move logic to where data lives
+- Primitive obsession → Introduce value objects
+- Existing code the new code reveals as problematic
+
+Mocking guidance — prefer SDK-style interfaces over generic fetchers. Create specific functions for each external operation instead of one generic function with conditional logic:
+
+```
+// GOOD: Each function is independently mockable
+const api = {
+  getUser: (id) => fetch(`/users/${id}`),
+  getOrders: (userId) => fetch(`/users/${userId}/orders`),
+  createOrder: (data) => fetch('/orders', { method: 'POST', body: data }),
+};
+
+// BAD: Mocking requires conditional logic inside the mock
+const api = {
+  fetch: (endpoint, options) => fetch(endpoint, options),
+};
+```
+
+The SDK approach means:
+
+- Each mock returns one specific shape
+- No conditional logic in test setup
+- Easier to see which endpoints a test exercises
+- Type safety per endpoint
+
+Also audit each file, component, module, and function linked to that feature, file or component.
 
 ---
 

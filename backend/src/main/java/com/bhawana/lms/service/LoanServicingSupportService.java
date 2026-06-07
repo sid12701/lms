@@ -185,7 +185,8 @@ public class LoanServicingSupportService {
     ) {
         LoanAccount expectedAccount = getRequiredLoanAccount(applicationId);
         if (!payment.getLoanAccount().getId().equals(expectedAccount.getId())) {
-            throw new IllegalArgumentException(
+            throw new ApiConflictException(
+                    "IDEMPOTENCY_CONFLICT",
                     "Idempotency-Key has already been used for a different loan application."
             );
         }
