@@ -1,5 +1,7 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspIpAllowlistSurface;
 import com.bhawana.lms.domain.LspUiIpAllowlistEntry;
@@ -7,14 +9,18 @@ import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.LspUiIpAllowlistRepository;
 import com.bhawana.lms.security.IpAllowlistCacheInvalidation;
 import com.bhawana.lms.security.LspSurfaceIpAllowlistFilter;
+import com.bhawana.lms.service.LspAuditEventService;
 import com.bhawana.lms.web.LspIpAllowlistAdminController.LspIpAllowlistCreateRequest;
 import com.bhawana.lms.web.LspIpAllowlistAdminController.LspIpAllowlistEntryResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.web.util.matcher.IpAddressMatcher;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -33,15 +39,18 @@ public class LspUiIpAllowlistAdminController {
     private final LspRepository lspRepository;
     private final LspUiIpAllowlistRepository allowlistRepository;
     private final LspSurfaceIpAllowlistFilter allowlistFilter;
+    private final LspAuditEventService lspAuditEventService;
 
     public LspUiIpAllowlistAdminController(
             LspRepository lspRepository,
             LspUiIpAllowlistRepository allowlistRepository,
-            LspSurfaceIpAllowlistFilter allowlistFilter
+            LspSurfaceIpAllowlistFilter allowlistFilter,
+            LspAuditEventService lspAuditEventService
     ) {
         this.lspRepository = lspRepository;
         this.allowlistRepository = allowlistRepository;
         this.allowlistFilter = allowlistFilter;
+        this.lspAuditEventService = lspAuditEventService;
     }
 
     @GetMapping
@@ -56,7 +65,9 @@ public class LspUiIpAllowlistAdminController {
     @Transactional
     public ResponseEntity<LspIpAllowlistEntryResponse> create(
             @PathVariable UUID lspId,
-            @Valid @RequestBody LspIpAllowlistCreateRequest request
+            @Valid @RequestBody LspIpAllowlistCreateRequest request,
+            @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest
     ) {
         String normalizedCidr = normalizeCidr(request.cidr());
 
@@ -70,13 +81,28 @@ public class LspUiIpAllowlistAdminController {
         LspUiIpAllowlistEntry entry = new LspUiIpAllowlistEntry(lsp, normalizedCidr, request.description());
         LspUiIpAllowlistEntry saved = allowlistRepository.save(entry);
         IpAllowlistCacheInvalidation.afterCommit(allowlistFilter, lspId, LspIpAllowlistSurface.UI);
+        lspAuditEventService.recordIpAllowlistEntryAdded(
+                lsp,
+                saved.getId(),
+                saved.getCidr(),
+                saved.getDescription(),
+                "UI",
+                actorUsername(principal),
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get()
+        );
 
         return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(saved));
     }
 
     @DeleteMapping("/{entryId}")
     @Transactional
-    public ResponseEntity<Void> delete(@PathVariable UUID lspId, @PathVariable UUID entryId) {
+    public ResponseEntity<Void> delete(
+            @PathVariable UUID lspId,
+            @PathVariable UUID entryId,
+            @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest
+    ) {
         LspUiIpAllowlistEntry entry = allowlistRepository.findById(entryId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown allowlist entry id: " + entryId));
 
@@ -84,9 +110,28 @@ public class LspUiIpAllowlistAdminController {
             throw new IllegalArgumentException("Entry does not belong to lsp: " + lspId);
         }
 
+        UUID removedEntryId = entry.getId();
+        String removedCidr = entry.getCidr();
+        String removedDescription = entry.getDescription();
+        Lsp lsp = entry.getLsp();
+
         allowlistRepository.delete(entry);
         IpAllowlistCacheInvalidation.afterCommit(allowlistFilter, lspId, LspIpAllowlistSurface.UI);
+        lspAuditEventService.recordIpAllowlistEntryRemoved(
+                lsp,
+                removedEntryId,
+                removedCidr,
+                removedDescription,
+                "UI",
+                actorUsername(principal),
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get()
+        );
         return ResponseEntity.noContent().build();
+    }
+
+    private static String actorUsername(Jwt principal) {
+        return principal == null ? "unknown" : principal.getSubject();
     }
 
     private static String normalizeCidr(String cidr) {

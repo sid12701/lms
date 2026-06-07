@@ -90,6 +90,7 @@ public class AdminDirectoryService {
     private final LoanAccountRepository loanAccountRepository;
     private final BorrowerRepository borrowerRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
+    private final LspAuditEventService lspAuditEventService;
 
     public AdminDirectoryService(
             LspRepository lspRepository,
@@ -101,7 +102,8 @@ public class AdminDirectoryService {
             LoanApplicationRepository loanApplicationRepository,
             LoanAccountRepository loanAccountRepository,
             BorrowerRepository borrowerRepository,
-            LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository
+            LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
+            LspAuditEventService lspAuditEventService
     ) {
         this.lspRepository = lspRepository;
         this.appRoleRepository = appRoleRepository;
@@ -113,6 +115,7 @@ public class AdminDirectoryService {
         this.loanAccountRepository = loanAccountRepository;
         this.borrowerRepository = borrowerRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
+        this.lspAuditEventService = lspAuditEventService;
     }
 
     @Transactional
@@ -194,10 +197,15 @@ public class AdminDirectoryService {
             boolean enabled,
             String endpointUrl,
             String signingSecret,
-            List<WebhookEventType> eventTypes
+            List<WebhookEventType> eventTypes,
+            String actorUsername,
+            String actorIp,
+            String correlationId
     ) {
         Lsp lsp = lspRepository.findById(lspId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown LSP id: " + lspId));
+
+        WebhookSubscriptionSnapshot before = WebhookSubscriptionSnapshot.from(lsp);
 
         String normalizedEndpointUrl = normalizeOptional(endpointUrl);
         String normalizedSigningSecret = normalizeOptional(signingSecret);
@@ -220,7 +228,17 @@ public class AdminDirectoryService {
         }
 
         lsp.updateWebhookSubscription(enabled, normalizedEndpointUrl, normalizedSigningSecret, normalizedEventTypes);
-        return lspRepository.save(lsp);
+        Lsp saved = lspRepository.save(lsp);
+        WebhookSubscriptionSnapshot after = WebhookSubscriptionSnapshot.from(saved);
+        lspAuditEventService.recordWebhookSubscriptionChanges(
+                saved,
+                before,
+                after,
+                actorUsername,
+                actorIp,
+                correlationId
+        );
+        return saved;
     }
 
     @Transactional
