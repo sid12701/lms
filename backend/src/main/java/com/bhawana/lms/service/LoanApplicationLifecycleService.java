@@ -327,7 +327,7 @@ public class LoanApplicationLifecycleService {
     }
 
     @Transactional
-    public LoanApplicationDocumentChecklist updateDocumentChecklistItem(
+    public DocumentChecklistUpdateResult updateDocumentChecklistItem(
             UUID applicationId,
             LoanApplicationDocumentType documentType,
             String actorUsername,
@@ -348,7 +348,7 @@ public class LoanApplicationLifecycleService {
         LoanApplicationDocumentChecklist checklistItem = loanApplicationDocumentChecklistRepository
                 .findByLoanApplication_IdAndDocumentType(applicationId, documentType)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown document checklist item: " + documentType.name()));
-        boolean wasComplete = allRequiredDocumentsUploaded(applicationId);
+        boolean wasComplete = hasAllRequiredDocumentsUploaded(applicationId);
 
         checklistItem.update(
                 status,
@@ -364,8 +364,9 @@ public class LoanApplicationLifecycleService {
                 lmsManagedContent
         );
         LoanApplicationDocumentChecklist savedChecklistItem = loanApplicationDocumentChecklistRepository.save(checklistItem);
-        boolean isComplete = allRequiredDocumentsUploaded(applicationId);
-        if (!wasComplete && isComplete) {
+        boolean isComplete = hasAllRequiredDocumentsUploaded(applicationId);
+        boolean allRequiredDocumentsJustCompleted = !wasComplete && isComplete;
+        if (allRequiredDocumentsJustCompleted) {
             webhookOutboxService.enqueueIfSubscribed(
                     application.getLsp(),
                     WebhookEventType.DOCUMENTS_UPLOADED,
@@ -375,7 +376,14 @@ public class LoanApplicationLifecycleService {
                     buildDocumentsUploadedPayload(application)
             );
         }
-        return savedChecklistItem;
+        return new DocumentChecklistUpdateResult(savedChecklistItem, allRequiredDocumentsJustCompleted);
+    }
+
+    public boolean hasAllRequiredDocumentsUploaded(UUID applicationId) {
+        return loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
+                .stream()
+                .filter(item -> LoanApplicationDocumentRequirements.isIntakeRequired(item.getDocumentType()))
+                .allMatch(LoanApplicationDocumentRequirements::isChecklistItemComplete);
     }
 
     /**
@@ -483,26 +491,18 @@ public class LoanApplicationLifecycleService {
         }
     }
 
+    /**
+     * All eight intake-required document types must be submitted with LMS-managed content
+     * before disbursement. The {@code requireForApprovalOnly} flag is retained for API
+     * compatibility; both paths use the full disbursement-required set.
+     */
     public boolean hasAllRequiredLmsManagedDocuments(UUID applicationId, boolean requireForApprovalOnly) {
         LoanApplication application = getApplication(applicationId);
         ensureDocumentChecklist(application);
         return loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
                 .stream()
-                .filter(item -> requireForApprovalOnly
-                        ? item.getDocumentType().isRequiredForApproval()
-                        : item.getDocumentType().isRequiredForDisbursement())
-                .allMatch(item -> (item.getStatus() == LoanApplicationDocumentChecklistStatus.SUBMITTED
-                        || item.getStatus() == LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
-                        && (item.getStatus() == LoanApplicationDocumentChecklistStatus.NOT_REQUIRED
-                                || item.isLmsManagedContent()));
-    }
-
-    private boolean allRequiredDocumentsUploaded(UUID applicationId) {
-        return loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
-                .stream()
-                .filter(item -> item.getDocumentType().isRequiredForDisbursement())
-                .allMatch(item -> item.getStatus() == LoanApplicationDocumentChecklistStatus.SUBMITTED
-                        || item.getStatus() == LoanApplicationDocumentChecklistStatus.NOT_REQUIRED);
+                .filter(item -> LoanApplicationDocumentRequirements.isIntakeRequired(item.getDocumentType()))
+                .allMatch(LoanApplicationDocumentRequirements::isChecklistItemCompleteForDisbursement);
     }
 
     private Map<String, Object> buildDocumentsUploadedPayload(LoanApplication application) {
@@ -514,9 +514,8 @@ public class LoanApplicationLifecycleService {
                 "documentTypes",
                 loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(application.getId())
                         .stream()
-                        .filter(item -> item.getDocumentType().isRequiredForDisbursement())
-                        .filter(item -> item.getStatus() == LoanApplicationDocumentChecklistStatus.SUBMITTED
-                                || item.getStatus() == LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
+                        .filter(item -> LoanApplicationDocumentRequirements.isIntakeRequired(item.getDocumentType()))
+                        .filter(LoanApplicationDocumentRequirements::isChecklistItemComplete)
                         .map(item -> item.getDocumentType().name())
                         .toList()
         );
@@ -1082,9 +1081,8 @@ public class LoanApplicationLifecycleService {
         List<LoanApplicationDocumentType> blockingDocumentTypes = loanApplicationDocumentChecklistRepository
                 .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
                 .stream()
-                .filter(item -> item.getDocumentType().isRequiredForApproval())
-                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.SUBMITTED
-                        && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
+                .filter(item -> LoanApplicationDocumentRequirements.isIntakeRequired(item.getDocumentType()))
+                .filter(item -> !LoanApplicationDocumentRequirements.isChecklistItemComplete(item))
                 .map(LoanApplicationDocumentChecklist::getDocumentType)
                 .toList();
 

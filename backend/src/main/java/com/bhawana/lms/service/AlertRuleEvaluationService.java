@@ -5,7 +5,6 @@ import com.bhawana.lms.domain.AlertRule;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
-import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
@@ -508,9 +507,8 @@ public class AlertRuleEvaluationService {
             return false;
         }
         return checklist.stream()
-                .filter(item -> item.getDocumentType().isRequiredForApproval())
-                .allMatch(item -> item.getStatus() == LoanApplicationDocumentChecklistStatus.SUBMITTED
-                        || item.getStatus() == LoanApplicationDocumentChecklistStatus.NOT_REQUIRED);
+                .filter(item -> LoanApplicationDocumentRequirements.isIntakeRequired(item.getDocumentType()))
+                .allMatch(LoanApplicationDocumentRequirements::isChecklistItemComplete);
     }
 
     private static OpsAlertSeverity severityForBucket(LoanDelinquencyBucket bucket) {

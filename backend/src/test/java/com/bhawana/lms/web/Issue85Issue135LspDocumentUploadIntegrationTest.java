@@ -54,7 +54,7 @@ class Issue85Issue135LspDocumentUploadIntegrationTest {
     private LoanApplicationRepository loanApplicationRepository;
 
     @Test
-    void lspDocumentUploadOnRejectedApplicationReturnsAutoApprovalNotAllowed() throws Exception {
+    void lspDocumentUploadOnRejectedApplicationSucceedsWithoutAutoApproval() throws Exception {
         Fixture fixture = seedRejectedApplicationWithApiClient();
 
         mockMvc.perform(multipart("/api/v1/lsp/loan-applications/{applicationId}/documents", fixture.applicationId())
@@ -67,8 +67,8 @@ class Issue85Issue135LspDocumentUploadIntegrationTest {
                         .header("Authorization", "Bearer " + fixture.accessToken())
                         .param("documentType", "PAN_CARD")
                         .param("note", "upload after reject"))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.code").value("AUTO_APPROVAL_NOT_ALLOWED"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentType").value("PAN_CARD"));
 
         assertEquals(
                 LoanApplicationStatus.REJECTED,
