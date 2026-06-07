@@ -2,6 +2,7 @@ package com.bhawana.lms.security;
 
 import com.bhawana.lms.common.api.ApiError;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.service.AlertRuleEvaluationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.BucketConfiguration;
@@ -14,17 +15,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.Map;
-import java.util.UUID;
+import java.util.List;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.security.oauth2.jwt.Jwt;
-import com.bhawana.lms.service.AlertRuleEvaluationService;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -33,9 +31,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
-    private static final String LSP_PATH_PREFIX = "/api/v1/lsp/";
-    private static final String LOGIN_PATH = "/api/v1/auth/login";
-    private static final String TOKEN_PATH = "/api/v1/auth/token";
 
     private final ProxyManager<String> proxyManager;
     private final ObjectMapper objectMapper;
@@ -60,78 +55,69 @@ public class RateLimitFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
-        RateLimitTarget target = resolveTarget(request);
-        if (target == null) {
-            filterChain.doFilter(request, response);
+        RateLimitRejection rejection = evaluate(request);
+        if (rejection != null) {
+            response.setHeader("Retry-After", Long.toString(rejection.retryAfterSeconds()));
+            log.warn(
+                    "Rate limit exceeded for bucket {} — retry after {}s",
+                    rejection.bucketKey(),
+                    rejection.retryAfterSeconds()
+            );
+            AlertRuleEvaluationService alertRules = alertRuleEvaluationServiceProvider.getIfAvailable();
+            if (alertRules != null) {
+                alertRules.emitRateLimitBreach(
+                        rejection.bucketKey(),
+                        request.getRequestURI(),
+                        rejection.retryAfterSeconds()
+                );
+            }
+            writeApiError(
+                    response,
+                    429,
+                    "RATE_LIMIT_EXCEEDED",
+                    "Too many requests. Please retry after " + rejection.retryAfterSeconds() + " seconds.",
+                    request.getRequestURI()
+            );
             return;
         }
 
-        BucketProxy bucket = proxyManager.builder().build(target.key(), configurationSupplier(target.permitsPerMinute()));
-        ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
-        if (probe.isConsumed()) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        long retryAfterSeconds = Math.max(1L, probe.getNanosToWaitForRefill() / 1_000_000_000L);
-        response.setHeader("Retry-After", Long.toString(retryAfterSeconds));
-        log.warn("Rate limit exceeded for bucket {} — retry after {}s", target.key(), retryAfterSeconds);
-        AlertRuleEvaluationService alertRules = alertRuleEvaluationServiceProvider.getIfAvailable();
-        if (alertRules != null) {
-            alertRules.emitRateLimitBreach(target.key(), request.getRequestURI(), retryAfterSeconds);
-        }
-        writeApiError(
-                response,
-                429,
-                "RATE_LIMIT_EXCEEDED",
-                "Too many requests. Please retry after " + retryAfterSeconds + " seconds.",
-                request.getRequestURI()
-        );
+        filterChain.doFilter(request, response);
     }
 
-    private RateLimitTarget resolveTarget(HttpServletRequest request) {
-        String path = request.getRequestURI();
+    private RateLimitRejection evaluate(HttpServletRequest request) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String requestUri = request.getRequestURI();
         String method = request.getMethod();
 
-        if ("POST".equalsIgnoreCase(method) && (LOGIN_PATH.equals(path) || TOKEN_PATH.equals(path))) {
-            String ip = request.getRemoteAddr();
-            if (ip == null || ip.isBlank()) {
+        for (RateLimitRule rule : properties.getRules()) {
+            if (!RateLimitRuleMatcher.matches(rule, requestUri, method)) {
+                continue;
+            }
+            List<RateLimitBucketSpec> buckets = rule.getKey().resolveBuckets(rule, request, authentication);
+            if (buckets.isEmpty()) {
                 return null;
             }
-            return new RateLimitTarget("auth:" + ip, properties.getAuthPerMinute());
-        }
 
-        if (path.startsWith(LSP_PATH_PREFIX) && isWriteMethod(method)) {
-            UUID lspId = extractLspId(SecurityContextHolder.getContext().getAuthentication());
-            if (lspId == null) {
-                return null;
+            long retryAfterSeconds = 0L;
+            String rejectingBucketKey = null;
+            for (RateLimitBucketSpec bucketSpec : buckets) {
+                BucketProxy bucket = proxyManager.builder()
+                        .build(bucketSpec.bucketKey(), configurationSupplier(bucketSpec.permitsPerMinute()));
+                ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
+                if (!probe.isConsumed()) {
+                    long waitSeconds = Math.max(1L, probe.getNanosToWaitForRefill() / 1_000_000_000L);
+                    if (rejectingBucketKey == null || waitSeconds > retryAfterSeconds) {
+                        rejectingBucketKey = bucketSpec.bucketKey();
+                        retryAfterSeconds = waitSeconds;
+                    }
+                }
             }
-            return new RateLimitTarget("lsp-write:" + lspId, properties.getLspWritePerMinute());
+            if (rejectingBucketKey != null) {
+                return new RateLimitRejection(rejectingBucketKey, retryAfterSeconds);
+            }
+            return null;
         }
-
         return null;
-    }
-
-    private static boolean isWriteMethod(String method) {
-        return "POST".equalsIgnoreCase(method)
-                || "PUT".equalsIgnoreCase(method)
-                || "PATCH".equalsIgnoreCase(method)
-                || "DELETE".equalsIgnoreCase(method);
-    }
-
-    private static UUID extractLspId(Authentication authentication) {
-        if (authentication == null || !(authentication.getPrincipal() instanceof Jwt jwt)) {
-            return null;
-        }
-        String rawLspId = jwt.getClaimAsString("lspId");
-        if (rawLspId == null || rawLspId.isBlank()) {
-            return null;
-        }
-        try {
-            return UUID.fromString(rawLspId);
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
     }
 
     private static Supplier<BucketConfiguration> configurationSupplier(int permitsPerMinute) {
@@ -158,10 +144,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 message,
                 path,
                 CorrelationIdHolder.get(),
-                Map.of()
+                java.util.Map.of()
         ));
     }
 
-    private record RateLimitTarget(String key, int permitsPerMinute) {
+    private record RateLimitRejection(String bucketKey, long retryAfterSeconds) {
     }
 }

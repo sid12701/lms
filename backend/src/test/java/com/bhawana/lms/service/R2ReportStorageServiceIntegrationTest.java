@@ -1,5 +1,8 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.support.TenantContextTestExecutionListener;
+import org.springframework.test.context.TestExecutionListeners;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -13,6 +16,10 @@ import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@TestExecutionListeners(
+        value = TenantContextTestExecutionListener.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
+)
 class R2ReportStorageServiceIntegrationTest extends MinioTestSupport {
 
     @Autowired

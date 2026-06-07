@@ -7,8 +7,8 @@ import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertStatus;
 import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.repo.OpsAlertRepository;
+import com.bhawana.lms.tenant.TenantAccessContext;
 import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
-import com.bhawana.lms.tenant.TenantDataAccessMode;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -67,8 +67,7 @@ public class OpsAlertService {
         // tenant datasource. Flip to admin for this REQUIRES_NEW boundary and
         // restore the caller's context on exit so the outer tenant-bound
         // transaction (if any) continues correctly after we return.
-        TenantDataAccessMode previousMode = TenantDataAccessContextHolder.getMode();
-        UUID previousLspId = TenantDataAccessContextHolder.getCurrentLspId();
+        TenantAccessContext previous = TenantDataAccessContextHolder.snapshot();
         TenantDataAccessContextHolder.useAdmin();
         try {
             return opsAlertRepository.save(new OpsAlert(
@@ -82,11 +81,7 @@ public class OpsAlertService {
                     contextJson
             ));
         } finally {
-            if (previousMode == TenantDataAccessMode.TENANT && previousLspId != null) {
-                TenantDataAccessContextHolder.useTenant(previousLspId);
-            } else {
-                TenantDataAccessContextHolder.useAdmin();
-            }
+            TenantDataAccessContextHolder.restore(previous);
         }
     }
 

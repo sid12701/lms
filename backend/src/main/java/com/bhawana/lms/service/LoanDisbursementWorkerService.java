@@ -11,7 +11,7 @@ import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
-import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -61,15 +61,12 @@ public class LoanDisbursementWorkerService {
 
     @Transactional
     public int processPendingDisbursements() {
-        TenantDataAccessContextHolder.useAdmin();
-        try {
+        return TenantScopedExecution.callAsAdmin(() -> {
             int processed = 0;
             processed += processStatus(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL);
             processed += processStatus(LoanApplicationStatus.DISBURSEMENT_RETRY);
             return processed;
-        } finally {
-            TenantDataAccessContextHolder.useAdmin();
-        }
+        });
     }
 
     private int processStatus(LoanApplicationStatus status) {
@@ -88,7 +85,10 @@ public class LoanDisbursementWorkerService {
      */
     @Transactional
     public boolean processApplication(UUID applicationId) {
-        TenantDataAccessContextHolder.useAdmin();
+        return TenantScopedExecution.callAsAdmin(() -> processApplicationAsAdmin(applicationId));
+    }
+
+    private boolean processApplicationAsAdmin(UUID applicationId) {
         LoanApplication application = loanApplicationService.getApplication(applicationId);
         if (application.getLsp() == null || application.getLsp().getStatus() != LspStatus.ACTIVE) {
             return false;

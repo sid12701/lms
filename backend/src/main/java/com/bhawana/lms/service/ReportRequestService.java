@@ -5,6 +5,7 @@ import com.bhawana.lms.domain.ReportRequestStatus;
 import com.bhawana.lms.domain.ReportType;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.ReportRequestRepository;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -93,6 +94,10 @@ public class ReportRequestService {
 
     @Transactional
     public ProcessingSummary processPendingRequests(int batchSize) {
+        return TenantScopedExecution.callAsAdmin(() -> processPendingRequestsWithinAdminScope(batchSize));
+    }
+
+    private ProcessingSummary processPendingRequestsWithinAdminScope(int batchSize) {
         long startedAt = System.nanoTime();
         List<ReportRequest> pendingRequests = reportRequestRepository.claimBatchForProcessing(
                 List.of(ReportRequestStatus.PENDING),

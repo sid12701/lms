@@ -1,5 +1,8 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.support.TenantContextTestExecutionListener;
+import org.springframework.test.context.TestExecutionListeners;
+
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
@@ -59,6 +62,10 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@TestExecutionListeners(
+        value = TenantContextTestExecutionListener.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
+)
 class AuditExplorerControllerTest {
 
     @Autowired

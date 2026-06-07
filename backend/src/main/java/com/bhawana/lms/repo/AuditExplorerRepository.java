@@ -30,12 +30,26 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class AuditExplorerRepository {
 
+    private final DataSource dataSource;
     private final NamedParameterJdbcTemplate jdbc;
-    private final boolean h2Database;
+    private volatile Boolean h2Database;
 
     public AuditExplorerRepository(DataSource dataSource) {
+        this.dataSource = dataSource;
         this.jdbc = new NamedParameterJdbcTemplate(dataSource);
-        this.h2Database = isH2(dataSource);
+    }
+
+    private boolean h2Database() {
+        Boolean cached = h2Database;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (this) {
+            if (h2Database == null) {
+                h2Database = isH2(dataSource);
+            }
+            return h2Database;
+        }
     }
 
     private static boolean isH2(DataSource dataSource) {
@@ -50,7 +64,7 @@ public class AuditExplorerRepository {
             "\"lspId\"\\s*:\\s*\"([0-9a-fA-F-]{36})\"";
 
     private String reportAccessFilterPayloadLspIdExpression() {
-        if (h2Database) {
+        if (h2Database()) {
             return "cast(regexp_substr(cast(r.filter_payload as varchar(10000)), '"
                     + REPORT_ACCESS_LSP_ID_JSON_PATTERN
                     + "', 1, 1, null, 1) as uuid)";

@@ -1,5 +1,8 @@
 package com.bhawana.lms.repo;
 
+import com.bhawana.lms.support.TenantContextTestExecutionListener;
+import org.springframework.test.context.TestExecutionListeners;
+
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.bhawana.lms.domain.Lsp;
@@ -22,6 +25,10 @@ import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@TestExecutionListeners(
+        value = TenantContextTestExecutionListener.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
+)
 class WebhookEventDeliveryAttemptSentinelDefaultsPostgresIntegrationTest
         extends PostgresDataJpaTestSupport {
 

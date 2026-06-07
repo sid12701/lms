@@ -1,5 +1,8 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.support.TenantContextTestExecutionListener;
+import org.springframework.test.context.TestExecutionListeners;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -20,6 +23,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @SpringBootTest(properties = "app.reports.notifications.enabled=false")
 @ActiveProfiles("test")
+@TestExecutionListeners(
+        value = TenantContextTestExecutionListener.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
+)
 class ReportRequestStorageFailureTest {
 
     @Autowired

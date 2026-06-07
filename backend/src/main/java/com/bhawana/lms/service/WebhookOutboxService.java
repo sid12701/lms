@@ -1,11 +1,14 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.ApiConflictException;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.WebhookEventOutbox;
+import com.bhawana.lms.domain.WebhookEventOutboxStatus;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.WebhookEventOutboxRepository;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
@@ -34,19 +37,25 @@ public class WebhookOutboxService {
     private final ObjectMapper objectMapper;
     private final WebhookOutboxDispatchExecutor webhookOutboxDispatchExecutor;
     private final ThreadPoolTaskExecutor webhookDeliveryExecutor;
+    private final WebhookOutboxProperties webhookOutboxProperties;
+    private final WebhookOutboxRedriveAuditService webhookOutboxRedriveAuditService;
 
     public WebhookOutboxService(
             WebhookEventOutboxRepository webhookEventOutboxRepository,
             LspRepository lspRepository,
             ObjectMapper objectMapper,
             WebhookOutboxDispatchExecutor webhookOutboxDispatchExecutor,
-            @Qualifier("webhookDeliveryExecutor") ThreadPoolTaskExecutor webhookDeliveryExecutor
+            @Qualifier("webhookDeliveryExecutor") ThreadPoolTaskExecutor webhookDeliveryExecutor,
+            WebhookOutboxProperties webhookOutboxProperties,
+            WebhookOutboxRedriveAuditService webhookOutboxRedriveAuditService
     ) {
         this.webhookEventOutboxRepository = webhookEventOutboxRepository;
         this.lspRepository = lspRepository;
         this.objectMapper = objectMapper;
         this.webhookOutboxDispatchExecutor = webhookOutboxDispatchExecutor;
         this.webhookDeliveryExecutor = webhookDeliveryExecutor;
+        this.webhookOutboxProperties = webhookOutboxProperties;
+        this.webhookOutboxRedriveAuditService = webhookOutboxRedriveAuditService;
     }
 
     @Transactional
@@ -103,6 +112,51 @@ public class WebhookOutboxService {
     }
 
     public DispatchSummary dispatchPending(int batchSize) {
+        return TenantScopedExecution.callAsAdmin(() -> dispatchPendingAsAdmin(batchSize));
+    }
+
+    @Transactional
+    public WebhookEventOutbox redrive(UUID eventId, String actorUsername, String actorIp, String correlationId) {
+        return TenantScopedExecution.callAsAdmin(() -> redriveAsAdmin(eventId, actorUsername, actorIp, correlationId));
+    }
+
+    private WebhookEventOutbox redriveAsAdmin(
+            UUID eventId,
+            String actorUsername,
+            String actorIp,
+            String correlationId
+    ) {
+        WebhookEventOutbox event = webhookEventOutboxRepository.findById(eventId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown webhook outbox event id: " + eventId));
+
+        if (event.getStatus() != WebhookEventOutboxStatus.PERMANENT_FAILURE) {
+            throw new ApiConflictException(
+                    "WEBHOOK_OUTBOX_NOT_REDRIVABLE",
+                    "Only PERMANENT_FAILURE webhook outbox events can be redriven."
+            );
+        }
+
+        int maxManualRedrives = webhookOutboxProperties.getRedrive().getMaxManualRedrives();
+        if (event.getRedriveCount() >= maxManualRedrives) {
+            throw new ApiConflictException(
+                    "WEBHOOK_OUTBOX_REDRIVE_CAP_EXCEEDED",
+                    "Manual redrive cap of " + maxManualRedrives + " has been reached for this event."
+            );
+        }
+
+        event.markRedrive();
+        WebhookEventOutbox saved = webhookEventOutboxRepository.save(event);
+        webhookOutboxRedriveAuditService.recordRedrive(
+                saved,
+                actorUsername,
+                actorIp,
+                correlationId,
+                saved.getRedriveCount()
+        );
+        return saved;
+    }
+
+    private DispatchSummary dispatchPendingAsAdmin(int batchSize) {
         if (batchSize < 1 || batchSize > 100) {
             throw new IllegalArgumentException("Batch size must be between 1 and 100.");
         }
@@ -117,8 +171,8 @@ public class WebhookOutboxService {
         int permanentFailures = 0;
 
         List<Future<DeliveryOutcome>> deliveries = batch.stream()
-                .map(event -> webhookDeliveryExecutor.submit(() ->
-                        webhookOutboxDispatchExecutor.deliverOne(event.getId())))
+                .map(event -> webhookDeliveryExecutor.submit(() -> TenantScopedExecution.callAsAdmin(
+                        () -> webhookOutboxDispatchExecutor.deliverOne(event.getId()))))
                 .toList();
 
         for (Future<DeliveryOutcome> delivery : deliveries) {

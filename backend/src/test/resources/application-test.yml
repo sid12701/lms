@@ -11,6 +11,7 @@ spring:
     enabled: false
   jpa:
     open-in-view: false
+    database-platform: org.hibernate.dialect.H2Dialect
     hibernate:
       ddl-auto: create-drop
   autoconfigure:
@@ -42,6 +43,9 @@ app:
       enabled: false
   rate-limit:
     enabled: false
+  disbursement:
+    worker:
+      enabled: false
   borrower:
     bank-details:
       velocity-max-updates: 2

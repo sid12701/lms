@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,7 +32,9 @@ public class WebhookOutboxDispatchWorker {
             return;
         }
 
-        WebhookOutboxService.DispatchSummary summary = webhookOutboxService.dispatchPending(batchSize);
+        WebhookOutboxService.DispatchSummary summary = TenantScopedExecution.callAsAdmin(
+                () -> webhookOutboxService.dispatchPending(batchSize)
+        );
         if (summary.processed() > 0) {
             log.info(
                     "Processed {} webhook outbox events: delivered={}, retryableFailures={}, permanentFailures={}",

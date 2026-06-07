@@ -1,5 +1,8 @@
 package com.bhawana.lms.support;
 
+import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -10,6 +13,16 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers(disabledWithoutDocker = true)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 public abstract class PostgresDataJpaTestSupport {
+
+    @BeforeEach
+    void bindAdminTenantContextForJpaTests() {
+        TenantDataAccessContextHolder.useAdmin();
+    }
+
+    @AfterEach
+    void clearTenantContextAfterJpaTest() {
+        TenantDataAccessContextHolder.clear();
+    }
 
     @SuppressWarnings("resource")
     @Container
@@ -26,5 +39,6 @@ public abstract class PostgresDataJpaTestSupport {
         registry.add("spring.datasource.driver-class-name", POSTGRES::getDriverClassName);
         registry.add("spring.flyway.enabled", () -> true);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
+        registry.add("spring.jpa.database-platform", () -> "org.hibernate.dialect.PostgreSQLDialect");
     }
 }

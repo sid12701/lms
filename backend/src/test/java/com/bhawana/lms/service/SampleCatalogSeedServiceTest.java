@@ -1,5 +1,8 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.support.TenantContextTestExecutionListener;
+import org.springframework.test.context.TestExecutionListeners;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.bhawana.lms.repo.LoanProductAuditEventRepository;
@@ -13,6 +16,10 @@ import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest(properties = "app.seed.sample-data.enabled=true")
 @ActiveProfiles("test")
+@TestExecutionListeners(
+        value = TenantContextTestExecutionListener.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
+)
 class SampleCatalogSeedServiceTest {
 
     @Autowired

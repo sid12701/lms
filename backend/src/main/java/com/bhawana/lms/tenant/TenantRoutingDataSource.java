@@ -9,8 +9,17 @@ final class TenantRoutingDataSource extends AbstractRoutingDataSource {
 
     @Override
     protected Object determineCurrentLookupKey() {
-        return TenantDataAccessContextHolder.getMode() == TenantDataAccessMode.TENANT
-                ? TENANT_KEY
-                : ADMIN_KEY;
+        TenantAccessContext context = TenantDataAccessContextHolder.snapshot();
+        if (context == null) {
+            if (TenantDataAccessBootstrap.isActive()) {
+                return ADMIN_KEY;
+            }
+            throw new MissingTenantContextException(
+                    "Tenant data-access context is not set on this thread. "
+                            + "Call useAdmin(), useTenant(lspId), or TenantScopedExecution.callAsAdmin/callAsTenant "
+                            + "before accessing tenant-scoped data."
+            );
+        }
+        return context.mode() == TenantDataAccessMode.TENANT ? TENANT_KEY : ADMIN_KEY;
     }
 }

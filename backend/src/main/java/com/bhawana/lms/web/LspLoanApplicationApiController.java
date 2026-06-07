@@ -12,8 +12,8 @@ import com.bhawana.lms.service.LoanDisbursementService;
 import com.bhawana.lms.service.LoanDocumentService;
 import com.bhawana.lms.service.LspApiIdempotencyService;
 import com.bhawana.lms.service.LoanRepaymentScheduleService;
+import com.bhawana.lms.tenant.TenantAccessContext;
 import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
-import com.bhawana.lms.tenant.TenantDataAccessMode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
@@ -190,8 +190,7 @@ public class LspLoanApplicationApiController {
             throw new AccessDeniedException("Request lspId does not match authenticated LSP context.");
         }
 
-        TenantDataAccessMode previousMode = TenantDataAccessContextHolder.getMode();
-        UUID previousLspId = TenantDataAccessContextHolder.getCurrentLspId();
+        TenantAccessContext previous = TenantDataAccessContextHolder.snapshot();
         TenantDataAccessContextHolder.useAdmin();
         try {
             LoanApplication application = loanApplicationService.createApplication(
@@ -238,15 +237,7 @@ public class LspLoanApplicationApiController {
             );
             return LspLoanApplicationResponses.toResponse(application);
         } finally {
-            restoreTenantContext(previousMode, previousLspId);
-        }
-    }
-
-    private static void restoreTenantContext(TenantDataAccessMode previousMode, UUID previousLspId) {
-        if (previousMode == TenantDataAccessMode.TENANT) {
-            TenantDataAccessContextHolder.useTenant(previousLspId);
-        } else {
-            TenantDataAccessContextHolder.useAdmin();
+            TenantDataAccessContextHolder.restore(previous);
         }
     }
 
