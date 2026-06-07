@@ -1774,7 +1774,7 @@ Untouched (deliberately):
 ---
 
 ### #86 — [B-4] Repayment idempotency-key race surfaces 500 instead of 409
-**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/86 · **Status:** **CLOSED** — PR #TBD (2026-06-07). Repayment and LSP API idempotency now fingerprint request bodies, return **409 `IDEMPOTENCY_CONFLICT`** on key/body mismatch, and recover concurrent duplicate inserts without 500s. Migration **V92** adds `request_fingerprint` and a full `UNIQUE (idempotency_key)` constraint. Shared claim path via `IdempotencyClaimService` (`REQUIRES_NEW` + `saveAndFlush`); losers skip payment side effects. Legacy rows with NULL fingerprint accept retries. Tests: `Issue86RepaymentIdempotencyIntegrationTest`, `LspApiIdempotencyServiceRaceTest`.
+**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/86 · **Status:** **CLOSED** — PR #185 (2026-06-07). Repayment and LSP API idempotency now fingerprint request bodies, return **409 `IDEMPOTENCY_CONFLICT`** on key/body mismatch, and recover concurrent duplicate inserts without 500s. Migration **V92** adds `request_fingerprint` and a full `UNIQUE (idempotency_key)` constraint. Shared claim path via `IdempotencyClaimService` (`REQUIRES_NEW` + `saveAndFlush`); losers skip payment side effects. Legacy rows with NULL fingerprint accept retries. Tests: `Issue86RepaymentIdempotencyIntegrationTest`, `LspApiIdempotencyServiceRaceTest`.
 
 **Problem (plain English):** Two concurrent calls with the same idempotency key both check "does it exist?", both see no, both insert. The database unique index catches the second one — but it surfaced as a generic 500 with a stack trace, not a clean 409. Same-key/different-body retries silently returned the original payment.
 
