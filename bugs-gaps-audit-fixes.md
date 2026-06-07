@@ -3447,7 +3447,7 @@ Cross-ref § **#159** for frontend stream tabs and out-of-scope 8th-stream check
 ---
 
 ### #153 — [AUD-7] Webhook URL / signing-secret rotation not audited
-**Labels:** auditability, security · **Link:** https://github.com/sid12701/lms/issues/153 · **Status:** **CLOSED** — see PR (pending merge)
+**Labels:** auditability, security · **Link:** https://github.com/sid12701/lms/issues/153 · **Status:** **CLOSED** — [PR #181](https://github.com/sid12701/lms/pull/181) merged 2026-06-07
 
 **Problem (plain English):** Webhook URL changes and secret rotations are not audited. A swapped URL could exfiltrate to an attacker-controlled endpoint silently.
 
@@ -3631,7 +3631,7 @@ Untouched (deliberately):
 ---
 
 ### #154 — [AUD-8] IP allowlist add/remove audit incomplete — verify
-**Labels:** auditability, security, verification · **Link:** https://github.com/sid12701/lms/issues/154 · **Status:** **CLOSED** — folded into #153 PR (pending merge)
+**Labels:** auditability, security, verification · **Link:** https://github.com/sid12701/lms/issues/154 · **Status:** **CLOSED** — [PR #181](https://github.com/sid12701/lms/pull/181) merged 2026-06-07 (folded into #153)
 
 **Problem (plain English):** Need to verify whether the IP allowlist controller already audits mutations; if not, add.
 
