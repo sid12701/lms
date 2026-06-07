@@ -1788,7 +1788,7 @@ Untouched (deliberately):
 5. **`LoanServicingSupportService.ensurePaymentBelongsToApplication`** — wrong-loan mismatch now **409 `IDEMPOTENCY_CONFLICT`** (was `IllegalArgumentException`).
 6. **V92 migration** — adds column; replaces partial unique index with `UNIQUE (idempotency_key)`.
 
-**Cross-issue impact:** **#128** (FE idempotency key without body fingerprint) will now receive 409 on body change — correct behaviour; FE should mint a fresh key when the form changes. **#96** (mock disbursement without idempotency) remains independent.
+**Cross-issue impact:** **#128** (audit-doc framed it as "FE idempotency key without body fingerprint") — **the imagined bug does not exist in current FE code**, verified 2026-06-07: every dialog (`RepaymentPostDialog.tsx:143`, `DisbursementInitiateDialog.tsx:77`, `ForeclosureRequestDialog.tsx:71`, etc.) calls `newIdempotencyKey()` inside the submit handler, so each Submit click generates a fresh UUID. React Query hooks don't cache args between `mutate()` calls. The "edits-then-double-click submits two different bodies under the same key" scenario requires a stable-key path that does not exist. See §#128 for the verification + the genuine retry-after-failure case captured in a follow-up issue. **#96** (mock disbursement without idempotency) remains independent.
 
 **Historical plan (2026-06-01):** retained below for audit trail.
 
@@ -1906,7 +1906,7 @@ Edit:
 
 - **#94** ("[B-12] Foreclosure execute rejects when settlementDate != quote.effectiveDate exactly") — similar exact-match strictness pattern but unrelated to idempotency. Independent.
 - **#96** ("[B-14] applyMockDisbursementOutcome has no Idempotency-Key support") — different endpoint, different vulnerability (no idempotency at all vs. broken idempotency). Independent. May benefit from the same `fingerprint()` helper if extracted to a shared service.
-- **#128** ("[F-5] FE idempotency-key doesn't fingerprint body") — frontend twin of this bug. The FE auto-generates idempotency keys but doesn't change them when the body changes, so a user editing-then-retrying a form silently hits the original record. Once #86 lands, the FE will start getting 409s in that situation — which is the correct behaviour and forces the FE to handle it (mint a fresh key on body change). Cross-link in both PR descriptions.
+- **#128** ("[F-5] FE idempotency-key doesn't fingerprint body") — **the audit-doc framing was wrong**, verified 2026-06-07. The FE does NOT hold idempotency keys stable across submits — every dialog mints a fresh UUID inside the submit handler (see §#128 for the verification sweep across ~25 call sites + React Query hooks + API layer). Once #86 lands, the FE will NOT start getting body-mismatch 409s from this scenario because the keys are already fresh per submit. The genuine residual gap is **retry-after-network-failure** (different keys for same body → server treats as independent requests → double action), captured in a follow-up issue cross-linked from §#128.
 - **#149** ("[AUD-3] API-client create/rotate/reveal moments not audited") — the catch-and-recover branch could optionally emit an audit row ("idempotency race recovered") for forensic visibility. Out of scope; flag for future.
 
 </details>
@@ -2660,7 +2660,7 @@ Frontend (`frontend-2/src/features/admin/webhook-outbox/`):
 ---
 
 ### #138 — [F-15] Report email links lack signed-URL / expiry / encryption
-**Labels:** fragile-logic, security · **Link:** https://github.com/sid12701/lms/issues/138
+**Labels:** fragile-logic, security · **Link:** https://github.com/sid12701/lms/issues/138 · **Status:** **OPEN** — plan locked 2026-06-07, ready to implement (Option A+C reinterpreted: audit-doc framing was wrong — Option 2 is already shipped; this PR locks in the existing behaviour with a regression test and adds a deep-link to the specific report for UX).
 
 **Problem (plain English):** Report-ready emails contain links to download the report. Anyone with that email forever has the report. No expiry, no signing, no auth.
 
@@ -2673,12 +2673,134 @@ Frontend (`frontend-2/src/features/admin/webhook-outbox/`):
 
 **Effect on app:** Users get "report ready" emails and click into the app to download. Slightly worse UX; large security improvement.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-07):**
+
+**Reframe — the audit-doc framing is wrong; Option 2 is already shipped**
+
+Reading the code (`ReportNotificationService.java:81-105`):
+
+- The email body contains **metadata only**: report type, request id, requester username, requested timestamp, tenant name, disbursal date range, status, generated file name, optional error message.
+- The body's "download" line is `"Generated file: {fileName}"` — a **filename**, NOT a URL.
+- The body's "open" line is `"Open reports: {reportsPageUrl}"` where `reportsPageUrl` defaults to `http://127.0.0.1:5173/reports` (the authenticated FE reports page), NOT a direct download URL.
+- The actual download endpoint (`GET /api/v1/internal/reports/requests/{requestId}/download`, `ReportAdminController.java:124`) inherits class-level `@PreAuthorize("hasRole('SYSTEM_ADMIN')")` (line 34). No URL in the email bypasses this.
+
+So **audit-doc Option 2 ("Notification only; user fetches via authenticated UI") is what the code already does today.** There is no direct download URL in the email; there is no URL that needs signing; the recipient must authenticate to download.
+
+The residual surface is much smaller than the audit doc framed:
+- **Metadata content** (requester, tenant, date range, file name) in plain text email body — mild forward-exposure risk; explicitly kept (see decisions below).
+- **Deep-link UX** — today's "Open reports" line lands on the table; user finds their report manually. Adding `?requestId={id}` lands them on the right row.
+- **Email-channel encryption** (S/MIME, PGP) — infrastructure concern, out of scope.
+
+**Decisions locked**
+
+- **Scope:** A + C combined — close as "already implemented" with a regression test that prevents future drift, AND add a deep-link to the specific report request for UX.
+- **Metadata in email body:** keep current shape (report type, requester, tenant, date range, status, file name). Forward-exposure risk is mild and the metadata is operationally useful for the recipient. Re-evaluate if real users complain post-launch.
+- **Regression test shape:** **both** — exact-text assertion on the URL line (catches drift on the critical line) + pattern assertion on the body (no URL matching `/download`, `/files`, or signed-URL parameter shapes).
+- **No signed-URL infrastructure built.** YAGNI; no consumer; would be dead code.
+- **No metadata stripping.** Re-evaluate post-launch if forward-exposure becomes a concrete complaint.
+
+**Code changes (per file/class)**
+
+Backend:
+
+1. **`service/ReportNotificationService.buildBody`** — change the "Open reports" line from `"Open reports: " + reportsPageUrl` to deep-link form when a `requestId` is available:
+   ```
+   if (!reportsPageUrl.isBlank()) {
+       String url = reportsPageUrl + (reportsPageUrl.contains("?") ? "&" : "?") + "requestId=" + reportRequest.getId();
+       body.append("Open report: ").append(url).append('\n');
+   }
+   ```
+   Defensive query-string concat handles the (unlikely) case where `reportsPageUrl` already has query params. Note: copy stays "Open report" (singular, deep-linked) — past tense "reports" was the generic landing page; "report" reflects the targeted link.
+2. **No new service, no new repo, no new schema, no new endpoint, no signed-URL framework.** The deep-link relies on the existing auth gate at `ReportAdminController` (SYSTEM_ADMIN-only) — same security property as today.
+
+Frontend:
+
+3. **`frontend-2/src/features/reports/...` (reports page)** — read `requestId` from URL search params on mount. If present and present in the table data, scroll the matching row into view + highlight it (e.g. flash background) so the user sees which report they were notified about. If the row is not in the current page, still set the search/filter to find it. Optional polish: auto-open the row's download dialog (single-click flow) — left as polish unless you want it explicit.
+4. **No new route.** Same `/reports` page; just honours an optional `?requestId=` query param.
+5. **No security change.** Page is already auth-gated by the FE's session-context + the backend's `@PreAuthorize`. Anyone clicking the email link who isn't already authenticated lands on the login screen, just like today.
+
+**What is NOT changing**
+
+- `ReportAdminController` and `ReportRequestService.getCompletedReportDownload` — auth gate and download path untouched.
+- `ReportNotificationService.sendTerminalStatusNotification` — outer flow (notifications-enabled check, mail-sender availability, COMPLETED/FAILED guard, MailException handling) unchanged.
+- Email subject lines (`buildSubject` lines 73-79) — unchanged.
+- Email body metadata (report type, request id, requester, timestamp, tenant, date range, status, file name, error message) — unchanged. Useful context retained.
+- `app.reports.notifications.reports-page-url` config — unchanged. Same default (`http://127.0.0.1:5173/reports`); same env-var override.
+- `JavaMailSender` configuration — unchanged.
+- Notification email field on `ReportRequest` — unchanged.
+- No signed-URL infrastructure, no HMAC service, no expiry tracking, no one-time-use bookkeeping. None of it is needed because there is no URL embedded in the email that bypasses auth.
+
+**Why not Option 1 (audit-doc's "short-lived signed URL")**
+
+There is no URL to sign. The email link points to an authenticated FE page; adding HMAC infrastructure for a URL that already requires login is dead code that invites misuse (a future contributor sees the signed-URL framework and "improves" UX by adding a direct download URL — exactly the foot-cannon the audit doc was worried about).
+
+**Why not Option 3 (audit-doc's "one-time-use signed URL")**
+
+Same as above — no URL needs the property. Plus, one-time-use breaks legitimate retry (user clicks the link, network blip, tab refreshes — second click would 410).
+
+**Why not Option B (strip metadata)**
+
+The metadata is operationally useful: a SYSTEM_ADMIN who fires multiple reports needs to know which one this notification refers to. Stripping leaves a bare CTA that's worse UX with minimal forward-exposure benefit pre-launch (when there are no live users to forward emails to). Re-evaluate when there's a real complaint.
+
+**Why both exact-text and pattern regression tests**
+
+The exact-text test catches drift on the critical line ("Open report: {url}" — if a contributor changes this to "Download: {url}/{filename}" the test fails immediately). The pattern test catches structural drift across the body (if anything anywhere in the body matches `/download`, `/files`, `sig=`, `?hmac=`, `&exp=`, the test fails — defends against accidental signed-URL or direct-download patterns sneaking in elsewhere).
+
+**Why no signed-URL infrastructure built**
+
+YAGNI. No consumer today. Building speculative infrastructure adds dead code, encourages future misuse, and the cost of building it later (when there's an actual consumer scenario like LSP-facing direct-download) is low because we'd know the consumer's requirements. Building it now would require us to make TTL, key-rotation, and replay-window decisions in a vacuum.
+
+**Blast radius — files touched**
+
+- **Backend src:** `service/ReportNotificationService.java` only — one method (`buildBody`), one line changed (the "Open reports" → "Open report" with `?requestId=` deep-link). No new fields, no new methods.
+- **Backend test:** new `ReportNotificationServiceEmailContentTest` (5 tests below). Existing `ReportNotificationServiceTest` (if it exists) stays green; the body assertions get tightened.
+- **Frontend:** reports page mount-effect that reads `?requestId=` and scrolls/highlights the matching row. ~15 lines of FE code + 1 component test.
+- **No schema migration, no new endpoint, no new domain entity, no config addition.**
+
+**TDD plan (vertical slices, behaviour through public interfaces)**
+
+Tracer first; each test exercises a public surface.
+
+1. **TRACER — `completed_report_email_body_links_to_authenticated_page_with_request_id_deep_link`.** Seed a `ReportRequest` with status `COMPLETED`, notification email set. Wire `ReportNotificationService` with `reportsPageUrl = "https://lms.example.com/reports"`. Call `sendTerminalStatusNotification(request)`. Spy on `JavaMailSender.send(...)`; capture the message. Assert the body contains exactly the line `"Open report: https://lms.example.com/reports?requestId=" + request.getId()`. Locks in the deep-link shape.
+2. `failed_report_email_body_does_not_link_anywhere`. Status `FAILED`. Body contains the failure reason; no "Open report" line (current behaviour — failed reports show error message instead). Locks in: the deep-link only appears for COMPLETED.
+3. **`email_body_contains_no_direct_download_url_pattern`** (pattern assertion). Body is regex-asserted to NOT contain any of: `/download`, `/files/`, `\\.csv`, `\\.xlsx`, `sig=`, `hmac=`, `\\?exp=`, `expires=`. Locks in: nobody accidentally adds a direct download URL or signed-URL parameter into the body.
+4. `email_body_keeps_metadata_for_recipient_context`. Body contains: report type name, request id, requester username, tenant name, disbursal date range, status. Locks in: useful context retained (so a future "strip metadata" PR has to consciously delete this test, not silently break it).
+5. `reportsPageUrl_with_existing_query_param_appends_with_ampersand`. Wire `reportsPageUrl = "https://lms.example.com/reports?theme=dark"`. Body's open-line is `"Open report: https://lms.example.com/reports?theme=dark&requestId=..."`. Locks in: query-string concat is correct.
+6. `blank_reportsPageUrl_omits_open_line_entirely`. Wire `reportsPageUrl = ""`. Body contains no "Open report" line at all. Locks in: deploys without the URL config don't ship broken-looking emails.
+7. **Frontend — `reports_page_with_requestId_query_param_scrolls_matching_row_into_view_and_highlights_it`.** Render the reports page with `?requestId=<known-id>` in the URL. Assert the row with that id has the `data-highlighted` attribute (or whatever the FE convention is) and `scrollIntoView` was called for it.
+8. **Frontend — `reports_page_without_requestId_query_param_renders_normally`.** Render without the query param. No highlight, no scroll call. Locks in: the deep-link handler doesn't break the default flow.
+
+**Mocking discipline**
+
+- `JavaMailSender` — system boundary; mock with a captor that records the `SimpleMailMessage`. Standard Spring testing pattern.
+- `ReportRequest` — pure domain object; built in test via constructor. Not mocked.
+- `Clock` — not used in this surface; not needed.
+- Frontend: standard React Testing Library; mock `useSearchParams` from the router and the table's scroll/highlight imperative API.
+- **Do not mock** `ReportNotificationService` itself in tests for the deep-link shape — that's the unit under test.
+
+**Tests deliberately NOT written here (owned elsewhere)**
+
+- Auth gate on `/requests/{id}/download` → already covered by `ReportAdminControllerTest` (SYSTEM_ADMIN-only). No regression test here for that — different code surface.
+- `ReportRequestService.getCompletedReportDownload` (storage retrieval, byte-count) → owned by `ReportRequestServiceTest`.
+- `ReportAccessAuditService.recordDownload` (audit row on download) → owned by #151 (already CLOSED).
+- Mail delivery infrastructure (SMTP TLS, DKIM, SPF) — operational concern; not code-level.
+
+**Pros / cons / regression / scale / structure recap**
+
+- **Effect on app:** zero security-property change (the auth gate is unchanged; no URL in the email bypasses auth). Email body's "open" line now deep-links to the specific report; clicking it after authentication lands the recipient on the exact row instead of the table. Pure UX win + regression guard.
+- **Pros:** corrects the audit-doc's misframing on the public record; locks in current correct behaviour against future drift; small UX improvement at zero security cost; no new infrastructure, no schema, no new endpoint.
+- **Cons:** doesn't add signed-URL infrastructure (intentional — YAGNI); doesn't strip metadata (intentional — keep useful context). Both deliberately deferred unless a real consumer/complaint emerges.
+- **Regression risk:** very low. One-line content change in one method; regression tests guard against accidental download-URL re-introduction. FE change is additive (effect on mount-with-query-param; default flow unchanged).
+- **Scale impact:** none. String concat at mail-send time. No new DB read, no new network call.
+- **Code structure impact:** +1 deep-link concat in `ReportNotificationService.buildBody`. +1 mount-effect on the reports page. +1 test class (~50 lines) + 1 component test. No new services, repos, domains, migrations, or enums.
+- **Overengineering check:** no. Smallest possible PR that documents the audit-doc reframe properly + locks in current behaviour + adds a real UX win. Rejected: signed-URL infrastructure, metadata stripping, one-time-use tokens, S/MIME — all named with explicit reasons.
+
+**Dependencies / sequencing:** standalone. No interaction with the just-locked auth cluster (#155 / #80 / #132) or with #74 (LSP foreclosure). The reports surface is independently owned. Can ship before or after any of them. The regression tests it adds are the seam any future "make report links public" change would have to consciously break — which is the protection the audit doc was reaching for.
 
 ---
 
 ### #142 — [SEC-Δ-4] LspIpAllowlistFilter cache is process-local — unbounded staleness across replicas
-**Labels:** security, scale-risk · **Link:** https://github.com/sid12701/lms/issues/142
+**Labels:** security, scale-risk · **Link:** https://github.com/sid12701/lms/issues/142 · **Status:** **DEFERRED pre-launch** (2026-06-07). Issue stays open. Cache staleness does not bite at single-replica deployment, which is the working assumption pre-launch. Un-defer trigger: first multi-replica deploy (or any incident where the ≤60s staleness window matters). Design captured below for the un-defer PR.
 
 **Problem (plain English):** Each replica has its own 60-second cache. Multi-replica deployments have independent staleness windows that can compound — and there's no signal of how stale anything is.
 
@@ -2691,7 +2813,52 @@ Frontend (`frontend-2/src/features/admin/webhook-outbox/`):
 
 **Effect on app:** Allowlist mutations are fleet-wide instantly. Removes the "which replica did the request hit?" question during incident response.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-07) — DEFERRED, ISSUE STAYS OPEN:**
+
+**Decision:** defer pre-launch. The cache lives in `LspSurfaceIpAllowlistFilter.java:40` as a process-local `ConcurrentHashMap` with a 60s TTL. Pre-launch deployment is single-replica (per #166's Redis/RabbitMQ disposition discussion); writer and reader are the same process, so the local invalidation hook from #83 / #164 keeps the cache coherent. The multi-replica staleness window (≤60s) only manifests under load-balanced multi-replica topology, which is not the pre-launch shape.
+
+**Audit findings preserved for the un-defer PR:**
+
+1. **Cache location.** `LspSurfaceIpAllowlistFilter.java:40-108` — `ConcurrentHashMap<CacheKey, CachedSnapshot>`, 60s TTL (`CACHE_TTL`, line 36). Per-process. Read path: `loadSnapshot(lspId, surface)` at line 98.
+2. **Local invalidation hook (#83).** `IpAllowlistCacheInvalidation.afterCommit` calls `filter.invalidateCache(lspId, surface)` after every allowlist mutation. Both admin controllers (`LspIpAllowlistAdminController`, `LspUiIpAllowlistAdminController`) wire this hook (verified under #164). Effective at single-replica; useless at multi-replica because the hook fires only on the writer.
+3. **Service-side has no cache.** `LspSurfaceIpAllowlistService` reads `lspRepository.findById` + `(api|ui)AllowlistRepository.findByLsp_Id` on every call — always fresh. `LspSurfaceIpAllowlistFilter` is the only caching layer.
+4. **Login-time checks are already fresh.** `AuthController.issuePasswordToken` (line 413) and `issueClientCredentialsToken` (line 447) call `LspSurfaceIpAllowlistService` directly, bypassing the filter cache. The staleness only affects the in-flight LSP request path (`/api/v1/lsp/**`).
+5. **Multi-replica risk shape.** Adding a CIDR — new IP allowed locally instantly, denied on stale replicas for ≤60s (mild). Removing a CIDR — removed IP keeps access on stale replicas for ≤60s (security-meaningful).
+6. **Redis is in `docker-compose.yml` but NOT wired into Spring code.** No `RedisTemplate`, no `spring-data-redis` dependency, no `Lettuce` usage. The audit-doc's "Redis is already in compose; reuse" is misleading — adopting Redis here means adding the dependency, connection management, health checks, and failure-mode design. Real new infrastructure surface.
+7. **RabbitMQ same story** — in compose, not in code. Push-based invalidation (audit-doc Option 3) carries the same new-infra cost.
+
+**Candidate fixes on the table for the eventual implementation pass:**
+
+- **Option A — Redis shared cache (audit-doc Option 1).** Brings spring-data-redis, connection management, failure-mode design. Strong fleet-wide coherence. Best fit only if Redis becomes a first-class dependency for other reasons (caching, pub/sub, rate-limit buckets at #142 scale).
+- **Option B — Shorten TTL to 10s, keep local invalidation.** One-line change. 6x staleness improvement. 12x DB query rate on this surface (still negligible at pre-launch volume; worth measuring before adopting at production scale).
+- **Option C — RabbitMQ pub/sub invalidation.** Mutation publishes `evict(lspId, surface)`; replicas subscribe and evict their local entry. Needs RabbitMQ wiring (per #166 — not in code today).
+- **Option D — Drop the cache entirely; query DB per request.** Per-request cost is two indexed `SELECT`s. Probably fine at production scale; trivial code change. The fall-back if no other option fits.
+- **Option E — Versioned snapshot (no extra infra).** Add `Lsp.ipAllowlistVersion BIGINT NOT NULL DEFAULT 0`. Bump on every mutation. Cache becomes `(version, snapshot)`; per-request: cheap version-check SELECT against the LSP row (already loaded for tenant scoping); if version changed, re-fetch CIDRs. Near-zero staleness without Redis or RabbitMQ. Schema migration cost is one column. **Recommended starting point for the un-defer PR.**
+- **Option F — Postgres LISTEN/NOTIFY.** Mutation issues `NOTIFY ip_allowlist_changed`; each replica holds a long-lived listener connection and evicts on receipt. Zero new infra; non-trivial Spring wiring for connection management.
+
+**Recommended starting point for the eventual fix:** Option **E** (versioned snapshot) — the cleanest long-term design with no new infrastructure dependency. Falls back to Option **B** (shorter TTL) as a smaller intermediate step if E feels too large at trigger-time.
+
+**TDD outline for the eventual implementation (not executed now — captured for the next person):**
+- TRACER: two filter instances pointed at the same DB. Replica A's mutation propagates to replica B's cache within one request-cycle (via E's version compare) — no 60s window observed.
+- `version_unchanged_returns_cached_snapshot_without_refetching_cidrs`.
+- `version_bump_after_add_cidr_triggers_resync_on_other_replica_within_one_request`.
+- `version_bump_after_remove_cidr_revokes_access_on_other_replica_within_one_request`.
+- `concurrent_mutations_serialize_via_version_compare_and_swap` (or accept last-writer-wins via monotonic increment).
+- All assertions through the public filter behaviour (HTTP request → 200/403), not against internal cache state.
+
+**Trigger conditions to un-defer (any of these):**
+1. First multi-replica deployment (with or without sticky sessions).
+2. Any production incident where ops needs to revoke an IP and the ≤60s staleness window matters.
+3. Adoption of Redis or RabbitMQ for any other LMS feature — at which point the marginal cost of A or C drops, and E may no longer be the obvious choice.
+4. Measurable DB-load concern from any future "drop cache" simplification.
+
+**Why we are deferring:** the bug is real but only bites at a topology we don't run pre-launch. Building infrastructure (Redis, RabbitMQ) or schema migrations (E's version column) speculatively is overengineering when no real users hit the staleness window. The local invalidation from #83 is sufficient at single-replica; the design above is preserved so the un-defer PR doesn't re-derive it.
+
+**Dependencies / sequencing:** related to **#166** (Redis/RabbitMQ fate). If #166 decides to keep both in compose with a real consumer, A or C become more attractive. If #166 decides to drop them, E is the natural choice. Cross-link both ways when this is un-deferred.
+
+**Effect on app while deferred:** none. Single-replica deployment is coherent via #83's invalidation hook. The audit-doc's "Recommended Option 1 (Redis)" remains the wrong fit until Redis is wired for other reasons.
+
+**Effect when un-deferred:** as in the candidate fixes above. The chosen option will bring fleet-wide coherence (A/C/E/F) or always-fresh reads (D) without the 60s staleness window.
 
 ---
 
@@ -3907,9 +4074,11 @@ Full design, decisions, test plan, and file list live in the **#130** entry abov
 ---
 
 ### #74 — Foreclosure execute is admin-only — LSP cannot finalize closure
-**Labels:** gap, rbac · **Link:** https://github.com/sid12701/lms/issues/74
+**Labels:** gap, rbac · **Link:** https://github.com/sid12701/lms/issues/74 · **Status:** **CLOSED** — backend Slice A shipped 2026-06-07 (LSP self-execute API + `Idempotency-Key` + `LSP_BOUND_VIOLATION` alerts on LSP-path violations; admin break-glass unchanged). LSP loan-detail UI execute button deferred (Slice B / #17–#19).
 
 **Problem (plain English):** LSP can request a foreclosure quote but cannot execute it; only admin can. Asymmetric with disbursement (LSP can self-disburse).
+
+**Resolution (2026-06-07):** Implemented backend-only per locked plan. New `POST /api/v1/lsp/loans/{loanId}/foreclosure-quotes/{quoteId}/execute` (`LSP_API_CLIENT` + `LSP_UI_WRITE`, required `Idempotency-Key` via `LspApiIdempotencyService`). `LoanForeclosureCommandService.executeForeclosureQuoteForLsp` wraps shared `executeForeclosureQuote`; LSP-path validation failures emit `LSP_BOUND_VIOLATION` via `emitLspForeclosureViolation` + `ForeclosureViolationType`. Admin ops endpoint untouched. Tests: `Issue74LspForeclosureExecuteIntegrationTest` (9 cases). Full backend regression green (508 tests).
 
 **Possible fixes:**
 1. **LSP self-execute with maker-checker** — symmetric with disbursement after #62.
@@ -3920,7 +4089,147 @@ Full design, decisions, test plan, and file list live in the **#130** entry abov
 
 **Effect on app:** LSPs self-service close. Admin out of the loop unless escalation needed.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-07):**
+
+**Reframe — Option 1 reinterpreted in light of #62's actual delivery**
+
+The audit doc said "LSP self-execute with maker-checker once #62 lands." **#62 explicitly rejected human-on-human maker-checker** in favour of rule-engine + alert-stream + auto-worker. Reinterpreted, Option 1 becomes: **LSP self-execute, strict server-side validation, `LSP_BOUND_VIOLATION` alerts on the LSP path for misuse**. No new admin approval queue. The new control surface is the alert stream, attributable to specific LSPs — same shape as the disbursement-bound and bank-detail-mismatch alerts shipped under #62 PR (c).
+
+**Decisions locked**
+
+- **Scope:** new `POST /api/v1/lsp/loans/{loanId}/foreclosure-quotes/{quoteId}/execute` endpoint. LSPs self-execute foreclosure.
+- **RBAC:** `LSP_API_CLIENT` + `LSP_UI_WRITE`. `LSP_UI_READ` excluded.
+- **Idempotency:** `Idempotency-Key` header required. Matches the `recordPayment` pattern at `LspLoanApiController.java:72-94`. Reuses `LspApiIdempotencyService`. Network retries return the already-executed quote, not a 422.
+- **Admin break-glass:** the existing SYSTEM_ADMIN endpoint at `POST /api/v1/internal/ops/loan-applications/{applicationId}/foreclosure-quotes/{quoteId}/execute` stays untouched. Both paths coexist; audit row distinguishes by actor role.
+- **Alert scope:** `LSP_BOUND_VIOLATION` fires on the LSP path only. Admin actions don't fire LSP-attributable alerts.
+- **No maker-checker queue.** #62 explicitly designed this out.
+- **No worker for foreclosure.** Symmetry with disbursement is misleading: the disbursement worker calls the adapter that moves money; foreclosure has no equivalent async fact for a worker to verify, so the worker would just be an indirection of the LSP's own claim.
+
+**Code changes (per file/class)**
+
+Backend:
+
+1. **`web/LspLoanApiController`** — new endpoint:
+   ```
+   @PostMapping("/{loanId}/foreclosure-quotes/{quoteId}/execute")
+   @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_WRITE')")
+   public LoanApplicationOpsController.LoanForeclosureQuoteResponse executeForeclosureQuote(
+           Authentication authentication,
+           @PathVariable UUID loanId,
+           @PathVariable UUID quoteId,
+           @RequestHeader(name = "Idempotency-Key") String idempotencyKey,
+           @Valid @RequestBody LspForeclosureExecutionRequest request)
+   ```
+   New nested record `LspForeclosureExecutionRequest(@NotNull LocalDate settlementDate, @NotBlank String reference, String note)`.
+2. **`service/LoanForeclosureCommandService`** — new method `executeForeclosureQuoteForLsp(UUID lspId, UUID loanAccountId, UUID quoteId, String actorUsername, String idempotencyKey, LocalDate settlementDate, String reference, String note) -> LoanForeclosureQuote`. `@Transactional`. Steps:
+   - `LoanAccount loanAccount = loanServicingSupportService.getLoanAccountForLsp(lspId, loanAccountId);` — tenant scope.
+   - Wrap the call in `lspApiIdempotencyService.runWithIdempotency(lspId, idempotencyKey, ...)` — same pattern `recordPayment`'s LSP path uses today.
+   - Delegate to `executeForeclosureQuote(loanAccount.getLoanApplication().getId(), quoteId, actorUsername, settlementDate, reference, note)`.
+   - Wrap edge-case throws (`IllegalArgumentException` for amount/date/ownership/status violations) and re-throw as a checked `BusinessRuleViolationException` carrying a `ScheduleViolationType`-style enum tag (or reuse `LspBoundsViolationType` if it exists in the alert framework) so the controller's exception handler can `emitLspBoundViolation` on the alert stream.
+3. **`service/LoanApplicationService`** — add the facade method `executeForeclosureQuoteForLsp(...)` if this is the seam other LSP service-calls go through. Otherwise call `LoanForeclosureCommandService.executeForeclosureQuoteForLsp(...)` directly from the controller.
+4. **`service/AlertRuleEvaluationService`** — new method `emitLspForeclosureBoundsViolation(Lsp lsp, UUID loanApplicationId, UUID quoteId, ForeclosureViolationType violationType, Map<String, Object> details)`. Mirrors the `emitLspBoundViolation` pattern from #62 PR (c). Fires one `LSP_BOUND_VIOLATION` alert per rejection; not deduped (per #62 PR (c)'s convention for write-path violations).
+5. **New `ForeclosureViolationType` enum** (or extend existing bound-violation types if there's a shared catalog): `QUOTE_NOT_ACTIVE`, `QUOTE_OWNERSHIP_MISMATCH`, `SETTLEMENT_DATE_MISMATCH`, `LOAN_ACCOUNT_NOT_DISBURSED`, `REFERENCE_MISSING`. Carried in alert `details.violationType`.
+6. **`service/LspApiIdempotencyService`** — no method change; the new endpoint uses the same pattern as `recordPayment`. Response stored under the idempotency key includes the `LoanForeclosureQuoteResponse` JSON.
+7. **`service/LoanForeclosureCommandService.executeForeclosureQuote`** (existing, line 132-218) — **no behavioural change**. The validators and webhook fire as today. The actor-username it captures will now be an LSP user identifier when invoked through the LSP path; audit row's actor field distinguishes.
+8. **No new audit event type.** `LoanApplicationAuditAction.FORECLOSURE_EXECUTED` already exists and is written by the shared service-method. Actor-username and authentication role will distinguish LSP-invoked vs admin-invoked rows in Audit Explorer.
+9. **No webhook change.** `LOAN_FORECLOSURE_COMPLETED` already fires; the LSP path uses the same hook. Yes, the LSP initiated, but the webhook is the system's confirmation — still useful for the LSP's back-office reconciliation.
+10. **Admin endpoint at `LoanApplicationOpsController.java:439-455`** — untouched. SYSTEM_ADMIN-only break-glass stays.
+
+Frontend:
+
+11. **LSP UI loan-detail page** — add "Execute foreclosure" button visible to `LSP_UI_WRITE`, hidden for `LSP_UI_READ`. Confirmation modal: shows the active quote's settlement amount, effective date (which must equal settlement date until #94 lands), reference field. Calls the new endpoint with a generated `Idempotency-Key`. On success, refresh loan-detail; on 422 with `LSP_BOUND_VIOLATION`, surface the `violationType` translated to a user-friendly message.
+12. **No admin UI change** — admin foreclosure-execute UI on the ops page stays as today.
+
+**What is NOT changing**
+
+- `LoanForeclosureCommandService.executeForeclosureQuote` (the shared service-method) — same validators, same audit row, same webhook. The LSP path is a thin wrapper around it.
+- Admin endpoint at `/internal/ops/.../foreclosure-quotes/{quoteId}/execute` — untouched. Break-glass remains.
+- Settlement-date strictness (`settlementDate.equals(quote.effectiveDate)` at line 159) — still strict. LSPs will hit the same strictness admins hit today. **#94's deferred fix loosens this when it lands**; not in scope for #74.
+- `requestForeclosureQuoteForLsp` (line 121-130) — untouched.
+- `WebhookEventType.LOAN_FORECLOSURE_COMPLETED` — fired by the LSP path too (same hook in the shared service-method).
+- Bank-statement reconciliation — not built today (also not built for LSP-driven `recordPayment`). LSP misuse risk for foreclosure parity is the same as for payments; mitigated by audit + alerts + the eventual reconciliation reporting work (separate ticket, post-launch).
+
+**Why not Option B (keep admin-only)**
+
+No underwriting/regulatory reason observed in code. Operational bottleneck for a workflow that other LSP-facing actions (payments, quote requests) already self-service. Asymmetric.
+
+**Why not Option C (admin approval queue)**
+
+Re-introduces the human-on-human maker-checker that #62 explicitly rejected. Builds queue infrastructure for a control the platform already decided to design out via rule-engine + alert-stream.
+
+**Why not Option D (worker-driven)**
+
+The disbursement worker exists because the disbursement adapter actually moves money — there's a real async fact (provider callback) the worker validates. Foreclosure has no equivalent async fact; the LSP IS the money-receiver. A worker would just rebroadcast the LSP's claim with extra latency.
+
+**Why not Option E (minimal RBAC-broadening only)**
+
+Smallest PR but leaves the LSP without idempotency (replay confusion on network retry → 422) and without observability on LSP misuse (ops can't detect a misbehaving LSP from the alert stream; would have to scan the audit table). The two missing controls have full implementations in adjacent endpoints already; pulling them into this PR is the right scope.
+
+**Why `Idempotency-Key` is required, not optional**
+
+Consistency with `recordPayment` (the other LSP write-path endpoint). LSP integrations should generate one key per logical retry attempt; the platform contract makes that explicit. Network-retry-on-foreclosure without idempotency could write a duplicate settlement row before the second attempt's `quote.status != ACTIVE` check fires — small but real risk on the strictly-additive payment ledger.
+
+**Why no new audit event type**
+
+The action is the same (`FORECLOSURE_EXECUTED`); only the actor role differs. Audit Explorer already surfaces actor + role per row. A separate `FORECLOSURE_EXECUTED_BY_LSP` value would split a single conceptual event into two for filter convenience that the existing actor-role filter already provides.
+
+**Why LSP_BOUND_VIOLATION fires on the LSP path only**
+
+The alert stream is the ops channel for LSP-attributable misbehaviour (per #62 PR (c)). Admin-invoked validations failing during ops cleanup are not LSP misbehaviour — they should appear in the audit trail (which they will) but not pollute the LSP-attribution alert stream. Same convention as #62 PR (c)'s disbursement-bound alerts.
+
+**Blast radius — files touched**
+
+- **Backend src:** `web/LspLoanApiController` (new endpoint + new record), `service/LoanForeclosureCommandService` (new wrapper method), `service/LoanApplicationService` (facade addition if used), `service/AlertRuleEvaluationService` (new emit method), new `ForeclosureViolationType` enum, `service/LspApiIdempotencyService` (no method change; same call pattern). No schema migration. No new domain entity.
+- **Backend test:** new `LspLoanApiControllerForeclosureExecuteTest` (RBAC, cross-tenant, idempotency, alert emit/no-emit), extension to `LoanForeclosureCommandServiceTest` (new wrapper method), `AlertRuleEvaluationServiceTest` extension (new emit method).
+- **Frontend:** LSP loan-detail page (button + confirmation modal + new `useExecuteForeclosure` hook), translation map for `ForeclosureViolationType`.
+
+**TDD plan (vertical slices, behaviour through public interfaces)**
+
+Tracer first; each test exercises a public surface.
+
+1. **TRACER — `lsp_can_execute_active_foreclosure_quote_and_loan_closes`.** Seed: a disbursed loan owned by `lsp-alpha`, an active foreclosure quote with effective-date=today, settlement amount equal to total outstanding. Authenticate as `LSP_API_CLIENT` for `lsp-alpha`. POST `/lsp/loans/{loanId}/foreclosure-quotes/{quoteId}/execute` with `Idempotency-Key: K1` and body `{ settlementDate: today, reference: "BNK-12345" }`. Assert 200 + response carries `status: EXECUTED`. Subsequent GET on the loan → `status: FORECLOSED`. Audit Explorer shows `FORECLOSURE_EXECUTED` row with actor = the LSP user. Webhook outbox has `LOAN_FORECLOSURE_COMPLETED` enqueued.
+2. `lsp_ui_write_role_can_execute`. Same flow with `LSP_UI_WRITE` token → 200.
+3. `lsp_ui_read_role_cannot_execute`. `LSP_UI_READ` → 403.
+4. `cross_tenant_lsp_cannot_execute_anothers_quote`. `lsp-beta` attempts to execute a quote belonging to `lsp-alpha`'s loan → 403/404 (via `getLoanAccountForLsp` rejection). No alert fired (cross-tenant rejection is filter-level, not LSP misuse).
+5. `idempotency_key_same_request_returns_cached_response_and_no_double_settlement`. POST with `Idempotency-Key: K1`, then immediately POST same body with same key → second response is byte-equivalent to the first; only one `LoanPaymentTransaction` row written; loan stays `FORECLOSED`.
+6. `idempotency_key_missing_returns_400`. POST without the header → 400. Locks in: header is required.
+7. `quote_not_active_returns_422_and_fires_LSP_BOUND_VIOLATION_alert`. Pre-supersede the quote, then attempt execute → 422 with `violationType: QUOTE_NOT_ACTIVE`; alert in stream tagged `lspCode: alpha`, `applicationId`, `quoteId`. Locks in alert emit.
+8. `wrong_settlement_amount_returns_422_and_fires_LSP_BOUND_VIOLATION`. Force a state where settling against an outstanding != quote.settlementAmount happens (e.g., a payment landed between quote-request and execute) → 422 with `violationType: SETTLEMENT_AMOUNT_MISMATCH` (or surfaces via the existing `allInstallmentsSettled` assertion) + alert.
+9. `settlement_date_before_or_after_quote_effective_date_returns_422_and_fires_LSP_BOUND_VIOLATION`. settlementDate != quote.effectiveDate → 422 with `violationType: SETTLEMENT_DATE_MISMATCH` + alert. (Reminder: #94 deferred; strict equality still applies here.)
+10. `admin_endpoint_still_executes_without_firing_LSP_BOUND_VIOLATION_on_same_failure_paths`. SYSTEM_ADMIN attempts to execute with wrong amount → 400/422 as today + audit row + **no** `LSP_BOUND_VIOLATION` alert. Locks in: admin path does not emit LSP-attributable alerts.
+11. `admin_endpoint_still_executes_happy_path`. Regression guard for existing admin behaviour.
+12. `executed_quote_fires_webhook_with_correct_payload`. Verifies `LOAN_FORECLOSURE_COMPLETED` payload shape matches what admin-path produces (no new event type; same shape).
+13. **Frontend — `lsp_loan_detail_page_shows_execute_foreclosure_button_for_LSP_UI_WRITE`.** Component test. Button absent for `LSP_UI_READ`.
+14. **Frontend — `execute_foreclosure_modal_generates_idempotency_key_per_attempt_and_passes_in_header`.** Mock fetch; assert the header value is present and changes between attempts.
+15. **Frontend — `LSP_BOUND_VIOLATION_response_surfaces_violationType_as_user_friendly_message`.** Mock 422 with `violationType: QUOTE_NOT_ACTIVE` → UI shows "This quote is no longer active. Request a new quote."
+
+**Mocking discipline**
+
+- `LoanForeclosureCommandService` / `LoanServicingSupportService` / `LoanApplicationLifecycleService` / `WebhookOutboxService` / `AlertRuleEvaluationService` — internal collaborators, **not** mocked. Tests drive real flows through the controller + H2.
+- `LspApiIdempotencyService` — internal, not mocked. Real instance; the idempotency-key test exercises real cache behaviour.
+- `Clock` — system boundary, mockable if a test needs deterministic timestamps for alert dedup windows (not strictly needed for #74's scope since alerts are not deduped per #62 PR (c)'s convention).
+- `JwtEncoder` — system boundary; real Spring config.
+- Frontend tests mock `fetch` only.
+
+**Tests deliberately NOT written here (owned elsewhere)**
+
+- Foreclosure-quote request flow → existing `requestForeclosureQuoteForLsp` tests.
+- Settlement-date loosening → owned by #94 (deferred).
+- Bank-statement reconciliation against LSP-claimed settlements → not in scope; separate post-launch ticket.
+- LSP-disable cascade reaction to repeated `LSP_BOUND_VIOLATION` alerts → owned by #63 (the disable-on-alert-threshold logic, if/when it lands).
+- Cross-tenant payment isolation → already tested under `LspLoanApiControllerTest`'s `recordPayment` matrix.
+
+**Pros / cons / regression / scale / structure recap**
+
+- **Effect on app:** LSPs close loans without admin involvement; admin endpoint remains as break-glass. LSP misuse (wrong amount, wrong date, replay) surfaces as `LSP_BOUND_VIOLATION` alerts attributable to the specific LSP, feeding the ops alert stream that #62 PR (c) shipped. Audit row carries the LSP user as actor.
+- **Pros:** symmetric with disbursement and `recordPayment`; reuses the existing service-method and idempotency framework; reuses #62's alert pipeline; no schema migration; no new webhook event; no new audit-event type.
+- **Cons:** LSP misuse risk parity with `recordPayment` (no bank-statement reconciliation today). Same residual as existing LSP write paths; not a regression. Mitigated by alerts.
+- **Regression risk:** low. Shared service-method untouched; new controller is additive; admin path untouched. Existing `LoanApplicationOpsControllerTest` foreclosure cases stay green.
+- **Scale impact:** one extra alert-emit on LSP-path violations (rare); no scheduled worker; no new DB queries beyond what the shared service-method already runs.
+- **Code structure impact:** +1 LSP controller endpoint, +1 service wrapper method, +1 alert-emit method, +1 violation-type enum, +1 request record. No god-class growth. `LspLoanApiController` gains one method (it's still small at 114 LoC); `LoanForeclosureCommandService` gains one method (~10 lines plus the violation-wrapping).
+- **Overengineering check:** no. No queue, no worker, no new audit type, no schema migration. The `Idempotency-Key` requirement and `LSP_BOUND_VIOLATION` alerts are consistent with adjacent surfaces, not speculative additions.
+
+**Dependencies / sequencing:** standalone. Builds on #62 PR (c)'s `LSP_BOUND_VIOLATION` infrastructure (already shipped) and on the existing `LspApiIdempotencyService` (already shipped, just hardened in the working tree by #86's PR). Coexists with #94 (deferred — strict settlement-date stays until #94 loosens it; LSPs hit the same strictness admins hit today). No interaction with the just-locked auth-cluster work (#155 / #80 / #132). Ships as a self-contained vertical slice.
 
 ---
 
@@ -3943,7 +4252,7 @@ Full design, decisions, test plan, and file list live in the **#130** entry abov
 ---
 
 ### #76 — Audit Explorer free-text + correlationId filter is client-side only
-**Labels:** gap, auditability · **Link:** https://github.com/sid12701/lms/issues/76 · **Status:** **OPEN** — plan grilled 2026-06-07, ready to implement (correlationId-focused; q pushdown deferred).
+**Labels:** gap, auditability · **Link:** https://github.com/sid12701/lms/issues/76 · **Status:** **CLOSED** (2026-06-07). Server-side `correlationId` filter on all 8 UNION branches; FE `loanApplicationId` filter bar + URL binding; removed client-side `passesClientFilters` and free-text `q` input. Tests: `AuditExplorerControllerTest` correlationId slices, `features/audit/api.test.ts`, `AuditFilterBar.test.tsx`.
 
 **Problem (plain English):** The UI filters apply only to the currently-loaded page of audit rows. Cross-page searches are impossible from the UI.
 
@@ -4161,7 +4470,7 @@ Also audit each file, component, module, and function linked to that feature, fi
 ---
 
 ### #80 — No admin "log out everywhere" / global JWT revocation
-**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/80
+**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/80 · **Status:** **OPEN** — plan locked 2026-06-07, ready to implement (Option A: per-user revocation, with reset-password and #155-lockout piggy-backs).
 
 **Problem (plain English):** No way to bulk-invalidate sessions during an incident.
 
@@ -4173,7 +4482,126 @@ Also audit each file, component, module, and function linked to that feature, fi
 
 **Effect on app:** Incident response gains a real control. Risk: misclick kicks everyone out.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-07):**
+
+**Decisions locked**
+
+- **Scope:** per-user revocation only (audit-doc Option 1). No global "kill everyone" button — deferred until a real incident-response need justifies the blast radius.
+- **Revocation reach:** both kill vectors — bump `AppUser.tokenVersion` (kills access JWTs on next request) AND revoke all of the user's refresh-token rows (kills the refresh path).
+- **Coupling with #155 (brute-force lockout):** lockout also bumps `tv` + revokes refresh tokens. A locked credential's live session is suspect; close that 5–15min window.
+- **Coupling with #148 (admin reset-password):** reset also bumps `tv` + revokes refresh tokens. Admin reset is almost always triggered by suspected compromise; the live session is suspect too. `ResetPasswordResponse` shape unchanged — revocation is a silent side-effect; audit captures it independently.
+- **Self-revoke:** allowed; the calling admin gets bounced to login on their next request. Useful for "my laptop got stolen, kill all my sessions including this one." No special-case branch in the endpoint.
+- **Reason field:** optional, same shape as #155's unlock endpoint.
+- **New endpoint:** `POST /api/v1/internal/admin/users/{userId}/revoke-sessions`, `SYSTEM_ADMIN`-only.
+
+**Code changes (per file/class)**
+
+Backend:
+
+1. **`AppUser` domain** — add public method `revokeAllSessions()` that increments `tokenVersion` (mirrors `ApiClient.revokeAllSessions()` at `ApiClient.java:173` and `Lsp.revokeAllSessions()` at `Lsp.java:114`). Remove the special-case bump-only-if-roles-changed branch inside `updateManagedProfile` and let callers decide explicitly when to revoke.
+2. **`domain/AuthEventType`** — add new value `SESSIONS_REVOKED_BY_ADMIN`.
+3. **New `RevocationSource` enum** (`com.bhawana.lms.domain` or alongside `SessionRevocationService`) — values: `ADMIN_EXPLICIT`, `ADMIN_RESET_PASSWORD`, `BRUTE_FORCE_LOCKOUT`. Distinguishes the trigger in the audit-row payload.
+4. **New `SessionRevocationService`** (`com.bhawana.lms.service`, `@Service`) — single public method:
+   - `RevocationResult revokeAllSessions(AppUser user, String actorUsername, String reasonOrNull, String actorIp, String correlationId, RevocationSource source)` — `@Transactional`.
+   - Body: capture `previousTokenVersion = user.getTokenVersion()`; call `user.revokeAllSessions()`; save; call `refreshTokenRepository.revokeAllForUser(user.getId())` (returns count); call `authAuditService.recordSessionsRevoked(user, actor, reason, ip, correlationId, source, previousTokenVersion, user.getTokenVersion(), refreshTokensRevoked)`; return `RevocationResult { previousTokenVersion, newTokenVersion, refreshTokensRevoked }`.
+   - Why a separate service: three callers (`AdminDirectoryService.revokeUserSessions`, `AdminDirectoryService.resetUserPassword`, `AuthAuditService` on lockout trigger). Centralising the kill in one place keeps the contract uniform and avoids drift.
+5. **`repo/RefreshTokenRepository`** — new method `int revokeAllForUser(UUID userId)` (bulk `UPDATE refresh_token SET revoked = true WHERE app_user_id = :userId AND revoked = false`). Returns count of rows updated.
+6. **`service/AuthAuditService`** — new method `recordSessionsRevoked(targetUser, actor, reasonOrNull, ip, correlationId, source, prevTv, newTv, refreshTokensRevoked)` writing a `SESSIONS_REVOKED_BY_ADMIN` row with these fields surfaced in the audit-event payload (so Audit Explorer can show the trigger source + counts).
+7. **`service/AdminDirectoryService`** — new method `revokeUserSessions(userId, actor, reasonOrNull, ip, correlationId) -> RevocationResult`. Loads target `AppUser`; delegates to `SessionRevocationService.revokeAllSessions(user, actor, reason, ip, correlationId, RevocationSource.ADMIN_EXPLICIT)`. Returns the result for the controller.
+8. **`service/AdminDirectoryService.resetUserPassword`** — at the end of the existing reset flow (after `appUserRepository.save(user)` and the audit-row write from #148), call `sessionRevocationService.revokeAllSessions(user, actor, "Password reset by admin", ip, correlationId, RevocationSource.ADMIN_RESET_PASSWORD)`. Two audit rows now: `PASSWORD_RESET_BY_ADMIN` (already in `app_user_audit_event`, from #148) AND `SESSIONS_REVOKED_BY_ADMIN` (new, in `auth_event_audit`). `ResetPasswordResponse` shape unchanged.
+9. **`web/UserAdminController`** — new endpoint `POST /api/v1/internal/admin/users/{userId}/revoke-sessions`. `@PreAuthorize` from class-level (`SYSTEM_ADMIN`) applies. Body: `RevokeSessionsRequest { reason: String (optional) }`. Returns `RevokeSessionsResponse { status: "OK", previousTokenVersion: long, newTokenVersion: long, refreshTokensRevoked: int }`. Extracts actor from `@AuthenticationPrincipal Jwt principal`, IP from `HttpServletRequest`, correlationId from `CorrelationIdHolder`.
+10. **`service/AuthAuditService.recordLoginFailure` (the #155 path)** — when the lockout branch fires (5th `INVALID_CREDENTIALS` in window), after `user.lockForFailedLogins(...)` and `appUserRepository.save(user)`, call `sessionRevocationService.revokeAllSessions(user, "system", "Account locked due to brute-force", actorIp, correlationId, RevocationSource.BRUTE_FORCE_LOCKOUT)`. The lockout audit row + the `AUTH_BRUTE_FORCE_USER` alert (already in #155's plan) + the new `SESSIONS_REVOKED_BY_ADMIN` row together tell the full story.
+11. **`service/AlertRuleEvaluationService`** — no change. The brute-force alert from #155 covers ops visibility; the revocation itself is an internal side-effect of the lockout, not a separately-alerting event.
+
+Frontend:
+
+12. **Admin Users page** — new "Revoke sessions" action button. Sits alongside the existing reset-password button and the #155 unlock button. Confirmation modal: "This will sign {{username}} out of every device. They will need to log in again. Continue?" Optional reason textarea. On success, toast: "Revoked {{n}} active sessions for {{username}}."
+13. **No change to the receive side** — existing 401 handling (single-flight refresh from #97 + session-context's `setSession(null)` on hard-401) already covers the user-experience of being kicked out. The user is bounced to login cleanly.
+
+**What is NOT changing**
+
+- Global "kill everyone" surface — not built. No `system_session_version` row, no validator change for a global counter. Pre-launch, the per-user path covers every realistic incident shape.
+- Per-LSP scoped revocation — out of scope. Can be done by iterating per-user when needed; LSP-side already covered for API clients via `LspStatusService` cascade (#63 / #79).
+- `SecurityConfig.managedUserSessionValidator` — untouched. The existing `tv` check at `SecurityConfig.java:285` already does the right thing once `AppUser.tokenVersion` bumps. #79 proved this pattern works.
+- `AppUser.updateManagedProfile`'s role-change bump — removed in favour of explicit caller-driven revocation. If a future caller needs to invalidate sessions on a role change, they call `sessionRevocationService.revokeAllSessions(...)` explicitly. Cleaner contract.
+- API-client revocation — already complete via #79. No new admin surface needed.
+- Notification to user (email "your sessions were revoked") — deferred. Adds template + delivery surface that doesn't yet exist for this event type. File as a follow-up if the operations team asks for it.
+
+**Why not Option B (per-user + global)**
+
+Global kill is genuinely dangerous: a misclick boots every operator out simultaneously, and the recovering admin can't log in because they were just logged out. The mitigations (typed confirmation phrase, second-admin gate, exclude-invoker carve-out) are real implementation surface for a control that pre-launch has no realistic trigger. Build it the day a real incident-response need exists, not before.
+
+**Why not Option C (per-user + per-LSP)**
+
+Per-LSP revoke for human users is a niche operation pre-launch. The same outcome is achievable today by iterating the per-user endpoint over `AppUser.lsp_id = X`. Re-evaluate once LSP offboarding becomes a recurring ops task.
+
+**Why not Option D (refresh-token only)**
+
+Leaves up to access-TTL of live session valid. Not a real revocation.
+
+**Why not Option F (status-change piggy-back only)**
+
+Couples revocation to status mutation. Admin who wants to revoke without flipping the user to INACTIVE has no path. Lockout (#155) and reset-password (#148) both want to revoke without changing status — they have no clean call site under F.
+
+**Why both vectors (tv + refresh)**
+
+Bumping `tv` alone kills access JWTs on next request, but the FE's next refresh attempt would succeed (the new JWT carries the new `tv`) and the user is right back in. True revocation needs both: the access path dies via `tv` mismatch, the refresh path dies via revoked refresh-token rows.
+
+**Why `SessionRevocationService` is its own service**
+
+Three call sites (explicit admin revoke, reset-password piggy-back, lockout piggy-back) with identical contract. Centralising the kill in one place keeps the audit-row shape and the two-vector revocation uniform; no drift if one caller forgets to revoke refresh tokens.
+
+**Blast radius — files touched**
+
+- **Backend src:** `AppUser` (domain), `AuthEventType` (enum), new `RevocationSource` enum, new `SessionRevocationService`, `RefreshTokenRepository`, `AuthAuditService` (new method + lockout hook), `AdminDirectoryService` (new method + reset piggy-back), `UserAdminController` (new endpoint + records).
+- **Backend test:** new `SessionRevocationServiceTest`, `UserAdminControllerTest` extension (revoke endpoint + RBAC), `AdminDirectoryServiceTest` extension (reset-now-revokes), `AuthControllerTest` extension (post-revoke access JWT 401s; post-revoke refresh 401s), integration coverage of the lockout-revokes hook via the existing #155 test surface.
+- **Frontend:** Admin Users page button + confirmation modal + new hook `useRevokeUserSessions`.
+- **No Flyway migration** — all required columns (`app_user.token_version`, `refresh_token.revoked`) already exist.
+
+**TDD plan (vertical slices, behaviour through public interfaces)**
+
+Tracer first; each test exercises a public surface.
+
+1. **TRACER — `admin_revokes_target_user_and_targets_access_jwt_immediately_401s`.** Seed user Sarah with a valid access JWT. SYSTEM_ADMIN POST `/users/{sarah}/revoke-sessions` with `{ reason: "Suspected compromise" }`. Assert 200 + response shows `refreshTokensRevoked >= 0`. Sarah's next authenticated request with the OLD access JWT → 401 `Session is no longer valid`. Locks in the end-to-end `tv` kill.
+2. `admin_revoke_also_revokes_refresh_tokens`. Same setup. After the revoke, Sarah's refresh-cookie-based POST `/auth/refresh` → 401 with `TOKEN_REVOKED` reason. Locks in the second kill vector.
+3. `admin_revoke_writes_SESSIONS_REVOKED_BY_ADMIN_audit_row_with_source_ADMIN_EXPLICIT`. Audit Explorer query by user → finds the row; payload carries `source: ADMIN_EXPLICIT`, `previousTokenVersion`, `newTokenVersion`, `refreshTokensRevoked`, `reason`, actor, IP, correlationId.
+4. `admin_revoke_with_no_reason_succeeds_and_audit_row_has_null_reason`. Optional-reason path.
+5. `admin_revoke_increments_tokenVersion_by_exactly_one`. Assert `previousTokenVersion + 1 == newTokenVersion`. Locks in: not a stamp-now-as-current-millis hack; deterministic bump.
+6. `admin_revoke_does_not_affect_other_users`. Seed Sarah AND Bob both with active JWTs. Revoke Sarah → Bob's request with Bob's JWT still 200; Bob's refresh token still works.
+7. `non_system_admin_cannot_revoke_sessions`. OPS_USER, LSP_API_CLIENT, PRODUCT_ADMIN → 403.
+8. `system_admin_can_revoke_own_sessions_and_gets_bounced_to_login_on_next_request`. Admin revokes self. Endpoint returns 200. Admin's next authenticated request with the admin's own old JWT → 401. Locks in self-revoke.
+9. `revoke_sessions_for_nonexistent_user_returns_404`. Locks in error shape.
+10. **Coupling — `admin_reset_password_now_also_revokes_sessions`.** Seed Sarah with valid JWT. SYSTEM_ADMIN POST `/users/{sarah}/reset-password`. Assert `ResetPasswordResponse` shape unchanged (still `{ id, username, temporaryPassword }`). Sarah's OLD access JWT now 401s. `auth_event_audit` has a new `SESSIONS_REVOKED_BY_ADMIN` row with `source: ADMIN_RESET_PASSWORD`. `app_user_audit_event` still has the `PASSWORD_RESET_BY_ADMIN` row from #148. Two rows, two streams.
+11. **Coupling — `brute_force_lockout_now_also_revokes_sessions`** (extends #155). Seed Sarah with valid JWT. 5 failed logins with wrong password → 5th audited as `INVALID_CREDENTIALS`. Sarah's OLD access JWT now 401s. `auth_event_audit` has `SESSIONS_REVOKED_BY_ADMIN` row with `source: BRUTE_FORCE_LOCKOUT`. Plus #155's `AUTH_BRUTE_FORCE_USER` alert fires. Closes the "compromised cred whose session is still live" window.
+12. `frontend_admin_users_page_shows_revoke_sessions_button_alongside_reset_and_unlock`. Component test that the row's action menu has all three actions; clicking revoke opens the confirmation modal.
+13. `frontend_revoke_sessions_confirmation_modal_requires_explicit_confirm`. Modal mounted; close-without-confirm → no API call. Confirm → POST fires with the typed reason in the body.
+
+**Mocking discipline**
+
+- `Clock` — not needed for this issue; no time-window logic in the revoke path.
+- `SessionRevocationService` — internal collaborator, **not** mocked from controller-level tests. Real instance against H2.
+- `AuthAuditService`, `RefreshTokenRepository`, `AppUserRepository` — internal, never mocked.
+- `JwtEncoder` — system boundary; real Spring config.
+- For the #155 piggy-back test, the brute-force evaluator from #155 is wired live; the test drives 5 real failed logins.
+
+**Tests deliberately NOT written here (owned elsewhere)**
+
+- Global "kill everyone" path → not built; no test.
+- `ApiClient` / `Lsp` revocation → covered by #79 / #63.
+- Brute-force threshold semantics → owned by #155.
+- Password-reset audit-row shape → owned by #148.
+
+**Pros / cons / regression / scale / structure recap**
+
+- **Effect on app:** admin gets a dedicated "Revoke sessions" button — a real incident-response control. Reset-password now implicitly revokes sessions (silent side-effect; admin's mental model of "fresh start" preserved). Brute-force lockout now also kills the live session, closing the compromised-cred-still-active window. Revoked users see a clean 401 + redirect to login on their next interaction; refresh cookie also dies.
+- **Pros:** reuses #79's `tv`-validator and the existing `revokeAllSessions()` pattern from `ApiClient` / `Lsp`. No new auth-pipeline surface. No Flyway migration. One `SessionRevocationService` centralises three call sites with identical contract.
+- **Cons:** removes the "bump tv only when roles changed" implicit behaviour in `updateManagedProfile`. Any caller relying on that implicit bump (none observed in audit) would need to explicitly revoke. Tracked by the regression test set.
+- **Regression risk:** low — the validator path is unchanged; the kill mechanism (`tokenVersion`) already exists and is exercised by #79; the only new behaviour is when it fires. Coupling changes to reset-password (#148) and lockout (#155) are additive (additional row written, additional revoke called); existing tests for both should remain green.
+- **Scale impact:** revoke is two writes per call (`AppUser` row update + bulk `refresh_token` update). Cheap; called at human-action frequency. Per-request overhead on the validator is unchanged (already reads `tv` from the same row).
+- **Code structure impact:** +1 service (`SessionRevocationService`), +1 admin endpoint, +1 admin service method, +1 repo method, +1 audit event type, +1 enum (`RevocationSource`), +1 domain method on `AppUser`. Two existing methods (`AdminDirectoryService.resetUserPassword`, `AuthAuditService.recordLoginFailure`'s lockout branch) get one additional service call each. No god-class growth.
+- **Overengineering check:** no. Single endpoint, no flags, no global counter, no per-LSP scope, no notification surface. The piggy-backs on #148 and #155 are free (one method call each) and they close real security gaps.
+
+**Dependencies / sequencing:** depends on #155 for the lockout piggy-back, and on #148's existing reset path. Both already locked (#148 closed, #155's plan locked in this session). #80 can ship before or after #155's implementation lands — if #155 ships first, the lockout piggy-back is a one-line addition; if #80 ships first, #155's `lockForFailedLogins(...)` block grows by one call when it lands. Either order works.
 
 ---
 
@@ -5302,7 +5730,7 @@ If we ever rip out the H2 test path (move everything to Testcontainers PG), the 
 ---
 
 ### #128 — [F-5] FE idempotency-key doesn't fingerprint body
-**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/128
+**Labels:** fragile-logic · **Link:** https://github.com/sid12701/lms/issues/128 · **Status:** **OPEN** — plan locked 2026-06-07 to close as "audit-doc misread, not a real bug." Ships regression tests (both lib-level and dialog-level) so the imagined bug can't be re-introduced by future refactors. Genuine retry-after-failure case captured in a separate follow-up issue. Corrects the cross-references in §#86 lines 1791 and 1909.
 
 **Problem (plain English):** Edits-then-double-click can submit two different bodies under the same key.
 
@@ -5311,7 +5739,117 @@ If we ever rip out the H2 test path (move everything to Testcontainers PG), the 
 
 **Recommended:** Option 1.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-07):**
+
+**Reframe — the audit-doc framing is wrong; the bug it describes does not exist in current code**
+
+Verified via systematic sweep across the FE on 2026-06-07. The audit-doc and the #86 cross-reference both assumed the FE holds idempotency keys stable across submits. **It doesn't.**
+
+What the verification found:
+
+1. **All ~25 submit dialogs** mint a fresh `newIdempotencyKey()` (`lib/idempotency.ts:10` → `crypto.randomUUID()`) **inside the submit handler**. Examples: `RepaymentPostDialog.tsx:143`, `DisbursementInitiateDialog.tsx:77`, `ForeclosureRequestDialog.tsx:71`, `TransitionConfirmDialog.tsx:125`, `LspCreateDialog.tsx:71`, `ApiClientCreateDialog.tsx:109`, `AcknowledgeAlertDialog.tsx:69`, `EscalateToAdminDialog.tsx:89`, `RotateSecretDialog.tsx:68`, `LspStatusChangeDialog.tsx:108`, `DocumentUploadRow.tsx:40`, `DocumentPreviewSheet.tsx:73, 80`. Every click of Submit produces a new UUID.
+2. **React Query hooks** (`usePostRepayment`, `useLoanApplicationMutations`, `useAcknowledgeAlert`, `useCreateReportRequest`) use `mutationFn: (input) => postX(id, input)` — args are passed fresh on each `mutate()` call. React Query's `useMutation` doesn't cache args between calls. No stable-key state held by the hook layer.
+3. **API layer** (`features/loan-applications/api-detail.ts:449-465`): accepts `input.idempotencyKey` if non-empty, else falls back to `newIdempotencyKey()`. The fallback is a defensive net; in practice every dialog passes one explicitly.
+4. **Read paths** (`api-tabs.ts:258` — `idempotencyKey: row.correlationId ?? row.id`): maps backend payment rows to display objects, **not** a write site. Preserves the original key for display.
+5. **Tests** (`usePostRepayment.test.tsx`, `useLoanApplicationMutations.test.tsx`): test the forwarding contract with hardcoded keys; don't constrain key generation behaviour.
+
+The "edits-then-double-click submits two different bodies under the same key" scenario **requires a stable-key code path that doesn't exist**. Two clicks of Submit produce two distinct UUIDs, regardless of whether the body changed between them.
+
+**Decisions locked**
+
+- **Status:** close #128 as "audit-doc misread, not a real bug."
+- **Regression tests in the close PR** (so a future contributor can't re-introduce the imagined bug):
+  - **Lib-level:** `lib/idempotency.test.ts` asserts `newIdempotencyKey()` returns distinct values across calls.
+  - **Dialog-level:** one representative dialog (e.g. `RepaymentPostDialog`) asserts that two distinct Submit clicks produce two distinct keys passed to `onConfirm`.
+- **Doc cleanup:** correct the two cross-references in §#86 (lines 1791 and 1909) that carried the audit-doc misread forward. Done as part of the close PR.
+- **Follow-up issue filed** for the genuine **retry-after-network-failure** double-submit case: different keys for same body → server treats as independent requests → double action. Real but rare; pre-launch with no live users it doesn't bite; tracked separately so it doesn't get lost.
+- **No body-fingerprinting fix in FE.** The audit-doc's recommended `key = uuid + sha1(body)` solves a problem we don't have today. Composes with #86's server-side body-fingerprint defence (in the working tree) — but adds ~25 call-site updates + async-aware key generation for marginal benefit pre-launch.
+- **GitHub comment posted on #128** explaining the verification + the close + linking to the follow-up issue.
+
+**Code changes (per file/class)**
+
+Frontend tests only (no source changes):
+
+1. **`frontend/src/lib/idempotency.test.ts`** — add test `newIdempotencyKey_returns_distinct_values_across_calls`. Calls the function N times (e.g. 100), asserts the set of returned values has size N. Defends against a future "memoise for performance" refactor that would break the contract.
+2. **`frontend/src/components/app/repayment/RepaymentPostDialog.test.tsx`** (or a new representative test) — add test `two_distinct_submit_clicks_produce_two_distinct_idempotency_keys`. Renders the dialog, fills the form, clicks Submit, captures the first `onConfirm` call's `idempotencyKey`. Resets `onConfirm` spy state, simulates a second submit (after the first resolves), captures the second key. Asserts the two keys differ. Defends against a future "capture key at dialog open" or "useRef-cache key for the whole dialog lifetime" refactor.
+3. **No production source changes.** The current behaviour IS the desired behaviour.
+
+Doc cleanup:
+
+4. **`bugs-gaps-audit-fixes.md` line 1791** (§#86 "Cross-issue impact"): replace the misread claim with the verified facts. Done.
+5. **`bugs-gaps-audit-fixes.md` line 1909** (§#86 "Dependencies / sequencing — #128"): replace the misread claim with the verified facts + the retry-after-failure reframe. Done.
+
+Follow-up issue (filed on GitHub, separate from this close):
+
+6. **New issue:** "FE retry-after-network-failure can produce duplicate write actions (different keys, same body)". Body captures: (a) the genuine residual bug — two Submit clicks across a network failure produce two distinct keys for the same body; (b) server-side defence does not catch this (different keys = independent requests); (c) candidate fixes (per-attempt key in `useRef` cleared on edit/success; OR audit-doc literal `uuid + sha256(body)`); (d) trigger to address — first real complaint about duplicate writes; (e) cross-link to #128 (closed) and #86. Label `fragile-logic, post-launch`.
+
+GitHub close-comment on #128:
+
+7. **Posted via `gh issue comment 128`** with the verification facts, the close rationale, the regression-test plan, the corrected #86 cross-references, and the follow-up issue link.
+
+**What is NOT changing**
+
+- `lib/idempotency.ts` source — no body-fingerprinting; no signature change.
+- Any dialog source — no per-attempt-key state added; no body-hashing.
+- React Query hooks — no caching changes.
+- API layer — `api-detail.ts` fallback behaviour unchanged.
+- Server-side fingerprinting (#86's PR in working tree) — unchanged, ships as planned. Independent of this close.
+- No `useIdempotencyKey` hook introduced.
+- No client-side debouncing changes (dialogs already use `disabled={loading}` to block in-flight double-click; confirmed at `RepaymentPostDialog.tsx:260`).
+
+**Why not Option A (uuid + sha256(body))**
+
+Audit-doc literal. Adds ~25 call-site updates and async-aware key generation for a bug that doesn't currently exist. Future-proofs against a "capture key at dialog open" refactor — but the regression tests in the close PR do that more directly, with less surface area. Compose-with-#86 argument is weak: #86 already handles server-side body fingerprinting; the FE doesn't need to duplicate.
+
+**Why not Option B (per-attempt useRef key cleared on edit)**
+
+Solves the genuine retry-after-failure case but at per-dialog state-management cost. Easy to forget the "clear on edit" hook in a new dialog — re-introducing the imagined bug. Better tracked separately if and when retry-after-failure becomes a real complaint.
+
+**Why not "defer" like #142**
+
+#142 has a real bug that doesn't bite at our current deployment topology. #128 has a non-bug — the audit-doc misread reality. "Defer" is the wrong shape; "close as not a bug + tests + doc correction" is honest.
+
+**Why file a separate issue for retry-after-failure**
+
+Keeps the audit trail clean: #128's close reflects the verified truth ("not a bug as named"), and the genuine but distinct gap (retry-after-failure) has its own ticket with its own design space. Avoids re-conflating two different scenarios under one issue.
+
+**Blast radius — files touched**
+
+- **FE source:** none.
+- **FE tests:** +1 lib test (`idempotency.test.ts`), +1 dialog test (`RepaymentPostDialog.test.tsx` or a fresh test class).
+- **Tracker doc:** §#128 (this section) + §#86 (lines 1791, 1909 — done).
+- **GitHub:** 1 close-comment on #128 + 1 new follow-up issue.
+
+**TDD plan**
+
+This is a close-as-not-a-bug; the tests are regression guards, not features. Two slices:
+
+1. **TRACER — `newIdempotencyKey_returns_distinct_values_across_calls`** (`lib/idempotency.test.ts`). Call `newIdempotencyKey()` 100 times; assert the Set of returned values has size 100. Locks in: helper never memoises, even across rapid sequential calls.
+2. **`two_distinct_submit_clicks_produce_two_distinct_idempotency_keys`** (`RepaymentPostDialog.test.tsx`). Render dialog; fill form; click Submit; capture first `onConfirm`'s `idempotencyKey`; reset spy; (await first promise resolution); click Submit again; capture second key; assert they differ. Locks in: a future "capture key at dialog open" or "useRef-cache for the dialog lifetime" refactor breaks this test loudly.
+
+**Mocking discipline**
+
+- `crypto.randomUUID` — system boundary in Node 20+ and browsers; not mocked in either test. The lib test relies on real entropy (Set-size assertion is a probabilistic but practically deterministic check).
+- React Query / form library / dialog primitives — not mocked. Real instances; standard React Testing Library + Vitest.
+- `onConfirm` — the dialog's prop; spied with a captor for the dialog test.
+
+**Tests deliberately NOT written here (owned elsewhere)**
+
+- Server-side body-fingerprint mismatch returning 409 → owned by #86 (in working tree).
+- Retry-after-network-failure double-submit → owned by the new follow-up issue.
+- `disabled={loading}` button discipline across every dialog → not audited in this PR (existing pattern is consistent in the sampled dialogs).
+
+**Pros / cons / regression / scale / structure recap**
+
+- **Effect on app:** zero behavioural change. Regression tests added; doc inconsistency corrected; genuine retry-after-failure gap tracked separately.
+- **Pros:** honest close (no speculative code for a non-bug); cheap regression guards future-proof against the imagined bug; doc cleanup prevents the misread from propagating.
+- **Cons:** doesn't address the retry-after-failure gap (intentional — separate issue).
+- **Regression risk:** none. Test-only PR + doc edits.
+- **Scale impact:** none.
+- **Code structure impact:** +2 small tests. Doc edits to 3 sections (this section + 2 lines in §#86).
+- **Overengineering check:** no. Tightest possible close shape — verified the bug doesn't exist, locked in via tests, corrected the doc, filed the real bug separately.
+
+**Dependencies / sequencing:** standalone. Doesn't block or depend on any other issue. Composes with #86 (in working tree) — #86's server-side body-fingerprinting is an independent defence layer that doesn't relate to FE key generation.
 
 ---
 
@@ -5330,7 +5868,7 @@ If we ever rip out the H2 test path (move everything to Testcontainers PG), the 
 ---
 
 ### #132 — [F-9] Refresh revoke-then-issue can log user out if issue fails
-**Labels:** fragile-logic, security · **Link:** https://github.com/sid12701/lms/issues/132
+**Labels:** fragile-logic, security · **Link:** https://github.com/sid12701/lms/issues/132 · **Status:** **OPEN** — plan locked 2026-06-07, ready to implement (Option A: audit-doc fix is already shipped via `@Transactional`; lock in with regression tests + expose `TOKEN_REVOKED` reason in the 401 body; defer grace-window to a post-launch follow-up issue).
 
 **Problem (plain English):** Revoke happens before issue. If issue fails, prior token is already revoked.
 
@@ -5340,7 +5878,125 @@ If we ever rip out the H2 test path (move everything to Testcontainers PG), the 
 
 **Recommended:** Option 1.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-07):**
+
+**Reframe — the audit-doc fix is already shipped**
+
+The audit doc framed this as "revoke-then-issue is fragile; make it atomic." Reading the code: **`AuthController.refresh` is already `@Transactional` (`AuthController.java:129`)** and the revoke is implemented as `existing.revoke(); refreshTokenRepository.save(existing)` (lines 177-178). Spring's JPA save on an updated managed entity is in-memory only until commit; the SQL UPDATE flushes at method exit. So any `RuntimeException` between the revoke and the response build rolls back the revoke. The audit-doc's recommended Option 1 is therefore the current implementation; the issue's framing was incomplete.
+
+**The actual residual bug** is rarer and different: **mid-response-failure.** After the method returns and the TX commits, the response packet can be lost (flaky wifi, browser killed mid-response, server crash between commit and response send). The new cookie never reaches the client; on the next refresh attempt the client presents the OLD cookie, which is durably revoked in the DB → 401 → bounced to login. `@Transactional` cannot help here because by the time the response is in flight, the TX is already committed.
+
+**Decisions locked**
+
+- **Scope:** confirm + lock in the already-shipped atomic behaviour with explicit regression tests (audit-doc Option 1 — verified, not re-built).
+- **Surface tightening:** expose `TOKEN_REVOKED` (and the other failure reasons) in the 401 response body so future grace-window or client-side recovery work has the signal it needs. Today the 401 is bare.
+- **Grace window (audit-doc Option 2):** **deferred to a new follow-up issue** targeted post-launch. Captures the design (schema, chain logic, coordination with #80's `SessionRevocationService`) so the next person doesn't re-derive it. Closes the door cleanly without building speculative complexity now.
+- **No audit-payload `rotation_path` field** and **no preemptive metric counter** — both were on the table for forward-compatibility but explicitly rejected. Keep the PR minimal.
+
+**Code changes (per file/class)**
+
+Backend:
+
+1. **`web/AuthController.java`** — no behavioural change to the refresh path itself. Modify the four 401 return sites in `refresh` (lines 144, 156, 165, 174, 201) from `ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()` to `ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new RefreshFailureResponse(<reason>))` where `<reason>` is the same `AuthEventFailureReason` already passed to the audit service one line above. Add a tiny `public record RefreshFailureResponse(String code, String message)` next to the existing `TokenResponse` record.
+   - `MISSING_REFRESH_COOKIE` → `{ code: "MISSING_REFRESH_COOKIE", message: "Refresh cookie is missing" }`
+   - `TOKEN_EXPIRED` (when `findByTokenHash` returns null OR `expiresAt` is past) → `{ code: "TOKEN_EXPIRED", message: "Refresh token has expired" }`
+   - `TOKEN_REVOKED` → `{ code: "TOKEN_REVOKED", message: "Refresh token was revoked" }`
+   - `OTHER` (the bottom-of-method else-branch at line 201) → `{ code: "REFRESH_INVALID", message: "Refresh token is invalid" }`
+2. **No new audit event type, no schema migration, no new service.**
+
+Frontend:
+
+3. **`frontend-2/src/lib/api/http-client.ts` / `auth-service.ts`** — read the `code` field on a refresh 401 and surface it to `session-context`. Today the FE only sees the bare 401. With the body shape, we can distinguish "your session naturally expired" from "you were revoked" in the eventual UX (post-launch grace-window or improved login prompt). No behaviour change in this PR — just parse and stash the code; the existing `setSession(null)` flow is unchanged.
+4. **No UI text change in this PR.** The login screen's "session expired" message stays as-is; differentiating the messages by reason is a follow-up UX task.
+
+Follow-up issue to file:
+
+5. **New issue: "Add refresh-token grace window for mid-response-drop recovery."** Body captures: (a) the residual bug (post-commit response loss), (b) the audit-doc Option 2 design (schema fields `superseded_at`, `replacement_token_hash`, `revocation_reason`; chain traversal in the handler), (c) the constraint that #80's `SessionRevocationService` revokes must be `revocation_reason = EXPLICIT` and grace-ineligible, (d) the recommended grace window of 30s, (e) the small replay surface (attacker with stolen cookie within 30s of legitimate refresh can mint a fresh pair). Label `fragile-logic, security, post-launch`. Cross-link to #132 closure, #80, #97.
+
+**What is NOT changing**
+
+- `@Transactional` on `refresh` — already correct.
+- Revoke-then-issue ordering — fine inside a single TX.
+- `RefreshToken` domain model — no new columns.
+- `AuthAuditService.recordTokenRefreshFailure` — already captures the failure reason in `auth_event_audit`; the new body field is a parallel surface for the FE, not a replacement.
+- `SecurityConfig.managedUserSessionValidator` — untouched.
+- `AuthEventType` enum — no new value.
+- API client refresh path (`existing.getApiClient() != null` branch) — same `@Transactional` guarantee applies; same body shape applies.
+- FE single-flight refresh + proactive refresh from #97 — untouched.
+
+**Why not Option B (grace window) in this PR**
+
+Real complexity: schema migration, repo updates, chain traversal in the hot refresh path, careful coordination with #80's explicit-revoke semantics, audit-event addition, small replay window to defend in tests. The bug it fixes is rare (genuine mid-response network drop) and self-recoverable (user logs back in once). Pre-launch, with no live users, the design surface outweighs the user impact. Capture in a follow-up so the homework isn't lost.
+
+**Why not Option C (defer the revoke)**
+
+Defer-revoke creates a race where a concurrent request with the old cookie between response-send and the deferred revoke succeeds. That's a security regression, not a fix. Rejected.
+
+**Why not Option D (FE retry on 401 TOKEN_REVOKED)**
+
+A 500ms retry doesn't actually fix anything — if the server committed the revoke, the second attempt also 401s. Adds UX latency for no real recovery. Only marginally useful if the server somehow committed the new token but lost the response AND a second refresh hits a different replica with a fresher DB view — too narrow to design for.
+
+**Why not Option E (close as 'covered by #97')**
+
+#97 shrunk the surface but didn't address the residual mid-response case. Closing without acknowledging the gap leaves the next contributor to re-discover it. Option A's regression tests + the deferred follow-up issue close the loop properly.
+
+**Why expose `TOKEN_REVOKED` in the 401 body now**
+
+It's a forward-compatible signal. The grace-window follow-up will need the FE to distinguish "naturally expired" from "revoked" — adding the body shape now means the FE wire contract doesn't change when grace-window lands. Tiny addition (~10 lines), no behaviour cost.
+
+**Why no audit-payload `rotation_path` field and no metric counter**
+
+Both would be forward-compatible hooks for the grace-window work. Per the locked decision (keep PR minimal), they're explicitly rejected — they're easy to add in the grace-window PR when there's actual `rotation_path` variation to record, and metric counters with constant value 0 are observability noise.
+
+**Blast radius — files touched**
+
+- **Backend src:** `web/AuthController.java` only — four `.body(...)` additions + one new record `RefreshFailureResponse`. No service, no repo, no domain, no migration.
+- **Backend test:** new `AuthControllerRefreshAtomicityTest` (4 tests below) + extension to existing `AuthControllerTest` for the new response-body shape.
+- **Frontend:** `http-client.ts` / `auth-service.ts` adds a body parse on the 401 refresh path; stashes `code` in session-context for future readers; no UI text change.
+- **Process:** one new issue filed for the deferred grace-window work.
+
+**TDD plan (vertical slices, behaviour through public interfaces)**
+
+Tracer first. Each test exercises a public surface; no internal mocking beyond declared system boundaries.
+
+1. **TRACER — `refresh_throws_during_mint_and_old_token_remains_unrevoked`.** Seed an active refresh token for a user. Replace `jwtEncoder` with a spy that throws `RuntimeException("mint failure")` on `encode(...)` (JWT encoder is a system boundary per the mocking guide). POST `/auth/refresh` with the valid cookie → 500. Query `refresh_token` by the same hash → `revoked = false`, row intact. Re-attempt POST `/auth/refresh` with the SAME cookie → 200 + new pair returned. Locks in: `@Transactional` rollback covers the audit-doc's scenario.
+2. `refresh_throws_during_new_token_save_and_old_token_remains_unrevoked`. Spy on `RefreshTokenRepository.save(...)` to throw on the SECOND save (the new-token write at lines 186 or 191). The first save (revoke of existing) was a managed-entity update; the second save is the new row insert. POST → 500. Old token row unchanged; no new row inserted. Locks in: both saves participate in the same TX.
+3. `refresh_throws_during_audit_success_write_and_old_token_remains_unrevoked`. Spy `AuthAuditService.recordTokenRefreshSuccess(...)` to throw. POST → 500. Old token unchanged; no new token row. Defends against future contributors moving the audit write outside the TX.
+4. `api_client_refresh_throws_during_lookupByClientId_and_old_token_remains_unrevoked`. Same property on the API-client branch. Force `apiClientAuthenticationService.lookupByClientId(...)` to throw mid-flow. Old token preserved. Locks in: both AppUser and ApiClient refresh paths are atomic.
+5. `refresh_401_with_missing_cookie_returns_code_MISSING_REFRESH_COOKIE_in_body`. POST `/auth/refresh` without cookie → 401 + `{ code: "MISSING_REFRESH_COOKIE", message: "..." }`. Locks in body shape.
+6. `refresh_401_with_unknown_cookie_returns_code_TOKEN_EXPIRED_in_body`. POST with a cookie whose hash doesn't match any row → 401 + `{ code: "TOKEN_EXPIRED" }`. Matches the existing audit-row reason.
+7. `refresh_401_with_revoked_cookie_returns_code_TOKEN_REVOKED_in_body`. Seed a token, mark revoked, POST with its cookie → 401 + `{ code: "TOKEN_REVOKED" }`. Critical for the eventual grace-window FE behaviour.
+8. `refresh_401_with_expired_cookie_returns_code_TOKEN_EXPIRED_in_body`. Seed a token with `expires_at` in the past → 401 + `{ code: "TOKEN_EXPIRED" }`.
+9. `refresh_401_with_orphan_token_returns_code_REFRESH_INVALID_in_body`. Token with neither `appUser` nor `apiClient` (edge case at line 194-202) → 401 + `{ code: "REFRESH_INVALID" }`.
+10. `frontend_http_client_parses_refresh_401_body_and_stashes_code`. Unit test in `http-client.test.ts`: stub `fetch` to return 401 with `{ code: "TOKEN_REVOKED" }`; assert the parsed code is surfaced (e.g. via the rejection error's `code` property or stashed in session-context for downstream readers). Locks in the FE wire contract.
+
+**Mocking discipline**
+
+- `JwtEncoder` — system boundary; spying with a throwing implementation is fine and necessary for the atomicity tests.
+- `RefreshTokenRepository` — internal collaborator; **not** mocked for the body-shape tests (real H2 row). For the atomicity tests, a controlled throw is necessary to force the failure mode — done via a `@SpyBean` or a test-time replacement that defers to the real bean except for the targeted call. Repository contract itself is not mocked away.
+- `AuthAuditService` — internal collaborator; not mocked for body-shape tests. Spied with a throw for test 3.
+- `ApiClientAuthenticationService` — internal; spied with a throw for test 4.
+- `Clock` — not needed; no time-window logic in this PR.
+
+**Tests deliberately NOT written here (owned elsewhere)**
+
+- Grace-window behaviour → owned by the new follow-up issue (B-design).
+- Concurrent-tab refresh race → owned by #97 (single-flight).
+- Mid-response network-drop simulation → not testable without infrastructure-level fault injection; documented in the follow-up issue as the trigger.
+- Backend rotation strict-ordering correctness → existing `AuthControllerRefreshTest`.
+- API-client `tv` mismatch enforcement → owned by #79.
+
+**Pros / cons / regression / scale / structure recap**
+
+- **Effect on app:** zero user-visible behaviour change in the refresh path. Body shape change on the 401 is additive (a 401 with an unknown body field is still a 401 to any consumer). FE gains a typed `code` field for downstream UX work.
+- **Pros:** confirms the audit-doc's recommended fix is already shipped; locks it in against future regression; tiny forward-compatible signal for the deferred grace-window work; minimal PR surface.
+- **Cons:** does not actually close the residual mid-response-failure bug. Acknowledged and deferred via the follow-up issue.
+- **Regression risk:** very low — body-shape change is additive; atomicity tests verify existing behaviour. The risk surface is the four `.body(...)` additions in the controller, all in identical shape.
+- **Scale impact:** none. Tests add no runtime work. The new record is a single JSON allocation on 401 paths.
+- **Code structure impact:** +1 record on `AuthController` (~6 lines). +4 `.body(...)` calls (4 lines). +1 test class (~150 lines). +FE parse logic (~10 lines). No new services, repos, domains, migrations, or enums.
+- **Overengineering check:** no. Smallest possible PR that closes the audit-doc framing properly. The forward-compatible signal (`code` field) is genuinely useful even without grace-window.
+
+**Dependencies / sequencing:** standalone. Locks in atomicity property that #80 (just locked) relies on (its `SessionRevocationService` writes the new refresh-token revoke inside the admin endpoint's TX). #97 already shipped FE single-flight; this PR is the backend-side complement. Follow-up grace-window issue depends on this PR's body-shape and on #80 being in place to mark explicit revokes as grace-ineligible.
 
 ---
 

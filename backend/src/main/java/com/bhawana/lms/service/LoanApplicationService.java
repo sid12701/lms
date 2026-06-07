@@ -960,6 +960,27 @@ public class LoanApplicationService {
     }
 
     @Transactional
+    public LoanForeclosureQuote executeForeclosureQuoteForLsp(
+            UUID lspId,
+            UUID loanAccountId,
+            UUID quoteId,
+            String actorUsername,
+            LocalDate settlementDate,
+            String reference,
+            String note
+    ) {
+        return loanForeclosureCommandService.executeForeclosureQuoteForLsp(
+                lspId,
+                loanAccountId,
+                quoteId,
+                actorUsername,
+                settlementDate,
+                reference,
+                note
+        );
+    }
+
+    @Transactional
     public List<LoanApplicationIntakeAudit> listIntakeAudits(UUID applicationId, String actorUsername) {
         LoanApplication application = getApplication(applicationId);
         loanApplicationDocumentAccessAuditRepository.save(new LoanApplicationDocumentAccessAudit(

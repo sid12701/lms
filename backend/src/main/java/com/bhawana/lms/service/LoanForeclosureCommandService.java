@@ -4,6 +4,7 @@ import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanAccountStatus;
+import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
@@ -19,8 +20,11 @@ import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +37,7 @@ public class LoanForeclosureCommandService {
     private final LoanServicingSupportService loanServicingSupportService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final WebhookOutboxService webhookOutboxService;
+    private final AlertRuleEvaluationService alertRuleEvaluationService;
 
     public LoanForeclosureCommandService(
             LoanForeclosureQuoteRepository loanForeclosureQuoteRepository,
@@ -40,7 +45,8 @@ public class LoanForeclosureCommandService {
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanServicingSupportService loanServicingSupportService,
             LoanApplicationLifecycleService loanApplicationLifecycleService,
-            WebhookOutboxService webhookOutboxService
+            WebhookOutboxService webhookOutboxService,
+            @Lazy AlertRuleEvaluationService alertRuleEvaluationService
     ) {
         this.loanForeclosureQuoteRepository = loanForeclosureQuoteRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
@@ -48,6 +54,7 @@ public class LoanForeclosureCommandService {
         this.loanServicingSupportService = loanServicingSupportService;
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.webhookOutboxService = webhookOutboxService;
+        this.alertRuleEvaluationService = alertRuleEvaluationService;
     }
 
     @Transactional
@@ -127,6 +134,53 @@ public class LoanForeclosureCommandService {
     ) {
         LoanAccount loanAccount = loanServicingSupportService.getLoanAccountForLsp(lspId, loanAccountId);
         return requestForeclosureQuote(loanAccount.getLoanApplication().getId(), actorUsername, effectiveDate);
+    }
+
+    @Transactional
+    public LoanForeclosureQuote executeForeclosureQuoteForLsp(
+            UUID lspId,
+            UUID loanAccountId,
+            UUID quoteId,
+            String actorUsername,
+            LocalDate settlementDate,
+            String reference,
+            String note
+    ) {
+        LoanAccount loanAccount = loanServicingSupportService.getLoanAccountForLsp(lspId, loanAccountId);
+        LoanApplication application = loanAccount.getLoanApplication();
+        try {
+            return executeForeclosureQuote(
+                    application.getId(),
+                    quoteId,
+                    actorUsername,
+                    settlementDate,
+                    reference,
+                    note
+            );
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            ForeclosureViolationType violationType = resolveForeclosureViolationType(exception);
+            Map<String, String> details = new LinkedHashMap<>();
+            details.put("quoteId", quoteId.toString());
+            if (settlementDate != null) {
+                details.put("settlementDate", settlementDate.toString());
+            }
+            if (reference != null) {
+                details.put("reference", reference);
+            }
+            alertRuleEvaluationService.emitLspForeclosureViolation(
+                    application,
+                    violationType,
+                    exception.getMessage(),
+                    details
+            );
+            Map<String, String> fieldErrors = new LinkedHashMap<>();
+            fieldErrors.put("violationType", violationType.name());
+            throw new BusinessRuleViolationException(
+                    "LSP_BOUND_VIOLATION",
+                    exception.getMessage(),
+                    fieldErrors
+            );
+        }
     }
 
     @Transactional
@@ -215,5 +269,32 @@ public class LoanForeclosureCommandService {
                 loanApplicationLifecycleService.buildForeclosurePayload(application, loanAccount, quote)
         );
         return quote;
+    }
+
+    private static ForeclosureViolationType resolveForeclosureViolationType(RuntimeException exception) {
+        String message = exception.getMessage();
+        if (message == null) {
+            return ForeclosureViolationType.FORECLOSURE_GENERIC;
+        }
+        if (message.startsWith("Only an active foreclosure quote")) {
+            return ForeclosureViolationType.QUOTE_NOT_ACTIVE;
+        }
+        if (message.startsWith("Foreclosure quote does not belong")
+                || message.startsWith("Unknown foreclosure quote id")) {
+            return ForeclosureViolationType.QUOTE_OWNERSHIP_MISMATCH;
+        }
+        if (message.startsWith("Settlement date must match")) {
+            return ForeclosureViolationType.SETTLEMENT_DATE_MISMATCH;
+        }
+        if (message.startsWith("Foreclosure can only be executed for an active disbursed loan account")) {
+            return ForeclosureViolationType.LOAN_ACCOUNT_NOT_DISBURSED;
+        }
+        if (message.startsWith("Payment reference is required")) {
+            return ForeclosureViolationType.REFERENCE_MISSING;
+        }
+        if (message.startsWith("Foreclosure settlement did not fully settle")) {
+            return ForeclosureViolationType.SETTLEMENT_INCOMPLETE;
+        }
+        return ForeclosureViolationType.FORECLOSURE_GENERIC;
     }
 }

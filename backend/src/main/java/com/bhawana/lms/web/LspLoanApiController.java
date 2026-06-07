@@ -3,6 +3,7 @@ package com.bhawana.lms.web;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.service.LoanApplicationService;
+import com.bhawana.lms.service.LspApiIdempotencyService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
@@ -22,10 +23,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/lsp/loans")
 public class LspLoanApiController {
 
-    private final LoanApplicationService loanApplicationService;
+    private static final String FORECLOSURE_EXECUTE_OPERATION_KEY = "FORECLOSURE_EXECUTE";
 
-    public LspLoanApiController(LoanApplicationService loanApplicationService) {
+    private final LoanApplicationService loanApplicationService;
+    private final LspApiIdempotencyService lspApiIdempotencyService;
+
+    public LspLoanApiController(
+            LoanApplicationService loanApplicationService,
+            LspApiIdempotencyService lspApiIdempotencyService
+    ) {
         this.loanApplicationService = loanApplicationService;
+        this.lspApiIdempotencyService = lspApiIdempotencyService;
     }
 
     @GetMapping("/{loanId}")
@@ -109,6 +117,51 @@ public class LspLoanApiController {
         return LoanApplicationOpsResponses.toForeclosureQuoteResponse(quote);
     }
 
+    @PostMapping("/{loanId}/foreclosure-quotes/{quoteId}/execute")
+    @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_WRITE')")
+    public LoanApplicationOpsController.LoanForeclosureQuoteResponse executeForeclosureQuote(
+            Authentication authentication,
+            @PathVariable UUID loanId,
+            @PathVariable UUID quoteId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody LoanApplicationOpsController.LoanForeclosureExecutionRequest request
+    ) {
+        UUID lspId = LspAuthenticationSupport.authenticatedLspId(authentication);
+        return lspApiIdempotencyService.execute(
+                lspId,
+                FORECLOSURE_EXECUTE_OPERATION_KEY,
+                idempotencyKey,
+                new ForeclosureExecuteIdempotencyFingerprint(
+                        loanId.toString(),
+                        quoteId.toString(),
+                        request.settlementDate().toString(),
+                        request.reference(),
+                        request.note()
+                ),
+                LoanApplicationOpsController.LoanForeclosureQuoteResponse.class,
+                () -> LoanApplicationOpsResponses.toForeclosureQuoteResponse(
+                        loanApplicationService.executeForeclosureQuoteForLsp(
+                                lspId,
+                                loanId,
+                                quoteId,
+                                authentication.getName(),
+                                request.settlementDate(),
+                                request.reference(),
+                                request.note()
+                        )
+                )
+        );
+    }
+
     public record LspLoanForeclosureQuoteRequest(@NotNull LocalDate effectiveDate) {
+    }
+
+    private record ForeclosureExecuteIdempotencyFingerprint(
+            String loanAccountId,
+            String quoteId,
+            String settlementDate,
+            String reference,
+            String note
+    ) {
     }
 }
