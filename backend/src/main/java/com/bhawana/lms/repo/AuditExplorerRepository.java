@@ -82,6 +82,11 @@ public class AuditExplorerRepository {
         return reportAccessFilterPayloadLspIdExpression() + " = cast(:__lspId as uuid)";
     }
 
+    private static String correlationIdPredicate(String columnRef) {
+        return "and (cast(:__correlationId as varchar(128)) is null or "
+                + columnRef + " = cast(:__correlationId as varchar(128)))";
+    }
+
     public PagedResult<UnifiedAuditEventRow> search(AuditExplorerQuery query) {
         Set<AuditStream> effectiveStreams = effectiveStreams(query);
         if (effectiveStreams.isEmpty()) {
@@ -190,6 +195,7 @@ public class AuditExplorerRepository {
         parameters.put("__productId", query.productId());
         parameters.put("__since", query.since());
         parameters.put("__until", query.until());
+        parameters.put("__correlationId", query.correlationId());
 
         List<String> branches = new ArrayList<>();
 
@@ -220,7 +226,7 @@ public class AuditExplorerRepository {
                       and (cast(:__borrowerId as uuid) is null or la.borrower_id = cast(:__borrowerId as uuid))
                       and (cast(:__since as timestamp) is null or e.created_at >= cast(:__since as timestamp))
                       and (cast(:__until as timestamp) is null or e.created_at <= cast(:__until as timestamp))
-                    """);
+                      """ + correlationIdPredicate("e.correlation_id") + "\n");
         }
 
         if (streams.contains(AuditStream.INTAKE)) {
@@ -250,7 +256,7 @@ public class AuditExplorerRepository {
                       and (cast(:__borrowerId as uuid) is null or la.borrower_id = cast(:__borrowerId as uuid))
                       and (cast(:__since as timestamp) is null or i.created_at >= cast(:__since as timestamp))
                       and (cast(:__until as timestamp) is null or i.created_at <= cast(:__until as timestamp))
-                    """);
+                      """ + correlationIdPredicate("i.correlation_id") + "\n");
         }
 
         if (streams.contains(AuditStream.DOCUMENT_ACCESS)) {
@@ -280,7 +286,7 @@ public class AuditExplorerRepository {
                       and (cast(:__borrowerId as uuid) is null or la.borrower_id = cast(:__borrowerId as uuid))
                       and (cast(:__since as timestamp) is null or d.created_at >= cast(:__since as timestamp))
                       and (cast(:__until as timestamp) is null or d.created_at <= cast(:__until as timestamp))
-                    """);
+                      """ + correlationIdPredicate("d.correlation_id") + "\n");
         }
 
         if (streams.contains(AuditStream.PRODUCT)) {
@@ -307,7 +313,7 @@ public class AuditExplorerRepository {
                       and (cast(:__productId as uuid) is null or p.loan_product_id = cast(:__productId as uuid))
                       and (cast(:__since as timestamp) is null or p.created_at >= cast(:__since as timestamp))
                       and (cast(:__until as timestamp) is null or p.created_at <= cast(:__until as timestamp))
-                    """);
+                      """ + correlationIdPredicate("p.correlation_id") + "\n");
         }
 
         if (streams.contains(AuditStream.APP_USER)) {
@@ -335,7 +341,7 @@ public class AuditExplorerRepository {
                       and (cast(:__lspId as uuid) is null or u.lsp_id = cast(:__lspId as uuid))
                       and (cast(:__since as timestamp) is null or e.created_at >= cast(:__since as timestamp))
                       and (cast(:__until as timestamp) is null or e.created_at <= cast(:__until as timestamp))
-                    """);
+                      """ + correlationIdPredicate("e.correlation_id") + "\n");
         }
 
         if (streams.contains(AuditStream.API_CLIENT)) {
@@ -363,7 +369,7 @@ public class AuditExplorerRepository {
                       and (cast(:__lspId as uuid) is null or c.lsp_id = cast(:__lspId as uuid))
                       and (cast(:__since as timestamp) is null or e.created_at >= cast(:__since as timestamp))
                       and (cast(:__until as timestamp) is null or e.created_at <= cast(:__until as timestamp))
-                    """);
+                      """ + correlationIdPredicate("e.correlation_id") + "\n");
         }
 
         if (streams.contains(AuditStream.REPORT_ACCESS)) {
@@ -393,7 +399,8 @@ public class AuditExplorerRepository {
                         or %s)
                       and (cast(:__since as timestamp) is null or r.created_at >= cast(:__since as timestamp))
                       and (cast(:__until as timestamp) is null or r.created_at <= cast(:__until as timestamp))
-                    """.formatted(reportAccessLspIdExpression(), reportAccessLspFilterPredicate()));
+                      """.formatted(reportAccessLspIdExpression(), reportAccessLspFilterPredicate())
+                    + correlationIdPredicate("r.correlation_id") + "\n");
         }
 
         if (streams.contains(AuditStream.DISBURSEMENT)) {
@@ -423,7 +430,7 @@ public class AuditExplorerRepository {
                       and (cast(:__borrowerId as uuid) is null or la.borrower_id = cast(:__borrowerId as uuid))
                       and (cast(:__since as timestamp) is null or d.created_at >= cast(:__since as timestamp))
                       and (cast(:__until as timestamp) is null or d.created_at <= cast(:__until as timestamp))
-                    """);
+                      """ + correlationIdPredicate("d.correlation_id") + "\n");
         }
 
         return String.join("\nunion all\n", branches);

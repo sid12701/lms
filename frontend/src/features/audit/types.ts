@@ -127,15 +127,15 @@ export const AuditEventsResponseSchema: z.ZodType<AuditEventsResponse> = z.objec
 
 /**
  * URL-bound filter shape for `/audit`. `streams` defaults to ALL when empty.
- * `q` is a free-text search over `headline` + `actorName`.
+ * All filters are pushed down to the backend (#76).
  */
 const AuditEventsFilters = z.object({
   streams: z.array(AuditStreamSchema).optional(),
   actorId: Uuid.optional(),
+  loanApplicationId: Uuid.optional(),
   correlationId: z.string().min(1).max(80).optional(),
   dateFrom: IsoDate.optional(),
   dateTo: IsoDate.optional(),
-  q: z.string().trim().min(1).max(120).optional(),
   page: z.coerce.number().int().min(0).optional(),
   pageSize: z.coerce.number().int().min(5).max(200).optional(),
   /** Set by the table when a row is opened â€” surfaces the detail sheet. */

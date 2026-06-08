@@ -352,6 +352,132 @@ class AuditExplorerControllerTest {
     }
 
     @Test
+    void correlationIdFilterReturnsMatchFromLaterPage() throws Exception {
+        applicationAuditRepo.save(new LoanApplicationAuditEvent(
+                applicationA,
+                LoanApplicationAuditAction.STATUS_TRANSITION,
+                "alice.ops",
+                LoanApplicationStatus.INITIALIZED,
+                LoanApplicationStatus.AWAITING_APPROVAL,
+                "Target correlation row",
+                null,
+                "corr-deep"
+        ));
+        for (int i = 0; i < 30; i++) {
+            applicationAuditRepo.save(new LoanApplicationAuditEvent(
+                    applicationA,
+                    LoanApplicationAuditAction.STATUS_TRANSITION,
+                    "alice.ops",
+                    LoanApplicationStatus.INITIALIZED,
+                    LoanApplicationStatus.AWAITING_APPROVAL,
+                    "Filler row " + i,
+                    null,
+                    "corr-filler-" + i
+            ));
+        }
+
+        mockMvc.perform(get("/api/v1/internal/admin/audit-events")
+                        .with(systemAdmin())
+                        .queryParam("streams", "APPLICATION")
+                        .queryParam("correlationId", "corr-deep")
+                        .queryParam("limit", "25")
+                        .queryParam("paginationDetails", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].correlationId").value("corr-deep"));
+    }
+
+    @Test
+    void correlationIdFilterReturnsRowsAcrossStreamsSharingSameId() throws Exception {
+        applicationAuditRepo.save(new LoanApplicationAuditEvent(
+                applicationA,
+                LoanApplicationAuditAction.STATUS_TRANSITION,
+                "alice.ops",
+                LoanApplicationStatus.INITIALIZED,
+                LoanApplicationStatus.AWAITING_APPROVAL,
+                "Shared correlation application",
+                null,
+                "corr-multi"
+        ));
+        intakeAuditRepo.save(new LoanApplicationIntakeAudit(
+                applicationA,
+                "intake.bot",
+                "corr-multi",
+                "{\"borrowerFullName\":\"Audit Alpha\"}"
+        ));
+        documentAccessRepo.save(new LoanApplicationDocumentAccessAudit(
+                applicationA,
+                LoanApplicationDocumentAccessAuditAction.CHECKLIST_VIEWED,
+                "alice.ops",
+                "Shared correlation document access",
+                List.of(LoanApplicationDocumentType.PAN_CARD),
+                "corr-multi"
+        ));
+
+        mockMvc.perform(get("/api/v1/internal/admin/audit-events")
+                        .with(systemAdmin())
+                        .queryParam("correlationId", "corr-multi")
+                        .queryParam("paginationDetails", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCount").value(3))
+                .andExpect(jsonPath("$.items[*].stream", hasItem("APPLICATION")))
+                .andExpect(jsonPath("$.items[*].stream", hasItem("INTAKE")))
+                .andExpect(jsonPath("$.items[*].stream", hasItem("DOCUMENT_ACCESS")));
+    }
+
+    @Test
+    void correlationIdFilterReturnsEmptyWhenNoMatch() throws Exception {
+        mockMvc.perform(get("/api/v1/internal/admin/audit-events")
+                        .with(systemAdmin())
+                        .queryParam("correlationId", "corr-doesnt-exist")
+                        .queryParam("paginationDetails", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCount").value(0))
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void correlationIdFilterCombinesWithStreamFilterViaAnd() throws Exception {
+        applicationAuditRepo.save(new LoanApplicationAuditEvent(
+                applicationA,
+                LoanApplicationAuditAction.STATUS_TRANSITION,
+                "alice.ops",
+                LoanApplicationStatus.INITIALIZED,
+                LoanApplicationStatus.AWAITING_APPROVAL,
+                "Shared correlation application",
+                null,
+                "corr-multi"
+        ));
+        intakeAuditRepo.save(new LoanApplicationIntakeAudit(
+                applicationA,
+                "intake.bot",
+                "corr-multi",
+                "{\"borrowerFullName\":\"Audit Alpha\"}"
+        ));
+
+        mockMvc.perform(get("/api/v1/internal/admin/audit-events")
+                        .with(systemAdmin())
+                        .queryParam("correlationId", "corr-multi")
+                        .queryParam("streams", "APPLICATION")
+                        .queryParam("paginationDetails", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.items[0].stream").value("APPLICATION"));
+    }
+
+    @Test
+    void emptyCorrelationIdParamReturnsUnfilteredPage() throws Exception {
+        mockMvc.perform(get("/api/v1/internal/admin/audit-events")
+                        .with(systemAdmin())
+                        .queryParam("correlationId", "")
+                        .queryParam("streams", "APPLICATION,INTAKE,DOCUMENT_ACCESS,PRODUCT")
+                        .queryParam("paginationDetails", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCount").value(5));
+    }
+
+    @Test
     void loanApplicationIdFilterPushesDownToEveryBranch() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())

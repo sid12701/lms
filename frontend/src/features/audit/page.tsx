@@ -6,8 +6,8 @@
  *   PageHeader â†’ AuditStreamTabs (sticky) â†’ AuditPageFilterBar â†’
  *   AuditTable â†’ AuditEventDetailSheet
  *
- * Filter state is URL-bound: `streams`, `actorId`, `correlationId`,
- * `dateFrom`, `dateTo`, `q`, `page`, `pageSize`, `eventId`. Deep links
+ * Filter state is URL-bound: `streams`, `actorId`, `loanApplicationId`,
+ * `correlationId`, `dateFrom`, `dateTo`, `page`, `pageSize`, `eventId`. Deep links
  * from the Alerts table (`/audit?correlationId=â€¦`) pre-fill the bar.
  *
  * Selecting a row writes `eventId` to the URL and opens the right-anchored
@@ -64,14 +64,14 @@ function parseFiltersFromUrl(params: URLSearchParams): AuditEventsFilters {
   if (streams) out.streams = streams;
   const actorId = params.get("actorId");
   if (actorId) out.actorId = actorId;
+  const loanApplicationId = params.get("loanApplicationId");
+  if (loanApplicationId) out.loanApplicationId = loanApplicationId;
   const correlationId = params.get("correlationId");
   if (correlationId) out.correlationId = correlationId;
   const dateFrom = params.get("dateFrom");
   if (dateFrom) out.dateFrom = dateFrom;
   const dateTo = params.get("dateTo");
   if (dateTo) out.dateTo = dateTo;
-  const q = params.get("q");
-  if (q) out.q = q;
   const page = readNumber(params.get("page"));
   if (page !== undefined) out.page = page;
   const pageSize = readNumber(params.get("pageSize"));
@@ -90,10 +90,10 @@ function serializeFiltersToUrl(filters: AuditEventsFilters): URLSearchParams {
     for (const s of filters.streams) params.append("streams", s);
   }
   if (filters.actorId) params.set("actorId", filters.actorId);
+  if (filters.loanApplicationId) params.set("loanApplicationId", filters.loanApplicationId);
   if (filters.correlationId) params.set("correlationId", filters.correlationId);
   if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters.dateTo) params.set("dateTo", filters.dateTo);
-  if (filters.q && filters.q.trim() !== "") params.set("q", filters.q);
   if (typeof filters.page === "number") params.set("page", String(filters.page));
   if (typeof filters.pageSize === "number") {
     params.set("pageSize", String(filters.pageSize));

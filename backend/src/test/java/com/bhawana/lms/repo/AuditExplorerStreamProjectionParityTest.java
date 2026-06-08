@@ -40,6 +40,7 @@ class AuditExplorerStreamProjectionParityTest {
                 null,
                 null,
                 null,
+                null,
                 0,
                 1,
                 false

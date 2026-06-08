@@ -4252,7 +4252,7 @@ Tracer first; each test exercises a public surface.
 ---
 
 ### #76 — Audit Explorer free-text + correlationId filter is client-side only
-**Labels:** gap, auditability · **Link:** https://github.com/sid12701/lms/issues/76 · **Status:** **CLOSED** (2026-06-07). Server-side `correlationId` filter on all 8 UNION branches; FE `loanApplicationId` filter bar + URL binding; removed client-side `passesClientFilters` and free-text `q` input. Tests: `AuditExplorerControllerTest` correlationId slices, `features/audit/api.test.ts`, `AuditFilterBar.test.tsx`.
+**Labels:** gap, auditability · **Link:** https://github.com/sid12701/lms/issues/76 · **Status:** **CLOSED** — merged 2026-06-08. Server-side `correlationId` filter on all 8 UNION branches; FE `loanApplicationId` filter bar + URL binding; removed client-side `passesClientFilters` and free-text `q` input. Tests: `AuditExplorerControllerTest` correlationId slices, `features/audit/api.test.ts`, `AuditFilterBar.test.tsx`.
 
 **Problem (plain English):** The UI filters apply only to the currently-loaded page of audit rows. Cross-page searches are impossible from the UI.
 

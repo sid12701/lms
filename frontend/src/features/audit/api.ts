@@ -1,14 +1,12 @@
 /**
  * Audit explorer API client.
  *
- * Gap #3 — the backend now exposes a single unified endpoint at
+ * Gap #3 / #76 — the backend exposes a single unified endpoint at
  *   GET /api/v1/internal/admin/audit-events
  * that UNION-ALLs across the eight supported audit streams on the server
- * side. This module routes
- * the page's URL-bound filters into that request, projects each row into
- * the long-standing {@link AuditRow} shape so the table/sheet keep
- * rendering unchanged, and applies the few remaining client-side post-
- * filters (correlationId, free-text `q`) that the backend doesn't expose.
+ * side. This module routes the page's URL-bound filters into that request
+ * and projects each row into the long-standing {@link AuditRow} shape so
+ * the table/sheet keep rendering unchanged. All filters are server-side.
  */
 import { buildQueryPath, requestJson } from "@/lib/api/http-client";
 import {
@@ -86,6 +84,8 @@ function buildBackendQueryParams(
   };
   if (streams) params["streams"] = streams.join(",");
   if (filters.actorId) params["actorUsername"] = filters.actorId;
+  if (filters.loanApplicationId) params["loanApplicationId"] = filters.loanApplicationId;
+  if (filters.correlationId) params["correlationId"] = filters.correlationId;
   const since = toIsoStart(filters.dateFrom);
   if (since) params["since"] = since;
   const until = toIsoEnd(filters.dateTo);
@@ -149,34 +149,17 @@ function humanize(action: string | null | undefined): string {
   return lowered.charAt(0).toUpperCase() + lowered.slice(1);
 }
 
-function passesClientFilters(row: AuditRow, filters: AuditEventsFilters): boolean {
-  if (filters.correlationId && row.correlationId !== filters.correlationId) return false;
-  if (filters.q && filters.q.trim() !== "") {
-    const q = filters.q.toLowerCase();
-    const headline = row.headline.toLowerCase();
-    const actor = row.actorName.toLowerCase();
-    if (!headline.includes(q) && !actor.includes(q)) return false;
-  }
-  return true;
-}
-
 async function fetchFromBackend(filters: AuditEventsFilters): Promise<AuditEventsResponse> {
   const path = buildQueryPath(ENDPOINT, buildBackendQueryParams(filters));
   const payload = await requestJson<BackendPagedAuditEvents>(path);
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
   const page = filters.page ?? 0;
 
-  const projected = payload.items.map(projectAuditRow);
-  const visible = projected.filter((row) => passesClientFilters(row, filters));
-
-  const total =
-    payload.totalCount >= 0
-      ? payload.totalCount
-      : // BE returned the -1 sentinel — fall back to the visible-window size.
-        visible.length + page * pageSize;
+  const items = payload.items.map(projectAuditRow);
+  const total = payload.totalCount >= 0 ? payload.totalCount : items.length + page * pageSize;
 
   return {
-    items: visible,
+    items,
     total,
     page,
     pageSize,
