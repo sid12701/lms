@@ -11,9 +11,13 @@ const loginMock = vi.fn();
 const loginPresetForRoleMock = vi.fn();
 const toastErrorMock = vi.fn();
 
-vi.mock("@/features/auth/auth-service", () => ({
-  login: (...args: unknown[]) => loginMock(...args),
-}));
+vi.mock("@/features/auth/auth-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/auth/auth-service")>();
+  return {
+    ...actual,
+    login: (...args: unknown[]) => loginMock(...args),
+  };
+});
 
 vi.mock("@/features/auth/login-role-presets", async () => {
   const actual = await vi.importActual<typeof import("@/features/auth/login-role-presets")>(

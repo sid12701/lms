@@ -10,6 +10,8 @@ import {
 import { clearStoredSession, loadStoredSession } from "@/lib/api/session-storage";
 import { setRefreshCallback } from "@/lib/api/http-client";
 import {
+  clearLastRefreshFailureCode,
+  getLastRefreshFailureCode,
   logout as serviceLogout,
   refreshSession as serviceRefresh,
 } from "@/features/auth/auth-service";
@@ -32,6 +34,7 @@ export function SessionProvider({
   const [session, setSession] = useState<Session | null>(
     () => initialSession ?? loadStoredSession(),
   );
+  const [lastRefreshFailureCode, setLastRefreshFailureCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(() => {
     if (skipBootstrap || initialSession !== null) return false;
     return loadStoredSession() !== null;
@@ -40,7 +43,9 @@ export function SessionProvider({
 
   useEffect(() => {
     setRefreshCallback(async () => {
+      clearLastRefreshFailureCode();
       const refreshed = await serviceRefresh();
+      setLastRefreshFailureCode(getLastRefreshFailureCode());
       if (refreshed) {
         setSession(refreshed);
         return refreshed.accessToken;
@@ -52,7 +57,9 @@ export function SessionProvider({
   }, []);
 
   const refresh = useCallback(async () => {
+    clearLastRefreshFailureCode();
     const next = await serviceRefresh();
+    setLastRefreshFailureCode(getLastRefreshFailureCode());
     setSession(next);
   }, []);
 
@@ -65,8 +72,10 @@ export function SessionProvider({
     if (!persisted) {
       return;
     }
+    clearLastRefreshFailureCode();
     void serviceRefresh()
       .then((next) => {
+        setLastRefreshFailureCode(getLastRefreshFailureCode());
         if (next) {
           setSession(next);
         } else {
@@ -78,17 +87,21 @@ export function SessionProvider({
   }, [skipBootstrap]);
 
   const signIn = useCallback((next: Session) => {
+    clearLastRefreshFailureCode();
+    setLastRefreshFailureCode(null);
     setSession(next);
   }, []);
 
   const signOut = useCallback(async () => {
     await serviceLogout();
+    clearLastRefreshFailureCode();
+    setLastRefreshFailureCode(null);
     setSession(null);
   }, []);
 
   const value = useMemo<SessionContextValue>(
-    () => ({ session, isLoading, signIn, signOut, refresh }),
-    [session, isLoading, signIn, signOut, refresh],
+    () => ({ session, isLoading, lastRefreshFailureCode, signIn, signOut, refresh }),
+    [session, isLoading, lastRefreshFailureCode, signIn, signOut, refresh],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
