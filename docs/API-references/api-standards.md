@@ -229,6 +229,77 @@ Field meanings:
 }
 ```
 
+### Refresh token rejection example (`POST /api/v1/auth/refresh`)
+
+When the refresh cookie is missing, expired, revoked, or otherwise unusable, the endpoint returns `401 Unauthorized` with a compact body (not the full `ApiError` envelope):
+
+```json
+{
+  "code": "TOKEN_REVOKED",
+  "message": "Refresh token was revoked"
+}
+```
+
+| `code` | When |
+| --- | --- |
+| `MISSING_REFRESH_COOKIE` | No `lms-refresh` cookie on the request |
+| `TOKEN_EXPIRED` | Unknown hash or `expiresAt` in the past |
+| `TOKEN_REVOKED` | Row exists but `revoked = true` |
+| `REFRESH_INVALID` | Orphan token (neither user nor API client) |
+
+Clients may stash `code` for UX (e.g. distinguish natural expiry from admin revocation). Shipped 2026-06-08 ([#132](https://github.com/sid12701/lms/issues/132) / [PR #195](https://github.com/sid12701/lms/pull/195)).
+
+### Document download / storage errors
+
+Loan document download endpoints (`GET …/kyc-documents/{type}/content`, `GET …/documents.zip`) map storage failures through `GlobalExceptionHandler`:
+
+**Not found (`404`)**
+
+```json
+{
+  "timestamp": "2026-06-08T09:00:00.000Z",
+  "status": 404,
+  "code": "DOCUMENT_NOT_FOUND",
+  "message": "Document content is not available for this checklist item.",
+  "path": "/api/v1/internal/ops/loan-applications/{id}/kyc-documents/PAN_CARD/content",
+  "correlationId": "…"
+}
+```
+
+**Storage temporarily unavailable (`503`, retryable)**
+
+```json
+{
+  "timestamp": "2026-06-08T09:00:00.000Z",
+  "status": 503,
+  "code": "DOCUMENT_STORAGE_UNAVAILABLE",
+  "message": "Document storage is temporarily unavailable. Please retry.",
+  "path": "/api/v1/internal/ops/loan-applications/{id}/kyc-documents/PAN_CARD/content",
+  "correlationId": "…",
+  "retryable": "true",
+  "provider": "LOCAL"
+}
+```
+
+Micrometer counter `lms.document.storage.unavailable` increments per 503 (tag `provider`). Alert spike rule deferred.
+
+**Misconfigured provider (`500`)**
+
+```json
+{
+  "timestamp": "2026-06-08T09:00:00.000Z",
+  "status": 500,
+  "code": "DOCUMENT_STORAGE_MISCONFIGURED",
+  "message": "Document storage provider R2 is not configured (missing: accessKeyId).",
+  "path": "/api/v1/internal/ops/loan-applications/{id}/kyc-documents/PAN_CARD/content",
+  "correlationId": "…",
+  "provider": "R2",
+  "missingField": "accessKeyId"
+}
+```
+
+Shipped 2026-06-08 ([#92](https://github.com/sid12701/lms/issues/92) / [PR #194](https://github.com/sid12701/lms/pull/194)).
+
 ### Password change required example
 
 ```json
@@ -266,6 +337,7 @@ Field meanings:
 - `403 Forbidden`: authenticated but not authorized
 - `404 Not Found`: resource does not exist or is not visible in scope
 - `409 Conflict`: uniqueness or idempotency conflict
+- `503 Service Unavailable`: transient dependency failure (e.g. document storage outage); body may include `retryable: true`
 - `422 Unprocessable Entity`: domain validation or business-rule failure
 - `428 Precondition Required`: password change or similar required precondition before broader access
 - `500 Internal Server Error`: unexpected server-side failure

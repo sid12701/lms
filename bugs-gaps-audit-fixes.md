@@ -1,6 +1,7 @@
 # Bugs, Gaps & Audit Fixes — Decision Tracker
 
 **Source:** `gaps-bugs-audit.md` (2026-05-31) → 108 GitHub issues on `sid12701/lms` (#61–#168).
+**Last tracker sync:** 2026-06-08 — recent closures: **#92** [PR #194](https://github.com/sid12701/lms/pull/194) (document download HTTP codes), **#132** [PR #195](https://github.com/sid12701/lms/pull/195) (refresh 401 body + atomicity tests).
 **Purpose:** For each issue, capture (a) the problem in plain English, (b) the possible fixes I see, (c) the recommended fix with reasoning, (d) the effect on the app overall, and (e) **the agreed solution after we discuss** (filled during the grill).
 
 **How to read each entry:**
@@ -1286,7 +1287,7 @@ Untouched (deliberately):
 - `LspLoanApplicationApiController.java` — no LSP-facing download endpoint exists.
 - The two existing inline writers (`CHECKLIST_VIEWED`, `INTAKE_AUDITS_VIEWED`) — they continue to insert with NULL `actor_ip` + NULL `byte_count`. No backfill.
 - Audit Explorer frontend — out of scope; #159 owns making this stream visible in the Explorer.
-- Error-handling on `IllegalStateException` → 404 — #92 owns that; this PR confirms (via Slice 3) that the storage-error path leaves no audit row.
+- Error-handling on storage failures → 404/503/500 — **#92 shipped** ([PR #194](https://github.com/sid12701/lms/pull/194), 2026-06-08); this PR's Slice 3 confirmed the storage-error path leaves no audit row before #92 landed.
 
 #### Effect on app
 
@@ -1302,7 +1303,7 @@ Untouched (deliberately):
 
 - **#150** ("[AUD-4] Document download + ZIP not audited") is a strict duplicate of #70 — closes on the same PR. Cross-reference both directions in the PR description.
 - **#159** ("Audit Explorer only covers 4 streams") — once this lands, the Explorer rework should pick up `loan_application_document_access_audit` as a streamed source. Add a TODO note linking back to #70 in #159's tracking issue.
-- **#92** ("[B-10] Document download swallows IllegalStateException — storage outage masked as 404") — independent. This PR does not change the 404-on-storage-error behaviour; Slice 3 just confirms that path leaves the audit clean. When #92 lands and stops swallowing the exception, the audit logic does not need to change (it sits after retrieve succeeds).
+- **#92** ("[B-10] Document download swallows IllegalStateException — storage outage masked as 404") — **CLOSED** ([PR #194](https://github.com/sid12701/lms/pull/194), 2026-06-08). Audit logic unchanged (writes sit after successful retrieve); failed downloads still leave the audit table clean.
 - **#105** ("[Q-8] LoanApplicationOpsController has ~500 LoC of nested record DTOs") — the controller picks up ~10 lines from this PR (delegation + IP/correlation extraction). Not enough to materially affect #105's refactor calculus.
 - **#98 / #99** (god-class refactors) — explicitly **not** addressed by this PR. The audit writes stay inline in `LoanApplicationService` to avoid mixing scope; when #98 / #99 land, a `LoanApplicationDocumentAccessAuditService` is the natural extraction target and will absorb all four call sites (`CHECKLIST_VIEWED`, `INTAKE_AUDITS_VIEWED`, `SINGLE_DOCUMENT_DOWNLOADED`, `BULK_ZIP_DOWNLOADED`) in one move.
 
@@ -1327,7 +1328,7 @@ Shipped per grilled design (Slices 1–3). Backend test suite green including fu
 | 2 — bulk ZIP one row with all packed types | **Done** |
 | 3 — failed downloads leave audit table unchanged | **Done** |
 
-**Out of scope (unchanged):** failed-download audit rows; Audit Explorer FE wiring (#159 already has `DOCUMENT_ACCESS` stream on BE); #92 storage-error → 404 behaviour.
+**Out of scope (unchanged):** failed-download audit rows (`STORAGE_UNAVAILABLE` outcome still deferred); Audit Explorer FE wiring (#159 already has `DOCUMENT_ACCESS` stream on BE). Storage errors now map to typed 404/503/500 per **#92** ([PR #194](https://github.com/sid12701/lms/pull/194)).
 
 ---
 
@@ -1914,7 +1915,7 @@ Edit:
 ---
 
 ### #87 — [B-5] WebhookOutboxService.dispatchPending holds batch TX during slow deliveries
-**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/87 · **Status:** **CLOSED** — PR pending merge (2026-06-03)
+**Labels:** bug, scale-risk · **Link:** https://github.com/sid12701/lms/issues/87 · **Status:** **CLOSED** — [PR #175](https://github.com/sid12701/lms/pull/175) merged 2026-06-03
 
 > **Shipped (2026-06-03):** `V80__webhook_event_outbox_claim_expires_at.sql`; `WebhookEventOutboxStatus.IN_FLIGHT` + `claimExpiresAt` / `claim()`; Postgres `claimDispatchBatch` CTE marks `IN_FLIGHT` with expiry; H2 JPA claim path; `WebhookOutboxDispatchExecutor` (separate bean for real `@Transactional` claim + `deliverOne`); `WebhookDispatchConfig` `webhookDeliveryExecutor` (pool size `app.webhooks.delivery.thread-pool-size`, default 10); `WebhookOutboxService.dispatchPending` orchestrates claim then parallel per-row delivery; `LoanApplicationService` maps `IN_FLIGHT` → UI `PENDING`; tests `WebhookOutboxServiceDispatchTest`; shared `IntegrationTestDatabaseCleaner` for FK-safe H2 teardown; audit mock `PII_REVEAL` stream restored in `frontend-2` types.
 
@@ -2863,7 +2864,7 @@ Tracer first; each test exercises a public surface.
 ---
 
 ### #144 — [SEC-Δ-6] Re-check JWT in localStorage (H-04 status)
-**Labels:** security, verification · **Link:** https://github.com/sid12701/lms/issues/144 · **Status:** **OPEN** — plan locked 2026-06-08, ready to implement as PR #1 of the pre-launch security baseline. Cookie-only auth on Spring Boot (NOT a separate BFF process). Bundles signal from **#97** and **#132**; relies on already-shipped **#80** for incident response. Pairs with new follow-up issues for **Layer B (strict CSP + Trusted Types)**, **step-up auth**, **password history (#133)**, **brute-force lockout (#155)**, and **CI security baseline** — all filed separately, sequenced post-launch.
+**Labels:** security, verification · **Link:** https://github.com/sid12701/lms/issues/144 · **Status:** **OPEN** — plan locked 2026-06-08, ready to implement as PR #1 of the pre-launch security baseline. Cookie-only auth on Spring Boot (NOT a separate BFF process). **#132** (typed refresh 401 body + atomicity tests) **shipped early** via [PR #195](https://github.com/sid12701/lms/pull/195) (2026-06-08); **#97** still pending. Relies on already-shipped **#80** for incident response. Pairs with new follow-up issues for **Layer B (strict CSP + Trusted Types)**, **step-up auth**, **password history (#133)**, **brute-force lockout (#155)**, and **CI security baseline** — all filed separately, sequenced post-launch.
 
 **Problem (plain English):** Security audit's H-04 flagged JWT in localStorage. Verified in code: refresh token is already HttpOnly (`AuthController.java:519–522`), but the access JWT is still serialised into `localStorage` under `bhawana-lms-session` (`frontend/src/lib/api/session-storage.ts:35`). Any XSS that lands can read the access token (and pivot to long-lived sessions via `/auth/refresh`). H-04 is therefore **half-fixed**.
 
@@ -3005,8 +3006,8 @@ Tracer first. Each test exercises a public surface; no internal mocking beyond d
 - Brute-force lockout → owned by #155.
 - Password history → owned by #133.
 - Step-up auth on sensitive operations → owned by the new step-up-auth follow-up issue.
-- Refresh atomicity → owned by #132 (which lands as PR #3 of this baseline).
-- Concurrent-refresh single-flight → owned by #97 (which lands as PR #2 of this baseline).
+- Refresh atomicity + typed 401 body → **shipped** via **#132** ([PR #195](https://github.com/sid12701/lms/pull/195), 2026-06-08); grace-window follow-up still open.
+- Concurrent-refresh single-flight → owned by **#97** (PR #2 of this baseline — still open).
 
 **Blast radius — files touched in PR #1:**
 
@@ -3033,7 +3034,7 @@ PR #1 (this issue) is the foundation. Subsequent PRs layer on:
 |---|---|---|---|
 | **PR #1 (this)** | Cookie auth + CSRF + `/auth/me` + Referrer/Permissions headers + same-origin prod posture | **#144** | 5–6 days |
 | **PR #2** | FE single-flight refresh + proactive refresh (under cookie auth, signature becomes `Promise<boolean>` not `Promise<string \| null>`) | **#97** | 1 day |
-| **PR #3** | Atomic refresh tests + typed 401 body (`{ code, message }`) | **#132** | 1 day |
+| **~~PR #3~~** | ~~Atomic refresh tests + typed 401 body~~ — **shipped early** [PR #195](https://github.com/sid12701/lms/pull/195) (2026-06-08) | **#132** ✅ | — |
 | **PR #4 (parallel)** | Strict CSP on SPA + Trusted Types + XSS-sink audit (`frontend/` currently has zero `dangerouslySetInnerHTML` / `innerHTML` / `outerHTML` / `document.write` — verified 2026-06-08) | **#191** ("Strict CSP + Trusted Types for SPA — Layer B") | 2–3 days |
 | **Post-launch — Sprint 2** | Step-up auth on sensitive ops (bank detail changes, disbursement override, mock-outcome, password change, API client rotation, LSP enable/disable, admin revoke-sessions) | **#192** ("Step-up auth on sensitive operations — Layer C") | 2–3 days |
 | Post-launch | Password history (12 hashes) | **#133** | 2 days |
@@ -3052,7 +3053,7 @@ These are deferred-to-launch, not competing with the auth/XSS baseline; they shi
 
 - This block replaces the previous `_(pending)_` on #144.
 - **Corrects stale `frontend-2/` paths in #97's existing entry** — see #97 note added 2026-06-08.
-- Cross-references #97, #132, #80 from this block; their entries do not need re-writes (they remain green-lit / closed as appropriate).
+- Cross-references #97 (open), #132 (**closed** — [PR #195](https://github.com/sid12701/lms/pull/195)), #80 (**closed** — [PR #189](https://github.com/sid12701/lms/pull/189)) from this block.
 
 ---
 
@@ -4130,7 +4131,139 @@ Untouched (deliberately):
 
 **Effect on app:** Brute-force becomes self-stopping. Legitimate users may hit lockouts on shared IPs — needs an admin unlock path.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-08):**
+
+**Decision:** Detection-as-rules on top of the existing alert pipeline (audit-doc Option 1 refined). Two new rules: a strict per-(username, ip) lockout rule that fires `AUTH_BRUTE_FORCE` and forcibly locks the user, and an alert-only per-username distributed rule that fires `AUTH_BRUTE_FORCE_DISTRIBUTED` when one username sees attempts from many IPs without any single IP tripping the strict rule. Lockout is **sticky** (no auto-expire); unlock is admin-mediated and **always** issues a temporary password.
+
+**Locked decisions (residuals resolved during grill):**
+
+1. **Lockout scope: `AppUser` only.** LSP `ApiClient` brute-force lockout is out of scope for this issue. The rate-limit filter (#81) and `tokenVersion` enforcement (#79) are the residual controls on the LSP API surface. Open follow-up issue if first real LSP onboarding surfaces a credential-stuffing pattern there.
+2. **Threshold (strict rule):** 5 `LOGIN_FAILED` events for the same `(username, ip)` within a 10-minute rolling window. Configurable via `AlertRuleProperties`.
+3. **Threshold (distributed rule, 1b):** one username sees ≥20 `LOGIN_FAILED` events spanning ≥5 distinct IPs within 24 hours. Alert-only; no lockout from this branch. Catches the slow-distributed pattern that composite `(username, ip)` keying lets through. Configurable.
+4. **Keying:** counter is `(username, ip)`; lockout is per-`AppUser`. Composite counter avoids the shared-NAT false-positive (one IP's mistakes don't sum into another IP's counter); once any `(username, ip)` counter trips, the underlying user is locked across all IPs, because the legitimate user must be protected regardless of which IP the attack came from.
+5. **Lockout is sticky (2b).** No auto-expire. `app_user.locked_at` stays set until an admin acts. Defended against the "every 15min the attacker gets another 5 attempts" rotation pattern.
+6. **Same 401 shape as wrong-password.** No `ACCOUNT_LOCKED` reason code in the login response body or status. Locked users discover via support/admin channel. Privacy-preserving (no enumeration of "interesting" usernames an attacker has invested attempts against).
+7. **Admin unlock = single endpoint (3a).** Extend the existing `POST /api/v1/admin/users/{id}/reset-password` to additionally clear `locked_at` and `lock_reason`. Audit row gains two new payload fields (`unlockedFromAutoLockout: boolean`, `priorLockReason: string?`) so Audit Explorer search recovers the "who got unlocked?" question via payload-field filter (the capability shipped under #76). No new endpoint, no new audit event type, no new FE button.
+8. **Unlock forces password reset.** The existing `AdminDirectoryService.resetPassword` already mints a temporary password via `generateTemporaryPassword()`, sets `requirePasswordChange`, and revokes all sessions via #80's `SessionRevocationService`. The unlock case piggy-backs on this path; admin hands the temp password to the user out-of-band. No new mechanism.
+9. **Bundle with #80 — close together.** #80's `SessionRevocationService` (PR #189) is consumed by the auto-lock evaluator (auto-lock → auto-revoke-all-sessions inside the same transaction). No reopening of #80; this issue is the consumer.
+10. **No email/notification.** No outbound email infrastructure pre-launch. Locked-user notification is a documented gap; revisit when the email channel exists (also a prerequisite for #138's signed-URL report-link work).
+
+**Audit findings (sharpened the framing):**
+
+1. **The audit doc's "no rule fires after N failures" is correct — and the rule belongs in `AlertRuleEvaluationService`, not in the login critical path.** Today (`backend/.../service/AlertRuleEvaluationService.java:67–80`), `evaluateScheduledRules()` runs five `evaluateXxx` methods inside one `@Transactional` block and calls `markRuleEvaluated(ruleCode, evaluatedAt)` per rule. Adding two more methods is purely additive — the existing scheduler (`AlertRuleSchedulerWorker`) already ticks at the configured interval (typically tens of seconds). Detection lag = one tick, which is fine for brute-force (humans don't notice; attackers don't bail).
+2. **`auth_event` is already the single source of truth.** Per #71, `AuthAuditService` writes a `LOGIN_FAILED` row with `username` and request IP for every credential failure on `AuthController.login`. No new state required to detect brute-force — the events are already there. Just need an index for the rolling-window query and the rule logic.
+3. **`AdminDirectoryService.resetPassword` (lines 388–412) already does 90% of the unlock work.** It generates a temp password (`generateTemporaryPassword()`), calls `user.requirePasswordChange(encodedTempPassword)`, saves, writes an `ADMIN_RESET_PASSWORD` audit row, and revokes all sessions via the #80 piggy-back path (`RevocationSource.ADMIN_RESET_PASSWORD`). The unlock additive change is two lines: clear `locked_at`/`lock_reason` on the user before save; add `wasLocked`/`priorLockReason` to the audit payload.
+4. **There is no `passwordResetRequired` mechanism today separate from `requirePasswordChange`.** Confirmed by grep (`Grep` over `backend/src/main/java` returned 0 matches for `passwordResetRequired|mustChangePassword|forceChangePassword`). The single `AppUser.requirePasswordChange(encodedPassword)` semantic — "set this temp password and mark the user as needing to change it" — is the entire mechanism. The login path's existing "must-change-password" branch handles the next-login flow without further work.
+5. **`SessionRevocationService` (#80, PR #189) exists, is admin-scoped, and is already called from `AdminDirectoryService.resetPassword`.** The auto-lock path calls `revokeAllSessionsFor(appUserId)` directly inside the rule transaction; no admin actor present, so a sentinel actor (`SYSTEM_AUTO_LOCKOUT`) is used. The session-revocation audit row's `revocation_source` becomes a new enum value `AUTO_LOCKOUT_BRUTE_FORCE`.
+6. **The two new rules can share one DB index.** `CREATE INDEX idx_auth_event_login_failed_lookup ON auth_event(event_type, username, ip, created_at DESC) WHERE event_type = 'LOGIN_FAILED'` — partial index keeps it tight. Strict-rule query is a `COUNT(*) ... GROUP BY (username, ip)` with `HAVING >= 5`; distributed-rule query is `COUNT(DISTINCT ip), COUNT(*) ... GROUP BY username` with `HAVING ip_count >= 5 AND attempt_count >= 20`. Both walk only the index.
+7. **Alert de-dup follows the existing `OpsAlertService` pattern.** Rules in `AlertRuleEvaluationService` today emit an alert whenever the predicate holds; `OpsAlertService` de-dups on `(alert_type, subject_kind, subject_id)` within a configurable suppress-window. Same pattern here: `(AUTH_BRUTE_FORCE, APP_USER, userId)` and `(AUTH_BRUTE_FORCE_DISTRIBUTED, APP_USER, userId)` — re-evaluating an already-locked user is idempotent (lockout is already set; alert is suppressed by the existing de-dup).
+
+**What we are NOT doing (intentionally deferred):**
+
+- Not building LSP `ApiClient` brute-force detection. Different threat model, different mitigation (rate-limit + `tokenVersion`), different audit-event stream. Separate follow-up issue when triggered by real onboarding.
+- Not adding auto-expire to the lockout. Sticky-only per 2b. If operational burden of admin unlocks becomes meaningful at scale, that's the trigger to revisit.
+- Not adding a new `POST /admin/users/{id}/unlock` endpoint or a new `ACCOUNT_UNLOCKED` audit event type. The existing `reset-password` endpoint absorbs the unlock action with two payload fields per 3a.
+- Not returning a distinct `ACCOUNT_LOCKED` reason on login response. Same 401 shape as wrong-password.
+- Not building a user-facing lockout-status discovery endpoint (no `/lockout-status`, no email). Out-of-band channel only.
+- Not deduplicating with #80. #80 stays closed; this issue *consumes* its `SessionRevocationService`.
+
+**Implementation plan (one PR, vertical):**
+
+1. **Schema (`V94__app_user_lockout.sql`):**
+   - `ALTER TABLE app_user ADD COLUMN locked_at TIMESTAMP WITH TIME ZONE NULL`
+   - `ALTER TABLE app_user ADD COLUMN lock_reason VARCHAR(64) NULL`
+   - `CREATE INDEX idx_auth_event_login_failed_lookup ON auth_event(username, ip, created_at DESC) WHERE event_type = 'LOGIN_FAILED'`
+2. **Domain (`AppUser`):** add `lockedAt`, `lockReason` fields with the existing JPA conventions. Add a `lockForBruteForce(Instant when)` method and an `unlockForReset()` method — the latter clears both fields and is called from inside `resetPassword`.
+3. **`AlertRuleEvaluationService`:** add `evaluateAuthBruteForce(evaluatedAt)` (strict, locks + revokes + alerts) and `evaluateAuthBruteForceDistributed(evaluatedAt)` (alert-only). Wire both into `evaluateScheduledRules()` alongside the existing five. Add new `OpsAlertType.AUTH_BRUTE_FORCE` and `OpsAlertType.AUTH_BRUTE_FORCE_DISTRIBUTED` enum values.
+4. **`AlertRuleProperties` + `AlertRuleDataInitializer`:** seed two new `AlertRule` rows (`AUTH_BRUTE_FORCE`, `AUTH_BRUTE_FORCE_DISTRIBUTED`) with the configurable thresholds.
+5. **`AuthController.login` / `AuthAuthenticationService`:** read `AppUser.lockedAt` after the password check; if non-null, return the **same 401 shape** as wrong-password (no body field difference, no header). The login path still records a `LOGIN_FAILED` audit row for the locked attempt — important so the distributed rule continues to accumulate evidence even after lockout.
+6. **`AdminDirectoryService.resetPassword`:** before save, check `user.lockedAt != null`; if so, capture `wasLocked = true`, `priorLockReason = user.lockReason`, then call `user.unlockForReset()`. Pass both through to the audit payload alongside the existing fields. No signature change to the controller-level endpoint.
+7. **`RevocationSource`:** add `AUTO_LOCKOUT_BRUTE_FORCE` enum value. Used inside `evaluateAuthBruteForce` when calling `SessionRevocationService.revokeAllSessionsFor`.
+8. **FE (admin Users page):** show a "Locked" badge on the user row when `lockedAt` is non-null on the user-detail response (extend `AdminUserResponse`). No new button — the existing "Reset password" button is the unlock affordance per 3a. Add a tooltip on the badge explaining the lock reason.
+
+**Behaviours we deliberately do NOT change:**
+
+- `RateLimitFilter` (#81) — orthogonal IP-level throttling stays as-is.
+- `tokenVersion` bumping on `ApiClient` deactivation (#79) — out of scope.
+- `inFlightJsonRequests` GET-dedup, `singleFlightRefresh` (#97) — orthogonal.
+- The `AlertRuleSchedulerWorker` tick interval — no change; same scheduler runs the new rules.
+- `OpsAlertService` de-dup logic — reuse as-is.
+
+**Cross-issue impact:**
+
+- **#71** (auth audit) — source of truth. No change needed there. This issue is the consumer.
+- **#80** (admin session revocation) — consumed via `SessionRevocationService.revokeAllSessionsFor`. No code change in #80.
+- **#81** (rate limit) — complementary, not redundant. IP-level rate limit stops noisy single-IP volume; username-level lockout stops slow-distributed and any below-rate-limit attempts.
+- **#97** (refresh-token rotation race) — its solution doc explicitly noted "proactive-refresh failures should NOT count as failed-auth events." This is already honoured: proactive refresh path doesn't write `LOGIN_FAILED` audit rows; the rule queries on `event_type = 'LOGIN_FAILED'` only. No conflict.
+- **#142** (`LspIpAllowlistFilter` cache process-local) — this issue does *not* import that single-replica debt. Lockout state lives on `app_user` (DB), not in-memory. Detection state lives in `auth_event` (DB). Replica-safe by construction.
+- **#148** (`ADMIN_RESET_PASSWORD` audit row, PR #174) — this issue extends the same audit row with two new payload fields. Backward-compatible (additive).
+- **#155 ↔ #80** — bundle closes together. Doc cross-links so neither thread is orphaned.
+
+**TDD plan (vertical slices, behaviour through public interfaces — tracer first, then incremental tests that respond to what the previous revealed):**
+
+> Tests should verify behavior through public interfaces, not implementation details. Code can change entirely; tests shouldn't. Good tests are integration-style: they exercise real codepaths through public APIs. They describe what the system does, not how it does it. A good test reads like a specification — "user can checkout with valid cart" tells you exactly what capability exists. These tests survive refactors because they don't care about internal structure.
+>
+> DO NOT write all tests first, then all implementation. This is "horizontal slicing" — treating RED as "write all tests" and GREEN as "write all code." This produces crap tests that test imagined behaviour, not actual behaviour. Each test below is written one at a time: red → smallest possible green → next test.
+
+Tests sit in `backend/src/test/java/.../AuthBruteForceLockoutIntegrationTest.java` (full Spring boot context, real H2/PG, real `AuthController`, real `AlertRuleEvaluationService.evaluateScheduledRules()` invocation, real `AdminDirectoryService.resetPassword`).
+
+1. **TRACER — `five_failed_logins_from_same_username_and_ip_within_ten_minutes_locks_the_user_and_revokes_sessions`.** Post 5× `POST /auth/login` with wrong password for the same user, all from the same simulated IP (set via X-Forwarded-For or test-time IP injection). Invoke `evaluateScheduledRules()` (public method on `AlertRuleEvaluationService` — the rule worker's public surface). Then attempt a 6th login with the *correct* password from the same IP → assert 401 with the same response shape as a wrong-password 401. Assert `appUserRepository.findById(userId).get().getLockedAt() != null`. Assert all refresh-token rows for that user are revoked (`refreshTokenRepository.findByUserAndRevokedFalse(userId)` is empty). Assert one `OpsAlert` row with `alertType = AUTH_BRUTE_FORCE`, `subjectId = userId`. This single test proves the end-to-end capability: brute-force is detected and stops the attacker.
+2. `correct_login_from_different_ip_against_locked_user_also_returns_same_401_shape`. Same setup; correct password from a *different* IP → same 401 shape. Locks in: lockout is per-user, not per-(user, ip). No information leak via the response.
+3. `four_failed_logins_from_same_user_and_ip_do_NOT_trigger_lockout`. Below threshold → user not locked; correct password on attempt 5 succeeds and resets the counter. Locks in the threshold edge.
+4. `failed_logins_split_across_two_ips_below_strict_threshold_do_NOT_trigger_strict_lockout`. 4 from ip-A, 4 from ip-B → neither (username, ip) counter trips. No lockout. Sanity for composite keying.
+5. `twenty_failed_logins_across_five_distinct_ips_within_twenty_four_hours_fires_DISTRIBUTED_alert_but_does_NOT_lock`. Spread attempts to keep each (user, ip) under 5 → no strict trip, but distributed rule's `(≥20 attempts, ≥5 IPs)` predicate holds. Assert `OpsAlert` row with `alertType = AUTH_BRUTE_FORCE_DISTRIBUTED`. Assert `appUser.lockedAt == null`. Distinguishes the two rules.
+6. `repeated_rule_evaluation_over_already_locked_user_is_idempotent_no_duplicate_alerts`. Run `evaluateScheduledRules()` three times after the user is locked. Assert exactly one `AUTH_BRUTE_FORCE` `OpsAlert` row (de-dup via `OpsAlertService`). Assert `appUser.lockedAt` was set once and not bumped. Locks in idempotency — important because a worker may run hundreds of ticks while a lockout persists.
+7. `login_attempt_with_wrong_password_during_lockout_still_records_audit_row_so_distributed_rule_can_still_accumulate_evidence`. Locked user; 5 more failed attempts; assert 5 new `LOGIN_FAILED` rows in `auth_event`. Important: the strict rule shouldn't suppress the audit signal that the distributed rule needs.
+8. `admin_reset_password_clears_locked_at_and_lock_reason_and_audit_row_carries_unlockedFromAutoLockout_true_and_priorLockReason`. Lock the user; admin calls `POST /api/v1/admin/users/{id}/reset-password`; assert response includes a temp password; assert `appUser.lockedAt == null` and `lockReason == null`; assert `appUser.requiresPasswordChange == true`; assert exactly one `ADMIN_RESET_PASSWORD` audit row with payload `wasLocked = true`, `priorLockReason = "AUTO_BRUTE_FORCE"`, `unlockedFromAutoLockout = true`. This is the 3a contract — single endpoint absorbs unlock semantics.
+9. `admin_reset_password_for_an_unlocked_user_writes_audit_row_with_unlockedFromAutoLockout_false`. Routine reset (not from lockout); same endpoint; audit row carries `wasLocked = false`. Locks in the per-call payload precision so Audit Explorer can distinguish the two reasons by payload filter (the #76 capability).
+10. `user_logs_in_with_admin_provided_temp_password_then_required_to_change_before_session_is_issued`. Drive the full unlock-then-login flow; assert the existing `requirePasswordChange` mechanism handles the next-login branch. No new mechanism — this test pins the existing behaviour against regression.
+11. `lockout_persists_across_application_restart`. Lock the user; restart the Spring context (`@DirtiesContext`); assert `appUser.lockedAt` is still set; assert subsequent login still 401s. Locks in the "no in-memory state" property; 2b's sticky semantics survive process death.
+12. `proactive_refresh_failures_do_NOT_count_toward_LOGIN_FAILED_audit_stream_and_do_NOT_advance_either_rule`. Trigger a refresh failure (per #97's documented "do not write LOGIN_FAILED" contract); assert no `LOGIN_FAILED` row; assert no counter movement on either rule. Cross-issue regression pin.
+
+**Mocking discipline (per the TDD doc — boundaries only):**
+
+- **System boundaries (mockable):**
+  - `Clock` — used to advance simulated time across the 10-minute and 24-hour windows in tests without `Thread.sleep`. Spring's `Clock` bean is the seam; tests inject a `Clock.fixed`-style stub. Production wiring uses `Clock.systemUTC()`.
+  - HTTP request IP — injected via `MockHttpServletRequest.setRemoteAddr(...)` or the existing `X-Forwarded-For` test helper. The IP-extraction service is the boundary, not its callers.
+- **NOT mocked (internal collaborators — tests exercise them for real):**
+  - `AlertRuleEvaluationService`, `OpsAlertService`, `AuthAuditService`, `SessionRevocationService`, `AdminDirectoryService`, `AppUserRepository`, `AuthEventRepository`, `OpsAlertRepository`, `AlertRuleRepository`, `RefreshTokenRepository`. All exercised through their public methods or via the HTTP endpoints that call them.
+  - **No mocking of `evaluateAuthBruteForce` or `evaluateAuthBruteForceDistributed` themselves** — they're the units under test. Tests drive them by calling `evaluateScheduledRules()` (the worker's public surface).
+- **Test database:** H2 for fast tests; PG profile for the integration-test ring per #106's CI guard.
+
+**Behaviours we deliberately do NOT assert here (each owned elsewhere):**
+
+- The exact SQL of the brute-force counter query → implementation detail; tests assert outcomes (locked / not locked, alert fired / not fired), not query shape. Code can change entirely.
+- The exact tick interval of `AlertRuleSchedulerWorker` → not under test in this PR; tests invoke `evaluateScheduledRules()` directly. The cron wiring has its own existing tests.
+- `OpsAlertService` de-dup window length → already covered by existing alert-service tests; this issue uses the capability, doesn't redefine it.
+- The temporary-password format → `AdminDirectoryService.generateTemporaryPassword()` has its own tests.
+
+**Refactor candidates (post-green, not pre-design):**
+
+After the green cycle, look for:
+- Duplication between `evaluateAuthBruteForce` and `evaluateAuthBruteForceDistributed` — both walk the same `auth_event` index. If the duplication is meaningful, extract a `FailedLoginEventQuery` helper. Don't pre-extract.
+- If `AdminDirectoryService.resetPassword` becomes long-method-shaped after the unlock branch is added, extract a `applyUnlockEffects(user, before, after)` private helper — keep tests on the public `resetPassword` interface.
+
+**Effect on app:**
+
+- Brute-force from a single IP becomes self-stopping at 5 attempts. Slow-distributed attacks are visible to ops within one alert-worker tick.
+- Legitimate users who fat-finger 5 times from one IP get locked and must contact admin. Pre-launch, with one admin (the user), this is fine. The cost will surface only post-launch; we accept the operational burden because the security gain dominates pre-launch.
+- Admin reset-password becomes the universal recovery action — "stuck user" maps to "click reset, hand them the temp password." No new UX for the admin to learn.
+- Two new alerts in the Audit Explorer feed: `AUTH_BRUTE_FORCE` (lockout fired) and `AUTH_BRUTE_FORCE_DISTRIBUTED` (alert-only). Both filter by `subjectId = appUserId`.
+- One new schema migration (`V94`), two new alert-type enum values, one new revocation-source enum value, two new `AppUser` columns, two new audit-payload fields on `ADMIN_RESET_PASSWORD`. All additive; no breaking change to LSP API or admin API contracts.
+
+**Dependencies / sequencing:**
+
+- Depends on #71 (auth audit, on `main`) — source events.
+- Depends on #80 (session revocation, PR #189 merged) — consumed via `SessionRevocationService`.
+- Independent of #97 (different layer; tests pin the cross-issue contract).
+- Independent of #142 (does not import in-memory cache pattern).
+- Bundles with #80 for close-out: #155 is the consumer of the infrastructure #80 shipped; closing #155 closes the loop.
+- One focused PR. No staged sub-PRs.
+
+**Un-defer triggers for the deferred sub-scopes:**
+- LSP `ApiClient` lockout: first real LSP onboarding OR observed credential-stuffing on the LSP login surface.
+- Auto-expire: post-launch operational burden of admin unlocks exceeds threshold (e.g. >5 unlocks/week).
+- Email notification on auto-lockout: when outbound email channel exists (also gated by #138).
 
 ---
 
@@ -5289,7 +5422,7 @@ These tests are valuable on their own; they describe the invariant the code alre
 
 **Effect on app:** Correct status codes. Better alerts and incident response.
 
-**Detailed solution after discussion (2026-06-01) — IMPLEMENT (GREEN-LIT):**
+**Detailed solution after discussion (2026-06-01) — SHIPPED 2026-06-08 via [PR #194](https://github.com/sid12701/lms/pull/194) (historical plan below):**
 
 **Decision:** Ship the fix as a single contained PR. Three new typed exceptions, mapping centralised in `GlobalExceptionHandler`, controller `try/catch` removed, Micrometer counter + alert rule on 503 rate. Scope is bounded (~150 LoC code + ~9 tests); the cost/value ratio is unambiguously positive and the audit doc's framing actually understated the bug surface.
 
@@ -6086,7 +6219,7 @@ This is a close-as-not-a-bug; the tests are regression guards, not features. Two
 
 **Recommended:** Option 1.
 
-**Detailed solution after discussion (2026-06-07):**
+**Detailed solution after discussion (2026-06-07) — SHIPPED 2026-06-08 via [PR #195](https://github.com/sid12701/lms/pull/195) (historical plan below):**
 
 **Reframe — the audit-doc fix is already shipped**
 

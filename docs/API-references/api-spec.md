@@ -20,7 +20,7 @@ Detailed response and error examples are documented in [api-standards.md](C:/Use
 |--------|----------|-------------|------|
 | POST | `/login` | User login with username and password | None |
 | POST | `/token` | API client token issuance with client credentials | None |
-| POST | `/refresh` | Refresh JWT | Valid JWT |
+| POST | `/refresh` | Rotate refresh cookie and issue new access JWT. On failure returns `401` with `{ code, message }` (`MISSING_REFRESH_COOKIE`, `TOKEN_EXPIRED`, `TOKEN_REVOKED`, `REFRESH_INVALID`). | Valid refresh cookie (`lms-refresh`) |
 | POST | `/password` | Change password | Valid JWT + `pwdchg` flag |
 
 ---
