@@ -2864,7 +2864,7 @@ Tracer first; each test exercises a public surface.
 ---
 
 ### #144 — [SEC-Δ-6] Re-check JWT in localStorage (H-04 status)
-**Labels:** security, verification · **Link:** https://github.com/sid12701/lms/issues/144 · **Status:** **OPEN** — plan locked 2026-06-08, ready to implement as PR #1 of the pre-launch security baseline. Cookie-only auth on Spring Boot (NOT a separate BFF process). **#132** (typed refresh 401 body + atomicity tests) **shipped early** via [PR #195](https://github.com/sid12701/lms/pull/195) (2026-06-08); **#155** (brute-force lockout + alerts) **shipped** 2026-06-08; **#97** still pending. Relies on already-shipped **#80** for incident response. Pairs with new follow-up issues for **Layer B (strict CSP + Trusted Types)**, **step-up auth**, **password history (#133)**, and **CI security baseline** — filed separately, sequenced post-launch.
+**Labels:** security, verification · **Link:** https://github.com/sid12701/lms/issues/144 · **Status:** **OPEN** — plan locked 2026-06-08, ready to implement as PR #1 of the pre-launch security baseline. Cookie-only auth on Spring Boot (NOT a separate BFF process). **#132** (typed refresh 401 body + atomicity tests) **shipped early** via [PR #195](https://github.com/sid12701/lms/pull/195) (2026-06-08); **#155** (brute-force lockout + alerts) **shipped** via [PR #196](https://github.com/sid12701/lms/pull/196) (2026-06-08); **#97** still pending. Relies on already-shipped **#80** for incident response. Pairs with new follow-up issues for **Layer B (strict CSP + Trusted Types)**, **step-up auth**, **password history (#133)**, and **CI security baseline** — filed separately, sequenced post-launch.
 
 **Problem (plain English):** Security audit's H-04 flagged JWT in localStorage. Verified in code: refresh token is already HttpOnly (`AuthController.java:519–522`), but the access JWT is still serialised into `localStorage` under `bhawana-lms-session` (`frontend/src/lib/api/session-storage.ts:35`). Any XSS that lands can read the access token (and pivot to long-lived sessions via `/auth/refresh`). H-04 is therefore **half-fixed**.
 
@@ -3003,7 +3003,7 @@ Tracer first. Each test exercises a public surface; no internal mocking beyond d
 **Tests deliberately NOT written here (owned elsewhere):**
 
 - SPA CSP header presence → owned by the Layer B follow-up issue.
-- Brute-force lockout → **shipped** via **#155** (2026-06-08).
+- Brute-force lockout → **shipped** via **#155** ([PR #196](https://github.com/sid12701/lms/pull/196), 2026-06-08).
 - Password history → owned by #133.
 - Step-up auth on sensitive operations → owned by the new step-up-auth follow-up issue.
 - Refresh atomicity + typed 401 body → **shipped** via **#132** ([PR #195](https://github.com/sid12701/lms/pull/195), 2026-06-08); grace-window follow-up still open.
@@ -3038,7 +3038,7 @@ PR #1 (this issue) is the foundation. Subsequent PRs layer on:
 | **PR #4 (parallel)** | Strict CSP on SPA + Trusted Types + XSS-sink audit (`frontend/` currently has zero `dangerouslySetInnerHTML` / `innerHTML` / `outerHTML` / `document.write` — verified 2026-06-08) | **#191** ("Strict CSP + Trusted Types for SPA — Layer B") | 2–3 days |
 | **Post-launch — Sprint 2** | Step-up auth on sensitive ops (bank detail changes, disbursement override, mock-outcome, password change, API client rotation, LSP enable/disable, admin revoke-sessions) | **#192** ("Step-up auth on sensitive operations — Layer C") | 2–3 days |
 | Post-launch | Password history (12 hashes) | **#133** | 2 days |
-| ~~Post-launch~~ | ~~Brute-force lockout + alert~~ — **shipped** **#155** (2026-06-08) | **#155** ✅ | — |
+| ~~Post-launch~~ | ~~Brute-force lockout + alert~~ — **shipped** **#155** ([PR #196](https://github.com/sid12701/lms/pull/196), 2026-06-08) | **#155** ✅ | — |
 | Post-launch | CI security baseline: Dependabot, CodeQL, Playwright security regressions (CSP header present, cookies HttpOnly, no token in localStorage after login), ESLint rule blocking `dangerouslySetInnerHTML` | **#193** ("CI security baseline — Layer D") | 1 day |
 
 **Pre-launch sprint un-deferred items** (sequenced alongside Sprint 2, not competing with PR #1–#4):
@@ -4118,7 +4118,7 @@ Untouched (deliberately):
 ---
 
 ### #155 — [AUD-9] Failed-auth events not fed into lockout/alert pipeline
-**Labels:** auditability, security · **Link:** https://github.com/sid12701/lms/issues/155 · **Status:** **CLOSED** — PR pending merge (2026-06-08). Scheduler-driven `AUTH_BRUTE_FORCE` / `AUTH_BRUTE_FORCE_DISTRIBUTED` rules on `auth_event_audit`; sticky `app_user` lockout; admin unlock via reset-password; Locked badge on Users page.
+**Labels:** auditability, security · **Link:** https://github.com/sid12701/lms/issues/155 · **Status:** **CLOSED** — [PR #196](https://github.com/sid12701/lms/pull/196) merged 2026-06-08. Scheduler-driven `AUTH_BRUTE_FORCE` / `AUTH_BRUTE_FORCE_DISTRIBUTED` rules on `auth_event_audit`; sticky `app_user` lockout; admin unlock via reset-password; Locked badge on Users page.
 
 **Problem (plain English):** Even once auth events are audited (#71), there's no rule that fires after N failures from one user/IP. Credential stuffing has no detection.
 
@@ -4781,7 +4781,7 @@ Also audit each file, component, module, and function linked to that feature, fi
 ---
 
 ### #80 — No admin "log out everywhere" / global JWT revocation
-**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/80 · **Status:** **CLOSED** — [PR #189](https://github.com/sid12701/lms/pull/189) merged 2026-06-08. Per-user admin revoke-sessions endpoint + `SessionRevocationService`; piggy-backs on admin reset-password and role-change paths; `SESSIONS_REVOKED_BY_ADMIN` audit rows with JSON details (V93). Admin Users UI revoke button. Brute-force auto-revoke consumed by **#155** (shipped 2026-06-08).
+**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/80 · **Status:** **CLOSED** — [PR #189](https://github.com/sid12701/lms/pull/189) merged 2026-06-08. Per-user admin revoke-sessions endpoint + `SessionRevocationService`; piggy-backs on admin reset-password and role-change paths; `SESSIONS_REVOKED_BY_ADMIN` audit rows with JSON details (V93). Admin Users UI revoke button. Brute-force auto-revoke consumed by **#155** ([PR #196](https://github.com/sid12701/lms/pull/196), 2026-06-08).
 
 **Problem (plain English):** No way to bulk-invalidate sessions during an incident.
 
