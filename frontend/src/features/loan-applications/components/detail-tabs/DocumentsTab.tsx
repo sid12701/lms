@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { TableSkeleton } from "@/components/app/feedback/Skeletons";
 import { DocumentChecklistGroup } from "@/components/app/documents";
-import { requestBlob } from "@/lib/api/http-client";
+import { ApiError, requestBlob } from "@/lib/api/http-client";
 import type { Document, DocumentKind } from "@/schemas/document";
 import type { LoanDocument, LoanDocumentType } from "@/types";
 import { useLoanApplicationDocuments } from "../../hooks/useLoanApplicationDocuments";
@@ -123,6 +123,10 @@ export function DocumentsTab({ applicationId, canManage: _canManage }: Documents
         link.remove();
         URL.revokeObjectURL(url);
       } catch (err) {
+        if (err instanceof ApiError && err.code === "DOCUMENT_STORAGE_UNAVAILABLE") {
+          toast.error("Document storage is temporarily unavailable. Please try again in a moment.");
+          return;
+        }
         toast.error(err instanceof Error ? err.message : "Couldn't download the document.");
       }
     },

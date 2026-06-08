@@ -1,18 +1,26 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.web.DocumentNotFoundException;
+import com.bhawana.lms.common.web.DocumentStorageUnavailableException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
+import org.springframework.stereotype.Service;
 
-final class FileSystemLoanDocumentStorageService {
+@Service
+public class FileSystemLoanDocumentStorageService {
 
-    private FileSystemLoanDocumentStorageService() {
+    private final DocumentStorageProperties properties;
+
+    public FileSystemLoanDocumentStorageService(DocumentStorageProperties properties) {
+        this.properties = properties;
     }
 
-    static List<LoanDocumentStorageService.StorageEntry> listAll(Path rootPath, String prefix) {
+    public List<LoanDocumentStorageService.StorageEntry> listAll(String prefix) {
+        Path rootPath = properties.getRootPath();
         Path directory = rootPath.resolve(prefix);
         List<LoanDocumentStorageService.StorageEntry> entries = new ArrayList<>();
         if (!Files.isDirectory(directory)) {
@@ -33,17 +41,27 @@ final class FileSystemLoanDocumentStorageService {
         return entries;
     }
 
-    static byte[] retrieve(Path rootPath, String storageKey) {
-        Path targetPath = rootPath.resolve(storageKey);
+    public byte[] retrieve(String storageKey) {
+        Path targetPath = properties.getRootPath().resolve(storageKey);
+        if (!Files.exists(targetPath)) {
+            throw new DocumentNotFoundException(
+                    "Document not found in LMS-managed local storage: " + storageKey
+            );
+        }
         try {
             return Files.readAllBytes(targetPath);
         } catch (IOException exception) {
-            throw new IllegalStateException("Unable to retrieve document from LMS-managed local storage: " + storageKey, exception);
+            throw new DocumentStorageUnavailableException(
+                    storageKey,
+                    DocumentStorageProperties.DocumentStorageProvider.LOCAL.name(),
+                    "Unable to retrieve document from LMS-managed local storage: " + storageKey,
+                    exception
+            );
         }
     }
 
-    static StoredDocument store(DocumentStorageDescriptor descriptor, Path rootPath, byte[] content) {
-        Path targetPath = rootPath.resolve(descriptor.storageKey());
+    public StoredDocument store(DocumentStorageDescriptor descriptor, byte[] content) {
+        Path targetPath = properties.getRootPath().resolve(descriptor.storageKey());
         try {
             Files.createDirectories(targetPath.getParent());
             Files.write(targetPath, content);

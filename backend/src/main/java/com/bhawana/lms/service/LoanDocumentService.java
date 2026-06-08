@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.web.DocumentNotFoundException;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
@@ -41,7 +42,7 @@ public class LoanDocumentService {
         LoanApplicationDocumentChecklist checklistItem =
                 loanApplicationService.getDocumentChecklistItem(applicationId, documentType);
         if (!checklistItem.isLmsManagedContent() || checklistItem.getStorageKey() == null) {
-            throw new IllegalStateException(
+            throw new DocumentNotFoundException(
                     "Document content is not LMS-managed or has no storage key: " + documentType.name()
             );
         }
@@ -64,7 +65,7 @@ public class LoanDocumentService {
                 .filter(checklistItem -> checklistItem.isLmsManagedContent() && checklistItem.getStorageKey() != null)
                 .toList();
         if (downloadableDocuments.isEmpty()) {
-            throw new IllegalStateException("No documents found in storage for application " + applicationId);
+            throw new DocumentNotFoundException("No documents found in storage for application " + applicationId);
         }
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
              ZipOutputStream zos = new ZipOutputStream(baos)) {

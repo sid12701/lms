@@ -11,16 +11,28 @@ import type { LoanDocument } from "@/types";
 const requestBlobMock = vi.hoisted(() => vi.fn());
 const useDocumentsMock = vi.fn();
 
-vi.mock("@/lib/api/http-client", () => ({
-  requestBlob: requestBlobMock,
-}));
+vi.mock("@/lib/api/http-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/http-client")>();
+  return {
+    ...actual,
+    requestBlob: requestBlobMock,
+  };
+});
 
 vi.mock("../../hooks/useLoanApplicationDocuments", () => ({
   useLoanApplicationDocuments: () => useDocumentsMock(),
   loanApplicationDocumentsQueryKey: (id: string) => ["loan-application", id, "documents"],
 }));
 
+import { ApiError } from "@/lib/api/http-client";
 import { DocumentsTab, adaptLoanDocumentToDocument } from "./DocumentsTab";
+import { toast } from "sonner";
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+  },
+}));
 
 function loanDoc(overrides: Partial<LoanDocument> = {}): LoanDocument {
   return {
@@ -65,6 +77,7 @@ function stubDownloadApis(): { getClickedDownload: () => string } {
 beforeEach(() => {
   requestBlobMock.mockReset();
   useDocumentsMock.mockReset();
+  vi.mocked(toast.error).mockReset();
 });
 
 afterEach(() => {
@@ -202,6 +215,45 @@ describe("DocumentsTab", () => {
     expect(getClickedDownload()).toBe("signed-kfs.pdf");
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:doc");
+  });
+
+  it("shows a retry-friendly toast when document storage is unavailable", async () => {
+    requestBlobMock.mockRejectedValue(
+      new ApiError(
+        "Document storage is temporarily unavailable. Please retry.",
+        503,
+        "",
+        "DOCUMENT_STORAGE_UNAVAILABLE",
+      ),
+    );
+    useDocumentsMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: {
+        documents: [
+          loanDoc({
+            id: "00000000-0000-4000-8000-000000000011",
+            type: "PAN",
+            fileMeta: {
+              storageKey: "loan/app/pan/uuid-pan.pdf",
+              fileName: "uploaded-pan.pdf",
+              mime: "application/pdf",
+              size: 4096,
+              checksum: "sha256:pan",
+            },
+          }),
+        ],
+      },
+      refetch: vi.fn(),
+    });
+    const user = userEvent.setup();
+
+    renderWithProviders(<DocumentsTab applicationId="app-1" canManage={false} />);
+    await user.click(screen.getByRole("button", { name: /Download PAN card/i }));
+
+    expect(toast.error).toHaveBeenCalledWith(
+      "Document storage is temporarily unavailable. Please try again in a moment.",
+    );
   });
 
   it("uses the server filename when Content-Disposition is readable", async () => {
