@@ -5269,7 +5269,7 @@ These tests are valuable on their own; they describe the invariant the code alre
 ---
 
 ### #92 — [B-10] Document download swallows IllegalStateException — storage outage masked as 404
-**Labels:** bug · **Link:** https://github.com/sid12701/lms/issues/92 · **Status:** **CLOSED** — PR pending merge (2026-06-08). Typed document-storage exceptions + `GlobalExceptionHandler` mapping; storage backends refactored to `@Service` beans; Micrometer counter on 503; alert spike rule **deferred** (counter only).
+**Labels:** bug · **Link:** https://github.com/sid12701/lms/issues/92 · **Status:** **CLOSED** — [PR #194](https://github.com/sid12701/lms/pull/194) merged 2026-06-08. Typed document-storage exceptions + `GlobalExceptionHandler` mapping; storage backends refactored to `@Service` beans; Micrometer counter on 503; alert spike rule **deferred** (counter only).
 
 **Problem (plain English):** Storage tier outage looks like "doc was deleted." Wrong incident response.
 
