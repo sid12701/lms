@@ -4074,7 +4074,7 @@ Full design, decisions, test plan, and file list live in the **#130** entry abov
 ---
 
 ### #74 — Foreclosure execute is admin-only — LSP cannot finalize closure
-**Labels:** gap, rbac · **Link:** https://github.com/sid12701/lms/issues/74 · **Status:** **CLOSED** — backend Slice A shipped 2026-06-07 (LSP self-execute API + `Idempotency-Key` + `LSP_BOUND_VIOLATION` alerts on LSP-path violations; admin break-glass unchanged). LSP loan-detail UI execute button deferred (Slice B / #17–#19).
+**Labels:** gap, rbac · **Link:** https://github.com/sid12701/lms/issues/74 · **Status:** **CLOSED** — [PR #187](https://github.com/sid12701/lms/pull/187) merged 2026-06-07. Backend Slice A: LSP self-execute API + `Idempotency-Key` + `LSP_BOUND_VIOLATION` alerts on LSP-path violations; admin break-glass unchanged. LSP loan-detail UI execute button deferred (Slice B / #17–#19).
 
 **Problem (plain English):** LSP can request a foreclosure quote but cannot execute it; only admin can. Asymmetric with disbursement (LSP can self-disburse).
 
@@ -6103,9 +6103,9 @@ If V66 succeeded on any environment, the backfill from V58 has held — orphans 
 ---
 
 ### #141 — [SEC-Δ-3] No LSP self-service foreclosure close path
-**Link:** https://github.com/sid12701/lms/issues/141
+**Link:** https://github.com/sid12701/lms/issues/141 · **Status:** **CLOSE AS DUPLICATE OF #74** — backend path shipped in [PR #187](https://github.com/sid12701/lms/pull/187) (2026-06-07).
 
-**Detailed solution after discussion:** _(pending — bundle with #74)_
+**Detailed solution after discussion (2026-06-07):** Duplicate of #74 (security/rbac framing). Close #141 referencing #74 / PR #187.
 
 ---
 
