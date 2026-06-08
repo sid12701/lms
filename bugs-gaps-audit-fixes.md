@@ -4470,7 +4470,7 @@ Also audit each file, component, module, and function linked to that feature, fi
 ---
 
 ### #80 — No admin "log out everywhere" / global JWT revocation
-**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/80 · **Status:** **CLOSED** — merged 2026-06-08. Per-user admin revoke-sessions endpoint + `SessionRevocationService`; piggy-backs on admin reset-password and role-change paths; `SESSIONS_REVOKED_BY_ADMIN` audit rows with JSON details (V93). Admin Users UI revoke button. `#155` brute-force lockout piggy-back deferred to #155.
+**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/80 · **Status:** **CLOSED** — [PR #189](https://github.com/sid12701/lms/pull/189) merged 2026-06-08. Per-user admin revoke-sessions endpoint + `SessionRevocationService`; piggy-backs on admin reset-password and role-change paths; `SESSIONS_REVOKED_BY_ADMIN` audit rows with JSON details (V93). Admin Users UI revoke button. `#155` brute-force lockout piggy-back deferred to #155.
 
 **Problem (plain English):** No way to bulk-invalidate sessions during an incident.
 
