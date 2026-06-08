@@ -4,12 +4,9 @@
  * Distinct from the lower-level primitive at `@/components/app/audit/
  * AuditFilterBar` (which is a controlled, stream + role + date-range
  * picker for the timeline component): this bar carries the page's
- * URL-state surface — actor, dateFrom/dateTo, correlationId, and free
- * text — and routes every change through the controlled `value` /
+ * URL-state surface — actor, dateFrom/dateTo, loanApplicationId,
+ * correlationId — and routes every change through the controlled `value` /
  * `onChange` callbacks the page provides.
- *
- * Search input debounces at 200ms before publishing through onChange so
- * the underlying TanStack Query cache key doesn't churn per keystroke.
  *
  * Per CLAUDE.md hard-don't #4 every input lives behind a shadcn primitive
  * (`Input`); native `<input type="date">` is acceptable because the date
@@ -18,7 +15,7 @@
  */
 import { useMemo } from "react";
 import { useDebouncedControlledText } from "@/lib/hooks/use-debounced-controlled-text";
-import { Search, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -49,10 +46,10 @@ export interface AuditPageFilterBarProps {
 
 function hasAnyFilter(value: AuditEventsFilters): boolean {
   if (value.actorId) return true;
+  if (value.loanApplicationId && value.loanApplicationId.trim() !== "") return true;
   if (value.correlationId && value.correlationId.trim() !== "") return true;
   if (value.dateFrom) return true;
   if (value.dateTo) return true;
-  if (value.q && value.q.trim() !== "") return true;
   return false;
 }
 
@@ -62,9 +59,9 @@ export function AuditPageFilterBar({
   actorOptions = [],
   className,
 }: AuditPageFilterBarProps) {
-  const qField = useDebouncedControlledText(
-    value.q,
-    (q) => onChange({ ...value, q, page: 0 }),
+  const loanApplicationField = useDebouncedControlledText(
+    value.loanApplicationId,
+    (loanApplicationId) => onChange({ ...value, loanApplicationId, page: 0 }),
     SEARCH_DEBOUNCE_MS,
   );
   const correlationField = useDebouncedControlledText(
@@ -74,13 +71,13 @@ export function AuditPageFilterBar({
   );
 
   const clearAll = () => {
-    qField.clearPending();
+    loanApplicationField.clearPending();
     correlationField.clearPending();
-    qField.onChange("");
+    loanApplicationField.onChange("");
     correlationField.onChange("");
     onChange({
       ...value,
-      q: undefined,
+      loanApplicationId: undefined,
       correlationId: undefined,
       actorId: undefined,
       dateFrom: undefined,
@@ -101,23 +98,6 @@ export function AuditPageFilterBar({
         className,
       )}
     >
-      <div className="relative min-w-[200px] flex-1">
-        <span className="sr-only">Search audit log</span>
-        <Search
-          aria-hidden="true"
-          className="text-foreground-muted pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
-        />
-        <Input
-          type="search"
-          data-slot="audit-search"
-          value={qField.value}
-          onChange={(e) => qField.onChange(e.target.value)}
-          placeholder="Search by headline or actor"
-          aria-label="Search audit log"
-          className="h-8 pr-2 pl-7.5 text-sm"
-        />
-      </div>
-
       <Select
         value={value.actorId ?? ALL_ACTORS}
         onValueChange={(next) =>
@@ -145,6 +125,24 @@ export function AuditPageFilterBar({
           ))}
         </SelectContent>
       </Select>
+
+      <div className="flex items-center gap-1.5">
+        <span
+          id="audit-loan-application-label"
+          className="text-foreground-muted text-xs font-medium tracking-wide uppercase"
+        >
+          Loan
+        </span>
+        <Input
+          type="text"
+          data-slot="audit-loan-application-id"
+          aria-labelledby="audit-loan-application-label"
+          value={loanApplicationField.value}
+          onChange={(e) => loanApplicationField.onChange(e.target.value)}
+          placeholder="loan application id"
+          className="h-8 w-56 px-2 text-xs"
+        />
+      </div>
 
       <div className="flex items-center gap-1.5">
         <span

@@ -51,6 +51,7 @@ public class AuditExplorerController {
             @RequestParam(required = false) UUID productId,
             @RequestParam(required = false) String since,
             @RequestParam(required = false) String until,
+            @RequestParam(required = false) String correlationId,
             @RequestParam(required = false, defaultValue = "0") int offset,
             @RequestParam(required = false, defaultValue = "100") int limit,
             @RequestParam(required = false, defaultValue = "false") boolean paginationDetails
@@ -68,6 +69,7 @@ public class AuditExplorerController {
                 productId,
                 parseInstant(since, "since"),
                 parseInstant(until, "until"),
+                normalizeBlank(correlationId),
                 effectiveOffset,
                 effectiveLimit,
                 paginationDetails

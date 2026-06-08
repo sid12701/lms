@@ -20,6 +20,7 @@ public record AuditExplorerQuery(
         UUID productId,
         Instant since,
         Instant until,
+        String correlationId,
         int offset,
         int limit,
         boolean includePaginationDetails
