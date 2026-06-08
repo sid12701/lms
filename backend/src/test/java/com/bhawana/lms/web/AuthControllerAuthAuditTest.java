@@ -24,6 +24,7 @@ import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.service.ApiClientManagementService;
 import com.bhawana.lms.service.AdminDirectoryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import java.util.List;
 import java.util.Set;
@@ -76,6 +77,9 @@ class AuthControllerAuthAuditTest {
 
     @Autowired
     private AdminDirectoryService adminDirectoryService;
+
+    @Autowired
+    private EntityManager entityManager;
 
     @BeforeEach
     void setUp() {
@@ -283,6 +287,8 @@ class AuthControllerAuthAuditTest {
                 CLIENT_IP,
                 CORRELATION_ID
         );
+
+        entityManager.clear();
 
         MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

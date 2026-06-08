@@ -4,6 +4,7 @@ import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.AppUserAuditEvent;
+import com.bhawana.lms.domain.RevocationSource;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
@@ -91,6 +92,7 @@ public class AdminDirectoryService {
     private final BorrowerRepository borrowerRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LspAuditEventService lspAuditEventService;
+    private final SessionRevocationService sessionRevocationService;
 
     public AdminDirectoryService(
             LspRepository lspRepository,
@@ -103,7 +105,8 @@ public class AdminDirectoryService {
             LoanAccountRepository loanAccountRepository,
             BorrowerRepository borrowerRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
-            LspAuditEventService lspAuditEventService
+            LspAuditEventService lspAuditEventService,
+            SessionRevocationService sessionRevocationService
     ) {
         this.lspRepository = lspRepository;
         this.appRoleRepository = appRoleRepository;
@@ -116,6 +119,7 @@ public class AdminDirectoryService {
         this.borrowerRepository = borrowerRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.lspAuditEventService = lspAuditEventService;
+        this.sessionRevocationService = sessionRevocationService;
     }
 
     @Transactional
@@ -340,8 +344,7 @@ public class AdminDirectoryService {
                 resolvedEmail,
                 resolvedStatus,
                 resolvedLsp,
-                new LinkedHashSet<>(resolvedRoles),
-                rolesChanged
+                new LinkedHashSet<>(resolvedRoles)
         );
         AppUser saved = appUserRepository.save(user);
 
@@ -355,6 +358,17 @@ public class AdminDirectoryService {
                 afterSnapshot,
                 null
         );
+
+        if (rolesChanged) {
+            sessionRevocationService.revokeAllSessions(
+                    saved,
+                    actorUsername,
+                    "Role change",
+                    actorIp,
+                    CorrelationIdHolder.get(),
+                    RevocationSource.ROLE_CHANGE
+            );
+        }
 
         return saved;
     }
@@ -386,7 +400,36 @@ public class AdminDirectoryService {
                 "PASSWORD_RESET_BY_ADMIN"
         );
 
+        sessionRevocationService.revokeAllSessions(
+                saved,
+                actorUsername,
+                "Password reset by admin",
+                actorIp,
+                correlationId,
+                RevocationSource.ADMIN_RESET_PASSWORD
+        );
+
         return new ResetPasswordResult(saved, temporaryPassword);
+    }
+
+    @Transactional
+    public SessionRevocationService.RevocationResult revokeUserSessions(
+            UUID userId,
+            String actorUsername,
+            String reasonOrNull,
+            String actorIp,
+            String correlationId
+    ) {
+        AppUser user = appUserRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown user id: " + userId));
+        return sessionRevocationService.revokeAllSessions(
+                user,
+                actorUsername,
+                reasonOrNull,
+                actorIp,
+                correlationId,
+                RevocationSource.ADMIN_EXPLICIT
+        );
     }
 
     private void enforceSelfEditGuards(

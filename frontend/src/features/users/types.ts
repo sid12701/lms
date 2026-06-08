@@ -83,3 +83,15 @@ export interface ResetUserPasswordResponse {
   user: UserRow;
   temporaryPassword: string;
 }
+
+export interface RevokeUserSessionsInput {
+  reason?: string;
+  idempotencyKey: string;
+}
+
+export interface RevokeUserSessionsResponse {
+  status: string;
+  previousTokenVersion: number;
+  newTokenVersion: number;
+  refreshTokensRevoked: number;
+}

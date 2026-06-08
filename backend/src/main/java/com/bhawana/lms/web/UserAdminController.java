@@ -6,6 +6,7 @@ import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.service.AdminDirectoryService;
+import com.bhawana.lms.service.SessionRevocationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -96,6 +97,30 @@ public class UserAdminController {
         );
     }
 
+    @PostMapping("/{userId}/revoke-sessions")
+    public RevokeSessionsResponse revokeSessions(
+            @PathVariable UUID userId,
+            @RequestBody(required = false) RevokeSessionsRequest request,
+            @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest
+    ) {
+        String actorUsername = principal == null ? "unknown" : principal.getSubject();
+        String reason = request == null ? null : request.reason();
+        SessionRevocationService.RevocationResult result = adminDirectoryService.revokeUserSessions(
+                userId,
+                actorUsername,
+                reason,
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get()
+        );
+        return new RevokeSessionsResponse(
+                "OK",
+                result.previousTokenVersion(),
+                result.newTokenVersion(),
+                result.refreshTokensRevoked()
+        );
+    }
+
     private static UserResponse toResponse(AppUser user) {
         return new UserResponse(
                 user.getId().toString(),
@@ -156,6 +181,17 @@ public class UserAdminController {
             String id,
             String username,
             String temporaryPassword
+    ) {
+    }
+
+    public record RevokeSessionsRequest(String reason) {
+    }
+
+    public record RevokeSessionsResponse(
+            String status,
+            long previousTokenVersion,
+            long newTokenVersion,
+            int refreshTokensRevoked
     ) {
     }
 }

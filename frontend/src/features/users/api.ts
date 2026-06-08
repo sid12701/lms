@@ -26,6 +26,8 @@ import type {
   CreateUserResponse,
   ResetUserPasswordInput,
   ResetUserPasswordResponse,
+  RevokeUserSessionsInput,
+  RevokeUserSessionsResponse,
   UpdateUserInput,
   UserMutationResponse,
   UserRow,
@@ -152,6 +154,21 @@ export async function updateUser(
     { idempotencyKey: input.idempotencyKey },
   );
   return { user: toUserRow(payload) };
+}
+
+export async function revokeUserSessions(
+  id: string,
+  input: RevokeUserSessionsInput,
+): Promise<RevokeUserSessionsResponse> {
+  const body: Record<string, string> = {};
+  if (input.reason?.trim()) {
+    body.reason = input.reason.trim();
+  }
+  return requestJson<RevokeUserSessionsResponse>(
+    `${BASE}/${id}/revoke-sessions`,
+    { method: "POST", body: JSON.stringify(body) },
+    { idempotencyKey: input.idempotencyKey },
+  );
 }
 
 export async function resetUserPassword(

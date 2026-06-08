@@ -124,6 +124,11 @@ app:
         methods: [POST]
         key: SUBJECT
         permits-per-minute: 5
+      - id: admin-revoke-sessions
+        path: /api/v1/internal/admin/users/*/revoke-sessions
+        methods: [POST]
+        key: SUBJECT
+        permits-per-minute: 5
       - id: docs-ops
         path: /api/v1/internal/ops/loan-applications/*/kyc-documents/**
         methods: [GET]
