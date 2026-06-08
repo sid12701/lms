@@ -27,6 +27,17 @@ const ROLE_PRIORITY: Role[] = [
 
 const LEGACY_USER_ID_STORAGE_KEY = "bhawana-lms-user-id";
 
+let lastRefreshFailureCode: string | null = null;
+
+/** Most recent refresh rejection code from the backend, for downstream UX readers. */
+export function getLastRefreshFailureCode(): string | null {
+  return lastRefreshFailureCode;
+}
+
+export function clearLastRefreshFailureCode(): void {
+  lastRefreshFailureCode = null;
+}
+
 function selectPrimaryRole(roles: readonly string[]): Role {
   for (const candidate of ROLE_PRIORITY) {
     if (roles.includes(candidate)) return candidate;
@@ -96,12 +107,16 @@ export async function logout(): Promise<void> {
  * refresh — in which case the caller should treat the user as signed out.
  */
 export async function refreshSession(): Promise<SessionType | null> {
+  lastRefreshFailureCode = null;
   try {
     const token = await backendRefresh();
     const session = await buildSessionFromToken(token);
     saveStoredSession(session);
     return session;
-  } catch {
+  } catch (error) {
+    if (error instanceof ApiError && error.code) {
+      lastRefreshFailureCode = error.code;
+    }
     clearStoredSession();
     return null;
   }

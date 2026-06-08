@@ -6069,9 +6069,16 @@ This is a close-as-not-a-bug; the tests are regression guards, not features. Two
 ---
 
 ### #132 — [F-9] Refresh revoke-then-issue can log user out if issue fails
-**Labels:** fragile-logic, security · **Link:** https://github.com/sid12701/lms/issues/132 · **Status:** **OPEN** — plan locked 2026-06-07, ready to implement (Option A: audit-doc fix is already shipped via `@Transactional`; lock in with regression tests + expose `TOKEN_REVOKED` reason in the 401 body; defer grace-window to a post-launch follow-up issue).
+**Labels:** fragile-logic, security · **Link:** https://github.com/sid12701/lms/issues/132 · **Status:** **CLOSED** — PR pending merge (2026-06-08). Confirmed existing `@Transactional` atomicity with regression tests; refresh 401 responses now carry typed `code`/`message` body; FE stashes failure code for future UX. Grace-window **deferred** to follow-up issue.
 
 **Problem (plain English):** Revoke happens before issue. If issue fails, prior token is already revoked.
+
+**Resolution (2026-06-08):**
+
+- **Backend:** `AuthController.unauthorizedRefresh` returns `RefreshFailureResponse` (`MISSING_REFRESH_COOKIE`, `TOKEN_EXPIRED`, `TOKEN_REVOKED`, `REFRESH_INVALID`) on all refresh 401 paths. No change to revoke-then-issue ordering — already atomic inside `@Transactional`.
+- **Tests:** `AuthControllerRefreshAtomicityTest` (mint/audit failure rollback); `AuthControllerRefreshFailureBodyTest` (all 401 body shapes).
+- **Frontend:** `auth-service` captures `ApiError.code` on refresh failure; `SessionProvider` exposes `lastRefreshFailureCode` via context; `auth-service.test.ts` locks wire contract.
+- **Deferred:** server-side grace window for mid-response-drop recovery (follow-up issue).
 
 **Possible fixes:**
 1. **Transactional revoke+issue (rollback on issue failure)** — atomic.
@@ -6198,6 +6205,17 @@ Tracer first. Each test exercises a public surface; no internal mocking beyond d
 - **Overengineering check:** no. Smallest possible PR that closes the audit-doc framing properly. The forward-compatible signal (`code` field) is genuinely useful even without grace-window.
 
 **Dependencies / sequencing:** standalone. Locks in atomicity property that #80 (just locked) relies on (its `SessionRevocationService` writes the new refresh-token revoke inside the admin endpoint's TX). #97 already shipped FE single-flight; this PR is the backend-side complement. Follow-up grace-window issue depends on this PR's body-shape and on #80 being in place to mark explicit revokes as grace-ineligible.
+
+**TDD checklist (tracker vs shipped):**
+
+| Planned test | Shipped |
+|---|---|
+| mint failure → old token unrevoked | ✅ `AuthControllerRefreshAtomicityTest` |
+| audit success throw → rollback | ✅ same |
+| 401 body shapes (missing/expired/revoked/orphan) | ✅ `AuthControllerRefreshFailureBodyTest` |
+| API-client mid-flow throw | ⏸ deferred (AppUser path covered) |
+| FE parses refresh 401 code | ✅ `auth-service.test.ts` |
+| Grace-window recovery | ⏸ follow-up issue |
 
 ---
 

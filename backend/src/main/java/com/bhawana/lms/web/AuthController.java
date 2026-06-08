@@ -127,7 +127,7 @@ public class AuthController {
 
     @PostMapping("/refresh")
     @Transactional
-    public ResponseEntity<TokenResponse> refresh(
+    public ResponseEntity<?> refresh(
             @CookieValue(name = REFRESH_COOKIE_NAME, required = false) String refreshCookie,
             HttpServletRequest httpRequest
     ) {
@@ -141,7 +141,7 @@ public class AuthController {
                     actorIp,
                     correlationId
             );
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return unauthorizedRefresh(AuthEventFailureReason.MISSING_REFRESH_COOKIE);
         }
 
         String tokenHash = sha256Hex(refreshCookie);
@@ -153,7 +153,7 @@ public class AuthController {
                     actorIp,
                     correlationId
             );
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return unauthorizedRefresh(AuthEventFailureReason.TOKEN_EXPIRED);
         }
         if (existing.isRevoked()) {
             authAuditService.recordTokenRefreshFailure(
@@ -162,7 +162,7 @@ public class AuthController {
                     actorIp,
                     correlationId
             );
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return unauthorizedRefresh(AuthEventFailureReason.TOKEN_REVOKED);
         }
         if (existing.getExpiresAt().isBefore(Instant.now())) {
             authAuditService.recordTokenRefreshFailure(
@@ -171,7 +171,7 @@ public class AuthController {
                     actorIp,
                     correlationId
             );
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return unauthorizedRefresh(AuthEventFailureReason.TOKEN_EXPIRED);
         }
 
         existing.revoke();
@@ -198,7 +198,7 @@ public class AuthController {
                     actorIp,
                     correlationId
             );
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return unauthorizedRefresh(AuthEventFailureReason.OTHER);
         }
 
         authAuditService.recordTokenRefreshSuccess(
@@ -309,6 +309,12 @@ public class AuthController {
             String tokenType,
             long expiresInSeconds,
             boolean passwordChangeRequired
+    ) {
+    }
+
+    public record RefreshFailureResponse(
+            String code,
+            String message
     ) {
     }
 
@@ -470,6 +476,35 @@ public class AuthController {
             );
             throw exception;
         }
+    }
+
+    private static ResponseEntity<RefreshFailureResponse> unauthorizedRefresh(AuthEventFailureReason reason) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(toRefreshFailureResponse(reason));
+    }
+
+    private static RefreshFailureResponse toRefreshFailureResponse(AuthEventFailureReason reason) {
+        return switch (reason) {
+            case MISSING_REFRESH_COOKIE -> new RefreshFailureResponse(
+                    "MISSING_REFRESH_COOKIE",
+                    "Refresh cookie is missing"
+            );
+            case TOKEN_EXPIRED -> new RefreshFailureResponse(
+                    "TOKEN_EXPIRED",
+                    "Refresh token has expired"
+            );
+            case TOKEN_REVOKED -> new RefreshFailureResponse(
+                    "TOKEN_REVOKED",
+                    "Refresh token was revoked"
+            );
+            case OTHER -> new RefreshFailureResponse(
+                    "REFRESH_INVALID",
+                    "Refresh token is invalid"
+            );
+            default -> new RefreshFailureResponse(
+                    "REFRESH_INVALID",
+                    "Refresh token is invalid"
+            );
+        };
     }
 
     private static String refreshSubjectUsername(RefreshToken refreshToken) {

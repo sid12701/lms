@@ -15,9 +15,13 @@ const settledSession: Session = {
 
 const completePasswordChangeMock = vi.fn();
 
-vi.mock("@/features/auth/auth-service", () => ({
-  completePasswordChange: (...args: unknown[]) => completePasswordChangeMock(...args),
-}));
+vi.mock("@/features/auth/auth-service", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/auth/auth-service")>();
+  return {
+    ...actual,
+    completePasswordChange: (...args: unknown[]) => completePasswordChangeMock(...args),
+  };
+});
 
 function renderForm(initial: Session | null = tempPasswordSession) {
   return render(

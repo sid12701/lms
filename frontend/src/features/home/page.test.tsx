@@ -108,6 +108,7 @@ function makeSession(role: Session["user"]["role"]): SessionContextValue {
   return {
     session,
     isLoading: false,
+    lastRefreshFailureCode: null,
     signIn: vi.fn(),
     signOut: vi.fn().mockResolvedValue(undefined),
     refresh: vi.fn().mockResolvedValue(undefined),
