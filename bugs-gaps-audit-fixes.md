@@ -6069,7 +6069,7 @@ This is a close-as-not-a-bug; the tests are regression guards, not features. Two
 ---
 
 ### #132 — [F-9] Refresh revoke-then-issue can log user out if issue fails
-**Labels:** fragile-logic, security · **Link:** https://github.com/sid12701/lms/issues/132 · **Status:** **CLOSED** — PR pending merge (2026-06-08). Confirmed existing `@Transactional` atomicity with regression tests; refresh 401 responses now carry typed `code`/`message` body; FE stashes failure code for future UX. Grace-window **deferred** to follow-up issue.
+**Labels:** fragile-logic, security · **Link:** https://github.com/sid12701/lms/issues/132 · **Status:** **CLOSED** — [PR #195](https://github.com/sid12701/lms/pull/195) merged 2026-06-08. Confirmed existing `@Transactional` atomicity with regression tests; refresh 401 responses now carry typed `code`/`message` body; FE stashes failure code for future UX. Grace-window **deferred** to follow-up issue.
 
 **Problem (plain English):** Revoke happens before issue. If issue fails, prior token is already revoked.
 
