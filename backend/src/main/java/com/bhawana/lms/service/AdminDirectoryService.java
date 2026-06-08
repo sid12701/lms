@@ -385,6 +385,12 @@ public class AdminDirectoryService {
 
         UserAuditSnapshot beforeSnapshot = toAuditSnapshot(user);
 
+        boolean unlockedFromAutoLockout = user.isLocked();
+        String priorLockReason = user.getLockReason();
+        if (unlockedFromAutoLockout) {
+            user.unlockForReset();
+        }
+
         String temporaryPassword = generateTemporaryPassword();
         user.requirePasswordChange(passwordEncoder.encode(temporaryPassword));
         AppUser saved = appUserRepository.save(user);
@@ -397,7 +403,9 @@ public class AdminDirectoryService {
                 correlationId,
                 beforeSnapshot,
                 afterSnapshot,
-                "PASSWORD_RESET_BY_ADMIN"
+                "PASSWORD_RESET_BY_ADMIN",
+                unlockedFromAutoLockout,
+                priorLockReason
         );
 
         sessionRevocationService.revokeAllSessions(
@@ -489,11 +497,35 @@ public class AdminDirectoryService {
             UserAuditSnapshot afterSnapshot,
             String eventType
     ) {
+        writeUserAuditEvent(
+                user,
+                actorUsername,
+                actorIp,
+                correlationId,
+                beforeSnapshot,
+                afterSnapshot,
+                eventType,
+                false,
+                null
+        );
+    }
+
+    private void writeUserAuditEvent(
+            AppUser user,
+            String actorUsername,
+            String actorIp,
+            String correlationId,
+            UserAuditSnapshot beforeSnapshot,
+            UserAuditSnapshot afterSnapshot,
+            String eventType,
+            boolean unlockedFromAutoLockout,
+            String priorLockReason
+    ) {
         appUserAuditEventRepository.save(new AppUserAuditEvent(
                 user,
                 actorUsername,
                 serializeAuditSnapshot(beforeSnapshot),
-                serializeAuditPayload(afterSnapshot, eventType),
+                serializeAuditPayload(afterSnapshot, eventType, unlockedFromAutoLockout, priorLockReason),
                 correlationId,
                 actorIp
         ));
@@ -507,11 +539,22 @@ public class AdminDirectoryService {
         }
     }
 
-    private String serializeAuditPayload(UserAuditSnapshot snapshot, String eventType) {
+    private String serializeAuditPayload(
+            UserAuditSnapshot snapshot,
+            String eventType,
+            boolean unlockedFromAutoLockout,
+            String priorLockReason
+    ) {
         try {
             ObjectNode node = objectMapper.valueToTree(snapshot);
             if (eventType != null && !eventType.isBlank()) {
                 node.put("eventType", eventType);
+            }
+            if ("PASSWORD_RESET_BY_ADMIN".equals(eventType)) {
+                node.put("unlockedFromAutoLockout", unlockedFromAutoLockout);
+                if (priorLockReason != null && !priorLockReason.isBlank()) {
+                    node.put("priorLockReason", priorLockReason);
+                }
             }
             return objectMapper.writeValueAsString(node);
         } catch (JsonProcessingException exception) {

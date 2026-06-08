@@ -10,8 +10,9 @@
  */
 import { useCallback, useMemo } from "react";
 import type { ColumnDef, PaginationState } from "@tanstack/react-table";
-import { CheckCircle2, PauseCircle } from "lucide-react";
+import { CheckCircle2, Lock, PauseCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AdminEntityDataTable } from "@/components/app/data/AdminEntityDataTable";
 import { EntityRowActions } from "@/components/app/data/EntityRowActions";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
@@ -79,10 +80,31 @@ export function UsersTable({
         id: "username",
         header: "Username",
         cell: ({ row }) => (
-          <div className="flex flex-col gap-0.5">
-            <span className="text-foreground text-sm font-medium" data-slot="users-username">
-              {row.original.username}
-            </span>
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-foreground text-sm font-medium" data-slot="users-username">
+                {row.original.username}
+              </span>
+              {row.original.lockedAt ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      data-slot="users-locked-badge"
+                      data-testid="users-locked-badge"
+                      className="border-warning/30 bg-warning/10 text-warning gap-1"
+                    >
+                      <Lock aria-hidden="true" className="size-3" />
+                      <span>Locked</span>
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {row.original.lockReason === "BRUTE_FORCE"
+                      ? "Auto-locked after repeated failed logins. Reset password to unlock."
+                      : "Account is locked. Reset password to unlock."}
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
+            </div>
             {row.original.mustChangePassword ? (
               <span data-slot="users-must-change-flag" className="text-warning text-xs">
                 Must change password

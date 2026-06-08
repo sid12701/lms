@@ -12,6 +12,11 @@ public class AlertRuleProperties {
     private int lspRejectWindowDays = 7;
     private int lspRejectMinSamples = 10;
     private int lspRejectRatePct = 40;
+    private int authBruteForceThreshold = 5;
+    private int authBruteForceWindowMinutes = 10;
+    private int authBruteForceDistributedThreshold = 20;
+    private int authBruteForceDistributedDistinctIpMin = 5;
+    private int authBruteForceDistributedWindowHours = 24;
 
     public boolean isSchedulerEnabled() {
         return schedulerEnabled;
@@ -67,5 +72,45 @@ public class AlertRuleProperties {
 
     public void setLspRejectRatePct(int lspRejectRatePct) {
         this.lspRejectRatePct = lspRejectRatePct;
+    }
+
+    public int getAuthBruteForceThreshold() {
+        return authBruteForceThreshold;
+    }
+
+    public void setAuthBruteForceThreshold(int authBruteForceThreshold) {
+        this.authBruteForceThreshold = authBruteForceThreshold;
+    }
+
+    public int getAuthBruteForceWindowMinutes() {
+        return authBruteForceWindowMinutes;
+    }
+
+    public void setAuthBruteForceWindowMinutes(int authBruteForceWindowMinutes) {
+        this.authBruteForceWindowMinutes = authBruteForceWindowMinutes;
+    }
+
+    public int getAuthBruteForceDistributedThreshold() {
+        return authBruteForceDistributedThreshold;
+    }
+
+    public void setAuthBruteForceDistributedThreshold(int authBruteForceDistributedThreshold) {
+        this.authBruteForceDistributedThreshold = authBruteForceDistributedThreshold;
+    }
+
+    public int getAuthBruteForceDistributedDistinctIpMin() {
+        return authBruteForceDistributedDistinctIpMin;
+    }
+
+    public void setAuthBruteForceDistributedDistinctIpMin(int authBruteForceDistributedDistinctIpMin) {
+        this.authBruteForceDistributedDistinctIpMin = authBruteForceDistributedDistinctIpMin;
+    }
+
+    public int getAuthBruteForceDistributedWindowHours() {
+        return authBruteForceDistributedWindowHours;
+    }
+
+    public void setAuthBruteForceDistributedWindowHours(int authBruteForceDistributedWindowHours) {
+        this.authBruteForceDistributedWindowHours = authBruteForceDistributedWindowHours;
     }
 }

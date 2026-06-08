@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityManager;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -90,6 +91,18 @@ class UserAdminControllerTest {
                 null,
                 Set.of(opsUserRole)
         ));
+    }
+
+    @Test
+    void listUsersIncludesLockoutFieldsWhenUserIsLocked() throws Exception {
+        AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
+        managedUser.lockForBruteForce(Instant.parse("2026-06-08T10:00:00Z"));
+        appUserRepository.save(managedUser);
+
+        mockMvc.perform(get("/api/v1/internal/admin/users").with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.username=='test.user')].lockedAt").isNotEmpty())
+                .andExpect(jsonPath("$[?(@.username=='test.user')].lockReason").value(AppUser.LOCK_REASON_BRUTE_FORCE));
     }
 
     @Test

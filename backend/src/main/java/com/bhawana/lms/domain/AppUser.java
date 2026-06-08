@@ -65,6 +65,14 @@ public class AppUser {
     @Column(name = "token_version", nullable = false)
     private long tokenVersion;
 
+    @Column(name = "locked_at")
+    private Instant lockedAt;
+
+    @Column(name = "lock_reason", length = 64)
+    private String lockReason;
+
+    public static final String LOCK_REASON_BRUTE_FORCE = "BRUTE_FORCE";
+
     protected AppUser() {
     }
 
@@ -175,5 +183,27 @@ public class AppUser {
 
     public void revokeAllSessions() {
         this.tokenVersion++;
+    }
+
+    public Instant getLockedAt() {
+        return lockedAt;
+    }
+
+    public String getLockReason() {
+        return lockReason;
+    }
+
+    public boolean isLocked() {
+        return lockedAt != null;
+    }
+
+    public void lockForBruteForce(Instant lockedAt) {
+        this.lockedAt = lockedAt;
+        this.lockReason = LOCK_REASON_BRUTE_FORCE;
+    }
+
+    public void unlockForReset() {
+        this.lockedAt = null;
+        this.lockReason = null;
     }
 }

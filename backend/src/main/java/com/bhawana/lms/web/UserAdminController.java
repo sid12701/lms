@@ -129,7 +129,9 @@ public class UserAdminController {
                 user.getStatus().name(),
                 user.getLsp() == null ? null : user.getLsp().getId().toString(),
                 user.getLsp() == null ? "All LSPs" : user.getLsp().getName(),
-                user.getRoles().stream().map(role -> role.getCode().name()).sorted().toList()
+                user.getRoles().stream().map(role -> role.getCode().name()).sorted().toList(),
+                user.getLockedAt() == null ? null : user.getLockedAt().toString(),
+                user.getLockReason()
         );
     }
 
@@ -173,7 +175,9 @@ public class UserAdminController {
             String status,
             String lspId,
             String lspName,
-            List<String> roles
+            List<String> roles,
+            String lockedAt,
+            String lockReason
     ) {
     }
 
