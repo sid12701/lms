@@ -6,7 +6,34 @@ vi.mock("@/lib/api/http-client", () => ({
   requestJson: requestJsonMock,
 }));
 
-import { revokeUserSessions } from "./api";
+import { listUsers, revokeUserSessions } from "./api";
+
+describe("listUsers", () => {
+  afterEach(() => {
+    requestJsonMock.mockReset();
+  });
+
+  it("maps lockout fields from the backend response", async () => {
+    requestJsonMock.mockResolvedValue([
+      {
+        id: "11111111-1111-1111-1111-111111111111",
+        username: "locked.user",
+        email: "locked.user@bhawana.local",
+        status: "ACTIVE",
+        lspId: null,
+        lspName: null,
+        roles: ["OPS_USER"],
+        lockedAt: "2026-06-08T10:00:00.000Z",
+        lockReason: "BRUTE_FORCE",
+      },
+    ]);
+
+    const result = await listUsers();
+
+    expect(result.items[0]?.lockedAt).toBe("2026-06-08T10:00:00.000Z");
+    expect(result.items[0]?.lockReason).toBe("BRUTE_FORCE");
+  });
+});
 
 describe("revokeUserSessions", () => {
   afterEach(() => {

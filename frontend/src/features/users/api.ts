@@ -72,6 +72,8 @@ interface BackendUserResponse {
   lspId: string | null;
   lspName: string | null;
   roles: string[];
+  lockedAt?: string | null;
+  lockReason?: string | null;
 }
 
 function toUserRow(payload: BackendUserResponse): UserRow {
@@ -84,6 +86,8 @@ function toUserRow(payload: BackendUserResponse): UserRow {
     lspId: payload.lspId,
     mustChangePassword: false,
     createdAt: EPOCH_ISO,
+    lockedAt: payload.lockedAt ?? null,
+    lockReason: payload.lockReason ?? null,
   };
   return { ...user, lspName: payload.lspName ?? null };
 }

@@ -23,6 +23,8 @@ export const User = z
     lspId: Uuid.nullable(),
     mustChangePassword: z.boolean().default(false),
     createdAt: Iso8601,
+    lockedAt: Iso8601.nullable().optional(),
+    lockReason: z.string().nullable().optional(),
   })
   .superRefine((u, ctx) => {
     if (TENANT_SCOPED_ROLES.has(u.role) && u.lspId === null) {

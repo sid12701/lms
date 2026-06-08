@@ -409,11 +409,20 @@ public class AuthController {
         requireField(request.username(), "username");
         requireField(request.password(), "password");
         String correlationId = CorrelationIdHolder.get();
+        AppUser user = appUserRepository.findByUsername(request.username()).orElse(null);
+        if (user != null && user.isLocked()) {
+            authAuditService.recordLoginFailure(
+                    request.username(),
+                    AuthEventFailureReason.INVALID_CREDENTIALS,
+                    remoteAddress,
+                    correlationId
+            );
+            throw new BadCredentialsException("Invalid credentials");
+        }
         try {
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(request.username(), request.password())
             );
-            AppUser user = appUserRepository.findByUsername(request.username()).orElse(null);
             try {
                 if (user != null && user.getLsp() != null && hasLspUiRole(user)) {
                     lspSurfaceIpAllowlistService.assertUiLoginAllowed(user.getLsp().getId(), remoteAddress);

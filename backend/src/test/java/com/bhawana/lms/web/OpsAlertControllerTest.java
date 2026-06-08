@@ -249,9 +249,11 @@ class OpsAlertControllerTest {
                                         .claim("roles", List.of("SYSTEM_ADMIN")))
                                 .authorities(() -> "ROLE_SYSTEM_ADMIN")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(7))
+                .andExpect(jsonPath("$.length()").value(9))
                 .andExpect(jsonPath("$[?(@.code=='STALE_INTAKE')].enabled").value(true))
-                .andExpect(jsonPath("$[?(@.code=='WEBHOOK_DEAD_LETTER')].triggerKind").value("EVENT"));
+                .andExpect(jsonPath("$[?(@.code=='WEBHOOK_DEAD_LETTER')].triggerKind").value("EVENT"))
+                .andExpect(jsonPath("$[?(@.code=='AUTH_BRUTE_FORCE')].triggerKind").value("SCHEDULED"))
+                .andExpect(jsonPath("$[?(@.code=='AUTH_BRUTE_FORCE_DISTRIBUTED')].triggerKind").value("SCHEDULED"));
     }
 
     @Test

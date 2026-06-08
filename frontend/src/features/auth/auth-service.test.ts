@@ -40,9 +40,7 @@ describe("auth-service refresh failures", () => {
 
   it("clears the stored refresh failure code before a new refresh attempt", async () => {
     vi.mocked(refreshAccessToken)
-      .mockRejectedValueOnce(
-        new ApiError("Refresh token was revoked", 401, "", "TOKEN_REVOKED"),
-      )
+      .mockRejectedValueOnce(new ApiError("Refresh token was revoked", 401, "", "TOKEN_REVOKED"))
       .mockRejectedValueOnce(new ApiError("Refresh token has expired", 401, "", "TOKEN_EXPIRED"));
 
     await refreshSession();
