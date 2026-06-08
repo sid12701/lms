@@ -52,6 +52,7 @@ export interface UsersTableProps {
   onFiltersChange: (next: UsersListFilters) => void;
   onEdit: (row: UserRow) => void;
   onResetPassword: (row: UserRow) => void;
+  onRevokeSessions: (row: UserRow) => void;
   onToggleStatus: (row: UserRow) => void;
   className?: string;
 }
@@ -63,6 +64,7 @@ export function UsersTable({
   onFiltersChange,
   onEdit,
   onResetPassword,
+  onRevokeSessions,
   onToggleStatus,
   className,
 }: UsersTableProps) {
@@ -163,6 +165,12 @@ export function UsersTable({
                   onSelect: () => onResetPassword(u),
                 },
                 {
+                  id: "revoke-sessions",
+                  label: "Revoke sessions",
+                  dataSlot: "users-revoke-sessions-button",
+                  onSelect: () => onRevokeSessions(u),
+                },
+                {
                   id: "toggle",
                   label: isDisabled ? "Enable" : "Disable",
                   ariaLabel: isDisabled ? `Enable ${u.username}` : `Disable ${u.username}`,
@@ -175,7 +183,7 @@ export function UsersTable({
         },
       },
     ],
-    [onEdit, onResetPassword, onToggleStatus],
+    [onEdit, onResetPassword, onRevokeSessions, onToggleStatus],
   );
 
   const handlePaginationChange = useCallback(

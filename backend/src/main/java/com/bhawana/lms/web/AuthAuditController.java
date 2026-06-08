@@ -4,6 +4,7 @@ import com.bhawana.lms.common.web.PagedResult;
 import com.bhawana.lms.domain.AuthEventAudit;
 import com.bhawana.lms.domain.AuthEventType;
 import com.bhawana.lms.service.AuthAuditService;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -64,6 +65,7 @@ public class AuthAuditController {
             String failureReason,
             String actorIp,
             String correlationId,
+            JsonNode details,
             Instant createdAt
     ) {
         static AuthAuditEventResponse from(AuthEventAudit event) {
@@ -76,6 +78,7 @@ public class AuthAuditController {
                     event.getFailureReason() != null ? event.getFailureReason().name() : null,
                     event.getActorIp(),
                     event.getCorrelationId(),
+                    event.getDetailsJson(),
                     event.getCreatedAt()
             );
         }

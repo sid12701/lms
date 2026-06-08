@@ -23,6 +23,7 @@ import com.bhawana.lms.repo.AppUserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.persistence.EntityManager;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,6 +70,9 @@ class UserAdminControllerTest {
     @Autowired
     private AppUserAuditEventRepository appUserAuditEventRepository;
 
+    @Autowired
+    private EntityManager entityManager;
+
     @BeforeEach
     void setUpManagedUser() {
         appUserAuditEventRepository.deleteAll();
@@ -105,6 +109,7 @@ class UserAdminControllerTest {
                 .get("temporaryPassword")
                 .asText();
 
+        entityManager.clear();
         assertNotEquals(oldPasswordHash, appUserRepository.findById(managedUser.getId()).orElseThrow().getPasswordHash());
 
         mockMvc.perform(post("/api/v1/auth/login")
@@ -146,9 +151,10 @@ class UserAdminControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of("roles", List.of("PRODUCT_ADMIN")))))
                 .andExpect(status().isOk());
 
+        entityManager.clear();
         assertTrue(appUserRepository.findById(managedUser.getId()).orElseThrow().getTokenVersion() > 0L);
 
-        mockMvc.perform(get("/api/v1/internal/admin/users")
+        mockMvc.perform(get("/api/v1/internal/system/context")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isUnauthorized());
     }
@@ -242,6 +248,7 @@ class UserAdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.temporaryPassword").isString());
 
+        entityManager.clear();
         AppUserAuditEvent auditEvent = appUserAuditEventRepository
                 .findTopByUser_IdOrderByCreatedAtDesc(managedUser.getId())
                 .orElseThrow();
@@ -289,6 +296,7 @@ class UserAdminControllerTest {
                 .get("temporaryPassword")
                 .asText();
 
+        entityManager.clear();
         AppUserAuditEvent auditEvent = appUserAuditEventRepository
                 .findTopByUser_IdOrderByCreatedAtDesc(managedUser.getId())
                 .orElseThrow();

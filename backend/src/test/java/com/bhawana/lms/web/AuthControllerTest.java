@@ -28,6 +28,7 @@ import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.service.ApiClientManagementService;
 import com.bhawana.lms.service.AdminDirectoryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import java.util.List;
 import java.util.Map;
@@ -91,6 +92,9 @@ class AuthControllerTest {
 
     @Autowired
     private AuthEventAuditRepository authEventAuditRepository;
+
+    @Autowired
+    private EntityManager entityManager;
 
     @BeforeEach
     void setUpManagedUser() {
@@ -231,6 +235,7 @@ class AuthControllerTest {
                 "test-reset-login"
         );
 
+        entityManager.clear();
         assertNotEquals(oldPasswordHash, appUserRepository.findById(managedUser.getId()).orElseThrow().getPasswordHash());
 
         mockMvc.perform(post("/api/v1/auth/login")

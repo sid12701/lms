@@ -6,9 +6,12 @@ import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.AuthEventAudit;
 import com.bhawana.lms.domain.AuthEventFailureReason;
 import com.bhawana.lms.domain.AuthEventType;
+import com.bhawana.lms.domain.RevocationSource;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.AuthEventAuditRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -30,15 +33,18 @@ public class AuthAuditService {
     private final AuthEventAuditRepository authEventAuditRepository;
     private final AppUserRepository appUserRepository;
     private final ApiClientRepository apiClientRepository;
+    private final ObjectMapper objectMapper;
 
     public AuthAuditService(
             AuthEventAuditRepository authEventAuditRepository,
             AppUserRepository appUserRepository,
-            ApiClientRepository apiClientRepository
+            ApiClientRepository apiClientRepository,
+            ObjectMapper objectMapper
     ) {
         this.authEventAuditRepository = authEventAuditRepository;
         this.appUserRepository = appUserRepository;
         this.apiClientRepository = apiClientRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -143,6 +149,40 @@ public class AuthAuditService {
     @Transactional
     public void recordPasswordChanged(AppUser user, String actorIp, String correlationId) {
         save(user.getUsername(), user.getId(), null, AuthEventType.PASSWORD_CHANGED, null, actorIp, correlationId);
+    }
+
+    @Transactional
+    public void recordSessionsRevoked(
+            AppUser targetUser,
+            String actorUsername,
+            String reasonOrNull,
+            String actorIp,
+            String correlationId,
+            RevocationSource source,
+            long previousTokenVersion,
+            long newTokenVersion,
+            int refreshTokensRevoked
+    ) {
+        ObjectNode details = objectMapper.createObjectNode();
+        details.put("source", source.name());
+        details.put("actorUsername", actorUsername);
+        if (reasonOrNull != null && !reasonOrNull.isBlank()) {
+            details.put("reason", reasonOrNull.trim());
+        }
+        details.put("previousTokenVersion", previousTokenVersion);
+        details.put("newTokenVersion", newTokenVersion);
+        details.put("refreshTokensRevoked", refreshTokensRevoked);
+
+        authEventAuditRepository.save(new AuthEventAudit(
+                targetUser.getUsername(),
+                targetUser.getId(),
+                null,
+                AuthEventType.SESSIONS_REVOKED_BY_ADMIN,
+                null,
+                actorIp,
+                correlationId,
+                details
+        ));
     }
 
     private void save(

@@ -4252,7 +4252,7 @@ Tracer first; each test exercises a public surface.
 ---
 
 ### #76 — Audit Explorer free-text + correlationId filter is client-side only
-**Labels:** gap, auditability · **Link:** https://github.com/sid12701/lms/issues/76 · **Status:** **CLOSED** — merged 2026-06-08. Server-side `correlationId` filter on all 8 UNION branches; FE `loanApplicationId` filter bar + URL binding; removed client-side `passesClientFilters` and free-text `q` input. Tests: `AuditExplorerControllerTest` correlationId slices, `features/audit/api.test.ts`, `AuditFilterBar.test.tsx`.
+**Labels:** gap, auditability · **Link:** https://github.com/sid12701/lms/issues/76 · **Status:** **CLOSED** — [PR #188](https://github.com/sid12701/lms/pull/188) merged 2026-06-08. Server-side `correlationId` filter on all 8 UNION branches; FE `loanApplicationId` filter bar + URL binding; removed client-side `passesClientFilters` and free-text `q` input. Tests: `AuditExplorerControllerTest` correlationId slices, `features/audit/api.test.ts`, `AuditFilterBar.test.tsx`.
 
 **Problem (plain English):** The UI filters apply only to the currently-loaded page of audit rows. Cross-page searches are impossible from the UI.
 
@@ -4470,9 +4470,11 @@ Also audit each file, component, module, and function linked to that feature, fi
 ---
 
 ### #80 — No admin "log out everywhere" / global JWT revocation
-**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/80 · **Status:** **OPEN** — plan locked 2026-06-07, ready to implement (Option A: per-user revocation, with reset-password and #155-lockout piggy-backs).
+**Labels:** gap, security · **Link:** https://github.com/sid12701/lms/issues/80 · **Status:** **CLOSED** — merged 2026-06-08. Per-user admin revoke-sessions endpoint + `SessionRevocationService`; piggy-backs on admin reset-password and role-change paths; `SESSIONS_REVOKED_BY_ADMIN` audit rows with JSON details (V93). Admin Users UI revoke button. `#155` brute-force lockout piggy-back deferred to #155.
 
 **Problem (plain English):** No way to bulk-invalidate sessions during an incident.
+
+**Resolution (2026-06-08):** `POST /api/v1/internal/admin/users/{userId}/revoke-sessions` (`SYSTEM_ADMIN`). `SessionRevocationService.revokeAllSessions` bumps `tokenVersion`, revokes refresh tokens, writes `SESSIONS_REVOKED_BY_ADMIN` to `auth_event_audit` with `details_json`. Also wired on admin reset-password (`ADMIN_RESET_PASSWORD`) and role change (`ROLE_CHANGE`). Tests: `Issue80SessionRevocationIntegrationTest` (8 cases).
 
 **Possible fixes:**
 1. **Per-user `tv` bump from admin UI** — covers individual user; relies on existing pattern.

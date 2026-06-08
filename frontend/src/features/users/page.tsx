@@ -34,6 +34,8 @@ import { useUsers } from "./hooks/useUsers";
 import { useCreateUser } from "./hooks/useCreateUser";
 import { useUpdateUser } from "./hooks/useUpdateUser";
 import { useResetUserPassword } from "./hooks/useResetUserPassword";
+import { useRevokeUserSessions } from "./hooks/useRevokeUserSessions";
+import { RevokeSessionsDialog } from "./components/RevokeSessionsDialog";
 import { useLsps } from "@/features/lsps/hooks/useLsps";
 import type { UserRow, UsersListFilters } from "./types";
 import type { Role as RoleT } from "@/schemas/role";
@@ -98,6 +100,7 @@ export function UsersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<UserRow | null>(null);
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<UserRow | null>(null);
   const [revealedTempPassword, setRevealedTempPassword] = useState<{
     username: string;
     password: string;
@@ -107,6 +110,7 @@ export function UsersPage() {
   const create = useCreateUser();
   const update = useUpdateUser();
   const reset = useResetUserPassword();
+  const revokeSessions = useRevokeUserSessions();
 
   // LSP options for the filter bar + create/edit dialogs. Pull a wide page â€”
   // the admin LSP list is short enough in practice (BRD Â§1) to fit without
@@ -233,6 +237,35 @@ export function UsersPage() {
     clearRevealed();
   };
 
+  const handleRevokeOpenChange = (open: boolean) => {
+    if (!open) {
+      if (revokeSessions.isPending) return;
+      setRevokeTarget(null);
+      revokeSessions.reset();
+    }
+  };
+  const handleRevokeConfirm = async ({
+    reason,
+    idempotencyKey,
+  }: {
+    reason?: string;
+    idempotencyKey: string;
+  }) => {
+    if (!revokeTarget) return;
+    try {
+      await revokeSessions.mutateAsync({
+        id: revokeTarget.id,
+        username: revokeTarget.username,
+        reason,
+        idempotencyKey,
+      });
+      setRevokeTarget(null);
+      revokeSessions.reset();
+    } catch {
+      // Surfaced via revokeSessions.error.
+    }
+  };
+
   // â”€â”€ Toggle status (Enable / Disable) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleToggleStatus = (row: UserRow) => {
     const nextStatus: UserStatusT = row.status === "DISABLED" ? "ACTIVE" : "DISABLED";
@@ -294,6 +327,7 @@ export function UsersPage() {
           onFiltersChange={setFilters}
           onEdit={(row) => setEditTarget(row)}
           onResetPassword={(row) => setResetTarget(row)}
+          onRevokeSessions={(row) => setRevokeTarget(row)}
           onToggleStatus={handleToggleStatus}
         />
       }
@@ -332,6 +366,17 @@ export function UsersPage() {
             onAcknowledgePassword={handleResetAcknowledge}
             loading={reset.isPending}
             errorMessage={reset.isError ? extractAdminErrorMessage(reset.error) : null}
+          />
+
+          <RevokeSessionsDialog
+            open={revokeTarget !== null}
+            onOpenChange={handleRevokeOpenChange}
+            username={revokeTarget?.username ?? ""}
+            onConfirm={handleRevokeConfirm}
+            loading={revokeSessions.isPending}
+            errorMessage={
+              revokeSessions.isError ? extractAdminErrorMessage(revokeSessions.error) : null
+            }
           />
         </>
       }

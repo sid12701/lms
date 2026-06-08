@@ -165,15 +165,15 @@ public class AppUser {
             String email,
             UserStatus status,
             Lsp lsp,
-            Set<AppRole> roles,
-            boolean rolesChanged
+            Set<AppRole> roles
     ) {
         this.email = email;
         this.status = status;
         this.lsp = lsp;
         this.roles = new LinkedHashSet<>(roles);
-        if (rolesChanged) {
-            this.tokenVersion++;
-        }
+    }
+
+    public void revokeAllSessions() {
+        this.tokenVersion++;
     }
 }
