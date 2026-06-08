@@ -3,6 +3,8 @@ package com.bhawana.lms.common.web;
 import com.bhawana.lms.common.api.ApiError;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
+import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -30,6 +32,13 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final String DOCUMENT_STORAGE_UNAVAILABLE_COUNTER = "lms.document.storage.unavailable";
+
+    private final MeterRegistry meterRegistry;
+
+    public GlobalExceptionHandler(MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException exception, HttpServletRequest request) {
@@ -129,6 +138,62 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         return build(HttpStatus.NOT_FOUND, "NOT_FOUND", exception.getMessage(), request, Map.of());
+    }
+
+    @ExceptionHandler(DocumentNotFoundException.class)
+    public ResponseEntity<ApiError> handleDocumentNotFound(
+            DocumentNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND", exception.getMessage(), request, Map.of());
+    }
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<ApiError> handleEntityNotFound(
+            EntityNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.NOT_FOUND, "NOT_FOUND", exception.getMessage(), request, Map.of());
+    }
+
+    @ExceptionHandler(DocumentStorageUnavailableException.class)
+    public ResponseEntity<ApiError> handleDocumentStorageUnavailable(
+            DocumentStorageUnavailableException exception,
+            HttpServletRequest request
+    ) {
+        String provider = exception.getProviderName() == null || exception.getProviderName().isBlank()
+                ? "unknown"
+                : exception.getProviderName();
+        meterRegistry.counter(DOCUMENT_STORAGE_UNAVAILABLE_COUNTER, "provider", provider).increment();
+        return build(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "DOCUMENT_STORAGE_UNAVAILABLE",
+                "Document storage is temporarily unavailable. Please retry.",
+                request,
+                Map.of("retryable", "true", "provider", provider)
+        );
+    }
+
+    @ExceptionHandler(DocumentStorageMisconfiguredException.class)
+    public ResponseEntity<ApiError> handleDocumentStorageMisconfigured(
+            DocumentStorageMisconfiguredException exception,
+            HttpServletRequest request
+    ) {
+        log.error(
+                "Document storage misconfigured for provider {} (missing: {})",
+                exception.getProviderName(),
+                exception.getMissingField()
+        );
+        return build(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "DOCUMENT_STORAGE_MISCONFIGURED",
+                exception.getMessage(),
+                request,
+                Map.of(
+                        "provider", exception.getProviderName(),
+                        "missingField", exception.getMissingField()
+                )
+        );
     }
 
     @ExceptionHandler(LspStatusUpdateException.class)

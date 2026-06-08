@@ -1,11 +1,15 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.web.DocumentNotFoundException;
+import com.bhawana.lms.common.web.DocumentStorageUnavailableException;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -13,21 +17,28 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
-final class R2LoanDocumentStorageService {
+@Service
+public class R2LoanDocumentStorageService {
 
-    private R2LoanDocumentStorageService() {
+    private final DocumentStorageProperties properties;
+
+    public R2LoanDocumentStorageService(DocumentStorageProperties properties) {
+        this.properties = properties;
     }
 
-    static List<LoanDocumentStorageService.StorageEntry> listAll(DocumentStorageProperties.R2 properties, String prefix) {
+    public List<LoanDocumentStorageService.StorageEntry> listAll(String prefix) {
+        DocumentStorageProperties.R2 r2 = properties.getR2();
         List<LoanDocumentStorageService.StorageEntry> entries = new ArrayList<>();
-        try (S3Client s3Client = buildClient(properties)) {
+        try (S3Client s3Client = buildClient(r2)) {
             String continuationToken = null;
             do {
                 ListObjectsV2Request.Builder requestBuilder = ListObjectsV2Request.builder()
-                        .bucket(properties.getBucket())
+                        .bucket(r2.getBucket())
                         .prefix(prefix);
                 if (continuationToken != null) {
                     requestBuilder.continuationToken(continuationToken);
@@ -36,7 +47,7 @@ final class R2LoanDocumentStorageService {
                 for (S3Object s3Object : response.contents()) {
                     ResponseBytes<GetObjectResponse> bytes = s3Client.getObjectAsBytes(
                             GetObjectRequest.builder()
-                                    .bucket(properties.getBucket())
+                                    .bucket(r2.getBucket())
                                     .key(s3Object.key())
                                     .build()
                     );
@@ -48,27 +59,34 @@ final class R2LoanDocumentStorageService {
         return entries;
     }
 
-    static byte[] retrieve(DocumentStorageProperties.R2 properties, String storageKey) {
-        try (S3Client s3Client = buildClient(properties)) {
+    public byte[] retrieve(String storageKey) {
+        DocumentStorageProperties.R2 r2 = properties.getR2();
+        try (S3Client s3Client = buildClient(r2)) {
             ResponseBytes<GetObjectResponse> responseBytes = s3Client.getObjectAsBytes(
                     GetObjectRequest.builder()
-                            .bucket(properties.getBucket())
+                            .bucket(r2.getBucket())
                             .key(storageKey)
                             .build()
             );
             return responseBytes.asByteArray();
+        } catch (NoSuchKeyException exception) {
+            throw new DocumentNotFoundException("Document not found in R2 storage: " + storageKey);
+        } catch (S3Exception | SdkClientException exception) {
+            throw new DocumentStorageUnavailableException(
+                    storageKey,
+                    DocumentStorageProperties.DocumentStorageProvider.R2.name(),
+                    "Unable to retrieve document from R2 storage: " + storageKey,
+                    exception
+            );
         }
     }
 
-    static StoredDocument store(
-            DocumentStorageProperties.R2 properties,
-            DocumentStorageDescriptor descriptor,
-            byte[] content
-    ) {
-        try (S3Client s3Client = buildClient(properties)) {
+    public StoredDocument store(DocumentStorageDescriptor descriptor, byte[] content) {
+        DocumentStorageProperties.R2 r2 = properties.getR2();
+        try (S3Client s3Client = buildClient(r2)) {
             s3Client.putObject(
                     PutObjectRequest.builder()
-                            .bucket(properties.getBucket())
+                            .bucket(r2.getBucket())
                             .key(descriptor.storageKey())
                             .contentType(descriptor.contentType())
                             .build(),
@@ -81,17 +99,17 @@ final class R2LoanDocumentStorageService {
                 content.length,
                 descriptor.checksum(),
                 descriptor.storageKey(),
-                "r2://" + properties.getBucket() + "/" + descriptor.storageKey()
+                "r2://" + r2.getBucket() + "/" + descriptor.storageKey()
         );
     }
 
-    private static S3Client buildClient(DocumentStorageProperties.R2 properties) {
+    private static S3Client buildClient(DocumentStorageProperties.R2 r2) {
         return S3Client.builder()
-                .endpointOverride(URI.create(properties.getEndpoint()))
+                .endpointOverride(URI.create(r2.getEndpoint()))
                 .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(properties.getAccessKey(), properties.getSecretKey())
+                        AwsBasicCredentials.create(r2.getAccessKey(), r2.getSecretKey())
                 ))
-                .region(Region.of(properties.getRegion()))
+                .region(Region.of(r2.getRegion()))
                 .forcePathStyle(true)
                 .build();
     }

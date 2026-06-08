@@ -5,6 +5,7 @@
  * the alerts inbox is an internal-ops surface, not a deep-link target).
  * The bar emits the filter delta via `onChange`.
  */
+import type { Dispatch, SetStateAction } from "react";
 import { MultiSelectChip } from "@/components/app/data/MultiSelectChip";
 import {
   FilterBarClearButton,
@@ -51,14 +52,14 @@ const ALL_SENTINEL = "__all__";
 
 export interface AlertsFilterBarProps {
   filters: AlertsListFilters;
-  onChange: (next: AlertsListFilters) => void;
+  onChange: Dispatch<SetStateAction<AlertsListFilters>>;
   className?: string;
 }
 
 export function AlertsFilterBar({ filters, onChange, className }: AlertsFilterBarProps) {
   const searchField = useDebouncedControlledText(
     filters.q,
-    (q) => onChange({ ...filters, q, page: 0 }),
+    (q) => onChange((prev) => ({ ...prev, q, page: 0 })),
     SEARCH_DEBOUNCE_MS,
   );
 
@@ -88,8 +89,10 @@ export function AlertsFilterBar({ filters, onChange, className }: AlertsFilterBa
 
   const clearAll = () => {
     searchField.clearPending();
+    onChange({ page: 0, pageSize: filters.pageSize ?? 25 });
+    // Keep the input visually empty; debounced publish uses functional updates so
+    // a delayed callback cannot resurrect filters cleared above.
     searchField.onChange("");
-    onChange({ page: 0 });
   };
 
   const active =

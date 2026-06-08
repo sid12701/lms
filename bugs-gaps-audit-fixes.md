@@ -847,7 +847,7 @@ Tracer bullet first; each subsequent test responds to what the previous slice re
 
 **Refactor pass after green (per TDD step 4):**
 - Look for: now that the try/catch is gone, is the `if (isInternalSession()) { return X; } return Y;` shape itself worth extracting? Likely no — it's a 2-line decision per file, extracting it forces every caller through an abstraction that hides the role-routing fact (a *deep* module here would obscure the intentional concept #1 above, not hide complexity). Leave as-is.
-- Possible candidate: the per-file fixtures in tests have grown copy-paste. Extract `frontend-2/src/test/fixtures/` if 3+ files duplicate the same fixture. Defer until duplication is real.
+- Possible candidate: the per-file fixtures in tests have grown copy-paste. Extract `frontend/src/test/fixtures/` if 3+ files duplicate the same fixture. Defer until duplication is real.
 
 **Behaviours we deliberately do NOT assert here (each owned by another issue):**
 - LSP-role full real backend cutover → tracked separately under the future LSP-web-UI workstream.
@@ -875,8 +875,8 @@ Tracer bullet first; each subsequent test responds to what the previous slice re
 | **Checklist sub-bug** | `fetchChecklistSafely` → `fetchChecklist`; checklist 401/403 propagates (no silent `[]` → false `docsComplete`). |
 | **LSP-role demo** | `if (isInternalSession()) { backend } else { dispatch(mock) }` preserved for LSP-role sessions only. |
 | **Deps** | Removed unused `msw` from `frontend-2/package.json`. |
-| **UX follow-up** | `isUnauthorizedApiError` / `isNotFoundApiError` in `frontend-2/src/lib/api/api-errors.ts`. List pages: 403 → `EmptyState` (borrowers, loans, home). Detail pages: 403 vs 404 split. Audit page: `ErrorState` + retry when query fails with non-auth errors (no empty table on 5xx). |
-| **Tests** | `frontend-2/src/test/internal-session.ts`; transport tests in `borrowers/api.test.ts`, `loan-applications/api-detail.test.ts`, `home/api.test.ts`; page tests for borrowers/loans/home/audit error surfaces. |
+| **UX follow-up** | `isUnauthorizedApiError` / `isNotFoundApiError` in `frontend/src/lib/api/api-errors.ts`. List pages: 403 → `EmptyState` (borrowers, loans, home). Detail pages: 403 vs 404 split. Audit page: `ErrorState` + retry when query fails with non-auth errors (no empty table on 5xx). |
+| **Tests** | `frontend/src/test/internal-session.ts`; transport tests in `borrowers/api.test.ts`, `loan-applications/api-detail.test.ts`, `home/api.test.ts`; page tests for borrowers/loans/home/audit error surfaces. |
 | **Backend (test hygiene)** | `LoanApplicationOpsControllerTest` clears `lsp_ip_allowlist` / `lsp_ui_ip_allowlist` before `lsp` delete so full-suite teardown does not FK-fail. |
 
 **TDD checklist (tracker vs shipped):**
@@ -1101,8 +1101,8 @@ The original recommendation (mirror the LSP endpoint) no longer matches the code
 | Domain entity | `backend/.../domain/LoanApplicationPiiRevealAudit.java` | Still present. **No writer left in the codebase** — entity is orphaned. |
 | Repository | `backend/.../repo/LoanApplicationPiiRevealAuditRepository.java` | Still present. Only consumer is the test above (cleanup + count assertion). |
 | DB table | `loan_application_pii_reveal_audit` | Still present in the schema, no production rows expected. |
-| Admin OverviewTab | `frontend-2/src/features/loan-applications/components/detail-tabs/OverviewTab.tsx:61-65` | Comment: *"PII fields render as-supplied by the backend (which masks identity numbers); there is no reveal path (see `docs/gap-fixes.md` § Gap #1)."* No reveal button. |
-| Admin loan-apps mock | `frontend-2/src/mocks/api/loan-applications.ts` | **No PII reveal handler.** The original issue's "FE falls through to mock router" premise is uncorroborated — no admin call site exists. |
+| Admin OverviewTab | `frontend/src/features/loan-applications/components/detail-tabs/OverviewTab.tsx:61-65` | Comment: *"PII fields render as-supplied by the backend (which masks identity numbers); there is no reveal path (see `docs/gap-fixes.md` § Gap #1)."* No reveal button. |
+| Admin loan-apps mock | `frontend/src/mocks/api/loan-applications.ts` | **No PII reveal handler.** The original issue's "FE falls through to mock router" premise is uncorroborated — no admin call site exists. |
 | Current PII contract | LSP read sites | Aadhaar is the **only** masked field; PAN, bank, IFSC, mobile, email, DOB, address, income returned raw. |
 | Sibling cluster | `bugs-gaps-audit.md:215-219`, this file §65/§69/§123/§139/§157 | Cluster was drafted against a "mask broadly + reveal endpoint on both surfaces" vision that the LSP side abandoned. #68's recommendation is internally inconsistent with the cluster's current state. |
 
@@ -1205,7 +1205,7 @@ Untouched (deliberately):
 | Audit action enum | `backend/.../domain/LoanApplicationDocumentAccessAuditAction.java` | Only two values: `CHECKLIST_VIEWED`, `INTAKE_AUDITS_VIEWED`. **Download actions absent.** |
 | Existing inline writers | `LoanApplicationService.listDocumentChecklist` (line 509), `LoanApplicationService.listIntakeAudits` (line 894) | Both write directly via `loanApplicationDocumentAccessAuditRepository.save(...)`. **No `LoanApplicationDocumentAccessAuditService` exists** — the issue's "Suggested fix direction" names a class that's never been built. |
 | Audit read endpoint | `LoanApplicationOpsController.java:148` (`listDocumentAccessAudits`) | Returns the 20 most recent rows for an application via `LoanApplicationOpsResponses.toDocumentAccessAuditResponse`. New rows surface immediately. |
-| Audit Explorer streams | `frontend-2/src/components/app/audit/types.ts`, #159 ("Audit Explorer only covers 4 streams") | Document-access audit may not yet be a streamed source in the Explorer — verify when the Explorer rework lands; #159 owns the cross-link. |
+| Audit Explorer streams | `frontend/src/components/app/audit/types.ts`, #159 ("Audit Explorer only covers 4 streams") | Document-access audit may not yet be a streamed source in the Explorer — verify when the Explorer rework lands; #159 owns the cross-link. |
 | Storage adapter | `LoanDocumentService.retrieveDocumentContent` / `buildDocumentZip` | Returns raw bytes (and content-type/filename for single). For ZIP, returns only `byte[]` — **caller has no programmatic way to know which doc types were packed in**, blocking a precise per-ZIP audit unless the return shape is enriched. |
 | Failure path | Both handlers catch `IllegalStateException` → 404 | The audit write must sit **after** retrieve succeeds, so the early-return path leaves the audit table clean. |
 
@@ -2575,7 +2575,7 @@ PG-only schema test:
 
 13. `schema_has_redrive_count_column_with_default_zero`. Extend `SchemaCheckConstraintsPostgresTest` to assert `redrive_count INT NOT NULL DEFAULT 0` on `webhook_event_outbox`. Locks the migration in.
 
-Frontend (`frontend-2/src/features/admin/webhook-outbox/`):
+Frontend (`frontend/src/features/admin/webhook-outbox/`):
 
 14. `admin_outbox_view_shows_redrive_button_only_on_permanent_with_budget`. Playwright spec: PENDING row no button, PERMANENT row with `redriveCount=0` shows button, PERMANENT row with `redriveCount=3` shows "Cap reached" disabled state. Mocks fetch boundary only.
 
@@ -2604,7 +2604,7 @@ Frontend (`frontend-2/src/features/admin/webhook-outbox/`):
 | Flyway migration `Vxx__webhook_event_outbox_redrive_count.sql` | `ALTER TABLE webhook_event_outbox ADD COLUMN redrive_count INT NOT NULL DEFAULT 0;` |
 | `WebhookOutboxProperties.java` (new) | `@ConfigurationProperties("lms.webhook")` binding `softFourxx.maxAttempts` (default 10). |
 | `application.yml` | `lms.webhook.soft-4xx.max-attempts: 10`. |
-| `frontend-2/src/features/admin/webhook-outbox/*.tsx` | Surface `redriveCount / 3`, attempts so far, redrive button on PERMANENT rows with budget. |
+| `frontend/src/features/admin/webhook-outbox/*.tsx` | Surface `redriveCount / 3`, attempts so far, redrive button on PERMANENT rows with budget. |
 | Tests (back) | `WebhookOutboxServiceClassificationTest`, `WebhookOutboxServiceRedriveTest`, `WebhookOutboxAdminControllerRedriveIntegrationTest`, `SchemaCheckConstraintsPostgresTest` extension. |
 | Tests (front) | `webhook-outbox-admin-redrive.spec.tsx` (Playwright). |
 
@@ -2715,7 +2715,7 @@ Backend:
 
 Frontend:
 
-3. **`frontend-2/src/features/reports/...` (reports page)** — read `requestId` from URL search params on mount. If present and present in the table data, scroll the matching row into view + highlight it (e.g. flash background) so the user sees which report they were notified about. If the row is not in the current page, still set the search/filter to find it. Optional polish: auto-open the row's download dialog (single-click flow) — left as polish unless you want it explicit.
+3. **`frontend/src/features/reports/...` (reports page)** — read `requestId` from URL search params on mount. If present and present in the table data, scroll the matching row into view + highlight it (e.g. flash background) so the user sees which report they were notified about. If the row is not in the current page, still set the search/filter to find it. Optional polish: auto-open the row's download dialog (single-click flow) — left as polish unless you want it explicit.
 4. **No new route.** Same `/reports` page; just honours an optional `?requestId=` query param.
 5. **No security change.** Page is already auth-gated by the FE's session-context + the backend's `@PreAuthorize`. Anyone clicking the email link who isn't already authenticated lands on the login screen, just like today.
 
@@ -2863,20 +2863,196 @@ Tracer first; each test exercises a public surface.
 ---
 
 ### #144 — [SEC-Δ-6] Re-check JWT in localStorage (H-04 status)
-**Labels:** security, verification · **Link:** https://github.com/sid12701/lms/issues/144
+**Labels:** security, verification · **Link:** https://github.com/sid12701/lms/issues/144 · **Status:** **OPEN** — plan locked 2026-06-08, ready to implement as PR #1 of the pre-launch security baseline. Cookie-only auth on Spring Boot (NOT a separate BFF process). Bundles signal from **#97** and **#132**; relies on already-shipped **#80** for incident response. Pairs with new follow-up issues for **Layer B (strict CSP + Trusted Types)**, **step-up auth**, **password history (#133)**, **brute-force lockout (#155)**, and **CI security baseline** — all filed separately, sequenced post-launch.
 
-**Problem (plain English):** Security audit's H-04 flagged JWT in localStorage. Need to confirm whether the fix has landed.
+**Problem (plain English):** Security audit's H-04 flagged JWT in localStorage. Verified in code: refresh token is already HttpOnly (`AuthController.java:519–522`), but the access JWT is still serialised into `localStorage` under `bhawana-lms-session` (`frontend/src/lib/api/session-storage.ts:35`). Any XSS that lands can read the access token (and pivot to long-lived sessions via `/auth/refresh`). H-04 is therefore **half-fixed**.
 
 **Possible fixes:**
-1. **Move JWT to memory + BFF session cookie** — strongest; XSS can't read.
-2. **Keep in localStorage but add CSP/refresh hardening** — reduces blast radius; doesn't eliminate.
-3. **Confirm H-04 fix already landed; close issue** — if so, done.
+1. **Move JWT to memory + keep refresh-cookie HttpOnly** — closes localStorage exposure; XSS can still pivot via `/auth/refresh` to mint a new token.
+2. **Keep in localStorage but add CSP/refresh hardening** — reduces XSS landing rate; doesn't change blast radius if XSS lands.
+3. **Confirm H-04 fix already landed; close issue** — half-true; doesn't actually close H-04.
+4. **Cookie-only auth on Spring Boot (NOT a separate BFF process)** — access token also moves into HttpOnly + Secure + `SameSite=Strict` cookie; FE never touches a JWT; CSRF tokens defend the new attack surface.
 
-**Recommended:** Option 1 if H-04 not fixed. Memory + httpOnly refresh cookie is the standard pattern.
+**Recommended:** **Option 4 (cookie-only auth on Spring Boot).** No separate BFF service — Spring Boot reads cookies directly via a custom `BearerTokenResolver`. Browser FE stops handling JWTs entirely. LSP M2M clients (`/api/v1/lsp/**`, `/api/v1/auth/token`) keep `Authorization: Bearer` — their threat model has no browser, no XSS concern.
 
-**Effect on app:** XSS no longer steals JWTs. Slight FE complexity (memory store lost on reload — silent re-auth via refresh cookie). Big security win.
+**Effect on app:** XSS in `frontend/` cannot read or exfiltrate any auth credential. Login/refresh/password-change return user metadata only (no `accessToken` in the JSON body for browser flows). FE bootstraps session state via a new `GET /api/v1/auth/me`. CSRF tokens added on mutating endpoints. Production deployment must be same-origin (Cloudflare edge → Spring Boot origin); confirmed in design (see Decisions locked below).
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-08) — IMPLEMENT (GREEN-LIT) as PR #1 of pre-launch security baseline:**
+
+**Reframe — H-04 is half-fixed; the fix is cookie-only auth, not "BFF".**
+
+The audit doc's Option 1 framing ("memory + BFF session cookie") conflated two ideas: (a) move the access token out of localStorage, and (b) introduce a separate process. (a) is necessary; (b) is overengineered for this codebase. There is one SPA and one Spring Boot service; Spring Boot can set and read cookies itself. No new deployable.
+
+**Production deployment decision (locked):**
+
+- **Same-origin via reverse proxy (a.2 in grilling notes):** Cloudflare (or equivalent edge: CloudFront, Front Door) fronts a single origin. Single domain `app.bhawana.com`. SPA hosted separately on Cloudflare Pages (or S3+CloudFront); Cloudflare routes `/` to Pages and `/api/*` to the Spring Boot origin. Browser sees one origin. Host-only cookies, `SameSite=Strict`, no production CORS-with-credentials hardening required.
+- **Cross-origin (subdomain split `app.` + `api.`)** explicitly rejected pre-launch — adds CORS-with-credentials surface, weakens to `SameSite=Lax`, requires `Domain=` attribute on cookies. Migration cost if/when ownership splits: ~2–3 days, well-trodden path. Not in PR #1.
+- **Spring Boot serving the SPA itself (a.1)** considered as a fallback; not chosen. Migration a.2 → a.1 is ~half a day if ever needed.
+
+**Decisions locked (full picture):**
+
+1. **Cookie shape.** `lms-access` HttpOnly + Secure + `SameSite=Strict` cookie, mirroring the existing `refresh` cookie pattern (`AuthController.java:519–525`). Set on login, refresh, and password change. Cleared on logout alongside the refresh cookie and the CSRF cookie. Path `/` (must reach `/api/v1/*`). TTL matches access-JWT TTL (≤30 min — verify in `application.yml`; tighten if longer).
+2. **Dual auth resolver — single filter chain, cookie-preferred resolver.** Add a custom `BearerTokenResolver` bean that tries the `lms-access` cookie first; falls back to the `Authorization: Bearer` header. M2M clients send only the header → use header path. Browser clients send only the cookie → use cookie path. **Chosen over URL-prefix branching** because it preserves a single filter chain (less config drift), allows curl-with-Bearer for debugging human routes during the transition window, and keeps existing per-route `@PreAuthorize` annotations untouched.
+3. **Login/refresh/password-change response shape — split.**
+   - Browser flow (`/login`, `/refresh`, `/password`): response sets `lms-access` cookie via `Set-Cookie`; JSON body returns `{ user, expiresAt }` only — `accessToken` field removed. `expiresAt` (ISO-8601 with offset) is what `#97`'s proactive-refresh timer needs.
+   - M2M flow (`/api/v1/auth/token`, client-credentials grant): response body unchanged — `accessToken` + `refresh` cookie. No `lms-access` cookie set (M2M has no browser).
+4. **New endpoint — `GET /api/v1/auth/me`.** Returns `{ id, username, role, lspId, mustChangePassword, expiresAt }` for the cookie-authenticated session. FE calls this on boot to bootstrap session state. Authenticated like any other `/api/v1/*` route (the cookie itself authenticates). Also seeds the `XSRF-TOKEN` cookie on response (see CSRF below).
+5. **Enable CSRF protection.** `SecurityConfig.java:139` currently `.csrf(AbstractHttpConfigurer::disable)`. Switch to `CookieCsrfTokenRepository.withHttpOnlyFalse()` (double-submit cookie pattern). FE reads `XSRF-TOKEN` from `document.cookie` and echoes it as `X-XSRF-TOKEN` on mutating requests. **Exempt list:** `/api/v1/auth/login`, `/api/v1/auth/token`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`, and all `/api/v1/lsp/**` (M2M, no browser). GET requests are CSRF-safe by default (Spring's `RequestMatcher.isSafe`).
+6. **CORS update — dev only.** `SecurityConfig.java:231–236` already lists `localhost:5173 / 4200` + `127.0.0.1` variants and `allowCredentials: true`. Add `X-XSRF-TOKEN` to `allowedHeaders` (currently only `Authorization, Content-Type, Idempotency-Key`). **No production origins added** — production is same-origin so CORS does not engage.
+7. **Security headers — minimal additions.** Existing headers (HSTS 1y+includeSubDomains, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection: 1; mode=block`) stay as-is. Add `Referrer-Policy: strict-origin-when-cross-origin` and `Permissions-Policy: geolocation=(), microphone=(), camera=()`. The API CSP (`default-src 'none'; frame-ancestors 'none'`) stays; the SPA CSP is a separate concern owned by the Layer B follow-up issue.
+8. **Filter ordering.** New cookie-reading resolver runs inside Spring's existing `BearerTokenAuthenticationFilter` (because it's the resolver, not a separate filter). `LspSurfaceIpAllowlistFilter` and `RateLimitFilter` stay positioned after `BearerTokenAuthenticationFilter` — no change.
+9. **Logout clears three cookies.** Existing `/logout` clears `refresh`. PR #1 also clears `lms-access` and `XSRF-TOKEN`. FE clears any residual session-shell metadata from localStorage if any remains.
+10. **`mustChangePassword` flow preserved.** Existing `ROLE_PASSWORD_CHANGE_REQUIRED` authority + 428 status (`SecurityConfig.java:171–174, 196–202`) untouched. `/auth/me` surfaces `mustChangePassword: true` so the FE can route to the change-password page.
+
+**Code changes (per file/class):**
+
+Backend:
+
+1. **`security/SecurityConfig.java`** — enable CSRF with `CookieCsrfTokenRepository.withHttpOnlyFalse()`; configure exempt list (login/token/refresh/logout/lsp). Add `Referrer-Policy` and `Permissions-Policy` headers. Register the new `BearerTokenResolver` bean.
+2. **New `security/CookieOrHeaderBearerTokenResolver`** — implements `BearerTokenResolver`; tries `lms-access` cookie first, falls back to `Authorization: Bearer`. Single class, ~30 LoC.
+3. **`web/AuthController.java`** — extract a `buildAccessCookie(rawToken, ttlSeconds)` helper mirroring `buildRefreshCookie`. Modify `/login`, `/refresh`, `/password` to set `lms-access` cookie AND return `LoginResponse { user, expiresAt }` (new record, no `accessToken` field). Modify `/logout` to clear `lms-access` and `XSRF-TOKEN` alongside `refresh`. Add new `LoginResponse` and `MeResponse` records.
+4. **New `web/AuthMeController` (or method on `AuthController`)** — `GET /api/v1/auth/me`. Returns `MeResponse { id, username, role, lspId, mustChangePassword, expiresAt }` derived from the cookie-authenticated principal.
+5. **`config/application.yml`** — verify access-JWT TTL is ≤30 min; tighten if longer. Add `lms.security.cookie.secure: true` (default; can be `false` for dev).
+6. **No new domain types. No Flyway migration. No new audit event type. No new service.**
+
+Frontend (paths confirmed against `frontend/`; NOT `frontend-2/` — that folder is retired per #101/#114):
+
+7. **`frontend/src/lib/api/session-storage.ts`** — drop `accessToken` from the persisted shape. Keep only non-sensitive metadata (`user.id`, `username`, `role`, `lspId`) and `expiresAt`. Rename `getStoredAccessToken` → remove entirely; no callers after PR #1.
+8. **`frontend/src/features/auth/session-types.ts`** — remove `accessToken` from the `Session` Zod schema. `expiresAt` stays.
+9. **`frontend/src/lib/api/http-client.ts`** — remove `Authorization` header logic for browser calls. Keep `credentials: "include"` (already present). Add CSRF helper: read `XSRF-TOKEN` from `document.cookie`, attach as `X-XSRF-TOKEN` header on `POST/PUT/PATCH/DELETE`. 401 handler still calls `/auth/refresh` via the #97 single-flight; on success retries the original request (no token-passing — refresh sets the cookie).
+10. **`frontend/src/features/auth/auth-service.ts`** — login: POST `/login` → on 200 the cookie is set by Set-Cookie; parse `{ user, expiresAt }` from response body; persist via `saveStoredSession`. Refresh: POST `/auth/refresh` → 200 means new cookie set; return new `expiresAt`. No token parsing.
+11. **`frontend/src/features/auth/session-provider.tsx`** — boot: call `GET /auth/me`. On 200, populate session from response. On 401, attempt `/auth/refresh` once (via #97 single-flight); retry `/auth/me`; if still 401, show login. Removes the current `loadStoredSession()` flow.
+12. **All tests that mock `localStorage` for auth setup** — switch to mocking `document.cookie` or mocking `fetch` for `/auth/me`.
+
+Tests to update:
+
+13. Every backend MockMvc test that uses `.header("Authorization", "Bearer " + jwt)` for a human-user flow (admin / ops / borrower viewer) — swap to `.cookie(new Cookie("lms-access", jwt))` via a helper (`authedAsAdmin(mvc, jwt)`, etc.). LSP API tests stay on Bearer. Estimated scope: ~30–50 tests across `UserAdminControllerTest`, `LoanApplicationOpsControllerTest`, `AuditExplorerControllerTest`, `AuthControllerTest`, `AuthControllerAuthAuditTest`, `AdminDirectoryServiceTest` (integration slice), and the long tail.
+14. Playwright specs — switch from `localStorage.setItem` to `context.addCookies()` for the `lms-access` cookie; ensure `XSRF-TOKEN` is also set for mutating flows.
+
+**What is NOT changing in PR #1:**
+
+- LSP API auth flow — `Authorization: Bearer` everywhere; `/api/v1/auth/token` client-credentials grant unchanged; M2M client TTLs untouched.
+- Refresh cookie shape — already HttpOnly + Secure + path `/` + SameSite; PR #1 just adds the matching `lms-access` cookie alongside it.
+- `LspSurfaceIpAllowlistFilter` and `RateLimitFilter` — same position in the chain.
+- `ROLE_PASSWORD_CHANGE_REQUIRED` 428-on-internal-routes behaviour — unchanged.
+- Audit event types or schema — no changes.
+- Existing API CSP (`default-src 'none'`) — locked in; SPA CSP is a separate Layer B PR.
+- Strict-Transport-Security / X-Frame-Options / X-Content-Type-Options / X-XSS-Protection — all already configured at `SecurityConfig.java:142–148`.
+- `#80`'s `SessionRevocationService` — already shipped (PR #189). Continues to work the same way; revoking a user's session means the next `/auth/me` returns 401 and the FE clears UI state.
+
+**Why not Option 1 (memory only):**
+
+Half-measure. XSS can still pivot via `/auth/refresh` (refresh cookie auto-sent) to mint a fresh access token, exfiltrate it. Doing Option 1 first then Option 4 later means refactoring the FE auth layer twice. If Option 4 is the destination — and for an NBFC LMS pre-launch it is — skip Option 1.
+
+**Why not Option 2 (CSP only):**
+
+Doesn't change blast radius of an XSS that lands. Still flags as "JWT in localStorage" on the next audit. Worse: CSP without auth hardening misallocates the security budget. The right model is Option 4 for auth (this PR) AND strict CSP for XSS prevention (Layer B follow-up issue) — both, not either.
+
+**Why not Option 3 (close as already fixed):**
+
+H-04 is half-fixed. The refresh-cookie half is shipped; the access-token half is not. Closing here means the next audit re-opens it.
+
+**Why not a separate BFF process (Node/edge proxy):**
+
+Adds a deployable for ~zero benefit in this topology. Spring Boot can set and read cookies natively. A separate BFF makes sense at scale (multiple FEs, central session store), not for one SPA + one API.
+
+**Why same-origin (a.2) not cross-origin (c) for production:**
+
+Cookie auth is materially simpler same-origin: host-only cookies, `SameSite=Strict` (stronger CSRF defense than `Lax`), no production CORS-with-credentials, no `Domain=` attribute to get wrong. Cross-origin is a real Year-2+ migration if ownership of FE and API ever splits, but the cost (~2–3 days) is bounded and well-trodden. Optimising for hypothetical Year-2 architecture pre-launch is over-design.
+
+**Why a.2 (SPA on Cloudflare Pages) not a.1 (Spring Boot serves SPA):**
+
+a.2 keeps SPA and API on independent deploy cadences, gets the SPA edge-cached, and keeps Spring Boot focused on the API. Migration a.2 ↔ a.1 is ~half a day either direction — not lock-in.
+
+**TDD plan (vertical slices, behaviour through public HTTP and the FE auth seam):**
+
+Tracer first. Each test exercises a public surface; no internal mocking beyond declared system boundaries (CSRF token store is treated as boundary; `JwtEncoder` already is).
+
+1. **TRACER — `human_user_login_sets_lms_access_cookie_and_omits_accessToken_from_body`.** `POST /api/v1/auth/login` with valid credentials → 200; `Set-Cookie: lms-access=...; HttpOnly; Secure; SameSite=Strict`; response body is `{ user, expiresAt }`, no `accessToken` field. Locks in the wire contract.
+2. `cookie_authenticated_request_to_protected_route_succeeds`. With `lms-access` cookie set → `GET /api/v1/internal/users` returns 200. No `Authorization` header needed.
+3. `protected_route_without_cookie_or_header_returns_401`. No cookie, no header → 401 + `UNAUTHORIZED`.
+4. `lsp_m2m_client_credentials_grant_still_returns_accessToken_in_body`. `POST /api/v1/auth/token` (client-credentials) → 200; body still has `accessToken`; **does not** set `lms-access` cookie (M2M). Locks in: M2M contract unchanged.
+5. `lsp_route_with_Authorization_header_works_without_cookie`. `GET /api/v1/lsp/loan-applications` with `Authorization: Bearer <m2m-jwt>` → 200. Locks in: cookie-preferred resolver falls back to header for M2M.
+6. `lsp_route_rejects_cookie_only_auth_for_M2M_jwt_with_wrong_scope`. (Defensive: even if a cookie sneaks in, the M2M JWT's `aud`/`scope` must match the route. Locks in: no privilege bleed between human and M2M paths.)
+7. **CSRF — `mutating_request_without_X_XSRF_TOKEN_header_returns_403`.** `POST /api/v1/internal/users/.../revoke-sessions` with cookie but no CSRF header → 403 + `CSRF_TOKEN_INVALID`.
+8. `mutating_request_with_correct_X_XSRF_TOKEN_succeeds`. Same call with the header echoing the cookie value → 200.
+9. `csrf_exempt_endpoints_succeed_without_token`. `/login`, `/token`, `/refresh`, `/logout`, `/api/v1/lsp/**` POSTs without CSRF header → 200/normal.
+10. `GET_requests_do_not_require_csrf_token`. `GET /api/v1/auth/me` and any other GET → 200 without CSRF header.
+11. **`/auth/me` — `returns_session_metadata_for_cookie_authenticated_user`.** With `lms-access` cookie → 200 + `{ id, username, role, lspId, mustChangePassword, expiresAt }`. Locks in the bootstrap contract.
+12. `auth_me_returns_401_without_valid_cookie`. No cookie or expired cookie → 401.
+13. `auth_me_seeds_XSRF_TOKEN_cookie_on_response`. Fresh browser, GET `/auth/me` → response includes `Set-Cookie: XSRF-TOKEN=...; SameSite=Strict` (not HttpOnly, so JS can read it). Locks in CSRF token bootstrap.
+14. **Logout — `clears_all_three_cookies`.** `POST /api/v1/auth/logout` → response sets `lms-access`, `refresh`, `XSRF-TOKEN` to empty with `Max-Age=0`.
+15. **Refresh path — `successful_refresh_rotates_lms_access_cookie_and_returns_new_expiresAt`.** With valid refresh cookie → 200; `Set-Cookie: lms-access=<new>`; body `{ expiresAt: <new> }`, no `accessToken`. Locks in: refresh works for browser flows under the new contract.
+16. `refresh_for_M2M_path_still_returns_accessToken_in_body`. With valid refresh cookie tied to an `ApiClient` → 200; body includes `accessToken`; no `lms-access` cookie set. Locks in: M2M refresh contract unchanged.
+17. **Password change — `sets_new_lms_access_cookie`.** Cookie-authenticated user POSTs `/api/v1/auth/password` → 200; new `lms-access` cookie issued; old cookie now invalid (`tv` bumped per existing flow).
+18. **FE — `http_client_attaches_X_XSRF_TOKEN_on_mutating_requests`.** Unit test in `frontend/src/lib/api/http-client.test.ts`: stub `document.cookie` with `XSRF-TOKEN=foo`; call `requestJson` with POST; assert header `X-XSRF-TOKEN: foo` was sent.
+19. **FE — `session_provider_boots_via_auth_me_not_localStorage`.** Component test: `SessionProvider` mount → fetch mock returns `/auth/me` with session payload → context populated; `localStorage` is never read for `accessToken`.
+20. **FE — `localStorage_no_longer_contains_accessToken_after_login`.** After a successful login flow, `localStorage.getItem("bhawana-lms-session")` either returns `null` or returns a JSON object that does NOT have an `accessToken` key.
+21. **FE — `proactive_refresh_from_97_fires_30s_before_expiresAt_from_auth_me`.** Composes with #97: session bootstrapped from `/auth/me` includes `expiresAt`; timer schedules; refresh fires; new `expiresAt` returned; timer reschedules.
+22. **Compliance — `lms_access_cookie_is_HttpOnly_Secure_SameSite_Strict`.** Parse `Set-Cookie` header on login response; assert all three attributes. Defends against a future config change accidentally dropping a flag.
+
+**Mocking discipline (per the TDD doc):**
+
+- `JwtEncoder` / `JwtDecoder` — system boundary. Real Spring config in integration tests; stubs allowed for atomicity tests under #132.
+- `fetch` — system boundary in FE tests. Stubbed.
+- `document.cookie` — system boundary for CSRF header tests. Read/write via standard DOM APIs in tests.
+- **Not mocked:** `AuthAuditService`, repositories, `SessionRevocationService`, the new `CookieOrHeaderBearerTokenResolver`, Spring's CSRF infrastructure. The Spring filter chain is exercised end-to-end via `MockMvc`.
+- **Not asserted:** which filter ran first, which bean was injected where. Implementation-detail; tests assert behaviour through the HTTP contract.
+
+**Tests deliberately NOT written here (owned elsewhere):**
+
+- SPA CSP header presence → owned by the Layer B follow-up issue.
+- Brute-force lockout → owned by #155.
+- Password history → owned by #133.
+- Step-up auth on sensitive operations → owned by the new step-up-auth follow-up issue.
+- Refresh atomicity → owned by #132 (which lands as PR #3 of this baseline).
+- Concurrent-refresh single-flight → owned by #97 (which lands as PR #2 of this baseline).
+
+**Blast radius — files touched in PR #1:**
+
+- **Backend src:** `security/SecurityConfig.java` (CSRF enable, header additions, resolver wiring), new `security/CookieOrHeaderBearerTokenResolver.java`, `web/AuthController.java` (cookie helper, response shape split, logout clears 3 cookies), new `web/AuthMeController.java` (or method on AuthController), `config/application.yml` (TTL verify + cookie config).
+- **Backend test:** new `Issue144CookieAuthIntegrationTest`, extension to `AuthControllerTest` (login/refresh/password/logout response-shape assertions), extension to `UserAdminControllerTest` / `LoanApplicationOpsControllerTest` / `AuditExplorerControllerTest` (helper migration: header → cookie), CSRF coverage in `Issue144CsrfIntegrationTest`.
+- **Frontend:** `lib/api/session-storage.ts`, `lib/api/http-client.ts`, `features/auth/session-types.ts`, `features/auth/session-provider.tsx`, `features/auth/auth-service.ts`, plus the matching `.test.ts` / `.test.tsx` files. Playwright fixtures updated to set cookies.
+- **No Flyway migration.** All required columns and audit-event types already exist.
+
+**Pros / cons / regression / scale / structure recap:**
+
+- **Effect on app:** XSS in `frontend/` cannot read or exfiltrate any auth credential. CSRF tokens defend the newly cookie-based attack surface. M2M clients (LSP API) operate exactly as before. FE bootstraps from `/auth/me` instead of `localStorage`, adding ~50–150ms to cold start (acceptable; matches industry-standard SPAs with httpOnly session cookies). Pre-launch UX otherwise unchanged.
+- **Pros:** closes the localStorage half of H-04 fully. No separate BFF process; no new deployable. Uses Spring Security's built-in CSRF and cookie support — no custom auth infrastructure. M2M contract for LSPs untouched (free of partner comms). Same-origin production keeps `SameSite=Strict`. Sets up Layer B (strict CSP) cleanly because the auth surface is no longer a JS concern.
+- **Cons:** test-fixture migration is the biggest hidden cost (~30–50 backend tests + ~all Playwright specs that authenticate via UI). Predictable, mechanical, but real. Bumps PR #1 effort estimate from "4–5 days" to **5–6 days**. Production deployment must commit to same-origin (Cloudflare edge → origin); the alternative (cross-origin) adds ~2–3 days and weakens CSRF defense.
+- **Regression risk:** medium. CSRF misconfig is the most likely class of bug (POST returns 403 in prod silently); mitigated by tests 7/8/9. Cookie misconfig (forgetting `Secure` in prod) mitigated by test 22. Filter ordering change is small and well-contained. The cookie-preferred resolver is ~30 LoC with explicit tests at boundaries (5/6).
+- **Scale impact:** none. Cookie reads are cheaper than `Authorization` header parsing under the hood. `/auth/me` adds one request per cold boot per tab; negligible.
+- **Code structure impact:** net negative complexity in the FE (removes localStorage juggling). Net positive structure in the backend (CSRF + cookie resolver are Spring idioms). One new endpoint (`/auth/me`), one new resolver class, one new response record. No new domain types, services, or repositories.
+- **Overengineering check:** **no.** Smallest fix that closes H-04 completely. The discarded "separate BFF process" alternative was the overengineered option.
+
+**Dependencies / sequencing — pre-launch security baseline:**
+
+PR #1 (this issue) is the foundation. Subsequent PRs layer on:
+
+| PR | Contents | Issues closed | Effort |
+|---|---|---|---|
+| **PR #1 (this)** | Cookie auth + CSRF + `/auth/me` + Referrer/Permissions headers + same-origin prod posture | **#144** | 5–6 days |
+| **PR #2** | FE single-flight refresh + proactive refresh (under cookie auth, signature becomes `Promise<boolean>` not `Promise<string \| null>`) | **#97** | 1 day |
+| **PR #3** | Atomic refresh tests + typed 401 body (`{ code, message }`) | **#132** | 1 day |
+| **PR #4 (parallel)** | Strict CSP on SPA + Trusted Types + XSS-sink audit (`frontend/` currently has zero `dangerouslySetInnerHTML` / `innerHTML` / `outerHTML` / `document.write` — verified 2026-06-08) | **#191** ("Strict CSP + Trusted Types for SPA — Layer B") | 2–3 days |
+| **Post-launch — Sprint 2** | Step-up auth on sensitive ops (bank detail changes, disbursement override, mock-outcome, password change, API client rotation, LSP enable/disable, admin revoke-sessions) | **#192** ("Step-up auth on sensitive operations — Layer C") | 2–3 days |
+| Post-launch | Password history (12 hashes) | **#133** | 2 days |
+| Post-launch | Brute-force lockout + alert | **#155** | 2 days |
+| Post-launch | CI security baseline: Dependabot, CodeQL, Playwright security regressions (CSP header present, cookies HttpOnly, no token in localStorage after login), ESLint rule blocking `dangerouslySetInnerHTML` | **#193** ("CI security baseline — Layer D") | 1 day |
+
+**Pre-launch sprint un-deferred items** (sequenced alongside Sprint 2, not competing with PR #1–#4):
+
+- **#61 / #122** (mock disbursement) — un-defer on real provider approval.
+- **#65 / #69 / #139 / #157** (PAN/bank masking + MIS CSV leak cluster) — un-defer on first live LSP / real PII flow.
+- **#142** (LspIpAllowlistFilter multi-replica) — un-defer on first multi-replica deploy.
+
+These are deferred-to-launch, not competing with the auth/XSS baseline; they ship in the same launch window as Sprint 2.
+
+**Effect on the audit doc itself:**
+
+- This block replaces the previous `_(pending)_` on #144.
+- **Corrects stale `frontend-2/` paths in #97's existing entry** — see #97 note added 2026-06-08.
+- Cross-references #97, #132, #80 from this block; their entries do not need re-writes (they remain green-lit / closed as appropriate).
 
 ---
 
@@ -3361,7 +3537,7 @@ Untouched (deliberately):
 |-------|-----------|--------------|
 | Write path | `report_access_audit` (V87); `MIS_CSV_DOWNLOADED` / `MIS_REQUEST_DOWNLOADED` on successful sync + async downloads only | `ReportAccessAuditService`, `ReportAdminController`, `ReportRequestService.getCompletedReportDownload()` |
 | Tests | Five integration slices + `ReportAdminControllerTest` cleanup | `ReportAdminControllerDownloadAuditTest` |
-| Explorer (was #159 follow-up) | 8th stream `REPORT_ACCESS` on unified audit API + `/audit` UI tab | `AuditExplorerRepository`, `AuditExplorerService`, `frontend-2/src/features/audit/` |
+| Explorer (was #159 follow-up) | 8th stream `REPORT_ACCESS` on unified audit API + `/audit` UI tab | `AuditExplorerRepository`, `AuditExplorerService`, `frontend/src/features/audit/` |
 
 - Preview / summary / list / failed downloads remain audit-silent (perimeter tests green).
 - **Deferred:** `row_count` on audit rows; `BULK_PII_DOWNLOAD` alert rule; `auth_event_audit` as a 9th Explorer stream (#71).
@@ -3397,7 +3573,7 @@ A pivot during grilling: the user wants **end-to-end audit using live endpoints,
 | `api_client_audit_event` | `domain/ApiClientAuditEvent.java` | **Written today (CLIENT_UPDATED, SECRET_ROTATED) and by #149's new writes (CLIENT_CREATED, CLIENT_DISABLED, CLIENT_ENABLED); not in any AuditStream value; no live read path.** |
 | Mock-outcome path | `LoanApplicationService.resolveMockDisbursementOutcome` (line 757) + `LoanApplicationOpsController.applyMockDisbursementOutcome` (line 385) | Writes (a) `LoanDisbursementRequestLog.outcome_response_json` carrying actor + outcome serialized; (b) `LoanApplicationAuditEvent` row with `action=STATUS_TRANSITION`, actor, fromStatus, toStatus, correlationId. **The STATUS_TRANSITION row IS visible in the Audit Explorer today** — but it doesn't distinguish "/mock-outcome endpoint origin" from "future real-provider callback origin" and doesn't capture actor_ip. |
 | `LoanApplicationAuditAction` enum | `domain/LoanApplicationAuditAction.java` | `STATUS_TRANSITION`, `MANUAL_STATUS_OVERRIDE`, `INVALIDATED`, `FORECLOSURE_EXECUTED`, `PAYMENT_RECORDED`. No first-class disbursement-outcome label. |
-| FE Audit Explorer | `frontend-2/src/features/audit/api.ts` + `features/audit/page.tsx` + `components/app/audit/AuditEventNode.tsx` | Hits the live endpoint **only for SYSTEM_ADMIN sessions** (no 4xx→mock fallback on internal sessions since **#78 / PR #171**). Non-admin sessions use role gate + `EmptyState`, not fake audit data. Hard-codes `BACKEND_STREAMS` to the same 4 values. Subject-projection logic (`subjectFor`) handles only `LOAN_PRODUCT` and `LOAN_APPLICATION`. |
+| FE Audit Explorer | `frontend/src/features/audit/api.ts` + `features/audit/page.tsx` + `components/app/audit/AuditEventNode.tsx` | Hits the live endpoint **only for SYSTEM_ADMIN sessions** (no 4xx→mock fallback on internal sessions since **#78 / PR #171**). Non-admin sessions use role gate + `EmptyState`, not fake audit data. Hard-codes `BACKEND_STREAMS` to the same 4 values. Subject-projection logic (`subjectFor`) handles only `LOAN_PRODUCT` and `LOAN_APPLICATION`. |
 | `loan_application_pii_reveal_audit` | `domain/LoanApplicationPiiRevealAudit.java` | Per FE comment: "Gap #1 retired the reveal endpoint; the underlying table is forensic-only and no longer surfaced." Write-only **by intent** — stays out of the explorer. |
 | `loan_disbursement_request_log` | `domain/LoanDisbursementRequestLog.java` | Carries provider_name + outcome_response_json. **Not an audit table by design** — it's a request log. Data the operator cares about is captured but it's not the right home for the disbursement audit stream. |
 
@@ -3423,7 +3599,7 @@ A pivot during grilling: the user wants **end-to-end audit using live endpoints,
    - **PR (a):** Wire `APP_USER` + `API_CLIENT` streams into the unified Audit Explorer. Purely additive read paths over existing tables. Closes the #148/#149 visibility gap. No new tables; no new writes.
    - **PR (b):** Add `disbursement_outcome_audit` table + writes from `resolveMockDisbursementOutcome` + `DISBURSEMENT` stream wiring. Touches the /mock-outcome path. New migration.
 5. **The existing STATUS_TRANSITION row stays.** `/mock-outcome` continues to call `loanApplicationLifecycleService.updateApplicationStatus(...)` exactly as today. PR (b) adds ONE additional row (to `disbursement_outcome_audit`) per call — does not replace or modify the existing audit write.
-6. **The Audit Explorer's projection shape grows.** `BackendUnifiedAuditEvent` needs a path to express the new subject types. Cleanest: add a generic `subjectType` + `subjectId` on the backend projection (BE already projects this implicitly via `productId` vs `loanApplicationId`; the FE's `subjectFor` already encodes the rule). Extend `subjectFor` in `frontend-2/src/features/audit/api.ts` with two new branches (`APP_USER` → user id, `API_CLIENT` → client id). No schema change to the unified projection envelope — `appUserId` and `apiClientId` are not added as first-class envelope fields; instead, the existing `borrowerId` + `lspId` + `productId` + `loanApplicationId` slots remain, and APP_USER / API_CLIENT rows surface their subject id in `detail` JSON.
+6. **The Audit Explorer's projection shape grows.** `BackendUnifiedAuditEvent` needs a path to express the new subject types. Cleanest: add a generic `subjectType` + `subjectId` on the backend projection (BE already projects this implicitly via `productId` vs `loanApplicationId`; the FE's `subjectFor` already encodes the rule). Extend `subjectFor` in `frontend/src/features/audit/api.ts` with two new branches (`APP_USER` → user id, `API_CLIENT` → client id). No schema change to the unified projection envelope — `appUserId` and `apiClientId` are not added as first-class envelope fields; instead, the existing `borrowerId` + `lspId` + `productId` + `loanApplicationId` slots remain, and APP_USER / API_CLIENT rows surface their subject id in `detail` JSON.
 7. **No new write semantics for #148/#149's audit rows under PR (a).** PR (a) only adds *read* projections over the existing tables. The action/eventType derivation pulls from existing columns (`api_client_audit_event.action` for API_CLIENT) or from after-state JSON (`app_user_audit_event.after_state_json->>'eventType'`, defaulting to `USER_UPDATED` when absent).
 8. **Actor IP on the existing STATUS_TRANSITION rows is OUT OF SCOPE.** `loan_application_audit_event` does not gain `actor_ip` in this PR — that touches every status-transition audit row in the system and is its own conversation. The new `disbursement_outcome_audit` table captures actor_ip; that's the new disbursement audit's home. A separate ticket can later backfill IP on the existing audit table if needed.
 9. ~~**MOCK_FALLBACK paths on the audit page are not removed here.**~~ **Done under #78 (PR #171, 2026-06-02)** — internal-session 4xx no longer falls through to mock data; audit page shows `ErrorState` on load failure. #152 PRs (a)/(b) did not need to carry that scope.
@@ -3539,15 +3715,15 @@ Edit:
 - `backend/src/main/java/com/bhawana/lms/service/AuditExplorerQuery.java` — add `APP_USER`, `API_CLIENT` enum values; update `ALL_STREAMS`.
 - `backend/src/main/java/com/bhawana/lms/repo/AuditExplorerRepository.java` (or its impl) — add UNION ALL branches projecting `app_user_audit_event` and `api_client_audit_event` into the unified shape; preserve cast widths.
 - `backend/src/main/java/com/bhawana/lms/service/AuditExplorerService.java` — extend the action/summary derivation if it lives here; otherwise no change.
-- `frontend-2/src/features/audit/types.ts` — extend `AuditStream` and `AuditSubjectType` unions.
-- `frontend-2/src/features/audit/api.ts` — extend `BACKEND_STREAMS`; extend `subjectFor`.
-- `frontend-2/src/features/audit/components/AuditFilterBar.tsx` — add filter chips for the two new streams.
-- `frontend-2/src/components/app/audit/AuditEventNode.tsx` — add display labels / icons for the two new streams.
+- `frontend/src/features/audit/types.ts` — extend `AuditStream` and `AuditSubjectType` unions.
+- `frontend/src/features/audit/api.ts` — extend `BACKEND_STREAMS`; extend `subjectFor`.
+- `frontend/src/features/audit/components/AuditFilterBar.tsx` — add filter chips for the two new streams.
+- `frontend/src/components/app/audit/AuditEventNode.tsx` — add display labels / icons for the two new streams.
 
 Add:
 - `backend/src/test/java/com/bhawana/lms/web/AuditExplorerControllerAppUserStreamTest.java`
 - `backend/src/test/java/com/bhawana/lms/web/AuditExplorerControllerApiClientStreamTest.java`
-- `frontend-2/src/features/audit/page.test.tsx` — extend or add cases for the new streams.
+- `frontend/src/features/audit/page.test.tsx` — extend or add cases for the new streams.
 
 **PR (b) — DISBURSEMENT stream + new audit table + /mock-outcome write:**
 
@@ -3566,10 +3742,10 @@ Edit:
 - `backend/src/main/java/com/bhawana/lms/web/LoanApplicationOpsController.java` — `applyMockDisbursementOutcome` accepts `HttpServletRequest`; extracts IP + correlation; passes through.
 - `backend/src/main/java/com/bhawana/lms/service/AuditExplorerQuery.java` — add `DISBURSEMENT`.
 - `backend/src/main/java/com/bhawana/lms/repo/AuditExplorerRepository.java` — add UNION ALL branch.
-- `frontend-2/src/features/audit/types.ts` — extend `AuditStream`.
-- `frontend-2/src/features/audit/api.ts` — extend `BACKEND_STREAMS`.
-- `frontend-2/src/features/audit/components/AuditFilterBar.tsx` — add chip.
-- `frontend-2/src/components/app/audit/AuditEventNode.tsx` — add label / icon.
+- `frontend/src/features/audit/types.ts` — extend `AuditStream`.
+- `frontend/src/features/audit/api.ts` — extend `BACKEND_STREAMS`.
+- `frontend/src/features/audit/components/AuditFilterBar.tsx` — add chip.
+- `frontend/src/components/app/audit/AuditEventNode.tsx` — add label / icon.
 
 Untouched (deliberately):
 - `loan_application_audit_event` schema — no `actor_ip` added. Future ticket if needed.
@@ -4638,7 +4814,7 @@ Tracer first; each test exercises a public surface.
 | Document GET (LSP) | `web/LspLoanApplicationApiController.java:261` (`/{id}/documents`) | Unbounded. Bulk-scrape vector if an LSP credential leaks. |
 | Mock-outcome | `web/LoanApplicationOpsController.java:382` (`POST .../disbursement-requests/mock-outcome`) | Per #61, this is the **live disbursement-callback simulator**. Unbounded → an attacker can churn `DISBURSED → REFUNDED → DISBURSED` on the same loan to obscure the audit trail. #152's audit captures each call but does not gate volume. |
 | Reports | `web/ReportAdminController.java:42,58,67,82,103` (5 endpoints under `/api/v1/internal/reports/**`) | All unbounded. CSV at `:67` still leaks raw PAN (per #69), so scraping is also a data-exfil vector. |
-| Frontend 429 handling | `frontend-2/src/lib/api/http-client.ts` (`requestJson`, `requestBlob`) | **No 429 / `Retry-After` interceptor.** Hitting a bucket today produces a raw "Request failed" toast. Confirmed via grep: zero matches for `429`, `Retry-After`, or `RATE_LIMIT_EXCEEDED` across `frontend-2/**/*.ts`. |
+| Frontend 429 handling | `frontend/src/lib/api/http-client.ts` (`requestJson`, `requestBlob`) | **No 429 / `Retry-After` interceptor.** Hitting a bucket today produces a raw "Request failed" toast. Confirmed via grep: zero matches for `429`, `Retry-After`, or `RATE_LIMIT_EXCEEDED` across `frontend-2/**/*.ts`. |
 | Test profile | (existing `application-test.yml`) | Test profile inherits production budgets. Any loop test that exceeds 10/min or 60/min would already flap; adding new buckets multiplies the surface. |
 | Sibling issue | `#127 [F-4]` | Exact duplicate of #81. |
 | Adjacent (not merged) | `#155` (failed-auth → lockout pipeline) | Different semantics: lockout = "N failures → block account/IP"; rate limit = "N req/min → 429 + retry-after." They compose; this PR explicitly does not subsume #155. |
@@ -4677,7 +4853,7 @@ Tracer first; each test exercises a public surface.
    ```
    Notation: `permits: 10/5` for `SUBJECT_AND_APPLICATION` means `subjectBucket=10/min`, `applicationBucket=5/min`. Encoded in YAML as two integers (`permitsSubject`, `permitsApplication`); the validator rejects single-int permits for that strategy and rejects two-int permits for any other strategy.
 4. **Alert taxonomy → single `RATE_LIMIT_EXCEEDED` only.** Reuse the existing `AlertRuleEvaluationService.emitRateLimitBreach(bucketKey, path, retryAfterSeconds)` untouched. The `bucketKey` (e.g., `docs-ops:subject:<uuid>`, `lsp-write:<lspId>`, `mock-outcome-app:<applicationId>`) already identifies actor/LSP/application; Audit Explorer reviewers filter by `alertType=RATE_LIMIT_EXCEEDED` and parse the key prefix. Rejected: surface-specific types (DOC_SCRAPE_DETECTED etc.) invent a new family per rule; reusing one type keeps the plumbing static while the rule table evolves.
-5. **Frontend 429 + `Retry-After` interceptor in the same PR.** `frontend-2/src/lib/api/http-client.ts`'s `requestJson` and `requestBlob` learn one new branch: on `response.status === 429`, read `Retry-After`, surface a typed `ApiError` with `code: "RATE_LIMIT_EXCEEDED"` and a `retryAfterSeconds: number` field, and expose a top-level toast helper that renders "Too many requests. Please wait N seconds." The error type is exported so call sites can override the message (e.g., on the report-download button to say "Report downloads are limited; please try again in N seconds"). No automatic retry — that's the user's job, not the client's.
+5. **Frontend 429 + `Retry-After` interceptor in the same PR.** `frontend/src/lib/api/http-client.ts`'s `requestJson` and `requestBlob` learn one new branch: on `response.status === 429`, read `Retry-After`, surface a typed `ApiError` with `code: "RATE_LIMIT_EXCEEDED"` and a `retryAfterSeconds: number` field, and expose a top-level toast helper that renders "Too many requests. Please wait N seconds." The error type is exported so call sites can override the message (e.g., on the report-download button to say "Report downloads are limited; please try again in N seconds"). No automatic retry — that's the user's job, not the client's.
 6. **Test-profile budgets — high overrides in `application-test.yml`.** Keep the filter wired so the wiring itself is verified by existing test runs. Override per-rule permits to a very high number (e.g., 100000/min) in `application-test.yml`. Breach-path tests opt into a dedicated `@TestPropertySource(properties = "app.rate-limit.rules[0].permitsPerMinute=2")` (or per-rule overrides) so they hit the limit in two requests. Rejected: disabling the filter entirely in tests (loses the in-process integration coverage that catches matcher regressions).
 7. **Bundle.** Close #127 in the same PR ("Closes #127 as duplicate of #81"). Single delivery, single review.
 
@@ -4736,7 +4912,7 @@ Each slice exercises behaviour through a public surface (HTTP, the alert read in
 - Refactor: pull the test budgets into a single `@TestConfiguration` if `application-test.yml` becomes noisy.
 
 **Slice 11 — Frontend 429 surfaces `Retry-After` as a typed error.**
-- RED: `frontend-2/src/lib/api/http-client.test.ts`. With a stubbed `fetch` returning 429 + `Retry-After: 30` + `{ code: "RATE_LIMIT_EXCEEDED", message: "..." }`, assert `requestJson` throws an `ApiError` with `status=429`, `code="RATE_LIMIT_EXCEEDED"`, and (new) `retryAfterSeconds=30`. Fails — `ApiError` has no `retryAfterSeconds` field today.
+- RED: `frontend/src/lib/api/http-client.test.ts`. With a stubbed `fetch` returning 429 + `Retry-After: 30` + `{ code: "RATE_LIMIT_EXCEEDED", message: "..." }`, assert `requestJson` throws an `ApiError` with `status=429`, `code="RATE_LIMIT_EXCEEDED"`, and (new) `retryAfterSeconds=30`. Fails — `ApiError` has no `retryAfterSeconds` field today.
 - GREEN: add `retryAfterSeconds: number | null` to `ApiError`; read `Retry-After` in the 429 branch of `performJsonRequest` (and `requestBlob`) and pass it to the `ApiError`. Test passes.
 - Refactor: confirm the toast helper consumed by mutations / queries surfaces a friendly message when `error.retryAfterSeconds` is present; add one Playwright spec (or RTL component test) to confirm the toast renders the seconds value.
 
@@ -4775,7 +4951,7 @@ Add:
 - `backend/src/test/java/com/bhawana/lms/security/RateLimitFilterAlertEmissionIntegrationTest.java`
 - `backend/src/test/java/com/bhawana/lms/security/RateLimitBucketKeyFormatTest.java`
 - `backend/src/test/java/com/bhawana/lms/security/RateLimitPropertiesValidationTest.java`
-- `frontend-2/src/lib/api/http-client.test.ts` (new file or extension)
+- `frontend/src/lib/api/http-client.test.ts` (new file or extension)
 
 Edit:
 - `backend/src/main/java/com/bhawana/lms/security/RateLimitProperties.java` — replace the two int knobs with `List<RateLimitRule> rules`. Keep deprecated getters/setters out (this is a breaking config change — the user has opted into the rules table). Add `@PostConstruct` validation.
@@ -4783,7 +4959,7 @@ Edit:
 - `backend/src/main/java/com/bhawana/lms/security/RateLimitConfig.java` — likely unchanged; confirm no implicit dependency on the removed `authPerMinute`/`lspWritePerMinute` getters.
 - `backend/src/main/resources/application.yml` — replace the two budget knobs with the rules list shown above.
 - `backend/src/main/resources/application-test.yml` — high per-rule overrides.
-- `frontend-2/src/lib/api/http-client.ts` — `ApiError` gains `retryAfterSeconds: number | null`; `performJsonRequest` and `requestBlob` populate it on 429.
+- `frontend/src/lib/api/http-client.ts` — `ApiError` gains `retryAfterSeconds: number | null`; `performJsonRequest` and `requestBlob` populate it on 429.
 - Any FE toast helper / mutation hook that displays `ApiError` — surface the seconds value if present. Identify call sites via grep for `ApiError` references in `frontend-2/src`.
 
 Untouched (deliberately):
@@ -5093,9 +5269,18 @@ These tests are valuable on their own; they describe the invariant the code alre
 ---
 
 ### #92 — [B-10] Document download swallows IllegalStateException — storage outage masked as 404
-**Labels:** bug · **Link:** https://github.com/sid12701/lms/issues/92
+**Labels:** bug · **Link:** https://github.com/sid12701/lms/issues/92 · **Status:** **CLOSED** — PR pending merge (2026-06-08). Typed document-storage exceptions + `GlobalExceptionHandler` mapping; storage backends refactored to `@Service` beans; Micrometer counter on 503; alert spike rule **deferred** (counter only).
 
 **Problem (plain English):** Storage tier outage looks like "doc was deleted." Wrong incident response.
+
+**Resolution (2026-06-08):**
+
+- **Backend:** `DocumentNotFoundException` → 404 `DOCUMENT_NOT_FOUND`; `DocumentStorageUnavailableException` → 503 `DOCUMENT_STORAGE_UNAVAILABLE` + `lms.document.storage.unavailable` counter; `DocumentStorageMisconfiguredException` → 500 `DOCUMENT_STORAGE_MISCONFIGURED`. `EntityNotFoundException` → 404 via handler. Removed `IllegalStateException` swallow in `LoanApplicationOpsController` download endpoints.
+- **Storage layer:** `FileSystemLoanDocumentStorageService` and `R2LoanDocumentStorageService` converted from static helpers to injectable `@Service` beans; `ConfigurableLoanDocumentStorageService` routes through them. FS distinguishes missing file vs I/O failure; R2 maps `NoSuchKey` → 404 and other SDK errors → 503.
+- **Frontend:** `DocumentsTab` shows retry-friendly toast on `DOCUMENT_STORAGE_UNAVAILABLE`.
+- **Tests:** `Issue92DocumentDownloadIntegrationTest`, `Issue92DocumentDownloadStorageFailureIntegrationTest` (`@MockitoBean` on FS backend), `Issue92DocumentDownloadMisconfiguredR2IntegrationTest`; existing `LoanApplicationOpsControllerDocumentDownloadAuditTest` unchanged.
+- **Deferred (follow-up):** `DOCUMENT_STORAGE_OUTAGE_SPIKE` alert rule; audit `STORAGE_UNAVAILABLE` outcome on failed download (#70 extension).
+- **Bundled regression fix:** `AlertsFilterBar.clearAll` debounced search used stale `filters` closure — fixed with functional `setState` updates (unblocks `AlertsPage` filter-clear test; partial #167).
 
 **Possible fixes:**
 1. **Distinguish exception types (`DocumentNotFound` → 404, `DocumentStorageUnavailable` → 503)** — clear.
@@ -5193,6 +5378,19 @@ Net effect today:
 - Builds on #70's audit infrastructure (already SOLVED) — verify during implementation that the audit row write captures the `STORAGE_UNAVAILABLE` outcome on the failure path. If it doesn't, file a small follow-up on #70 to extend its outcome enum (do not block #92 on this).
 - Builds on the alert-rule plumbing already in the codebase (`AlertRuleEvaluationService`, `OpsAlert`, `AlertRule`). No new infra.
 - Should ship before any real LSP integration goes live; once partners are live, changing 404 → 503 is a behaviour change requiring comms.
+
+**TDD checklist (tracker vs shipped):**
+
+| Planned test | Shipped |
+|---|---|
+| missing storage key → 404 `DOCUMENT_NOT_FOUND` | ✅ `Issue92DocumentDownloadIntegrationTest` |
+| FS missing file → 404 | ✅ same |
+| ZIP no documents → 404 | ✅ same |
+| storage unavailable → 503 + counter | ✅ `Issue92DocumentDownloadStorageFailureIntegrationTest` |
+| R2 misconfig → 500 | ✅ `Issue92DocumentDownloadMisconfiguredR2IntegrationTest` |
+| R2 `NoSuchKey` boundary | ✅ covered in `R2LoanDocumentStorageService` (integration via misconfig/outage paths) |
+| alert spike on threshold | ⏸ deferred |
+| ZIP mid-build → 500 | ⏸ not added (low risk; `IllegalStateException` → generic 500) |
 
 ---
 
@@ -5325,7 +5523,7 @@ Why this matters:
 
 **Implementation plan (one PR):**
 
-1. **`frontend-2/src/lib/api/http-client.ts` — within-tab single-flight:**
+1. **`frontend/src/lib/api/http-client.ts` — within-tab single-flight:**
    ```ts
    let refreshPromise: Promise<string | null> | null = null;
 
@@ -5342,7 +5540,7 @@ Why this matters:
    }
    ```
    Replace the call site at line 149 (`await onUnauthorizedRefresh()`) with `await singleFlightRefresh()`. The existing 401 retry branch (lines 148–153) keeps its shape.
-2. **`frontend-2/src/features/auth/session-context.tsx` — proactive refresh:**
+2. **`frontend/src/features/auth/session-context.tsx` — proactive refresh:**
    - Add a constant near the top: `const PROACTIVE_REFRESH_LEAD_SECONDS = 30;`
    - In the effect that runs when `session` changes, schedule `setTimeout(refresh, Math.max(0, msUntilExpiry − 30_000))`. Clear the timer on session-change / unmount.
    - `refresh` (existing useCallback line 72–75) is reused; no change to its signature.
@@ -5360,10 +5558,11 @@ Why this matters:
 - **#132** (refresh revoke-then-issue can log user out if issue fails) — partially overlaps. A's single-flight reduces the surface but doesn't fix the server-side ordering. Note the overlap when #132 is grilled; A may be sufficient there too. No bundle.
 - **#80** (no admin "log out everywhere" / global JWT revocation) — independent; the global-revoke path is a separate concern. No interaction.
 - **#155** (failed-auth events not fed into lockout/alert pipeline) — proactive-refresh failures should NOT count as failed-auth events (they're not user-initiated). Note for #155's grill: distinguish background refresh failures from human-driven 401s in any alert logic.
+- **#144** (cookie-only auth, locked 2026-06-08) — changes the contract of `singleFlightRefresh`. Under cookie auth there is no access token in the response body for browser flows; refresh sets a new `lms-access` cookie. Signature becomes `Promise<boolean>` (did refresh succeed?) rather than `Promise<string | null>`. The `frontend/src/...` paths in this entry are CORRECT after the 2026-06-08 update from the stale `frontend-2/` references (folder retired per #101/#114). #144 ships as PR #1 of the pre-launch security baseline; this issue (#97) ships as PR #2 atop the cookie-auth foundation.
 
 **TDD plan (vertical slices, behaviour through the public `http-client` and `session-context` APIs):**
 
-Tests sit in `frontend-2/src/lib/api/http-client.test.ts` and `frontend-2/src/features/auth/session-context.test.tsx`. Mocking boundary is `fetch` (network) and the `onUnauthorizedRefresh` callback (the http-client's published seam). No internal mocking.
+Tests sit in `frontend/src/lib/api/http-client.test.ts` and `frontend/src/features/auth/session-context.test.tsx`. Mocking boundary is `fetch` (network) and the `onUnauthorizedRefresh` callback (the http-client's published seam). No internal mocking.
 
 1. **TRACER — `concurrent_401s_share_a_single_refresh_call`.** Stage `fetch` to return 401 for two parallel `requestJson` calls; mock the refresh callback to resolve after a tick with a new token; assert the refresh callback was invoked exactly once and both requests' retries succeed with the new token.
 2. `three_concurrent_401s_on_different_paths_share_one_refresh`. Same with three different paths to prove dedup is on the refresh promise, not on the request-key.
@@ -5908,7 +6107,7 @@ Backend:
 
 Frontend:
 
-3. **`frontend-2/src/lib/api/http-client.ts` / `auth-service.ts`** — read the `code` field on a refresh 401 and surface it to `session-context`. Today the FE only sees the bare 401. With the body shape, we can distinguish "your session naturally expired" from "you were revoked" in the eventual UX (post-launch grace-window or improved login prompt). No behaviour change in this PR — just parse and stash the code; the existing `setSession(null)` flow is unchanged.
+3. **`frontend/src/lib/api/http-client.ts` / `auth-service.ts`** — read the `code` field on a refresh 401 and surface it to `session-context`. Today the FE only sees the bare 401. With the body shape, we can distinguish "your session naturally expired" from "you were revoked" in the eventual UX (post-launch grace-window or improved login prompt). No behaviour change in this PR — just parse and stash the code; the existing `setSession(null)` flow is unchanged.
 4. **No UI text change in this PR.** The login screen's "session expired" message stays as-is; differentiating the messages by reason is a follow-up UX task.
 
 Follow-up issue to file:
@@ -6185,7 +6384,7 @@ If V66 succeeded on any environment, the backfill from V58 has held — orphans 
 | Area | Delivered |
 |------|-----------|
 | Backend | `AuditStream` 4→7; UNION branches + projection in `AuditExplorerRepository` / `AuditExplorerService` |
-| Frontend | `frontend-2/src/features/audit/` — stream types, tabs, `subjectFor`, detail sheet |
+| Frontend | `frontend/src/features/audit/` — stream types, tabs, `subjectFor`, detail sheet |
 | Tests | `AuditExplorerController*StreamTest`, `AuditExplorerStreamProjectionParityTest`, audit `page.test.tsx` stream cases |
 
 **8th+ streams checklist (for GitHub issue body):** AUTH, LSP_AUDIT, REPORT_ACCESS, server-side correlation/q filter, optional per-app disbursement drill-down.

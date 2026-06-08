@@ -198,17 +198,12 @@ public class LoanApplicationOpsController {
             HttpServletRequest request,
             @PathVariable UUID applicationId
     ) {
-        LoanDocumentService.ZipBuildResult zipResult;
-        try {
-            zipResult = loanApplicationService.downloadDocumentZip(
-                    applicationId,
-                    authentication.getName(),
-                    ClientIpAddresses.resolve(request),
-                    CorrelationIdHolder.get()
-            );
-        } catch (IllegalStateException exception) {
-            return ResponseEntity.notFound().build();
-        }
+        LoanDocumentService.ZipBuildResult zipResult = loanApplicationService.downloadDocumentZip(
+                applicationId,
+                authentication.getName(),
+                ClientIpAddresses.resolve(request),
+                CorrelationIdHolder.get()
+        );
         byte[] zipContent = zipResult.content();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"loan-" + applicationId + "-documents.zip\"")
@@ -224,18 +219,13 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @PathVariable LoanApplicationDocumentType documentType
     ) {
-        LoanDocumentService.RetrievedDocumentContent content;
-        try {
-            content = loanApplicationService.downloadDocumentContent(
-                    applicationId,
-                    documentType,
-                    authentication.getName(),
-                    ClientIpAddresses.resolve(request),
-                    CorrelationIdHolder.get()
-            );
-        } catch (jakarta.persistence.EntityNotFoundException | IllegalStateException exception) {
-            return ResponseEntity.notFound().build();
-        }
+        LoanDocumentService.RetrievedDocumentContent content = loanApplicationService.downloadDocumentContent(
+                applicationId,
+                documentType,
+                authentication.getName(),
+                ClientIpAddresses.resolve(request),
+                CorrelationIdHolder.get()
+        );
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(content.fileName()).build().toString())
                 .contentType(MediaType.parseMediaType(content.contentType()))
