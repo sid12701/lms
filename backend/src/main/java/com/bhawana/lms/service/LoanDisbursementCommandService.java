@@ -205,20 +205,24 @@ public class LoanDisbursementCommandService {
         if (outcome == MockDisbursementOutcome.DISBURSED) {
             loanApplicationLifecycleService.updateApplicationStatus(
                     application,
-                    LoanApplicationStatus.DISBURSED,
-                    actorUsername,
-                    "Loan disbursement completed successfully.",
-                    null,
-                    LoanApplicationAuditAction.STATUS_TRANSITION
+                    LoanApplicationStatusTransitionCommand.statusTransition(
+                            LoanApplicationStatus.DISBURSED,
+                            actorUsername,
+                            "Loan disbursement completed successfully.",
+                            null,
+                            LoanApplicationAuditAction.STATUS_TRANSITION
+                    )
             );
         } else {
             loanApplicationLifecycleService.updateApplicationStatus(
                     application,
-                    LoanApplicationStatus.DISBURSEMENT_RETRY,
-                    actorUsername,
-                    "Loan disbursement requires retry after failed/pending-reconciliation outcome.",
-                    LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
-                    LoanApplicationAuditAction.STATUS_TRANSITION
+                    LoanApplicationStatusTransitionCommand.statusTransition(
+                            LoanApplicationStatus.DISBURSEMENT_RETRY,
+                            actorUsername,
+                            "Loan disbursement requires retry after failed/pending-reconciliation outcome.",
+                            LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
+                            LoanApplicationAuditAction.STATUS_TRANSITION
+                    )
             );
         }
         WebhookEventType eventType = switch (outcome) {

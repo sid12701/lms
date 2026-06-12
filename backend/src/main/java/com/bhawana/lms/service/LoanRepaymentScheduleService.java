@@ -7,6 +7,7 @@ import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
+import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import java.math.BigDecimal;
@@ -25,20 +26,20 @@ import org.springframework.transaction.annotation.Transactional;
 public class LoanRepaymentScheduleService {
 
     private final LoanApplicationQueryService loanApplicationQueryService;
-    private final LoanApplicationServicingReadService loanApplicationServicingReadService;
+    private final LoanAccountRepository loanAccountRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final OpsAlertEmitters opsAlertEmitters;
 
     public LoanRepaymentScheduleService(
             LoanApplicationQueryService loanApplicationQueryService,
-            LoanApplicationServicingReadService loanApplicationServicingReadService,
+            LoanAccountRepository loanAccountRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
             OpsAlertEmitters opsAlertEmitters
     ) {
         this.loanApplicationQueryService = loanApplicationQueryService;
-        this.loanApplicationServicingReadService = loanApplicationServicingReadService;
+        this.loanAccountRepository = loanAccountRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.opsAlertEmitters = opsAlertEmitters;
@@ -132,7 +133,7 @@ public class LoanRepaymentScheduleService {
 
     private LoanAccount getMutableLoanAccountForLsp(UUID lspId, UUID applicationId) {
         loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
-        LoanAccount loanAccount = loanApplicationServicingReadService.getLoanAccount(applicationId)
+        LoanAccount loanAccount = loanAccountRepository.findByLoanApplication_Id(applicationId)
                 .orElseThrow(() -> new BusinessRuleViolationException(
                         "LOAN_NOT_APPROVED",
                         "Repayment schedule can only be set after the loan has been auto-approved.",

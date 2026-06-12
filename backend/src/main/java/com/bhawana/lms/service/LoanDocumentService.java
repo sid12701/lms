@@ -24,20 +24,20 @@ import org.springframework.web.multipart.MultipartFile;
 public class LoanDocumentService {
 
     private final LoanApplicationQueryService loanApplicationQueryService;
-    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
+    private final LoanApplicationDocumentChecklistService documentChecklistService;
     private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     private final LoanDocumentStorageService loanDocumentStorageService;
     private final LoanAutoApprovalGateService loanAutoApprovalGateService;
 
     public LoanDocumentService(
             LoanApplicationQueryService loanApplicationQueryService,
-            LoanApplicationLifecycleService loanApplicationLifecycleService,
+            LoanApplicationDocumentChecklistService documentChecklistService,
             LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
             LoanDocumentStorageService loanDocumentStorageService,
             LoanAutoApprovalGateService loanAutoApprovalGateService
     ) {
         this.loanApplicationQueryService = loanApplicationQueryService;
-        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
+        this.documentChecklistService = documentChecklistService;
         this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
         this.loanDocumentStorageService = loanDocumentStorageService;
         this.loanAutoApprovalGateService = loanAutoApprovalGateService;
@@ -67,7 +67,7 @@ public class LoanDocumentService {
             String contentType
     ) {
         loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
-        DocumentChecklistUpdateResult outcome = loanApplicationLifecycleService.updateDocumentChecklistItem(
+        DocumentChecklistUpdateResult outcome = documentChecklistService.updateDocumentChecklistItem(
                 applicationId,
                 documentType,
                 actorUsername,
@@ -194,7 +194,7 @@ public class LoanDocumentService {
             String actorUsername,
             List<BatchDocumentUpload> documents
     ) {
-        boolean wasComplete = loanApplicationLifecycleService.hasAllRequiredDocumentsUploaded(applicationId);
+        boolean wasComplete = documentChecklistService.hasAllRequiredDocumentsUploaded(applicationId);
         List<LoanApplicationDocumentChecklist> uploaded = persistStoredDocumentsForLsp(
                 lspId,
                 applicationId,
@@ -204,7 +204,7 @@ public class LoanDocumentService {
         loanAutoApprovalGateService.maybeTriggerAutoApproval(
                 applicationId,
                 actorUsername,
-                !wasComplete && loanApplicationLifecycleService.hasAllRequiredDocumentsUploaded(applicationId)
+                !wasComplete && documentChecklistService.hasAllRequiredDocumentsUploaded(applicationId)
         );
         return uploaded;
     }
@@ -221,7 +221,7 @@ public class LoanDocumentService {
     ) {
         loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
         StoredDocument storedDocument = loanDocumentStorageService.store(applicationId, documentType, file);
-        return loanApplicationLifecycleService.updateDocumentChecklistItem(
+        return documentChecklistService.updateDocumentChecklistItem(
                 applicationId,
                 documentType,
                 actorUsername,

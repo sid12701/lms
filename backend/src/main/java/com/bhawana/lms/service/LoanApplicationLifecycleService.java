@@ -43,7 +43,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -73,7 +72,7 @@ public class LoanApplicationLifecycleService {
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
             LoanProductRepository loanProductRepository,
-            @Lazy LoanRepaymentScheduleService loanRepaymentScheduleService,
+            LoanRepaymentScheduleService loanRepaymentScheduleService,
             LspRepository lspRepository,
             LoanProductLspMappingRepository loanProductLspMappingRepository,
             BorrowerOnboardingService borrowerOnboardingService,
@@ -249,11 +248,13 @@ public class LoanApplicationLifecycleService {
         }
         LoanApplication savedApplication = updateApplicationStatus(
                 application,
-                targetStatus,
-                actorUsername,
-                resolvedNote,
-                resolvedReasonCode,
-                LoanApplicationAuditAction.STATUS_TRANSITION
+                LoanApplicationStatusTransitionCommand.statusTransition(
+                        targetStatus,
+                        actorUsername,
+                        resolvedNote,
+                        resolvedReasonCode,
+                        LoanApplicationAuditAction.STATUS_TRANSITION
+                )
         );
         if (targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL) {
             ensureLoanAccountForApprovedApplication(savedApplication);
@@ -314,13 +315,14 @@ public class LoanApplicationLifecycleService {
         );
         return updateApplicationStatus(
                 application,
-                targetStatus,
-                actorUsername,
-                resolvedNote,
-                resolvedReasonCode,
-                LoanApplicationAuditAction.MANUAL_STATUS_OVERRIDE,
-                null,
-                LoanApplicationStatusTransitioner.TransitionContext.MANUAL_OVERRIDE
+                LoanApplicationStatusTransitionCommand.builder()
+                        .targetStatus(targetStatus)
+                        .actorUsername(actorUsername)
+                        .note(resolvedNote)
+                        .reasonCode(resolvedReasonCode)
+                        .auditAction(LoanApplicationAuditAction.MANUAL_STATUS_OVERRIDE)
+                        .transitionContext(LoanApplicationStatusTransitioner.TransitionContext.MANUAL_OVERRIDE)
+                        .build()
         );
     }
 
@@ -420,21 +422,25 @@ public class LoanApplicationLifecycleService {
         if (savedApplication.getStatus() == LoanApplicationStatus.INITIALIZED) {
             savedApplication = updateApplicationStatus(
                     savedApplication,
-                    LoanApplicationStatus.AWAITING_APPROVAL,
-                    actorUsername,
-                    "Application moved to approval after all auto-approval rules passed.",
-                    null,
-                    LoanApplicationAuditAction.STATUS_TRANSITION
+                    LoanApplicationStatusTransitionCommand.statusTransition(
+                            LoanApplicationStatus.AWAITING_APPROVAL,
+                            actorUsername,
+                            "Application moved to approval after all auto-approval rules passed.",
+                            null,
+                            LoanApplicationAuditAction.STATUS_TRANSITION
+                    )
             );
         }
         if (savedApplication.getStatus() == LoanApplicationStatus.AWAITING_APPROVAL) {
             savedApplication = updateApplicationStatus(
                     savedApplication,
-                    LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
-                    actorUsername,
-                    "Loan auto-approved by the rule engine after all eligibility checks passed.",
-                    null,
-                    LoanApplicationAuditAction.STATUS_TRANSITION
+                    LoanApplicationStatusTransitionCommand.statusTransition(
+                            LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
+                            actorUsername,
+                            "Loan auto-approved by the rule engine after all eligibility checks passed.",
+                            null,
+                            LoanApplicationAuditAction.STATUS_TRANSITION
+                    )
             );
             ensureLoanAccountForApprovedApplication(savedApplication);
         }
@@ -454,12 +460,14 @@ public class LoanApplicationLifecycleService {
         String note = "Auto-rejected by rule engine. Failed rules: " + failedRuleList;
         return updateApplicationStatus(
                 application,
-                LoanApplicationStatus.REJECTED,
-                actorUsername,
-                note,
-                LoanApplicationStatusReasonCode.FAILED_VERIFICATION,
-                LoanApplicationAuditAction.STATUS_TRANSITION,
-                rejectionJson
+                LoanApplicationStatusTransitionCommand.withRejection(
+                        LoanApplicationStatus.REJECTED,
+                        actorUsername,
+                        note,
+                        LoanApplicationStatusReasonCode.FAILED_VERIFICATION,
+                        LoanApplicationAuditAction.STATUS_TRANSITION,
+                        rejectionJson
+                )
         );
     }
 
@@ -488,84 +496,42 @@ public class LoanApplicationLifecycleService {
 
     public LoanApplication updateApplicationStatus(
             LoanApplication application,
-            LoanApplicationStatus targetStatus,
-            String actorUsername,
-            String note,
-            LoanApplicationStatusReasonCode reasonCode,
-            LoanApplicationAuditAction auditAction
+            LoanApplicationStatusTransitionCommand command
     ) {
-        return updateApplicationStatus(
-                application,
-                targetStatus,
-                actorUsername,
-                note,
-                reasonCode,
-                auditAction,
-                null,
-                LoanApplicationStatusTransitioner.TransitionContext.STANDARD
-        );
-    }
-
-    public LoanApplication updateApplicationStatus(
-            LoanApplication application,
-            LoanApplicationStatus targetStatus,
-            String actorUsername,
-            String note,
-            LoanApplicationStatusReasonCode reasonCode,
-            LoanApplicationAuditAction auditAction,
-            String rejectionReasonJson
-    ) {
-        return updateApplicationStatus(
-                application,
-                targetStatus,
-                actorUsername,
-                note,
-                reasonCode,
-                auditAction,
-                rejectionReasonJson,
-                LoanApplicationStatusTransitioner.TransitionContext.STANDARD
-        );
-    }
-
-    public LoanApplication updateApplicationStatus(
-            LoanApplication application,
-            LoanApplicationStatus targetStatus,
-            String actorUsername,
-            String note,
-            LoanApplicationStatusReasonCode reasonCode,
-            LoanApplicationAuditAction auditAction,
-            String rejectionReasonJson,
-            LoanApplicationStatusTransitioner.TransitionContext transitionContext
-    ) {
+        LoanApplicationStatus targetStatus = command.targetStatus();
         LoanApplicationStatus currentStatus = application.getStatus();
         if (currentStatus == targetStatus) {
             return application;
         }
 
-        LoanApplicationStatusTransitioner.enforceTransition(currentStatus, targetStatus, transitionContext);
+        LoanApplicationStatusTransitioner.enforceTransition(
+                currentStatus,
+                targetStatus,
+                command.transitionContext()
+        );
         application.transitionTo(targetStatus);
         LoanApplication savedApplication = loanApplicationRepository.save(application);
-        String resolvedNote = Strings.normalizeOptional(note) == null
+        String resolvedNote = Strings.normalizeOptional(command.note()) == null
                 ? defaultTransitionNote(currentStatus, targetStatus)
-                : Strings.normalizeOptional(note);
+                : Strings.normalizeOptional(command.note());
         loanApplicationStatusTransitionRepository.save(new LoanApplicationStatusTransition(
                 savedApplication,
                 currentStatus,
                 targetStatus,
-                Strings.normalizeActor(actorUsername),
+                Strings.normalizeActor(command.actorUsername()),
                 resolvedNote,
-                reasonCode,
+                command.reasonCode(),
                 CorrelationIdHolder.get(),
-                rejectionReasonJson
+                command.rejectionReasonJson()
         ));
         recordAuditEvent(
                 savedApplication,
-                auditAction,
+                command.auditAction(),
                 currentStatus,
                 targetStatus,
-                actorUsername,
+                command.actorUsername(),
                 resolvedNote,
-                reasonCode
+                command.reasonCode()
         );
         webhookOutboxService.enqueueIfSubscribed(
                 savedApplication.getLsp(),
@@ -573,7 +539,12 @@ public class LoanApplicationLifecycleService {
                 "LOAN_APPLICATION",
                 savedApplication.getId().toString(),
                 savedApplication.getId(),
-                LoanWebhookPayloads.loanStatusChanged(savedApplication, currentStatus, targetStatus, reasonCode)
+                LoanWebhookPayloads.loanStatusChanged(
+                        savedApplication,
+                        currentStatus,
+                        targetStatus,
+                        command.reasonCode()
+                )
         );
         return savedApplication;
     }
