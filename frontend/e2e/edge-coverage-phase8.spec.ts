@@ -10,7 +10,8 @@ import { fileURLToPath } from "node:url";
 import { test, expect, type Page } from "@playwright/test";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const AUTH_FILE = process.env["E2E_STORAGE_STATE"] ?? path.join(__dirname, ".auth", "phase8-admin.json");
+const AUTH_FILE =
+  process.env["E2E_STORAGE_STATE"] ?? path.join(__dirname, ".auth", "phase8-admin.json");
 
 const APPLICATION_ID = process.env["E2E_APPLICATION_ID"] ?? "";
 const API_BASE = process.env["E2E_API_BASE"] ?? "http://localhost:8080";
@@ -79,7 +80,9 @@ test.describe("Phase 8 UI edge coverage", () => {
     await openLoanDetail(page);
     await page.reload();
     await expect(page).not.toHaveURL(/\/login/);
-    await expect(page.locator('[data-testid="loan-application-detail"]')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('[data-testid="loan-application-detail"]')).toBeVisible({
+      timeout: 20_000,
+    });
   });
 
   test("EC-085: no console.error on primary screens", async ({ page }) => {
@@ -106,7 +109,9 @@ test.describe("Phase 8 UI edge coverage", () => {
       route.abort("failed"),
     );
     await page.goto(`/loan-applications/${APPLICATION_ID}`);
-    await expect(page.locator('[data-testid="loan-application-detail"][data-state="error"]')).toBeVisible({
+    await expect(
+      page.locator('[data-testid="loan-application-detail"][data-state="error"]'),
+    ).toBeVisible({
       timeout: 15_000,
     });
     await expect(page.getByText(/Couldn't load this application/i)).toBeVisible();
@@ -206,26 +211,30 @@ test.describe("Phase 8 UI edge coverage", () => {
     const schedule = (await scheduleRes.json()) as {
       installments?: { id: string; amount: number; status?: string }[];
     };
-    const inst = schedule.installments?.find((row) => row.status !== "PAID") ?? schedule.installments?.[0];
+    const inst =
+      schedule.installments?.find((row) => row.status !== "PAID") ?? schedule.installments?.[0];
     test.skip(!inst, "No installment on schedule for payment trigger");
 
     await openLoanDetail(page);
     await expect(page.locator('[data-slot="status-badge"]').first()).toContainText(/disbursed/i);
 
-    await request.post(`${API_BASE}/api/v1/internal/ops/loan-applications/${APPLICATION_ID}/payments`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": crypto.randomUUID(),
+    await request.post(
+      `${API_BASE}/api/v1/internal/ops/loan-applications/${APPLICATION_ID}/payments`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        data: {
+          targetInstallmentId: inst!.id,
+          amount: inst!.amount,
+          postedAt: "2026-06-11",
+          reference: "EC-111",
+          channel: "NEFT",
+        },
       },
-      data: {
-        targetInstallmentId: inst!.id,
-        amount: inst!.amount,
-        postedAt: "2026-06-11",
-        reference: "EC-111",
-        channel: "NEFT",
-      },
-    });
+    );
 
     await page.waitForTimeout(10_000);
     await expect(page.locator('[data-slot="status-badge"]').first()).toContainText(/disbursed/i);

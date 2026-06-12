@@ -6,10 +6,7 @@ describe("TRANSITIONS vs BACKEND_ALLOWED_TRANSITIONS", () => {
   it("every UI transition edge is allowed by the backend matrix", () => {
     for (const rule of TRANSITIONS) {
       const allowed = BACKEND_ALLOWED_TRANSITIONS[rule.from];
-      expect(
-        allowed,
-        `backend matrix missing from-status ${rule.from}`,
-      ).toBeDefined();
+      expect(allowed, `backend matrix missing from-status ${rule.from}`).toBeDefined();
       expect(
         allowed.includes(rule.to),
         `UI offers ${rule.from} → ${rule.to} but backend disallows it`,
