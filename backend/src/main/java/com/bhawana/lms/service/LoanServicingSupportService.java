@@ -270,11 +270,13 @@ public class LoanServicingSupportService {
             loanAccountRepository.save(loanAccount);
             loanApplicationLifecycleService.updateApplicationStatus(
                     application,
-                    LoanApplicationStatus.FORECLOSED,
-                    actorUsername,
-                    "Loan foreclosed after settlement.",
-                    null,
-                    LoanApplicationAuditAction.STATUS_TRANSITION
+                    LoanApplicationStatusTransitionCommand.statusTransition(
+                            LoanApplicationStatus.FORECLOSED,
+                            actorUsername,
+                            "Loan foreclosed after settlement.",
+                            null,
+                            LoanApplicationAuditAction.STATUS_TRANSITION
+                    )
             );
             return;
         }
@@ -284,11 +286,13 @@ public class LoanServicingSupportService {
             loanAccountRepository.save(loanAccount);
             loanApplicationLifecycleService.updateApplicationStatus(
                     application,
-                    LoanApplicationStatus.CLOSED,
-                    actorUsername,
-                    "Loan closed after all installments were settled.",
-                    null,
-                    LoanApplicationAuditAction.STATUS_TRANSITION
+                    LoanApplicationStatusTransitionCommand.statusTransition(
+                            LoanApplicationStatus.CLOSED,
+                            actorUsername,
+                            "Loan closed after all installments were settled.",
+                            null,
+                            LoanApplicationAuditAction.STATUS_TRANSITION
+                    )
             );
         }
     }

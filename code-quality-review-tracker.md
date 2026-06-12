@@ -53,11 +53,11 @@ Priorities: **P0** = correctness or contract risk now; P1 = structural debt that
 |----|--------|---------|
 | **B1** | Sound; P0 correctness | **Implemented** — single generator in `LoanRepaymentScheduleService.generateIfAbsent`; duplicate removed from lifecycle |
 | **B2** | Sound but L-effort; do after B6 | **✅ Done (2026-06-12)** — facade deleted; `LoanDisbursementCommandService`, `LoanApplicationServicingReadService`, `LoanDelinquencySupport`; seed + document-download tests on focused services |
-| **B3** | Sound but L-effort | **Partial (step 2)** — `BorrowerOnboardingService`, `LoanApplicationDocumentChecklistService`, `LoanWebhookPayloads`; lifecycle thinned (~450 lines removed); step 1 predicates retained |
+| **B3** | Sound but L-effort | **✅ Done (2026-06-11)** — step 1 predicates; step 2 extractions (`BorrowerOnboardingService`, `LoanApplicationDocumentChecklistService`, `LoanWebhookPayloads`); step 3 `LoanApplicationStatusTransitionCommand` (single `updateApplicationStatus`), lifecycle↔schedule `@Lazy` removed via servicing-read → checklist direct wire |
 | **B4** | Sound; full 143-site sweep is M-effort | **✅ Done (2026-06-12)** — service sweep + integration tests; Postman folder 14 asserts typed `404 NOT_FOUND` via `assertApiError`; frontend `readResponseError` trusts `{ code, message }` envelope |
 | **B5** | Sound; sequence with B3 | **✅ Done (2026-06-11)** — `BorrowerProfile` record + `BorrowerProfileMappers`; slim `LoanApplicationOnboardingCommand` (9 fields); `Borrower` uses profile constructors/merge; intake audit via `intakeAuditEntries()` |
 | **B6** | Sound; M-effort | **✅ Done (2026-06-12)** — `LoanApplicationDetailAssembler` + `LoanApplicationDetailView`; ops/LSP controllers + `LspLoanApiController`; pure `toDetailResponse(LoanApplicationDetailView)` |
-| **B7** | Sound; M-effort | **✅ Done (2026-06-12)** — `OpsAlertEmitters` + `AlertRuleEvaluationWorker`; alerts-cycle `@Lazy` removed; `LazyInjectionArchitectureTest` whitelists only lifecycle↔schedule until B3 step 3 |
+| **B7** | Sound; M-effort | **✅ Done (2026-06-11)** — `OpsAlertEmitters` + `AlertRuleEvaluationWorker`; all constructor `@Lazy` removed; `LazyInjectionArchitectureTest` expects zero lazy owners |
 | **B8** | Sound; depends on B7 step 1 | **✅ Done (2026-06-12)** — `AlertContextJson` + `ObjectMapper` in `OpsAlertEmitters` and `AlertRuleEvaluationWorker`; `escapeJson` removed |
 | **B9** | Sound; mechanical M | **✅ Done (2026-06-12)** — `AdminDirectoryService` → `LspDirectoryService`, `UserAdminService`, `BorrowerDirectoryService` |
 | **B10** | Sound; M-effort | **✅ Done (2026-06-12)** — `AuthTokenService` + `RefreshCookieFactory`; `AuthController` thinned |
@@ -155,7 +155,9 @@ The review was asked to verify the machine-generated reports before trusting the
 
 ---
 
-## <a id="b3"></a>B3 — `LoanApplicationLifecycleService` god class · P1
+## <a id="b3"></a>B3 — `LoanApplicationLifecycleService` god class · P1 · ✅ Done (2026-06-11)
+
+**Session outcome (step 3):** `LoanApplicationStatusTransitionCommand` replaces three telescoping `updateApplicationStatus` overloads; all call sites use `statusTransition` / `withRejection` / builder. Dependency cycles removed: servicing-read → checklist (not lifecycle); `LoanDocumentService` → checklist; `LoanRepaymentScheduleService` → `LoanAccountRepository` (not servicing-read); `@Lazy` removed from lifecycle. Lifecycle core ~867 lines (intake + transitions + invalidation + auto-approval orchestration).
 
 **Problem (plain English):** One `@Service` owns loan intake, borrower identity resolution and dedupe alerts, the status state machine, manual overrides, auto-approval, document checklist seeding/validation, EMI schedule generation, webhook payload construction, and a pile of string/number normalizers. Five-plus modules in a trench coat.
 
@@ -255,11 +257,11 @@ The review was asked to verify the machine-generated reports before trusting the
 
 ## <a id="b7"></a>B7 — Circular dependencies behind `@Lazy` · P1 · ✅ Done (2026-06-12)
 
-**Session outcome:** `OpsAlertEmitters` (ad-hoc emission) + `AlertRuleEvaluationWorker` (scheduled `evaluate*` + `listRules`); alerts-cycle `@Lazy` removed. Facade↔document `@Lazy` removed with B2 facade deletion. `LazyInjectionArchitectureTest` blocks new `@Lazy` constructor injection; only `LoanApplicationLifecycleService` ↔ schedule remains until B3 step 3.
+**Session outcome:** `OpsAlertEmitters` (ad-hoc emission) + `AlertRuleEvaluationWorker` (scheduled `evaluate*` + `listRules`); alerts-cycle `@Lazy` removed. Facade↔document `@Lazy` removed with B2 facade deletion. B3 step 3 broke lifecycle↔schedule cycle (`LoanApplicationServicingReadService` → `LoanApplicationDocumentChecklistService` instead of lifecycle); `LazyInjectionArchitectureTest` now expects zero `@Lazy` constructor owners.
 
 **Problem (plain English):** Four injection sites use `@Lazy` to break dependency cycles instead of fixing the shape that created them.
 
-**Evidence (grep-verified, post B2):** `LoanApplicationLifecycleService` (`@Lazy LoanRepaymentScheduleService`) only. Alerts-cycle and facade↔document `@Lazy` sites removed.
+**Evidence (grep-verified, post B3 step 3):** zero `@Lazy` constructor injection sites in `com.bhawana.lms`.
 
 **Why:** The lifecycle↔alerts cycle exists because `AlertRuleEvaluationService` is two things in one class (see its structure: scheduled `evaluate*` rules at lines 350–646 *and* ad-hoc `emit*` helpers at 110–344 that domain services call). Domain services need the emitters; the evaluator needs domain repositories; fusing them creates the cycle. `@Lazy` hides it and leaves a runtime-proxy landmine (lazy beans fail at first use, not at startup).
 

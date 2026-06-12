@@ -333,11 +333,13 @@ public class LoanRepaymentCommandService {
         if (application.getStatus() == LoanApplicationStatus.DISBURSED) {
             loanApplicationLifecycleService.updateApplicationStatus(
                     application,
-                    LoanApplicationStatus.UNDER_REPAYMENT,
-                    actorUsername,
-                    note,
-                    null,
-                    LoanApplicationAuditAction.STATUS_TRANSITION
+                    LoanApplicationStatusTransitionCommand.statusTransition(
+                            LoanApplicationStatus.UNDER_REPAYMENT,
+                            actorUsername,
+                            note,
+                            null,
+                            LoanApplicationAuditAction.STATUS_TRANSITION
+                    )
             );
         }
     }

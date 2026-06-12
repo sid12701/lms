@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
+import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import java.math.BigDecimal;
@@ -33,7 +34,7 @@ class LoanRepaymentScheduleServiceTest {
     private LoanApplicationQueryService loanApplicationQueryService;
 
     @Mock
-    private LoanApplicationServicingReadService loanApplicationServicingReadService;
+    private LoanAccountRepository loanAccountRepository;
 
     @Mock
     private LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
@@ -50,7 +51,7 @@ class LoanRepaymentScheduleServiceTest {
     void setUp() {
         scheduleService = new LoanRepaymentScheduleService(
                 loanApplicationQueryService,
-                loanApplicationServicingReadService,
+                loanAccountRepository,
                 loanRepaymentScheduleInstallmentRepository,
                 loanPaymentTransactionRepository,
                 opsAlertEmitters

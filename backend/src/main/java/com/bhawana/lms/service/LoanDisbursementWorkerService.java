@@ -139,11 +139,13 @@ public class LoanDisbursementWorkerService {
             if (application.getStatus() != LoanApplicationStatus.DISBURSEMENT_RETRY) {
                 loanApplicationLifecycleService.updateApplicationStatus(
                         application,
-                        LoanApplicationStatus.DISBURSEMENT_RETRY,
-                        WORKER_ACTOR,
-                        "Automated disbursement retries exhausted.",
-                        LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
-                        LoanApplicationAuditAction.STATUS_TRANSITION
+                        LoanApplicationStatusTransitionCommand.statusTransition(
+                                LoanApplicationStatus.DISBURSEMENT_RETRY,
+                                WORKER_ACTOR,
+                                "Automated disbursement retries exhausted.",
+                                LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
+                                LoanApplicationAuditAction.STATUS_TRANSITION
+                        )
                 );
                 opsAlertEmitters.emitDisbursementRetryExhausted(application, (int) priorAttempts);
             }
@@ -173,11 +175,13 @@ public class LoanDisbursementWorkerService {
             if (attemptsAfterFailure >= properties.getMaxAttempts()) {
                 loanApplicationLifecycleService.updateApplicationStatus(
                         application,
-                        LoanApplicationStatus.DISBURSEMENT_RETRY,
-                        WORKER_ACTOR,
-                        "Automated disbursement retries exhausted after adapter failure.",
-                        LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
-                        LoanApplicationAuditAction.STATUS_TRANSITION
+                        LoanApplicationStatusTransitionCommand.statusTransition(
+                                LoanApplicationStatus.DISBURSEMENT_RETRY,
+                                WORKER_ACTOR,
+                                "Automated disbursement retries exhausted after adapter failure.",
+                                LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
+                                LoanApplicationAuditAction.STATUS_TRANSITION
+                        )
                 );
                 opsAlertEmitters.emitDisbursementRetryExhausted(application, (int) attemptsAfterFailure);
             }
@@ -194,13 +198,14 @@ public class LoanDisbursementWorkerService {
         opsAlertEmitters.emitLspBoundViolation(application, violationType, message, violations);
         loanApplicationLifecycleService.updateApplicationStatus(
                 application,
-                LoanApplicationStatus.REJECTED,
-                WORKER_ACTOR,
-                "Rejected by disbursement worker: " + message,
-                LoanApplicationStatusReasonCode.FAILED_VERIFICATION,
-                LoanApplicationAuditAction.STATUS_TRANSITION,
-                null,
-                LoanApplicationStatusTransitioner.TransitionContext.WORKER
+                LoanApplicationStatusTransitionCommand.builder()
+                        .targetStatus(LoanApplicationStatus.REJECTED)
+                        .actorUsername(WORKER_ACTOR)
+                        .note("Rejected by disbursement worker: " + message)
+                        .reasonCode(LoanApplicationStatusReasonCode.FAILED_VERIFICATION)
+                        .auditAction(LoanApplicationAuditAction.STATUS_TRANSITION)
+                        .transitionContext(LoanApplicationStatusTransitioner.TransitionContext.WORKER)
+                        .build()
         );
     }
 

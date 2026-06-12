@@ -16,13 +16,10 @@ import org.springframework.context.annotation.Lazy;
 
 /**
  * B7 guardrail: {@code @Lazy} constructor injection is legacy debt, not an approved pattern.
- * Only the documented lifecycle↔schedule cycle may remain until B3 step 3 completes.
  */
 class LazyInjectionArchitectureTest {
 
-    private static final Set<String> ALLOWED_LAZY_CONSTRUCTOR_OWNERS = Set.of(
-            "com.bhawana.lms.service.LoanApplicationLifecycleService"
-    );
+    private static final Set<String> ALLOWED_LAZY_CONSTRUCTOR_OWNERS = Set.of();
 
     @Test
     void onlyDocumentedClassesMayUseLazyConstructorInjection() {
