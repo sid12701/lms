@@ -10,6 +10,10 @@
  * Lifecycle mutations (`postTransition`, `postDisbursement`) call the same
  * internal ops endpoints with BR-5 idempotency keys.
  */
+import type {
+  OpsLoanApplicationDetailResponse,
+  OpsLoanApplicationDocumentChecklistResponse,
+} from "@/lib/api/generated/ops-loan-applications";
 import { ApiError, requestJson } from "@/lib/api/http-client";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import { newIdempotencyKey } from "@/lib/idempotency";
@@ -41,75 +45,8 @@ export interface DisbursementResponse {
   events: readonly ApplicationAuditEvent[];
 }
 
-// ─── Backend response shapes ─────────────────────────────────────────────────
-
-interface BackendLoanAccountSummary {
-  id: string | null;
-  accountNumber: string | null;
-  status: string | null;
-  principalAmount: number | string | null;
-  tenureMonths: number | null;
-  approvedAt: string | null;
-  createdAt: string | null;
-  closureReason: string | null;
-  closedAt: string | null;
-  closedByUsername: string | null;
-  delinquency: {
-    maxDaysPastDue: number | null;
-    bucket: string | null;
-    overdueInstallmentCount: number | null;
-    overdueAmount: number | string | null;
-  } | null;
-  repaymentSchedule: {
-    installmentCount: number | null;
-    installmentAmount: number | string | null;
-    firstDueDate: string | null;
-    finalDueDate: string | null;
-  } | null;
-}
-
-interface BackendLoanApplicationDetail {
-  id: string;
-  borrowerId: string;
-  borrowerFullName: string;
-  borrowerPan: string | null;
-  borrowerMobile: string | null;
-  borrowerEmail: string | null;
-  borrowerDateOfBirth: string | null;
-  borrowerCity: string | null;
-  borrowerState: string | null;
-  borrowerEmploymentType: string | null;
-  borrowerMonthlyIncome: number | string | null;
-  lspId: string;
-  lspCode: string;
-  lspName: string;
-  productId: string;
-  productCode: string;
-  productName: string;
-  externalLoanId: string | null;
-  sourceChannel: string | null;
-  requestedAmount: number | string | null;
-  tenureMonths: number | null;
-  status: string;
-  invalidReasonCode: string | null;
-  invalidReasonText: string | null;
-  invalidatedByUsername: string | null;
-  invalidatedAt: string | null;
-  createdAt: string | null;
-  updatedAt: string | null;
-  loanAccount: BackendLoanAccountSummary | null;
-}
-
-interface BackendChecklistRow {
-  documentType: string;
-  required: boolean;
-  status: string;
-}
-
-function toNumber(value: number | string | null | undefined): number {
-  if (value == null) return 0;
-  const parsed = typeof value === "string" ? Number(value) : value;
-  return Number.isFinite(parsed) ? parsed : 0;
+function toAmount(value: number | null | undefined): number {
+  return value ?? 0;
 }
 
 function nowIso(): string {
@@ -131,28 +68,29 @@ function safeChannel(value: string | null | undefined): "UI" | "API" | "WEBHOOK"
  * renders an empty cell rather than crashing).
  */
 function backendToDetail(
-  payload: BackendLoanApplicationDetail,
-  checklist: readonly BackendChecklistRow[],
+  payload: OpsLoanApplicationDetailResponse,
+  checklist: readonly OpsLoanApplicationDocumentChecklistResponse[],
 ): LoanApplicationDetail {
-  const requestedAmount = toNumber(payload.requestedAmount);
+  const applicationId = payload.id ?? "";
+  const requestedAmount = toAmount(payload.requestedAmount);
   const tenureMonths = payload.tenureMonths ?? 0;
   const created = payload.createdAt ?? nowIso();
   const updated = payload.updatedAt ?? created;
 
   const application: LoanApplication = {
-    id: payload.id,
-    externalLoanId: payload.externalLoanId,
-    borrowerId: payload.borrowerId,
-    lspId: payload.lspId,
-    productId: payload.productId,
+    id: applicationId,
+    externalLoanId: payload.externalLoanId ?? null,
+    borrowerId: payload.borrowerId ?? "",
+    lspId: payload.lspId ?? "",
+    productId: payload.productId ?? "",
     requestedAmount,
     tenureMonths,
-    status: parseLoanApplicationStatus(payload.status) ?? "INITIALIZED",
+    status: parseLoanApplicationStatus(payload.status ?? "") ?? "INITIALIZED",
     sourceChannel: safeChannel(payload.sourceChannel),
     createdAt: created,
     updatedAt: updated,
-    invalidatedAt: payload.invalidatedAt,
-    invalidReason: payload.invalidReasonText ?? payload.invalidReasonCode,
+    invalidatedAt: payload.invalidatedAt ?? null,
+    invalidReason: payload.invalidReasonText ?? payload.invalidReasonCode ?? null,
   };
 
   // Borrower: the backend embeds a thin projection inline. Full Borrower
@@ -161,7 +99,7 @@ function backendToDetail(
   // the detail surface we project what's in the payload and leave the
   // rest empty so the OverviewTab and DetailHeader can render.
   const borrower = {
-    id: payload.borrowerId,
+    id: payload.borrowerId ?? "",
     fullName: payload.borrowerFullName ?? "",
     pan: payload.borrowerPan ?? "",
     aadhaar: "",
@@ -183,8 +121,8 @@ function backendToDetail(
       organization: null,
       employeeId: null,
       location: null,
-      monthlyIncome: toNumber(payload.borrowerMonthlyIncome),
-      annualIncome: toNumber(payload.borrowerMonthlyIncome) * 12,
+      monthlyIncome: toAmount(payload.borrowerMonthlyIncome),
+      annualIncome: toAmount(payload.borrowerMonthlyIncome) * 12,
     },
     banking: {
       bank: "",
@@ -194,34 +132,34 @@ function backendToDetail(
     },
     references: [],
     kycComplete: false,
-    visibleLspIds: [payload.lspId],
+    visibleLspIds: [payload.lspId ?? ""],
   };
 
   const lsp = {
-    id: payload.lspId,
-    code: payload.lspCode,
-    name: payload.lspName,
+    id: payload.lspId ?? "",
+    code: payload.lspCode ?? "",
+    name: payload.lspName ?? "",
     status: "ACTIVE" as const,
   };
 
   const product = {
-    id: payload.productId,
-    code: payload.productCode,
-    name: payload.productName,
+    id: payload.productId ?? "",
+    code: payload.productCode ?? "",
+    name: payload.productName ?? "",
     status: "ACTIVE" as const,
   };
 
   const account = payload.loanAccount
     ? {
         id: payload.loanAccount.id ?? "",
-        applicationId: payload.id,
+        applicationId,
         accountNumber: payload.loanAccount.accountNumber ?? "",
         accountStatus: (payload.loanAccount.status ?? "PENDING_DISBURSEMENT") as
           | "PENDING_DISBURSEMENT"
           | "ACTIVE"
           | "CLOSED"
           | "FORECLOSED",
-        principal: toNumber(payload.loanAccount.principalAmount),
+        principal: toAmount(payload.loanAccount.principalAmount),
         tenureMonths: payload.loanAccount.tenureMonths ?? tenureMonths,
         approvedAt: payload.loanAccount.approvedAt ?? created,
         createdAt: payload.loanAccount.createdAt ?? created,
@@ -237,7 +175,7 @@ function backendToDetail(
   const requiredChecklistRows = checklist.filter((row) => row.required);
   const docsComplete =
     requiredChecklistRows.length === 0 ||
-    requiredChecklistRows.every((row) => isUploadedBackendChecklistStatus(row.status));
+    requiredChecklistRows.every((row) => isUploadedBackendChecklistStatus(row.status ?? ""));
 
   const scheduleValid =
     payload.loanAccount?.repaymentSchedule != null &&
@@ -246,8 +184,8 @@ function backendToDetail(
   const delinquency = payload.loanAccount?.delinquency;
   const accountDelinquency = delinquency
     ? {
-        maxDaysPastDue: delinquency.maxDaysPastDue,
-        overdueInstallmentCount: delinquency.overdueInstallmentCount,
+        maxDaysPastDue: delinquency.maxDaysPastDue ?? null,
+        overdueInstallmentCount: delinquency.overdueInstallmentCount ?? null,
       }
     : null;
 
@@ -263,8 +201,10 @@ function backendToDetail(
   };
 }
 
-async function fetchChecklist(id: string): Promise<readonly BackendChecklistRow[]> {
-  return requestJson<readonly BackendChecklistRow[]>(
+async function fetchChecklist(
+  id: string,
+): Promise<readonly OpsLoanApplicationDocumentChecklistResponse[]> {
+  return requestJson<readonly OpsLoanApplicationDocumentChecklistResponse[]>(
     `${BACKEND_BASE}/${encodeURIComponent(id)}/kyc-documents`,
   );
 }
@@ -274,7 +214,7 @@ async function fetchChecklist(id: string): Promise<readonly BackendChecklistRow[
 /** Fetch the full detail payload for one loan application. */
 export async function fetchLoanApplicationDetail(id: string): Promise<LoanApplicationDetail> {
   const [payload, checklist] = await Promise.all([
-    requestJson<BackendLoanApplicationDetail>(`${BACKEND_BASE}/${encodeURIComponent(id)}`),
+    requestJson<OpsLoanApplicationDetailResponse>(`${BACKEND_BASE}/${encodeURIComponent(id)}`),
     fetchChecklist(id),
   ]);
   return backendToDetail(payload, checklist);
@@ -405,14 +345,14 @@ async function postBackendTransition(
       endpoint === "manual-status"
         ? { ...body, note: body.note ?? "Manual override", reasonCode: "OTHER" }
         : body;
-    return requestJson<BackendLoanApplicationDetail>(
+    return requestJson<OpsLoanApplicationDetailResponse>(
       `${BACKEND_BASE}/${encodeURIComponent(id)}/${endpoint}`,
       { method: "POST", body: JSON.stringify(requestBody) },
       { idempotencyKey },
     );
   };
 
-  let payload: BackendLoanApplicationDetail;
+  let payload: OpsLoanApplicationDetailResponse;
   try {
     payload = await tryEndpoint("status-transitions");
   } catch (error) {
@@ -475,7 +415,7 @@ export async function postDisbursement(
     );
   }
 
-  const payload = await requestJson<BackendLoanApplicationDetail>(
+  const payload = await requestJson<OpsLoanApplicationDetailResponse>(
     `${BACKEND_BASE}/${encodeURIComponent(id)}/disbursement-requests`,
     { method: "POST", body: JSON.stringify({}) },
     { idempotencyKey },

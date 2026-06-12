@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
+      - "openapi/**"
       - ".github/workflows/frontend-ci.yml"
   pull_request:
     paths:
       - "frontend/**"
+      - "openapi/**"
       - ".github/workflows/frontend-ci.yml"
 
 defaults:

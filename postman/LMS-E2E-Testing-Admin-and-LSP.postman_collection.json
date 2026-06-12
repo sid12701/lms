@@ -1,0 +1,3062 @@
+{
+  "info": {
+    "_postman_id": "4e9c7aea-9894-4f8f-8f50-41b5da356991",
+    "name": "LMS End-to-End Testing - Admin and LSP",
+    "description": "Full Admin + LSP end-to-end collection for Bhawana LMS. Run folders in order via Collection Runner. Derived from postman/LMS.postman_collection.json with E2E matrix folder naming. See docs/postman-e2e-collection-plan.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "/**",
+          " * Assert Bhawana LMS typed API error envelope (B4 / F2).",
+          " * Usage in a test script: assertApiError(404, 'NOT_FOUND');",
+          " */",
+          "assertApiError = function (expectedStatus, expectedCode) {",
+          "  pm.test('status ' + expectedStatus, function () {",
+          "    pm.response.to.have.status(expectedStatus);",
+          "  });",
+          "  let body = {};",
+          "  try { body = pm.response.json(); } catch (e) { /* non-json body */ }",
+          "  pm.test('code ' + expectedCode, function () {",
+          "    pm.expect(body.code).to.eql(expectedCode);",
+          "  });",
+          "  pm.test('message present', function () {",
+          "    pm.expect(body.message).to.be.a('string').and.not.empty;",
+          "  });",
+          "};"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 - Environment Health",
+      "description": "Fail-fast if the backend is unreachable.",
+      "item": [
+        {
+          "name": "Backend health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            },
+            "description": "Spring Boot Actuator probe. Run first to confirm the API is up."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('status UP', () => pm.expect(body.status).to.eql('UP'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 - Authentication",
+      "description": "Authenticate as the seeded SYSTEM_ADMIN + rotate the bootstrap password on first run.",
+      "item": [
+        {
+          "name": "Admin login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "POST /api/v1/auth/login — password grant for ops.admin. If passwordChangeRequired, a nested call to /auth/password rotates the password to adminNewPassword (env var) and stores the new token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminCurrentPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Keep adminCurrentPassword explicit, but allow reruns to reuse the stored value",
+                  "const currentPassword = pm.environment.get('adminCurrentPassword');",
+                  "if (!currentPassword) {",
+                  "    const rotated = pm.environment.get('adminPasswordChangeRequired') === 'false';",
+                  "    pm.environment.set('adminCurrentPassword', rotated ? pm.environment.get('adminNewPassword') : pm.environment.get('adminBootstrapPassword'));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "function setAdminToken(token) {",
+                  "    pm.environment.set('adminToken', token);",
+                  "    pm.collectionVariables.set('adminToken', token);",
+                  "}",
+                  "pm.test('login returned 200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "if (!r.accessToken) {",
+                  "    throw new Error('Login did not return accessToken. Status=' + pm.response.code + ' Body=' + pm.response.text());",
+                  "}",
+                  "setAdminToken(r.accessToken);",
+                  "pm.environment.set('adminPasswordChangeRequired', r.passwordChangeRequired ? 'true' : 'false');",
+                  "pm.collectionVariables.set('adminPasswordChangeRequired', r.passwordChangeRequired ? 'true' : 'false');",
+                  "pm.test('accessToken returned', () => pm.expect(r.accessToken).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('adminCurrentPassword', pm.environment.get('adminCurrentPassword') || pm.environment.get('adminBootstrapPassword'));",
+                  "",
+                  "// If this is first-ever login with the bootstrap password, change it inline",
+                  "if (r.passwordChangeRequired) {",
+                  "    console.log('[auth] passwordChangeRequired=true — changing password inline.');",
+                  "    pm.sendRequest({",
+                  "        url: pm.environment.get('baseUrl') + '/api/v1/auth/password',",
+                  "        method: 'POST',",
+                  "        header: {",
+                  "            'Content-Type': 'application/json',",
+                  "            'Authorization': 'Bearer ' + r.accessToken,",
+                  "            'X-Correlation-Id': pm.variables.replaceIn('{{$guid}}')",
+                  "        },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ newPassword: pm.environment.get('adminNewPassword') }) }",
+                  "    }, (err, resp) => {",
+                  "        if (err) { console.error('[auth] password change failed', err); return; }",
+                  "        if (resp.code !== 200) { console.error('[auth] password change HTTP ' + resp.code + ': ' + resp.text()); return; }",
+                  "        const changed = resp.json();",
+                  "        if (!changed.accessToken) { console.error('[auth] password change response did not include accessToken: ' + resp.text()); return; }",
+                  "        setAdminToken(changed.accessToken);",
+                  "        pm.environment.set('adminCurrentPassword', pm.environment.get('adminNewPassword'));",
+                  "        pm.environment.set('adminPasswordChangeRequired', 'false');",
+                  "        pm.collectionVariables.set('adminPasswordChangeRequired', 'false');",
+                  "        console.log('[auth] admin password rotated to adminNewPassword');",
+                  "    });",
+                  "} else {",
+                  "    pm.environment.set('adminCurrentPassword', pm.environment.get('adminCurrentPassword') || pm.environment.get('adminNewPassword'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin metadata",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/metadata",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "metadata"
+              ]
+            },
+            "description": "Enum catalog (roles, statuses, webhook event types). Useful for UI dropdowns."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const m = pm.response.json();",
+                  "pm.test('roleCodes present', () => pm.expect(m.roleCodes).to.be.an('array').and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "System context (whoami)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/system/context",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "system",
+                "context"
+              ]
+            },
+            "description": "Whoami — returns roles, lspId (null for admins), correlationId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const c = pm.response.json();",
+                  "pm.test('SYSTEM_ADMIN role', () => pm.expect(c.roles).to.include('SYSTEM_ADMIN'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Admin - LSP Management",
+      "description": "Create a demo LSP (partner lender) and optionally configure webhook delivery.",
+      "item": [
+        {
+          "name": "Create LSP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/lsps",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "lsps"
+              ]
+            },
+            "description": "Creates an LSP. Pre-request generates a unique code/name if not set.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{lspCode}}\",\n  \"name\": \"{{lspName}}\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('lspCode')) {",
+                  "    const code = 'DEMO' + Date.now().toString().slice(-8);",
+                  "    pm.environment.set('lspCode', code);",
+                  "    pm.environment.set('lspName', 'Demo Lender ' + code);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created or 200 OK', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const r = pm.response.json();",
+                  "pm.environment.set('lspId', r.id);",
+                  "pm.test('lspId stored', () => pm.expect(r.id).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List LSPs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/lsps",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "lsps"
+              ]
+            },
+            "description": "Includes portfolio summary and user count per LSP."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "const target = pm.environment.get('lspId');",
+                  "pm.test('newly created LSP is in the list', () => pm.expect(list.some(l => l.id === target)).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Configure webhook subscription (optional)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/lsps/{{lspId}}/webhook-subscription",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "lsps",
+                "{{lspId}}",
+                "webhook-subscription"
+              ]
+            },
+            "description": "Optional: wire this LSP to https://webhook.site to watch webhooks arrive. Replace webhookSiteId env var with your own webhook.site UUID before running, or disable this request. Deliveries appear in Folder 9's webhook outbox view.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"endpointUrl\": \"https://webhook.site/{{webhookSiteId}}\",\n  \"signingSecret\": \"demo-hmac-secret\",\n  \"eventTypes\": [\n    \"LOAN_STATUS_CHANGED\",\n    \"DISBURSEMENT_COMPLETED\",\n    \"LOAN_REPAYMENT_RECORDED\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Tolerate 200 or 400 — 400 happens if webhookSiteId is still the placeholder UUID",
+                  "if (pm.response.code >= 400) {",
+                  "    console.warn('[webhook] config skipped: ' + pm.response.code + ' ' + pm.response.text());",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03b - Admin - Product Configuration",
+      "description": "Create a loan product and map it to the demo LSP.",
+      "item": [
+        {
+          "name": "Create loan product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "products"
+              ]
+            },
+            "description": "Creates an ACTIVE personal loan product. Pre-request generates a unique code.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{productCode}}\",\n  \"name\": \"Personal Loan Demo\",\n  \"minPrincipal\": 10000,\n  \"maxPrincipal\": 500000,\n  \"interestRate\": 14.5,\n  \"processingFeeRate\": 1.5,\n  \"minTenureMonths\": 6,\n  \"maxTenureMonths\": 36,\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('productCode')) {",
+                  "    pm.environment.set('productCode', 'PL-' + Date.now().toString().slice(-8));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const r = pm.response.json();",
+                  "pm.environment.set('productId', r.id);",
+                  "pm.test('productId stored', () => pm.expect(r.id).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Map product to LSP",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/products/{{productId}}/mappings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "products",
+                "{{productId}}",
+                "mappings"
+              ]
+            },
+            "description": "Replaces the full list of LSPs for this product — caller must include every LSP that should see the product.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lspIds\": [\n    \"{{lspId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "const expected = pm.environment.get('lspId');",
+                  "pm.test('mapped LSP matches', () => pm.expect(r.mappedLsps.map(l => l.id)).to.include(expected));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Product audit trail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/products/{{productId}}/audit-events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "products",
+                "{{productId}}",
+                "audit-events"
+              ]
+            },
+            "description": "Shows who created / edited / remapped the product — supports compliance review."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const events = pm.response.json();",
+                  "pm.test('at least one audit event', () => pm.expect(events.length).to.be.at.least(1));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Admin - User and Role Setup / 04 - LSP Auth",
+      "description": "Create one LSP UI user (human operator) and one LSP API client (machine).",
+      "item": [
+        {
+          "name": "Create LSP UI user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "users"
+              ]
+            },
+            "description": "Human operator for the LSP tenant. Admin-set password will typically require rotation on first login — the LSP UI login below handles that inline.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{lspUiUsername}}\",\n  \"email\": \"{{lspUiUsername}}@demo.local\",\n  \"password\": \"{{lspUiBootstrapPassword}}\",\n  \"lspId\": \"{{lspId}}\",\n  \"roles\": [\n    \"LSP_UI_WRITE\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('lspUiUsername')) {",
+                  "    pm.environment.set('lspUiUsername', 'lsp.' + String(pm.environment.get('lspCode')).toLowerCase());",
+                  "}",
+                  "if (!pm.environment.get('lspUiCurrentPassword')) {",
+                  "    pm.environment.set('lspUiCurrentPassword', pm.environment.get('lspUiBootstrapPassword'));",
+                  "}",
+                  "if (!pm.environment.get('lspUiPassword')) {",
+                  "    pm.environment.set('lspUiPassword', pm.environment.get('lspUiBootstrapPassword'));",
+                  "}",
+                  "if (!pm.environment.get('lspUiPasswordChangeRequired')) {",
+                  "    pm.environment.set('lspUiPasswordChangeRequired', 'true');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const r = pm.response.json();",
+                  "pm.environment.set('lspUiUserId', r.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create LSP API client (machine user)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/api-clients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "api-clients"
+              ]
+            },
+            "description": "⚠️ clientSecret is returned ONLY on creation — immediately saved to env as lspApiClientSecret.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{lspCode}} API Client\",\n  \"description\": \"Demo machine user used by LSP backend to call LMS\",\n  \"lspId\": \"{{lspId}}\",\n  \"status\": \"ACTIVE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const r = pm.response.json();",
+                  "pm.environment.set('lspApiClientId', r.clientId);",
+                  "pm.environment.set('lspApiClientSecret', r.clientSecret);",
+                  "pm.test('clientSecret captured', () => pm.expect(r.clientSecret).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LSP UI user login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Password grant for the LSP UI user. If passwordChangeRequired, rotates inline and stores the new password.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{lspUiUsername}}\",\n  \"password\": \"{{lspUiCurrentPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Keep the LSP UI auth variables explicit, but preserve the stored current password across reruns",
+                  "const currentPassword = pm.environment.get('lspUiCurrentPassword');",
+                  "if (!currentPassword) {",
+                  "    const rotated = pm.environment.get('lspUiPasswordChangeRequired') === 'false';",
+                  "    const nextPassword = rotated ? pm.environment.get('lspUiNewPassword') : pm.environment.get('lspUiBootstrapPassword');",
+                  "    pm.environment.set('lspUiCurrentPassword', nextPassword);",
+                  "    pm.environment.set('lspUiPassword', nextPassword);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json();",
+                  "pm.environment.set('lspUiToken', r.accessToken);",
+                  "pm.environment.set('lspUiPasswordChangeRequired', r.passwordChangeRequired ? 'true' : 'false');",
+                  "pm.test('accessToken returned', () => pm.expect(r.accessToken).to.be.a('string').and.not.empty);",
+                  "if (r.passwordChangeRequired) {",
+                  "    const newPwd = pm.environment.get('lspUiNewPassword');",
+                  "    pm.sendRequest({",
+                  "        url: pm.environment.get('baseUrl') + '/api/v1/auth/password',",
+                  "        method: 'POST',",
+                  "        header: {",
+                  "            'Content-Type': 'application/json',",
+                  "            'Authorization': 'Bearer ' + r.accessToken,",
+                  "            'X-Correlation-Id': pm.variables.replaceIn('{{$guid}}')",
+                  "        },",
+                  "        body: { mode: 'raw', raw: JSON.stringify({ newPassword: newPwd }) }",
+                  "    }, (err, resp) => {",
+                  "        if (err) { console.error('[auth] lsp pwd change failed', err); return; }",
+                  "        if (resp.code !== 200) { console.error('[auth] lsp pwd change HTTP ' + resp.code + ': ' + resp.text()); return; }",
+                  "        const changed = resp.json();",
+                  "        pm.environment.set('lspUiToken', changed.accessToken);",
+                  "        pm.environment.set('lspUiCurrentPassword', newPwd);",
+                  "        pm.environment.set('lspUiPassword', newPwd);",
+                  "        pm.environment.set('lspUiPasswordChangeRequired', 'false');",
+                  "        console.log('[auth] LSP UI password rotated.');",
+                  "    });",
+                  "} else {",
+                  "    pm.environment.set('lspUiCurrentPassword', pm.environment.get('lspUiCurrentPassword') || pm.environment.get('lspUiNewPassword'));",
+                  "    pm.environment.set('lspUiPassword', pm.environment.get('lspUiCurrentPassword'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LSP API client token exchange",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "token"
+              ]
+            },
+            "description": "OAuth2-style client credentials grant. Issues a JWT with LSP_API_CLIENT role and lspId claim.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{lspApiClientId}}\",\n  \"clientSecret\": \"{{lspApiClientSecret}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.environment.set('lspApiToken', r.accessToken);",
+                  "pm.test('bearer token issued', () => pm.expect(r.tokenType).to.eql('Bearer'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - LSP - Borrower and Loan Creation",
+      "description": "Act as the LSP machine user — list products, create a loan application.",
+      "item": [
+        {
+          "name": "List products available to this LSP",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "products"
+              ]
+            },
+            "description": "Returns only products this LSP is mapped to."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const list = pm.response.json();",
+                  "const target = pm.environment.get('productId');",
+                  "pm.test('demo product visible', () => pm.expect(list.some(p => p.id === target)).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create loan application",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/loan-applications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "loan-applications"
+              ]
+            },
+            "description": "Submits borrower PII + loan terms. Creates a Borrower if new, a LoanApplication in INITIALIZED status.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lspId\": \"{{lspId}}\",\n  \"productId\": \"{{productId}}\",\n  \"lspLoanId\": \"{{externalLoanId}}\",\n  \"fullName\": \"Demo Borrower {{e2eRunSuffix}}\",\n  \"emailAddress\": \"demo.borrower.{{e2eRunSuffix}}@example.com\",\n  \"mobileNumber\": \"{{e2eMobileNumber}}\",\n  \"dob\": \"1990-05-15\",\n  \"gender\": \"MALE\",\n  \"maritalStatus\": \"SINGLE\",\n  \"fatherName\": \"Parent Borrower\",\n  \"aadharNumber\": \"{{e2eAadharNumber}}\",\n  \"panNumber\": \"{{e2ePanNumber}}\",\n  \"loanAmount\": 150000,\n  \"interestRate\": 14.5,\n  \"loanTenure\": 12,\n  \"addressLine1\": \"42 Demo Street\",\n  \"addressLine2\": \"Apt 3B\",\n  \"addressCity\": \"Mumbai\",\n  \"addressState\": \"MH\",\n  \"addressZipcode\": \"400001\",\n  \"employmentStatus\": \"SALARIED\",\n  \"organizationName\": \"Demo Corp\",\n  \"empId\": \"EMP-1001\",\n  \"employmentCity\": \"Mumbai\",\n  \"employmentState\": \"MH\",\n  \"employmentZip\": \"400001\",\n  \"monthlyIncome\": 60000,\n  \"annualIncome\": 720000,\n  \"bankAccountNumber\": \"1234567890\",\n  \"bankName\": \"HDFC Bank\",\n  \"ifscCode\": \"HDFC0001234\",\n  \"accountHolderName\": \"Demo Borrower\",\n  \"referencePersonName\": \"Ref Person\",\n  \"referencePersonNumber\": \"9123456780\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const suffix = Date.now().toString().slice(-8);",
+                  "pm.environment.set('e2eRunSuffix', suffix);",
+                  "pm.environment.set('externalLoanId', 'EXT-' + suffix);",
+                  "pm.environment.set('e2eMobileNumber', ('9' + ('000000000' + suffix).slice(-9)).slice(0, 10));",
+                  "const panMid = ('0000' + (parseInt(suffix, 10) % 10000)).slice(-4);",
+                  "pm.environment.set('e2ePanNumber', 'ABCDE' + panMid + 'F');",
+                  "pm.environment.set('e2eAadharNumber', ('00000000' + suffix).slice(-12));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const r = pm.response.json();",
+                  "pm.environment.set('applicationId', r.id);",
+                  "pm.environment.set('borrowerId', r.borrowerId);",
+                  "pm.test('status=INITIALIZED', () => pm.expect(r.status).to.eql('INITIALIZED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get loan application (LSP view)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/loan-applications/{{applicationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "loan-applications",
+                "{{applicationId}}"
+              ]
+            },
+            "description": "Full application detail with borrower and loan account summary (empty at this stage)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('status=INITIALIZED', () => pm.expect(r.status).to.eql('INITIALIZED'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 - LSP - Document Upload",
+      "description": "Upload all eight intake-required documents via LSP multipart, then verify via admin view. Auto-approval fires on the last upload.",
+      "item": [
+        {
+          "name": "Upload PAN (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/loan-applications/{{applicationId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "loan-applications",
+                "{{applicationId}}",
+                "documents"
+              ]
+            },
+            "description": "Multipart upload. In Postman desktop you may need to re-select the file once after import — browse to postman/assets/sample-pan.pdf.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "documentType",
+                  "value": "PAN_CARD",
+                  "type": "text"
+                },
+                {
+                  "key": "note",
+                  "value": "Auto-uploaded via Postman demo",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "postman/assets/sample-pan.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const r = pm.response.json();",
+                  "pm.environment.set('panDocId', r.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload Aadhaar (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/loan-applications/{{applicationId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "loan-applications",
+                "{{applicationId}}",
+                "documents"
+              ]
+            },
+            "description": "Multipart upload. In Postman desktop you may need to re-select the file once after import — browse to postman/assets/sample-aadhaar.pdf.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "documentType",
+                  "value": "AADHAAR_FILE",
+                  "type": "text"
+                },
+                {
+                  "key": "note",
+                  "value": "Auto-uploaded via Postman demo",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "postman/assets/sample-aadhaar.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const r = pm.response.json();",
+                  "pm.environment.set('aadhaarDocId', r.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload Bank statement (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/loan-applications/{{applicationId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "loan-applications",
+                "{{applicationId}}",
+                "documents"
+              ]
+            },
+            "description": "Multipart upload. In Postman desktop you may need to re-select the file once after import — browse to postman/assets/sample-bank-statement.pdf.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "documentType",
+                  "value": "BANK_STATEMENT",
+                  "type": "text"
+                },
+                {
+                  "key": "note",
+                  "value": "Auto-uploaded via Postman demo",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "postman/assets/sample-bank-statement.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const r = pm.response.json();",
+                  "pm.environment.set('bankDocId', r.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload Address proof (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/loan-applications/{{applicationId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "loan-applications",
+                "{{applicationId}}",
+                "documents"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "documentType",
+                  "value": "ADDRESS_PROOF",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "postman/assets/sample-pan.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload Income proof (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/loan-applications/{{applicationId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "loan-applications",
+                "{{applicationId}}",
+                "documents"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "documentType",
+                  "value": "INCOME_PROOF",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "postman/assets/sample-bank-statement.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload Selfie (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/loan-applications/{{applicationId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "loan-applications",
+                "{{applicationId}}",
+                "documents"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "documentType",
+                  "value": "SELFIE_PHOTOGRAPH",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "postman/assets/sample-aadhaar.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload KFS (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/loan-applications/{{applicationId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "loan-applications",
+                "{{applicationId}}",
+                "documents"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "documentType",
+                  "value": "KFS",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "postman/assets/sample-bank-statement.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload Loan agreement (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/loan-applications/{{applicationId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "loan-applications",
+                "{{applicationId}}",
+                "documents"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "documentType",
+                  "value": "LOAN_AGREEMENT",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "postman/assets/sample-pan.pdf"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "(Admin) List loan documents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}/kyc-documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}",
+                "kyc-documents"
+              ]
+            },
+            "description": "Admin view of the KYC checklist — confirms the three docs landed on the server."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const docs = pm.response.json();",
+                  "const submitted = docs.filter(d => d.status === 'SUBMITTED' || d.status === 'RECEIVED' || d.status === 'APPROVED').length;",
+                  "console.log('[docs] submitted=' + submitted + ' total=' + docs.length);",
+                  "pm.test('all 8 intake docs submitted', () => pm.expect(submitted).to.eql(8));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 - Admin Review / 09 - Disbursement",
+      "description": "After all eight docs upload, auto-approval should reach APPROVED_PENDING_DISBURSAL. Then disbursement mock and schedule.",
+      "item": [
+        {
+          "name": "Verify auto-approval (APPROVED_PENDING_DISBURSAL)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}"
+              ]
+            },
+            "description": "Rule engine auto-approves after the eighth document upload (INITIALIZED → AWAITING_APPROVAL → APPROVED_PENDING_DISBURSAL)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test('status=APPROVED_PENDING_DISBURSAL', () => pm.expect(r.status).to.eql('APPROVED_PENDING_DISBURSAL'));",
+                  "const accountId = r.loanAccountId || (r.loanAccount && r.loanAccount.id);",
+                  "pm.test('loanAccountId present', () => pm.expect(accountId).to.be.a('string'));",
+                  "if (accountId) pm.environment.set('loanAccountId', accountId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "(Admin) Initiate disbursement request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}/disbursement-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}",
+                "disbursement-requests"
+              ]
+            },
+            "description": "Admin initiates disbursement via MockLoanDisbursementAdapter. Stays DISBURSEMENT_REQUESTED until mock-outcome is applied."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "const accountId = r.loanAccountId || (r.loanAccount && r.loanAccount.id);",
+                  "if (accountId) pm.environment.set('loanAccountId', accountId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "(Admin) Resolve mock disbursement → DISBURSED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}/disbursement-requests/mock-outcome",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}",
+                "disbursement-requests",
+                "mock-outcome"
+              ]
+            },
+            "description": "Demo-only shortcut. Flips the pending mock disbursement to DISBURSED → loan transitions to DISBURSED.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outcome\": \"DISBURSED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "const accountId = r.loanAccountId || (r.loanAccount && r.loanAccount.id);",
+                  "if (accountId) pm.environment.set('loanAccountId', accountId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "(LSP) Repayment schedule",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/loans/{{loanAccountId}}/repayment-schedule",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "loans",
+                "{{loanAccountId}}",
+                "repayment-schedule"
+              ]
+            },
+            "description": "Fetches the 12-installment schedule. Stored to env for the repayment loop in Folder 8."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const schedule = pm.response.json();",
+                  "pm.test('12 installments', () => pm.expect(schedule.length).to.eql(12));",
+                  "const slim = schedule.map(i => ({ id: i.id, n: i.installmentNumber, amount: Number(i.installmentAmount), dueDate: i.dueDate }));",
+                  "pm.environment.set('installments', JSON.stringify(slim));",
+                  "pm.environment.set('nextInstallmentIndex', '0');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10 - Repayment Flow",
+      "description": "Loop through the 12 installments, then assert the loan auto-closes.",
+      "item": [
+        {
+          "name": "Pay installment (loops 12x)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{paymentIdempotencyKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}",
+                "payments"
+              ]
+            },
+            "description": "Pays one installment then re-queues itself via postman.setNextRequest until all 12 are done. Use Postman Collection Runner (not single-request Send) for the loop to fire.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetInstallmentId\": \"{{currentInstallmentId}}\",\n  \"amount\": {{currentInstallmentAmount}},\n  \"postedAt\": \"{{currentPaymentDate}}\",\n  \"reference\": \"EMI-{{currentInstallmentNumber}}\",\n  \"channel\": \"NEFT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const raw = pm.environment.get('installments');",
+                  "if (!raw) { console.error('[repay] installments env var is empty — run Folder 7 first.'); return; }",
+                  "const installments = JSON.parse(raw);",
+                  "const idx = parseInt(pm.environment.get('nextInstallmentIndex') || '0', 10);",
+                  "const inst = installments[idx];",
+                  "if (!inst) { console.error('[repay] no installment at index ' + idx); return; }",
+                  "pm.variables.set('currentInstallmentId', inst.id);",
+                  "pm.variables.set('currentInstallmentNumber', inst.n);",
+                  "pm.variables.set('currentInstallmentAmount', inst.amount);",
+                  "pm.variables.set('currentPaymentDate', new Date().toISOString().slice(0,10));",
+                  "pm.variables.set('paymentIdempotencyKey', 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); }));",
+                  "console.log('[repay] paying installment ' + inst.n + '/12  amount=' + inst.amount);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const installments = JSON.parse(pm.environment.get('installments'));",
+                  "const idx = parseInt(pm.environment.get('nextInstallmentIndex') || '0', 10);",
+                  "const nextIdx = idx + 1;",
+                  "pm.environment.set('nextInstallmentIndex', String(nextIdx));",
+                  "if (nextIdx < installments.length) {",
+                  "    postman.setNextRequest('Pay installment (loops 12x)');",
+                  "} else {",
+                  "    console.log('[repay] all installments paid — continuing collection.');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify loan CLOSED",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}"
+              ]
+            },
+            "description": "All 12 payments applied — loan account should be CLOSED with closureReason=FULLY_REPAID."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "if (r.loanAccount) {",
+                  "    console.log('[close] loanAccount.status=' + r.loanAccount.status + ' closureReason=' + r.loanAccount.closureReason);",
+                  "}",
+                  "pm.test('application CLOSED', () => pm.expect(r.status).to.eql('CLOSED'));",
+                  "pm.test('loan account CLOSED', () => pm.expect(r.loanAccount && r.loanAccount.status).to.eql('CLOSED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "(Fallback) Force-close loan application",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}/status-transitions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}",
+                "status-transitions"
+              ]
+            },
+            "description": "Only run if auto-close did not fire (e.g., pending reconciliation). Not part of the happy-path runner.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetStatus\": \"CLOSED\",\n  \"note\": \"All installments settled \\u2014 forcing close\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('transitioned to CLOSED', () => pm.expect(pm.response.json().status).to.eql('CLOSED'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11 - Foreclosure / Closure Flow",
+      "description": "Foreclosure quote + execute (ops). Run on DISBURSED/UNDER_REPAYMENT loan before full repayment closure.",
+      "item": [
+        {
+          "name": "Request foreclosure quote (ops)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"effectiveDate\": \"2026-06-10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}/foreclosure-quotes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}",
+                "foreclosure-quotes"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const q = pm.response.json();",
+                  "  pm.environment.set('foreclosureQuoteId', q.id || q.quoteId);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Execute foreclosure (ops)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"settlementDate\": \"2026-06-10\",\n  \"reference\": \"E2E-FC-001\",\n  \"note\": \"Postman E2E foreclosure\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}/foreclosure-quotes/{{foreclosureQuoteId}}/execute",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}",
+                "foreclosure-quotes",
+                "{{foreclosureQuoteId}}",
+                "execute"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Request foreclosure quote (LSP API)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"effectiveDate\": \"2026-06-10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/lsp/loans/{{loanAccountId}}/foreclosure-quote",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "lsp",
+                "loans",
+                "{{loanAccountId}}",
+                "foreclosure-quote"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 - Dashboard and Reports (KPIs)",
+      "description": "Portfolio KPIs, DPD breakdown, alerts, webhook outbox, borrower 360, lifecycle audit.",
+      "item": [
+        {
+          "name": "Portfolio KPI overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/home/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "home",
+                "overview"
+              ]
+            },
+            "description": "Total disbursed / outstanding / DPD 90+ with per-LSP breakdown and share percentages."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "console.log('[kpi] disbursed=' + r.totalDisbursedAmount + ' outstanding=' + r.totalOutstandingAmount + ' dpd90+=' + r.dpd90PlusAmount);",
+                  "(r.lspBreakdown || []).forEach(l => console.log('  [lsp] ' + l.lspCode + ' disbursed=' + l.disbursedAmount + ' share=' + l.shareOfDisbursedPercent + '%'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DPD bucket breakdown (pretty print)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/home/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "home",
+                "overview"
+              ]
+            },
+            "description": "Same endpoint — test script formats the bucketBreakdown as a readable table."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "(r.lspBreakdown || []).forEach(l => {",
+                  "    console.log('--- ' + l.lspCode + ' ---');",
+                  "    (l.bucketBreakdown || []).forEach(b => console.log('  ' + b.bucket.padEnd(14) + ' loans=' + b.loanCount + ' outstanding=' + b.outstandingAmount));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ops alerts feed (open)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/alerts?status=NEW",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "alerts"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "NEW"
+                }
+              ]
+            },
+            "description": "Compliance & system alerts visible to ops — filterable by status."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const alerts = pm.response.json();",
+                  "if (alerts.length) pm.environment.set('firstAlertId', alerts[0].id);",
+                  "console.log('[alerts] open=' + alerts.length);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Acknowledge first alert (if any)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/alerts/{{firstAlertId}}/acknowledge",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "alerts",
+                "{{firstAlertId}}",
+                "acknowledge"
+              ]
+            },
+            "description": "Acknowledges the first open alert — demonstrates triage workflow. Skipped if no alerts exist."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('firstAlertId')) {",
+                  "    console.log('[alerts] no open alert — skipping acknowledge.');",
+                  "    postman.setNextRequest('Webhook outbox (per LSP)');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const r = pm.response.json();",
+                  "    console.log('[alerts] acknowledged by ' + r.acknowledgedByUsername);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Webhook outbox (per LSP)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/webhook-outbox?lspId={{lspId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "webhook-outbox"
+              ],
+              "query": [
+                {
+                  "key": "lspId",
+                  "value": "{{lspId}}"
+                }
+              ]
+            },
+            "description": "Lists every webhook event queued for this LSP — status, attempt count, last error."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const events = pm.response.json();",
+                  "const byStatus = events.reduce((a,e) => { a[e.status]=(a[e.status]||0)+1; return a; }, {});",
+                  "console.log('[webhook] outbox=' + JSON.stringify(byStatus));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Webhook dispatch batch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/webhook-outbox/dispatch?batchSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "webhook-outbox",
+                "dispatch"
+              ],
+              "query": [
+                {
+                  "key": "batchSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Manually fires the outbox worker once. Shows delivered / retryable / permanent counts."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "console.log('[webhook] processed=' + r.processed + ' delivered=' + r.delivered + ' retryable=' + r.retryableFailures + ' permanent=' + r.permanentFailures);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Borrower 360",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/borrowers/{{borrowerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "borrowers",
+                "{{borrowerId}}"
+              ]
+            },
+            "description": "Full borrower profile (PII masked to last 4) plus every loan across LSPs."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "console.log('[borrower] ' + b.fullName + ' loans=' + (b.loans || []).length);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Loan status transitions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}/status-transitions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}",
+                "status-transitions"
+              ]
+            },
+            "description": "Auditable trail of every status change — who, when, why."
+          }
+        },
+        {
+          "name": "Loan assignment events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}/assignment-events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}",
+                "assignment-events"
+              ]
+            },
+            "description": "Chain of ops ownership for this loan."
+          }
+        },
+        {
+          "name": "Document access audits",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}/document-access-audits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}",
+                "document-access-audits"
+              ]
+            },
+            "description": "Who viewed / downloaded which documents — compliance evidence."
+          }
+        }
+      ]
+    },
+    {
+      "name": "12b - Dashboard and Reports (MIS)",
+      "description": "Async MIS export with polling + synchronous shortcuts + paginated preview.",
+      "item": [
+        {
+          "name": "Request async MIS (email delivery)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/reports/portfolio-mis/requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "reports",
+                "portfolio-mis",
+                "requests"
+              ]
+            },
+            "description": "Queues an MIS export. A background worker generates the CSV and emails it to recipientEmail.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lspId\": \"{{lspId}}\",\n  \"disbursalDateFrom\": \"{{disbursalDateFrom}}\",\n  \"disbursalDateTo\": \"{{disbursalDateTo}}\",\n  \"recipientEmail\": \"{{adminEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200', () => pm.expect([200,201]).to.include(pm.response.code));",
+                  "const r = pm.response.json();",
+                  "pm.environment.set('reportRequestId', r.id);",
+                  "pm.environment.set('reportPollAttempts', '0');",
+                  "console.log('[mis] queued reportRequestId=' + r.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll MIS status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/reports/requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "reports",
+                "requests"
+              ]
+            },
+            "description": "Polls until the MIS request is COMPLETED. Re-queues itself up to 10x; backend worker runs every 15s."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const target = pm.environment.get('reportRequestId');",
+                  "const list = pm.response.json();",
+                  "const me = (list.content || list).find(r => r.id === target);",
+                  "if (!me) { console.warn('[mis] request not found in list'); return; }",
+                  "console.log('[mis] status=' + me.status);",
+                  "const attempts = parseInt(pm.environment.get('reportPollAttempts') || '0', 10) + 1;",
+                  "pm.environment.set('reportPollAttempts', String(attempts));",
+                  "if (me.status !== 'COMPLETED' && me.status !== 'FAILED' && attempts < 10) {",
+                  "    setTimeout(() => {}, 0);",
+                  "    postman.setNextRequest('Poll MIS status');",
+                  "} else if (me.status !== 'COMPLETED') {",
+                  "    console.warn('[mis] giving up — status=' + me.status + ' attempts=' + attempts);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Download MIS CSV (via request)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/reports/requests/{{reportRequestId}}/download",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "reports",
+                "requests",
+                "{{reportRequestId}}",
+                "download"
+              ]
+            },
+            "description": "Binary CSV download. Postman's 'Save response → Save to file' exports the CSV."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const ct = pm.response.headers.get('Content-Type') || '';",
+                  "pm.test('content-type is csv', () => pm.expect(ct.toLowerCase()).to.include('csv'));",
+                  "pm.test('body not empty', () => pm.expect(pm.response.responseSize).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Synchronous MIS CSV (no queue)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/reports/portfolio-mis?lspId={{lspId}}&disbursalDateFrom={{disbursalDateFrom}}&disbursalDateTo={{disbursalDateTo}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "reports",
+                "portfolio-mis"
+              ],
+              "query": [
+                {
+                  "key": "lspId",
+                  "value": "{{lspId}}"
+                },
+                {
+                  "key": "disbursalDateFrom",
+                  "value": "{{disbursalDateFrom}}"
+                },
+                {
+                  "key": "disbursalDateTo",
+                  "value": "{{disbursalDateTo}}"
+                }
+              ]
+            },
+            "description": "Generates and returns the same CSV inline — useful when local mail is off."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const ct = pm.response.headers.get('Content-Type') || '';",
+                  "pm.test('content-type is csv', () => pm.expect(ct.toLowerCase()).to.include('csv'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MIS preview (paginated JSON)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/reports/portfolio-mis/preview?lspId={{lspId}}&disbursalDateFrom={{disbursalDateFrom}}&disbursalDateTo={{disbursalDateTo}}&page=0&size=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "reports",
+                "portfolio-mis",
+                "preview"
+              ],
+              "query": [
+                {
+                  "key": "lspId",
+                  "value": "{{lspId}}"
+                },
+                {
+                  "key": "disbursalDateFrom",
+                  "value": "{{disbursalDateFrom}}"
+                },
+                {
+                  "key": "disbursalDateTo",
+                  "value": "{{disbursalDateTo}}"
+                },
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "JSON preview of the same rows — easier for review agents to read inline."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "console.log('[mis preview] rows=' + (r.content ? r.content.length : (r.rows ? r.rows.length : 'unknown')));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "14 - Negative and Edge Cases",
+      "description": "Representative auth/RBAC/idempotency negatives — extend per e2e-test-matrix.xlsx.",
+      "item": [
+        {
+          "name": "Login wrong password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"wrong-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Expect 401."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No Authorization header",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications"
+              ]
+            },
+            "description": "Expect 401."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LSP token on admin route",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{lspApiToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/lsps",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "lsps"
+              ]
+            },
+            "description": "Expect 403."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown loan application returns 404 NOT_FOUND",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/00000000-0000-0000-0000-000000000099",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "00000000-0000-0000-0000-000000000099"
+              ]
+            },
+            "description": "B4 typed not-found — expect 404 with code NOT_FOUND (not blanket 400)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "assertApiError(404, 'NOT_FOUND');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Per-loan webhook events 404 for unknown application",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/00000000-0000-0000-0000-000000000099/webhook-events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "00000000-0000-0000-0000-000000000099",
+                "webhook-events"
+              ]
+            },
+            "description": "Same typed 404 contract on a sibling ops read endpoint."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "assertApiError(404, 'NOT_FOUND');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "13 - Audit Logs",
+      "description": "Compliance audit explorer and per-loan audit streams.",
+      "item": [
+        {
+          "name": "Audit explorer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/admin/audit-events?limit=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "admin",
+                "audit-events"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Auth audit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/auth-audit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "auth-audit"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Loan webhook events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}/webhook-events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "ops",
+                "loan-applications",
+                "{{applicationId}}",
+                "webhook-events"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 - Teardown",
+      "description": "Revokes the refresh cookie.",
+      "item": [
+        {
+          "name": "Admin logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "Clears the lms-refresh cookie and revokes the stored refresh token."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));",
+                  "['adminToken', 'lspUiToken', 'lspApiToken'].forEach(key => pm.environment.unset(key));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Ensure baseUrl always has a value",
+          "if (!pm.environment.get('baseUrl')) {",
+          "    pm.environment.set('baseUrl', 'http://localhost:8080');",
+          "}",
+          "// Fresh correlation ID per request — shows up in backend logs",
+          "pm.request.headers.upsert({ key: 'X-Correlation-Id', value: pm.variables.replaceIn('{{$guid}}') });"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Print correlation ID so console shows the full trace",
+          "const cid = pm.request.headers.get('X-Correlation-Id');",
+          "if (cid) console.log('[' + pm.info.requestName + '] X-Correlation-Id=' + cid + ' status=' + pm.response.code);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "default"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "secret"
+    },
+    {
+      "key": "adminPasswordChangeRequired",
+      "value": "",
+      "type": "default"
+    }
+  ]
+}

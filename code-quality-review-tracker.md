@@ -54,7 +54,7 @@ Priorities: **P0** = correctness or contract risk now; P1 = structural debt that
 | **B1** | Sound; P0 correctness | **Implemented** — single generator in `LoanRepaymentScheduleService.generateIfAbsent`; duplicate removed from lifecycle |
 | **B2** | Sound but L-effort; do after B6 | **✅ Done (2026-06-12)** — facade deleted; `LoanDisbursementCommandService`, `LoanApplicationServicingReadService`, `LoanDelinquencySupport`; seed + document-download tests on focused services |
 | **B3** | Sound but L-effort | **Partial (step 2)** — `BorrowerOnboardingService`, `LoanApplicationDocumentChecklistService`, `LoanWebhookPayloads`; lifecycle thinned (~450 lines removed); step 1 predicates retained |
-| **B4** | Sound; full 143-site sweep is M-effort | **Partial (2026-06-12)** — service sweep + integration tests aligned to typed 404/409/422; remaining IAEs intentional for input validation; Postman/e2e refresh deferred to F2 pass (#112) |
+| **B4** | Sound; full 143-site sweep is M-effort | **✅ Done (2026-06-12)** — service sweep + integration tests; Postman folder 14 asserts typed `404 NOT_FOUND` via `assertApiError`; frontend `readResponseError` trusts `{ code, message }` envelope |
 | **B5** | Sound; sequence with B3 | **✅ Done (2026-06-11)** — `BorrowerProfile` record + `BorrowerProfileMappers`; slim `LoanApplicationOnboardingCommand` (9 fields); `Borrower` uses profile constructors/merge; intake audit via `intakeAuditEntries()` |
 | **B6** | Sound; M-effort | **✅ Done (2026-06-12)** — `LoanApplicationDetailAssembler` + `LoanApplicationDetailView`; ops/LSP controllers + `LspLoanApiController`; pure `toDetailResponse(LoanApplicationDetailView)` |
 | **B7** | Sound; M-effort | **✅ Done (2026-06-12)** — `OpsAlertEmitters` + `AlertRuleEvaluationWorker`; alerts-cycle `@Lazy` removed; `LazyInjectionArchitectureTest` whitelists only lifecycle↔schedule until B3 step 3 |
@@ -67,7 +67,7 @@ Priorities: **P0** = correctness or contract risk now; P1 = structural debt that
 | **B14** | Sound; quick wins | **Implemented** — `@PreAuthorize` on status transition; dead param removed; identity wrapper inlined |
 | **B15** | Sound; S-effort | **✅ Done (2026-06-11)** — `BusinessCalendar` + `Clock` fixed to `Asia/Kolkata`; IST midnight boundary tests |
 | **F1** | Sound; L-effort P0 | **Implemented** — canonical 10-status module; TRANSITIONS ⊆ backend matrix; removed legacy mappers; `UNKNOWN:*` badges |
-| **F2** | Sound; L-effort (OpenAPI pipeline) | **Deferred** |
+| **F2** | Sound; L-effort (OpenAPI pipeline) | **✅ Pilot done (2026-06-12)** — committed `openapi/openapi.json`, `OpenApiContractExportTest`, `openapi-typescript` + `loan-applications/api-detail.ts` pilot; `scripts/generate-api-contract.ps1` |
 | **F3** | Sound | **Implemented** — shared `performFetch` with 401 refresh for blobs |
 | **F4** | Sound; mechanical S | **✅ Done (2026-06-11)** — `MarkInvalidDialog`, `MaskedBorrowerCard`, `DocumentsSection` extracted; `detail-page.tsx` ~270 lines |
 | **F5** | Clone group **no longer present** in current `DataTable.tsx` | **No change** — already resolved or fallow stale |
@@ -402,7 +402,9 @@ The review was asked to verify the machine-generated reports before trusting the
 
 ---
 
-## <a id="f2"></a>F2 — Hand-rolled per-feature backend types and mappers · P1
+## <a id="f2"></a>F2 — Hand-rolled per-feature backend types and mappers · P1 · ✅ Pilot done (2026-06-12)
+
+**Session outcome:** Committed OpenAPI snapshot (`openapi/openapi.json`) exported by `OpenApiContractExportTest` (test profile, springdoc enabled in-test only). Frontend `npm run generate:api-types` → `src/lib/api/generated/schema.ts`; `loan-applications/api-detail.ts` drops hand-rolled `Backend*` interfaces in favour of `OpsLoanApplicationDetailResponse`. Regenerate via `scripts/generate-api-contract.ps1`. **Next:** migrate remaining `api*.ts` features incrementally.
 
 **Problem (plain English):** Every feature folder re-declares the backend's response shapes by hand and writes its own mapping/coercion layer — ~3,560 lines of `api*.ts` across 14 feature folders, with near-duplicate interfaces and the same primitive coercers re-implemented.
 

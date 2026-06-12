@@ -89,7 +89,7 @@ describe("useTransitionStatus", () => {
       });
 
       const args = {
-        to: "APPROVED" as const,
+        to: "APPROVED_PENDING_DISBURSAL" as const,
         reason: "Looks good",
         idempotencyKey: "key-123",
       };
@@ -111,7 +111,7 @@ describe("useTransitionStatus", () => {
     });
 
     await result.current.mutateAsync({
-      to: "APPROVED",
+      to: "APPROVED_PENDING_DISBURSAL",
       reason: null,
       idempotencyKey: "k",
     });
@@ -136,7 +136,11 @@ describe("useTransitionStatus", () => {
       wrapper: Wrapper,
     });
     await expect(
-      result.current.mutateAsync({ to: "APPROVED", reason: null, idempotencyKey: "k" }),
+      result.current.mutateAsync({
+        to: "APPROVED_PENDING_DISBURSAL",
+        reason: null,
+        idempotencyKey: "k",
+      }),
     ).rejects.toThrow("nope");
   });
 });
