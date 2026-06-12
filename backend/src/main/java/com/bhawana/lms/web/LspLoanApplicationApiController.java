@@ -14,7 +14,6 @@ import com.bhawana.lms.service.LoanApplicationDetailAssembler;
 import com.bhawana.lms.service.LoanApplicationLifecycleService;
 import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
 import com.bhawana.lms.service.LoanApplicationQueryService;
-import com.bhawana.lms.service.LoanApplicationService;
 import com.bhawana.lms.service.LoanDisbursementService;
 import com.bhawana.lms.service.LoanDocumentService;
 import com.bhawana.lms.service.LspApiIdempotencyService;
@@ -64,7 +63,6 @@ public class LspLoanApplicationApiController {
 
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
-    private final LoanApplicationService loanApplicationService;
     private final LoanApplicationDetailAssembler loanApplicationDetailAssembler;
     private final LoanDocumentService loanDocumentService;
     private final LoanRepaymentScheduleService loanRepaymentScheduleService;
@@ -75,7 +73,6 @@ public class LspLoanApplicationApiController {
     public LspLoanApplicationApiController(
             LoanApplicationQueryService loanApplicationQueryService,
             LoanApplicationLifecycleService loanApplicationLifecycleService,
-            LoanApplicationService loanApplicationService,
             LoanApplicationDetailAssembler loanApplicationDetailAssembler,
             LoanDocumentService loanDocumentService,
             LoanRepaymentScheduleService loanRepaymentScheduleService,
@@ -85,7 +82,6 @@ public class LspLoanApplicationApiController {
     ) {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
-        this.loanApplicationService = loanApplicationService;
         this.loanApplicationDetailAssembler = loanApplicationDetailAssembler;
         this.loanDocumentService = loanDocumentService;
         this.loanRepaymentScheduleService = loanRepaymentScheduleService;

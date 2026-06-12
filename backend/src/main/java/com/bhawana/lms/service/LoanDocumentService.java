@@ -25,7 +25,6 @@ public class LoanDocumentService {
 
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
-    private final LoanApplicationService loanApplicationService;
     private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     private final LoanDocumentStorageService loanDocumentStorageService;
     private final LoanAutoApprovalGateService loanAutoApprovalGateService;
@@ -33,14 +32,12 @@ public class LoanDocumentService {
     public LoanDocumentService(
             LoanApplicationQueryService loanApplicationQueryService,
             LoanApplicationLifecycleService loanApplicationLifecycleService,
-            LoanApplicationService loanApplicationService,
             LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
             LoanDocumentStorageService loanDocumentStorageService,
             LoanAutoApprovalGateService loanAutoApprovalGateService
     ) {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
-        this.loanApplicationService = loanApplicationService;
         this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
         this.loanDocumentStorageService = loanDocumentStorageService;
         this.loanAutoApprovalGateService = loanAutoApprovalGateService;
@@ -96,7 +93,7 @@ public class LoanDocumentService {
     @Transactional(readOnly = true)
     public RetrievedDocumentContent retrieveDocumentContent(UUID applicationId, LoanApplicationDocumentType documentType) {
         LoanApplicationDocumentChecklist checklistItem =
-                loanApplicationService.getDocumentChecklistItem(applicationId, documentType);
+                getDocumentChecklistItem(applicationId, documentType);
         if (!checklistItem.isLmsManagedContent() || checklistItem.getStorageKey() == null) {
             throw new DocumentNotFoundException(
                     "Document content is not LMS-managed or has no storage key: " + documentType.name()
@@ -114,7 +111,7 @@ public class LoanDocumentService {
     }
 
     public ZipBuildResult buildDocumentZip(UUID applicationId) {
-        loanApplicationService.getApplication(applicationId);
+        loanApplicationQueryService.getApplication(applicationId);
         List<LoanApplicationDocumentChecklist> downloadableDocuments = loanApplicationDocumentChecklistRepository
                 .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
                 .stream()
@@ -197,7 +194,7 @@ public class LoanDocumentService {
             String actorUsername,
             List<BatchDocumentUpload> documents
     ) {
-        boolean wasComplete = loanApplicationService.hasAllRequiredDocumentsUploaded(applicationId);
+        boolean wasComplete = loanApplicationLifecycleService.hasAllRequiredDocumentsUploaded(applicationId);
         List<LoanApplicationDocumentChecklist> uploaded = persistStoredDocumentsForLsp(
                 lspId,
                 applicationId,
@@ -207,7 +204,7 @@ public class LoanDocumentService {
         loanAutoApprovalGateService.maybeTriggerAutoApproval(
                 applicationId,
                 actorUsername,
-                !wasComplete && loanApplicationService.hasAllRequiredDocumentsUploaded(applicationId)
+                !wasComplete && loanApplicationLifecycleService.hasAllRequiredDocumentsUploaded(applicationId)
         );
         return uploaded;
     }
@@ -287,5 +284,17 @@ public class LoanDocumentService {
             String sourceReference,
             MultipartFile file
     ) {
+    }
+
+    private LoanApplicationDocumentChecklist getDocumentChecklistItem(
+            UUID applicationId,
+            LoanApplicationDocumentType documentType
+    ) {
+        loanApplicationQueryService.getApplication(applicationId);
+        return loanApplicationDocumentChecklistRepository.findByLoanApplication_IdAndDocumentType(applicationId, documentType)
+                .orElseThrow(() -> new DocumentNotFoundException(
+                        "Document checklist item not found for type " + documentType.name()
+                                + " on application " + applicationId
+                ));
     }
 }

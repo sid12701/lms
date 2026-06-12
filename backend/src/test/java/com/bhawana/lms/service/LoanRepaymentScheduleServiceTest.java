@@ -30,7 +30,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class LoanRepaymentScheduleServiceTest {
 
     @Mock
-    private LoanApplicationService loanApplicationService;
+    private LoanApplicationQueryService loanApplicationQueryService;
+
+    @Mock
+    private LoanApplicationServicingReadService loanApplicationServicingReadService;
 
     @Mock
     private LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
@@ -46,7 +49,8 @@ class LoanRepaymentScheduleServiceTest {
     @BeforeEach
     void setUp() {
         scheduleService = new LoanRepaymentScheduleService(
-                loanApplicationService,
+                loanApplicationQueryService,
+                loanApplicationServicingReadService,
                 loanRepaymentScheduleInstallmentRepository,
                 loanPaymentTransactionRepository,
                 opsAlertEmitters

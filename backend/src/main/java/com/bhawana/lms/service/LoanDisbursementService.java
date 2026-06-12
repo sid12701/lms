@@ -24,18 +24,21 @@ public class LoanDisbursementService {
 
     public static final String HOLDER_NAME_SOFT_MISMATCH_CODE = "HOLDER_NAME_SOFT_MISMATCH";
 
-    private final LoanApplicationService loanApplicationService;
+    private final LoanApplicationQueryService loanApplicationQueryService;
+    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final LoanRepaymentScheduleService loanRepaymentScheduleService;
     private final BorrowerBankDetailsService borrowerBankDetailsService;
     private final BankAccountHolderNameMatcher holderNameMatcher;
 
     public LoanDisbursementService(
-            LoanApplicationService loanApplicationService,
+            LoanApplicationQueryService loanApplicationQueryService,
+            LoanApplicationLifecycleService loanApplicationLifecycleService,
             LoanRepaymentScheduleService loanRepaymentScheduleService,
             BorrowerBankDetailsService borrowerBankDetailsService,
             BankAccountHolderNameMatcher holderNameMatcher
     ) {
-        this.loanApplicationService = loanApplicationService;
+        this.loanApplicationQueryService = loanApplicationQueryService;
+        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.loanRepaymentScheduleService = loanRepaymentScheduleService;
         this.borrowerBankDetailsService = borrowerBankDetailsService;
         this.holderNameMatcher = holderNameMatcher;
@@ -52,7 +55,7 @@ public class LoanDisbursementService {
             String requestIfscCode,
             String requestAccountHolderName
     ) {
-        LoanApplication application = loanApplicationService.getApplicationForLsp(lspId, applicationId);
+        LoanApplication application = loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
         DisbursementBankDetailsValidation validation = validateLspDisbursementBankDetails(
                 application.getBorrower(),
                 requestBankAccountNumber,
@@ -113,7 +116,7 @@ public class LoanDisbursementService {
      */
     public Map<String, String> validateAutomatedDisbursement(LoanApplication application, LoanAccount loanAccount) {
         Map<String, String> violations = new LinkedHashMap<>();
-        if (!loanApplicationService.hasAllRequiredLmsManagedDocuments(application.getId())) {
+        if (!loanApplicationLifecycleService.hasAllRequiredLmsManagedDocuments(application.getId())) {
             violations.put("documents", "All required documents must be uploaded into LMS-managed storage.");
         }
         if (loanAccount == null) {

@@ -131,9 +131,11 @@ The review was asked to verify the machine-generated reports before trusting the
 
 ---
 
-## <a id="b2"></a>B2 — `LoanApplicationService`: a 1,172-line identity facade · P1 · Partial (2026-06-11)
+## <a id="b2"></a>B2 — `LoanApplicationService`: a 1,172-line identity facade · P1 · Partial (2026-06-12)
 
-**Session outcome (A1+A4):** LSP controllers call focused services directly (query/lifecycle/servicing/repayment/document/foreclosure). Facade retains detail-enrichment reads + disbursement. `recordPaymentTransactionWithRecovery` moved to `LoanRepaymentCommandService`. Tests: `LspLoanApplicationApiControllerTest`, `Issue74LspForeclosureExecuteIntegrationTest`, `Issue86RepaymentIdempotencyIntegrationTest` green.
+**Session outcome (A1+A4):** LSP controllers call focused services directly (query/lifecycle/servicing/repayment/document/foreclosure). `recordPaymentTransactionWithRecovery` moved to `LoanRepaymentCommandService`.
+
+**Session outcome (2026-06-12):** `LoanDisbursementCommandService` owns initiate/mock-outcome; `LoanApplicationServicingReadService` owns per-application reads + document-access audit; `LoanDelinquencySupport` + top-level view records replace inner facade types. `LoanApplicationOpsController` injects servicing-read, disbursement-command, repayment-command directly. Facade shrunk to pure delegation (~500 lines, 8 deps, no `@Lazy`). `LoanDocumentService` no longer depends on facade. **Next:** repoint `LocalDemoPortfolioSeedService` + delete facade when call sites are zero.
 
 **Problem (plain English):** The class was correctly decomposed at some point — `LoanApplicationQueryService`, `LoanApplicationLifecycleService`, `LoanRepaymentCommandService`, `LoanForeclosureCommandService`, `LoanDocumentService`, `LoanAutoApprovalGateService` all exist — but the old god class was kept alive as a forwarding layer so callers didn't have to change. Roughly half its methods are one-line delegations.
 

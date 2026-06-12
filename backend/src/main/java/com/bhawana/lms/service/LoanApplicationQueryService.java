@@ -38,6 +38,12 @@ public class LoanApplicationQueryService {
     }
 
     @Transactional(readOnly = true)
+    public LoanApplication getApplication(UUID applicationId) {
+        return loanApplicationRepository.findDetailedById(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
+    }
+
+    @Transactional(readOnly = true)
     public LoanApplication getApplicationForLsp(UUID lspId, UUID applicationId) {
         LoanApplication application = loanApplicationRepository.findDetailedById(applicationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));

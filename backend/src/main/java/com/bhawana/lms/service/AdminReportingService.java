@@ -432,7 +432,7 @@ public class AdminReportingService {
         int maxDaysPastDue = 0;
         BigDecimal overdueAmount = BigDecimal.ZERO.setScale(2);
         for (LoanRepaymentScheduleInstallment installment : installments) {
-            int dpd = LoanApplicationService.calculateDaysPastDue(installment, today);
+            int dpd = LoanDelinquencySupport.calculateDaysPastDue(installment, today);
             if (dpd > maxDaysPastDue) {
                 maxDaysPastDue = dpd;
             }
@@ -442,7 +442,7 @@ public class AdminReportingService {
         }
 
         return new DelinquencySnapshot(
-                LoanApplicationService.resolveDelinquencyBucket(maxDaysPastDue).name(),
+                LoanDelinquencySupport.resolveDelinquencyBucket(maxDaysPastDue).name(),
                 overdueAmount.setScale(2),
                 maxDaysPastDue
         );

@@ -5,7 +5,10 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.service.LoanApplicationDetailAssembler.LoanApplicationDetailView;
-import com.bhawana.lms.service.LoanApplicationService;
+import com.bhawana.lms.service.LoanApplicationLastActivity;
+import com.bhawana.lms.service.LoanDelinquencySummary;
+import com.bhawana.lms.service.LoanDelinquencySupport;
+import com.bhawana.lms.service.LoanRepaymentScheduleSummary;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -131,8 +134,8 @@ public final class LspLoanApplicationResponses {
 
     private static LspLoanApplicationApiController.LspLoanAccountSummaryResponse toLoanAccountSummary(
             LoanAccount loanAccount,
-            LoanApplicationService.LoanRepaymentScheduleSummary repaymentScheduleSummary,
-            LoanApplicationService.LoanDelinquencySummary delinquencySummary
+            LoanRepaymentScheduleSummary repaymentScheduleSummary,
+            LoanDelinquencySummary delinquencySummary
     ) {
         if (loanAccount == null) {
             return null;
@@ -164,7 +167,7 @@ public final class LspLoanApplicationResponses {
     }
 
     private static LspLoanApplicationApiController.LoanApplicationLastActivityResponse toLastActivityResponse(
-            LoanApplicationService.LoanApplicationLastActivity activity
+            LoanApplicationLastActivity activity
     ) {
         return new LspLoanApplicationApiController.LoanApplicationLastActivityResponse(
                 activity.activityType(),
@@ -205,7 +208,7 @@ public final class LspLoanApplicationResponses {
             LoanRepaymentScheduleInstallment installment,
             LocalDate businessDate
     ) {
-        int daysPastDue = LoanApplicationService.calculateDaysPastDue(
+        int daysPastDue = LoanDelinquencySupport.calculateDaysPastDue(
                 installment,
                 businessDate
         );
@@ -225,7 +228,7 @@ public final class LspLoanApplicationResponses {
                 installment.getPaidAmount(),
                 installment.getOutstandingAmount(),
                 daysPastDue,
-                LoanApplicationService.resolveDelinquencyBucket(daysPastDue).name(),
+                LoanDelinquencySupport.resolveDelinquencyBucket(daysPastDue).name(),
                 installment.getCreatedAt().toString()
         );
     }

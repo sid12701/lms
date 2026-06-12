@@ -14,7 +14,9 @@ import com.bhawana.lms.service.LoanApplicationDetailAssembler;
 import com.bhawana.lms.service.LoanApplicationLifecycleService;
 import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
 import com.bhawana.lms.service.LoanApplicationQueryService;
-import com.bhawana.lms.service.LoanApplicationService;
+import com.bhawana.lms.service.LoanApplicationServicingReadService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
+import com.bhawana.lms.service.LoanRepaymentCommandService;
 import com.bhawana.lms.service.LoanApplicationWebhookEventProjection;
 import com.bhawana.lms.service.LoanDocumentService;
 import com.bhawana.lms.service.LoanForeclosureCommandService;
@@ -57,7 +59,9 @@ public class LoanApplicationOpsController {
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final LoanForeclosureCommandService loanForeclosureCommandService;
-    private final LoanApplicationService loanApplicationService;
+    private final LoanApplicationServicingReadService loanApplicationServicingReadService;
+    private final LoanDisbursementCommandService loanDisbursementCommandService;
+    private final LoanRepaymentCommandService loanRepaymentCommandService;
     private final LoanApplicationDetailAssembler loanApplicationDetailAssembler;
     private final BusinessCalendar businessCalendar;
 
@@ -65,14 +69,18 @@ public class LoanApplicationOpsController {
             LoanApplicationQueryService loanApplicationQueryService,
             LoanApplicationLifecycleService loanApplicationLifecycleService,
             LoanForeclosureCommandService loanForeclosureCommandService,
-            LoanApplicationService loanApplicationService,
+            LoanApplicationServicingReadService loanApplicationServicingReadService,
+            LoanDisbursementCommandService loanDisbursementCommandService,
+            LoanRepaymentCommandService loanRepaymentCommandService,
             LoanApplicationDetailAssembler loanApplicationDetailAssembler,
             BusinessCalendar businessCalendar
     ) {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.loanForeclosureCommandService = loanForeclosureCommandService;
-        this.loanApplicationService = loanApplicationService;
+        this.loanApplicationServicingReadService = loanApplicationServicingReadService;
+        this.loanDisbursementCommandService = loanDisbursementCommandService;
+        this.loanRepaymentCommandService = loanRepaymentCommandService;
         this.loanApplicationDetailAssembler = loanApplicationDetailAssembler;
         this.businessCalendar = businessCalendar;
     }
@@ -107,7 +115,7 @@ public class LoanApplicationOpsController {
                 limit,
                 includePaginationDetails
         );
-        Map<UUID, String> accountNumbersByApplicationId = loanApplicationService
+        Map<UUID, String> accountNumbersByApplicationId = loanApplicationServicingReadService
                 .getLoanAccountNumbers(applicationsPage.items().stream().map(LoanApplication::getId).toList());
         PagedResult<LoanApplicationResponse> page = new PagedResult<>(
                 applicationsPage.items().stream()
@@ -133,35 +141,35 @@ public class LoanApplicationOpsController {
             Authentication authentication,
             @PathVariable UUID applicationId
     ) {
-        return loanApplicationService.listIntakeAudits(applicationId, authentication.getName()).stream()
+        return loanApplicationServicingReadService.listIntakeAudits(applicationId, authentication.getName()).stream()
                 .map(LoanApplicationOpsResponses::toAuditResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/status-transitions")
     public List<LoanApplicationStatusTransitionResponse> listStatusTransitions(@PathVariable UUID applicationId) {
-        return loanApplicationService.listStatusTransitions(applicationId).stream()
+        return loanApplicationServicingReadService.listStatusTransitions(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toTransitionResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/audit-events")
     public List<LoanApplicationAuditEventResponse> listAuditEvents(@PathVariable UUID applicationId) {
-        return loanApplicationService.listAuditEvents(applicationId).stream()
+        return loanApplicationServicingReadService.listAuditEvents(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toAuditEventResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/document-access-audits")
     public List<LoanApplicationDocumentAccessAuditResponse> listDocumentAccessAudits(@PathVariable UUID applicationId) {
-        return loanApplicationService.listDocumentAccessAudits(applicationId).stream()
+        return loanApplicationServicingReadService.listDocumentAccessAudits(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toDocumentAccessAuditResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/disbursement-requests")
     public List<LoanDisbursementRequestResponse> listDisbursementRequests(@PathVariable UUID applicationId) {
-        return loanApplicationService.listDisbursementRequests(applicationId).stream()
+        return loanApplicationServicingReadService.listDisbursementRequests(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toDisbursementRequestResponse)
                 .toList();
     }
@@ -169,7 +177,7 @@ public class LoanApplicationOpsController {
     @GetMapping("/{applicationId}/repayment-schedule")
     public List<LoanRepaymentScheduleInstallmentResponse> listRepaymentSchedule(@PathVariable UUID applicationId) {
         LocalDate businessDate = businessCalendar.today();
-        return loanApplicationService.listRepaymentSchedule(applicationId).stream()
+        return loanApplicationServicingReadService.listRepaymentSchedule(applicationId).stream()
                 .map(installment -> LoanApplicationOpsResponses.toRepaymentScheduleInstallmentResponse(
                         installment,
                         businessDate
@@ -179,14 +187,14 @@ public class LoanApplicationOpsController {
 
     @GetMapping("/{applicationId}/payments")
     public List<LoanPaymentTransactionResponse> listPaymentTransactions(@PathVariable UUID applicationId) {
-        return loanApplicationService.listPaymentTransactions(applicationId).stream()
+        return loanApplicationServicingReadService.listPaymentTransactions(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toPaymentTransactionResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/webhook-events")
     public List<WebhookEventDeliveryResponse> listWebhookEvents(@PathVariable UUID applicationId) {
-        return loanApplicationService.listWebhookEventsForApplication(applicationId).stream()
+        return loanApplicationServicingReadService.listWebhookEventsForApplication(applicationId).stream()
                 .map(WebhookEventDeliveryResponse::from)
                 .toList();
     }
@@ -194,7 +202,7 @@ public class LoanApplicationOpsController {
     @GetMapping("/{applicationId}/foreclosure-quotes")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public List<LoanForeclosureQuoteResponse> listForeclosureQuotes(@PathVariable UUID applicationId) {
-        return loanApplicationService.listForeclosureQuotes(applicationId).stream()
+        return loanApplicationServicingReadService.listForeclosureQuotes(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toForeclosureQuoteResponse)
                 .toList();
     }
@@ -204,7 +212,7 @@ public class LoanApplicationOpsController {
             Authentication authentication,
             @PathVariable UUID applicationId
     ) {
-        return loanApplicationService.listDocumentChecklist(applicationId, authentication.getName()).stream()
+        return loanApplicationServicingReadService.listDocumentChecklist(applicationId, authentication.getName()).stream()
                 .map(LoanApplicationOpsResponses::toDocumentChecklistResponse)
                 .toList();
     }
@@ -215,7 +223,7 @@ public class LoanApplicationOpsController {
             HttpServletRequest request,
             @PathVariable UUID applicationId
     ) {
-        LoanDocumentService.ZipBuildResult zipResult = loanApplicationService.downloadDocumentZip(
+        LoanDocumentService.ZipBuildResult zipResult = loanApplicationServicingReadService.downloadDocumentZip(
                 applicationId,
                 authentication.getName(),
                 ClientIpAddresses.resolve(request),
@@ -236,7 +244,7 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @PathVariable LoanApplicationDocumentType documentType
     ) {
-        LoanDocumentService.RetrievedDocumentContent content = loanApplicationService.downloadDocumentContent(
+        LoanDocumentService.RetrievedDocumentContent content = loanApplicationServicingReadService.downloadDocumentContent(
                 applicationId,
                 documentType,
                 authentication.getName(),
@@ -312,7 +320,7 @@ public class LoanApplicationOpsController {
             Authentication authentication,
             @PathVariable UUID applicationId
     ) {
-        loanApplicationService.initiateDisbursement(
+        loanDisbursementCommandService.initiateDisbursement(
                 applicationId,
                 authentication.getName()
         );
@@ -327,7 +335,7 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @Valid @RequestBody MockDisbursementOutcomeRequest request
     ) {
-        loanApplicationService.resolveMockDisbursementOutcome(
+        loanDisbursementCommandService.resolveMockDisbursementOutcome(
                 applicationId,
                 authentication.getName(),
                 ClientIpAddresses.resolve(httpRequest),
@@ -345,7 +353,7 @@ public class LoanApplicationOpsController {
             @org.springframework.web.bind.annotation.RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody LoanPaymentTransactionRequest request
     ) {
-        return LoanApplicationOpsResponses.toPaymentTransactionResponse(loanApplicationService.recordPaymentTransaction(
+        return LoanApplicationOpsResponses.toPaymentTransactionResponse(loanRepaymentCommandService.recordPaymentTransactionWithRecovery(
                 applicationId,
                 authentication.getName(),
                 idempotencyKey,

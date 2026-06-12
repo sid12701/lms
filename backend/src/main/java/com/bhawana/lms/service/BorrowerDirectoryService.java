@@ -146,7 +146,7 @@ public class BorrowerDirectoryService {
      * `activeOverdueAmount` sums the outstanding portion of each installment
      * whose due-date is in the past and that has unpaid balance. `maxDaysPastDue`
      * is the worst DPD across those installments, and `bucket` is the
-     * corresponding DPD bucket per `LoanApplicationService.resolveDelinquencyBucket`.
+     * corresponding DPD bucket per `LoanDelinquencySupport.resolveDelinquencyBucket`.
      * `overdueLoanCount` counts distinct active loans contributing at least
      * one overdue installment — useful for ops triage where the headline tile
      * is the count of stuck loans rather than the count of stuck installments.
@@ -169,7 +169,7 @@ public class BorrowerDirectoryService {
             BigDecimal loanOverdue = BigDecimal.ZERO.setScale(2);
             int loanMaxDpd = 0;
             for (LoanRepaymentScheduleInstallment installment : installments) {
-                int dpd = LoanApplicationService.calculateDaysPastDue(installment, today);
+                int dpd = LoanDelinquencySupport.calculateDaysPastDue(installment, today);
                 if (dpd > 0) {
                     loanOverdue = loanOverdue.add(installment.getOutstandingAmount());
                     if (dpd > loanMaxDpd) {
@@ -186,7 +186,7 @@ public class BorrowerDirectoryService {
             }
         }
 
-        LoanDelinquencyBucket bucket = LoanApplicationService.resolveDelinquencyBucket(maxDpd);
+        LoanDelinquencyBucket bucket = LoanDelinquencySupport.resolveDelinquencyBucket(maxDpd);
         return new BorrowerDelinquencyAggregate(
                 totalOverdue.setScale(2),
                 maxDpd,

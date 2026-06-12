@@ -24,18 +24,21 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class LoanRepaymentScheduleService {
 
-    private final LoanApplicationService loanApplicationService;
+    private final LoanApplicationQueryService loanApplicationQueryService;
+    private final LoanApplicationServicingReadService loanApplicationServicingReadService;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final OpsAlertEmitters opsAlertEmitters;
 
     public LoanRepaymentScheduleService(
-            LoanApplicationService loanApplicationService,
+            LoanApplicationQueryService loanApplicationQueryService,
+            LoanApplicationServicingReadService loanApplicationServicingReadService,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
             OpsAlertEmitters opsAlertEmitters
     ) {
-        this.loanApplicationService = loanApplicationService;
+        this.loanApplicationQueryService = loanApplicationQueryService;
+        this.loanApplicationServicingReadService = loanApplicationServicingReadService;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.opsAlertEmitters = opsAlertEmitters;
@@ -70,7 +73,7 @@ public class LoanRepaymentScheduleService {
             UUID applicationId,
             List<InstallmentDraft> installments
     ) {
-        LoanApplication application = loanApplicationService.getApplicationForLsp(lspId, applicationId);
+        LoanApplication application = loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
         LoanAccount loanAccount = getMutableLoanAccountForLsp(lspId, applicationId);
         try {
             validateProvidedInstallments(loanAccount, installments);
@@ -128,8 +131,8 @@ public class LoanRepaymentScheduleService {
     }
 
     private LoanAccount getMutableLoanAccountForLsp(UUID lspId, UUID applicationId) {
-        loanApplicationService.getApplicationForLsp(lspId, applicationId);
-        LoanAccount loanAccount = loanApplicationService.getLoanAccount(applicationId)
+        loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
+        LoanAccount loanAccount = loanApplicationServicingReadService.getLoanAccount(applicationId)
                 .orElseThrow(() -> new BusinessRuleViolationException(
                         "LOAN_NOT_APPROVED",
                         "Repayment schedule can only be set after the loan has been auto-approved.",

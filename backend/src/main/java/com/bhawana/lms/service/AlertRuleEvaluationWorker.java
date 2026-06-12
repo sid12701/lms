@@ -48,7 +48,7 @@ public class AlertRuleEvaluationWorker {
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanApplicationDocumentChecklistRepository checklistRepository;
     private final LoanApplicationStatusTransitionRepository statusTransitionRepository;
-    private final LoanApplicationService loanApplicationService;
+    private final LoanApplicationServicingReadService loanApplicationServicingReadService;
     private final LspRepository lspRepository;
     private final AppUserRepository appUserRepository;
     private final AuthEventAuditRepository authEventAuditRepository;
@@ -63,7 +63,7 @@ public class AlertRuleEvaluationWorker {
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationDocumentChecklistRepository checklistRepository,
             LoanApplicationStatusTransitionRepository statusTransitionRepository,
-            LoanApplicationService loanApplicationService,
+            LoanApplicationServicingReadService loanApplicationServicingReadService,
             LspRepository lspRepository,
             AppUserRepository appUserRepository,
             AuthEventAuditRepository authEventAuditRepository,
@@ -77,7 +77,7 @@ public class AlertRuleEvaluationWorker {
         this.loanApplicationRepository = loanApplicationRepository;
         this.checklistRepository = checklistRepository;
         this.statusTransitionRepository = statusTransitionRepository;
-        this.loanApplicationService = loanApplicationService;
+        this.loanApplicationServicingReadService = loanApplicationServicingReadService;
         this.lspRepository = lspRepository;
         this.appUserRepository = appUserRepository;
         this.authEventAuditRepository = authEventAuditRepository;
@@ -196,7 +196,7 @@ public class AlertRuleEvaluationWorker {
         );
         int emitted = 0;
         for (LoanApplication application : servicing) {
-            LoanApplicationService.LoanDelinquencySummary summary = loanApplicationService
+            LoanDelinquencySummary summary = loanApplicationServicingReadService
                     .getLoanDelinquencySummary(application.getId())
                     .orElse(null);
             if (summary == null || summary.bucket() == LoanDelinquencyBucket.CURRENT) {

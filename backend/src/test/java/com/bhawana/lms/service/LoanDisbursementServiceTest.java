@@ -18,7 +18,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class LoanDisbursementServiceTest {
 
     @Mock
-    private LoanApplicationService loanApplicationService;
+    private LoanApplicationQueryService loanApplicationQueryService;
+
+    @Mock
+    private LoanApplicationLifecycleService loanApplicationLifecycleService;
 
     @Mock
     private LoanRepaymentScheduleService loanRepaymentScheduleService;
@@ -34,7 +37,8 @@ class LoanDisbursementServiceTest {
     @BeforeEach
     void setUp() {
         loanDisbursementService = new LoanDisbursementService(
-                loanApplicationService,
+                loanApplicationQueryService,
+                loanApplicationLifecycleService,
                 loanRepaymentScheduleService,
                 borrowerBankDetailsService,
                 holderNameMatcher

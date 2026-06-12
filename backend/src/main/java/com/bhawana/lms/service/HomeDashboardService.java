@@ -201,7 +201,7 @@ public class HomeDashboardService {
         int maxDaysPastDue = snapshot.getOldestOverdueDueDate() == null
                 ? 0
                 : Math.toIntExact(ChronoUnit.DAYS.between(snapshot.getOldestOverdueDueDate(), today));
-        LoanDelinquencyBucket bucket = LoanApplicationService.resolveDelinquencyBucket(maxDaysPastDue);
+        LoanDelinquencyBucket bucket = LoanDelinquencySupport.resolveDelinquencyBucket(maxDaysPastDue);
 
         return new AccountSnapshot(
                 snapshot.getLspId(),
