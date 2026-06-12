@@ -9,7 +9,7 @@
 import { ApiError, requestJson } from "@/lib/api/http-client";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { loadStoredSession } from "@/lib/api/session-storage";
-import { mapBackendStatus } from "@/features/loan-applications/api";
+import { parseLoanApplicationStatus } from "@/lib/loan-application-status";
 import type { LoanApplication } from "@/types";
 
 const LSP_BASE = "/api/v1/lsp/loan-applications";
@@ -178,7 +178,7 @@ function backendToDetail(payload: BackendLspDetail): MyLoanDetail {
     requestedAmount: toNumber(payload.loanAmount),
     interestRate: payload.interestRate == null ? null : toNumber(payload.interestRate),
     tenureMonths: payload.loanTenure ?? 0,
-    status: mapBackendStatus(payload.status) as LoanApplication["status"],
+    status: parseLoanApplicationStatus(payload.status) ?? "INITIALIZED",
     rawStatus: payload.status,
     invalidReasonCode: payload.invalidReasonCode,
     invalidReasonText: payload.invalidReasonText,

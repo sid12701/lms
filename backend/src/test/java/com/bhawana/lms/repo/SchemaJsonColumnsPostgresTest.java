@@ -152,7 +152,7 @@ class SchemaJsonColumnsPostgresTest extends PostgresDataJpaTestSupport {
                 + "\",\"amount\":5000.00,\"provider\":\"MOCK\",\"providerRequestId\":\"req-1\"}";
         String disbursementResponse = "{\"providerStatus\":\"REQUESTED\",\"providerReference\":\"ref-1\",\"raw\":{\"ok\":true}}";
         String rejectionReason = "{\"failedRules\":[\"INCOME_TOO_LOW\",\"PAN_BLACKLISTED\"]}";
-        // AlertRuleEvaluationService:105 builds context_json by manual string concat.
+        // AlertRuleEvaluationWorker builds context_json by manual string concat.
         String opsAlertContext = "{\"eventId\":\"" + UUID.randomUUID()
                 + "\",\"lspId\":\"" + UUID.randomUUID() + "\",\"eventType\":\"LOAN_CREATED\"}";
         String userSnapshotBefore = "{\"username\":\"old.name\",\"email\":\"old@example.com\",\"status\":\"ACTIVE\",\"roles\":[\"OPS\"]}";

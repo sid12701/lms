@@ -27,12 +27,7 @@ import {
 import { useLoanApplicationDetail } from "./hooks/useLoanApplicationDetail";
 import { LoanApplicationDetailTab } from "./types";
 
-const REPAYABLE_STATUSES = new Set([
-  "DISBURSED",
-  "UNDER_REPAYMENT",
-  "PARTIALLY_PAID",
-  "DELINQUENT",
-]);
+const REPAYABLE_STATUSES = new Set(["DISBURSED", "UNDER_REPAYMENT"]);
 
 /**
  * `?tab=` URL state. Mirrors the type from `./types.ts` — invalid or

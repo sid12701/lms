@@ -1,5 +1,7 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
@@ -9,6 +11,7 @@ import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.domain.LoanForeclosureQuoteStatus;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
+import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.repo.LoanForeclosureQuoteRepository;
 import com.bhawana.lms.repo.PortfolioMisReadRepository;
@@ -41,17 +44,20 @@ public class AdminReportingService {
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanForeclosureQuoteRepository loanForeclosureQuoteRepository;
     private final LspRepository lspRepository;
+    private final BusinessCalendar businessCalendar;
 
     public AdminReportingService(
             PortfolioMisReadRepository portfolioMisReadRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanForeclosureQuoteRepository loanForeclosureQuoteRepository,
-            LspRepository lspRepository
+            LspRepository lspRepository,
+            BusinessCalendar businessCalendar
     ) {
         this.portfolioMisReadRepository = portfolioMisReadRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanForeclosureQuoteRepository = loanForeclosureQuoteRepository;
         this.lspRepository = lspRepository;
+        this.businessCalendar = businessCalendar;
     }
 
     @Transactional(readOnly = true)
@@ -176,7 +182,7 @@ public class AdminReportingService {
             LocalDate disbursalDateTo
     ) {
         validateFilters(lspId, disbursalDateFrom, disbursalDateTo);
-        LocalDate par30Cutoff = LoanApplicationService.currentBusinessDate().minusDays(30);
+        LocalDate par30Cutoff = businessCalendar.today().minusDays(30);
         long startedAt = System.nanoTime();
         PortfolioMisSummaryAggregate aggregate = portfolioMisReadRepository.summarize(
                 lspId,
@@ -220,7 +226,7 @@ public class AdminReportingService {
         List<PortfolioMisRow> rows = buildPortfolioMisReport(lspId, disbursalDateFrom, disbursalDateTo);
         String csv = buildPortfolioMisCsv(rows);
         return new GeneratedReport(
-                "portfolio-mis-" + LoanApplicationService.currentBusinessDate() + ".csv",
+                "portfolio-mis-" + businessCalendar.today() + ".csv",
                 "text/csv;charset=UTF-8",
                 csv.getBytes(StandardCharsets.UTF_8)
         );
@@ -237,10 +243,14 @@ public class AdminReportingService {
 
     private void validateFilters(UUID lspId, LocalDate disbursalDateFrom, LocalDate disbursalDateTo) {
         if (lspId != null && !lspRepository.existsById(lspId)) {
-            throw new IllegalArgumentException("Unknown LSP id: " + lspId);
+            throw new ResourceNotFoundException("Unknown LSP id: " + lspId);
         }
         if (disbursalDateFrom != null && disbursalDateTo != null && disbursalDateFrom.isAfter(disbursalDateTo)) {
-            throw new IllegalArgumentException("disbursalDateFrom cannot be after disbursalDateTo.");
+            throw new BusinessRuleViolationException(
+                    "INVALID_DISBURSAL_DATE_RANGE",
+                    "disbursalDateFrom cannot be after disbursalDateTo.",
+                    Map.of("disbursalDateFrom", "cannot be after disbursalDateTo")
+            );
         }
     }
 
@@ -418,11 +428,11 @@ public class AdminReportingService {
             return new DelinquencySnapshot("CURRENT", BigDecimal.ZERO.setScale(2), 0);
         }
 
-        LocalDate today = LoanApplicationService.currentBusinessDate();
+        LocalDate today = businessCalendar.today();
         int maxDaysPastDue = 0;
         BigDecimal overdueAmount = BigDecimal.ZERO.setScale(2);
         for (LoanRepaymentScheduleInstallment installment : installments) {
-            int dpd = LoanApplicationService.calculateDaysPastDue(installment, today);
+            int dpd = LoanDelinquencySupport.calculateDaysPastDue(installment, today);
             if (dpd > maxDaysPastDue) {
                 maxDaysPastDue = dpd;
             }
@@ -432,7 +442,7 @@ public class AdminReportingService {
         }
 
         return new DelinquencySnapshot(
-                LoanApplicationService.resolveDelinquencyBucket(maxDaysPastDue).name(),
+                LoanDelinquencySupport.resolveDelinquencyBucket(maxDaysPastDue).name(),
                 overdueAmount.setScale(2),
                 maxDaysPastDue
         );

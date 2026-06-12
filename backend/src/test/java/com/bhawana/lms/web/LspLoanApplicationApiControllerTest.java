@@ -207,8 +207,8 @@ class LspLoanApplicationApiControllerTest {
 
         mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", northApplication.get("id").asText())
                         .header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("NOT_FOUND"));
     }
 
     @Test
@@ -241,8 +241,8 @@ class LspLoanApplicationApiControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(unmappedPayload)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("PRODUCT_NOT_MAPPED"))
                 .andExpect(jsonPath("$.message").value("Requested product is not mapped to the selected LSP."));
     }
 
@@ -703,8 +703,8 @@ class LspLoanApplicationApiControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "reasonCode", "REASON_B"
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALIDATION_NOT_ALLOWED"))
                 .andExpect(jsonPath("$.message").value(
                         "Loan applications that have entered servicing cannot be marked invalid."
                 ));
@@ -1004,8 +1004,8 @@ class LspLoanApplicationApiControllerTest {
 
         mockMvc.perform(get("/api/v1/lsp/loans/{loanId}", northLoanId)
                         .header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("NOT_FOUND"));
 
         mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/documents", northApplication.get("id").asText())
                         .header("Authorization", "Bearer " + accessToken)
@@ -1014,8 +1014,8 @@ class LspLoanApplicationApiControllerTest {
                                 "documentType", "PAN_CARD",
                                 "fileName", "blocked.pdf"
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("NOT_FOUND"));
     }
 
     @Test
@@ -1081,8 +1081,8 @@ class LspLoanApplicationApiControllerTest {
         // North's token cannot read Apex's documents.
         mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
                         .header("Authorization", "Bearer " + northAccessToken))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("NOT_FOUND"));
 
         // LSP_UI_READ on the owning tenant can read the documents.
         mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)

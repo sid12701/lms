@@ -171,11 +171,11 @@ class ReportAdminControllerDownloadAuditTest extends MinioTestSupport {
                         .with(systemAdmin())
                         .queryParam("disbursalDateFrom", "2026-04-10")
                         .queryParam("disbursalDateTo", "2026-04-01"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isUnprocessableEntity());
 
         mockMvc.perform(get("/api/v1/internal/reports/requests/{requestId}/download", UUID.randomUUID())
                         .with(systemAdmin()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
 
         assertEquals(before, reportAccessAuditRepository.count());
     }

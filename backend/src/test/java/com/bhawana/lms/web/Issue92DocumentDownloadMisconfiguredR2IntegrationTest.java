@@ -2,7 +2,7 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
-import com.bhawana.lms.service.LoanApplicationService;
+import com.bhawana.lms.service.LoanApplicationLifecycleService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -49,7 +49,7 @@ class Issue92DocumentDownloadMisconfiguredR2IntegrationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private LoanApplicationService loanApplicationService;
+    private LoanApplicationLifecycleService loanApplicationLifecycleService;
 
     @Autowired
     private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
@@ -83,7 +83,7 @@ class Issue92DocumentDownloadMisconfiguredR2IntegrationTest {
 
         transitionApplication(applicationId, "AWAITING_APPROVAL", "Ready for R2 misconfig test");
 
-        loanApplicationService.updateDocumentChecklistItem(
+        loanApplicationLifecycleService.updateDocumentChecklistItem(
                 applicationUuid,
                 LoanApplicationDocumentType.PAN_CARD,
                 "ops.user",

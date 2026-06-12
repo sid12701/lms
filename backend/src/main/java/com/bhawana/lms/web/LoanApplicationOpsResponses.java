@@ -11,7 +11,12 @@ import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
-import com.bhawana.lms.service.LoanApplicationService;
+import com.bhawana.lms.service.LoanApplicationDetailAssembler.LoanApplicationDetailView;
+import com.bhawana.lms.service.LoanApplicationLastActivity;
+import com.bhawana.lms.service.LoanDelinquencySummary;
+import com.bhawana.lms.service.LoanDelinquencySupport;
+import com.bhawana.lms.service.LoanRepaymentScheduleSummary;
+import java.time.LocalDate;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -61,14 +66,27 @@ public final class LoanApplicationOpsResponses {
     }
 
     public static LoanApplicationOpsController.LoanApplicationDetailResponse toDetailResponse(
+            LoanApplicationDetailView detail
+    ) {
+        return toDetailResponse(
+                detail.application(),
+                detail.lastActivity().orElse(null),
+                detail.loanAccount().orElse(null),
+                detail.repaymentScheduleSummary().orElse(null),
+                detail.delinquencySummary().orElse(null)
+        );
+    }
+
+    public static LoanApplicationOpsController.LoanApplicationDetailResponse toDetailResponse(
             LoanApplication application,
-            LoanApplicationService.LoanApplicationLastActivity lastActivity,
+            LoanApplicationLastActivity lastActivity,
             LoanAccount loanAccount,
-            LoanApplicationService.LoanRepaymentScheduleSummary repaymentScheduleSummary,
-            LoanApplicationService.LoanDelinquencySummary delinquencySummary
+            LoanRepaymentScheduleSummary repaymentScheduleSummary,
+            LoanDelinquencySummary delinquencySummary
     ) {
         return new LoanApplicationOpsController.LoanApplicationDetailResponse(
                 application.getId().toString(),
+                loanAccount == null ? null : loanAccount.getId().toString(),
                 application.getBorrower().getId().toString(),
                 application.getBorrower().getFullName(),
                 application.getBorrower().getPan(),
@@ -193,11 +211,12 @@ public final class LoanApplicationOpsResponses {
     }
 
     public static LoanApplicationOpsController.LoanRepaymentScheduleInstallmentResponse toRepaymentScheduleInstallmentResponse(
-            LoanRepaymentScheduleInstallment installment
+            LoanRepaymentScheduleInstallment installment,
+            LocalDate businessDate
     ) {
-        int daysPastDue = LoanApplicationService.calculateDaysPastDue(
+        int daysPastDue = LoanDelinquencySupport.calculateDaysPastDue(
                 installment,
-                LoanApplicationService.currentBusinessDate()
+                businessDate
         );
         return new LoanApplicationOpsController.LoanRepaymentScheduleInstallmentResponse(
                 installment.getId().toString(),
@@ -215,7 +234,7 @@ public final class LoanApplicationOpsResponses {
                 installment.getPaidAmount(),
                 installment.getOutstandingAmount(),
                 daysPastDue,
-                LoanApplicationService.resolveDelinquencyBucket(daysPastDue).name(),
+                LoanDelinquencySupport.resolveDelinquencyBucket(daysPastDue).name(),
                 installment.getCreatedAt().toString()
         );
     }
@@ -310,8 +329,8 @@ public final class LoanApplicationOpsResponses {
 
     private static LoanApplicationOpsController.LoanAccountSummaryResponse toLoanAccountSummary(
             LoanAccount loanAccount,
-            LoanApplicationService.LoanRepaymentScheduleSummary repaymentScheduleSummary,
-            LoanApplicationService.LoanDelinquencySummary delinquencySummary
+            LoanRepaymentScheduleSummary repaymentScheduleSummary,
+            LoanDelinquencySummary delinquencySummary
     ) {
         if (loanAccount == null) {
             return null;
@@ -343,7 +362,7 @@ public final class LoanApplicationOpsResponses {
     }
 
     private static LoanApplicationOpsController.LoanApplicationLastActivityResponse toLastActivityResponse(
-            LoanApplicationService.LoanApplicationLastActivity lastActivity
+            LoanApplicationLastActivity lastActivity
     ) {
         if (lastActivity == null) {
             return null;

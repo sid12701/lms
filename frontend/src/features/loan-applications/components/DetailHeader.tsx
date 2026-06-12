@@ -88,10 +88,13 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
     idempotencyKey: string;
   }) => {
     try {
-      // Disbursement initiation uses a dedicated backend endpoint that
-      // schedules the bank-confirm callback (DISBURSEMENT_IN_PROGRESS →
-      // DISBURSED) the generic transition endpoint does not.
-      if (action.toStatus === "DISBURSEMENT_IN_PROGRESS") {
+      // Disbursement uses a dedicated backend endpoint; generic transitions
+      // cannot move APPROVED_PENDING_DISBURSAL / DISBURSEMENT_RETRY → DISBURSED.
+      if (
+        action.toStatus === "DISBURSED" &&
+        (detail.application.status === "APPROVED_PENDING_DISBURSAL" ||
+          detail.application.status === "DISBURSEMENT_RETRY")
+      ) {
         await disbursementMutation.mutateAsync({ note: reason, idempotencyKey });
       } else {
         await mutation.mutateAsync({

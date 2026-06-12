@@ -125,7 +125,7 @@ describe("LoanApplicationsFilterBar", () => {
     renderBar();
     const statusTrigger = screen.getByRole("button", { name: /All statuses/i });
     await user.click(statusTrigger);
-    const opt = await screen.findByRole("option", { name: /Initiated/i });
+    const opt = await screen.findByRole("option", { name: /Initialized/i });
     expect(opt).toBeInTheDocument();
   }, 15000);
 
@@ -140,7 +140,7 @@ describe("LoanApplicationsFilterBar", () => {
     vi.useRealTimers();
     const user = userEvent.setup();
     const { latestSearch } = renderBar({
-      initialPath: "/loan-applications?q=demo&status=INITIATED",
+      initialPath: "/loan-applications?q=demo&status=INITIALIZED",
     });
     expect(latestSearch()).toContain("q=demo");
     const clear = screen.getByRole("button", { name: /Clear all filters/i });

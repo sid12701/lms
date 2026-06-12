@@ -1,15 +1,20 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.util.Strings;
+import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import com.bhawana.lms.common.web.PagedResult;
 import com.bhawana.lms.common.web.PaginationResponseBuilder;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.repo.LoanApplicationReadRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,9 +27,42 @@ public class LoanApplicationQueryService {
     private static final Logger log = LoggerFactory.getLogger(LoanApplicationQueryService.class);
 
     private final LoanApplicationReadRepository loanApplicationReadRepository;
+    private final LoanApplicationRepository loanApplicationRepository;
 
-    public LoanApplicationQueryService(LoanApplicationReadRepository loanApplicationReadRepository) {
+    public LoanApplicationQueryService(
+            LoanApplicationReadRepository loanApplicationReadRepository,
+            LoanApplicationRepository loanApplicationRepository
+    ) {
         this.loanApplicationReadRepository = loanApplicationReadRepository;
+        this.loanApplicationRepository = loanApplicationRepository;
+    }
+
+    @Transactional(readOnly = true)
+    public LoanApplication getApplication(UUID applicationId) {
+        return loanApplicationRepository.findDetailedById(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
+    }
+
+    @Transactional(readOnly = true)
+    public LoanApplication getApplicationForLsp(UUID lspId, UUID applicationId) {
+        LoanApplication application = loanApplicationRepository.findDetailedById(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
+        if (!application.getLsp().getId().equals(lspId)) {
+            throw new ResourceNotFoundException("Unknown loan application id: " + applicationId);
+        }
+        return application;
+    }
+
+    @Transactional(readOnly = true)
+    public LoanApplication getApplicationForLspByExternalLoanId(UUID lspId, String externalLoanId) {
+        String normalizedExternalLoanId = Strings.normalizeOptional(externalLoanId);
+        if (normalizedExternalLoanId == null) {
+            throw new IllegalArgumentException("externalLoanId is required.");
+        }
+        return loanApplicationRepository.findDetailedByLsp_IdAndExternalLoanIdIgnoreCase(lspId, normalizedExternalLoanId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unknown external loan id for the authenticated LSP: " + normalizedExternalLoanId
+                ));
     }
 
     @Transactional(readOnly = true)
@@ -98,7 +136,7 @@ public class LoanApplicationQueryService {
                 lspId,
                 productId,
                 normalizedStatus,
-                normalizeOptional(sourceChannel),
+                Strings.normalizeOptional(sourceChannel),
                 normalizedQuery,
                 parseApplicationId(normalizedQuery),
                 normalizedLspLoanId,
@@ -115,7 +153,7 @@ public class LoanApplicationQueryService {
                 lspId,
                 productId,
                 normalizedStatus,
-                normalizeOptional(sourceChannel),
+                Strings.normalizeOptional(sourceChannel),
                 normalizedQuery != null,
                 normalizedLspLoanId != null,
                 normalizedBhawLoanId != null,
@@ -197,7 +235,7 @@ public class LoanApplicationQueryService {
     }
 
     private static LoanApplicationStatus resolveStatus(String status) {
-        String normalizedStatus = normalizeOptional(status);
+        String normalizedStatus = Strings.normalizeOptional(status);
         if (normalizedStatus == null) {
             return null;
         }
@@ -208,17 +246,8 @@ public class LoanApplicationQueryService {
         }
     }
 
-    private static String normalizeOptional(String value) {
-        if (value == null) {
-            return null;
-        }
-
-        String normalized = value.trim();
-        return normalized.isBlank() ? null : normalized;
-    }
-
     private static String normalizeQuery(String query) {
-        String normalized = normalizeOptional(query);
+        String normalized = Strings.normalizeOptional(query);
         return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);
     }
 
@@ -235,7 +264,11 @@ public class LoanApplicationQueryService {
 
     private static void validateDateRange(LocalDate from, LocalDate to) {
         if (from != null && to != null && from.isAfter(to)) {
-            throw new IllegalArgumentException("disbursalDateFrom cannot be after disbursalDateTo.");
+            throw new BusinessRuleViolationException(
+                    "INVALID_DISBURSAL_DATE_RANGE",
+                    "disbursalDateFrom cannot be after disbursalDateTo.",
+                    Map.of("disbursalDateFrom", "cannot be after disbursalDateTo")
+            );
         }
     }
 

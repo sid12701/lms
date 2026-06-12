@@ -2,7 +2,14 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanApplication;
-import com.bhawana.lms.service.LoanApplicationService;
+import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
+import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
+import com.bhawana.lms.service.LoanApplicationDetailAssembler.LoanApplicationDetailView;
+import com.bhawana.lms.service.LoanApplicationLastActivity;
+import com.bhawana.lms.service.LoanDelinquencySummary;
+import com.bhawana.lms.service.LoanDelinquencySupport;
+import com.bhawana.lms.service.LoanRepaymentScheduleSummary;
+import java.time.LocalDate;
 import java.util.UUID;
 
 public final class LspLoanApplicationResponses {
@@ -11,9 +18,9 @@ public final class LspLoanApplicationResponses {
     }
 
     public static LspLoanApplicationApiController.LspLoanApplicationDetailResponse toDetailResponse(
-            LoanApplication application,
-            LoanApplicationService loanApplicationService
+            LoanApplicationDetailView detail
     ) {
+        LoanApplication application = detail.application();
         UUID applicationId = application.getId();
         return new LspLoanApplicationApiController.LspLoanApplicationDetailResponse(
                 application.getId().toString(),
@@ -66,11 +73,11 @@ public final class LspLoanApplicationResponses {
                 application.getCreatedAt().toString(),
                 application.getUpdatedAt().toString(),
                 toLoanAccountSummary(
-                        loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                        loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                        loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
+                        detail.loanAccount().orElse(null),
+                        detail.repaymentScheduleSummary().orElse(null),
+                        detail.delinquencySummary().orElse(null)
                 ),
-                loanApplicationService.getLatestActivity(applicationId)
+                detail.lastActivity()
                         .map(LspLoanApplicationResponses::toLastActivityResponse)
                         .orElse(null)
         );
@@ -127,8 +134,8 @@ public final class LspLoanApplicationResponses {
 
     private static LspLoanApplicationApiController.LspLoanAccountSummaryResponse toLoanAccountSummary(
             LoanAccount loanAccount,
-            LoanApplicationService.LoanRepaymentScheduleSummary repaymentScheduleSummary,
-            LoanApplicationService.LoanDelinquencySummary delinquencySummary
+            LoanRepaymentScheduleSummary repaymentScheduleSummary,
+            LoanDelinquencySummary delinquencySummary
     ) {
         if (loanAccount == null) {
             return null;
@@ -160,7 +167,7 @@ public final class LspLoanApplicationResponses {
     }
 
     private static LspLoanApplicationApiController.LoanApplicationLastActivityResponse toLastActivityResponse(
-            LoanApplicationService.LoanApplicationLastActivity activity
+            LoanApplicationLastActivity activity
     ) {
         return new LspLoanApplicationApiController.LoanApplicationLastActivityResponse(
                 activity.activityType(),
@@ -169,6 +176,60 @@ public final class LspLoanApplicationResponses {
                 activity.detail(),
                 activity.correlationId(),
                 activity.occurredAt().toString()
+        );
+    }
+
+    public static LspLoanApplicationApiController.LspDocumentChecklistDetailResponse toDocumentChecklistDetailResponse(
+            LoanApplicationDocumentChecklist checklistItem
+    ) {
+        return new LspLoanApplicationApiController.LspDocumentChecklistDetailResponse(
+                checklistItem.getId().toString(),
+                checklistItem.getLoanApplication().getId().toString(),
+                checklistItem.getDocumentType().name(),
+                checklistItem.getDocumentType().getDisplayName(),
+                checklistItem.isRequired(),
+                checklistItem.getStatus().name(),
+                checklistItem.getNote(),
+                checklistItem.getFileName(),
+                checklistItem.getFileReference(),
+                checklistItem.getContentType(),
+                checklistItem.getSourceReference(),
+                checklistItem.isLmsManagedContent(),
+                checklistItem.getFileSizeBytes(),
+                checklistItem.getUploadedAt(),
+                checklistItem.getUploadedByUsername(),
+                checklistItem.getUpdatedByUsername(),
+                checklistItem.getCreatedAt().toString(),
+                checklistItem.getUpdatedAt().toString()
+        );
+    }
+
+    public static LspLoanApplicationApiController.LspRepaymentScheduleInstallmentResponse toRepaymentScheduleInstallmentResponse(
+            LoanRepaymentScheduleInstallment installment,
+            LocalDate businessDate
+    ) {
+        int daysPastDue = LoanDelinquencySupport.calculateDaysPastDue(
+                installment,
+                businessDate
+        );
+        return new LspLoanApplicationApiController.LspRepaymentScheduleInstallmentResponse(
+                installment.getId().toString(),
+                installment.getLoanAccount().getId().toString(),
+                installment.getInstallmentNumber(),
+                installment.getDueDate(),
+                installment.getOpeningPrincipal(),
+                installment.getPrincipalDue(),
+                installment.getInterestDue(),
+                installment.getInstallmentAmount(),
+                installment.getClosingPrincipal(),
+                installment.getStatus().name(),
+                installment.getPaidPrincipal(),
+                installment.getPaidInterest(),
+                installment.getPaidAmount(),
+                installment.getOutstandingAmount(),
+                daysPastDue,
+                LoanDelinquencySupport.resolveDelinquencyBucket(daysPastDue).name(),
+                installment.getCreatedAt().toString()
         );
     }
 

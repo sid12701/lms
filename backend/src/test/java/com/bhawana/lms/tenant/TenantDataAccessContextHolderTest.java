@@ -52,4 +52,33 @@ class TenantDataAccessContextHolderTest {
         assertEquals(TenantDataAccessMode.TENANT, TenantDataAccessContextHolder.getMode());
         assertEquals(lspId, TenantDataAccessContextHolder.getCurrentLspId());
     }
+
+    @Test
+    void runAsAdminRestoresPriorScopeAfterSuccessfulSupplier() {
+        UUID lspId = UUID.randomUUID();
+        TenantDataAccessContextHolder.useTenant(lspId);
+
+        String result = TenantDataAccessContextHolder.runAsAdmin(() -> {
+            assertEquals(TenantDataAccessMode.ADMIN, TenantDataAccessContextHolder.getMode());
+            return "done";
+        });
+
+        assertEquals("done", result);
+        assertEquals(TenantDataAccessMode.TENANT, TenantDataAccessContextHolder.getMode());
+        assertEquals(lspId, TenantDataAccessContextHolder.getCurrentLspId());
+    }
+
+    @Test
+    void runAsAdminRestoresPriorScopeWhenSupplierThrows() {
+        UUID lspId = UUID.randomUUID();
+        TenantDataAccessContextHolder.useTenant(lspId);
+
+        assertThrows(IllegalStateException.class, () -> TenantDataAccessContextHolder.runAsAdmin(() -> {
+            assertEquals(TenantDataAccessMode.ADMIN, TenantDataAccessContextHolder.getMode());
+            throw new IllegalStateException("borrower dedupe failed");
+        }));
+
+        assertEquals(TenantDataAccessMode.TENANT, TenantDataAccessContextHolder.getMode());
+        assertEquals(lspId, TenantDataAccessContextHolder.getCurrentLspId());
+    }
 }

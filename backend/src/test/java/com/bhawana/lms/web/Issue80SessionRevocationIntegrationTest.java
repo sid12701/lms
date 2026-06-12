@@ -201,12 +201,12 @@ class Issue80SessionRevocationIntegrationTest {
     }
 
     @Test
-    void revokeSessionsForUnknownUserReturnsBadRequest() throws Exception {
+    void revokeSessionsForUnknownUserReturnsNotFound() throws Exception {
         UUID unknownUserId = UUID.fromString("00000000-0000-0000-0000-000000000099");
 
         mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/revoke-sessions", unknownUserId)
                         .with(systemAdmin()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
     }
 
     @Test

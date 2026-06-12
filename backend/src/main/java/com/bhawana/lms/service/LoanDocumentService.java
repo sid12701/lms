@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import com.bhawana.lms.common.web.DocumentNotFoundException;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
@@ -8,7 +9,9 @@ import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
@@ -20,27 +23,77 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class LoanDocumentService {
 
-    private final LoanApplicationService loanApplicationService;
+    private final LoanApplicationQueryService loanApplicationQueryService;
+    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     private final LoanDocumentStorageService loanDocumentStorageService;
     private final LoanAutoApprovalGateService loanAutoApprovalGateService;
 
     public LoanDocumentService(
-            LoanApplicationService loanApplicationService,
+            LoanApplicationQueryService loanApplicationQueryService,
+            LoanApplicationLifecycleService loanApplicationLifecycleService,
             LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
             LoanDocumentStorageService loanDocumentStorageService,
             LoanAutoApprovalGateService loanAutoApprovalGateService
     ) {
-        this.loanApplicationService = loanApplicationService;
+        this.loanApplicationQueryService = loanApplicationQueryService;
+        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
         this.loanDocumentStorageService = loanDocumentStorageService;
         this.loanAutoApprovalGateService = loanAutoApprovalGateService;
     }
 
     @Transactional(readOnly = true)
+    public List<LoanApplicationDocumentChecklist> listSubmittedDocumentsForLsp(UUID lspId, UUID applicationId) {
+        loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
+        return loanApplicationDocumentChecklistRepository
+                .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
+                .stream()
+                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.PENDING
+                        && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
+                .toList();
+    }
+
+    @Transactional
+    public LoanApplicationDocumentChecklist submitDocumentMetadataForLsp(
+            UUID lspId,
+            UUID applicationId,
+            LoanApplicationDocumentType documentType,
+            String actorUsername,
+            String note,
+            String fileName,
+            String fileReference,
+            String sourceReference,
+            String contentType
+    ) {
+        loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
+        DocumentChecklistUpdateResult outcome = loanApplicationLifecycleService.updateDocumentChecklistItem(
+                applicationId,
+                documentType,
+                actorUsername,
+                LoanApplicationDocumentChecklistStatus.SUBMITTED,
+                note,
+                fileName,
+                fileReference,
+                sourceReference,
+                contentType,
+                null,
+                null,
+                null,
+                false
+        );
+        loanAutoApprovalGateService.maybeTriggerAutoApproval(
+                applicationId,
+                actorUsername,
+                outcome.allRequiredDocumentsJustCompleted()
+        );
+        return outcome.checklistItem();
+    }
+
+    @Transactional(readOnly = true)
     public RetrievedDocumentContent retrieveDocumentContent(UUID applicationId, LoanApplicationDocumentType documentType) {
         LoanApplicationDocumentChecklist checklistItem =
-                loanApplicationService.getDocumentChecklistItem(applicationId, documentType);
+                getDocumentChecklistItem(applicationId, documentType);
         if (!checklistItem.isLmsManagedContent() || checklistItem.getStorageKey() == null) {
             throw new DocumentNotFoundException(
                     "Document content is not LMS-managed or has no storage key: " + documentType.name()
@@ -58,7 +111,7 @@ public class LoanDocumentService {
     }
 
     public ZipBuildResult buildDocumentZip(UUID applicationId) {
-        loanApplicationService.getApplication(applicationId);
+        loanApplicationQueryService.getApplication(applicationId);
         List<LoanApplicationDocumentChecklist> downloadableDocuments = loanApplicationDocumentChecklistRepository
                 .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
                 .stream()
@@ -141,7 +194,7 @@ public class LoanDocumentService {
             String actorUsername,
             List<BatchDocumentUpload> documents
     ) {
-        boolean wasComplete = loanApplicationService.hasAllRequiredDocumentsUploaded(applicationId);
+        boolean wasComplete = loanApplicationLifecycleService.hasAllRequiredDocumentsUploaded(applicationId);
         List<LoanApplicationDocumentChecklist> uploaded = persistStoredDocumentsForLsp(
                 lspId,
                 applicationId,
@@ -151,7 +204,7 @@ public class LoanDocumentService {
         loanAutoApprovalGateService.maybeTriggerAutoApproval(
                 applicationId,
                 actorUsername,
-                !wasComplete && loanApplicationService.hasAllRequiredDocumentsUploaded(applicationId)
+                !wasComplete && loanApplicationLifecycleService.hasAllRequiredDocumentsUploaded(applicationId)
         );
         return uploaded;
     }
@@ -166,9 +219,9 @@ public class LoanDocumentService {
             String sourceReference,
             MultipartFile file
     ) {
-        loanApplicationService.getApplicationForLsp(lspId, applicationId);
+        loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
         StoredDocument storedDocument = loanDocumentStorageService.store(applicationId, documentType, file);
-        return loanApplicationService.updateDocumentChecklistItem(
+        return loanApplicationLifecycleService.updateDocumentChecklistItem(
                 applicationId,
                 documentType,
                 actorUsername,
@@ -192,7 +245,7 @@ public class LoanDocumentService {
             String actorUsername,
             List<BatchDocumentUpload> documents
     ) {
-        loanApplicationService.getApplicationForLsp(lspId, applicationId);
+        loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
         if (documents == null || documents.isEmpty()) {
             throw new IllegalArgumentException("At least one document upload is required.");
         }
@@ -201,8 +254,15 @@ public class LoanDocumentService {
         return documents.stream()
                 .map(document -> {
                     if (!seenDocumentTypes.add(document.documentType())) {
-                        throw new IllegalArgumentException(
+                        Map<String, String> fieldErrors = new LinkedHashMap<>();
+                        fieldErrors.put(
+                                "documentType",
                                 "Duplicate document type in batch upload: " + document.documentType().name()
+                        );
+                        throw new BusinessRuleViolationException(
+                                "DUPLICATE_DOCUMENT_TYPE",
+                                "Each document type may appear only once in a batch upload.",
+                                fieldErrors
                         );
                     }
                     return persistStoredDocumentForLsp(
@@ -224,5 +284,17 @@ public class LoanDocumentService {
             String sourceReference,
             MultipartFile file
     ) {
+    }
+
+    private LoanApplicationDocumentChecklist getDocumentChecklistItem(
+            UUID applicationId,
+            LoanApplicationDocumentType documentType
+    ) {
+        loanApplicationQueryService.getApplication(applicationId);
+        return loanApplicationDocumentChecklistRepository.findByLoanApplication_IdAndDocumentType(applicationId, documentType)
+                .orElseThrow(() -> new DocumentNotFoundException(
+                        "Document checklist item not found for type " + documentType.name()
+                                + " on application " + applicationId
+                ));
     }
 }

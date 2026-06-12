@@ -1,7 +1,12 @@
 import { STATUS_META, type Intent } from "@/lib/lifecycle";
-import type { LoanAccountStatus, LoanStatus } from "@/types";
+import {
+  isLoanApplicationStatus,
+  unknownLoanApplicationStatusLabel,
+  type LoanStatusOrUnknown,
+} from "@/lib/loan-application-status";
+import type { LoanAccountStatus } from "@/types";
 
-export type AnyStatus = LoanStatus | LoanAccountStatus;
+export type AnyStatus = LoanStatusOrUnknown | LoanAccountStatus;
 
 /** Gap #11 — delinquency aggregate for {@code UNDER_REPAYMENT} badge tone. */
 export type StatusBadgeDelinquency = {
@@ -26,7 +31,7 @@ const ACCOUNT_STATUS_META: Record<LoanAccountStatus, ResolvedStatusMeta> = {
  * success when on-track, danger when delinquency aggregates are present.
  */
 function getStatusBadgeTone(
-  status: LoanStatus,
+  status: LoanStatusOrUnknown,
   delinquency?: StatusBadgeDelinquency,
 ): "success" | "danger" | "neutral" {
   if (status === "UNDER_REPAYMENT") {
@@ -38,14 +43,10 @@ function getStatusBadgeTone(
     case "APPROVED_PENDING_DISBURSAL":
     case "DISBURSED":
     case "CLOSED":
-    case "FULLY_REPAID":
       return "success";
     case "REJECTED":
     case "INVALID":
-    case "INVALIDATED":
-    case "CANCELLED":
     case "DISBURSEMENT_RETRY":
-    case "DELINQUENT":
       return "danger";
     default:
       return "neutral";
@@ -56,13 +57,21 @@ function toneToIntent(tone: "success" | "danger" | "neutral"): Intent {
   return tone;
 }
 
+function isUnknownLoanStatus(status: string): status is `UNKNOWN:${string}` {
+  return status.startsWith("UNKNOWN:");
+}
+
 /** Lookup that succeeds for either enum. Always returns a non-empty meta. */
 export function resolveStatusMeta(
   status: AnyStatus,
   options?: { delinquency?: StatusBadgeDelinquency },
 ): ResolvedStatusMeta {
-  if (status in STATUS_META) {
-    const m = STATUS_META[status as LoanStatus];
+  if (isUnknownLoanStatus(status)) {
+    const raw = status.slice("UNKNOWN:".length);
+    return { label: unknownLoanApplicationStatusLabel(raw), intent: "neutral" };
+  }
+  if (isLoanApplicationStatus(status)) {
+    const m = STATUS_META[status];
     if (status === "UNDER_REPAYMENT") {
       const tone = getStatusBadgeTone(status, options?.delinquency);
       return { label: m.label, intent: toneToIntent(tone) };

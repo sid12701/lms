@@ -46,7 +46,7 @@ export interface DisbursementInitiateDialogProps {
 }
 
 /**
- * Confirmation dialog for the APPROVED_PENDING_DISBURSAL â†’ DISBURSEMENT_IN_PROGRESS
+ * Confirmation dialog for initiating disbursement from APPROVED_PENDING_DISBURSAL
  * transition. Mirrors the TransitionConfirmDialog UX but adds a read-only target
  * block so the operator visually verifies bank details before initiating.
  *
@@ -85,7 +85,7 @@ export function DisbursementInitiateDialog({
           icon={Banknote}
           iconClassName="text-foreground-muted"
           title="Initiate disbursement"
-          description="Confirm the disbursement target. The application will move to DISBURSEMENT_IN_PROGRESS and the change is recorded in the application audit log alongside your name and the time."
+          description="Confirm the disbursement target. A disbursement request is queued and the change is recorded in the application audit log alongside your name and the time."
         />
 
         <div

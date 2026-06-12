@@ -24,6 +24,22 @@ Rate limiting is **off** by default in `local` (`app.rate-limit.enabled=false`) 
 
 RabbitMQ and mail still default to localhost unless overridden in the root `.env`. PostgreSQL comes from `LMS_DB_URL`, `LMS_DB_USERNAME`, and `LMS_DB_PASSWORD` in the **repo-root** `.env`.
 
+### Supabase (remote PostgreSQL)
+
+Use the **Session pooler** connection string from the Supabase dashboard (Connect → JDBC / URI). Do **not** use the direct host `db.<project-ref>.supabase.co` on Windows unless IPv6 DNS works end-to-end — it is often IPv6-only and Java fails with `UnknownHostException`.
+
+```properties
+LMS_DB_URL=jdbc:postgresql://aws-1-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+LMS_DB_USERNAME=postgres.<project-ref>
+LMS_DB_PASSWORD=<database-password>
+```
+
+Port `5432` = session mode (required for Flyway). Port `6543` is transaction mode only.
+
+The tenant connection pool auto-detects `pooler.supabase.com` URLs: it authenticates with the pooler user above, then runs `SET ROLE` to `APP_TENANT_DATASOURCE_USERNAME` (default `lms_tenant_app`). On PostgreSQL 16+ that `SET ROLE` requires an explicit `WITH SET TRUE` membership grant; migration `V96` applies it automatically. Restart the backend after changing database settings.
+
+The session pooler caps clients at ~15. Both Hikari pools honor `spring.datasource.hikari.*` from `application-local.yml` (max 5 / min idle 2 each), keeping the combined maximum under the cap so Flyway and external scripts can still connect.
+
 Optional: copy `src/main/resources/application-local.yml.example` if you need to customize non-secret local settings.
 
 ## Bootstrap auth

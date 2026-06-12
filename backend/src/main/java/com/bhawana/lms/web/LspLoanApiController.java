@@ -1,8 +1,12 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanForeclosureQuote;
-import com.bhawana.lms.service.LoanApplicationService;
+import com.bhawana.lms.service.LoanApplicationDetailAssembler;
+import com.bhawana.lms.service.LoanForeclosureCommandService;
+import com.bhawana.lms.service.LoanRepaymentCommandService;
+import com.bhawana.lms.service.LoanServicingSupportService;
 import com.bhawana.lms.service.LspApiIdempotencyService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -25,15 +29,27 @@ public class LspLoanApiController {
 
     private static final String FORECLOSURE_EXECUTE_OPERATION_KEY = "FORECLOSURE_EXECUTE";
 
-    private final LoanApplicationService loanApplicationService;
+    private final LoanApplicationDetailAssembler loanApplicationDetailAssembler;
+    private final LoanServicingSupportService loanServicingSupportService;
+    private final LoanRepaymentCommandService loanRepaymentCommandService;
+    private final LoanForeclosureCommandService loanForeclosureCommandService;
     private final LspApiIdempotencyService lspApiIdempotencyService;
+    private final BusinessCalendar businessCalendar;
 
     public LspLoanApiController(
-            LoanApplicationService loanApplicationService,
-            LspApiIdempotencyService lspApiIdempotencyService
+            LoanApplicationDetailAssembler loanApplicationDetailAssembler,
+            LoanServicingSupportService loanServicingSupportService,
+            LoanRepaymentCommandService loanRepaymentCommandService,
+            LoanForeclosureCommandService loanForeclosureCommandService,
+            LspApiIdempotencyService lspApiIdempotencyService,
+            BusinessCalendar businessCalendar
     ) {
-        this.loanApplicationService = loanApplicationService;
+        this.loanApplicationDetailAssembler = loanApplicationDetailAssembler;
+        this.loanServicingSupportService = loanServicingSupportService;
+        this.loanRepaymentCommandService = loanRepaymentCommandService;
+        this.loanForeclosureCommandService = loanForeclosureCommandService;
         this.lspApiIdempotencyService = lspApiIdempotencyService;
+        this.businessCalendar = businessCalendar;
     }
 
     @GetMapping("/{loanId}")
@@ -42,24 +58,30 @@ public class LspLoanApiController {
             Authentication authentication,
             @PathVariable UUID loanId
     ) {
-        LoanAccount loanAccount = loanApplicationService.getLoanAccountForLsp(
+        LoanAccount loanAccount = loanServicingSupportService.getLoanAccountForLsp(
                 LspAuthenticationSupport.authenticatedLspId(authentication),
                 loanId
         );
-        return LspLoanApplicationResponses.toDetailResponse(loanAccount.getLoanApplication(), loanApplicationService);
+        return LspLoanApplicationResponses.toDetailResponse(
+                loanApplicationDetailAssembler.getDetail(loanAccount.getLoanApplication().getId())
+        );
     }
 
     @GetMapping("/{loanId}/repayment-schedule")
     @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_READ','LSP_UI_WRITE')")
-    public List<LoanApplicationOpsController.LoanRepaymentScheduleInstallmentResponse> listRepaymentSchedule(
+    public List<LspLoanApplicationApiController.LspRepaymentScheduleInstallmentResponse> listRepaymentSchedule(
             Authentication authentication,
             @PathVariable UUID loanId
     ) {
-        return loanApplicationService.listRepaymentScheduleForLsp(
+        LocalDate businessDate = businessCalendar.today();
+        return loanServicingSupportService.listRepaymentScheduleForLsp(
                         LspAuthenticationSupport.authenticatedLspId(authentication),
                         loanId
                 ).stream()
-                .map(LoanApplicationOpsResponses::toRepaymentScheduleInstallmentResponse)
+                .map(installment -> LspLoanApplicationResponses.toRepaymentScheduleInstallmentResponse(
+                        installment,
+                        businessDate
+                ))
                 .toList();
     }
 
@@ -69,7 +91,7 @@ public class LspLoanApiController {
             Authentication authentication,
             @PathVariable UUID loanId
     ) {
-        return loanApplicationService.listPaymentTransactionsForLsp(
+        return loanServicingSupportService.listPaymentTransactionsForLsp(
                         LspAuthenticationSupport.authenticatedLspId(authentication),
                         loanId
                 ).stream()
@@ -82,23 +104,25 @@ public class LspLoanApiController {
     public LoanApplicationOpsController.LoanPaymentTransactionResponse recordPayment(
             Authentication authentication,
             @PathVariable UUID loanId,
-            @RequestHeader(name = "Idempotency-Key") String idempotencyKey,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody LoanApplicationOpsController.LoanPaymentTransactionRequest request
     ) {
-        LoanAccount loanAccount = loanApplicationService.getLoanAccountForLsp(
+        LoanAccount loanAccount = loanServicingSupportService.getLoanAccountForLsp(
                 LspAuthenticationSupport.authenticatedLspId(authentication),
                 loanId
         );
-        return LoanApplicationOpsResponses.toPaymentTransactionResponse(loanApplicationService.recordPaymentTransaction(
-                loanAccount.getLoanApplication().getId(),
-                authentication.getName(),
-                idempotencyKey,
-                request.targetInstallmentId(),
-                request.amount(),
-                request.postedAt(),
-                request.reference(),
-                request.channel()
-        ));
+        return LoanApplicationOpsResponses.toPaymentTransactionResponse(
+                loanRepaymentCommandService.recordPaymentTransactionWithRecovery(
+                        loanAccount.getLoanApplication().getId(),
+                        authentication.getName(),
+                        idempotencyKey,
+                        request.targetInstallmentId(),
+                        request.amount(),
+                        request.postedAt(),
+                        request.reference(),
+                        request.channel()
+                )
+        );
     }
 
     @PostMapping("/{loanId}/foreclosure-quote")
@@ -108,7 +132,7 @@ public class LspLoanApiController {
             @PathVariable UUID loanId,
             @Valid @RequestBody LspLoanForeclosureQuoteRequest request
     ) {
-        LoanForeclosureQuote quote = loanApplicationService.requestForeclosureQuoteForLsp(
+        LoanForeclosureQuote quote = loanForeclosureCommandService.requestForeclosureQuoteForLsp(
                 LspAuthenticationSupport.authenticatedLspId(authentication),
                 loanId,
                 authentication.getName(),
@@ -140,7 +164,7 @@ public class LspLoanApiController {
                 ),
                 LoanApplicationOpsController.LoanForeclosureQuoteResponse.class,
                 () -> LoanApplicationOpsResponses.toForeclosureQuoteResponse(
-                        loanApplicationService.executeForeclosureQuoteForLsp(
+                        loanForeclosureCommandService.executeForeclosureQuoteForLsp(
                                 lspId,
                                 loanId,
                                 quoteId,

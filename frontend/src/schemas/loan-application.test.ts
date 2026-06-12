@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { LOAN_APPLICATION_STATUSES } from "@/lib/loan-application-status";
 import {
   LoanApplication,
   LoanDocument,
@@ -21,7 +22,7 @@ function validApplication() {
     productId: UUID,
     requestedAmount: 50_000,
     tenureMonths: 12,
-    status: "INITIATED" as const,
+    status: "INITIALIZED" as const,
     sourceChannel: "UI" as const,
     createdAt: NOW,
     updatedAt: NOW,
@@ -31,34 +32,16 @@ function validApplication() {
 }
 
 describe("LoanStatus enum", () => {
-  it("contains every plan §5.5 + UI pages.md status", () => {
-    for (const s of [
-      "INITIATED",
-      "KYC_PENDING",
-      "DOCS_PENDING",
-      "UNDER_REVIEW",
-      "AWAITING_APPROVAL",
-      "APPROVED",
-      "APPROVED_PENDING_DISBURSAL",
-      "REJECTED",
-      "DISBURSEMENT_IN_PROGRESS",
-      "DISBURSED",
-      "UNDER_REPAYMENT",
-      "PARTIALLY_PAID",
-      "DELINQUENT",
-      "FORECLOSURE_REQUESTED",
-      "FORECLOSURE_APPROVED",
-      "FORECLOSED",
-      "FULLY_REPAID",
-      "CLOSED",
-      "CANCELLED",
-      "INVALIDATED",
-    ]) {
+  it("contains the backend canonical 10 statuses", () => {
+    for (const s of LOAN_APPLICATION_STATUSES) {
       expect(LoanStatus.safeParse(s).success).toBe(true);
     }
+    expect(LoanStatus.options).toHaveLength(10);
   });
 
-  it("rejects unknown statuses", () => {
+  it("rejects legacy and unknown statuses", () => {
+    expect(LoanStatus.safeParse("INITIATED").success).toBe(false);
+    expect(LoanStatus.safeParse("KYC_PENDING").success).toBe(false);
     expect(LoanStatus.safeParse("PENDING").success).toBe(false);
     expect(LoanStatus.safeParse("").success).toBe(false);
   });

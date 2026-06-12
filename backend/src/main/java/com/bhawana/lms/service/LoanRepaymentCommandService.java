@@ -52,6 +52,41 @@ public class LoanRepaymentCommandService {
     }
 
     @Transactional
+    public LoanPaymentTransaction recordPaymentTransactionWithRecovery(
+            UUID applicationId,
+            String actorUsername,
+            String idempotencyKey,
+            UUID targetInstallmentId,
+            BigDecimal amount,
+            LocalDate postedAt,
+            String reference,
+            LoanPaymentChannel channel
+    ) {
+        try {
+            return recordPaymentTransaction(
+                    applicationId,
+                    actorUsername,
+                    idempotencyKey,
+                    targetInstallmentId,
+                    amount,
+                    postedAt,
+                    reference,
+                    channel
+            );
+        } catch (org.springframework.orm.ObjectOptimisticLockingFailureException exception) {
+            return recoverPaymentAfterConcurrentWrite(
+                    applicationId,
+                    idempotencyKey,
+                    targetInstallmentId,
+                    amount,
+                    postedAt,
+                    reference,
+                    channel
+            );
+        }
+    }
+
+    @Transactional
     public LoanPaymentTransaction recordPaymentTransaction(
             UUID applicationId,
             String actorUsername,
@@ -318,7 +353,7 @@ public class LoanRepaymentCommandService {
                 "LOAN_PAYMENT_TRANSACTION",
                 paymentTransaction.getId().toString(),
                 application.getId(),
-                loanApplicationLifecycleService.buildRepaymentPayload(application, loanAccount, paymentTransaction)
+                LoanWebhookPayloads.repayment(application, loanAccount, paymentTransaction)
         );
     }
 
@@ -337,7 +372,7 @@ public class LoanRepaymentCommandService {
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
                 application.getId(),
-                loanApplicationLifecycleService.buildLoanFullyRepaidPayload(application, loanAccount)
+                LoanWebhookPayloads.loanFullyRepaid(application, loanAccount)
         );
     }
 }

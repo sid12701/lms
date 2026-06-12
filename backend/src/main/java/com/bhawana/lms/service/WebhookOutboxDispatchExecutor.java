@@ -15,7 +15,6 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,20 +32,20 @@ public class WebhookOutboxDispatchExecutor {
     private final WebhookEventOutboxRepository webhookEventOutboxRepository;
     private final WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
     private final WebhookDeliveryClient webhookDeliveryClient;
-    private final AlertRuleEvaluationService alertRuleEvaluationService;
+    private final OpsAlertEmitters opsAlertEmitters;
     private final WebhookOutboxProperties webhookOutboxProperties;
 
     public WebhookOutboxDispatchExecutor(
             WebhookEventOutboxRepository webhookEventOutboxRepository,
             WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
             WebhookDeliveryClient webhookDeliveryClient,
-            @Lazy AlertRuleEvaluationService alertRuleEvaluationService,
+            OpsAlertEmitters opsAlertEmitters,
             WebhookOutboxProperties webhookOutboxProperties
     ) {
         this.webhookEventOutboxRepository = webhookEventOutboxRepository;
         this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
         this.webhookDeliveryClient = webhookDeliveryClient;
-        this.alertRuleEvaluationService = alertRuleEvaluationService;
+        this.opsAlertEmitters = opsAlertEmitters;
         this.webhookOutboxProperties = webhookOutboxProperties;
     }
 
@@ -145,7 +144,7 @@ public class WebhookOutboxDispatchExecutor {
 
             event.markPermanentFailure(attemptedAt, errorMessage);
             webhookEventOutboxRepository.save(event);
-            alertRuleEvaluationService.emitWebhookDeadLetter(event, errorMessage);
+            opsAlertEmitters.emitWebhookDeadLetter(event, errorMessage);
             log.info(
                     "webhook_outbox_event_processed eventId={} lspId={} eventType={} aggregateType={} aggregateId={} correlationId={} outcome={} attemptNumber={} httpStatus={}",
                     event.getId(),

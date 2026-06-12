@@ -40,7 +40,7 @@ export function BlockingIssuesPanel({ detail, borrowerDetail }: BlockingIssuesPa
   if (status === "REJECTED") {
     return <RejectedCard detail={detail} />;
   }
-  if (status === "INVALID" || status === "INVALIDATED") {
+  if (status === "INVALID") {
     return <InvalidatedCard detail={detail} />;
   }
   return null;

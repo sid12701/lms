@@ -9,44 +9,11 @@
  * Document schema gates BR-2 (required-for-approval) and BR-3
  * (required-for-disbursement) flags.
  */
+import { LOAN_APPLICATION_STATUSES } from "@/lib/loan-application-status";
 import { z } from "zod";
 import { Iso8601, MoneyINRPositive, Uuid } from "./common";
 
-// Gap #11 — backend's 10-status state machine surfaces directly. Legacy
-// frontend-only values (INITIATED, INVALIDATED, UNDER_REVIEW, KYC_PENDING,
-// DOCS_PENDING, DISBURSEMENT_IN_PROGRESS, PARTIALLY_PAID, DELINQUENT,
-// FORECLOSURE_REQUESTED, FORECLOSURE_APPROVED, FULLY_REPAID, CANCELLED,
-// APPROVED) are kept inside the zod union for legacy-detail-page
-// compatibility and are eventually folded back through the API adapter
-// (`mapBackendStatus` / `mapFrontendStatusToBackend`).
-export const LoanStatus = z.enum([
-  // Backend canonical state machine (Gap #11).
-  "INITIALIZED",
-  "AWAITING_APPROVAL",
-  "APPROVED_PENDING_DISBURSAL",
-  "REJECTED",
-  "DISBURSEMENT_RETRY",
-  "INVALID",
-  "DISBURSED",
-  "UNDER_REPAYMENT",
-  "CLOSED",
-  "FORECLOSED",
-  // Legacy frontend-only values — folded to the canonical statuses above
-  // inside `mapBackendStatus` / `mapFrontendStatusToBackend`.
-  "INITIATED",
-  "KYC_PENDING",
-  "DOCS_PENDING",
-  "UNDER_REVIEW",
-  "APPROVED",
-  "DISBURSEMENT_IN_PROGRESS",
-  "PARTIALLY_PAID",
-  "DELINQUENT",
-  "FORECLOSURE_REQUESTED",
-  "FORECLOSURE_APPROVED",
-  "FULLY_REPAID",
-  "CANCELLED",
-  "INVALIDATED",
-]);
+export const LoanStatus = z.enum(LOAN_APPLICATION_STATUSES);
 export type LoanStatus = z.infer<typeof LoanStatus>;
 
 export const SourceChannel = z.enum(["UI", "API", "WEBHOOK"]);

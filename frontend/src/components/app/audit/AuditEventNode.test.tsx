@@ -24,7 +24,7 @@ function renderNode(entry: Parameters<typeof AuditEventNode>[0]["entry"], compac
 describe("AuditEventNode", () => {
   it("renders an APPLICATION row with the from→to transition", () => {
     const { getByText, container } = renderNode(FIXTURE_APPLICATION);
-    expect(getByText("UNDER_REVIEW → APPROVED")).toBeInTheDocument();
+    expect(getByText("AWAITING_APPROVAL → APPROVED_PENDING_DISBURSAL")).toBeInTheDocument();
     expect(getByText("approve")).toBeInTheDocument();
     expect(container.querySelector('[data-kind="APPLICATION"]')).toBeInTheDocument();
   });

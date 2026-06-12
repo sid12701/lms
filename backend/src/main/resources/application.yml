@@ -6,6 +6,13 @@ spring:
     name: lms-backend
   profiles:
     default: local
+  servlet:
+    multipart:
+      # Above DocumentUploadPolicy's 10MB cap so oversized files reach the
+      # policy and fail with 422 DOCUMENT_FILE_TOO_LARGE; anything beyond
+      # these limits gets 413 from MaxUploadSizeExceededException.
+      max-file-size: 12MB
+      max-request-size: 40MB
   flyway:
     placeholders:
       tenant_app_role: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}

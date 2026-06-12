@@ -9,10 +9,17 @@ import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.common.web.PaginationResponseBuilder;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.ClientIpAddresses;
+import com.bhawana.lms.config.BusinessCalendar;
+import com.bhawana.lms.service.LoanApplicationDetailAssembler;
+import com.bhawana.lms.service.LoanApplicationLifecycleService;
 import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
-import com.bhawana.lms.service.LoanApplicationService;
+import com.bhawana.lms.service.LoanApplicationQueryService;
+import com.bhawana.lms.service.LoanApplicationServicingReadService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
+import com.bhawana.lms.service.LoanRepaymentCommandService;
 import com.bhawana.lms.service.LoanApplicationWebhookEventProjection;
 import com.bhawana.lms.service.LoanDocumentService;
+import com.bhawana.lms.service.LoanForeclosureCommandService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -31,9 +38,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -51,10 +56,33 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/internal/ops/loan-applications")
 @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','OPS_USER')")
 public class LoanApplicationOpsController {
-    private final LoanApplicationService loanApplicationService;
+    private final LoanApplicationQueryService loanApplicationQueryService;
+    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
+    private final LoanForeclosureCommandService loanForeclosureCommandService;
+    private final LoanApplicationServicingReadService loanApplicationServicingReadService;
+    private final LoanDisbursementCommandService loanDisbursementCommandService;
+    private final LoanRepaymentCommandService loanRepaymentCommandService;
+    private final LoanApplicationDetailAssembler loanApplicationDetailAssembler;
+    private final BusinessCalendar businessCalendar;
 
-    public LoanApplicationOpsController(LoanApplicationService loanApplicationService) {
-        this.loanApplicationService = loanApplicationService;
+    public LoanApplicationOpsController(
+            LoanApplicationQueryService loanApplicationQueryService,
+            LoanApplicationLifecycleService loanApplicationLifecycleService,
+            LoanForeclosureCommandService loanForeclosureCommandService,
+            LoanApplicationServicingReadService loanApplicationServicingReadService,
+            LoanDisbursementCommandService loanDisbursementCommandService,
+            LoanRepaymentCommandService loanRepaymentCommandService,
+            LoanApplicationDetailAssembler loanApplicationDetailAssembler,
+            BusinessCalendar businessCalendar
+    ) {
+        this.loanApplicationQueryService = loanApplicationQueryService;
+        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
+        this.loanForeclosureCommandService = loanForeclosureCommandService;
+        this.loanApplicationServicingReadService = loanApplicationServicingReadService;
+        this.loanDisbursementCommandService = loanDisbursementCommandService;
+        this.loanRepaymentCommandService = loanRepaymentCommandService;
+        this.loanApplicationDetailAssembler = loanApplicationDetailAssembler;
+        this.businessCalendar = businessCalendar;
     }
 
     @GetMapping
@@ -73,7 +101,7 @@ public class LoanApplicationOpsController {
             @RequestParam(required = false) String paginationDetails
     ) {
         boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
-        PagedResult<LoanApplication> applicationsPage = loanApplicationService.listApplicationsPage(
+        PagedResult<LoanApplication> applicationsPage = loanApplicationQueryService.listApplicationsPage(
                 lspId,
                 productId,
                 status,
@@ -87,7 +115,7 @@ public class LoanApplicationOpsController {
                 limit,
                 includePaginationDetails
         );
-        Map<UUID, String> accountNumbersByApplicationId = loanApplicationService
+        Map<UUID, String> accountNumbersByApplicationId = loanApplicationServicingReadService
                 .getLoanAccountNumbers(applicationsPage.items().stream().map(LoanApplication::getId).toList());
         PagedResult<LoanApplicationResponse> page = new PagedResult<>(
                 applicationsPage.items().stream()
@@ -105,14 +133,7 @@ public class LoanApplicationOpsController {
 
     @GetMapping("/{applicationId}")
     public LoanApplicationDetailResponse getApplication(@PathVariable UUID applicationId) {
-        LoanApplication application = loanApplicationService.getApplication(applicationId);
-        return LoanApplicationOpsResponses.toDetailResponse(
-                application,
-                loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
-        );
+        return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
     }
 
     @GetMapping("/{applicationId}/intake-audits")
@@ -120,56 +141,60 @@ public class LoanApplicationOpsController {
             Authentication authentication,
             @PathVariable UUID applicationId
     ) {
-        return loanApplicationService.listIntakeAudits(applicationId, authentication.getName()).stream()
+        return loanApplicationServicingReadService.listIntakeAudits(applicationId, authentication.getName()).stream()
                 .map(LoanApplicationOpsResponses::toAuditResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/status-transitions")
     public List<LoanApplicationStatusTransitionResponse> listStatusTransitions(@PathVariable UUID applicationId) {
-        return loanApplicationService.listStatusTransitions(applicationId).stream()
+        return loanApplicationServicingReadService.listStatusTransitions(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toTransitionResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/audit-events")
     public List<LoanApplicationAuditEventResponse> listAuditEvents(@PathVariable UUID applicationId) {
-        return loanApplicationService.listAuditEvents(applicationId).stream()
+        return loanApplicationServicingReadService.listAuditEvents(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toAuditEventResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/document-access-audits")
     public List<LoanApplicationDocumentAccessAuditResponse> listDocumentAccessAudits(@PathVariable UUID applicationId) {
-        return loanApplicationService.listDocumentAccessAudits(applicationId).stream()
+        return loanApplicationServicingReadService.listDocumentAccessAudits(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toDocumentAccessAuditResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/disbursement-requests")
     public List<LoanDisbursementRequestResponse> listDisbursementRequests(@PathVariable UUID applicationId) {
-        return loanApplicationService.listDisbursementRequests(applicationId).stream()
+        return loanApplicationServicingReadService.listDisbursementRequests(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toDisbursementRequestResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/repayment-schedule")
     public List<LoanRepaymentScheduleInstallmentResponse> listRepaymentSchedule(@PathVariable UUID applicationId) {
-        return loanApplicationService.listRepaymentSchedule(applicationId).stream()
-                .map(LoanApplicationOpsResponses::toRepaymentScheduleInstallmentResponse)
+        LocalDate businessDate = businessCalendar.today();
+        return loanApplicationServicingReadService.listRepaymentSchedule(applicationId).stream()
+                .map(installment -> LoanApplicationOpsResponses.toRepaymentScheduleInstallmentResponse(
+                        installment,
+                        businessDate
+                ))
                 .toList();
     }
 
     @GetMapping("/{applicationId}/payments")
     public List<LoanPaymentTransactionResponse> listPaymentTransactions(@PathVariable UUID applicationId) {
-        return loanApplicationService.listPaymentTransactions(applicationId).stream()
+        return loanApplicationServicingReadService.listPaymentTransactions(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toPaymentTransactionResponse)
                 .toList();
     }
 
     @GetMapping("/{applicationId}/webhook-events")
     public List<WebhookEventDeliveryResponse> listWebhookEvents(@PathVariable UUID applicationId) {
-        return loanApplicationService.listWebhookEventsForApplication(applicationId).stream()
+        return loanApplicationServicingReadService.listWebhookEventsForApplication(applicationId).stream()
                 .map(WebhookEventDeliveryResponse::from)
                 .toList();
     }
@@ -177,7 +202,7 @@ public class LoanApplicationOpsController {
     @GetMapping("/{applicationId}/foreclosure-quotes")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public List<LoanForeclosureQuoteResponse> listForeclosureQuotes(@PathVariable UUID applicationId) {
-        return loanApplicationService.listForeclosureQuotes(applicationId).stream()
+        return loanApplicationServicingReadService.listForeclosureQuotes(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toForeclosureQuoteResponse)
                 .toList();
     }
@@ -187,7 +212,7 @@ public class LoanApplicationOpsController {
             Authentication authentication,
             @PathVariable UUID applicationId
     ) {
-        return loanApplicationService.listDocumentChecklist(applicationId, authentication.getName()).stream()
+        return loanApplicationServicingReadService.listDocumentChecklist(applicationId, authentication.getName()).stream()
                 .map(LoanApplicationOpsResponses::toDocumentChecklistResponse)
                 .toList();
     }
@@ -198,7 +223,7 @@ public class LoanApplicationOpsController {
             HttpServletRequest request,
             @PathVariable UUID applicationId
     ) {
-        LoanDocumentService.ZipBuildResult zipResult = loanApplicationService.downloadDocumentZip(
+        LoanDocumentService.ZipBuildResult zipResult = loanApplicationServicingReadService.downloadDocumentZip(
                 applicationId,
                 authentication.getName(),
                 ClientIpAddresses.resolve(request),
@@ -219,7 +244,7 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @PathVariable LoanApplicationDocumentType documentType
     ) {
-        LoanDocumentService.RetrievedDocumentContent content = loanApplicationService.downloadDocumentContent(
+        LoanDocumentService.RetrievedDocumentContent content = loanApplicationServicingReadService.downloadDocumentContent(
                 applicationId,
                 documentType,
                 authentication.getName(),
@@ -238,7 +263,7 @@ public class LoanApplicationOpsController {
             Authentication authentication,
             @Valid @RequestBody LoanApplicationRequest request
     ) {
-        LoanApplication application = loanApplicationService.createApplication(
+        LoanApplication application = loanApplicationLifecycleService.createApplication(
                 authentication.getName(),
                 new LoanApplicationOnboardingCommand(
                         request.lspId(),
@@ -246,65 +271,30 @@ public class LoanApplicationOpsController {
                         null,
                         request.externalLoanId(),
                         request.sourceChannel(),
-                        request.borrowerFullName(),
-                        request.borrowerEmail(),
-                        request.borrowerMobile(),
-                        request.borrowerDateOfBirth(),
-                        null,
-                        null,
-                        null,
-                        null,
-                        request.borrowerPan(),
                         request.requestedAmount(),
                         null,
                         request.tenureMonths(),
-                        null,
-                        null,
-                        request.borrowerCity(),
-                        request.borrowerState(),
-                        null,
-                        null,
-                        request.borrowerEmploymentType(),
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        request.borrowerMonthlyIncome(),
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null
+                        BorrowerProfileMappers.fromOps(request)
                 )
         );
         return LoanApplicationOpsResponses.toResponse(application);
     }
 
     @PostMapping("/{applicationId}/status-transitions")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public LoanApplicationDetailResponse transitionStatus(
             Authentication authentication,
             @PathVariable UUID applicationId,
             @Valid @RequestBody LoanApplicationStatusTransitionRequest request
     ) {
-        LoanApplication currentApplication = loanApplicationService.getApplication(applicationId);
-        authorizeStatusTransition(extractRoles(authentication), currentApplication.getStatus(), request.targetStatus());
-        LoanApplication application = loanApplicationService.transitionStatus(
+        loanApplicationLifecycleService.transitionStatus(
                 applicationId,
                 authentication.getName(),
                 request.targetStatus(),
                 request.note(),
                 request.reasonCode()
         );
-        return LoanApplicationOpsResponses.toDetailResponse(
-                application,
-                loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
-        );
+        return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
     }
 
     @PostMapping("/{applicationId}/manual-status")
@@ -314,39 +304,14 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @Valid @RequestBody ManualStatusUpdateRequest request
     ) {
-        LoanApplication application = loanApplicationService.manuallyOverrideStatus(
+        loanApplicationLifecycleService.manuallyOverrideStatus(
                 applicationId,
                 authentication.getName(),
                 request.targetStatus(),
                 request.note(),
                 request.reasonCode()
         );
-        return LoanApplicationOpsResponses.toDetailResponse(
-                application,
-                loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
-        );
-    }
-
-    private static void authorizeStatusTransition(
-            List<String> actorRoles,
-            LoanApplicationStatus currentStatus,
-            LoanApplicationStatus targetStatus
-    ) {
-        if (actorRoles.contains("SYSTEM_ADMIN")) {
-            return;
-        }
-        throw new AccessDeniedException("Your role cannot perform this loan status transition.");
-    }
-
-    private static List<String> extractRoles(Authentication authentication) {
-        return authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .filter(authority -> !"ROLE_PASSWORD_CHANGE_REQUIRED".equals(authority))
-                .map(role -> role.startsWith("ROLE_") ? role.substring("ROLE_".length()) : role)
-                .toList();
+        return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
     }
 
     @PostMapping("/{applicationId}/disbursement-requests")
@@ -355,17 +320,11 @@ public class LoanApplicationOpsController {
             Authentication authentication,
             @PathVariable UUID applicationId
     ) {
-        LoanApplication application = loanApplicationService.initiateDisbursement(
+        loanDisbursementCommandService.initiateDisbursement(
                 applicationId,
                 authentication.getName()
         );
-        return LoanApplicationOpsResponses.toDetailResponse(
-                application,
-                loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
-        );
+        return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
     }
 
     @PostMapping("/{applicationId}/disbursement-requests/mock-outcome")
@@ -376,20 +335,14 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @Valid @RequestBody MockDisbursementOutcomeRequest request
     ) {
-        LoanApplication application = loanApplicationService.resolveMockDisbursementOutcome(
+        loanDisbursementCommandService.resolveMockDisbursementOutcome(
                 applicationId,
                 authentication.getName(),
                 ClientIpAddresses.resolve(httpRequest),
                 CorrelationIdHolder.get(),
                 request.outcome()
         );
-        return LoanApplicationOpsResponses.toDetailResponse(
-                application,
-                loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
-        );
+        return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
     }
 
     @PostMapping("/{applicationId}/payments")
@@ -397,10 +350,10 @@ public class LoanApplicationOpsController {
     public LoanPaymentTransactionResponse recordPaymentTransaction(
             Authentication authentication,
             @PathVariable UUID applicationId,
-            @org.springframework.web.bind.annotation.RequestHeader(name = "Idempotency-Key") String idempotencyKey,
+            @org.springframework.web.bind.annotation.RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody LoanPaymentTransactionRequest request
     ) {
-        return LoanApplicationOpsResponses.toPaymentTransactionResponse(loanApplicationService.recordPaymentTransaction(
+        return LoanApplicationOpsResponses.toPaymentTransactionResponse(loanRepaymentCommandService.recordPaymentTransactionWithRecovery(
                 applicationId,
                 authentication.getName(),
                 idempotencyKey,
@@ -419,7 +372,7 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @Valid @RequestBody LoanForeclosureQuoteRequest request
     ) {
-        return LoanApplicationOpsResponses.toForeclosureQuoteResponse(loanApplicationService.requestForeclosureQuote(
+        return LoanApplicationOpsResponses.toForeclosureQuoteResponse(loanForeclosureCommandService.requestForeclosureQuote(
                 applicationId,
                 authentication.getName(),
                 request.effectiveDate()
@@ -434,7 +387,7 @@ public class LoanApplicationOpsController {
             @PathVariable UUID quoteId,
             @Valid @RequestBody LoanForeclosureExecutionRequest request
     ) {
-        return LoanApplicationOpsResponses.toForeclosureQuoteResponse(loanApplicationService.executeForeclosureQuote(
+        return LoanApplicationOpsResponses.toForeclosureQuoteResponse(loanForeclosureCommandService.executeForeclosureQuote(
                 applicationId,
                 quoteId,
                 authentication.getName(),
@@ -493,6 +446,7 @@ public class LoanApplicationOpsController {
 
     public record LoanApplicationDetailResponse(
             String id,
+            String loanAccountId,
             String borrowerId,
             String borrowerFullName,
             String borrowerPan,

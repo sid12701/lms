@@ -3,7 +3,7 @@
  *
  * The *gate* (which transitions are allowed, by role + preconditions) lives
  * exclusively in `src/lib/lifecycle.ts` â€” `canTransition()` is the source of
- * truth and is byte-identical between the client and the backend.
+ * truth; backend `LoanApplicationStatusTransitioner` is authoritative.
  *
  * This file maps each (from, to) pair onto:
  *   - a UI label (verb)
@@ -67,39 +67,27 @@ const ACTION_OVERRIDES: Partial<
     requiresReason: false,
     permission: "LOAN_STATUS_UPDATE",
   },
-  DISBURSEMENT_IN_PROGRESS: {
+  DISBURSED: {
     tone: "approve",
     requiresReason: false,
     permission: "DISBURSEMENT_TRIGGER",
   },
-  // Foreclosure
-  FORECLOSURE_REQUESTED: {
-    tone: "default",
+  DISBURSEMENT_RETRY: {
+    tone: "destructive",
     requiresReason: true,
-    permission: "FORECLOSURE_TRIGGER",
-  },
-  FORECLOSURE_APPROVED: {
-    tone: "approve",
-    requiresReason: true,
-    permission: "FORECLOSURE_TRIGGER",
+    permission: "DISBURSEMENT_TRIGGER",
   },
   FORECLOSED: {
     tone: "approve",
     requiresReason: true,
     permission: "FORECLOSURE_TRIGGER",
   },
-  // Destructive / failure
   REJECTED: {
     tone: "destructive",
     requiresReason: true,
     permission: "LOAN_STATUS_UPDATE",
   },
-  CANCELLED: {
-    tone: "destructive",
-    requiresReason: true,
-    permission: "LOAN_STATUS_UPDATE",
-  },
-  INVALIDATED: {
+  INVALID: {
     tone: "destructive",
     requiresReason: true,
     permission: "LOAN_WRITE",

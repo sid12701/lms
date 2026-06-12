@@ -2,7 +2,7 @@ package com.bhawana.lms.security;
 
 import com.bhawana.lms.common.api.ApiError;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.service.AlertRuleEvaluationService;
+import com.bhawana.lms.service.OpsAlertEmitters;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.BucketConfiguration;
@@ -14,6 +14,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.function.Supplier;
@@ -23,10 +24,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-@Component
 @ConditionalOnProperty(name = "app.rate-limit.enabled", havingValue = "true", matchIfMissing = true)
 public class RateLimitFilter extends OncePerRequestFilter {
 
@@ -35,18 +34,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final ProxyManager<String> proxyManager;
     private final ObjectMapper objectMapper;
     private final RateLimitProperties properties;
-    private final ObjectProvider<AlertRuleEvaluationService> alertRuleEvaluationServiceProvider;
+    private final ObjectProvider<OpsAlertEmitters> opsAlertEmittersProvider;
 
     public RateLimitFilter(
             ProxyManager<String> rateLimitProxyManager,
             ObjectMapper objectMapper,
             RateLimitProperties properties,
-            ObjectProvider<AlertRuleEvaluationService> alertRuleEvaluationServiceProvider
+            ObjectProvider<OpsAlertEmitters> opsAlertEmittersProvider
     ) {
         this.proxyManager = rateLimitProxyManager;
         this.objectMapper = objectMapper;
         this.properties = properties;
-        this.alertRuleEvaluationServiceProvider = alertRuleEvaluationServiceProvider;
+        this.opsAlertEmittersProvider = opsAlertEmittersProvider;
     }
 
     @Override
@@ -63,13 +62,17 @@ public class RateLimitFilter extends OncePerRequestFilter {
                     rejection.bucketKey(),
                     rejection.retryAfterSeconds()
             );
-            AlertRuleEvaluationService alertRules = alertRuleEvaluationServiceProvider.getIfAvailable();
-            if (alertRules != null) {
-                alertRules.emitRateLimitBreach(
-                        rejection.bucketKey(),
-                        request.getRequestURI(),
-                        rejection.retryAfterSeconds()
-                );
+            OpsAlertEmitters alertEmitters = opsAlertEmittersProvider.getIfAvailable();
+            if (alertEmitters != null) {
+                try {
+                    alertEmitters.emitRateLimitBreach(
+                            rejection.bucketKey(),
+                            request.getRequestURI(),
+                            rejection.retryAfterSeconds()
+                    );
+                } catch (RuntimeException exception) {
+                    log.debug("Rate limit alert skipped: {}", exception.getMessage());
+                }
             }
             writeApiError(
                     response,
@@ -136,9 +139,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             String message,
             String path
     ) throws IOException {
-        response.setStatus(status);
-        response.setContentType("application/json");
-        objectMapper.writeValue(response.getWriter(), ApiError.of(
+        byte[] body = objectMapper.writeValueAsBytes(ApiError.of(
                 status,
                 code,
                 message,
@@ -146,6 +147,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 CorrelationIdHolder.get(),
                 java.util.Map.of()
         ));
+        if (!response.isCommitted()) {
+            response.resetBuffer();
+        }
+        response.setStatus(status);
+        response.setContentType("application/json");
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setContentLength(body.length);
+        response.getOutputStream().write(body);
+        response.getOutputStream().flush();
+        response.flushBuffer();
     }
 
     private record RateLimitRejection(String bucketKey, long retryAfterSeconds) {

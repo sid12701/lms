@@ -145,7 +145,7 @@ class LoanApplicationOpsControllerMockOutcomeAuditTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
 
         assertEquals(before, disbursementOutcomeAuditRepository.count());
     }

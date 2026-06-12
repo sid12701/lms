@@ -3,10 +3,10 @@ package com.bhawana.lms.web;
 import com.bhawana.lms.common.web.PagedResult;
 import com.bhawana.lms.common.web.PaginationResponseBuilder;
 import com.bhawana.lms.domain.Borrower;
-import com.bhawana.lms.service.AdminDirectoryService;
-import com.bhawana.lms.service.AdminDirectoryService.BorrowerDelinquencyAggregate;
-import com.bhawana.lms.service.AdminDirectoryService.BorrowerDetailView;
-import com.bhawana.lms.service.AdminDirectoryService.BorrowerLoanView;
+import com.bhawana.lms.service.BorrowerDirectoryService;
+import com.bhawana.lms.service.BorrowerDirectoryService.BorrowerDelinquencyAggregate;
+import com.bhawana.lms.service.BorrowerDirectoryService.BorrowerDetailView;
+import com.bhawana.lms.service.BorrowerDirectoryService.BorrowerLoanView;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.math.BigDecimal;
@@ -39,14 +39,14 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','OPS_USER')")
 public class BorrowerAdminController {
 
-    private final AdminDirectoryService adminDirectoryService;
+    private final BorrowerDirectoryService borrowerDirectoryService;
     private final BorrowerBankDetailsService borrowerBankDetailsService;
 
     public BorrowerAdminController(
-            AdminDirectoryService adminDirectoryService,
+            BorrowerDirectoryService borrowerDirectoryService,
             BorrowerBankDetailsService borrowerBankDetailsService
     ) {
-        this.adminDirectoryService = adminDirectoryService;
+        this.borrowerDirectoryService = borrowerDirectoryService;
         this.borrowerBankDetailsService = borrowerBankDetailsService;
     }
 
@@ -58,7 +58,7 @@ public class BorrowerAdminController {
             @RequestParam(required = false) String paginationDetails
     ) {
         boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
-        PagedResult<Borrower> page = adminDirectoryService.listBorrowers(
+        PagedResult<Borrower> page = borrowerDirectoryService.listBorrowers(
                 query, offset, limit, includePaginationDetails);
         PagedResult<BorrowerSummaryResponse> mapped = new PagedResult<>(
                 page.items().stream().map(BorrowerAdminController::toSummaryResponse).toList(),
@@ -71,7 +71,7 @@ public class BorrowerAdminController {
 
     @GetMapping("/{borrowerId}")
     public BorrowerDetailResponse getBorrowerDetail(@PathVariable UUID borrowerId) {
-        return toResponse(adminDirectoryService.getBorrowerDetail(borrowerId));
+        return toResponse(borrowerDirectoryService.getBorrowerDetail(borrowerId));
     }
 
     @PatchMapping("/{borrowerId}/bank-details")

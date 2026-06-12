@@ -4,7 +4,9 @@ import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanAccountStatus;
+import com.bhawana.lms.common.web.ApiConflictException;
 import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
@@ -24,7 +26,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,7 +38,7 @@ public class LoanForeclosureCommandService {
     private final LoanServicingSupportService loanServicingSupportService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final WebhookOutboxService webhookOutboxService;
-    private final AlertRuleEvaluationService alertRuleEvaluationService;
+    private final OpsAlertEmitters opsAlertEmitters;
 
     public LoanForeclosureCommandService(
             LoanForeclosureQuoteRepository loanForeclosureQuoteRepository,
@@ -46,7 +47,7 @@ public class LoanForeclosureCommandService {
             LoanServicingSupportService loanServicingSupportService,
             LoanApplicationLifecycleService loanApplicationLifecycleService,
             WebhookOutboxService webhookOutboxService,
-            @Lazy AlertRuleEvaluationService alertRuleEvaluationService
+            OpsAlertEmitters opsAlertEmitters
     ) {
         this.loanForeclosureQuoteRepository = loanForeclosureQuoteRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
@@ -54,7 +55,7 @@ public class LoanForeclosureCommandService {
         this.loanServicingSupportService = loanServicingSupportService;
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.webhookOutboxService = webhookOutboxService;
-        this.alertRuleEvaluationService = alertRuleEvaluationService;
+        this.opsAlertEmitters = opsAlertEmitters;
     }
 
     @Transactional
@@ -62,7 +63,11 @@ public class LoanForeclosureCommandService {
         LoanApplication application = loanServicingSupportService.getApplication(applicationId);
         if (application.getStatus() != LoanApplicationStatus.DISBURSED
                 && application.getStatus() != LoanApplicationStatus.UNDER_REPAYMENT) {
-            throw new IllegalArgumentException("Foreclosure is only available after a loan has been disbursed.");
+            throw new BusinessRuleViolationException(
+                    "FORECLOSURE_NOT_ALLOWED",
+                    "Foreclosure is only available after a loan has been disbursed.",
+                    Map.of("status", application.getStatus().name())
+            );
         }
         if (effectiveDate == null) {
             throw new IllegalArgumentException("Foreclosure effective date is required.");
@@ -70,7 +75,11 @@ public class LoanForeclosureCommandService {
 
         LoanAccount loanAccount = loanServicingSupportService.getRequiredLoanAccount(applicationId);
         if (loanAccount.getStatus() != LoanAccountStatus.DISBURSED) {
-            throw new IllegalArgumentException("Foreclosure quote can only be requested for an active disbursed loan account.");
+            throw new BusinessRuleViolationException(
+                    "LOAN_ACCOUNT_NOT_DISBURSED",
+                    "Foreclosure quote can only be requested for an active disbursed loan account.",
+                    Map.of("loanAccountStatus", loanAccount.getStatus().name())
+            );
         }
 
         List<LoanRepaymentScheduleInstallment> installments = loanRepaymentScheduleInstallmentRepository
@@ -87,7 +96,10 @@ public class LoanForeclosureCommandService {
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         BigDecimal settlementAmount = loanServicingSupportService.scaleCurrency(outstandingPrincipal.add(outstandingInterest));
         if (settlementAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Foreclosure quote is not available because the loan is already fully settled.");
+            throw new ApiConflictException(
+                    "LOAN_ALREADY_SETTLED",
+                    "Foreclosure quote is not available because the loan is already fully settled."
+            );
         }
 
         List<LoanForeclosureQuote> existingQuotes = loanForeclosureQuoteRepository.findByLoanAccount_IdOrderByVersionDesc(
@@ -120,7 +132,7 @@ public class LoanForeclosureCommandService {
                 "LOAN_FORECLOSURE_QUOTE",
                 savedQuote.getId().toString(),
                 application.getId(),
-                loanApplicationLifecycleService.buildForeclosureQuotePayload(application, loanAccount, savedQuote)
+                LoanWebhookPayloads.foreclosureQuote(application, loanAccount, savedQuote)
         );
         return savedQuote;
     }
@@ -157,7 +169,9 @@ public class LoanForeclosureCommandService {
                     reference,
                     note
             );
-        } catch (IllegalArgumentException | IllegalStateException exception) {
+        } catch (ResourceNotFoundException exception) {
+            throw exception;
+        } catch (BusinessRuleViolationException | ApiConflictException | IllegalArgumentException | IllegalStateException exception) {
             ForeclosureViolationType violationType = resolveForeclosureViolationType(exception);
             Map<String, String> details = new LinkedHashMap<>();
             details.put("quoteId", quoteId.toString());
@@ -167,7 +181,7 @@ public class LoanForeclosureCommandService {
             if (reference != null) {
                 details.put("reference", reference);
             }
-            alertRuleEvaluationService.emitLspForeclosureViolation(
+            opsAlertEmitters.emitLspForeclosureViolation(
                     application,
                     violationType,
                     exception.getMessage(),
@@ -199,19 +213,34 @@ public class LoanForeclosureCommandService {
         LoanApplication application = loanServicingSupportService.getApplication(applicationId);
         LoanAccount loanAccount = loanServicingSupportService.getRequiredLoanAccount(applicationId);
         if (loanAccount.getStatus() != LoanAccountStatus.DISBURSED) {
-            throw new IllegalArgumentException("Foreclosure can only be executed for an active disbursed loan account.");
+            throw new BusinessRuleViolationException(
+                    "LOAN_ACCOUNT_NOT_DISBURSED",
+                    "Foreclosure can only be executed for an active disbursed loan account.",
+                    Map.of("loanAccountStatus", loanAccount.getStatus().name())
+            );
         }
 
         LoanForeclosureQuote quote = loanForeclosureQuoteRepository.findById(quoteId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown foreclosure quote id: " + quoteId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown foreclosure quote id: " + quoteId));
         if (!quote.getLoanAccount().getId().equals(loanAccount.getId())) {
-            throw new IllegalArgumentException("Foreclosure quote does not belong to the selected loan account.");
+            throw new ResourceNotFoundException("Foreclosure quote does not belong to the selected loan account.");
         }
         if (quote.getStatus() != LoanForeclosureQuoteStatus.ACTIVE) {
-            throw new IllegalArgumentException("Only an active foreclosure quote can be executed.");
+            throw new BusinessRuleViolationException(
+                    "QUOTE_NOT_ACTIVE",
+                    "Only an active foreclosure quote can be executed.",
+                    Map.of("quoteId", quoteId.toString())
+            );
         }
         if (!settlementDate.equals(quote.getEffectiveDate())) {
-            throw new IllegalArgumentException("Settlement date must match the foreclosure quote effective date.");
+            throw new BusinessRuleViolationException(
+                    "SETTLEMENT_DATE_MISMATCH",
+                    "Settlement date must match the foreclosure quote effective date.",
+                    Map.of(
+                            "settlementDate", settlementDate.toString(),
+                            "effectiveDate", quote.getEffectiveDate().toString()
+                    )
+            );
         }
 
         String normalizedActorUsername = loanServicingSupportService.normalizeActorUsername(actorUsername);
@@ -266,12 +295,22 @@ public class LoanForeclosureCommandService {
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
                 application.getId(),
-                loanApplicationLifecycleService.buildForeclosurePayload(application, loanAccount, quote)
+                LoanWebhookPayloads.foreclosure(application, loanAccount, quote)
         );
         return quote;
     }
 
     private static ForeclosureViolationType resolveForeclosureViolationType(RuntimeException exception) {
+        if (exception instanceof BusinessRuleViolationException businessRuleViolation) {
+            try {
+                return ForeclosureViolationType.valueOf(businessRuleViolation.getErrorCode());
+            } catch (IllegalArgumentException ignored) {
+                return ForeclosureViolationType.FORECLOSURE_GENERIC;
+            }
+        }
+        if (exception instanceof ApiConflictException) {
+            return ForeclosureViolationType.FORECLOSURE_GENERIC;
+        }
         String message = exception.getMessage();
         if (message == null) {
             return ForeclosureViolationType.FORECLOSURE_GENERIC;

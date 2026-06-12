@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
@@ -37,9 +38,15 @@ public class LocalDemoPortfolioSeedService {
     private static final String DEFAULT_USER_PASSWORD = "DemoPass123!";
     private static final String INTERNAL_ACTOR = "ops.admin";
 
-    private final AdminDirectoryService adminDirectoryService;
+    private final LspDirectoryService lspDirectoryService;
+    private final UserAdminService userAdminService;
     private final ProductConfigurationService productConfigurationService;
-    private final LoanApplicationService loanApplicationService;
+    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
+    private final LoanApplicationQueryService loanApplicationQueryService;
+    private final LoanApplicationServicingReadService loanApplicationServicingReadService;
+    private final LoanDisbursementCommandService loanDisbursementCommandService;
+    private final LoanRepaymentCommandService loanRepaymentCommandService;
+    private final LoanForeclosureCommandService loanForeclosureCommandService;
     private final AppUserRepository appUserRepository;
     private final LspRepository lspRepository;
     private final LoanProductRepository loanProductRepository;
@@ -48,9 +55,15 @@ public class LocalDemoPortfolioSeedService {
     private final SecurityProperties securityProperties;
 
     public LocalDemoPortfolioSeedService(
-            AdminDirectoryService adminDirectoryService,
+            LspDirectoryService lspDirectoryService,
+            UserAdminService userAdminService,
             ProductConfigurationService productConfigurationService,
-            LoanApplicationService loanApplicationService,
+            LoanApplicationLifecycleService loanApplicationLifecycleService,
+            LoanApplicationQueryService loanApplicationQueryService,
+            LoanApplicationServicingReadService loanApplicationServicingReadService,
+            LoanDisbursementCommandService loanDisbursementCommandService,
+            LoanRepaymentCommandService loanRepaymentCommandService,
+            LoanForeclosureCommandService loanForeclosureCommandService,
             AppUserRepository appUserRepository,
             LspRepository lspRepository,
             LoanProductRepository loanProductRepository,
@@ -58,9 +71,15 @@ public class LocalDemoPortfolioSeedService {
             JdbcTemplate jdbcTemplate,
             SecurityProperties securityProperties
     ) {
-        this.adminDirectoryService = adminDirectoryService;
+        this.lspDirectoryService = lspDirectoryService;
+        this.userAdminService = userAdminService;
         this.productConfigurationService = productConfigurationService;
-        this.loanApplicationService = loanApplicationService;
+        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
+        this.loanApplicationQueryService = loanApplicationQueryService;
+        this.loanApplicationServicingReadService = loanApplicationServicingReadService;
+        this.loanDisbursementCommandService = loanDisbursementCommandService;
+        this.loanRepaymentCommandService = loanRepaymentCommandService;
+        this.loanForeclosureCommandService = loanForeclosureCommandService;
         this.appUserRepository = appUserRepository;
         this.lspRepository = lspRepository;
         this.loanProductRepository = loanProductRepository;
@@ -86,7 +105,7 @@ public class LocalDemoPortfolioSeedService {
 
     private Lsp ensureLsp() {
         return lspRepository.findByCodeIgnoreCase(DEMO_LSP_CODE)
-                .orElseGet(() -> adminDirectoryService.createLsp(DEMO_LSP_CODE, "Supa One Finance", LspStatus.ACTIVE));
+                .orElseGet(() -> lspDirectoryService.createLsp(DEMO_LSP_CODE, "Supa One Finance", LspStatus.ACTIVE));
     }
 
     private LoanProduct ensureProduct(Lsp lsp) {
@@ -137,7 +156,7 @@ public class LocalDemoPortfolioSeedService {
         if (appUserRepository.existsByUsername(username)) {
             return;
         }
-        adminDirectoryService.createUser(username, email, password, status, lspId, roleCodes);
+        userAdminService.createUser(username, email, password, status, lspId, roleCodes);
     }
 
     private void seedLoans(Lsp lsp, LoanProduct product) {
@@ -165,7 +184,7 @@ public class LocalDemoPortfolioSeedService {
             return;
         }
         LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("120000.00"), 12);
-        application = loanApplicationService.transitionStatus(
+        application = loanApplicationLifecycleService.transitionStatus(
                 application.getId(),
                 "ops.reviewer1",
                 LoanApplicationStatus.AWAITING_APPROVAL,
@@ -179,7 +198,7 @@ public class LocalDemoPortfolioSeedService {
             return;
         }
         LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("175000.00"), 18);
-        application = loanApplicationService.transitionStatus(
+        application = loanApplicationLifecycleService.transitionStatus(
                 application.getId(),
                 "ops.reviewer2",
                 LoanApplicationStatus.AWAITING_APPROVAL,
@@ -193,14 +212,14 @@ public class LocalDemoPortfolioSeedService {
             return;
         }
         LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("230000.00"), 18);
-        application = loanApplicationService.transitionStatus(
+        application = loanApplicationLifecycleService.transitionStatus(
                 application.getId(),
                 "ops.risk",
                 LoanApplicationStatus.AWAITING_APPROVAL,
                 "Underwriting review started",
                 null
         );
-        loanApplicationService.transitionStatus(
+        loanApplicationLifecycleService.transitionStatus(
                 application.getId(),
                 "ops.risk",
                 LoanApplicationStatus.REJECTED,
@@ -223,7 +242,7 @@ public class LocalDemoPortfolioSeedService {
         }
         LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("145000.00"), 12);
         moveToApproved(application.getId(), "ops.reviewer1");
-        loanApplicationService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
+        loanDisbursementCommandService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
     }
 
     private void createDisbursedLoan(Lsp lsp, LoanProduct product, String externalId, String name, String pan, String mobile, String email) {
@@ -232,12 +251,12 @@ public class LocalDemoPortfolioSeedService {
         }
         LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("98000.00"), 12);
         moveToApproved(application.getId(), "ops.reviewer2");
-        loanApplicationService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
-        loanApplicationService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.DISBURSED);
-        var firstInstallment = loanApplicationService.listRepaymentSchedule(application.getId()).stream()
+        loanDisbursementCommandService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
+        loanDisbursementCommandService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.DISBURSED);
+        var firstInstallment = loanApplicationServicingReadService.listRepaymentSchedule(application.getId()).stream()
                 .findFirst()
                 .orElseThrow();
-        loanApplicationService.recordPaymentTransaction(
+        loanRepaymentCommandService.recordPaymentTransactionWithRecovery(
                 application.getId(),
                 INTERNAL_ACTOR,
                 UUID.randomUUID().toString(),
@@ -255,8 +274,8 @@ public class LocalDemoPortfolioSeedService {
         }
         LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("305000.00"), 24);
         moveToApproved(application.getId(), "ops.risk");
-        loanApplicationService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
-        loanApplicationService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.FAILED);
+        loanDisbursementCommandService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
+        loanDisbursementCommandService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.FAILED);
     }
 
     private void createClosedLoan(Lsp lsp, LoanProduct product, String externalId, String name, String pan, String mobile, String email) {
@@ -265,10 +284,10 @@ public class LocalDemoPortfolioSeedService {
         }
         LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("112000.00"), 12);
         moveToApproved(application.getId(), "ops.reviewer1");
-        loanApplicationService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
-        loanApplicationService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.DISBURSED);
-        for (var installment : loanApplicationService.listRepaymentSchedule(application.getId())) {
-            loanApplicationService.recordPaymentTransaction(
+        loanDisbursementCommandService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
+        loanDisbursementCommandService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.DISBURSED);
+        for (var installment : loanApplicationServicingReadService.listRepaymentSchedule(application.getId())) {
+            loanRepaymentCommandService.recordPaymentTransactionWithRecovery(
                     application.getId(),
                     INTERNAL_ACTOR,
                     UUID.randomUUID().toString(),
@@ -287,11 +306,11 @@ public class LocalDemoPortfolioSeedService {
         }
         LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("390000.00"), 24);
         moveToApproved(application.getId(), "ops.risk");
-        loanApplicationService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
-        loanApplicationService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.DISBURSED);
+        loanDisbursementCommandService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
+        loanDisbursementCommandService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.DISBURSED);
         LocalDate settlementDate = LocalDate.now();
-        var quote = loanApplicationService.requestForeclosureQuote(application.getId(), INTERNAL_ACTOR, settlementDate);
-        loanApplicationService.executeForeclosureQuote(
+        var quote = loanForeclosureCommandService.requestForeclosureQuote(application.getId(), INTERNAL_ACTOR, settlementDate);
+        loanForeclosureCommandService.executeForeclosureQuote(
                 application.getId(),
                 quote.getId(),
                 INTERNAL_ACTOR,
@@ -313,7 +332,7 @@ public class LocalDemoPortfolioSeedService {
             int tenureMonths
     ) {
         return loanApplicationRepository.findByLsp_IdAndExternalLoanIdIgnoreCase(lsp.getId(), externalId)
-                .orElseGet(() -> loanApplicationService.createApplication(
+                .orElseGet(() -> loanApplicationLifecycleService.createApplication(
                         INTERNAL_ACTOR,
                         new LoanApplicationOnboardingCommand(
                                 lsp.getId(),
@@ -321,38 +340,39 @@ public class LocalDemoPortfolioSeedService {
                                 null,
                                 externalId,
                                 "API",
-                                name,
-                                email,
-                                mobile,
-                                LocalDate.of(1990, 1, 1),
-                                "FEMALE",
-                                "SINGLE",
-                                "Demo Parent",
-                                "123412341234",
-                                pan,
                                 amount,
                                 product.getInterestRate(),
                                 tenureMonths,
-                                "Demo Address Line 1",
-                                "Demo Address Line 2",
-                                "Bengaluru",
-                                "Karnataka",
-                                "560001",
-                                null,
-                                "SALARIED",
-                                "Demo Employer",
-                                "EMP-" + externalId,
-                                "Bengaluru",
-                                "Karnataka",
-                                "560001",
-                                new BigDecimal("85000.00"),
-                                new BigDecimal("1020000.00"),
-                                "123456789012",
-                                "Demo Bank",
-                                "HDFC0001234",
-                                name,
-                                "Demo Reference",
-                                "9898989898"
+                                BorrowerProfile.builder()
+                                        .fullName(name)
+                                        .emailAddress(email)
+                                        .mobileNumber(mobile)
+                                        .dateOfBirth(LocalDate.of(1990, 1, 1))
+                                        .gender("FEMALE")
+                                        .maritalStatus("SINGLE")
+                                        .fatherName("Demo Parent")
+                                        .aadharNumber("123412341234")
+                                        .panNumber(pan)
+                                        .addressLine1("Demo Address Line 1")
+                                        .addressLine2("Demo Address Line 2")
+                                        .addressCity("Bengaluru")
+                                        .addressState("Karnataka")
+                                        .addressZipcode("560001")
+                                        .employmentStatus("SALARIED")
+                                        .organizationName("Demo Employer")
+                                        .empId("EMP-" + externalId)
+                                        .employmentCity("Bengaluru")
+                                        .employmentState("Karnataka")
+                                        .employmentZip("560001")
+                                        .monthlyIncome(new BigDecimal("85000.00"))
+                                        .annualIncome(new BigDecimal("1020000.00"))
+                                        .bankAccountNumber("123456789012")
+                                        .bankName("Demo Bank")
+                                        .ifscCode("HDFC0001234")
+                                        .accountHolderName(name)
+                                        .referencePersonName("Demo Reference")
+                                        .referencePersonNumber("9898989898")
+                                        .build()
                         )
                 ));
     }
@@ -362,9 +382,9 @@ public class LocalDemoPortfolioSeedService {
     }
 
     private void moveToApproved(UUID applicationId, String actorUsername) {
-        LoanApplication application = loanApplicationService.getApplication(applicationId);
+        LoanApplication application = loanApplicationQueryService.getApplication(applicationId);
         if (application.getStatus() == LoanApplicationStatus.INITIALIZED) {
-            loanApplicationService.transitionStatus(
+            loanApplicationLifecycleService.transitionStatus(
                     applicationId,
                     actorUsername,
                     LoanApplicationStatus.AWAITING_APPROVAL,
@@ -373,9 +393,9 @@ public class LocalDemoPortfolioSeedService {
             );
         }
         verifyRequiredDocuments(applicationId, actorUsername);
-        application = loanApplicationService.getApplication(applicationId);
+        application = loanApplicationQueryService.getApplication(applicationId);
         if (application.getStatus() == LoanApplicationStatus.AWAITING_APPROVAL) {
-            loanApplicationService.transitionStatus(
+            loanApplicationLifecycleService.transitionStatus(
                     applicationId,
                     actorUsername,
                     LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
@@ -396,7 +416,7 @@ public class LocalDemoPortfolioSeedService {
                 LoanApplicationDocumentType.SELFIE_PHOTOGRAPH
         );
         for (LoanApplicationDocumentType documentType : requiredDocs) {
-            loanApplicationService.updateDocumentChecklistItem(
+            loanApplicationLifecycleService.updateDocumentChecklistItem(
                     applicationId,
                     documentType,
                     actorUsername,
@@ -405,7 +425,11 @@ public class LocalDemoPortfolioSeedService {
                     documentType.name().toLowerCase() + ".pdf",
                     "seed://" + documentType.name().toLowerCase(),
                     "seed",
-                    "application/pdf"
+                    "application/pdf",
+                    null,
+                    null,
+                    null,
+                    false
             );
         }
     }
@@ -415,7 +439,7 @@ public class LocalDemoPortfolioSeedService {
                 LoanApplicationDocumentType.KFS,
                 LoanApplicationDocumentType.LOAN_AGREEMENT
         )) {
-            loanApplicationService.updateDocumentChecklistItem(
+            loanApplicationLifecycleService.updateDocumentChecklistItem(
                     applicationId,
                     documentType,
                     actorUsername,
@@ -424,7 +448,11 @@ public class LocalDemoPortfolioSeedService {
                     documentType.name().toLowerCase() + ".pdf",
                     "seed://" + documentType.name().toLowerCase(),
                     "seed",
-                    "application/pdf"
+                    "application/pdf",
+                    null,
+                    null,
+                    null,
+                    false
             );
         }
     }

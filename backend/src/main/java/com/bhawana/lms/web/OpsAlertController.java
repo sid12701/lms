@@ -8,7 +8,7 @@ import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertStatus;
 import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.domain.AlertRule;
-import com.bhawana.lms.service.AlertRuleEvaluationService;
+import com.bhawana.lms.service.AlertRuleEvaluationWorker;
 import com.bhawana.lms.service.OpsAlertService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -36,20 +36,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class OpsAlertController {
 
     private final OpsAlertService opsAlertService;
-    private final AlertRuleEvaluationService alertRuleEvaluationService;
+    private final AlertRuleEvaluationWorker alertRuleEvaluationWorker;
 
     public OpsAlertController(
             OpsAlertService opsAlertService,
-            AlertRuleEvaluationService alertRuleEvaluationService
+            AlertRuleEvaluationWorker alertRuleEvaluationWorker
     ) {
         this.opsAlertService = opsAlertService;
-        this.alertRuleEvaluationService = alertRuleEvaluationService;
+        this.alertRuleEvaluationWorker = alertRuleEvaluationWorker;
     }
 
     @GetMapping("/rules")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public List<AlertRuleResponse> listAlertRules() {
-        return alertRuleEvaluationService.listRules().stream()
+        return alertRuleEvaluationWorker.listRules().stream()
                 .map(OpsAlertController::toRuleResponse)
                 .toList();
     }

@@ -42,7 +42,7 @@ const SAMPLE_ROWS: SampleRow[] = Array.from({ length: 12 }, (_, i) => ({
   application: `BC-AP-${String(20000 + i).padStart(6, "0")}`,
   borrower: `Sample Borrower ${i + 1}`,
   amount: 100_000 + i * 12_345,
-  status: i % 2 === 0 ? "DISBURSED" : "UNDER_REVIEW",
+  status: i % 2 === 0 ? "DISBURSED" : "AWAITING_APPROVAL",
 }));
 
 const COLUMNS: ColumnDef<SampleRow>[] = [

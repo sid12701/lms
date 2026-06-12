@@ -1,6 +1,8 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -43,13 +45,25 @@ public record AuditExplorerQuery(
             streams = ALL_STREAMS;
         }
         if (offset < 0) {
-            throw new IllegalArgumentException("offset must be non-negative");
+            throw new BusinessRuleViolationException(
+                    "INVALID_OFFSET",
+                    "offset must be non-negative",
+                    Map.of("offset", "must be non-negative")
+            );
         }
         if (limit < 1 || limit > 500) {
-            throw new IllegalArgumentException("limit must be in [1, 500]");
+            throw new BusinessRuleViolationException(
+                    "INVALID_LIMIT",
+                    "limit must be in [1, 500]",
+                    Map.of("limit", "must be in [1, 500]")
+            );
         }
         if (since != null && until != null && since.isAfter(until)) {
-            throw new IllegalArgumentException("since must not be after until");
+            throw new BusinessRuleViolationException(
+                    "INVALID_TIME_RANGE",
+                    "since must not be after until",
+                    Map.of("since", "must not be after until")
+            );
         }
     }
 

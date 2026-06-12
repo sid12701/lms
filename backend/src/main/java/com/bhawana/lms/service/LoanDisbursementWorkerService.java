@@ -33,32 +33,35 @@ public class LoanDisbursementWorkerService {
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanAccountRepository loanAccountRepository;
     private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
-    private final LoanApplicationService loanApplicationService;
+    private final LoanApplicationQueryService loanApplicationQueryService;
+    private final LoanDisbursementCommandService loanDisbursementCommandService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final LoanDisbursementService loanDisbursementService;
     private final BorrowerBankDetailsService borrowerBankDetailsService;
-    private final AlertRuleEvaluationService alertRuleEvaluationService;
+    private final OpsAlertEmitters opsAlertEmitters;
     private final LoanDisbursementWorkerProperties properties;
 
     public LoanDisbursementWorkerService(
             LoanApplicationRepository loanApplicationRepository,
             LoanAccountRepository loanAccountRepository,
             LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
-            LoanApplicationService loanApplicationService,
+            LoanApplicationQueryService loanApplicationQueryService,
+            LoanDisbursementCommandService loanDisbursementCommandService,
             LoanApplicationLifecycleService loanApplicationLifecycleService,
             LoanDisbursementService loanDisbursementService,
             BorrowerBankDetailsService borrowerBankDetailsService,
-            AlertRuleEvaluationService alertRuleEvaluationService,
+            OpsAlertEmitters opsAlertEmitters,
             LoanDisbursementWorkerProperties properties
     ) {
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
-        this.loanApplicationService = loanApplicationService;
+        this.loanApplicationQueryService = loanApplicationQueryService;
+        this.loanDisbursementCommandService = loanDisbursementCommandService;
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.loanDisbursementService = loanDisbursementService;
         this.borrowerBankDetailsService = borrowerBankDetailsService;
-        this.alertRuleEvaluationService = alertRuleEvaluationService;
+        this.opsAlertEmitters = opsAlertEmitters;
         this.properties = properties;
     }
 
@@ -92,7 +95,7 @@ public class LoanDisbursementWorkerService {
     }
 
     private boolean processApplicationAsAdmin(UUID applicationId) {
-        LoanApplication application = loanApplicationService.getApplication(applicationId);
+        LoanApplication application = loanApplicationQueryService.getApplication(applicationId);
         if (application.getLsp() == null || application.getLsp().getStatus() != LspStatus.ACTIVE) {
             return false;
         }
@@ -117,7 +120,7 @@ public class LoanDisbursementWorkerService {
         }
 
         DisbursementBankDetailsValidation bankValidation =
-                loanDisbursementService.validateWorkerDisbursementBankDetails(application.getBorrower());
+                loanDisbursementService.validateWorkerDisbursementBankDetails(application);
         if (!bankValidation.violations().isEmpty()) {
             rejectForBoundViolation(application, "AUTOMATED_DISBURSEMENT_BANK_VALIDATION", bankValidation.violations());
             return true;
@@ -142,17 +145,17 @@ public class LoanDisbursementWorkerService {
                         LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
                         LoanApplicationAuditAction.STATUS_TRANSITION
                 );
-                alertRuleEvaluationService.emitDisbursementRetryExhausted(application, (int) priorAttempts);
+                opsAlertEmitters.emitDisbursementRetryExhausted(application, (int) priorAttempts);
             }
             return true;
         }
 
         try {
-            loanApplicationService.initiateDisbursement(applicationId, WORKER_ACTOR);
+            loanDisbursementCommandService.initiateDisbursement(applicationId, WORKER_ACTOR);
             if (properties.isAutoResolveMockOutcome()) {
                 LoanAccount refreshedAccount = loanAccountRepository.findByLoanApplication_Id(applicationId).orElse(loanAccount);
                 if (refreshedAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED) {
-                    loanApplicationService.resolveMockDisbursementOutcome(
+                    loanDisbursementCommandService.resolveMockDisbursementOutcome(
                             applicationId,
                             WORKER_ACTOR,
                             MockDisbursementOutcome.DISBURSED
@@ -176,7 +179,7 @@ public class LoanDisbursementWorkerService {
                         LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
                         LoanApplicationAuditAction.STATUS_TRANSITION
                 );
-                alertRuleEvaluationService.emitDisbursementRetryExhausted(application, (int) attemptsAfterFailure);
+                opsAlertEmitters.emitDisbursementRetryExhausted(application, (int) attemptsAfterFailure);
             }
             return true;
         }
@@ -188,7 +191,7 @@ public class LoanDisbursementWorkerService {
             Map<String, String> violations
     ) {
         String message = violations.values().stream().findFirst().orElse("Automated disbursement validation failed.");
-        alertRuleEvaluationService.emitLspBoundViolation(application, violationType, message, violations);
+        opsAlertEmitters.emitLspBoundViolation(application, violationType, message, violations);
         loanApplicationLifecycleService.updateApplicationStatus(
                 application,
                 LoanApplicationStatus.REJECTED,

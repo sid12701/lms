@@ -2044,6 +2044,8 @@ Untouched (deliberately):
 ### #89 — [B-7] TenantDataAccessContextHolder defaults to ADMIN — silent cross-tenant leak risk in workers
 **Labels:** bug, security, data-isolation · **Link:** https://github.com/sid12701/lms/issues/89 · **Status:** **CLOSED** — [PR #182](https://github.com/sid12701/lms/pull/182) merged 2026-06-07. Holder throws `MissingTenantContextException`; `TenantScopedExecution` + admin interceptor + worker tests. Closes **#146**.
 
+**Follow-up (2026-06-11, ADR 0005):** PR #182's interceptor-based scoping left the security filter chain unscoped — JWT session validators do repo lookups before MVC interceptors run, which 401-looped every authenticated prod request. Replaced with `AuthenticationTenantScopeFilter` (scope derived from the authenticated principal, after `BearerTokenAuthenticationFilter`); pre-auth lookups wrap themselves in `TenantScopedExecution.callAsAdmin`; the internal-path admin interceptor now covers only `/api/v1/auth/**`. Unscoped access stays fail-closed and now surfaces as `TENANT_SCOPE_MISSING` (500) + `lms.tenant.scope.missing` metric. The interim blanket `AdminTenantDataAccessFilter` (implicit admin for every request — the exact anti-pattern this issue removed) was deleted before ever being committed.
+
 **Problem (plain English):** If a background worker forgets to set tenant context, it silently runs as admin (reads/writes across all tenants). PG RLS won't save you when the connection enters admin mode. One forgotten worker = silent cross-LSP leak.
 
 **Possible fixes:**
@@ -6471,31 +6473,98 @@ If V66 succeeded on any environment, the backfill from V58 has held — orphans 
 ---
 
 ### #156 — [R-1] Home KPIs recomputed on every page load — no cache
-**Labels:** dashboard-risk, scale-risk · **Link:** https://github.com/sid12701/lms/issues/156
+**Labels:** dashboard-risk, scale-risk · **Link:** https://github.com/sid12701/lms/issues/156 · **Status:** **RESCOPED (2026-06-08)** — audit framing of "no cache, hot spot" was speculative (no traffic data). Code inspection confirmed a different real bug: an N+1 query in the avg-approval-TAT computation. Ticket retargets that. Caching framing is split into a follow-up ticket awaiting evidence.
 
-**Problem (plain English):** Admin home runs count queries + TAT transitions on every load. Hot spot under load.
+**Problem (plain English, original framing):** Admin home runs count queries + TAT transitions on every load. Hot spot under load.
 
-**Possible fixes:**
+**Possible fixes (original framing):**
 1. **Cache KPI projection (~60s TTL) + invalidate on relevant events** — standard.
 2. **Materialized view refreshed by worker** — heavier, better for very large data.
 
-**Recommended:** Option 1.
+**Recommended (original):** Option 1.
 
-**Detailed solution after discussion:** _(pending)_
+**Detailed solution after discussion (2026-06-08):**
+
+**Reality check that triggered the rescope.** `HomeDashboardService.getSummary()` runs ~10 bounded, mostly-indexed queries (counts, top-N reads, LSP list). **One query path is genuinely scale-risky and the audit doc missed it:** `computeAvgApprovalTatHours` (lines 140-178) fetches every approval transition in the configured 30-day window, then for **each** approval issues a separate per-application query (`findByLoanApplication_IdAndToStatusOrderByCreatedAtAsc(appId, AWAITING_APPROVAL)`) to find when the application entered awaiting-approval. Classic N+1: 1 + N round-trips where N is approvals-in-window.
+
+Caching `getSummary()` would hide the bug — every cache miss (cold start per replica, TTL expiry, post-deploy) still pays the N+1 cost. The project also has **zero caching infrastructure today** (no `@Cacheable`, no `CacheManager`, no Caffeine — only Redis wired for rate limiting per ADR notes on #166). Adding the audit doc's recommended cache means committing to a new framework dependency for one method, with no measurement showing the home page is actually slow.
+
+**Decision (2026-06-08):** drop the "no cache" framing from #156. Fix the N+1 root cause here; split the cache work to a follow-up ticket marked deferred-awaiting-evidence.
+
+**The fix (locked).** Replace `computeAvgApprovalTatHours` with a single native SQL query (Postgres) using a CTE:
+
+```sql
+WITH approvals AS (
+  SELECT loan_application_id, created_at AS approval_at
+  FROM loan_application_status_transition
+  WHERE to_status = 'APPROVED_PENDING_DISBURSAL'
+    AND created_at >= :window_start
+),
+pairs AS (
+  SELECT a.loan_application_id, a.approval_at, MAX(t.created_at) AS awaiting_at
+  FROM approvals a
+  JOIN loan_application_status_transition t
+    ON t.loan_application_id = a.loan_application_id
+   AND t.to_status = 'AWAITING_APPROVAL'
+   AND t.created_at <= a.approval_at
+  GROUP BY a.loan_application_id, a.approval_at
+)
+SELECT AVG(EXTRACT(EPOCH FROM (approval_at - awaiting_at)) / 3600.0)
+FROM pairs
+WHERE approval_at > awaiting_at;
+```
+
+Returns a single nullable `Double` in one round-trip. The Java side keeps only the existing `HALF_UP` rounding to one decimal (mirrors lines 175-177). Existing V57 index `(to_status, created_at DESC)` already supports the CTE's first filter; the inner join may benefit from a composite index on `(loan_application_id, to_status, created_at)` but only worth adding if `EXPLAIN ANALYZE` against a realistic data volume shows the planner choosing a poor path — defer to PR review with measurement.
+
+**TDD plan — vertical slices per `tests.md`. No horizontal slicing; no internal mocks; tests exercise the repository public method and the service entry point (`getSummary()`), not private helpers.**
+
+| # | RED (failing test) | GREEN (implementation) | Refactor |
+|---|---|---|---|
+| 1 | Repo test: with fixture transitions producing a known average, new repo method returns that average | implement native query method | none |
+| 2 | Repo test: no approvals in the window → null | should pass from (1) | none |
+| 3 | Repo test: approval transition with no preceding `AWAITING_APPROVAL` transition for that application → excluded from average | tighten join / filter if needed | none |
+| 4 | Repo test: application with multiple `AWAITING_APPROVAL` transitions (reopen/resubmit) ≤ approval_at → uses the most recent | should pass from `MAX(t.created_at)` shape | none |
+| 5 | Service test via `getSummary()`: returns same value as legacy implementation for a deterministic fixture (golden-master capture before the swap) | route service through new repo method | delete legacy per-application invocation |
+| 6 | Service query-count test (DataSource proxy or Hibernate `Statistics`): for a fixture with N approvals, `getSummary()` issues a constant number of queries, not 1+N | should pass from (5) | none |
+| 7 | Existing `HomeDashboardControllerTest`: full response shape unchanged | should pass | none |
+
+After (5), grep for other callers of `LoanApplicationStatusTransitionRepository.findByLoanApplication_IdAndToStatusOrderByCreatedAtAsc`; if none, delete the method.
+
+**Files / modules touched:**
+- `repo/LoanApplicationStatusTransitionRepository.java` (new native query method; possibly delete legacy method)
+- `service/HomeDashboardService.java` (simplify `computeAvgApprovalTatHours`)
+- `service/HomeDashboardServiceTest.java` (or controller test — new tests)
+- No schema migration in this PR (V57 index suffices for the CTE filter; composite index deferred unless `EXPLAIN` justifies)
+- **No** caching infrastructure
+- **No** ADR (no architectural commitment; tactical fix)
+- **No** frontend changes (response shape unchanged)
+
+**Follow-up ticket (intent captured; not yet filed):** `[R-1b] Home dashboard KPI caching — awaiting evidence`.
+Locked preferences when/if implemented:
+- Caffeine in-memory per-replica (revisit Redis only if multi-replica drift becomes visible)
+- 60s default TTL, configurable via `application.properties`
+- TTL-only invalidation initially; event-based eviction is a further follow-up
+- ADR `docs/adr/0005-dashboard-kpi-caching.md` required before implementation PR (first time caching is added to the project)
+- Prerequisite: baseline `/api/internal/admin/home-dashboard` p50/p95 *after* this ticket's N+1 fix ships; evaluate caching against the post-fix numbers, not the pre-fix ones
+- Review cadence: monthly against any latency evidence
+
+**Re-open / re-frame trigger for #156:** if `EXPLAIN ANALYZE` after the SQL rewrite shows the CTE's inner join scanning excessively, file an index ticket (composite on `loan_application_status_transition (loan_application_id, to_status, created_at)`) rather than reverting to the per-application loop.
 
 ---
 
 ### #158 — [R-3] Dashboard KPIs are point-in-time only
-**Labels:** dashboard-risk · **Link:** https://github.com/sid12701/lms/issues/158
+**Labels:** dashboard-risk, wontfix · **Link:** https://github.com/sid12701/lms/issues/158 · **Status:** **CLOSED — wontfix (2026-06-08)**
 
 **Problem (plain English):** No "as-of X date" support. Auditors won't see historical numbers.
 
 **Possible fixes:**
 1. **Document semantics now; add daily snapshot table if/when audit demands it** — pragmatic.
+2. Full snapshot table + scheduled worker + `asOf` endpoint — historical infra.
+3. Reconstruct from `loan_application_status_transition` — partial coverage (status KPIs only).
 
-**Recommended:** Option 1.
+**Decision (2026-06-08): wontfix.** Anticipatory ask only — no compliance, NBFC partner, audit, or RBI demand exists for point-in-time home-dashboard KPIs. Ranged "as-of" reporting at the disbursement-amount level is already covered by `AdminReportingService.buildPortfolioMisReport(lspId, disbursalDateFrom, disbursalDateTo)` (MIS export). Home dashboard remains a "live now" view.
 
-**Detailed solution after discussion:** _(pending)_
+**Re-open trigger:** a hard ask from compliance, audit, RBI, or an NBFC partner for "as of date X" home-dashboard KPIs. At that point, Option 2 (snapshot table + worker) is the locked design — no need to redo this discussion.
 
 ---
 

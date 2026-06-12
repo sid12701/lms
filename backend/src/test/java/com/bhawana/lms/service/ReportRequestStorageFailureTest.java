@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+import com.bhawana.lms.common.web.ApiConflictException;
 import com.bhawana.lms.domain.ReportRequest;
 import com.bhawana.lms.domain.ReportRequestStatus;
 import com.bhawana.lms.domain.ReportType;
@@ -69,7 +70,7 @@ class ReportRequestStorageFailureTest {
         assertThat(reloaded.getErrorMessage()).contains("simulated R2 outage");
 
         assertThatThrownBy(() -> reportRequestService.getCompletedReport(reloaded.getId()))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApiConflictException.class)
                 .hasMessageContaining("not ready");
     }
 }

@@ -5,7 +5,7 @@ import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
-import com.bhawana.lms.service.AdminDirectoryService;
+import com.bhawana.lms.service.UserAdminService;
 import com.bhawana.lms.service.SessionRevocationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -31,22 +31,22 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasRole('SYSTEM_ADMIN')")
 public class UserAdminController {
 
-    private final AdminDirectoryService adminDirectoryService;
+    private final UserAdminService userAdminService;
 
-    public UserAdminController(AdminDirectoryService adminDirectoryService) {
-        this.adminDirectoryService = adminDirectoryService;
+    public UserAdminController(UserAdminService userAdminService) {
+        this.userAdminService = userAdminService;
     }
 
     @GetMapping
     public List<UserResponse> listUsers() {
-        return adminDirectoryService.listUsers().stream()
+        return userAdminService.listUsers().stream()
                 .map(UserAdminController::toResponse)
                 .toList();
     }
 
     @PostMapping
     public UserResponse createUser(@Valid @RequestBody CreateUserRequest request) {
-        AppUser user = adminDirectoryService.createUser(
+        AppUser user = userAdminService.createUser(
                 request.username(),
                 request.email(),
                 request.password(),
@@ -65,7 +65,7 @@ public class UserAdminController {
             HttpServletRequest httpRequest
     ) {
         String actorUsername = principal == null ? "unknown" : principal.getSubject();
-        AppUser user = adminDirectoryService.updateUser(
+        AppUser user = userAdminService.updateUser(
                 userId,
                 actorUsername,
                 ClientIpAddresses.resolve(httpRequest),
@@ -84,7 +84,7 @@ public class UserAdminController {
             HttpServletRequest httpRequest
     ) {
         String actorUsername = principal == null ? "unknown" : principal.getSubject();
-        AdminDirectoryService.ResetPasswordResult result = adminDirectoryService.resetUserPassword(
+        UserAdminService.ResetPasswordResult result = userAdminService.resetUserPassword(
                 userId,
                 actorUsername,
                 ClientIpAddresses.resolve(httpRequest),
@@ -106,7 +106,7 @@ public class UserAdminController {
     ) {
         String actorUsername = principal == null ? "unknown" : principal.getSubject();
         String reason = request == null ? null : request.reason();
-        SessionRevocationService.RevocationResult result = adminDirectoryService.revokeUserSessions(
+        SessionRevocationService.RevocationResult result = userAdminService.revokeUserSessions(
                 userId,
                 actorUsername,
                 reason,

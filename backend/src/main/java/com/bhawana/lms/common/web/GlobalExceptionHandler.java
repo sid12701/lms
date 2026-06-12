@@ -3,6 +3,7 @@ package com.bhawana.lms.common.web;
 import com.bhawana.lms.common.api.ApiError;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
+import com.bhawana.lms.tenant.MissingTenantContextException;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,9 +23,12 @@ import org.springframework.security.authentication.LockedException;
 import org.springframework.validation.FieldError;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -33,6 +37,8 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private static final String DOCUMENT_STORAGE_UNAVAILABLE_COUNTER = "lms.document.storage.unavailable";
+    private static final String TENANT_SCOPE_MISSING_COUNTER = "lms.tenant.scope.missing";
+    private static final String UNTYPED_API_ERROR_COUNTER = "lms.api.untyped_error";
 
     private final MeterRegistry meterRegistry;
 
@@ -204,8 +210,24 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, exception.getErrorCode(), exception.getMessage(), request, Map.of());
     }
 
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiError> handleMissingRequestHeader(
+            MissingRequestHeaderException exception,
+            HttpServletRequest request
+    ) {
+        String headerName = exception.getHeaderName();
+        String message = headerName + " header is required.";
+        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, request, Map.of(headerName, message));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException exception, HttpServletRequest request) {
+        meterRegistry.counter(UNTYPED_API_ERROR_COUNTER).increment();
+        log.warn(
+                "Untyped IllegalArgumentException mapped to 400 INVALID_REQUEST at {}: {}",
+                request.getRequestURI(),
+                exception.getMessage()
+        );
         return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", exception.getMessage(), request, Map.of());
     }
 
@@ -327,6 +349,55 @@ public class GlobalExceptionHandler {
                 message,
                 request,
                 Map.of(exception.getRequestPartName(), message)
+        );
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiError> handleMaxUploadSize(
+            MaxUploadSizeExceededException exception,
+            HttpServletRequest request
+    ) {
+        return build(
+                HttpStatus.PAYLOAD_TOO_LARGE,
+                "PAYLOAD_TOO_LARGE",
+                "Uploaded content exceeds the maximum permitted size.",
+                request,
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiError> handleOptimisticLockingFailure(
+            ObjectOptimisticLockingFailureException exception,
+            HttpServletRequest request
+    ) {
+        return build(
+                HttpStatus.CONFLICT,
+                "CONCURRENT_MODIFICATION",
+                "The resource was modified by another request. Retry the operation.",
+                request,
+                Map.of()
+        );
+    }
+
+    @ExceptionHandler(MissingTenantContextException.class)
+    public ResponseEntity<ApiError> handleMissingTenantScope(
+            MissingTenantContextException exception,
+            HttpServletRequest request
+    ) {
+        meterRegistry.counter(TENANT_SCOPE_MISSING_COUNTER).increment();
+        log.error(
+                "Tenant data-access scope missing on {} {} — request reached data access without a resolved scope",
+                request.getMethod(),
+                request.getRequestURI(),
+                exception
+        );
+        return build(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "TENANT_SCOPE_MISSING",
+                "An unexpected error occurred",
+                request,
+                Map.of()
         );
     }
 

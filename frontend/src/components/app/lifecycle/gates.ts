@@ -31,11 +31,11 @@ export interface TransitionGates {
  */
 const DOCS_GATED_TARGETS: ReadonlySet<LoanStatus> = new Set([
   "APPROVED_PENDING_DISBURSAL",
-  "DISBURSEMENT_IN_PROGRESS",
+  "DISBURSED",
 ]);
 
 /** Schedule gate only applies to the disbursement step (BR-10). */
-const SCHEDULE_GATED_TARGETS: ReadonlySet<LoanStatus> = new Set(["DISBURSEMENT_IN_PROGRESS"]);
+const SCHEDULE_GATED_TARGETS: ReadonlySet<LoanStatus> = new Set(["DISBURSED"]);
 
 export function resolveDisabledReason(
   action: LifecycleAction,

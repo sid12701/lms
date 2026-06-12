@@ -152,8 +152,8 @@ class LspStatusKillChainIntegrationTest {
                                 "reason", "COMPLIANCE",
                                 "note", "Duplicate disable."
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("STATUS_UNCHANGED"));
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("STATUS_UNCHANGED"));
 
         mockMvc.perform(get("/api/v1/internal/admin/lsps/{lspId}/audit-events", lspId)
                         .with(systemAdmin()))

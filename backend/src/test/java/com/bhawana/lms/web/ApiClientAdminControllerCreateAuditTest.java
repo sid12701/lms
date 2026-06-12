@@ -186,17 +186,17 @@ class ApiClientAdminControllerCreateAuditTest {
                                 "lspId", UUID.randomUUID().toString(),
                                 "status", "ACTIVE"
                         ))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
 
         mockMvc.perform(post("/api/v1/internal/admin/api-clients/{id}/rotate-secret", UUID.randomUUID())
                         .with(systemAdmin()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
 
         mockMvc.perform(put("/api/v1/internal/admin/api-clients/{id}", UUID.randomUUID())
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("status", "ACTIVE"))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
 
         assertEquals(beforeCount, apiClientAuditEventRepository.count());
     }

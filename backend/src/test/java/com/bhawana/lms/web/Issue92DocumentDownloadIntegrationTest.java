@@ -2,7 +2,8 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
-import com.bhawana.lms.service.LoanApplicationService;
+import com.bhawana.lms.service.LoanApplicationLifecycleService;
+import com.bhawana.lms.service.LoanApplicationServicingReadService;
 import com.bhawana.lms.service.LoanDocumentStorageService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
@@ -55,7 +56,10 @@ class Issue92DocumentDownloadIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private LoanApplicationService loanApplicationService;
+    private LoanApplicationLifecycleService loanApplicationLifecycleService;
+
+    @Autowired
+    private LoanApplicationServicingReadService loanApplicationServicingReadService;
 
     @Autowired
     private LoanDocumentStorageService loanDocumentStorageService;
@@ -96,7 +100,7 @@ class Issue92DocumentDownloadIntegrationTest {
         String applicationId = seedApplicationWithStoredPanCard();
         UUID applicationUuid = UUID.fromString(applicationId);
 
-        var checklist = loanApplicationService.getDocumentChecklistItem(
+        var checklist = loanApplicationServicingReadService.getDocumentChecklistItem(
                 applicationUuid,
                 LoanApplicationDocumentType.PAN_CARD
         );
@@ -170,7 +174,7 @@ class Issue92DocumentDownloadIntegrationTest {
                 documentType,
                 new MockMultipartFile("file", fileName, "application/pdf", content)
         );
-        loanApplicationService.updateDocumentChecklistItem(
+        loanApplicationLifecycleService.updateDocumentChecklistItem(
                 applicationUuid,
                 documentType,
                 "ops.user",

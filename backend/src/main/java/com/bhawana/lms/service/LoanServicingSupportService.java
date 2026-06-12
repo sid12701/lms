@@ -4,6 +4,8 @@ import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.money.Money;
+import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.LoanApplication;
@@ -19,7 +21,6 @@ import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -56,23 +57,39 @@ public class LoanServicingSupportService {
     @Transactional(readOnly = true)
     public LoanApplication getApplication(UUID applicationId) {
         return loanApplicationRepository.findDetailedById(applicationId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown loan application id: " + applicationId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
     }
 
     @Transactional(readOnly = true)
     public LoanAccount getRequiredLoanAccount(UUID applicationId) {
         return loanAccountRepository.findDetailedByLoanApplication_Id(applicationId)
-                .orElseThrow(() -> new IllegalArgumentException(
+                .orElseThrow(() -> new ResourceNotFoundException(
                         "Loan account is not available for application id: " + applicationId
                 ));
     }
 
     @Transactional(readOnly = true)
+    public List<LoanRepaymentScheduleInstallment> listRepaymentScheduleForLsp(UUID lspId, UUID loanAccountId) {
+        LoanAccount loanAccount = getLoanAccountForLsp(lspId, loanAccountId);
+        return loanRepaymentScheduleInstallmentRepository.findByLoanAccount_IdOrderByInstallmentNumberAsc(
+                loanAccount.getId()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<LoanPaymentTransaction> listPaymentTransactionsForLsp(UUID lspId, UUID loanAccountId) {
+        LoanAccount loanAccount = getLoanAccountForLsp(lspId, loanAccountId);
+        return loanPaymentTransactionRepository.findTop50ByLoanAccount_IdOrderByPaymentDateDescCreatedAtDesc(
+                loanAccount.getId()
+        );
+    }
+
+    @Transactional(readOnly = true)
     public LoanAccount getLoanAccountForLsp(UUID lspId, UUID loanAccountId) {
         LoanAccount loanAccount = loanAccountRepository.findDetailedById(loanAccountId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown loan id: " + loanAccountId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan id: " + loanAccountId));
         if (!loanAccount.getLsp().getId().equals(lspId)) {
-            throw new IllegalArgumentException("Unknown loan id: " + loanAccountId);
+            throw new ResourceNotFoundException("Unknown loan id: " + loanAccountId);
         }
         return loanAccount;
     }
@@ -117,10 +134,18 @@ public class LoanServicingSupportService {
     public void validateRepaymentEligibility(LoanApplication application, LoanAccount loanAccount) {
         if (application.getStatus() != LoanApplicationStatus.DISBURSED
                 && application.getStatus() != LoanApplicationStatus.UNDER_REPAYMENT) {
-            throw new IllegalArgumentException("Payments can only be recorded after a loan has been disbursed.");
+            throw new BusinessRuleViolationException(
+                    "REPAYMENT_NOT_ALLOWED",
+                    "Payments can only be recorded after a loan has been disbursed.",
+                    Map.of("status", application.getStatus().name())
+            );
         }
         if (loanAccount.getStatus() != LoanAccountStatus.DISBURSED) {
-            throw new IllegalArgumentException("Payments can only be recorded after the loan account is disbursed.");
+            throw new BusinessRuleViolationException(
+                    "REPAYMENT_NOT_ALLOWED",
+                    "Payments can only be recorded after the loan account is disbursed.",
+                    Map.of("loanAccountStatus", loanAccount.getStatus().name())
+            );
         }
     }
 
@@ -275,16 +300,11 @@ public class LoanServicingSupportService {
     }
 
     public BigDecimal scaleCurrency(BigDecimal value) {
-        return value.setScale(2, RoundingMode.HALF_UP);
+        return Money.scale(value);
     }
 
     public String normalizeActorUsername(String actorUsername) {
-        if (actorUsername == null) {
-            return "system";
-        }
-
-        String normalized = actorUsername.trim();
-        return normalized.isBlank() ? "system" : normalized;
+        return Strings.normalizeActor(actorUsername);
     }
 
     public String requireReference(String reference) {
@@ -296,7 +316,7 @@ public class LoanServicingSupportService {
     }
 
     public String normalizeReference(String reference) {
-        String normalized = normalizeOptional(reference);
+        String normalized = Strings.normalizeOptional(reference);
         if (normalized != null && normalized.length() > 128) {
             throw new IllegalArgumentException("Payment reference must be 128 characters or fewer.");
         }
@@ -304,14 +324,6 @@ public class LoanServicingSupportService {
     }
 
     public String normalizeNote(String note) {
-        return normalizeOptional(note);
-    }
-
-    private static String normalizeOptional(String value) {
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.trim();
-        return normalized.isBlank() ? null : normalized;
+        return Strings.normalizeOptional(note);
     }
 }

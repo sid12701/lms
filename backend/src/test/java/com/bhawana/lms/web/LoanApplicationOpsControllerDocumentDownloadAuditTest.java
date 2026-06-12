@@ -14,7 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
-import com.bhawana.lms.service.LoanApplicationService;
+import com.bhawana.lms.service.LoanApplicationLifecycleService;
 import com.bhawana.lms.service.LoanDocumentStorageService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -55,7 +55,7 @@ class LoanApplicationOpsControllerDocumentDownloadAuditTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private LoanApplicationService loanApplicationService;
+    private LoanApplicationLifecycleService loanApplicationLifecycleService;
 
     @Autowired
     private LoanDocumentStorageService loanDocumentStorageService;
@@ -221,7 +221,7 @@ class LoanApplicationOpsControllerDocumentDownloadAuditTest {
                 documentType,
                 new MockMultipartFile("file", fileName, "application/pdf", content)
         );
-        loanApplicationService.updateDocumentChecklistItem(
+        loanApplicationLifecycleService.updateDocumentChecklistItem(
                 applicationUuid,
                 documentType,
                 "ops.user",

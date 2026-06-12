@@ -8,7 +8,7 @@ import com.bhawana.lms.domain.LspAuditEvent;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.LspStatusChangeReason;
 import com.bhawana.lms.domain.WebhookEventType;
-import com.bhawana.lms.service.AdminDirectoryService;
+import com.bhawana.lms.service.LspDirectoryService;
 import com.bhawana.lms.service.LspStatusService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -32,29 +32,29 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasRole('SYSTEM_ADMIN')")
 public class LspAdminController {
 
-    private final AdminDirectoryService adminDirectoryService;
+    private final LspDirectoryService lspDirectoryService;
     private final LspStatusService lspStatusService;
 
-    public LspAdminController(AdminDirectoryService adminDirectoryService, LspStatusService lspStatusService) {
-        this.adminDirectoryService = adminDirectoryService;
+    public LspAdminController(LspDirectoryService lspDirectoryService, LspStatusService lspStatusService) {
+        this.lspDirectoryService = lspDirectoryService;
         this.lspStatusService = lspStatusService;
     }
 
     @GetMapping
     public List<LspResponse> listLsps() {
-        return adminDirectoryService.listLspDirectoryViews().stream()
+        return lspDirectoryService.listLspDirectoryViews().stream()
                 .map(LspAdminController::toResponse)
                 .toList();
     }
 
     @GetMapping("/{lspId}")
     public LspDetailResponse getLspDetail(@PathVariable UUID lspId) {
-        return toDetailResponse(adminDirectoryService.getLspDetail(lspId));
+        return toDetailResponse(lspDirectoryService.getLspDetail(lspId));
     }
 
     @PostMapping
     public LspResponse createLsp(@Valid @RequestBody CreateLspRequest request) {
-        Lsp lsp = adminDirectoryService.createLsp(request.code(), request.name(), request.status());
+        Lsp lsp = lspDirectoryService.createLsp(request.code(), request.name(), request.status());
         return toResponse(lsp);
     }
 
@@ -90,7 +90,7 @@ public class LspAdminController {
             HttpServletRequest httpRequest
     ) {
         String actorUsername = principal == null ? "unknown" : principal.getSubject();
-        Lsp lsp = adminDirectoryService.updateWebhookSubscription(
+        Lsp lsp = lspDirectoryService.updateWebhookSubscription(
                 lspId,
                 request.enabled(),
                 request.endpointUrl(),
@@ -120,7 +120,7 @@ public class LspAdminController {
         );
     }
 
-    private static LspResponse toResponse(AdminDirectoryService.LspDirectoryView view) {
+    private static LspResponse toResponse(LspDirectoryService.LspDirectoryView view) {
         Lsp lsp = view.lsp();
         return new LspResponse(
                 lsp.getId().toString(),
@@ -138,7 +138,7 @@ public class LspAdminController {
         );
     }
 
-    private static LspDetailResponse toDetailResponse(AdminDirectoryService.LspDetailView view) {
+    private static LspDetailResponse toDetailResponse(LspDirectoryService.LspDetailView view) {
         Lsp lsp = view.lsp();
         return new LspDetailResponse(
                 lsp.getId().toString(),
@@ -181,7 +181,7 @@ public class LspAdminController {
         );
     }
 
-    private static PortfolioSummaryResponse toPortfolioSummaryResponse(AdminDirectoryService.LspPortfolioSummary summary) {
+    private static PortfolioSummaryResponse toPortfolioSummaryResponse(LspDirectoryService.LspPortfolioSummary summary) {
         return new PortfolioSummaryResponse(
                 summary.loanApplicationCount(),
                 summary.approvedLoanCount(),

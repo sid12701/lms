@@ -44,7 +44,7 @@ class RateLimitFilterIntegrationTest {
     private RemoteBucketBuilder<String> remoteBucketBuilder;
 
     @Mock
-    private ObjectProvider<com.bhawana.lms.service.AlertRuleEvaluationService> alertRuleEvaluationServiceProvider;
+    private ObjectProvider<com.bhawana.lms.service.OpsAlertEmitters> opsAlertEmittersProvider;
 
     private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
     private final Map<String, AtomicInteger> consumption = new ConcurrentHashMap<>();
@@ -91,7 +91,7 @@ class RateLimitFilterIntegrationTest {
                 proxyManager,
                 objectMapper,
                 properties,
-                alertRuleEvaluationServiceProvider
+                opsAlertEmittersProvider
         );
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/login");
@@ -124,7 +124,7 @@ class RateLimitFilterIntegrationTest {
                 proxyManager,
                 objectMapper,
                 properties,
-                alertRuleEvaluationServiceProvider
+                opsAlertEmittersProvider
         );
 
         Jwt jwt = Jwt.withTokenValue("token")

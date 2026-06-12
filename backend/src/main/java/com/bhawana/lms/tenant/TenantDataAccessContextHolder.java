@@ -1,6 +1,7 @@
 package com.bhawana.lms.tenant;
 
 import java.util.UUID;
+import java.util.function.Supplier;
 
 public final class TenantDataAccessContextHolder {
 
@@ -49,12 +50,27 @@ public final class TenantDataAccessContextHolder {
         CONTEXT.remove();
     }
 
+    /**
+     * Runs {@code task} with admin data-access scope and restores the prior scope in a {@code finally}
+     * block, including when {@code task} throws.
+     */
+    public static void runAsAdmin(Runnable task) {
+        TenantScopedExecution.runAsAdmin(task);
+    }
+
+    /**
+     * @see #runAsAdmin(Runnable)
+     */
+    public static <T> T runAsAdmin(Supplier<T> task) {
+        return TenantScopedExecution.callAsAdmin(task);
+    }
+
     private static HolderContext requireContext() {
         HolderContext context = CONTEXT.get();
         if (context == null) {
             throw new MissingTenantContextException(
                     "Tenant data-access context is not set on this thread. "
-                            + "Call useAdmin(), useTenant(lspId), or TenantScopedExecution.callAsAdmin/callAsTenant "
+                            + "Call useAdmin(), useTenant(lspId), runAsAdmin(...), or TenantScopedExecution.callAsAdmin/callAsTenant "
                             + "before accessing tenant-scoped data."
             );
         }
