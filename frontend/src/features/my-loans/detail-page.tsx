@@ -7,7 +7,12 @@ import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { StatusBadge } from "@/components/app/status/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { formatDateTime, formatINR } from "@/lib/format";
-import { fetchInvalidReasons, fetchMyLoanDetail, type InvalidReasonOption, type MyLoanDetail } from "./api";
+import {
+  fetchInvalidReasons,
+  fetchMyLoanDetail,
+  type InvalidReasonOption,
+  type MyLoanDetail,
+} from "./api";
 import type { LoanStatus } from "@/types";
 import { DocumentsSection } from "./components/DocumentsSection";
 import { DetailField } from "./components/DetailField";
@@ -15,12 +20,7 @@ import { MarkInvalidDialog } from "./components/MarkInvalidDialog";
 import { MaskedBorrowerCard } from "./components/MaskedBorrowerCard";
 import { safeApiMessage } from "./utils";
 
-const TERMINAL_STATUSES = new Set<LoanStatus>([
-  "INVALID",
-  "REJECTED",
-  "CLOSED",
-  "FORECLOSED",
-]);
+const TERMINAL_STATUSES = new Set<LoanStatus>(["INVALID", "REJECTED", "CLOSED", "FORECLOSED"]);
 
 export function MyLoanDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -215,7 +215,11 @@ export function MyLoanDetailPage() {
           <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
             <DetailField label="Account number" value={detail.loanAccount.accountNumber} mono />
             <DetailField label="Status" value={detail.loanAccount.status} />
-            <DetailField label="Principal" value={formatINR(detail.loanAccount.principalAmount)} mono />
+            <DetailField
+              label="Principal"
+              value={formatINR(detail.loanAccount.principalAmount)}
+              mono
+            />
             <DetailField
               label="Tenure"
               value={

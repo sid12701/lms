@@ -438,7 +438,9 @@ export function ComponentsSandboxPage() {
                       onClick={() =>
                         setFilters({
                           status:
-                            filters.status === "AWAITING_APPROVAL" ? undefined : "AWAITING_APPROVAL",
+                            filters.status === "AWAITING_APPROVAL"
+                              ? undefined
+                              : "AWAITING_APPROVAL",
                         })
                       }
                     >

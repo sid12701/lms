@@ -113,9 +113,7 @@ describe("StatusBadge", () => {
   });
 
   it("has no axe violations", async () => {
-    const { container } = renderWithProviders(
-      <StatusBadge status="APPROVED_PENDING_DISBURSAL" />,
-    );
+    const { container } = renderWithProviders(<StatusBadge status="APPROVED_PENDING_DISBURSAL" />);
     expect(await axe(container)).toHaveNoViolations();
   });
 });

@@ -10,7 +10,6 @@ import com.bhawana.lms.service.LoanDelinquencySummary;
 import com.bhawana.lms.service.LoanDelinquencySupport;
 import com.bhawana.lms.service.LoanRepaymentScheduleSummary;
 import java.time.LocalDate;
-import java.util.UUID;
 
 public final class LspLoanApplicationResponses {
 
@@ -21,7 +20,6 @@ public final class LspLoanApplicationResponses {
             LoanApplicationDetailView detail
     ) {
         LoanApplication application = detail.application();
-        UUID applicationId = application.getId();
         return new LspLoanApplicationApiController.LspLoanApplicationDetailResponse(
                 application.getId().toString(),
                 application.getBorrower().getId().toString(),
