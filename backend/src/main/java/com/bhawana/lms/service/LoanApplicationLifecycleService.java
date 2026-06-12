@@ -5,8 +5,6 @@ import com.bhawana.lms.common.money.Money;
 import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.common.web.ApiConflictException;
 import com.bhawana.lms.common.web.BusinessRuleViolationException;
-import com.bhawana.lms.common.web.DocumentUploadRequiredException;
-import com.bhawana.lms.common.web.KycCompletionRequiredException;
 import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanAccount;
@@ -15,7 +13,6 @@ import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationAuditEvent;
-import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanApplicationIntakeAudit;
@@ -23,19 +20,13 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanInvalidationReason;
-import com.bhawana.lms.domain.LoanForeclosureQuote;
-import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
-import com.bhawana.lms.domain.OpsAlertSeverity;
-import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.domain.LspStatus;
-import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
-import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
@@ -51,8 +42,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,12 +49,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class LoanApplicationLifecycleService {
 
-    private static final Logger log = LoggerFactory.getLogger(LoanApplicationLifecycleService.class);
-
-    private final BorrowerRepository borrowerRepository;
     private final LoanAccountRepository loanAccountRepository;
     private final LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
-    private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     private final LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
@@ -73,18 +58,16 @@ public class LoanApplicationLifecycleService {
     private final LoanRepaymentScheduleService loanRepaymentScheduleService;
     private final LspRepository lspRepository;
     private final LoanProductLspMappingRepository loanProductLspMappingRepository;
-    private final OpsAlertService opsAlertService;
-    private final BorrowerActiveLoanChecker borrowerActiveLoanChecker;
+    private final BorrowerOnboardingService borrowerOnboardingService;
+    private final LoanApplicationDocumentChecklistService documentChecklistService;
     private final WebhookOutboxService webhookOutboxService;
     private final LoanAutoApprovalRuleEngine loanAutoApprovalRuleEngine;
     private final OpsAlertEmitters opsAlertEmitters;
     private final ObjectMapper objectMapper;
 
     public LoanApplicationLifecycleService(
-            BorrowerRepository borrowerRepository,
             LoanAccountRepository loanAccountRepository,
             LoanApplicationAuditEventRepository loanApplicationAuditEventRepository,
-            LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
             LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository,
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
@@ -92,17 +75,15 @@ public class LoanApplicationLifecycleService {
             @Lazy LoanRepaymentScheduleService loanRepaymentScheduleService,
             LspRepository lspRepository,
             LoanProductLspMappingRepository loanProductLspMappingRepository,
-            OpsAlertService opsAlertService,
-            BorrowerActiveLoanChecker borrowerActiveLoanChecker,
+            BorrowerOnboardingService borrowerOnboardingService,
+            LoanApplicationDocumentChecklistService documentChecklistService,
             WebhookOutboxService webhookOutboxService,
             LoanAutoApprovalRuleEngine loanAutoApprovalRuleEngine,
             OpsAlertEmitters opsAlertEmitters,
             ObjectMapper objectMapper
     ) {
-        this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationAuditEventRepository = loanApplicationAuditEventRepository;
-        this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
         this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
@@ -110,8 +91,8 @@ public class LoanApplicationLifecycleService {
         this.loanRepaymentScheduleService = loanRepaymentScheduleService;
         this.lspRepository = lspRepository;
         this.loanProductLspMappingRepository = loanProductLspMappingRepository;
-        this.opsAlertService = opsAlertService;
-        this.borrowerActiveLoanChecker = borrowerActiveLoanChecker;
+        this.borrowerOnboardingService = borrowerOnboardingService;
+        this.documentChecklistService = documentChecklistService;
         this.webhookOutboxService = webhookOutboxService;
         this.loanAutoApprovalRuleEngine = loanAutoApprovalRuleEngine;
         this.opsAlertEmitters = opsAlertEmitters;
@@ -190,7 +171,7 @@ public class LoanApplicationLifecycleService {
 
         BigDecimal monthlyIncome = normalizeMonthlyIncome(command.monthlyIncome(), command.annualIncome());
         BigDecimal annualIncome = normalizeAnnualIncome(command.monthlyIncome(), command.annualIncome());
-        Borrower borrower = resolveBorrowerForOnboarding(
+        Borrower borrower = borrowerOnboardingService.resolveBorrowerForOnboarding(
                 lsp,
                 command,
                 monthlyIncome,
@@ -215,14 +196,14 @@ public class LoanApplicationLifecycleService {
                 CorrelationIdHolder.get(),
                 serializePayload(savedApplication)
         ));
-        seedDocumentChecklist(savedApplication, actorUsername);
+        documentChecklistService.seedDocumentChecklist(savedApplication, actorUsername);
         webhookOutboxService.enqueueIfSubscribed(
                 savedApplication.getLsp(),
                 WebhookEventType.LOAN_CREATED,
                 "LOAN_APPLICATION",
                 savedApplication.getId().toString(),
                 savedApplication.getId(),
-                buildLoanCreatedPayload(savedApplication)
+                LoanWebhookPayloads.loanCreated(savedApplication)
         );
         return savedApplication;
     }
@@ -250,7 +231,7 @@ public class LoanApplicationLifecycleService {
         LoanApplicationStatusTransitioner.enforceTransition(currentStatus, targetStatus);
         if (currentStatus == LoanApplicationStatus.AWAITING_APPROVAL
                 && targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL) {
-            validateKycCompletionBeforeApproval(applicationId);
+            documentChecklistService.validateKycCompletionBeforeApproval(applicationId);
         }
 
         LoanApplicationStatusReasonCode resolvedReasonCode = validateTransitionReasonCode(targetStatus, reasonCode);
@@ -383,20 +364,12 @@ public class LoanApplicationLifecycleService {
             String storageKey,
             boolean lmsManagedContent
     ) {
-        LoanApplication application = getApplication(applicationId);
-        ensureDocumentChecklist(application);
-
-        LoanApplicationDocumentChecklist checklistItem = loanApplicationDocumentChecklistRepository
-                .findByLoanApplication_IdAndDocumentType(applicationId, documentType)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Unknown document checklist item: " + documentType.name()
-                ));
-        boolean wasComplete = hasAllRequiredDocumentsUploaded(applicationId);
-
-        checklistItem.update(
+        return documentChecklistService.updateDocumentChecklistItem(
+                applicationId,
+                documentType,
+                actorUsername,
                 status,
                 note,
-                Strings.normalizeActor(actorUsername),
                 fileName,
                 fileReference,
                 sourceReference,
@@ -406,27 +379,10 @@ public class LoanApplicationLifecycleService {
                 storageKey,
                 lmsManagedContent
         );
-        LoanApplicationDocumentChecklist savedChecklistItem = loanApplicationDocumentChecklistRepository.save(checklistItem);
-        boolean isComplete = hasAllRequiredDocumentsUploaded(applicationId);
-        boolean allRequiredDocumentsJustCompleted = !wasComplete && isComplete;
-        if (allRequiredDocumentsJustCompleted) {
-            webhookOutboxService.enqueueIfSubscribed(
-                    application.getLsp(),
-                    WebhookEventType.DOCUMENTS_UPLOADED,
-                    "LOAN_APPLICATION",
-                    application.getId().toString(),
-                    application.getId(),
-                    buildDocumentsUploadedPayload(application)
-            );
-        }
-        return new DocumentChecklistUpdateResult(savedChecklistItem, allRequiredDocumentsJustCompleted);
     }
 
     public boolean hasAllRequiredDocumentsUploaded(UUID applicationId) {
-        return loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
-                .stream()
-                .filter(item -> LoanApplicationDocumentRequirements.isIntakeRequired(item.getDocumentType()))
-                .allMatch(LoanApplicationDocumentRequirements::isChecklistItemComplete);
+        return documentChecklistService.hasAllRequiredDocumentsUploaded(applicationId);
     }
 
     /**
@@ -510,55 +466,16 @@ public class LoanApplicationLifecycleService {
     }
 
     public void ensureDocumentChecklist(LoanApplication application) {
-        if (!loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(application.getId()).isEmpty()) {
-            return;
-        }
-        seedDocumentChecklist(application, "system");
+        documentChecklistService.ensureDocumentChecklist(application);
     }
 
     public void validateRequiredDocumentsUploadedBeforeDisbursement(UUID applicationId) {
-        LoanApplication application = getApplication(applicationId);
-        ensureDocumentChecklist(application);
-
-        List<LoanApplicationDocumentType> blockingDocumentTypes = loanApplicationDocumentChecklistRepository
-                .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
-                .stream()
-                .filter(item -> item.getDocumentType().isRequiredForDisbursement())
-                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.SUBMITTED
-                        && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
-                .map(LoanApplicationDocumentChecklist::getDocumentType)
-                .toList();
-
-        if (!blockingDocumentTypes.isEmpty()) {
-            throw new DocumentUploadRequiredException(blockingDocumentTypes);
-        }
+        documentChecklistService.validateRequiredDocumentsUploadedBeforeDisbursement(applicationId);
     }
 
     /** All eight intake-required document types must be submitted with LMS-managed content before disbursement. */
     public boolean hasAllRequiredLmsManagedDocuments(UUID applicationId) {
-        LoanApplication application = getApplication(applicationId);
-        ensureDocumentChecklist(application);
-        return loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
-                .stream()
-                .filter(item -> LoanApplicationDocumentRequirements.isIntakeRequired(item.getDocumentType()))
-                .allMatch(LoanApplicationDocumentRequirements::isChecklistItemCompleteForDisbursement);
-    }
-
-    private Map<String, Object> buildDocumentsUploadedPayload(LoanApplication application) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("externalLoanId", application.getExternalLoanId());
-        payload.put("allRequiredDocumentsUploaded", true);
-        payload.put(
-                "documentTypes",
-                loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(application.getId())
-                        .stream()
-                        .filter(item -> LoanApplicationDocumentRequirements.isIntakeRequired(item.getDocumentType()))
-                        .filter(LoanApplicationDocumentRequirements::isChecklistItemComplete)
-                        .map(item -> item.getDocumentType().name())
-                        .toList()
-        );
-        return payload;
+        return documentChecklistService.hasAllRequiredLmsManagedDocuments(applicationId);
     }
 
     public LoanApplication updateApplicationStatus(
@@ -648,7 +565,7 @@ public class LoanApplicationLifecycleService {
                 "LOAN_APPLICATION",
                 savedApplication.getId().toString(),
                 savedApplication.getId(),
-                buildLoanStatusChangedPayload(savedApplication, currentStatus, targetStatus, reasonCode)
+                LoanWebhookPayloads.loanStatusChanged(savedApplication, currentStatus, targetStatus, reasonCode)
         );
         return savedApplication;
     }
@@ -689,82 +606,6 @@ public class LoanApplicationLifecycleService {
                 reasonCode,
                 CorrelationIdHolder.get()
         ));
-    }
-
-    public Map<String, Object> buildDisbursementPayload(LoanApplication application, LoanAccount loanAccount) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("loanAccountId", loanAccount.getId());
-        payload.put("accountNumber", loanAccount.getAccountNumber());
-        payload.put("loanAccountStatus", loanAccount.getStatus().name());
-        payload.put("principalAmount", loanAccount.getPrincipalAmount());
-        return payload;
-    }
-
-    public Map<String, Object> buildRepaymentPayload(
-            LoanApplication application,
-            LoanAccount loanAccount,
-            LoanPaymentTransaction paymentTransaction
-    ) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("loanAccountId", loanAccount.getId());
-        payload.put("paymentTransactionId", paymentTransaction.getId());
-        payload.put("reference", paymentTransaction.getReference());
-        payload.put("amount", paymentTransaction.getAmount());
-        payload.put("allocatedAmount", paymentTransaction.getAllocatedAmount());
-        payload.put("unallocatedAmount", paymentTransaction.getUnallocatedAmount());
-        payload.put("paymentStatus", paymentTransaction.getStatus().name());
-        payload.put("paymentDate", paymentTransaction.getPaymentDate());
-        return payload;
-    }
-
-    public Map<String, Object> buildLoanFullyRepaidPayload(
-            LoanApplication application,
-            LoanAccount loanAccount
-    ) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("loanAccountId", loanAccount.getId());
-        payload.put("accountNumber", loanAccount.getAccountNumber());
-        payload.put("closureReason", loanAccount.getClosureReason().name());
-        payload.put("closedAt", loanAccount.getClosedAt());
-        return payload;
-    }
-
-    public Map<String, Object> buildForeclosurePayload(
-            LoanApplication application,
-            LoanAccount loanAccount,
-            LoanForeclosureQuote quote
-    ) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("loanAccountId", loanAccount.getId());
-        payload.put("accountNumber", loanAccount.getAccountNumber());
-        payload.put("foreclosureQuoteId", quote.getId());
-        payload.put("quoteVersion", quote.getVersion());
-        payload.put("effectiveDate", quote.getEffectiveDate());
-        payload.put("settlementAmount", quote.getSettlementAmount());
-        payload.put("closureReason", LoanAccountClosureReason.FORECLOSURE.name());
-        payload.put("closedAt", loanAccount.getClosedAt());
-        payload.put("applicationStatus", application.getStatus().name());
-        return payload;
-    }
-
-    public Map<String, Object> buildForeclosureQuotePayload(
-            LoanApplication application,
-            LoanAccount loanAccount,
-            LoanForeclosureQuote quote
-    ) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("loanAccountId", loanAccount.getId());
-        payload.put("accountNumber", loanAccount.getAccountNumber());
-        payload.put("foreclosureQuoteId", quote.getId());
-        payload.put("quoteVersion", quote.getVersion());
-        payload.put("effectiveDate", quote.getEffectiveDate());
-        payload.put("settlementAmount", quote.getSettlementAmount());
-        return payload;
     }
 
     public LoanApplication invalidateApplication(
@@ -847,7 +688,7 @@ public class LoanApplicationLifecycleService {
                 "LOAN_APPLICATION",
                 savedApplication.getId().toString(),
                 savedApplication.getId(),
-                buildLoanStatusChangedPayload(
+                LoanWebhookPayloads.loanStatusChanged(
                         savedApplication,
                         currentStatus,
                         LoanApplicationStatus.INVALID,
@@ -862,273 +703,12 @@ public class LoanApplicationLifecycleService {
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
     }
 
-    private Borrower resolveBorrowerForOnboarding(
-            com.bhawana.lms.domain.Lsp lsp,
-            LoanApplicationOnboardingCommand command,
-            BigDecimal monthlyIncome,
-            BigDecimal annualIncome,
-            String actorUsername
-    ) {
-        String normalizedPan = normalizePan(command.panNumber());
-        String normalizedMobile = normalizeMobile(command.mobileNumber());
-        String normalizedAadhar = normalizeAadhar(command.aadharNumber());
-        String normalizedFullName = normalizeFullName(command.fullName());
-
-        Borrower borrowerByPan = borrowerRepository.findByPan(normalizedPan).orElse(null);
-        Borrower borrowerByMobile = borrowerRepository.findTop10ByMobileOrderByUpdatedAtDesc(normalizedMobile)
-                .stream()
-                .findFirst()
-                .orElse(null);
-
-        if (borrowerByPan != null) {
-            if (borrowerByMobile != null && !borrowerByMobile.getId().equals(borrowerByPan.getId())) {
-                raiseBorrowerIdentityConflict(
-                        lsp,
-                        borrowerByMobile,
-                        command,
-                        actorUsername,
-                        "Incoming PAN matches an existing borrower, but the submitted mobile number is already associated with a different borrower."
-                );
-            }
-            validateImmutableBorrowerIdentity(lsp, borrowerByPan, normalizedAadhar, command, actorUsername);
-            raiseActiveLoanDuplicateIfPresent(lsp, borrowerByPan, command, actorUsername);
-            borrowerByPan.mergeLatestProfile(
-                    normalizedFullName,
-                    normalizedMobile,
-                    normalizeEmail(command.emailAddress()),
-                    command.dob(),
-                    command.gender(),
-                    command.maritalStatus(),
-                    command.fatherName(),
-                    normalizedAadhar,
-                    command.addressCity(),
-                    command.addressState(),
-                    command.addressLine1(),
-                    command.addressLine2(),
-                    command.addressZipcode(),
-                    command.spouseName(),
-                    command.employmentStatus(),
-                    command.organizationName(),
-                    command.empId(),
-                    command.employmentCity(),
-                    command.employmentState(),
-                    command.employmentZip(),
-                    monthlyIncome,
-                    annualIncome,
-                    command.bankAccountNumber(),
-                    command.bankName(),
-                    command.ifscCode(),
-                    command.accountHolderName(),
-                    command.referencePersonName(),
-                    command.referencePersonNumber()
-            );
-            borrowerByPan.grantVisibilityTo(lsp);
-            return borrowerRepository.save(borrowerByPan);
-        }
-
-        if (borrowerByMobile != null) {
-            raiseBorrowerIdentityConflict(
-                    lsp,
-                    borrowerByMobile,
-                    command,
-                    actorUsername,
-                    "Incoming mobile number already belongs to an existing borrower with a different PAN."
-            );
-        }
-
-        Borrower borrower = new Borrower(
-                normalizedFullName,
-                normalizedPan,
-                normalizedMobile,
-                normalizeEmail(command.emailAddress()),
-                command.dob(),
-                command.gender(),
-                command.maritalStatus(),
-                command.fatherName(),
-                normalizedAadhar,
-                command.addressCity(),
-                command.addressState(),
-                command.addressLine1(),
-                command.addressLine2(),
-                command.addressZipcode(),
-                command.spouseName(),
-                command.employmentStatus(),
-                command.organizationName(),
-                command.empId(),
-                command.employmentCity(),
-                command.employmentState(),
-                command.employmentZip(),
-                monthlyIncome,
-                annualIncome,
-                command.bankAccountNumber(),
-                command.bankName(),
-                command.ifscCode(),
-                command.accountHolderName(),
-                command.referencePersonName(),
-                command.referencePersonNumber()
-        );
-        borrower.grantVisibilityTo(lsp);
-        return borrowerRepository.save(borrower);
-    }
-
-    private void validateImmutableBorrowerIdentity(
-            com.bhawana.lms.domain.Lsp lsp,
-            Borrower borrower,
-            String normalizedAadhar,
-            LoanApplicationOnboardingCommand command,
-            String actorUsername
-    ) {
-        String currentAadhar = normalizeAadhar(borrower.getAadharNumber());
-        if (currentAadhar != null && normalizedAadhar != null && !currentAadhar.equals(normalizedAadhar)) {
-            raiseBorrowerIdentityConflict(
-                    lsp,
-                    borrower,
-                    command,
-                    actorUsername,
-                    "Incoming Aadhaar does not match the existing borrower identity for the submitted PAN."
-            );
-        }
-    }
-
-    private void raiseBorrowerIdentityConflict(
-            com.bhawana.lms.domain.Lsp lsp,
-            Borrower existingBorrower,
-            LoanApplicationOnboardingCommand command,
-            String actorUsername,
-            String reason
-    ) {
-        opsAlertService.createAlert(
-                OpsAlertType.BORROWER_IDENTITY_CONFLICT,
-                OpsAlertSeverity.HIGH,
-                "Borrower identity mismatch detected",
-                reason + " Internal ops review is required before this borrower can be onboarded again.",
-                "BORROWER",
-                existingBorrower == null ? null : existingBorrower.getId(),
-                CorrelationIdHolder.get(),
-                serializeBorrowerConflictContext(lsp, existingBorrower, command, actorUsername, reason)
-        );
-        throw new ApiConflictException(
-                "BORROWER_IDENTITY_CONFLICT",
-                "Borrower identity conflict detected. Internal ops has been alerted."
-        );
-    }
-
-    private void raiseActiveLoanDuplicateIfPresent(
-            com.bhawana.lms.domain.Lsp lsp,
-            Borrower existingBorrower,
-            LoanApplicationOnboardingCommand command,
-            String actorUsername
-    ) {
-        if (existingBorrower == null) {
-            return;
-        }
-        List<com.bhawana.lms.domain.LoanAccount> openLoans =
-                borrowerActiveLoanChecker.findOpenLoansAcrossAllLsps(existingBorrower.getId());
-        if (openLoans.isEmpty()) {
-            return;
-        }
-
-        String reason = "Borrower already has " + openLoans.size() + " open loan(s) across LSPs. "
-                + "Concurrent loan onboarding is blocked.";
-        opsAlertService.createAlert(
-                OpsAlertType.BORROWER_ACTIVE_LOAN_DUPLICATE,
-                OpsAlertSeverity.HIGH,
-                "Borrower already has an open loan",
-                reason + " Internal ops review is required before this borrower can be onboarded for a new loan.",
-                "BORROWER",
-                existingBorrower.getId(),
-                CorrelationIdHolder.get(),
-                serializeActiveLoanDuplicateContext(lsp, existingBorrower, openLoans, command, actorUsername)
-        );
-        throw new ApiConflictException(
-                "BORROWER_HAS_ACTIVE_LOAN",
-                "Borrower already has an open loan. Onboarding blocked."
-        );
-    }
-
-    private String serializeActiveLoanDuplicateContext(
-            com.bhawana.lms.domain.Lsp lsp,
-            Borrower existingBorrower,
-            List<com.bhawana.lms.domain.LoanAccount> openLoans,
-            LoanApplicationOnboardingCommand command,
-            String actorUsername
-    ) {
-        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
-        payload.put("actorUsername", actorUsername);
-        payload.put("incomingLspId", lsp == null ? null : lsp.getId());
-        payload.put("incomingLspCode", lsp == null ? null : lsp.getCode());
-        payload.put("incomingPan", normalizePan(command.panNumber()));
-        payload.put("incomingMobile", normalizeMobile(command.mobileNumber()));
-        payload.put("borrowerId", existingBorrower.getId());
-        payload.put("borrowerPan", existingBorrower.getPan());
-        java.util.List<java.util.Map<String, Object>> loanEntries = new java.util.ArrayList<>(openLoans.size());
-        for (com.bhawana.lms.domain.LoanAccount loan : openLoans) {
-            java.util.Map<String, Object> entry = new java.util.LinkedHashMap<>();
-            entry.put("loanAccountId", loan.getId());
-            entry.put("applicationId", loan.getLoanApplication() == null ? null : loan.getLoanApplication().getId());
-            entry.put("lspId", loan.getLsp() == null ? null : loan.getLsp().getId());
-            entry.put("lspCode", loan.getLsp() == null ? null : loan.getLsp().getCode());
-            entry.put("status", loan.getStatus() == null ? null : loan.getStatus().name());
-            loanEntries.add(entry);
-        }
-        payload.put("openLoans", loanEntries);
-        return com.bhawana.lms.common.util.AlertContextJson.serialize(objectMapper, log, payload);
-    }
-
     private LoanApplication getApplicationForLsp(UUID lspId, UUID applicationId) {
         LoanApplication application = getApplication(applicationId);
         if (!application.getLsp().getId().equals(lspId)) {
             throw new ResourceNotFoundException("Unknown loan application id: " + applicationId);
         }
         return application;
-    }
-
-    private void seedDocumentChecklist(LoanApplication application, String actorUsername) {
-        List<LoanApplicationDocumentChecklist> checklistItems = List.of(
-                buildChecklistItem(application, LoanApplicationDocumentType.PAN_CARD, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.AADHAAR_FILE, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.ADDRESS_PROOF, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.INCOME_PROOF, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.BANK_STATEMENT, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.SELFIE_PHOTOGRAPH, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.KFS, actorUsername),
-                buildChecklistItem(application, LoanApplicationDocumentType.LOAN_AGREEMENT, actorUsername)
-        );
-        loanApplicationDocumentChecklistRepository.saveAll(checklistItems);
-    }
-
-    private LoanApplicationDocumentChecklist buildChecklistItem(
-            LoanApplication application,
-            LoanApplicationDocumentType documentType,
-            String actorUsername
-    ) {
-        return new LoanApplicationDocumentChecklist(
-                application,
-                documentType,
-                documentType.isRequiredByDefault(),
-                documentType.isRequiredByDefault()
-                        ? LoanApplicationDocumentChecklistStatus.PENDING
-                        : LoanApplicationDocumentChecklistStatus.NOT_REQUIRED,
-                documentType.isRequiredByDefault() ? "Awaiting " + documentType.getDisplayName() : "Optional placeholder",
-                actorUsername
-        );
-    }
-
-    private void validateKycCompletionBeforeApproval(UUID applicationId) {
-        LoanApplication application = getApplication(applicationId);
-        ensureDocumentChecklist(application);
-
-        List<LoanApplicationDocumentType> blockingDocumentTypes = loanApplicationDocumentChecklistRepository
-                .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
-                .stream()
-                .filter(item -> LoanApplicationDocumentRequirements.isIntakeRequired(item.getDocumentType()))
-                .filter(item -> !LoanApplicationDocumentRequirements.isChecklistItemComplete(item))
-                .map(LoanApplicationDocumentChecklist::getDocumentType)
-                .toList();
-
-        if (!blockingDocumentTypes.isEmpty()) {
-            throw new KycCompletionRequiredException(blockingDocumentTypes);
-        }
     }
 
     private LoanProduct resolveLoanProduct(LoanApplicationOnboardingCommand command) {
@@ -1189,61 +769,6 @@ public class LoanApplicationLifecycleService {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to serialize loan application intake payload.", exception);
         }
-    }
-
-    private static Map<String, Object> buildLoanCreatedPayload(LoanApplication application) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("externalLoanId", application.getExternalLoanId());
-        payload.put("status", application.getStatus().name());
-        payload.put("borrowerId", application.getBorrower().getId());
-        payload.put("requestedAmount", application.getRequestedAmount());
-        payload.put("tenureMonths", application.getRequestedTenureMonths());
-        return payload;
-    }
-
-    private static Map<String, Object> buildLoanStatusChangedPayload(
-            LoanApplication application,
-            LoanApplicationStatus fromStatus,
-            LoanApplicationStatus toStatus,
-            LoanApplicationStatusReasonCode reasonCode
-    ) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("loanApplicationId", application.getId());
-        payload.put("externalLoanId", application.getExternalLoanId());
-        payload.put("fromStatus", fromStatus.name());
-        payload.put("toStatus", toStatus.name());
-        payload.put("reasonCode", reasonCode == null ? null : reasonCode.name());
-        payload.put("invalidReasonCode", application.getInvalidReasonCode() == null ? null : application.getInvalidReasonCode().name());
-        payload.put("invalidReasonText", application.getInvalidReasonText());
-        payload.put("invalidatedByUsername", application.getInvalidatedByUsername());
-        payload.put("invalidatedAt", application.getInvalidatedAt());
-        return payload;
-    }
-
-    private static String normalizePan(String pan) {
-        return pan.trim().toUpperCase();
-    }
-
-    private static String normalizeMobile(String mobile) {
-        return mobile.trim();
-    }
-
-    private static String normalizeFullName(String fullName) {
-        return fullName.trim();
-    }
-
-    private static String normalizeAadhar(String aadharNumber) {
-        String normalized = Strings.normalizeOptional(aadharNumber);
-        return normalized == null ? null : normalized.replace(" ", "");
-    }
-
-    private static String normalizeEmail(String email) {
-        if (email == null) {
-            return null;
-        }
-        String normalized = email.trim();
-        return normalized.isBlank() ? null : normalized.toLowerCase();
     }
 
     private static String normalizeSourceChannel(String sourceChannel) {
@@ -1329,33 +854,6 @@ public class LoanApplicationLifecycleService {
             return "Loan marked invalid. Reason: " + invalidReason.getLabel() + " - " + invalidReasonText;
         }
         return "Loan marked invalid. Reason: " + invalidReason.getLabel();
-    }
-
-    private String serializeBorrowerConflictContext(
-            com.bhawana.lms.domain.Lsp lsp,
-            Borrower existingBorrower,
-            LoanApplicationOnboardingCommand command,
-            String actorUsername,
-            String reason
-    ) {
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-        payload.put("reason", reason);
-        payload.put("actorUsername", Strings.normalizeActor(actorUsername));
-        payload.put("lspId", lsp.getId());
-        payload.put("lspCode", lsp.getCode());
-        payload.put("incomingPan", normalizePan(command.panNumber()));
-        payload.put("incomingMobile", normalizeMobile(command.mobileNumber()));
-        payload.put("incomingAadhar", normalizeAadhar(command.aadharNumber()));
-        payload.put("incomingFullName", normalizeFullName(command.fullName()));
-        if (existingBorrower != null) {
-            payload.put("existingBorrowerId", existingBorrower.getId());
-            payload.put("existingPan", existingBorrower.getPan());
-            payload.put("existingMobile", existingBorrower.getMobile());
-            payload.put("existingAadhar", existingBorrower.getAadharNumber());
-            payload.put("existingFullName", existingBorrower.getFullName());
-            payload.put("existingVisibleLspIds", existingBorrower.getVisibleLspIds());
-        }
-        return com.bhawana.lms.common.util.AlertContextJson.serialize(objectMapper, log, payload);
     }
 
     private static void validateInterestRate(BigDecimal requestedInterestRate, BigDecimal configuredInterestRate) {

@@ -132,7 +132,7 @@ public class LoanForeclosureCommandService {
                 "LOAN_FORECLOSURE_QUOTE",
                 savedQuote.getId().toString(),
                 application.getId(),
-                loanApplicationLifecycleService.buildForeclosureQuotePayload(application, loanAccount, savedQuote)
+                LoanWebhookPayloads.foreclosureQuote(application, loanAccount, savedQuote)
         );
         return savedQuote;
     }
@@ -295,7 +295,7 @@ public class LoanForeclosureCommandService {
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
                 application.getId(),
-                loanApplicationLifecycleService.buildForeclosurePayload(application, loanAccount, quote)
+                LoanWebhookPayloads.foreclosure(application, loanAccount, quote)
         );
         return quote;
     }

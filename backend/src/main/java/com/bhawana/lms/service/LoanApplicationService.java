@@ -777,7 +777,7 @@ public class LoanApplicationService {
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
                 application.getId(),
-                loanApplicationLifecycleService.buildDisbursementPayload(application, loanAccount)
+                LoanWebhookPayloads.disbursement(application, loanAccount)
         );
         return application;
     }
@@ -870,7 +870,7 @@ public class LoanApplicationService {
                     "LOAN_ACCOUNT",
                     loanAccount.getId().toString(),
                     application.getId(),
-                    loanApplicationLifecycleService.buildDisbursementPayload(application, loanAccount)
+                    LoanWebhookPayloads.disbursement(application, loanAccount)
             );
         }
         disbursementOutcomeAuditService.recordMockOutcomeApplied(

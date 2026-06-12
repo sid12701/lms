@@ -353,7 +353,7 @@ public class LoanRepaymentCommandService {
                 "LOAN_PAYMENT_TRANSACTION",
                 paymentTransaction.getId().toString(),
                 application.getId(),
-                loanApplicationLifecycleService.buildRepaymentPayload(application, loanAccount, paymentTransaction)
+                LoanWebhookPayloads.repayment(application, loanAccount, paymentTransaction)
         );
     }
 
@@ -372,7 +372,7 @@ public class LoanRepaymentCommandService {
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
                 application.getId(),
-                loanApplicationLifecycleService.buildLoanFullyRepaidPayload(application, loanAccount)
+                LoanWebhookPayloads.loanFullyRepaid(application, loanAccount)
         );
     }
 }

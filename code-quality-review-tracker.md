@@ -53,7 +53,7 @@ Priorities: **P0** = correctness or contract risk now; P1 = structural debt that
 |----|--------|---------|
 | **B1** | Sound; P0 correctness | **Implemented** — single generator in `LoanRepaymentScheduleService.generateIfAbsent`; duplicate removed from lifecycle |
 | **B2** | Sound but L-effort; do after B6 | **Partial** — ops + LSP controllers on focused services; detail reads moved to `LoanApplicationDetailAssembler`; facade retains disbursement + sub-resource lists |
-| **B3** | Sound but L-effort | **Partial (step 1)** — `LoanApplicationStatus` predicates (`hasEnteredServicing`, manual-override guards); lifecycle override/invalidate paths use them; `AlertContextJson` for duplicate/borrower-conflict contexts |
+| **B3** | Sound but L-effort | **Partial (step 2)** — `BorrowerOnboardingService`, `LoanApplicationDocumentChecklistService`, `LoanWebhookPayloads`; lifecycle thinned (~450 lines removed); step 1 predicates retained |
 | **B4** | Sound; full 143-site sweep is M-effort | **Partial** — prior service sweep + `ApiClientManagementService` not-found → 404; remaining IAEs are intentional input validation (lifecycle, servicing, controllers) |
 | **B5** | Sound; sequence with B3 | **Deferred** |
 | **B6** | Sound; M-effort | **✅ Done (2026-06-12)** — `LoanApplicationDetailAssembler` + `LoanApplicationDetailView`; ops/LSP controllers + `LspLoanApiController`; pure `toDetailResponse(LoanApplicationDetailView)` |
