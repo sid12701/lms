@@ -1,7 +1,10 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import com.bhawana.lms.common.web.PagedResult;
 import com.bhawana.lms.common.web.PaginationResponseBuilder;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.OpsAlert;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertStatus;
@@ -9,6 +12,7 @@ import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.tenant.TenantAccessContext;
 import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -112,12 +116,20 @@ public class OpsAlertService {
     @Transactional
     public OpsAlert acknowledge(UUID alertId, String actorUsername, String note) {
         if (note != null && note.length() > 500) {
-            throw new IllegalArgumentException(
-                    "Acknowledgement note must be 500 characters or fewer."
+            throw new BusinessRuleViolationException(
+                    "ACK_NOTE_TOO_LONG",
+                    "Acknowledgement note must be 500 characters or fewer.",
+                    Map.of("note", "must be 500 characters or fewer")
             );
         }
         OpsAlert alert = opsAlertRepository.findById(alertId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown ops alert id: " + alertId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown ops alert id: " + alertId));
+        if (alert.getStatus() == OpsAlertStatus.ACKNOWLEDGED) {
+            throw new ApiConflictException(
+                    "ALERT_ALREADY_ACKNOWLEDGED",
+                    "Alert has already been acknowledged."
+            );
+        }
         alert.acknowledge(actorUsername, note);
         return opsAlertRepository.save(alert);
     }

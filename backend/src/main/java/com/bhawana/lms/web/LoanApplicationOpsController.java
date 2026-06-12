@@ -9,10 +9,15 @@ import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.common.web.PaginationResponseBuilder;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.ClientIpAddresses;
+import com.bhawana.lms.config.BusinessCalendar;
+import com.bhawana.lms.service.LoanApplicationDetailAssembler;
+import com.bhawana.lms.service.LoanApplicationLifecycleService;
 import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
+import com.bhawana.lms.service.LoanApplicationQueryService;
 import com.bhawana.lms.service.LoanApplicationService;
 import com.bhawana.lms.service.LoanApplicationWebhookEventProjection;
 import com.bhawana.lms.service.LoanDocumentService;
+import com.bhawana.lms.service.LoanForeclosureCommandService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -31,9 +36,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -51,10 +54,27 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/internal/ops/loan-applications")
 @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','OPS_USER')")
 public class LoanApplicationOpsController {
+    private final LoanApplicationQueryService loanApplicationQueryService;
+    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
+    private final LoanForeclosureCommandService loanForeclosureCommandService;
     private final LoanApplicationService loanApplicationService;
+    private final LoanApplicationDetailAssembler loanApplicationDetailAssembler;
+    private final BusinessCalendar businessCalendar;
 
-    public LoanApplicationOpsController(LoanApplicationService loanApplicationService) {
+    public LoanApplicationOpsController(
+            LoanApplicationQueryService loanApplicationQueryService,
+            LoanApplicationLifecycleService loanApplicationLifecycleService,
+            LoanForeclosureCommandService loanForeclosureCommandService,
+            LoanApplicationService loanApplicationService,
+            LoanApplicationDetailAssembler loanApplicationDetailAssembler,
+            BusinessCalendar businessCalendar
+    ) {
+        this.loanApplicationQueryService = loanApplicationQueryService;
+        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
+        this.loanForeclosureCommandService = loanForeclosureCommandService;
         this.loanApplicationService = loanApplicationService;
+        this.loanApplicationDetailAssembler = loanApplicationDetailAssembler;
+        this.businessCalendar = businessCalendar;
     }
 
     @GetMapping
@@ -73,7 +93,7 @@ public class LoanApplicationOpsController {
             @RequestParam(required = false) String paginationDetails
     ) {
         boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
-        PagedResult<LoanApplication> applicationsPage = loanApplicationService.listApplicationsPage(
+        PagedResult<LoanApplication> applicationsPage = loanApplicationQueryService.listApplicationsPage(
                 lspId,
                 productId,
                 status,
@@ -105,14 +125,7 @@ public class LoanApplicationOpsController {
 
     @GetMapping("/{applicationId}")
     public LoanApplicationDetailResponse getApplication(@PathVariable UUID applicationId) {
-        LoanApplication application = loanApplicationService.getApplication(applicationId);
-        return LoanApplicationOpsResponses.toDetailResponse(
-                application,
-                loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
-        );
+        return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
     }
 
     @GetMapping("/{applicationId}/intake-audits")
@@ -155,8 +168,12 @@ public class LoanApplicationOpsController {
 
     @GetMapping("/{applicationId}/repayment-schedule")
     public List<LoanRepaymentScheduleInstallmentResponse> listRepaymentSchedule(@PathVariable UUID applicationId) {
+        LocalDate businessDate = businessCalendar.today();
         return loanApplicationService.listRepaymentSchedule(applicationId).stream()
-                .map(LoanApplicationOpsResponses::toRepaymentScheduleInstallmentResponse)
+                .map(installment -> LoanApplicationOpsResponses.toRepaymentScheduleInstallmentResponse(
+                        installment,
+                        businessDate
+                ))
                 .toList();
     }
 
@@ -238,7 +255,7 @@ public class LoanApplicationOpsController {
             Authentication authentication,
             @Valid @RequestBody LoanApplicationRequest request
     ) {
-        LoanApplication application = loanApplicationService.createApplication(
+        LoanApplication application = loanApplicationLifecycleService.createApplication(
                 authentication.getName(),
                 new LoanApplicationOnboardingCommand(
                         request.lspId(),
@@ -284,27 +301,20 @@ public class LoanApplicationOpsController {
     }
 
     @PostMapping("/{applicationId}/status-transitions")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public LoanApplicationDetailResponse transitionStatus(
             Authentication authentication,
             @PathVariable UUID applicationId,
             @Valid @RequestBody LoanApplicationStatusTransitionRequest request
     ) {
-        LoanApplication currentApplication = loanApplicationService.getApplication(applicationId);
-        authorizeStatusTransition(extractRoles(authentication), currentApplication.getStatus(), request.targetStatus());
-        LoanApplication application = loanApplicationService.transitionStatus(
+        loanApplicationLifecycleService.transitionStatus(
                 applicationId,
                 authentication.getName(),
                 request.targetStatus(),
                 request.note(),
                 request.reasonCode()
         );
-        return LoanApplicationOpsResponses.toDetailResponse(
-                application,
-                loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
-        );
+        return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
     }
 
     @PostMapping("/{applicationId}/manual-status")
@@ -314,39 +324,14 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @Valid @RequestBody ManualStatusUpdateRequest request
     ) {
-        LoanApplication application = loanApplicationService.manuallyOverrideStatus(
+        loanApplicationLifecycleService.manuallyOverrideStatus(
                 applicationId,
                 authentication.getName(),
                 request.targetStatus(),
                 request.note(),
                 request.reasonCode()
         );
-        return LoanApplicationOpsResponses.toDetailResponse(
-                application,
-                loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
-        );
-    }
-
-    private static void authorizeStatusTransition(
-            List<String> actorRoles,
-            LoanApplicationStatus currentStatus,
-            LoanApplicationStatus targetStatus
-    ) {
-        if (actorRoles.contains("SYSTEM_ADMIN")) {
-            return;
-        }
-        throw new AccessDeniedException("Your role cannot perform this loan status transition.");
-    }
-
-    private static List<String> extractRoles(Authentication authentication) {
-        return authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .filter(authority -> !"ROLE_PASSWORD_CHANGE_REQUIRED".equals(authority))
-                .map(role -> role.startsWith("ROLE_") ? role.substring("ROLE_".length()) : role)
-                .toList();
+        return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
     }
 
     @PostMapping("/{applicationId}/disbursement-requests")
@@ -355,17 +340,11 @@ public class LoanApplicationOpsController {
             Authentication authentication,
             @PathVariable UUID applicationId
     ) {
-        LoanApplication application = loanApplicationService.initiateDisbursement(
+        loanApplicationService.initiateDisbursement(
                 applicationId,
                 authentication.getName()
         );
-        return LoanApplicationOpsResponses.toDetailResponse(
-                application,
-                loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
-        );
+        return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
     }
 
     @PostMapping("/{applicationId}/disbursement-requests/mock-outcome")
@@ -376,20 +355,14 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @Valid @RequestBody MockDisbursementOutcomeRequest request
     ) {
-        LoanApplication application = loanApplicationService.resolveMockDisbursementOutcome(
+        loanApplicationService.resolveMockDisbursementOutcome(
                 applicationId,
                 authentication.getName(),
                 ClientIpAddresses.resolve(httpRequest),
                 CorrelationIdHolder.get(),
                 request.outcome()
         );
-        return LoanApplicationOpsResponses.toDetailResponse(
-                application,
-                loanApplicationService.getLatestActivity(applicationId).orElse(null),
-                loanApplicationService.getLoanAccount(applicationId).orElse(null),
-                loanApplicationService.getLoanRepaymentScheduleSummary(applicationId).orElse(null),
-                loanApplicationService.getLoanDelinquencySummary(applicationId).orElse(null)
-        );
+        return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
     }
 
     @PostMapping("/{applicationId}/payments")
@@ -397,7 +370,7 @@ public class LoanApplicationOpsController {
     public LoanPaymentTransactionResponse recordPaymentTransaction(
             Authentication authentication,
             @PathVariable UUID applicationId,
-            @org.springframework.web.bind.annotation.RequestHeader(name = "Idempotency-Key") String idempotencyKey,
+            @org.springframework.web.bind.annotation.RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody LoanPaymentTransactionRequest request
     ) {
         return LoanApplicationOpsResponses.toPaymentTransactionResponse(loanApplicationService.recordPaymentTransaction(
@@ -419,7 +392,7 @@ public class LoanApplicationOpsController {
             @PathVariable UUID applicationId,
             @Valid @RequestBody LoanForeclosureQuoteRequest request
     ) {
-        return LoanApplicationOpsResponses.toForeclosureQuoteResponse(loanApplicationService.requestForeclosureQuote(
+        return LoanApplicationOpsResponses.toForeclosureQuoteResponse(loanForeclosureCommandService.requestForeclosureQuote(
                 applicationId,
                 authentication.getName(),
                 request.effectiveDate()
@@ -434,7 +407,7 @@ public class LoanApplicationOpsController {
             @PathVariable UUID quoteId,
             @Valid @RequestBody LoanForeclosureExecutionRequest request
     ) {
-        return LoanApplicationOpsResponses.toForeclosureQuoteResponse(loanApplicationService.executeForeclosureQuote(
+        return LoanApplicationOpsResponses.toForeclosureQuoteResponse(loanForeclosureCommandService.executeForeclosureQuote(
                 applicationId,
                 quoteId,
                 authentication.getName(),
@@ -493,6 +466,7 @@ public class LoanApplicationOpsController {
 
     public record LoanApplicationDetailResponse(
             String id,
+            String loanAccountId,
             String borrowerId,
             String borrowerFullName,
             String borrowerPan,

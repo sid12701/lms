@@ -181,8 +181,8 @@ class Issue74LspForeclosureExecuteIntegrationTest {
                                 "settlementDate", effectiveDate.toString(),
                                 "reference", "BNK-CROSS"
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("NOT_FOUND"))
                 .andExpect(jsonPath("$.message").value(containsString("Unknown loan id")));
 
         assertEquals(0, opsAlertRepository.findAll().stream()
@@ -326,7 +326,8 @@ class Issue74LspForeclosureExecuteIntegrationTest {
                                 "settlementDate", effectiveDate.minusDays(1).toString(),
                                 "reference", "FC-ADMIN"
                         ))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("SETTLEMENT_DATE_MISMATCH"));
 
         assertEquals(0, opsAlertRepository.findAll().stream()
                 .filter(alert -> alert.getType() == OpsAlertType.LSP_BOUND_VIOLATION)

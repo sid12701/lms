@@ -1,20 +1,24 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.common.web.PagedResult;
 import com.bhawana.lms.common.web.PaginationResponseBuilder;
+import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanInvalidationReason;
 import com.bhawana.lms.service.BankDetailsCheckResult;
 import com.bhawana.lms.service.DisbursementBankDetailsValidation.BankDetailWarning;
+import com.bhawana.lms.service.LoanApplicationDetailAssembler;
+import com.bhawana.lms.service.LoanApplicationLifecycleService;
 import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
+import com.bhawana.lms.service.LoanApplicationQueryService;
 import com.bhawana.lms.service.LoanApplicationService;
 import com.bhawana.lms.service.LoanDisbursementService;
 import com.bhawana.lms.service.LoanDocumentService;
 import com.bhawana.lms.service.LspApiIdempotencyService;
 import com.bhawana.lms.service.LoanRepaymentScheduleService;
-import com.bhawana.lms.tenant.TenantAccessContext;
 import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
@@ -28,6 +32,7 @@ import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,25 +60,38 @@ public class LspLoanApplicationApiController {
 
     private static final String DEFAULT_SOURCE_CHANNEL = "ONBOARDING_API";
     private static final String INVALID_LOAN_OPERATION_KEY = "LOAN_APPLICATION_INVALIDATION";
+    private static final String CREATE_LOAN_OPERATION_KEY = "LOAN_APPLICATION_CREATE";
 
+    private final LoanApplicationQueryService loanApplicationQueryService;
+    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final LoanApplicationService loanApplicationService;
+    private final LoanApplicationDetailAssembler loanApplicationDetailAssembler;
     private final LoanDocumentService loanDocumentService;
     private final LoanRepaymentScheduleService loanRepaymentScheduleService;
     private final LspApiIdempotencyService lspApiIdempotencyService;
     private final LoanDisbursementService loanDisbursementService;
+    private final BusinessCalendar businessCalendar;
 
     public LspLoanApplicationApiController(
+            LoanApplicationQueryService loanApplicationQueryService,
+            LoanApplicationLifecycleService loanApplicationLifecycleService,
             LoanApplicationService loanApplicationService,
+            LoanApplicationDetailAssembler loanApplicationDetailAssembler,
             LoanDocumentService loanDocumentService,
             LoanRepaymentScheduleService loanRepaymentScheduleService,
             LspApiIdempotencyService lspApiIdempotencyService,
-            LoanDisbursementService loanDisbursementService
+            LoanDisbursementService loanDisbursementService,
+            BusinessCalendar businessCalendar
     ) {
+        this.loanApplicationQueryService = loanApplicationQueryService;
+        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.loanApplicationService = loanApplicationService;
+        this.loanApplicationDetailAssembler = loanApplicationDetailAssembler;
         this.loanDocumentService = loanDocumentService;
         this.loanRepaymentScheduleService = loanRepaymentScheduleService;
         this.lspApiIdempotencyService = lspApiIdempotencyService;
         this.loanDisbursementService = loanDisbursementService;
+        this.businessCalendar = businessCalendar;
     }
 
     @GetMapping
@@ -90,7 +108,7 @@ public class LspLoanApplicationApiController {
     ) {
         UUID lspId = LspAuthenticationSupport.authenticatedLspId(authentication);
         boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
-        PagedResult<LoanApplication> applicationsPage = loanApplicationService.listApplicationsForLspPage(
+        PagedResult<LoanApplication> applicationsPage = loanApplicationQueryService.listApplicationsForLspPage(
                 lspId,
                 productId,
                 status,
@@ -129,11 +147,11 @@ public class LspLoanApplicationApiController {
             Authentication authentication,
             @PathVariable UUID applicationId
     ) {
-        LoanApplication application = loanApplicationService.getApplicationForLsp(
+        loanApplicationQueryService.getApplicationForLsp(
                 LspAuthenticationSupport.authenticatedLspId(authentication),
                 applicationId
         );
-        return LspLoanApplicationResponses.toDetailResponse(application, loanApplicationService);
+        return LspLoanApplicationResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
     }
 
     @GetMapping("/external/{externalLoanId}")
@@ -142,11 +160,13 @@ public class LspLoanApplicationApiController {
             Authentication authentication,
             @PathVariable String externalLoanId
     ) {
-        LoanApplication application = loanApplicationService.getApplicationForLspByExternalLoanId(
+        LoanApplication application = loanApplicationQueryService.getApplicationForLspByExternalLoanId(
                 LspAuthenticationSupport.authenticatedLspId(authentication),
                 externalLoanId
         );
-        return LspLoanApplicationResponses.toDetailResponse(application, loanApplicationService);
+        return LspLoanApplicationResponses.toDetailResponse(
+                loanApplicationDetailAssembler.getDetail(application.getId())
+        );
     }
 
     @PostMapping("/{applicationId}/invalid")
@@ -165,18 +185,20 @@ public class LspLoanApplicationApiController {
                 new InvalidLoanIdempotencyFingerprint(
                         applicationId.toString(),
                         request.reasonCode().name(),
-                        normalizeOptional(request.reasonText())
+                        Strings.normalizeOptional(request.reasonText())
                 ),
                 LspLoanApplicationDetailResponse.class,
                 () -> {
-                    LoanApplication application = loanApplicationService.invalidateApplicationForLsp(
+                    loanApplicationLifecycleService.invalidateApplicationForLsp(
                             lspId,
                             applicationId,
                             authentication.getName(),
                             request.reasonCode(),
                             request.reasonText()
                     );
-                    return LspLoanApplicationResponses.toDetailResponse(application, loanApplicationService);
+                    return LspLoanApplicationResponses.toDetailResponse(
+                            loanApplicationDetailAssembler.getDetail(applicationId)
+                    );
                 }
         );
     }
@@ -185,17 +207,33 @@ public class LspLoanApplicationApiController {
     @PreAuthorize("hasRole('LSP_API_CLIENT')")
     public LspLoanApplicationResponse createApplication(
             Authentication authentication,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody LspLoanApplicationRequest request
     ) {
         UUID authenticatedLspId = LspAuthenticationSupport.authenticatedLspId(authentication);
         if (!authenticatedLspId.equals(request.lspId())) {
             throw new AccessDeniedException("Request lspId does not match authenticated LSP context.");
         }
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doCreateApplication(authentication, authenticatedLspId, request);
+        }
+        return lspApiIdempotencyService.execute(
+                authenticatedLspId,
+                CREATE_LOAN_OPERATION_KEY,
+                idempotencyKey,
+                request,
+                LspLoanApplicationResponse.class,
+                () -> doCreateApplication(authentication, authenticatedLspId, request)
+        );
+    }
 
-        TenantAccessContext previous = TenantDataAccessContextHolder.snapshot();
-        TenantDataAccessContextHolder.useAdmin();
-        try {
-            LoanApplication application = loanApplicationService.createApplication(
+    private LspLoanApplicationResponse doCreateApplication(
+            Authentication authentication,
+            UUID authenticatedLspId,
+            LspLoanApplicationRequest request
+    ) {
+        return TenantDataAccessContextHolder.runAsAdmin(() -> {
+            LoanApplication application = loanApplicationLifecycleService.createApplication(
                     authentication.getName(),
                     new LoanApplicationOnboardingCommand(
                             authenticatedLspId,
@@ -238,9 +276,7 @@ public class LspLoanApplicationApiController {
                     )
             );
             return LspLoanApplicationResponses.toResponse(application);
-        } finally {
-            TenantDataAccessContextHolder.restore(previous);
-        }
+        });
     }
 
     /**
@@ -258,7 +294,7 @@ public class LspLoanApplicationApiController {
             @PathVariable UUID applicationId
     ) {
         UUID lspId = LspAuthenticationSupport.authenticatedLspId(authentication);
-        return loanApplicationService.listSubmittedDocumentsForLsp(lspId, applicationId).stream()
+        return loanDocumentService.listSubmittedDocumentsForLsp(lspId, applicationId).stream()
                 .map(LspLoanApplicationApiController::toLspDocumentResponse)
                 .toList();
     }
@@ -277,12 +313,12 @@ public class LspLoanApplicationApiController {
 
     @PostMapping(path = "/{applicationId}/documents", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_WRITE')")
-    public LoanApplicationOpsController.LoanApplicationDocumentChecklistResponse submitDocumentMetadata(
+    public LspDocumentChecklistDetailResponse submitDocumentMetadata(
             Authentication authentication,
             @PathVariable UUID applicationId,
             @Valid @RequestBody LspLoanApplicationDocumentRequest request
     ) {
-        LoanApplicationDocumentChecklist checklistItem = loanApplicationService.submitDocumentForLsp(
+        LoanApplicationDocumentChecklist checklistItem = loanDocumentService.submitDocumentMetadataForLsp(
                 LspAuthenticationSupport.authenticatedLspId(authentication),
                 applicationId,
                 request.documentType(),
@@ -293,12 +329,12 @@ public class LspLoanApplicationApiController {
                 request.sourceReference(),
                 request.contentType()
         );
-        return LoanApplicationOpsResponses.toDocumentChecklistResponse(checklistItem);
+        return LspLoanApplicationResponses.toDocumentChecklistDetailResponse(checklistItem);
     }
 
     @PostMapping(path = "/{applicationId}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_WRITE')")
-    public LoanApplicationOpsController.LoanApplicationDocumentChecklistResponse uploadDocument(
+    public LspDocumentChecklistDetailResponse uploadDocument(
             Authentication authentication,
             @PathVariable UUID applicationId,
             @RequestParam LoanApplicationDocumentType documentType,
@@ -315,12 +351,12 @@ public class LspLoanApplicationApiController {
                 sourceReference,
                 file
         );
-        return LoanApplicationOpsResponses.toDocumentChecklistResponse(checklistItem);
+        return LspLoanApplicationResponses.toDocumentChecklistDetailResponse(checklistItem);
     }
 
     @PostMapping(path = "/{applicationId}/documents/batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_WRITE')")
-    public List<LoanApplicationOpsController.LoanApplicationDocumentChecklistResponse> uploadDocumentsBatch(
+    public List<LspDocumentChecklistDetailResponse> uploadDocumentsBatch(
             Authentication authentication,
             @PathVariable UUID applicationId,
             @Valid @RequestPart("documents") List<LspBatchDocumentUploadRequest> documents,
@@ -353,13 +389,13 @@ public class LspLoanApplicationApiController {
                         authentication.getName(),
                         uploads
                 ).stream()
-                .map(LoanApplicationOpsResponses::toDocumentChecklistResponse)
+                .map(LspLoanApplicationResponses::toDocumentChecklistDetailResponse)
                 .toList();
     }
 
     @PutMapping("/{applicationId}/repayment-schedule")
     @PreAuthorize("hasRole('LSP_API_CLIENT')")
-    public List<LoanApplicationOpsController.LoanRepaymentScheduleInstallmentResponse> upsertRepaymentSchedule(
+    public List<LspRepaymentScheduleInstallmentResponse> upsertRepaymentSchedule(
             Authentication authentication,
             @PathVariable UUID applicationId,
             @Valid @RequestBody LspRepaymentScheduleUpsertRequest request
@@ -383,8 +419,12 @@ public class LspLoanApplicationApiController {
                                         ))
                                         .toList()
                         );
+        LocalDate businessDate = businessCalendar.today();
         return installments.stream()
-                .map(LoanApplicationOpsResponses::toRepaymentScheduleInstallmentResponse)
+                .map(installment -> LspLoanApplicationResponses.toRepaymentScheduleInstallmentResponse(
+                        installment,
+                        businessDate
+                ))
                 .toList();
     }
 
@@ -678,6 +718,50 @@ public class LspLoanApplicationApiController {
      * Optional fields are nullable so JSON omission keeps the wire shape
      * tight when not yet populated.
      */
+    /** Partner-facing document checklist detail (excludes internal storage metadata). */
+    public record LspDocumentChecklistDetailResponse(
+            String id,
+            String loanApplicationId,
+            String documentType,
+            String documentDisplayName,
+            boolean required,
+            String status,
+            String note,
+            String fileName,
+            String fileReference,
+            String contentType,
+            String sourceReference,
+            boolean lmsManagedContent,
+            Long fileSizeBytes,
+            Instant uploadedAt,
+            String uploadedByUsername,
+            String updatedByUsername,
+            String createdAt,
+            String updatedAt
+    ) {
+    }
+
+    public record LspRepaymentScheduleInstallmentResponse(
+            String id,
+            String loanAccountId,
+            Integer installmentNumber,
+            LocalDate dueDate,
+            BigDecimal openingPrincipal,
+            BigDecimal principalDue,
+            BigDecimal interestDue,
+            BigDecimal installmentAmount,
+            BigDecimal closingPrincipal,
+            String status,
+            BigDecimal paidPrincipal,
+            BigDecimal paidInterest,
+            BigDecimal paidAmount,
+            BigDecimal outstandingAmount,
+            Integer daysPastDue,
+            String delinquencyBucket,
+            String createdAt
+    ) {
+    }
+
     public record LspDocumentChecklistResponse(
             String documentType,
             String status,
@@ -706,11 +790,4 @@ public class LspLoanApplicationApiController {
     ) {
     }
 
-    private static String normalizeOptional(String value) {
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.trim();
-        return normalized.isBlank() ? null : normalized;
-    }
 }

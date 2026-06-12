@@ -5,7 +5,7 @@
  * wrapper opts the contained primitives into the compact token set.
  *
  * BR-3 + BR-10 gates are surfaced via `DisbursementGateBanner` whenever the
- * application is in `APPROVED_PENDING_DISBURSAL` or `DISBURSEMENT_IN_PROGRESS`;
+ * application is in `APPROVED_PENDING_DISBURSAL` or `DISBURSEMENT_RETRY`;
  * the banner self-hides when both gates pass.
  *
  * BR-13 is enforced by the dialog schema (`makeRepaymentPostSchema`) and
@@ -41,7 +41,7 @@ export interface ScheduleTabProps {
 /** Statuses where the disbursement gate is informative to the user. */
 const PRE_DISBURSEMENT_STATUSES = new Set<LoanStatus>([
   "APPROVED_PENDING_DISBURSAL",
-  "DISBURSEMENT_IN_PROGRESS",
+  "DISBURSEMENT_RETRY",
 ]);
 
 export function ScheduleTab({

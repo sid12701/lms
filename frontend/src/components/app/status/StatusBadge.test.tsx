@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { axe } from "vitest-axe";
 import { renderWithProviders } from "@/test/utils";
 import { STATUS_META } from "@/lib/lifecycle";
-import type { LoanAccountStatus, LoanStatus } from "@/types";
+import { LOAN_APPLICATION_STATUSES } from "@/lib/loan-application-status";
+import type { LoanAccountStatus } from "@/types";
 import { StatusBadge } from "./StatusBadge";
 import { resolveStatusMeta } from "./statusBadgeMeta";
 
@@ -15,15 +16,18 @@ const ACCOUNT_STATUSES: LoanAccountStatus[] = [
 
 describe("StatusBadge", () => {
   it("renders the status label and an icon by default", () => {
-    const { getByText, container } = renderWithProviders(<StatusBadge status="APPROVED" />);
-    expect(getByText("Approved")).toBeInTheDocument();
-    // icon is svg sibling of the label
+    const { getByText, container } = renderWithProviders(
+      <StatusBadge status="APPROVED_PENDING_DISBURSAL" />,
+    );
+    expect(getByText("Approved · pending disbursal")).toBeInTheDocument();
     const badge = container.querySelector('[data-slot="status-badge"]');
     expect(badge?.querySelector("svg")).toBeInTheDocument();
   });
 
   it("hides the icon when hideIcon is true", () => {
-    const { container } = renderWithProviders(<StatusBadge status="APPROVED" hideIcon />);
+    const { container } = renderWithProviders(
+      <StatusBadge status="APPROVED_PENDING_DISBURSAL" hideIcon />,
+    );
     const badge = container.querySelector('[data-slot="status-badge"]');
     expect(badge?.querySelector("svg")).toBeNull();
   });
@@ -37,12 +41,11 @@ describe("StatusBadge", () => {
   });
 
   it("maps every LoanStatus enum value to a non-empty meta entry", () => {
-    const loanStatuses = Object.keys(STATUS_META) as LoanStatus[];
-    expect(loanStatuses.length).toBeGreaterThan(0);
-    for (const s of loanStatuses) {
+    for (const s of LOAN_APPLICATION_STATUSES) {
       const meta = resolveStatusMeta(s);
       expect(meta.label.length).toBeGreaterThan(0);
       expect(meta.intent.length).toBeGreaterThan(0);
+      expect(STATUS_META[s]).toBeDefined();
     }
   });
 
@@ -54,14 +57,14 @@ describe("StatusBadge", () => {
     }
   });
 
-  it("renders correct intent token for each canonical intent", () => {
-    const samples: Array<{ status: LoanStatus; intent: string }> = [
-      { status: "INITIATED", intent: "neutral" },
-      { status: "UNDER_REVIEW", intent: "progress" },
-      { status: "DISBURSED", intent: "success" },
-      { status: "DELINQUENT", intent: "warning" },
-      { status: "REJECTED", intent: "danger" },
-      { status: "INVALIDATED", intent: "revoked" },
+  it("renders correct intent token for canonical statuses", () => {
+    const samples = [
+      { status: "INITIALIZED" as const, intent: "neutral" },
+      { status: "AWAITING_APPROVAL" as const, intent: "progress" },
+      { status: "DISBURSED" as const, intent: "success" },
+      { status: "DISBURSEMENT_RETRY" as const, intent: "warning" },
+      { status: "REJECTED" as const, intent: "danger" },
+      { status: "INVALID" as const, intent: "revoked" },
     ];
     for (const { status, intent } of samples) {
       const { container, unmount } = renderWithProviders(<StatusBadge status={status} />);
@@ -69,6 +72,11 @@ describe("StatusBadge", () => {
       expect(badge?.getAttribute("data-intent")).toBe(intent);
       unmount();
     }
+  });
+
+  it("renders unknown API statuses without folding", () => {
+    const { getByText } = renderWithProviders(<StatusBadge status="UNKNOWN:KYC_PENDING" />);
+    expect(getByText("Unknown (KYC_PENDING)")).toBeInTheDocument();
   });
 
   it("UNDER_REPAYMENT is success when on track (Gap #11)", () => {
@@ -105,7 +113,9 @@ describe("StatusBadge", () => {
   });
 
   it("has no axe violations", async () => {
-    const { container } = renderWithProviders(<StatusBadge status="APPROVED" />);
+    const { container } = renderWithProviders(
+      <StatusBadge status="APPROVED_PENDING_DISBURSAL" />,
+    );
     expect(await axe(container)).toHaveNoViolations();
   });
 });

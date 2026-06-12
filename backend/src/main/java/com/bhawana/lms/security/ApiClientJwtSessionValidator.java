@@ -5,6 +5,7 @@ import com.bhawana.lms.domain.ApiClientStatus;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.ApiClientRepository;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import java.util.Optional;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
@@ -41,33 +42,35 @@ public class ApiClientJwtSessionValidator implements OAuth2TokenValidator<Jwt> {
             return failure("API_CLIENT_TOKEN_REVOKED", "API client subject is missing.");
         }
 
-        Optional<ApiClient> apiClientOptional = apiClientRepository.findByClientId(clientId.trim());
-        if (apiClientOptional.isEmpty()) {
-            return failure("API_CLIENT_TOKEN_REVOKED", "API client no longer exists.");
-        }
+        return TenantScopedExecution.callAsAdmin(() -> {
+            Optional<ApiClient> apiClientOptional = apiClientRepository.findByClientId(clientId.trim());
+            if (apiClientOptional.isEmpty()) {
+                return failure("API_CLIENT_TOKEN_REVOKED", "API client no longer exists.");
+            }
 
-        ApiClient apiClient = apiClientOptional.get();
-        Lsp lsp = apiClient.getLsp();
+            ApiClient apiClient = apiClientOptional.get();
+            Lsp lsp = apiClient.getLsp();
 
-        long tokenLspVersion = longClaim(jwt, TV_LSP_CLAIM);
-        if (tokenLspVersion != lsp.getTokenVersion()) {
-            return failure("LSP_TOKEN_REVOKED", "LSP session is no longer valid.");
-        }
+            long tokenLspVersion = longClaim(jwt, TV_LSP_CLAIM);
+            if (tokenLspVersion != lsp.getTokenVersion()) {
+                return failure("LSP_TOKEN_REVOKED", "LSP session is no longer valid.");
+            }
 
-        long tokenClientVersion = longClaim(jwt, TV_API_CLIENT_CLAIM);
-        if (tokenClientVersion != apiClient.getTokenVersion()) {
-            return failure("API_CLIENT_TOKEN_REVOKED", "API client session is no longer valid.");
-        }
+            long tokenClientVersion = longClaim(jwt, TV_API_CLIENT_CLAIM);
+            if (tokenClientVersion != apiClient.getTokenVersion()) {
+                return failure("API_CLIENT_TOKEN_REVOKED", "API client session is no longer valid.");
+            }
 
-        if (lsp.getStatus() != LspStatus.ACTIVE) {
-            return failure("LSP_INACTIVE", "LSP is not active.");
-        }
+            if (lsp.getStatus() != LspStatus.ACTIVE) {
+                return failure("LSP_INACTIVE", "LSP is not active.");
+            }
 
-        if (apiClient.getStatus() != ApiClientStatus.ACTIVE) {
-            return failure("API_CLIENT_INACTIVE", "API client is not active.");
-        }
+            if (apiClient.getStatus() != ApiClientStatus.ACTIVE) {
+                return failure("API_CLIENT_INACTIVE", "API client is not active.");
+            }
 
-        return OAuth2TokenValidatorResult.success();
+            return OAuth2TokenValidatorResult.success();
+        });
     }
 
     private static long longClaim(Jwt jwt, String claimName) {

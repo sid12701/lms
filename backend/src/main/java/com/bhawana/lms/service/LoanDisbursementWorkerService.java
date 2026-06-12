@@ -37,7 +37,7 @@ public class LoanDisbursementWorkerService {
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final LoanDisbursementService loanDisbursementService;
     private final BorrowerBankDetailsService borrowerBankDetailsService;
-    private final AlertRuleEvaluationService alertRuleEvaluationService;
+    private final OpsAlertEmitters opsAlertEmitters;
     private final LoanDisbursementWorkerProperties properties;
 
     public LoanDisbursementWorkerService(
@@ -48,7 +48,7 @@ public class LoanDisbursementWorkerService {
             LoanApplicationLifecycleService loanApplicationLifecycleService,
             LoanDisbursementService loanDisbursementService,
             BorrowerBankDetailsService borrowerBankDetailsService,
-            AlertRuleEvaluationService alertRuleEvaluationService,
+            OpsAlertEmitters opsAlertEmitters,
             LoanDisbursementWorkerProperties properties
     ) {
         this.loanApplicationRepository = loanApplicationRepository;
@@ -58,7 +58,7 @@ public class LoanDisbursementWorkerService {
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.loanDisbursementService = loanDisbursementService;
         this.borrowerBankDetailsService = borrowerBankDetailsService;
-        this.alertRuleEvaluationService = alertRuleEvaluationService;
+        this.opsAlertEmitters = opsAlertEmitters;
         this.properties = properties;
     }
 
@@ -117,7 +117,7 @@ public class LoanDisbursementWorkerService {
         }
 
         DisbursementBankDetailsValidation bankValidation =
-                loanDisbursementService.validateWorkerDisbursementBankDetails(application.getBorrower());
+                loanDisbursementService.validateWorkerDisbursementBankDetails(application);
         if (!bankValidation.violations().isEmpty()) {
             rejectForBoundViolation(application, "AUTOMATED_DISBURSEMENT_BANK_VALIDATION", bankValidation.violations());
             return true;
@@ -142,7 +142,7 @@ public class LoanDisbursementWorkerService {
                         LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
                         LoanApplicationAuditAction.STATUS_TRANSITION
                 );
-                alertRuleEvaluationService.emitDisbursementRetryExhausted(application, (int) priorAttempts);
+                opsAlertEmitters.emitDisbursementRetryExhausted(application, (int) priorAttempts);
             }
             return true;
         }
@@ -176,7 +176,7 @@ public class LoanDisbursementWorkerService {
                         LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
                         LoanApplicationAuditAction.STATUS_TRANSITION
                 );
-                alertRuleEvaluationService.emitDisbursementRetryExhausted(application, (int) attemptsAfterFailure);
+                opsAlertEmitters.emitDisbursementRetryExhausted(application, (int) attemptsAfterFailure);
             }
             return true;
         }
@@ -188,7 +188,7 @@ public class LoanDisbursementWorkerService {
             Map<String, String> violations
     ) {
         String message = violations.values().stream().findFirst().orElse("Automated disbursement validation failed.");
-        alertRuleEvaluationService.emitLspBoundViolation(application, violationType, message, violations);
+        opsAlertEmitters.emitLspBoundViolation(application, violationType, message, violations);
         loanApplicationLifecycleService.updateApplicationStatus(
                 application,
                 LoanApplicationStatus.REJECTED,

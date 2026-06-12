@@ -1,7 +1,9 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.ApiConflictException;
 import com.bhawana.lms.common.web.LspStatusUpdateException;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspAuditEvent;
@@ -61,10 +63,10 @@ public class LspStatusService {
         }
 
         Lsp lsp = lspRepository.findById(lspId)
-                .orElseThrow(() -> new IllegalArgumentException("LSP not found: " + lspId));
+                .orElseThrow(() -> new ResourceNotFoundException("LSP not found: " + lspId));
 
         if (lsp.getStatus() == targetStatus) {
-            throw new LspStatusUpdateException(
+            throw new ApiConflictException(
                     "STATUS_UNCHANGED",
                     "LSP is already " + targetStatus.name() + "; no audit event was recorded."
             );
@@ -79,7 +81,7 @@ public class LspStatusService {
     @Transactional(readOnly = true)
     public List<LspAuditEvent> listAuditEvents(UUID lspId) {
         if (!lspRepository.existsById(lspId)) {
-            throw new IllegalArgumentException("LSP not found: " + lspId);
+            throw new ResourceNotFoundException("LSP not found: " + lspId);
         }
         return lspAuditEventRepository.findByLsp_IdOrderByCreatedAtDesc(lspId);
     }

@@ -7,6 +7,7 @@ import com.bhawana.lms.domain.LspIpAllowlistSurface;
 import com.bhawana.lms.service.LspSurfaceIpAllowlistService;
 import com.bhawana.lms.service.LspSurfaceIpAllowlistService.AccessDecision;
 import com.bhawana.lms.service.LspSurfaceIpAllowlistService.AllowlistSnapshot;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -102,7 +103,10 @@ public class LspSurfaceIpAllowlistFilter extends OncePerRequestFilter {
         if (cached != null && cached.expiresAt.isAfter(now)) {
             return cached.snapshot;
         }
-        AllowlistSnapshot snapshot = allowlistService.loadSnapshot(lspId, surface);
+        // Perimeter check against admin-owned config; runs before tenant scope applies (ADR 0005).
+        AllowlistSnapshot snapshot = TenantScopedExecution.callAsAdmin(
+                () -> allowlistService.loadSnapshot(lspId, surface)
+        );
         cache.put(key, new CachedSnapshot(snapshot, now.plus(CACHE_TTL)));
         return snapshot;
     }

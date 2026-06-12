@@ -1,6 +1,7 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.ApiClientAuditEvent;
 import com.bhawana.lms.domain.ApiClientStatus;
@@ -60,7 +61,7 @@ public class ApiClientManagementService {
     ) {
         ApiClientStatus effectiveStatus = status == null ? ApiClientStatus.ACTIVE : status;
         Lsp lsp = lspRepository.findById(lspId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown LSP id: " + lspId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown LSP id: " + lspId));
 
         String clientId = generateClientId();
         while (apiClientRepository.existsByClientId(clientId)) {
@@ -109,7 +110,7 @@ public class ApiClientManagementService {
             ApiClientStatus status
     ) {
         ApiClient client = apiClientRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown API client id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown API client id: " + id));
 
         Map<String, Object> before = auditSnapshot(client);
 
@@ -139,7 +140,7 @@ public class ApiClientManagementService {
             Integer graceSeconds
     ) {
         ApiClient client = apiClientRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown API client id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown API client id: " + id));
 
         int effectiveGraceSeconds = graceSeconds == null ? DEFAULT_ROTATE_GRACE_SECONDS : graceSeconds;
         if (effectiveGraceSeconds < 0) {

@@ -1,9 +1,13 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.money.Money;
+import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import com.bhawana.lms.common.web.DocumentUploadRequiredException;
 import com.bhawana.lms.common.web.KycCompletionRequiredException;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
@@ -26,7 +30,6 @@ import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertType;
-import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.BorrowerRepository;
@@ -38,26 +41,26 @@ import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
-import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class LoanApplicationLifecycleService {
+
+    private static final Logger log = LoggerFactory.getLogger(LoanApplicationLifecycleService.class);
 
     private final BorrowerRepository borrowerRepository;
     private final LoanAccountRepository loanAccountRepository;
@@ -67,14 +70,14 @@ public class LoanApplicationLifecycleService {
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
     private final LoanProductRepository loanProductRepository;
-    private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
+    private final LoanRepaymentScheduleService loanRepaymentScheduleService;
     private final LspRepository lspRepository;
     private final LoanProductLspMappingRepository loanProductLspMappingRepository;
     private final OpsAlertService opsAlertService;
     private final BorrowerActiveLoanChecker borrowerActiveLoanChecker;
     private final WebhookOutboxService webhookOutboxService;
     private final LoanAutoApprovalRuleEngine loanAutoApprovalRuleEngine;
-    private final AlertRuleEvaluationService alertRuleEvaluationService;
+    private final OpsAlertEmitters opsAlertEmitters;
     private final ObjectMapper objectMapper;
 
     public LoanApplicationLifecycleService(
@@ -86,14 +89,14 @@ public class LoanApplicationLifecycleService {
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
             LoanProductRepository loanProductRepository,
-            LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
+            @Lazy LoanRepaymentScheduleService loanRepaymentScheduleService,
             LspRepository lspRepository,
             LoanProductLspMappingRepository loanProductLspMappingRepository,
             OpsAlertService opsAlertService,
             BorrowerActiveLoanChecker borrowerActiveLoanChecker,
             WebhookOutboxService webhookOutboxService,
             LoanAutoApprovalRuleEngine loanAutoApprovalRuleEngine,
-            @Lazy AlertRuleEvaluationService alertRuleEvaluationService,
+            OpsAlertEmitters opsAlertEmitters,
             ObjectMapper objectMapper
     ) {
         this.borrowerRepository = borrowerRepository;
@@ -104,52 +107,85 @@ public class LoanApplicationLifecycleService {
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
         this.loanProductRepository = loanProductRepository;
-        this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
+        this.loanRepaymentScheduleService = loanRepaymentScheduleService;
         this.lspRepository = lspRepository;
         this.loanProductLspMappingRepository = loanProductLspMappingRepository;
         this.opsAlertService = opsAlertService;
         this.borrowerActiveLoanChecker = borrowerActiveLoanChecker;
         this.webhookOutboxService = webhookOutboxService;
         this.loanAutoApprovalRuleEngine = loanAutoApprovalRuleEngine;
-        this.alertRuleEvaluationService = alertRuleEvaluationService;
+        this.opsAlertEmitters = opsAlertEmitters;
         this.objectMapper = objectMapper;
     }
 
     @Transactional
     public LoanApplication createApplication(String actorUsername, LoanApplicationOnboardingCommand command) {
         var lsp = lspRepository.findById(command.lspId())
-                .orElseThrow(() -> new IllegalArgumentException("Unknown LSP id: " + command.lspId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown LSP id: " + command.lspId()));
         if (lsp.getStatus() != LspStatus.ACTIVE) {
-            throw new IllegalArgumentException("Loan applications can only be created for active LSPs.");
+            throw new BusinessRuleViolationException(
+                    "LSP_NOT_ACTIVE",
+                    "Loan applications can only be created for active LSPs.",
+                    Map.of("lspId", command.lspId().toString())
+            );
         }
 
         var loanProduct = resolveLoanProduct(command);
         if (loanProduct.getStatus() != LoanProductStatus.ACTIVE) {
-            throw new IllegalArgumentException("Loan applications can only be created for active loan products.");
+            throw new BusinessRuleViolationException(
+                    "PRODUCT_NOT_ACTIVE",
+                    "Loan applications can only be created for active loan products.",
+                    Map.of("productId", loanProduct.getId().toString())
+            );
         }
 
         validateInterestRate(command.interestRate(), loanProduct.getInterestRate());
 
         LoanProductLspMapping mapping = loanProductLspMappingRepository.findByLsp_IdAndLoanProduct_Id(command.lspId(), loanProduct.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Requested product is not mapped to the selected LSP."));
+                .orElseThrow(() -> new BusinessRuleViolationException(
+                        "PRODUCT_NOT_MAPPED",
+                        "Requested product is not mapped to the selected LSP.",
+                        Map.of(
+                                "lspId", command.lspId().toString(),
+                                "productId", loanProduct.getId().toString()
+                        )
+                ));
         if (!mapping.isEnabled()) {
-            throw new IllegalArgumentException("Requested product mapping is disabled for the selected LSP.");
+            throw new BusinessRuleViolationException(
+                    "PRODUCT_MAPPING_DISABLED",
+                    "Requested product mapping is disabled for the selected LSP.",
+                    Map.of(
+                            "lspId", command.lspId().toString(),
+                            "productId", loanProduct.getId().toString()
+                    )
+            );
         }
 
         String normalizedExternalLoanId = requireField(command.lspLoanId(), "LSP loan id");
         if (loanApplicationRepository.existsByLsp_IdAndExternalLoanIdIgnoreCase(command.lspId(), normalizedExternalLoanId)) {
-            throw new IllegalArgumentException("External loan id already exists for the selected LSP.");
+            throw new ApiConflictException(
+                    "DUPLICATE_EXTERNAL_LOAN_ID",
+                    "External loan id already exists for the selected LSP."
+            );
         }
 
-        BigDecimal scaledRequestedAmount = scaleCurrency(requireCurrency(command.loanAmount(), "Loan amount"));
+        BigDecimal scaledRequestedAmount = Money.scale(Money.requirePositive(command.loanAmount(), "Loan amount"));
         if (scaledRequestedAmount.compareTo(loanProduct.getMinPrincipal()) < 0
                 || scaledRequestedAmount.compareTo(loanProduct.getMaxPrincipal()) > 0) {
-            throw new IllegalArgumentException("Requested amount is outside the configured product principal range.");
+            throw new BusinessRuleViolationException(
+                    "AMOUNT_OUT_OF_RANGE",
+                    "Requested amount is outside the configured product principal range.",
+                    Map.of("loanAmount", scaledRequestedAmount.toPlainString())
+            );
         }
 
         int tenureMonths = requireTenure(command.loanTenure());
         if (tenureMonths < loanProduct.getMinTenureMonths() || tenureMonths > loanProduct.getMaxTenureMonths()) {
-            throw new IllegalArgumentException("Requested tenure is outside the configured product tenure range.");
+            throw new BusinessRuleViolationException(
+                    "TENURE_OUT_OF_RANGE",
+                    "Requested tenure is outside the configured product tenure range.",
+                    Map.of("loanTenure", String.valueOf(tenureMonths))
+            );
         }
 
         BigDecimal monthlyIncome = normalizeMonthlyIncome(command.monthlyIncome(), command.annualIncome());
@@ -206,7 +242,10 @@ public class LoanApplicationLifecycleService {
         LoanApplication application = getApplication(applicationId);
         LoanApplicationStatus currentStatus = application.getStatus();
         if (currentStatus == targetStatus) {
-            throw new IllegalArgumentException("Loan application is already in status " + currentStatus.name() + ".");
+            throw new ApiConflictException(
+                    "LOAN_ALREADY_IN_STATUS",
+                    "Loan application is already in status " + currentStatus.name() + "."
+            );
         }
         LoanApplicationStatusTransitioner.enforceTransition(currentStatus, targetStatus);
         if (currentStatus == LoanApplicationStatus.AWAITING_APPROVAL
@@ -248,29 +287,31 @@ public class LoanApplicationLifecycleService {
         LoanApplication application = getApplication(applicationId);
         LoanApplicationStatus currentStatus = application.getStatus();
         if (currentStatus == targetStatus) {
-            throw new IllegalArgumentException("Loan application is already in status " + currentStatus.name() + ".");
+            throw new ApiConflictException(
+                    "LOAN_ALREADY_IN_STATUS",
+                    "Loan application is already in status " + currentStatus.name() + "."
+            );
         }
-        if (currentStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
-                || currentStatus == LoanApplicationStatus.DISBURSED
-                || currentStatus == LoanApplicationStatus.UNDER_REPAYMENT
-                || currentStatus == LoanApplicationStatus.INVALID
-                || currentStatus == LoanApplicationStatus.CLOSED
-                || currentStatus == LoanApplicationStatus.FORECLOSED) {
-            throw new IllegalArgumentException("Loan applications that have entered servicing cannot be manually overridden.");
+        if (currentStatus.blocksManualOverrideSource()) {
+            throw new BusinessRuleViolationException(
+                    "MANUAL_OVERRIDE_NOT_ALLOWED",
+                    "Loan applications that have entered servicing cannot be manually overridden.",
+                    Map.of("status", currentStatus.name())
+            );
         }
-        if (targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
-                || targetStatus == LoanApplicationStatus.DISBURSED
-                || targetStatus == LoanApplicationStatus.UNDER_REPAYMENT
-                || targetStatus == LoanApplicationStatus.INVALID
-                || targetStatus == LoanApplicationStatus.CLOSED
-                || targetStatus == LoanApplicationStatus.FORECLOSED) {
-            throw new IllegalArgumentException("Use the standard approval flow instead of a manual status update.");
+        if (targetStatus.blocksManualOverrideTarget()) {
+            throw new BusinessRuleViolationException(
+                    "MANUAL_OVERRIDE_NOT_ALLOWED",
+                    "Use the standard approval flow instead of a manual status update.",
+                    Map.of("targetStatus", targetStatus.name())
+            );
         }
-        if (targetStatus != LoanApplicationStatus.INITIALIZED
-                && targetStatus != LoanApplicationStatus.AWAITING_APPROVAL
-                && targetStatus != LoanApplicationStatus.DISBURSEMENT_RETRY
-                && targetStatus != LoanApplicationStatus.REJECTED) {
-            throw new IllegalArgumentException("Manual status updates are not supported for " + targetStatus.name() + ".");
+        if (!targetStatus.isAllowedManualOverrideTarget()) {
+            throw new BusinessRuleViolationException(
+                    "MANUAL_OVERRIDE_NOT_ALLOWED",
+                    "Manual status updates are not supported for " + targetStatus.name() + ".",
+                    Map.of("targetStatus", targetStatus.name())
+            );
         }
 
         LoanApplicationStatusReasonCode resolvedReasonCode = requireReasonCode(
@@ -300,7 +341,7 @@ public class LoanApplicationLifecycleService {
             String note
     ) {
         LoanAutoApprovalRuleEngine.Evaluation evaluation = loanAutoApprovalRuleEngine.evaluate(application);
-        alertRuleEvaluationService.emitManualRuleEngineOverride(application, actorUsername, evaluation, note);
+        opsAlertEmitters.emitManualRuleEngineOverride(application, actorUsername, evaluation, note);
         String failedRuleList = evaluation.failedRules().stream()
                 .map(Enum::name)
                 .reduce((left, right) -> left + "," + right)
@@ -347,13 +388,15 @@ public class LoanApplicationLifecycleService {
 
         LoanApplicationDocumentChecklist checklistItem = loanApplicationDocumentChecklistRepository
                 .findByLoanApplication_IdAndDocumentType(applicationId, documentType)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown document checklist item: " + documentType.name()));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unknown document checklist item: " + documentType.name()
+                ));
         boolean wasComplete = hasAllRequiredDocumentsUploaded(applicationId);
 
         checklistItem.update(
                 status,
                 note,
-                normalizeActorUsername(actorUsername),
+                Strings.normalizeActor(actorUsername),
                 fileName,
                 fileReference,
                 sourceReference,
@@ -491,12 +534,8 @@ public class LoanApplicationLifecycleService {
         }
     }
 
-    /**
-     * All eight intake-required document types must be submitted with LMS-managed content
-     * before disbursement. The {@code requireForApprovalOnly} flag is retained for API
-     * compatibility; both paths use the full disbursement-required set.
-     */
-    public boolean hasAllRequiredLmsManagedDocuments(UUID applicationId, boolean requireForApprovalOnly) {
+    /** All eight intake-required document types must be submitted with LMS-managed content before disbursement. */
+    public boolean hasAllRequiredLmsManagedDocuments(UUID applicationId) {
         LoanApplication application = getApplication(applicationId);
         ensureDocumentChecklist(application);
         return loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
@@ -581,14 +620,14 @@ public class LoanApplicationLifecycleService {
         LoanApplicationStatusTransitioner.enforceTransition(currentStatus, targetStatus, transitionContext);
         application.transitionTo(targetStatus);
         LoanApplication savedApplication = loanApplicationRepository.save(application);
-        String resolvedNote = normalizeOptional(note) == null
+        String resolvedNote = Strings.normalizeOptional(note) == null
                 ? defaultTransitionNote(currentStatus, targetStatus)
-                : normalizeOptional(note);
+                : Strings.normalizeOptional(note);
         loanApplicationStatusTransitionRepository.save(new LoanApplicationStatusTransition(
                 savedApplication,
                 currentStatus,
                 targetStatus,
-                normalizeActorUsername(actorUsername),
+                Strings.normalizeActor(actorUsername),
                 resolvedNote,
                 reasonCode,
                 CorrelationIdHolder.get(),
@@ -627,7 +666,7 @@ public class LoanApplicationLifecycleService {
                         LoanAccountStatus.PENDING_DISBURSEMENT,
                         Instant.now()
                 )));
-        generateRepaymentSchedule(loanAccount);
+        loanRepaymentScheduleService.generateIfAbsent(loanAccount);
         return loanAccount;
     }
 
@@ -643,7 +682,7 @@ public class LoanApplicationLifecycleService {
         loanApplicationAuditEventRepository.save(new LoanApplicationAuditEvent(
                 application,
                 action,
-                normalizeActorUsername(actorUsername),
+                Strings.normalizeActor(actorUsername),
                 fromStatus,
                 toStatus,
                 note,
@@ -741,27 +780,32 @@ public class LoanApplicationLifecycleService {
 
         LoanApplicationStatus currentStatus = application.getStatus();
         if (currentStatus == LoanApplicationStatus.INVALID) {
-            throw new IllegalArgumentException("Loan application is already marked invalid.");
+            throw new ApiConflictException("LOAN_ALREADY_INVALID", "Loan application is already marked invalid.");
         }
-        if (currentStatus == LoanApplicationStatus.DISBURSED
-                || currentStatus == LoanApplicationStatus.UNDER_REPAYMENT
-                || currentStatus == LoanApplicationStatus.CLOSED
-                || currentStatus == LoanApplicationStatus.FORECLOSED) {
-            throw new IllegalArgumentException("Loan applications that have entered servicing cannot be marked invalid.");
+        if (currentStatus.hasEnteredServicing()) {
+            throw new BusinessRuleViolationException(
+                    "INVALIDATION_NOT_ALLOWED",
+                    "Loan applications that have entered servicing cannot be marked invalid.",
+                    Map.of("status", currentStatus.name())
+            );
         }
 
         if (loanAccount != null) {
             if (loanAccount.getStatus() == LoanAccountStatus.DISBURSED
                     || loanAccount.getStatus() == LoanAccountStatus.CLOSED
                     || loanAccount.getStatus() == LoanAccountStatus.FORECLOSED) {
-                throw new IllegalArgumentException("Loan applications that have entered servicing cannot be marked invalid.");
+                throw new BusinessRuleViolationException(
+                        "INVALIDATION_NOT_ALLOWED",
+                        "Loan applications that have entered servicing cannot be marked invalid.",
+                        Map.of("loanAccountStatus", loanAccount.getStatus().name())
+                );
             }
             if (loanAccount.getStatus() == LoanAccountStatus.INVALID) {
-                throw new IllegalArgumentException("Loan application is already marked invalid.");
+                throw new ApiConflictException("LOAN_ALREADY_INVALID", "Loan application is already marked invalid.");
             }
         }
 
-        String normalizedActor = normalizeActorUsername(actorUsername);
+        String normalizedActor = Strings.normalizeActor(actorUsername);
         String normalizedInvalidReasonText = normalizeInvalidReasonText(invalidReason, invalidReasonText);
         Instant invalidatedAt = Instant.now();
         String invalidationNote = buildInvalidationNote(invalidReason, normalizedInvalidReasonText);
@@ -815,7 +859,7 @@ public class LoanApplicationLifecycleService {
 
     private LoanApplication getApplication(UUID applicationId) {
         return loanApplicationRepository.findDetailedById(applicationId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown loan application id: " + applicationId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
     }
 
     private Borrower resolveBorrowerForOnboarding(
@@ -1028,17 +1072,13 @@ public class LoanApplicationLifecycleService {
             loanEntries.add(entry);
         }
         payload.put("openLoans", loanEntries);
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
-            return null;
-        }
+        return com.bhawana.lms.common.util.AlertContextJson.serialize(objectMapper, log, payload);
     }
 
     private LoanApplication getApplicationForLsp(UUID lspId, UUID applicationId) {
         LoanApplication application = getApplication(applicationId);
         if (!application.getLsp().getId().equals(lspId)) {
-            throw new IllegalArgumentException("Unknown loan application id: " + applicationId);
+            throw new ResourceNotFoundException("Unknown loan application id: " + applicationId);
         }
         return application;
     }
@@ -1094,59 +1134,14 @@ public class LoanApplicationLifecycleService {
     private LoanProduct resolveLoanProduct(LoanApplicationOnboardingCommand command) {
         if (command.productId() != null) {
             return loanProductRepository.findById(command.productId())
-                    .orElseThrow(() -> new IllegalArgumentException("Unknown loan product id: " + command.productId()));
+                    .orElseThrow(() -> new ResourceNotFoundException("Unknown loan product id: " + command.productId()));
         }
-        String loanProductCode = normalizeOptional(command.loanProduct());
+        String loanProductCode = Strings.normalizeOptional(command.loanProduct());
         if (loanProductCode == null) {
             throw new IllegalArgumentException("Loan product is required.");
         }
         return loanProductRepository.findByCodeIgnoreCase(loanProductCode)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown loan product code: " + loanProductCode));
-    }
-
-    private void generateRepaymentSchedule(LoanAccount loanAccount) {
-        if (!loanRepaymentScheduleInstallmentRepository
-                .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId())
-                .isEmpty()) {
-            return;
-        }
-
-        BigDecimal principal = scaleCurrency(loanAccount.getPrincipalAmount());
-        int tenureMonths = loanAccount.getTenureMonths();
-        BigDecimal annualRate = loanAccount.getLoanProduct().getInterestRate();
-        BigDecimal monthlyRate = annualRate.divide(BigDecimal.valueOf(1200), 10, RoundingMode.HALF_UP);
-        BigDecimal emiAmount = calculateMonthlyEmi(principal, monthlyRate, tenureMonths);
-        LocalDate firstDueDate = loanAccount.getApprovedAt().atZone(ZoneOffset.UTC).toLocalDate().plusMonths(1);
-
-        BigDecimal remainingPrincipal = principal;
-        List<LoanRepaymentScheduleInstallment> installments = new java.util.ArrayList<>();
-        for (int installmentNumber = 1; installmentNumber <= tenureMonths; installmentNumber++) {
-            BigDecimal openingPrincipal = scaleCurrency(remainingPrincipal);
-            BigDecimal interestDue = scaleCurrency(openingPrincipal.multiply(monthlyRate));
-            BigDecimal installmentAmount = emiAmount;
-            BigDecimal principalDue = scaleCurrency(installmentAmount.subtract(interestDue));
-            if (installmentNumber == tenureMonths) {
-                principalDue = openingPrincipal;
-                installmentAmount = scaleCurrency(principalDue.add(interestDue));
-            }
-            BigDecimal closingPrincipal = scaleCurrency(openingPrincipal.subtract(principalDue));
-            if (closingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
-                closingPrincipal = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-            }
-            installments.add(new LoanRepaymentScheduleInstallment(
-                    loanAccount,
-                    installmentNumber,
-                    firstDueDate.plusMonths(installmentNumber - 1L),
-                    openingPrincipal,
-                    principalDue,
-                    interestDue,
-                    installmentAmount,
-                    closingPrincipal
-            ));
-            remainingPrincipal = closingPrincipal;
-        }
-
-        loanRepaymentScheduleInstallmentRepository.saveAll(installments);
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan product code: " + loanProductCode));
     }
 
     private String serializePayload(LoanApplication application) {
@@ -1239,7 +1234,7 @@ public class LoanApplicationLifecycleService {
     }
 
     private static String normalizeAadhar(String aadharNumber) {
-        String normalized = normalizeOptional(aadharNumber);
+        String normalized = Strings.normalizeOptional(aadharNumber);
         return normalized == null ? null : normalized.replace(" ", "");
     }
 
@@ -1255,24 +1250,8 @@ public class LoanApplicationLifecycleService {
         return sourceChannel.trim().toUpperCase();
     }
 
-    private static String normalizeOptional(String value) {
-        if (value == null) {
-            return null;
-        }
-        String normalized = value.trim();
-        return normalized.isBlank() ? null : normalized;
-    }
-
-    private static String normalizeActorUsername(String actorUsername) {
-        if (actorUsername == null) {
-            return "system";
-        }
-        String normalized = actorUsername.trim();
-        return normalized.isBlank() ? "system" : normalized;
-    }
-
     private static String requireNote(String note) {
-        String normalized = normalizeOptional(note);
+        String normalized = Strings.normalizeOptional(note);
         if (normalized == null) {
             throw new IllegalArgumentException("Manual status note is required.");
         }
@@ -1298,7 +1277,11 @@ public class LoanApplicationLifecycleService {
             String message
     ) {
         if (reasonCode == null) {
-            throw new IllegalArgumentException(message);
+            throw new BusinessRuleViolationException(
+                    "REASON_CODE_REQUIRED",
+                    message,
+                    Map.of("reasonCode", "required")
+            );
         }
         return reasonCode;
     }
@@ -1328,7 +1311,7 @@ public class LoanApplicationLifecycleService {
             LoanInvalidationReason invalidReason,
             String invalidReasonText
     ) {
-        String normalized = normalizeOptional(invalidReasonText);
+        String normalized = Strings.normalizeOptional(invalidReasonText);
         if (invalidReason.requiresDetail() && normalized == null) {
             throw new IllegalArgumentException("Other invalid loan reason text is required when reason is OTHERS.");
         }
@@ -1357,7 +1340,7 @@ public class LoanApplicationLifecycleService {
     ) {
         LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
         payload.put("reason", reason);
-        payload.put("actorUsername", normalizeActorUsername(actorUsername));
+        payload.put("actorUsername", Strings.normalizeActor(actorUsername));
         payload.put("lspId", lsp.getId());
         payload.put("lspCode", lsp.getCode());
         payload.put("incomingPan", normalizePan(command.panNumber()));
@@ -1372,11 +1355,7 @@ public class LoanApplicationLifecycleService {
             payload.put("existingFullName", existingBorrower.getFullName());
             payload.put("existingVisibleLspIds", existingBorrower.getVisibleLspIds());
         }
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Unable to serialize borrower identity conflict alert context.", exception);
-        }
+        return com.bhawana.lms.common.util.AlertContextJson.serialize(objectMapper, log, payload);
     }
 
     private static void validateInterestRate(BigDecimal requestedInterestRate, BigDecimal configuredInterestRate) {
@@ -1386,35 +1365,35 @@ public class LoanApplicationLifecycleService {
         BigDecimal normalizedRequestedRate = requestedInterestRate.setScale(2, RoundingMode.HALF_UP);
         BigDecimal normalizedConfiguredRate = configuredInterestRate.setScale(2, RoundingMode.HALF_UP);
         if (normalizedRequestedRate.compareTo(normalizedConfiguredRate) != 0) {
-            throw new IllegalArgumentException("Requested interest rate does not match the configured product interest rate.");
+            throw new BusinessRuleViolationException(
+                    "INTEREST_RATE_MISMATCH",
+                    "Requested interest rate does not match the configured product interest rate.",
+                    Map.of(
+                            "interestRate", normalizedRequestedRate.toPlainString(),
+                            "configuredInterestRate", normalizedConfiguredRate.toPlainString()
+                    )
+            );
         }
     }
 
     private static BigDecimal normalizeMonthlyIncome(BigDecimal monthlyIncome, BigDecimal annualIncome) {
         if (monthlyIncome != null) {
-            return scaleCurrency(monthlyIncome);
+            return Money.scale(monthlyIncome);
         }
         if (annualIncome == null) {
             return null;
         }
-        return scaleCurrency(annualIncome.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP));
+        return Money.scale(annualIncome.divide(BigDecimal.valueOf(12), 2, RoundingMode.HALF_UP));
     }
 
     private static BigDecimal normalizeAnnualIncome(BigDecimal monthlyIncome, BigDecimal annualIncome) {
         if (annualIncome != null) {
-            return scaleCurrency(annualIncome);
+            return Money.scale(annualIncome);
         }
         if (monthlyIncome == null) {
             return null;
         }
-        return scaleCurrency(monthlyIncome.multiply(BigDecimal.valueOf(12)));
-    }
-
-    private static BigDecimal requireCurrency(BigDecimal value, String fieldName) {
-        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(fieldName + " must be greater than zero.");
-        }
-        return value;
+        return Money.scale(monthlyIncome.multiply(BigDecimal.valueOf(12)));
     }
 
     private static int requireTenure(Integer loanTenure) {
@@ -1425,23 +1404,11 @@ public class LoanApplicationLifecycleService {
     }
 
     private static String requireField(String value, String fieldName) {
-        String normalized = normalizeOptional(value);
+        String normalized = Strings.normalizeOptional(value);
         if (normalized == null) {
             throw new IllegalArgumentException(fieldName + " is required.");
         }
         return normalized;
-    }
-
-    private static BigDecimal calculateMonthlyEmi(BigDecimal principal, BigDecimal monthlyRate, int tenureMonths) {
-        if (monthlyRate.compareTo(BigDecimal.ZERO) == 0) {
-            return scaleCurrency(principal.divide(BigDecimal.valueOf(tenureMonths), 2, RoundingMode.HALF_UP));
-        }
-        BigDecimal rateDecimal = monthlyRate;
-        BigDecimal onePlusRatePower = BigDecimal
-                .valueOf(Math.pow(BigDecimal.ONE.add(rateDecimal).doubleValue(), tenureMonths));
-        BigDecimal numerator = principal.multiply(rateDecimal).multiply(onePlusRatePower, MathContext.DECIMAL64);
-        BigDecimal denominator = onePlusRatePower.subtract(BigDecimal.ONE);
-        return scaleCurrency(numerator.divide(denominator, 2, RoundingMode.HALF_UP));
     }
 
     private static String generateAccountNumber(LoanApplication application) {
@@ -1449,7 +1416,4 @@ public class LoanApplicationLifecycleService {
         return "LMS-LN-" + compactId.substring(0, 12);
     }
 
-    private static BigDecimal scaleCurrency(BigDecimal value) {
-        return value.setScale(2, RoundingMode.HALF_UP);
-    }
 }

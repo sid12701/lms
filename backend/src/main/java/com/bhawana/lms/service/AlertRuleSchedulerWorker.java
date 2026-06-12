@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -10,14 +11,14 @@ public class AlertRuleSchedulerWorker {
 
     private static final Logger log = LoggerFactory.getLogger(AlertRuleSchedulerWorker.class);
 
-    private final AlertRuleEvaluationService alertRuleEvaluationService;
+    private final AlertRuleEvaluationWorker alertRuleEvaluationWorker;
     private final boolean enabled;
 
     public AlertRuleSchedulerWorker(
-            AlertRuleEvaluationService alertRuleEvaluationService,
+            AlertRuleEvaluationWorker alertRuleEvaluationWorker,
             AlertRuleProperties properties
     ) {
-        this.alertRuleEvaluationService = alertRuleEvaluationService;
+        this.alertRuleEvaluationWorker = alertRuleEvaluationWorker;
         this.enabled = properties.isSchedulerEnabled();
     }
 
@@ -26,7 +27,9 @@ public class AlertRuleSchedulerWorker {
         if (!enabled) {
             return;
         }
-        AlertRuleEvaluationService.EvaluationSummary summary = alertRuleEvaluationService.evaluateScheduledRules();
+        AlertRuleEvaluationWorker.EvaluationSummary summary = TenantScopedExecution.callAsAdmin(
+                alertRuleEvaluationWorker::evaluateScheduledRules
+        );
         if (summary.alertsEmitted() > 0) {
             log.info(
                     "Alert rule scheduler emitted {} new alert(s) at {}",

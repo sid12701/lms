@@ -7,6 +7,8 @@ import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.repo.AppUserRepository;
+import com.bhawana.lms.tenant.TenantScopedExecution;
+import com.bhawana.lms.web.AuthenticationTenantScopeFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import java.nio.charset.StandardCharsets;
@@ -78,16 +80,14 @@ public class SecurityConfig {
         SecurityProperties.BootstrapUser bootstrapUser = securityProperties.getBootstrapUser();
         UserDetails bootstrapUserDetails = bootstrapUserDetails(bootstrapUser, passwordEncoder);
 
-        return username -> {
-            return appUserRepository.findByUsername(username)
-                    .map(SecurityConfig::appUserDetails)
-                    .orElseGet(() -> {
-                        if (bootstrapUser.getUsername().equalsIgnoreCase(username)) {
-                            return bootstrapUserDetails;
-                        }
-                        throw new UsernameNotFoundException(username);
-                    });
-        };
+        return username -> TenantScopedExecution.callAsAdmin(() -> appUserRepository.findByUsername(username)
+                .map(SecurityConfig::appUserDetails)
+                .orElseGet(() -> {
+                    if (bootstrapUser.getUsername().equalsIgnoreCase(username)) {
+                        return bootstrapUserDetails;
+                    }
+                    throw new UsernameNotFoundException(username);
+                }));
     }
 
     @Bean
@@ -132,7 +132,8 @@ public class SecurityConfig {
             Converter<Jwt, ? extends AbstractAuthenticationToken> jwtAuthenticationConverter,
             ObjectMapper objectMapper,
             ObjectProvider<RateLimitFilter> rateLimitFilterProvider,
-            LspSurfaceIpAllowlistFilter lspSurfaceIpAllowlistFilter
+            LspSurfaceIpAllowlistFilter lspSurfaceIpAllowlistFilter,
+            AuthenticationTenantScopeFilter authenticationTenantScopeFilter
     ) throws Exception {
         RateLimitFilter rateLimitFilter = rateLimitFilterProvider.getIfAvailable();
         http
@@ -153,6 +154,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/actuator/health/**",
                                 "/actuator/info",
+                                "/error",
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",
@@ -216,10 +218,15 @@ public class SecurityConfig {
                         }))
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
+                .addFilterAfter(
+                        authenticationTenantScopeFilter,
+                        org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class)
                 .addFilterAfter(lspSurfaceIpAllowlistFilter, org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class);
 
         if (rateLimitFilter != null) {
-            http.addFilterAfter(rateLimitFilter, org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class);
+            http.addFilterAfter(
+                    rateLimitFilter,
+                    org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class);
         }
 
         return http.build();
@@ -270,7 +277,7 @@ public class SecurityConfig {
                 return OAuth2TokenValidatorResult.success();
             }
 
-            return appUserRepository.findByUsername(username)
+            return TenantScopedExecution.callAsAdmin(() -> appUserRepository.findByUsername(username)
                     .map(appUser -> {
                         Long tokenPasswordVersion = jwt.getClaim("pwdv");
                         long currentPasswordVersion = appUser.getPasswordChangedAt().toEpochMilli();
@@ -295,7 +302,7 @@ public class SecurityConfig {
 
                         return OAuth2TokenValidatorResult.success();
                     })
-                    .orElseGet(OAuth2TokenValidatorResult::success);
+                    .orElseGet(OAuth2TokenValidatorResult::success));
         };
     }
 
@@ -311,9 +318,9 @@ public class SecurityConfig {
                         .toList());
             }
 
-            appUserRepository.findByUsername(jwt.getSubject())
+            TenantScopedExecution.runAsAdmin(() -> appUserRepository.findByUsername(jwt.getSubject())
                     .filter(AppUser::isPasswordChangeRequired)
-                    .ifPresent(appUser -> authorities.add(new SimpleGrantedAuthority("ROLE_PASSWORD_CHANGE_REQUIRED")));
+                    .ifPresent(appUser -> authorities.add(new SimpleGrantedAuthority("ROLE_PASSWORD_CHANGE_REQUIRED"))));
 
             return authorities;
         };

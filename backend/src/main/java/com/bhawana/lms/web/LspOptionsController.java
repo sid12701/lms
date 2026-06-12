@@ -2,7 +2,7 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
-import com.bhawana.lms.service.AdminDirectoryService;
+import com.bhawana.lms.service.LspDirectoryService;
 import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,15 +14,15 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','OPS_USER','PRODUCT_ADMIN')")
 public class LspOptionsController {
 
-    private final AdminDirectoryService adminDirectoryService;
+    private final LspDirectoryService lspDirectoryService;
 
-    public LspOptionsController(AdminDirectoryService adminDirectoryService) {
-        this.adminDirectoryService = adminDirectoryService;
+    public LspOptionsController(LspDirectoryService lspDirectoryService) {
+        this.lspDirectoryService = lspDirectoryService;
     }
 
     @GetMapping
     public List<LspOptionResponse> listLspOptions() {
-        return adminDirectoryService.listLsps().stream()
+        return lspDirectoryService.listLsps().stream()
                 .filter(lsp -> lsp.getStatus() == LspStatus.ACTIVE)
                 .map(LspOptionsController::toResponse)
                 .toList();

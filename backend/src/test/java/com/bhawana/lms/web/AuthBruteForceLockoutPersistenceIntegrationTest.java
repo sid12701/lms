@@ -13,7 +13,7 @@ import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.AuthEventAuditRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
-import com.bhawana.lms.service.AlertRuleEvaluationService;
+import com.bhawana.lms.service.AlertRuleEvaluationWorker;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -74,7 +74,7 @@ class AuthBruteForceLockoutPersistenceIntegrationTest {
     private OpsAlertRepository opsAlertRepository;
 
     @Autowired
-    private AlertRuleEvaluationService alertRuleEvaluationService;
+    private AlertRuleEvaluationWorker alertRuleEvaluationWorker;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -113,7 +113,7 @@ class AuthBruteForceLockoutPersistenceIntegrationTest {
             attemptLogin("sarah.user", "WrongPassword!", CLIENT_IP)
                     .andExpect(status().isUnauthorized());
         }
-        alertRuleEvaluationService.evaluateScheduledRules();
+        alertRuleEvaluationWorker.evaluateScheduledRules();
 
         AppUser lockedUser = appUserRepository.findByUsername("sarah.user").orElseThrow();
         assertNotNull(lockedUser.getLockedAt());

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "8215b4e4-b61a-40b5-ab88-e5b8c2ecddf1",
+    "_postman_id": "0ce529b8-3fc7-4a7d-80ff-3e5f8fc11241",
     "name": "LMS \u2014 Bhawana Capital",
     "description": "End-to-end Postman collection for the Bhawana LMS (Loan Management System).\n\nRun folders top-to-bottom. Every request writes any extracted IDs/tokens back\nto the environment, so you can execute the full chain via Collection Runner\nwithout copy-pasting values.\n\nLifecycle covered:\n  0   \u2192 health\n  1   \u2192 admin auth (auto-rotates bootstrap password on first run)\n  2\u20134 \u2192 LSP / product / user / API-client onboarding\n  5\u20137 \u2192 loan origination \u2192 documents \u2192 approval \u2192 disbursement \u2192 schedule\n  8   \u2192 12 installment payments \u2192 loan closure\n  9   \u2192 business-management demo views (KPIs, DPD, alerts, webhooks, 360)\n  10  \u2192 MIS report (async queue + sync + preview)\n  11  \u2192 logout\n\nPair this collection with the three manual UI checks listed in postman/README.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -1014,7 +1014,7 @@
               "formdata": [
                 {
                   "key": "documentType",
-                  "value": "PAN_CARD",
+                  "value": "PAN",
                   "type": "text"
                 },
                 {
@@ -1074,7 +1074,7 @@
               "formdata": [
                 {
                   "key": "documentType",
-                  "value": "AADHAAR_FILE",
+                  "value": "AADHAR",
                   "type": "text"
                 },
                 {
@@ -1417,7 +1417,7 @@
             "description": "Demo-only shortcut. Flips the pending mock disbursement to SUCCESS \u2192 loan transitions to DISBURSED \u2192 repayment schedule is generated automatically.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"outcome\": \"DISBURSED\"\n}",
+              "raw": "{\n  \"outcome\": \"SUCCESS\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

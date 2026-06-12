@@ -26,7 +26,7 @@ import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.service.ApiClientManagementService;
-import com.bhawana.lms.service.AdminDirectoryService;
+import com.bhawana.lms.service.UserAdminService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
@@ -73,7 +73,7 @@ class AuthControllerTest {
     private PasswordEncoder passwordEncoder;
 
     @Autowired
-    private AdminDirectoryService adminDirectoryService;
+    private UserAdminService userAdminService;
 
     @Autowired
     private ApiClientManagementService apiClientManagementService;
@@ -228,7 +228,7 @@ class AuthControllerTest {
         AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
         String oldPasswordHash = managedUser.getPasswordHash();
 
-        AdminDirectoryService.ResetPasswordResult resetResult = adminDirectoryService.resetUserPassword(
+        UserAdminService.ResetPasswordResult resetResult = userAdminService.resetUserPassword(
                 managedUser.getId(),
                 "ops.admin",
                 "127.0.0.1",
@@ -251,7 +251,7 @@ class AuthControllerTest {
     @Test
     void managedUserMustChangePasswordAfterAdminReset() throws Exception {
         AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
-        AdminDirectoryService.ResetPasswordResult resetResult = adminDirectoryService.resetUserPassword(
+        UserAdminService.ResetPasswordResult resetResult = userAdminService.resetUserPassword(
                 managedUser.getId(),
                 "ops.admin",
                 "127.0.0.1",

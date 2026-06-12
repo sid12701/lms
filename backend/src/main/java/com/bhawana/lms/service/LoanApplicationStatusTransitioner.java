@@ -2,6 +2,7 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import com.bhawana.lms.domain.LoanApplicationStatus;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -33,8 +34,13 @@ public final class LoanApplicationStatusTransitioner {
         if (isAllowed(fromStatus, toStatus, context)) {
             return;
         }
-        throw new IllegalArgumentException(
-                "Cannot transition loan application from " + fromStatus.name() + " to " + toStatus.name() + "."
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        fieldErrors.put("fromStatus", fromStatus.name());
+        fieldErrors.put("toStatus", toStatus.name());
+        throw new BusinessRuleViolationException(
+                "INVALID_STATUS_TRANSITION",
+                "Cannot transition loan application from " + fromStatus.name() + " to " + toStatus.name() + ".",
+                fieldErrors
         );
     }
 

@@ -32,7 +32,7 @@ import { useLoanApplicationActivity } from "./useLoanApplicationActivity";
 import { useLoanApplicationWebhooks } from "./useLoanApplicationWebhooks";
 
 const DETAIL_FIXTURE = {
-  application: { id: "app-1", status: "INITIATED" },
+  application: { id: "app-1", status: "INITIALIZED" },
   borrower: { fullName: "Aanya Devi" },
   lsp: { id: "lsp-1", name: "Acme NBFC" },
   product: { id: "prod-1", name: "PL-A" },

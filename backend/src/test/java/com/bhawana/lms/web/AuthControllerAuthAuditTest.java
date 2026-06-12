@@ -22,7 +22,7 @@ import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.AuthEventAuditRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.service.ApiClientManagementService;
-import com.bhawana.lms.service.AdminDirectoryService;
+import com.bhawana.lms.service.UserAdminService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
@@ -76,7 +76,7 @@ class AuthControllerAuthAuditTest {
     private ApiClientManagementService apiClientManagementService;
 
     @Autowired
-    private AdminDirectoryService adminDirectoryService;
+    private UserAdminService userAdminService;
 
     @Autowired
     private EntityManager entityManager;
@@ -281,7 +281,7 @@ class AuthControllerAuthAuditTest {
     @Test
     void passwordChangedWritesAuditRow() throws Exception {
         AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
-        AdminDirectoryService.ResetPasswordResult resetResult = adminDirectoryService.resetUserPassword(
+        UserAdminService.ResetPasswordResult resetResult = userAdminService.resetUserPassword(
                 managedUser.getId(),
                 "ops.admin",
                 CLIENT_IP,

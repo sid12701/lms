@@ -15,9 +15,9 @@ const APPROVE_ACTION: LifecycleAction = {
 };
 
 const DISBURSE_ACTION: LifecycleAction = {
-  id: "APPROVED_PENDING_DISBURSAL__DISBURSEMENT_IN_PROGRESS",
+  id: "APPROVED_PENDING_DISBURSAL__DISBURSED",
   label: "Initiate disbursement",
-  toStatus: "DISBURSEMENT_IN_PROGRESS",
+  toStatus: "DISBURSED",
   tone: "approve",
   requiresReason: false,
   permission: "DISBURSEMENT_TRIGGER",
@@ -73,7 +73,7 @@ describe("resolveDisabledReason()", () => {
   it("falls back to 'Transition not allowed' when no matching rule exists", () => {
     const reason = resolveDisabledReason(
       APPROVE_ACTION,
-      "INITIATED", // no rule from INITIATED → APPROVED_PENDING_DISBURSAL
+      "INITIALIZED", // no rule from INITIALIZED → APPROVED_PENDING_DISBURSAL
       "SYSTEM_ADMIN",
     );
     expect(reason).toMatch(/not allowed/i);

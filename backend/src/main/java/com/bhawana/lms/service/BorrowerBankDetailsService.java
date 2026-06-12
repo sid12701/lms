@@ -1,6 +1,7 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.BorrowerBankDetailsUpdateAudit;
 import com.bhawana.lms.domain.LoanApplication;
@@ -32,7 +33,7 @@ public class BorrowerBankDetailsService {
     private final BorrowerBankDetailsUpdateAuditRepository bankDetailsUpdateAuditRepository;
     private final LoanDisbursementBankMismatchLogRepository bankMismatchLogRepository;
     private final WebhookOutboxService webhookOutboxService;
-    private final AlertRuleEvaluationService alertRuleEvaluationService;
+    private final OpsAlertEmitters opsAlertEmitters;
     private final BorrowerBankDetailsProperties properties;
     private final Clock clock;
 
@@ -43,7 +44,7 @@ public class BorrowerBankDetailsService {
             BorrowerBankDetailsUpdateAuditRepository bankDetailsUpdateAuditRepository,
             LoanDisbursementBankMismatchLogRepository bankMismatchLogRepository,
             WebhookOutboxService webhookOutboxService,
-            AlertRuleEvaluationService alertRuleEvaluationService,
+            OpsAlertEmitters opsAlertEmitters,
             BorrowerBankDetailsProperties properties,
             Clock clock
     ) {
@@ -53,7 +54,7 @@ public class BorrowerBankDetailsService {
         this.bankDetailsUpdateAuditRepository = bankDetailsUpdateAuditRepository;
         this.bankMismatchLogRepository = bankMismatchLogRepository;
         this.webhookOutboxService = webhookOutboxService;
-        this.alertRuleEvaluationService = alertRuleEvaluationService;
+        this.opsAlertEmitters = opsAlertEmitters;
         this.properties = properties;
         this.clock = clock;
     }
@@ -62,9 +63,9 @@ public class BorrowerBankDetailsService {
     public Borrower getBorrowerForLsp(UUID lspId, UUID borrowerId) {
         TenantDataAccessContextHolder.useAdmin();
         Borrower borrower = borrowerRepository.findById(borrowerId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown borrower id: " + borrowerId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown borrower id: " + borrowerId));
         if (!borrower.hasVisibilityFor(lspId)) {
-            throw new IllegalArgumentException("Unknown borrower id: " + borrowerId);
+            throw new ResourceNotFoundException("Unknown borrower id: " + borrowerId);
         }
         return borrower;
     }
@@ -73,7 +74,7 @@ public class BorrowerBankDetailsService {
     public Borrower getBorrower(UUID borrowerId) {
         TenantDataAccessContextHolder.useAdmin();
         return borrowerRepository.findById(borrowerId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown borrower id: " + borrowerId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown borrower id: " + borrowerId));
     }
 
     @Transactional
@@ -144,7 +145,7 @@ public class BorrowerBankDetailsService {
             details.put("onFileBankAccountNumber", application.getBorrower().getBankAccountNumber());
             details.put("onFileIfscCode", application.getBorrower().getIfscCode());
             details.put("attemptCount", String.valueOf(attempts));
-            alertRuleEvaluationService.emitLspBoundViolation(
+            opsAlertEmitters.emitLspBoundViolation(
                     application,
                     "BANK_DETAIL_MISMATCH",
                     "Repeated disbursement bank-detail mismatches from LSP "
@@ -174,7 +175,7 @@ public class BorrowerBankDetailsService {
                 CorrelationIdHolder.get(),
                 true
         ));
-        alertRuleEvaluationService.emitHolderNameSoftMismatch(
+        opsAlertEmitters.emitHolderNameSoftMismatch(
                 application,
                 submittedAccountHolderName,
                 onFileAccountHolderName,
@@ -192,9 +193,9 @@ public class BorrowerBankDetailsService {
     ) {
         TenantDataAccessContextHolder.useAdmin();
         Borrower borrower = borrowerRepository.findById(borrowerId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown borrower id: " + borrowerId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown borrower id: " + borrowerId));
         if (lspId != null && !borrower.hasVisibilityFor(lspId)) {
-            throw new IllegalArgumentException("Unknown borrower id: " + borrowerId);
+            throw new ResourceNotFoundException("Unknown borrower id: " + borrowerId);
         }
 
         String previousAccount = borrower.getBankAccountNumber();
@@ -263,7 +264,7 @@ public class BorrowerBankDetailsService {
                 since
         );
         if (updates >= properties.getVelocityMaxUpdates()) {
-            alertRuleEvaluationService.emitBorrowerBankDetailsVelocity(borrower, (int) updates);
+            opsAlertEmitters.emitBorrowerBankDetailsVelocity(borrower, (int) updates);
         }
     }
 

@@ -23,7 +23,7 @@ public class TenantIsolationWebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(internalAdminTenantContextInterceptor)
-                .addPathPatterns("/api/v1/internal/**", "/api/v1/auth/**");
+                .addPathPatterns("/api/v1/auth/**");
         registry.addInterceptor(lspTenantContextInterceptor)
                 .addPathPatterns("/api/v1/lsp/**");
     }

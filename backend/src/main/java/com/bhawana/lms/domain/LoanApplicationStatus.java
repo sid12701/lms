@@ -61,4 +61,33 @@ public enum LoanApplicationStatus {
 
     private static final Set<LoanApplicationStatus> PRE_DISBURSAL_STATUSES =
             EnumSet.of(INITIALIZED, AWAITING_APPROVAL, APPROVED_PENDING_DISBURSAL, DISBURSEMENT_RETRY);
+
+    private static final Set<LoanApplicationStatus> SERVICING_STATUSES =
+            EnumSet.of(DISBURSED, UNDER_REPAYMENT, CLOSED, FORECLOSED);
+
+    private static final Set<LoanApplicationStatus> MANUAL_OVERRIDE_SOURCE_BLOCKED =
+            EnumSet.of(APPROVED_PENDING_DISBURSAL, INVALID, CLOSED, FORECLOSED);
+
+    private static final Set<LoanApplicationStatus> MANUAL_OVERRIDE_TARGET_BLOCKED =
+            EnumSet.of(APPROVED_PENDING_DISBURSAL, INVALID, CLOSED, FORECLOSED);
+
+    private static final Set<LoanApplicationStatus> ALLOWED_MANUAL_OVERRIDE_TARGETS =
+            EnumSet.of(INITIALIZED, AWAITING_APPROVAL, DISBURSEMENT_RETRY, REJECTED);
+
+    public boolean hasEnteredServicing() {
+        return SERVICING_STATUSES.contains(this);
+    }
+
+    public boolean blocksManualOverrideSource() {
+        return MANUAL_OVERRIDE_SOURCE_BLOCKED.contains(this) || hasEnteredServicing();
+    }
+
+    public boolean blocksManualOverrideTarget() {
+        return MANUAL_OVERRIDE_TARGET_BLOCKED.contains(this) || hasEnteredServicing();
+    }
+
+    public boolean isAllowedManualOverrideTarget() {
+        return ALLOWED_MANUAL_OVERRIDE_TARGETS.contains(this);
+    }
 }
+

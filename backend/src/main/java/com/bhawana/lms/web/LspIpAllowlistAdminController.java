@@ -1,7 +1,9 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.ApiConflictException;
 import com.bhawana.lms.common.web.ClientIpAddresses;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspIpAllowlistEntry;
 import com.bhawana.lms.domain.LspIpAllowlistSurface;
@@ -73,11 +75,14 @@ public class LspIpAllowlistAdminController {
         String normalizedCidr = normalizeCidr(request.cidr());
 
         if (allowlistRepository.existsByLsp_IdAndCidr(lspId, normalizedCidr)) {
-            throw new IllegalArgumentException("CIDR already present in allowlist: " + normalizedCidr);
+            throw new ApiConflictException(
+                    "ALLOWLIST_CIDR_DUPLICATE",
+                    "CIDR already present in allowlist: " + normalizedCidr
+            );
         }
 
         Lsp lsp = lspRepository.findById(lspId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown LSP id: " + lspId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown LSP id: " + lspId));
 
         LspIpAllowlistEntry entry = new LspIpAllowlistEntry(lsp, normalizedCidr, request.description());
         LspIpAllowlistEntry saved = allowlistRepository.save(entry);
@@ -105,10 +110,10 @@ public class LspIpAllowlistAdminController {
             HttpServletRequest httpRequest
     ) {
         LspIpAllowlistEntry entry = allowlistRepository.findById(entryId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown allowlist entry id: " + entryId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown allowlist entry id: " + entryId));
 
         if (!entry.getLsp().getId().equals(lspId)) {
-            throw new IllegalArgumentException("Entry does not belong to lsp: " + lspId);
+            throw new ResourceNotFoundException("Unknown allowlist entry id: " + entryId);
         }
 
         UUID removedEntryId = entry.getId();

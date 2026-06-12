@@ -103,8 +103,8 @@ class LspAdminControllerTest {
                                 "signingSecret", "",
                                 "eventTypes", List.of()
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("WEBHOOK_ENDPOINT_REQUIRED"));
     }
 
     @Test

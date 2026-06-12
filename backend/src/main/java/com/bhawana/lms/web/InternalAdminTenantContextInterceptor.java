@@ -7,8 +7,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
- * Sets admin data-access scope for internal staff and auth HTTP entry points.
- * Authorization remains on {@code @PreAuthorize} handlers; this only tags the datasource scope.
+ * Sets admin data-access scope for the anonymous auth entry points (login, token refresh,
+ * logout, password change), which resolve principals before any authentication exists.
+ * Authenticated traffic gets its scope from {@code AuthenticationTenantScopeFilter} in the
+ * security filter chain; authorization remains on {@code @PreAuthorize} handlers.
  */
 @Component
 public class InternalAdminTenantContextInterceptor implements HandlerInterceptor {

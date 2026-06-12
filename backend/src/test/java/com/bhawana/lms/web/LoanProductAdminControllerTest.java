@@ -165,8 +165,8 @@ class LoanProductAdminControllerTest {
                                 "maxTenureMonths", 12,
                                 "status", "ACTIVE"
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("PRODUCT_CONFIG_INVALID"));
     }
 
     @Test
@@ -217,8 +217,8 @@ class LoanProductAdminControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "lspIds", List.of("00000000-0000-0000-0000-000000000000")
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
 
     @Test

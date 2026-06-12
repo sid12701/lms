@@ -37,7 +37,8 @@ public class LocalDemoPortfolioSeedService {
     private static final String DEFAULT_USER_PASSWORD = "DemoPass123!";
     private static final String INTERNAL_ACTOR = "ops.admin";
 
-    private final AdminDirectoryService adminDirectoryService;
+    private final LspDirectoryService lspDirectoryService;
+    private final UserAdminService userAdminService;
     private final ProductConfigurationService productConfigurationService;
     private final LoanApplicationService loanApplicationService;
     private final AppUserRepository appUserRepository;
@@ -48,7 +49,8 @@ public class LocalDemoPortfolioSeedService {
     private final SecurityProperties securityProperties;
 
     public LocalDemoPortfolioSeedService(
-            AdminDirectoryService adminDirectoryService,
+            LspDirectoryService lspDirectoryService,
+            UserAdminService userAdminService,
             ProductConfigurationService productConfigurationService,
             LoanApplicationService loanApplicationService,
             AppUserRepository appUserRepository,
@@ -58,7 +60,8 @@ public class LocalDemoPortfolioSeedService {
             JdbcTemplate jdbcTemplate,
             SecurityProperties securityProperties
     ) {
-        this.adminDirectoryService = adminDirectoryService;
+        this.lspDirectoryService = lspDirectoryService;
+        this.userAdminService = userAdminService;
         this.productConfigurationService = productConfigurationService;
         this.loanApplicationService = loanApplicationService;
         this.appUserRepository = appUserRepository;
@@ -86,7 +89,7 @@ public class LocalDemoPortfolioSeedService {
 
     private Lsp ensureLsp() {
         return lspRepository.findByCodeIgnoreCase(DEMO_LSP_CODE)
-                .orElseGet(() -> adminDirectoryService.createLsp(DEMO_LSP_CODE, "Supa One Finance", LspStatus.ACTIVE));
+                .orElseGet(() -> lspDirectoryService.createLsp(DEMO_LSP_CODE, "Supa One Finance", LspStatus.ACTIVE));
     }
 
     private LoanProduct ensureProduct(Lsp lsp) {
@@ -137,7 +140,7 @@ public class LocalDemoPortfolioSeedService {
         if (appUserRepository.existsByUsername(username)) {
             return;
         }
-        adminDirectoryService.createUser(username, email, password, status, lspId, roleCodes);
+        userAdminService.createUser(username, email, password, status, lspId, roleCodes);
     }
 
     private void seedLoans(Lsp lsp, LoanProduct product) {

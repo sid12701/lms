@@ -1,8 +1,12 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.money.Money;
+import com.bhawana.lms.common.web.ApiConflictException;
 import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanAccount;
+import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.service.BankAccountHolderNameMatcher.HolderNameMatchOutcome;
 import com.bhawana.lms.service.DisbursementBankDetailsValidation.BankDetailWarning;
@@ -80,11 +84,36 @@ public class LoanDisbursementService {
     }
 
     /**
+     * Partner/adapter guard: rejects a second disbursement request while one is in flight or complete.
+     * Ops initiateDisbursement keeps an idempotent early return for DISBURSEMENT_REQUESTED; this method
+     * is the strict 409 conflict surface for bank integrations.
+     */
+    public void ensureDisbursementRequestAllowed(LoanAccount loanAccount) {
+        if (loanAccount == null) {
+            throw new ResourceNotFoundException("Loan account is not available for disbursement.");
+        }
+        if (loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED) {
+            throw new ApiConflictException(
+                    "DISBURSEMENT_ALREADY_REQUESTED",
+                    "Disbursement has already been requested for this loan account."
+            );
+        }
+        if (loanAccount.getStatus() != LoanAccountStatus.PENDING_DISBURSEMENT
+                && loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_FAILED
+                && loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION) {
+            throw new ApiConflictException(
+                    "DISBURSEMENT_NOT_ALLOWED",
+                    "Loan account is not eligible for a new disbursement request."
+            );
+        }
+    }
+
+    /**
      * Last-line validation before the automated disbursement worker calls the adapter.
      */
     public Map<String, String> validateAutomatedDisbursement(LoanApplication application, LoanAccount loanAccount) {
         Map<String, String> violations = new LinkedHashMap<>();
-        if (!loanApplicationService.hasAllRequiredLmsManagedDocuments(application.getId(), false)) {
+        if (!loanApplicationService.hasAllRequiredLmsManagedDocuments(application.getId())) {
             violations.put("documents", "All required documents must be uploaded into LMS-managed storage.");
         }
         if (loanAccount == null) {
@@ -96,12 +125,16 @@ public class LoanDisbursementService {
         } catch (BusinessRuleViolationException exception) {
             violations.putAll(exception.getFieldErrors());
         }
-        BigDecimal principalAmount = scaleCurrency(loanAccount.getPrincipalAmount());
+        BigDecimal rawPrincipal = loanAccount.getPrincipalAmount();
+        if (rawPrincipal == null || rawPrincipal.compareTo(BigDecimal.ZERO) <= 0) {
+            violations.put("disbursalAmount", "Disbursal amount must be greater than zero.");
+            return violations;
+        }
+        BigDecimal principalAmount = Money.scale(rawPrincipal);
         BigDecimal scaledDisbursalAmount = principalAmount;
-        BigDecimal shortfall = scaleCurrency(principalAmount.subtract(scaledDisbursalAmount));
-        BigDecimal allowedShortfall = scaleCurrency(principalAmount
-                .multiply(loanAccount.getLoanProduct().getProcessingFeeRate())
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
+        BigDecimal shortfall = Money.scale(principalAmount.subtract(scaledDisbursalAmount));
+        BigDecimal processingFeeRate = loanAccount.getLoanProduct().getProcessingFeeRate();
+        BigDecimal allowedShortfall = Money.scale(principalAmount.multiply(processingFeeRate).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP));
         if (shortfall.compareTo(allowedShortfall) > 0) {
             violations.put(
                     "disbursalAmount",
@@ -111,7 +144,8 @@ public class LoanDisbursementService {
         return violations;
     }
 
-    public DisbursementBankDetailsValidation validateWorkerDisbursementBankDetails(Borrower borrower) {
+    public DisbursementBankDetailsValidation validateWorkerDisbursementBankDetails(LoanApplication application) {
+        Borrower borrower = application != null ? application.getBorrower() : null;
         DisbursementBankDetailsValidation.Builder builder = DisbursementBankDetailsValidation.builder();
         if (borrower == null) {
             return builder.violation("borrowerBank", "Borrower bank account must be on file before disbursement.").build();
@@ -195,13 +229,6 @@ public class LoanDisbursementService {
                         + onFileName
                         + "."
         );
-    }
-
-    private static BigDecimal scaleCurrency(BigDecimal value) {
-        if (value == null) {
-            throw new IllegalArgumentException("Disbursal amount is required.");
-        }
-        return value.setScale(2, RoundingMode.HALF_UP);
     }
 
     static String normalizeAccountNumber(String value) {

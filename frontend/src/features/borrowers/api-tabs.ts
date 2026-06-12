@@ -6,7 +6,7 @@
  * `loans[]` array from the response.
  */
 import { requestJson } from "@/lib/api/http-client";
-import { mapBackendStatus } from "@/features/loan-applications/api";
+import { apiLoanStatus } from "@/lib/loan-application-status";
 import type { BorrowerLoanRow, BorrowerLoansResponse } from "./types";
 
 const BACKEND_BASE = "/api/v1/internal/admin/borrowers";
@@ -50,7 +50,7 @@ function toLoanRow(row: BackendBorrowerLoanRow): BorrowerLoanRow {
     productName: row.loanProductCode ?? "",
     requestedAmount: toNumber(row.principalAmount),
     tenureMonths: row.tenureMonths,
-    status: mapBackendStatus(row.status) as BorrowerLoanRow["status"],
+    status: apiLoanStatus(row.status) as BorrowerLoanRow["status"],
     createdAt: row.createdAt,
     updatedAt: row.closedAt ?? row.disbursedAt ?? row.approvedAt ?? row.createdAt,
   };

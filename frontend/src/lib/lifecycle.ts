@@ -1,9 +1,9 @@
 ﻿/**
- * Centralised lifecycle state machine.
+ * Advisory UX lifecycle helpers for loan application status.
  *
- * The same `canTransition()` function is consulted by:
- *   - the UI's ActionBar (renders allowed transitions only)
- *   - the backend (enforces server-side validation)
+ * `canTransition()` gates which actions the UI offers; the backend
+ * `LoanApplicationStatus` enum and `LoanApplicationStatusTransitioner` enforce
+ * transitions on the server.
  *
  * BR coverage:
  *   - BR-1  one-open-loan check       (precondition `borrowerHasOtherOpenLoan`)
@@ -44,8 +44,20 @@ export interface StatusMeta {
 }
 
 export const STATUS_META: Record<LoanStatus, StatusMeta> = {
-  // Gap #11 â€” backend canonical state machine.
   INITIALIZED: { label: "Initialized", intent: "neutral", group: "ORIGINATION", open: true },
+  AWAITING_APPROVAL: {
+    label: "Awaiting approval",
+    intent: "progress",
+    group: "UNDERWRITING",
+    open: true,
+  },
+  APPROVED_PENDING_DISBURSAL: {
+    label: "Approved · pending disbursal",
+    intent: "progress",
+    group: "APPROVAL",
+    open: true,
+  },
+  REJECTED: { label: "Rejected", intent: "danger", group: "FAILURE", open: false },
   DISBURSEMENT_RETRY: {
     label: "Disbursement retry",
     intent: "warning",
@@ -53,67 +65,10 @@ export const STATUS_META: Record<LoanStatus, StatusMeta> = {
     open: true,
   },
   INVALID: { label: "Invalid", intent: "revoked", group: "FAILURE", open: false },
-
-  // ORIGINATION
-  INITIATED: { label: "Initiated", intent: "neutral", group: "ORIGINATION", open: true },
-  KYC_PENDING: { label: "KYC pending", intent: "neutral", group: "ORIGINATION", open: true },
-  DOCS_PENDING: { label: "Docs pending", intent: "neutral", group: "ORIGINATION", open: true },
-
-  // UNDERWRITING
-  UNDER_REVIEW: { label: "Under review", intent: "progress", group: "UNDERWRITING", open: true },
-  AWAITING_APPROVAL: {
-    label: "Awaiting approval",
-    intent: "progress",
-    group: "UNDERWRITING",
-    open: true,
-  },
-
-  // APPROVAL
-  APPROVED: { label: "Approved", intent: "progress", group: "APPROVAL", open: true },
-  APPROVED_PENDING_DISBURSAL: {
-    label: "Approved Â· pending disbursal",
-    intent: "progress",
-    group: "APPROVAL",
-    open: true,
-  },
-
-  // DISBURSEMENT
-  DISBURSEMENT_IN_PROGRESS: {
-    label: "Disbursement in progress",
-    intent: "warning",
-    group: "DISBURSEMENT",
-    open: true,
-  },
   DISBURSED: { label: "Disbursed", intent: "success", group: "DISBURSEMENT", open: true },
-
-  // SERVICING
   UNDER_REPAYMENT: { label: "Under repayment", intent: "success", group: "SERVICING", open: true },
-  PARTIALLY_PAID: { label: "Partially paid", intent: "success", group: "SERVICING", open: true },
-
-  // DELINQUENCY
-  DELINQUENT: { label: "Delinquent", intent: "warning", group: "DELINQUENCY", open: true },
-
-  // CLOSURE â€” terminal closures
-  FORECLOSURE_REQUESTED: {
-    label: "Foreclosure requested",
-    intent: "warning",
-    group: "DELINQUENCY",
-    open: true,
-  },
-  FORECLOSURE_APPROVED: {
-    label: "Foreclosure approved",
-    intent: "warning",
-    group: "DELINQUENCY",
-    open: true,
-  },
-  FORECLOSED: { label: "Foreclosed", intent: "neutral", group: "CLOSURE", open: false },
-  FULLY_REPAID: { label: "Fully repaid", intent: "neutral", group: "CLOSURE", open: false },
   CLOSED: { label: "Closed", intent: "neutral", group: "CLOSURE", open: false },
-
-  // FAILURE
-  REJECTED: { label: "Rejected", intent: "danger", group: "FAILURE", open: false },
-  CANCELLED: { label: "Cancelled", intent: "danger", group: "FAILURE", open: false },
-  INVALIDATED: { label: "Invalidated", intent: "revoked", group: "FAILURE", open: false },
+  FORECLOSED: { label: "Foreclosed", intent: "neutral", group: "CLOSURE", open: false },
 };
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -248,79 +203,32 @@ function chain(
 // Transition table
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const INTERNAL_OPS: Role[] = ["SYSTEM_ADMIN", "OPS_USER"];
 const SYS_ADMIN: Role[] = ["SYSTEM_ADMIN"];
-const SYSTEM_ONLY: Role[] = []; // auto-advance â€” no UI button
+const LSP_INVALIDATORS: Role[] = ["LSP_UI_WRITE", "SYSTEM_ADMIN"];
+const SYSTEM_ONLY: Role[] = [];
 
-/** Statuses from which `INVALIDATED` is reachable (LSP_UI_WRITE on own tenant). */
-const INVALIDATABLE_FROM: LoanStatus[] = [
-  "INITIATED",
-  "KYC_PENDING",
-  "DOCS_PENDING",
-  "UNDER_REVIEW",
+const PRE_DISBURSAL_INVALIDATABLE: LoanStatus[] = [
+  "INITIALIZED",
   "AWAITING_APPROVAL",
-  "APPROVED",
   "APPROVED_PENDING_DISBURSAL",
+  "DISBURSEMENT_RETRY",
 ];
 
-/** Statuses from which `CANCELLED` is reachable by SYSTEM_ADMIN. */
-const CANCELLABLE_FROM: LoanStatus[] = [
-  "INITIATED",
-  "KYC_PENDING",
-  "DOCS_PENDING",
-  "UNDER_REVIEW",
-  "AWAITING_APPROVAL",
-];
-
-export const TRANSITIONS: TransitionRule[] = [
-  // Origination â†’ underwriting
+const CORE_TRANSITIONS: TransitionRule[] = [
   {
-    from: "INITIATED",
-    to: "KYC_PENDING",
-    allowedRoles: INTERNAL_OPS,
-    label: "Mark KYC pending",
-    intent: "secondary",
-  },
-  {
-    from: "KYC_PENDING",
-    to: "DOCS_PENDING",
-    allowedRoles: INTERNAL_OPS,
-    label: "Request documents",
-    intent: "secondary",
-  },
-  {
-    from: "DOCS_PENDING",
-    to: "UNDER_REVIEW",
-    allowedRoles: INTERNAL_OPS,
-    label: "Send to review",
-    intent: "secondary",
-  },
-  {
-    from: "INITIATED",
+    from: "INITIALIZED",
     to: "AWAITING_APPROVAL",
-    allowedRoles: INTERNAL_OPS,
-    label: "Submit for review",
+    allowedRoles: SYS_ADMIN,
+    label: "Submit for approval",
     intent: "primary",
-    // BR-4 KYC required + BR-1 one-open-loan check at intake gate
     preconditions: chain(requireKyc, requireNoOtherOpenLoan),
   },
-  {
-    from: "UNDER_REVIEW",
-    to: "AWAITING_APPROVAL",
-    allowedRoles: INTERNAL_OPS,
-    label: "Send to approver",
-    intent: "primary",
-    preconditions: requireKyc,
-  },
-
-  // Approval
   {
     from: "AWAITING_APPROVAL",
     to: "APPROVED_PENDING_DISBURSAL",
     allowedRoles: SYS_ADMIN,
     label: "Approve",
     intent: "primary",
-    // BR-2 + BR-4 + BR-1
     preconditions: chain(requireKyc, requireApprovalDocs, requireNoOtherOpenLoan),
   },
   {
@@ -330,175 +238,74 @@ export const TRANSITIONS: TransitionRule[] = [
     label: "Reject",
     intent: "destructive",
   },
-
-  // Disbursement
   {
     from: "APPROVED_PENDING_DISBURSAL",
-    to: "DISBURSEMENT_IN_PROGRESS",
+    to: "DISBURSED",
     allowedRoles: SYS_ADMIN,
     label: "Initiate disbursement",
     intent: "primary",
-    // BR-3 + BR-10
     preconditions: chain(requireDisbursementDocs, requireSchedule),
   },
   {
-    from: "DISBURSEMENT_IN_PROGRESS",
+    from: "APPROVED_PENDING_DISBURSAL",
+    to: "DISBURSEMENT_RETRY",
+    allowedRoles: SYS_ADMIN,
+    label: "Mark disbursement retry",
+    intent: "destructive",
+  },
+  {
+    from: "DISBURSEMENT_RETRY",
     to: "DISBURSED",
-    allowedRoles: SYSTEM_ONLY, // backend callback
-    label: "Confirm disbursed (system)",
+    allowedRoles: SYS_ADMIN,
+    label: "Retry disbursement",
     intent: "primary",
   },
   {
-    from: "DISBURSEMENT_IN_PROGRESS",
-    to: "APPROVED_PENDING_DISBURSAL",
-    allowedRoles: SYS_ADMIN,
-    label: "Mark disbursement failed",
-    intent: "destructive",
-  },
-
-  // Servicing â€” BR-14 (auto)
-  {
     from: "DISBURSED",
     to: "UNDER_REPAYMENT",
-    allowedRoles: SYSTEM_ONLY, // BR-14: auto on first posted payment
+    allowedRoles: SYSTEM_ONLY,
     label: "Auto-advance on first payment (system)",
     intent: "primary",
   },
   {
-    from: "UNDER_REPAYMENT",
-    to: "PARTIALLY_PAID",
+    from: "DISBURSED",
+    to: "CLOSED",
     allowedRoles: SYSTEM_ONLY,
-    label: "Mark partially paid (system)",
+    label: "Close account (system)",
     intent: "primary",
   },
   {
-    from: "PARTIALLY_PAID",
-    to: "UNDER_REPAYMENT",
+    from: "DISBURSED",
+    to: "FORECLOSED",
     allowedRoles: SYSTEM_ONLY,
-    label: "Resume repayment (system)",
+    label: "Foreclose (system)",
     intent: "primary",
   },
-
-  // Delinquency
   {
     from: "UNDER_REPAYMENT",
-    to: "DELINQUENT",
+    to: "CLOSED",
     allowedRoles: SYSTEM_ONLY,
-    label: "Flag delinquent (system)",
-    intent: "destructive",
-  },
-  {
-    from: "PARTIALLY_PAID",
-    to: "DELINQUENT",
-    allowedRoles: SYSTEM_ONLY,
-    label: "Flag delinquent (system)",
-    intent: "destructive",
-  },
-  {
-    from: "DELINQUENT",
-    to: "UNDER_REPAYMENT",
-    allowedRoles: SYSTEM_ONLY,
-    label: "Clear delinquency (system)",
+    label: "Close account (system)",
     intent: "primary",
   },
-
-  // Foreclosure
   {
     from: "UNDER_REPAYMENT",
-    to: "FORECLOSURE_REQUESTED",
-    allowedRoles: INTERNAL_OPS,
-    label: "Request foreclosure",
-    intent: "secondary",
-  },
-  {
-    from: "PARTIALLY_PAID",
-    to: "FORECLOSURE_REQUESTED",
-    allowedRoles: INTERNAL_OPS,
-    label: "Request foreclosure",
-    intent: "secondary",
-  },
-  {
-    from: "DELINQUENT",
-    to: "FORECLOSURE_REQUESTED",
-    allowedRoles: INTERNAL_OPS,
-    label: "Request foreclosure",
-    intent: "secondary",
-  },
-  {
-    from: "FORECLOSURE_REQUESTED",
-    to: "FORECLOSURE_APPROVED",
-    allowedRoles: SYS_ADMIN,
-    label: "Approve foreclosure",
-    intent: "primary",
-    preconditions: requireFreshForeclosureQuote,
-  },
-  {
-    from: "FORECLOSURE_REQUESTED",
-    to: "UNDER_REPAYMENT",
-    allowedRoles: SYS_ADMIN,
-    label: "Cancel foreclosure",
-    intent: "destructive",
-  },
-  {
-    from: "FORECLOSURE_APPROVED",
     to: "FORECLOSED",
     allowedRoles: SYS_ADMIN,
     label: "Settle foreclosure",
     intent: "primary",
   },
-
-  // Closure paths
-  {
-    from: "UNDER_REPAYMENT",
-    to: "FULLY_REPAID",
-    allowedRoles: SYSTEM_ONLY, // BR-15
-    label: "Auto-close on full repayment (system)",
-    intent: "primary",
-  },
-  {
-    from: "PARTIALLY_PAID",
-    to: "FULLY_REPAID",
-    allowedRoles: SYSTEM_ONLY, // BR-15
-    label: "Auto-close on full repayment (system)",
-    intent: "primary",
-  },
-  {
-    from: "FULLY_REPAID",
-    to: "CLOSED",
-    allowedRoles: SYSTEM_ONLY,
-    label: "Close account (system)",
-    intent: "primary",
-  },
-  {
-    from: "FORECLOSED",
-    to: "CLOSED",
-    allowedRoles: SYSTEM_ONLY,
-    label: "Close account (system)",
-    intent: "primary",
-  },
 ];
 
-// Cancellation: SYSTEM_ADMIN can cancel from early statuses.
-for (const from of CANCELLABLE_FROM) {
-  TRANSITIONS.push({
-    from,
-    to: "CANCELLED",
-    allowedRoles: SYS_ADMIN,
-    label: "Cancel application",
-    intent: "destructive",
-  });
-}
+const INVALIDATION_TRANSITIONS: TransitionRule[] = PRE_DISBURSAL_INVALIDATABLE.map((from) => ({
+  from,
+  to: "INVALID" as const,
+  allowedRoles: LSP_INVALIDATORS,
+  label: "Mark invalid",
+  intent: "destructive" as const,
+}));
 
-// Invalidation: LSP_UI_WRITE for own-tenant; SYSTEM_ADMIN for any.
-for (const from of INVALIDATABLE_FROM) {
-  TRANSITIONS.push({
-    from,
-    to: "INVALIDATED",
-    allowedRoles: ["LSP_UI_WRITE", "SYSTEM_ADMIN"],
-    label: "Mark invalid",
-    intent: "destructive",
-  });
-}
+export const TRANSITIONS: TransitionRule[] = [...CORE_TRANSITIONS, ...INVALIDATION_TRANSITIONS];
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // canTransition + getNextActions
@@ -508,10 +315,7 @@ function findRule(from: LoanStatus, to: LoanStatus): TransitionRule | undefined 
   return TRANSITIONS.find((r) => r.from === from && r.to === to);
 }
 
-/**
- * Validate a status transition. Same function the backend uses on
- * the server side â€” UI gating + server enforcement are byte-identical.
- */
+/** Advisory UX gate — backend `LoanApplicationStatusTransitioner` is authoritative. */
 export function canTransition(
   role: Role,
   from: LoanStatus,

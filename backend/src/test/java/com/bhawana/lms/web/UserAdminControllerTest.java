@@ -191,7 +191,7 @@ class UserAdminControllerTest {
                                 .authorities(() -> "ROLE_SYSTEM_ADMIN"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("status", "DISABLED"))))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.message").value("You cannot disable your own account."));
     }
 
@@ -214,7 +214,7 @@ class UserAdminControllerTest {
                                 .authorities(() -> "ROLE_SYSTEM_ADMIN"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("roles", List.of("OPS_USER")))))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.message").value(
                         "You cannot remove the SYSTEM_ADMIN role while you are the last active system administrator."
                 ));
@@ -327,7 +327,7 @@ class UserAdminControllerTest {
 
         mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/reset-password", unknownUserId)
                         .with(systemAdmin()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
 
         assertEquals(beforeCount, appUserAuditEventRepository.count());
     }
@@ -345,7 +345,7 @@ class UserAdminControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body.toString()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isConflict());
     }
 
     private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor systemAdmin() {

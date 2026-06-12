@@ -26,8 +26,8 @@ export const FIXTURE_APPLICATION = {
   event: {
     id: ID_APP,
     applicationId: APP_ID,
-    fromStatus: "UNDER_REVIEW",
-    toStatus: "APPROVED",
+    fromStatus: "AWAITING_APPROVAL",
+    toStatus: "APPROVED_PENDING_DISBURSAL",
     action: "approve",
     actorId: ACTOR_ID,
     actorRole: "OPS_USER",

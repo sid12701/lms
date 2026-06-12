@@ -8,7 +8,7 @@ import { LoanStatus } from "@/schemas/loan-application";
 import { DelinquencyBucket } from "@/schemas/loan-account";
 import { ApiError, requestJson } from "@/lib/api/http-client";
 import { loadStoredSession } from "@/lib/api/session-storage";
-import { mapBackendStatus } from "@/features/loan-applications/api";
+import { apiLoanStatus } from "@/lib/loan-application-status";
 import type {
   ApplicationsByStatusBucket,
   DpdBucketSummary,
@@ -161,7 +161,7 @@ function mapApplicationsByStatus(
   rows: ReadonlyArray<{ status: string; count: number }>,
 ): readonly ApplicationsByStatusBucket[] {
   return rows.map((row) => ({
-    status: mapBackendStatus(row.status) as LoanStatusType,
+    status: apiLoanStatus(row.status) as LoanStatusType,
     count: row.count,
   }));
 }
@@ -176,7 +176,7 @@ export function mapBackendHomeOverviewToInternalKpis(
     borrowerNameMasked: account.customerName,
     lspName: account.lspCode,
     productName: account.loanStatusDisplay,
-    status: mapBackendStatus(account.loanStatusDisplay) as LoanStatusType,
+    status: apiLoanStatus(account.loanStatusDisplay) as LoanStatusType,
     requestedAmount: account.principalAmount,
     createdAt: new Date().toISOString(),
   }));

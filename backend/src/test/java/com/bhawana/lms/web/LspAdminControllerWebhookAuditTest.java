@@ -264,7 +264,7 @@ class LspAdminControllerWebhookAuditTest {
                                 "signingSecret", INITIAL_SECRET,
                                 "eventTypes", List.of("LOAN_CREATED")
                         ))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isUnprocessableEntity());
 
         mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
                         .with(systemAdmin())
@@ -275,7 +275,7 @@ class LspAdminControllerWebhookAuditTest {
                                 "signingSecret", INITIAL_SECRET,
                                 "eventTypes", List.of("LOAN_CREATED")
                         ))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isUnprocessableEntity());
 
         mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
                         .with(systemAdmin())
@@ -286,7 +286,7 @@ class LspAdminControllerWebhookAuditTest {
                                 "signingSecret", INITIAL_SECRET,
                                 "eventTypes", List.of("LOAN_CREATED")
                         ))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isUnprocessableEntity());
 
         mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
                         .with(systemAdmin())
@@ -297,7 +297,7 @@ class LspAdminControllerWebhookAuditTest {
                                 "signingSecret", INITIAL_SECRET,
                                 "eventTypes", List.of()
                         ))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isUnprocessableEntity());
 
         assertEquals(beforeCount, lspAuditEventRepository.count());
     }

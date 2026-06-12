@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.Lsp;
@@ -35,19 +36,22 @@ public class HomeDashboardService {
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
     private final OpsAlertRepository opsAlertRepository;
+    private final BusinessCalendar businessCalendar;
 
     public HomeDashboardService(
             LspRepository lspRepository,
             LoanAccountRepository loanAccountRepository,
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
-            OpsAlertRepository opsAlertRepository
+            OpsAlertRepository opsAlertRepository,
+            BusinessCalendar businessCalendar
     ) {
         this.lspRepository = lspRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
         this.opsAlertRepository = opsAlertRepository;
+        this.businessCalendar = businessCalendar;
     }
 
     @Transactional(readOnly = true)
@@ -62,7 +66,7 @@ public class HomeDashboardService {
         List<Lsp> lsps = lspRepository.findAllByOrderByNameAsc().stream()
                 .sorted(Comparator.comparing(Lsp::getName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
-        LocalDate today = LoanApplicationService.currentBusinessDate();
+        LocalDate today = businessCalendar.today();
         List<AccountSnapshot> accountSnapshots = loanAccountRepository.findHomeDashboardAccountSnapshots(today).stream()
                 .map(snapshot -> toAccountSnapshot(snapshot, today))
                 .toList();

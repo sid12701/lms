@@ -1,5 +1,8 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.ReportRequest;
 import com.bhawana.lms.domain.ReportRequestStatus;
 import com.bhawana.lms.domain.ReportType;
@@ -9,6 +12,7 @@ import com.bhawana.lms.tenant.TenantScopedExecution;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,9 +82,9 @@ public class ReportRequestService {
     @Transactional(readOnly = true)
     public CompletedReportDownload getCompletedReportDownload(UUID requestId) {
         ReportRequest reportRequest = reportRequestRepository.findById(requestId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown report request id: " + requestId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown report request id: " + requestId));
         if (reportRequest.getStatus() != ReportRequestStatus.COMPLETED || reportRequest.getStorageKey() == null) {
-            throw new IllegalArgumentException("Report is not ready for download.");
+            throw new ApiConflictException("REPORT_NOT_READY", "Report is not ready for download.");
         }
 
         byte[] content = reportStorageService.retrieve(reportRequest.getStorageKey());
@@ -179,7 +183,11 @@ public class ReportRequestService {
 
     private static void validateDateRange(LocalDate disbursalDateFrom, LocalDate disbursalDateTo) {
         if (disbursalDateFrom != null && disbursalDateTo != null && disbursalDateFrom.isAfter(disbursalDateTo)) {
-            throw new IllegalArgumentException("disbursalDateFrom cannot be after disbursalDateTo.");
+            throw new BusinessRuleViolationException(
+                    "INVALID_DISBURSAL_DATE_RANGE",
+                    "disbursalDateFrom cannot be after disbursalDateTo.",
+                    Map.of("disbursalDateFrom", "cannot be after disbursalDateTo")
+            );
         }
     }
 

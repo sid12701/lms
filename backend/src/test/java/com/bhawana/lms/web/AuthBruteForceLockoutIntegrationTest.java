@@ -24,7 +24,7 @@ import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.AuthEventAuditRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
-import com.bhawana.lms.service.AlertRuleEvaluationService;
+import com.bhawana.lms.service.AlertRuleEvaluationWorker;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -84,7 +84,7 @@ class AuthBruteForceLockoutIntegrationTest {
     private AppUserAuditEventRepository appUserAuditEventRepository;
 
     @Autowired
-    private AlertRuleEvaluationService alertRuleEvaluationService;
+    private AlertRuleEvaluationWorker alertRuleEvaluationWorker;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -125,7 +125,7 @@ class AuthBruteForceLockoutIntegrationTest {
                     .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
         }
 
-        alertRuleEvaluationService.evaluateScheduledRules();
+        alertRuleEvaluationWorker.evaluateScheduledRules();
 
         entityManager.clear();
         AppUser lockedUser = appUserRepository.findByUsername("sarah.user").orElseThrow();
@@ -167,7 +167,7 @@ class AuthBruteForceLockoutIntegrationTest {
                     .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
         }
 
-        alertRuleEvaluationService.evaluateScheduledRules();
+        alertRuleEvaluationWorker.evaluateScheduledRules();
 
         entityManager.clear();
         AppUser user = appUserRepository.findByUsername("sarah.user").orElseThrow();
@@ -186,7 +186,7 @@ class AuthBruteForceLockoutIntegrationTest {
                     .andExpect(status().isUnauthorized());
         }
 
-        alertRuleEvaluationService.evaluateScheduledRules();
+        alertRuleEvaluationWorker.evaluateScheduledRules();
 
         entityManager.clear();
         AppUser user = appUserRepository.findByUsername("sarah.user").orElseThrow();
@@ -223,7 +223,7 @@ class AuthBruteForceLockoutIntegrationTest {
             }
         }
 
-        alertRuleEvaluationService.evaluateScheduledRules();
+        alertRuleEvaluationWorker.evaluateScheduledRules();
 
         entityManager.clear();
         AppUser user = appUserRepository.findByUsername("sarah.user").orElseThrow();
@@ -249,8 +249,8 @@ class AuthBruteForceLockoutIntegrationTest {
         Instant lockedAt = lockedUser.getLockedAt();
         long tokenVersion = lockedUser.getTokenVersion();
 
-        alertRuleEvaluationService.evaluateScheduledRules();
-        alertRuleEvaluationService.evaluateScheduledRules();
+        alertRuleEvaluationWorker.evaluateScheduledRules();
+        alertRuleEvaluationWorker.evaluateScheduledRules();
 
         entityManager.clear();
         AppUser stillLocked = appUserRepository.findByUsername("sarah.user").orElseThrow();
@@ -309,7 +309,7 @@ class AuthBruteForceLockoutIntegrationTest {
         entityManager.clear();
         AppUser user = appUserRepository.findByUsername("sarah.user").orElseThrow();
         assertNotNull(user.getLockedAt());
-        alertRuleEvaluationService.evaluateScheduledRules();
+        alertRuleEvaluationWorker.evaluateScheduledRules();
         assertEquals(1, countOpenAlerts(OpsAlertType.AUTH_BRUTE_FORCE, user.getId()));
     }
 
@@ -330,7 +330,7 @@ class AuthBruteForceLockoutIntegrationTest {
                     .andExpect(status().isUnauthorized());
         }
 
-        alertRuleEvaluationService.evaluateScheduledRules();
+        alertRuleEvaluationWorker.evaluateScheduledRules();
 
         entityManager.clear();
         AppUser user = appUserRepository.findByUsername("sarah.user").orElseThrow();
@@ -368,7 +368,7 @@ class AuthBruteForceLockoutIntegrationTest {
             attemptLogin("sarah.user", "WrongPassword!", CLIENT_IP)
                     .andExpect(status().isUnauthorized());
         }
-        alertRuleEvaluationService.evaluateScheduledRules();
+        alertRuleEvaluationWorker.evaluateScheduledRules();
         entityManager.clear();
         return appUserRepository.findByUsername("sarah.user").orElseThrow();
     }

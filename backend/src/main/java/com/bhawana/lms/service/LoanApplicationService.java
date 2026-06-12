@@ -1,7 +1,14 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.money.Money;
+import com.bhawana.lms.common.util.Strings;
+import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.web.DocumentNotFoundException;
 import com.bhawana.lms.common.web.PagedResult;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
@@ -39,10 +46,8 @@ import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -74,11 +79,12 @@ public class LoanApplicationService {
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final LoanRepaymentCommandService loanRepaymentCommandService;
+    private final LoanServicingSupportService loanServicingSupportService;
     private final LoanForeclosureCommandService loanForeclosureCommandService;
     private final LoanDocumentService loanDocumentService;
-    private final LoanAutoApprovalGateService loanAutoApprovalGateService;
     private final DisbursementOutcomeAuditService disbursementOutcomeAuditService;
     private final ObjectMapper objectMapper;
+    private final BusinessCalendar businessCalendar;
 
     public LoanApplicationService(
             LoanAccountRepository loanAccountRepository,
@@ -98,11 +104,12 @@ public class LoanApplicationService {
             LoanApplicationQueryService loanApplicationQueryService,
             LoanApplicationLifecycleService loanApplicationLifecycleService,
             LoanRepaymentCommandService loanRepaymentCommandService,
+            LoanServicingSupportService loanServicingSupportService,
             LoanForeclosureCommandService loanForeclosureCommandService,
             @Lazy LoanDocumentService loanDocumentService,
-            LoanAutoApprovalGateService loanAutoApprovalGateService,
             DisbursementOutcomeAuditService disbursementOutcomeAuditService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            BusinessCalendar businessCalendar
     ) {
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationAuditEventRepository = loanApplicationAuditEventRepository;
@@ -121,11 +128,12 @@ public class LoanApplicationService {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.loanRepaymentCommandService = loanRepaymentCommandService;
+        this.loanServicingSupportService = loanServicingSupportService;
         this.loanForeclosureCommandService = loanForeclosureCommandService;
         this.loanDocumentService = loanDocumentService;
-        this.loanAutoApprovalGateService = loanAutoApprovalGateService;
         this.disbursementOutcomeAuditService = disbursementOutcomeAuditService;
         this.objectMapper = objectMapper;
+        this.businessCalendar = businessCalendar;
     }
 
     @Transactional(readOnly = true)
@@ -258,54 +266,32 @@ public class LoanApplicationService {
     @Transactional(readOnly = true)
     public LoanApplication getApplication(UUID applicationId) {
         return loanApplicationRepository.findDetailedById(applicationId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown loan application id: " + applicationId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
     }
 
     @Transactional(readOnly = true)
     public LoanApplication getApplicationForLsp(UUID lspId, UUID applicationId) {
-        LoanApplication application = getApplication(applicationId);
-        if (!application.getLsp().getId().equals(lspId)) {
-            throw new IllegalArgumentException("Unknown loan application id: " + applicationId);
-        }
-        return application;
+        return loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
     }
 
     @Transactional(readOnly = true)
     public LoanApplication getApplicationForLspByExternalLoanId(UUID lspId, String externalLoanId) {
-        String normalizedExternalLoanId = normalizeOptional(externalLoanId);
-        if (normalizedExternalLoanId == null) {
-            throw new IllegalArgumentException("externalLoanId is required.");
-        }
-        return loanApplicationRepository.findDetailedByLsp_IdAndExternalLoanIdIgnoreCase(lspId, normalizedExternalLoanId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Unknown external loan id for the authenticated LSP: " + normalizedExternalLoanId
-                ));
+        return loanApplicationQueryService.getApplicationForLspByExternalLoanId(lspId, externalLoanId);
     }
 
     @Transactional(readOnly = true)
     public LoanAccount getLoanAccountForLsp(UUID lspId, UUID loanAccountId) {
-        LoanAccount loanAccount = loanAccountRepository.findDetailedById(loanAccountId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown loan id: " + loanAccountId));
-        if (!loanAccount.getLsp().getId().equals(lspId)) {
-            throw new IllegalArgumentException("Unknown loan id: " + loanAccountId);
-        }
-        return loanAccount;
+        return loanServicingSupportService.getLoanAccountForLsp(lspId, loanAccountId);
     }
 
     @Transactional(readOnly = true)
     public List<LoanRepaymentScheduleInstallment> listRepaymentScheduleForLsp(UUID lspId, UUID loanAccountId) {
-        LoanAccount loanAccount = getLoanAccountForLsp(lspId, loanAccountId);
-        return loanRepaymentScheduleInstallmentRepository.findByLoanAccount_IdOrderByInstallmentNumberAsc(
-                loanAccount.getId()
-        );
+        return loanServicingSupportService.listRepaymentScheduleForLsp(lspId, loanAccountId);
     }
 
     @Transactional(readOnly = true)
     public List<LoanPaymentTransaction> listPaymentTransactionsForLsp(UUID lspId, UUID loanAccountId) {
-        LoanAccount loanAccount = getLoanAccountForLsp(lspId, loanAccountId);
-        return loanPaymentTransactionRepository.findTop50ByLoanAccount_IdOrderByPaymentDateDescCreatedAtDesc(
-                loanAccount.getId()
-        );
+        return loanServicingSupportService.listPaymentTransactionsForLsp(lspId, loanAccountId);
     }
 
     @Transactional(readOnly = true)
@@ -348,7 +334,7 @@ public class LoanApplicationService {
                                         item.getUpdatedByUsername(),
                                         "Updated " + item.getDocumentType().getDisplayName()
                                                 + " to " + item.getStatus().name(),
-                                        resolveDocumentActivityDetail(item),
+                                        item.getNote(),
                                         null,
                                         item.getUpdatedAt()
                                 )
@@ -472,7 +458,7 @@ public class LoanApplicationService {
     public LoanApplicationDocumentChecklist getDocumentChecklistItem(UUID applicationId, LoanApplicationDocumentType documentType) {
         getApplication(applicationId);
         return loanApplicationDocumentChecklistRepository.findByLoanApplication_IdAndDocumentType(applicationId, documentType)
-                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException(
+                .orElseThrow(() -> new DocumentNotFoundException(
                         "Document checklist item not found for type " + documentType.name()
                                 + " on application " + applicationId
                 ));
@@ -487,7 +473,7 @@ public class LoanApplicationService {
         loanApplicationDocumentAccessAuditRepository.save(new LoanApplicationDocumentAccessAudit(
                 application,
                 LoanApplicationDocumentAccessAuditAction.CHECKLIST_VIEWED,
-                normalizeActorUsername(actorUsername),
+                Strings.normalizeActor(actorUsername),
                 "Viewed " + checklist.size() + " KYC document placeholders",
                 checklist.stream().map(LoanApplicationDocumentChecklist::getDocumentType).toList(),
                 CorrelationIdHolder.get()
@@ -515,7 +501,7 @@ public class LoanApplicationService {
         loanApplicationDocumentAccessAuditRepository.save(new LoanApplicationDocumentAccessAudit(
                 application,
                 LoanApplicationDocumentAccessAuditAction.SINGLE_DOCUMENT_DOWNLOADED,
-                normalizeActorUsername(actorUsername),
+                Strings.normalizeActor(actorUsername),
                 "Downloaded " + documentType.name(),
                 List.of(documentType),
                 correlationId,
@@ -537,7 +523,7 @@ public class LoanApplicationService {
         loanApplicationDocumentAccessAuditRepository.save(new LoanApplicationDocumentAccessAudit(
                 application,
                 LoanApplicationDocumentAccessAuditAction.BULK_ZIP_DOWNLOADED,
-                normalizeActorUsername(actorUsername),
+                Strings.normalizeActor(actorUsername),
                 "Downloaded ZIP with " + zipResult.includedTypes().size() + " documents",
                 zipResult.includedTypes(),
                 correlationId,
@@ -557,13 +543,7 @@ public class LoanApplicationService {
      */
     @Transactional(readOnly = true)
     public List<LoanApplicationDocumentChecklist> listSubmittedDocumentsForLsp(UUID lspId, UUID applicationId) {
-        getApplicationForLsp(lspId, applicationId);
-        return loanApplicationDocumentChecklistRepository
-                .findByLoanApplication_IdOrderByCreatedAtAsc(applicationId)
-                .stream()
-                .filter(item -> item.getStatus() != LoanApplicationDocumentChecklistStatus.PENDING
-                        && item.getStatus() != LoanApplicationDocumentChecklistStatus.NOT_REQUIRED)
-                .toList();
+        return loanDocumentService.listSubmittedDocumentsForLsp(lspId, applicationId);
     }
 
     @Transactional
@@ -578,24 +558,17 @@ public class LoanApplicationService {
             String sourceReference,
             String contentType
     ) {
-        getApplicationForLsp(lspId, applicationId);
-        DocumentChecklistUpdateResult outcome = updateDocumentChecklistItem(
+        return loanDocumentService.submitDocumentMetadataForLsp(
+                lspId,
                 applicationId,
                 documentType,
                 actorUsername,
-                LoanApplicationDocumentChecklistStatus.SUBMITTED,
                 note,
                 fileName,
                 fileReference,
                 sourceReference,
                 contentType
         );
-        loanAutoApprovalGateService.maybeTriggerAutoApproval(
-                applicationId,
-                actorUsername,
-                outcome.allRequiredDocumentsJustCompleted()
-        );
-        return outcome.checklistItem();
     }
 
     @Transactional
@@ -725,11 +698,19 @@ public class LoanApplicationService {
             UUID applicationId,
             String actorUsername
     ) {
-        LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
+        lockApplicationForDisbursement(applicationId);
+        LoanApplication application = getApplication(applicationId);
+        if (isDisbursementAlreadyComplete(application.getStatus())) {
+            return application;
+        }
+        LoanAccount loanAccount = resolveLoanAccountForDisbursement(application);
+        if (loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED) {
+            return application;
+        }
         return initiateDisbursement(
                 applicationId,
                 actorUsername,
-                scaleCurrency(loanAccount.getPrincipalAmount())
+                Money.scale(loanAccount.getPrincipalAmount())
         );
     }
 
@@ -739,21 +720,35 @@ public class LoanApplicationService {
             String actorUsername,
             BigDecimal disbursementAmount
     ) {
+        lockApplicationForDisbursement(applicationId);
         LoanApplication application = getApplication(applicationId);
+        if (isDisbursementAlreadyComplete(application.getStatus())) {
+            return application;
+        }
         if (application.getStatus() != LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
                 && application.getStatus() != LoanApplicationStatus.DISBURSEMENT_RETRY) {
-            throw new IllegalArgumentException("Disbursement can only be requested for applications pending disbursal or disbursement retry.");
+            throw new BusinessRuleViolationException(
+                    "DISBURSEMENT_NOT_ALLOWED",
+                    "Disbursement can only be requested for applications pending disbursal or disbursement retry.",
+                    Map.of()
+            );
         }
         loanApplicationLifecycleService.validateRequiredDocumentsUploadedBeforeDisbursement(applicationId);
 
-        LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
+        LoanAccount loanAccount = resolveLoanAccountForDisbursement(application);
+        if (loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED) {
+            return application;
+        }
         if (loanAccount.getStatus() != LoanAccountStatus.PENDING_DISBURSEMENT
                 && loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_FAILED
                 && loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION) {
-            throw new IllegalArgumentException("Disbursement has already been requested for this loan account.");
+            throw new ApiConflictException(
+                    "DISBURSEMENT_ALREADY_REQUESTED",
+                    "Disbursement has already been requested for this loan account."
+            );
         }
 
-        BigDecimal scaledDisbursementAmount = scaleCurrency(requireCurrency(disbursementAmount, "Disbursement amount"));
+        BigDecimal scaledDisbursementAmount = Money.scale(Money.requirePositive(disbursementAmount, "Disbursement amount"));
         LoanDisbursementAdapter.DisbursementCommand command = new LoanDisbursementAdapter.DisbursementCommand(
                 loanAccount.getAccountNumber(),
                 scaledDisbursementAmount,
@@ -767,7 +762,7 @@ public class LoanApplicationService {
         loanAccountRepository.save(loanAccount);
         loanDisbursementRequestLogRepository.save(new LoanDisbursementRequestLog(
                 loanAccount,
-                normalizeActorUsername(actorUsername),
+                Strings.normalizeActor(actorUsername),
                 scaledDisbursementAmount,
                 result.providerName(),
                 result.providerRequestId(),
@@ -817,12 +812,16 @@ public class LoanApplicationService {
         LoanApplication application = getApplication(applicationId);
         LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
         if (loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_REQUESTED) {
-            throw new IllegalArgumentException("Mock disbursement outcome can only be applied after a request is raised.");
+            throw new BusinessRuleViolationException(
+                    "DISBURSEMENT_NOT_REQUESTED",
+                    "Mock disbursement outcome can only be applied after a request is raised.",
+                    Map.of()
+            );
         }
 
         LoanDisbursementRequestLog latestRequest = loanDisbursementRequestLogRepository
                 .findTopByLoanAccount_IdOrderByCreatedAtDesc(loanAccount.getId())
-                .orElseThrow(() -> new IllegalArgumentException(
+                .orElseThrow(() -> new ResourceNotFoundException(
                         "Disbursement request log is not available for application id: " + applicationId
                 ));
 
@@ -896,28 +895,16 @@ public class LoanApplicationService {
             String reference,
             LoanPaymentChannel channel
     ) {
-        try {
-            return loanRepaymentCommandService.recordPaymentTransaction(
-                    applicationId,
-                    actorUsername,
-                    idempotencyKey,
-                    targetInstallmentId,
-                    amount,
-                    postedAt,
-                    reference,
-                    channel
-            );
-        } catch (org.springframework.orm.ObjectOptimisticLockingFailureException exception) {
-            return loanRepaymentCommandService.recoverPaymentAfterConcurrentWrite(
-                    applicationId,
-                    idempotencyKey,
-                    targetInstallmentId,
-                    amount,
-                    postedAt,
-                    reference,
-                    channel
-            );
-        }
+        return loanRepaymentCommandService.recordPaymentTransactionWithRecovery(
+                applicationId,
+                actorUsername,
+                idempotencyKey,
+                targetInstallmentId,
+                amount,
+                postedAt,
+                reference,
+                channel
+        );
     }
 
     @Transactional
@@ -986,7 +973,7 @@ public class LoanApplicationService {
         loanApplicationDocumentAccessAuditRepository.save(new LoanApplicationDocumentAccessAudit(
                 application,
                 LoanApplicationDocumentAccessAuditAction.INTAKE_AUDITS_VIEWED,
-                normalizeActorUsername(actorUsername),
+                Strings.normalizeActor(actorUsername),
                 "Viewed intake audit payloads",
                 List.of(),
                 CorrelationIdHolder.get()
@@ -994,33 +981,8 @@ public class LoanApplicationService {
         return loanApplicationIntakeAuditRepository.findTop10ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
     }
 
-    private static String normalizeOptional(String value) {
-        if (value == null) {
-            return null;
-        }
-
-        String normalized = value.trim();
-        return normalized.isBlank() ? null : normalized;
-    }
-
-    private static BigDecimal requireCurrency(BigDecimal value, String fieldName) {
-        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(fieldName + " must be greater than zero.");
-        }
-        return value;
-    }
-
-    private static String normalizeActorUsername(String actorUsername) {
-        if (actorUsername == null) {
-            return "system";
-        }
-
-        String normalized = actorUsername.trim();
-        return normalized.isBlank() ? "system" : normalized;
-    }
-
     private LoanDelinquencySummary buildDelinquencySummary(List<LoanRepaymentScheduleInstallment> installments) {
-        LocalDate today = currentBusinessDate();
+        LocalDate today = businessCalendar.today();
         int maxDaysPastDue = installments.stream()
                 .mapToInt(installment -> calculateDaysPastDue(installment, today))
                 .max()
@@ -1036,15 +998,38 @@ public class LoanApplicationService {
                 maxDaysPastDue,
                 resolveDelinquencyBucket(maxDaysPastDue),
                 Math.toIntExact(overdueInstallmentCount),
-                scaleCurrency(overdueAmount)
+                Money.scale(overdueAmount)
         );
     }
 
     private LoanAccount getRequiredLoanAccount(UUID applicationId) {
         return loanAccountRepository.findDetailedByLoanApplication_Id(applicationId)
-                .orElseThrow(() -> new IllegalArgumentException(
+                .orElseThrow(() -> new ResourceNotFoundException(
                         "Loan account is not available for application id: " + applicationId
                 ));
+    }
+
+    private LoanAccount resolveLoanAccountForDisbursement(LoanApplication application) {
+        return loanAccountRepository.findDetailedByLoanApplication_Id(application.getId())
+                .orElseGet(() -> loanApplicationLifecycleService.ensureLoanAccountForApprovedApplication(application));
+    }
+
+    /**
+     * Serializes concurrent disbursement requests on the application row.
+     * The loser blocks here until the winner commits, then re-reads committed
+     * state and takes the idempotent DISBURSEMENT_REQUESTED early return
+     * instead of racing the lazy loan-account insert or the @Version update.
+     */
+    private void lockApplicationForDisbursement(UUID applicationId) {
+        loanApplicationRepository.findByIdForUpdate(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
+    }
+
+    private static boolean isDisbursementAlreadyComplete(LoanApplicationStatus status) {
+        return status == LoanApplicationStatus.DISBURSED
+                || status == LoanApplicationStatus.UNDER_REPAYMENT
+                || status == LoanApplicationStatus.CLOSED
+                || status == LoanApplicationStatus.FORECLOSED;
     }
 
     private static String providerStatusFor(MockDisbursementOutcome outcome) {
@@ -1055,20 +1040,12 @@ public class LoanApplicationService {
         };
     }
 
-    private static BigDecimal scaleCurrency(BigDecimal value) {
-        return value.setScale(2, RoundingMode.HALF_UP);
-    }
-
     public static int calculateDaysPastDue(LoanRepaymentScheduleInstallment installment, LocalDate today) {
         if (installment.getOutstandingAmount().compareTo(BigDecimal.ZERO) <= 0
                 || !installment.getDueDate().isBefore(today)) {
             return 0;
         }
         return Math.toIntExact(java.time.temporal.ChronoUnit.DAYS.between(installment.getDueDate(), today));
-    }
-
-    public static LocalDate currentBusinessDate() {
-        return LocalDate.now(ZoneId.systemDefault());
     }
 
     public static LoanDelinquencyBucket resolveDelinquencyBucket(int daysPastDue) {
@@ -1093,12 +1070,8 @@ public class LoanApplicationService {
                 && checklistItem.getUpdatedAt().isAfter(checklistItem.getCreatedAt());
     }
 
-    private static String resolveDocumentActivityDetail(LoanApplicationDocumentChecklist checklistItem) {
-        return checklistItem.getNote();
-    }
-
-    public boolean hasAllRequiredLmsManagedDocuments(UUID applicationId, boolean requireForApprovalOnly) {
-        return loanApplicationLifecycleService.hasAllRequiredLmsManagedDocuments(applicationId, requireForApprovalOnly);
+    public boolean hasAllRequiredLmsManagedDocuments(UUID applicationId) {
+        return loanApplicationLifecycleService.hasAllRequiredLmsManagedDocuments(applicationId);
     }
 
     private String serializeDisbursementRequest(LoanDisbursementAdapter.DisbursementCommand command) {
@@ -1126,7 +1099,7 @@ public class LoanApplicationService {
         payload.put("provider", requestLog.getProviderName());
         payload.put("providerRequestId", requestLog.getProviderRequestId());
         payload.put("status", providerStatusFor(outcome));
-        payload.put("resolvedBy", normalizeActorUsername(actorUsername));
+        payload.put("resolvedBy", Strings.normalizeActor(actorUsername));
         payload.put("message", switch (outcome) {
             case DISBURSED -> "Mock disbursement completed successfully.";
             case FAILED -> "Mock disbursement failed in the simulated provider.";

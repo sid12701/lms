@@ -11,6 +11,7 @@
  * components and tests keep their existing field names.
  */
 import { requestJson, requestBlob, buildQueryPath } from "@/lib/api/http-client";
+import { parseLoanApplicationStatus } from "@/lib/loan-application-status";
 import type { DelinquencyBucket } from "@/schemas/loan-account";
 import type { MisPreviewInstallment } from "@/schemas/report";
 import type {
@@ -177,26 +178,10 @@ export async function misSummary(filters: MisFilters = {}): Promise<MisSummary> 
 }
 
 function loanStatusFromBackend(value: string | null): MisPreviewRow["status"] {
-  switch (value) {
-    case "DISBURSED":
-    case "UNDER_REPAYMENT":
-      return "DISBURSED";
-    case "CLOSED":
-      return "CLOSED";
-    case "FORECLOSED":
-      return "FORECLOSED";
-    case "APPROVED_PENDING_DISBURSAL":
-      return "APPROVED_PENDING_DISBURSAL";
-    case "INVALID":
-    case "INVALIDATED":
-      return "INVALIDATED";
-    case "REJECTED":
-      return "REJECTED";
-    case "AWAITING_APPROVAL":
-      return "AWAITING_APPROVAL";
-    default:
-      return "INITIATED";
-  }
+  const parsed = parseLoanApplicationStatus(value);
+  if (parsed === "UNDER_REPAYMENT") return "DISBURSED";
+  if (parsed) return parsed;
+  return "INITIALIZED";
 }
 
 /** Maps a backend portfolio-MIS preview row to the frontend table shape (Gap #10). */

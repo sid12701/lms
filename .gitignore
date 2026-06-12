@@ -55,6 +55,15 @@ infra/.env
 scratch/
 test-artifacts/
 blank.pdf
+.e2e-runs/
+.fallow-reports/
+fallow-*.json
+.issue-list-temp.json
+issue-list-temp.json
+tmp-*.json
+__pycache__/
+postman/_*
+postman/__pycache__/
 
 # Compiled class files
 *.class

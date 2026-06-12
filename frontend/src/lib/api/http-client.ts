@@ -113,6 +113,53 @@ export interface RequestOptions {
   _retried?: boolean;
 }
 
+type FetchRequestOptions = RequestOptions & {
+  responseType: "json" | "blob";
+};
+
+async function performFetch(
+  path: string,
+  init: RequestInit = {},
+  options: FetchRequestOptions,
+): Promise<Response> {
+  const authenticated = options.authenticated ?? true;
+  const headers = new Headers(init.headers);
+  const accessToken = authenticated ? (options.accessToken ?? getStoredAccessToken()) : null;
+
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (options.idempotencyKey) headers.set("Idempotency-Key", options.idempotencyKey);
+
+  const response = await fetch(buildUrl(path), {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+
+  if (response.status === 401 && authenticated && !options._retried && onUnauthorizedRefresh) {
+    const newToken = await onUnauthorizedRefresh();
+    if (newToken) {
+      return performFetch(path, init, { ...options, accessToken: newToken, _retried: true });
+    }
+  }
+
+  return response;
+}
+
+async function throwIfNotOk(response: Response): Promise<void> {
+  if (response.ok) return;
+  const errorBody = await response.text();
+  const { message, code } = readResponseError(errorBody);
+  const retryAfterSeconds = response.status === 429 ? readRetryAfterSeconds(response) : null;
+  throw new ApiError(
+    message || `Request failed with status ${response.status}`,
+    response.status,
+    errorBody,
+    code,
+    retryAfterSeconds,
+  );
+}
+
 export async function requestJson<T>(
   path: string,
   init: RequestInit = {},
@@ -149,39 +196,8 @@ async function performJsonRequest<T>(
   init: RequestInit = {},
   options: RequestOptions = {},
 ): Promise<T> {
-  const authenticated = options.authenticated ?? true;
-  const headers = new Headers(init.headers);
-  const accessToken = authenticated ? (options.accessToken ?? getStoredAccessToken()) : null;
-
-  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  if (options.idempotencyKey) headers.set("Idempotency-Key", options.idempotencyKey);
-
-  const response = await fetch(buildUrl(path), {
-    ...init,
-    headers,
-    credentials: "include",
-  });
-
-  if (response.status === 401 && authenticated && !options._retried && onUnauthorizedRefresh) {
-    const newToken = await onUnauthorizedRefresh();
-    if (newToken) {
-      return requestJson<T>(path, init, { ...options, accessToken: newToken, _retried: true });
-    }
-  }
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    const { message, code } = readResponseError(errorBody);
-    const retryAfterSeconds = response.status === 429 ? readRetryAfterSeconds(response) : null;
-    throw new ApiError(
-      message || `Request failed with status ${response.status}`,
-      response.status,
-      errorBody,
-      code,
-      retryAfterSeconds,
-    );
-  }
+  const response = await performFetch(path, init, { ...options, responseType: "json" });
+  await throwIfNotOk(response);
 
   if (response.status === 204) return undefined as T;
   const contentType = response.headers.get("content-type") ?? "";
@@ -192,31 +208,10 @@ async function performJsonRequest<T>(
 export async function requestBlob(
   path: string,
   init: RequestInit = {},
-  options: { authenticated?: boolean; accessToken?: string } = {},
+  options: RequestOptions = {},
 ): Promise<{ blob: Blob; filename: string | null }> {
-  const authenticated = options.authenticated ?? true;
-  const headers = new Headers(init.headers);
-  const accessToken = authenticated ? (options.accessToken ?? getStoredAccessToken()) : null;
-  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-
-  const response = await fetch(buildUrl(path), {
-    ...init,
-    headers,
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    const { message, code } = readResponseError(errorBody);
-    const retryAfterSeconds = response.status === 429 ? readRetryAfterSeconds(response) : null;
-    throw new ApiError(
-      message || `Request failed with status ${response.status}`,
-      response.status,
-      errorBody,
-      code,
-      retryAfterSeconds,
-    );
-  }
+  const response = await performFetch(path, init, { ...options, responseType: "blob" });
+  await throwIfNotOk(response);
 
   return {
     blob: await response.blob(),

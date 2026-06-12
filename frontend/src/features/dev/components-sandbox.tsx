@@ -72,7 +72,7 @@ const SAMPLE_ROWS: SandboxLoanRow[] = [
     id: "ln-002",
     application: "BC-AP-024502",
     borrower: "Karthik Nair",
-    status: "UNDER_REVIEW",
+    status: "AWAITING_APPROVAL",
     amount: 100000,
     dpd: "B0",
   },
@@ -80,7 +80,7 @@ const SAMPLE_ROWS: SandboxLoanRow[] = [
     id: "ln-003",
     application: "BC-AP-024503",
     borrower: "Riya Sehgal",
-    status: "DELINQUENT",
+    status: "UNDER_REPAYMENT",
     amount: 540000,
     dpd: "B31_60",
   },
@@ -88,7 +88,7 @@ const SAMPLE_ROWS: SandboxLoanRow[] = [
     id: "ln-004",
     application: "BC-AP-024504",
     borrower: "Vikram Iyer",
-    status: "FULLY_REPAID",
+    status: "CLOSED",
     amount: 80000,
     dpd: "B0",
   },
@@ -122,7 +122,7 @@ const SECTIONS = [
 
 const FILTER_SCHEMA = z.object({
   q: z.string().optional(),
-  status: z.enum(["DISBURSED", "REJECTED", "UNDER_REVIEW"]).optional(),
+  status: z.enum(["DISBURSED", "REJECTED", "AWAITING_APPROVAL"]).optional(),
 });
 
 function ColorSwatch({ name, token }: { name: string; token: string }) {
@@ -434,14 +434,15 @@ export function ComponentsSandboxPage() {
                     <Button
                       type="button"
                       size="sm"
-                      variant={filters.status === "UNDER_REVIEW" ? "default" : "outline"}
+                      variant={filters.status === "AWAITING_APPROVAL" ? "default" : "outline"}
                       onClick={() =>
                         setFilters({
-                          status: filters.status === "UNDER_REVIEW" ? undefined : "UNDER_REVIEW",
+                          status:
+                            filters.status === "AWAITING_APPROVAL" ? undefined : "AWAITING_APPROVAL",
                         })
                       }
                     >
-                      Under review
+                      Awaiting approval
                     </Button>
                   </>
                 )}

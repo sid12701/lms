@@ -23,6 +23,7 @@ import type {
 // LoanStatus needs to be a value import (Zod schema) — re-import from the
 // source rather than from `@/types`, which re-exports it as type only.
 import { LoanStatus } from "@/schemas/loan-application";
+import type { LoanStatusOrUnknown } from "@/lib/loan-application-status";
 import type { Borrower } from "@/schemas/borrower";
 
 // ─── List surface ────────────────────────────────────────────────────────────
@@ -77,7 +78,7 @@ export interface LoanApplicationListItem {
   productName: string;
   requestedAmount: number;
   tenureMonths: number;
-  status: LoanApplication["status"];
+  status: LoanStatusOrUnknown;
   createdAt: string;
   updatedAt: string;
 }

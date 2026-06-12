@@ -6,9 +6,9 @@ import { ApplicationsByStatusCard } from "./ApplicationsByStatusCard";
 
 const BUCKETS: ApplicationsByStatusBucket[] = [
   { status: "AWAITING_APPROVAL", count: 12 },
-  { status: "APPROVED", count: 6 },
+  { status: "APPROVED_PENDING_DISBURSAL", count: 6 },
   { status: "DISBURSED", count: 18 },
-  { status: "DELINQUENT", count: 4 },
+  { status: "UNDER_REPAYMENT", count: 4 },
   { status: "REJECTED", count: 2 },
 ];
 
@@ -78,9 +78,9 @@ describe("<ApplicationsByStatusCard />", () => {
   it.each([
     ["AWAITING_APPROVAL" as const, "progress"],
     ["DISBURSED" as const, "success"],
-    ["DELINQUENT" as const, "warning"],
+    ["DISBURSEMENT_RETRY" as const, "warning"],
     ["REJECTED" as const, "danger"],
-    ["FULLY_REPAID" as const, "neutral"],
+    ["CLOSED" as const, "neutral"],
   ])("maps %s to the %s intent fill", (status, intent) => {
     const { container } = renderWithProviders(
       <ApplicationsByStatusCard buckets={[{ status, count: 1 }]} />,

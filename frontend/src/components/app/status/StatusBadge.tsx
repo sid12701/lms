@@ -2,14 +2,13 @@ import { forwardRef, type HTMLAttributes } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle,
-  Ban,
   Check,
   CheckCircle2,
-  Clock,
   CircleCheck,
   CircleDot,
   CircleSlash,
-  FileSearch,
+  Clock,
+  HelpCircle,
   Hourglass,
   PauseCircle,
   Send,
@@ -44,20 +43,16 @@ const INTENT_ICON: Record<Intent, LucideIcon> = {
 };
 
 const STATUS_ICON: Partial<Record<AnyStatus, LucideIcon>> = {
-  INITIATED: Send,
-  KYC_PENDING: FileSearch,
-  DOCS_PENDING: FileSearch,
-  UNDER_REVIEW: FileSearch,
+  INITIALIZED: Send,
   AWAITING_APPROVAL: Clock,
-  APPROVED: Check,
   APPROVED_PENDING_DISBURSAL: Clock,
   DISBURSED: CircleCheck,
-  FULLY_REPAID: CircleCheck,
   CLOSED: CircleCheck,
   FORECLOSED: PauseCircle,
-  CANCELLED: Ban,
   REJECTED: XCircle,
-  INVALIDATED: CircleSlash,
+  INVALID: CircleSlash,
+  DISBURSEMENT_RETRY: AlertTriangle,
+  UNDER_REPAYMENT: Check,
 };
 
 const INTENT_CLASSES: Record<Intent, { default: string; subtle: string; iconColor: string }> = {
@@ -98,12 +93,19 @@ const INTENT_CLASSES: Record<Intent, { default: string; subtle: string; iconColo
   },
 };
 
+function statusIcon(status: AnyStatus, intent: Intent): LucideIcon {
+  if (typeof status === "string" && status.startsWith("UNKNOWN:")) {
+    return HelpCircle;
+  }
+  return STATUS_ICON[status] ?? INTENT_ICON[intent];
+}
+
 export const StatusBadge = forwardRef<HTMLSpanElement, StatusBadgeProps>(function StatusBadge(
   { status, delinquency, variant = "subtle", hideIcon = false, className, ...rest },
   ref,
 ) {
   const meta = resolveStatusMeta(status, { delinquency });
-  const Icon = STATUS_ICON[status] ?? INTENT_ICON[meta.intent];
+  const Icon = statusIcon(status, meta.intent);
   const classes = INTENT_CLASSES[meta.intent];
   const tone = variant === "default" ? classes.default : classes.subtle;
   return (

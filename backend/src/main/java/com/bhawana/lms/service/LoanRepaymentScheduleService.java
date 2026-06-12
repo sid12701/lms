@@ -1,5 +1,7 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.money.Money;
 import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
@@ -25,18 +27,32 @@ public class LoanRepaymentScheduleService {
     private final LoanApplicationService loanApplicationService;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
-    private final AlertRuleEvaluationService alertRuleEvaluationService;
+    private final OpsAlertEmitters opsAlertEmitters;
 
     public LoanRepaymentScheduleService(
             LoanApplicationService loanApplicationService,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
-            AlertRuleEvaluationService alertRuleEvaluationService
+            OpsAlertEmitters opsAlertEmitters
     ) {
         this.loanApplicationService = loanApplicationService;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
-        this.alertRuleEvaluationService = alertRuleEvaluationService;
+        this.opsAlertEmitters = opsAlertEmitters;
+    }
+
+    /**
+     * Generates and persists a repayment schedule when none exists yet for the loan account.
+     * Used by the ops approval path so schedule math stays in one place.
+     */
+    @Transactional
+    public void generateIfAbsent(LoanAccount loanAccount) {
+        if (!loanRepaymentScheduleInstallmentRepository
+                .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId())
+                .isEmpty()) {
+            return;
+        }
+        loanRepaymentScheduleInstallmentRepository.saveAll(buildGeneratedInstallments(loanAccount));
     }
 
     @Transactional
@@ -60,7 +76,7 @@ public class LoanRepaymentScheduleService {
             validateProvidedInstallments(loanAccount, installments);
         } catch (BusinessRuleViolationException exception) {
             if ("REPAYMENT_SCHEDULE_INVALID".equals(exception.getErrorCode())) {
-                alertRuleEvaluationService.emitLspProvidedScheduleViolation(
+                opsAlertEmitters.emitLspProvidedScheduleViolation(
                         application,
                         resolveScheduleViolationType(exception),
                         exception.getMessage(),
@@ -76,11 +92,11 @@ public class LoanRepaymentScheduleService {
                         loanAccount,
                         draft.installmentNumber(),
                         draft.dueDate(),
-                        scaleCurrency(draft.openingPrincipal()),
-                        scaleCurrency(draft.principalDue()),
-                        scaleCurrency(draft.interestDue()),
-                        scaleCurrency(draft.installmentAmount()),
-                        scaleCurrency(draft.closingPrincipal())
+                        Money.scale(draft.openingPrincipal()),
+                        Money.scale(draft.principalDue()),
+                        Money.scale(draft.interestDue()),
+                        Money.scale(draft.installmentAmount()),
+                        Money.scale(draft.closingPrincipal())
                 ))
                 .toList());
     }
@@ -114,20 +130,28 @@ public class LoanRepaymentScheduleService {
     private LoanAccount getMutableLoanAccountForLsp(UUID lspId, UUID applicationId) {
         loanApplicationService.getApplicationForLsp(lspId, applicationId);
         LoanAccount loanAccount = loanApplicationService.getLoanAccount(applicationId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Repayment schedule can only be set after the loan has been auto-approved."
+                .orElseThrow(() -> new BusinessRuleViolationException(
+                        "LOAN_NOT_APPROVED",
+                        "Repayment schedule can only be set after the loan has been auto-approved.",
+                        Map.of("applicationId", applicationId.toString())
                 ));
         if (loanAccount.getStatus() != LoanAccountStatus.PENDING_DISBURSEMENT) {
-            throw new IllegalArgumentException("Repayment schedule can only be replaced before disbursement is requested.");
+            throw new ApiConflictException(
+                    "REPAYMENT_SCHEDULE_LOCKED",
+                    "Repayment schedule can only be replaced before disbursement is requested."
+            );
         }
         if (loanPaymentTransactionRepository.existsByLoanAccount_Id(loanAccount.getId())) {
-            throw new IllegalArgumentException("Repayment schedule cannot be replaced after repayments have started.");
+            throw new ApiConflictException(
+                    "REPAYMENT_SCHEDULE_LOCKED",
+                    "Repayment schedule cannot be replaced after repayments have started."
+            );
         }
         return loanAccount;
     }
 
     private List<LoanRepaymentScheduleInstallment> buildGeneratedInstallments(LoanAccount loanAccount) {
-        BigDecimal principal = scaleCurrency(loanAccount.getPrincipalAmount());
+        BigDecimal principal = Money.scale(loanAccount.getPrincipalAmount());
         int tenureMonths = loanAccount.getTenureMonths();
         BigDecimal annualRate = loanAccount.getLoanProduct().getInterestRate();
         BigDecimal monthlyRate = annualRate.divide(BigDecimal.valueOf(1200), 10, RoundingMode.HALF_UP);
@@ -137,20 +161,16 @@ public class LoanRepaymentScheduleService {
         BigDecimal remainingPrincipal = principal;
         List<LoanRepaymentScheduleInstallment> installments = new ArrayList<>();
         for (int installmentNumber = 1; installmentNumber <= tenureMonths; installmentNumber++) {
-            BigDecimal openingPrincipal = scaleCurrency(remainingPrincipal);
-            BigDecimal interestDue = scaleCurrency(openingPrincipal.multiply(monthlyRate));
+            BigDecimal openingPrincipal = Money.scale(remainingPrincipal);
+            BigDecimal interestDue = Money.scale(openingPrincipal.multiply(monthlyRate));
             BigDecimal installmentAmount = emiAmount;
-            BigDecimal principalDue = scaleCurrency(installmentAmount.subtract(interestDue));
+            BigDecimal principalDue = Money.scale(installmentAmount.subtract(interestDue));
             if (installmentNumber == tenureMonths) {
                 principalDue = openingPrincipal;
-                installmentAmount = scaleCurrency(principalDue.add(interestDue));
+                installmentAmount = Money.scale(principalDue.add(interestDue));
             }
-            BigDecimal closingPrincipal = scaleCurrency(openingPrincipal.subtract(principalDue));
-            if (installmentNumber == tenureMonths && closingPrincipal.compareTo(BigDecimal.ZERO) != 0) {
-                principalDue = scaleCurrency(principalDue.add(closingPrincipal));
-                installmentAmount = scaleCurrency(principalDue.add(interestDue));
-                closingPrincipal = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-            } else if (closingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
+            BigDecimal closingPrincipal = Money.scale(openingPrincipal.subtract(principalDue));
+            if (closingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
                 closingPrincipal = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
             }
             installments.add(new LoanRepaymentScheduleInstallment(
@@ -205,9 +225,9 @@ public class LoanRepaymentScheduleService {
             );
         }
 
-        BigDecimal approvedPrincipal = scaleCurrency(loanAccount.getPrincipalAmount());
+        BigDecimal approvedPrincipal = Money.scale(loanAccount.getPrincipalAmount());
         InstallmentDraft firstInstallment = installments.get(0);
-        if (scaleCurrency(firstInstallment.openingPrincipal()).compareTo(approvedPrincipal) != 0) {
+        if (Money.scale(firstInstallment.openingPrincipal()).compareTo(approvedPrincipal) != 0) {
             primaryViolationType = registerScheduleViolation(
                     violations,
                     primaryViolationType,
@@ -244,7 +264,7 @@ public class LoanRepaymentScheduleService {
             previousDueDate = installment.dueDate();
 
             if (index > 0 && previousClosingPrincipal != null
-                    && scaleCurrency(installment.openingPrincipal()).compareTo(previousClosingPrincipal) != 0) {
+                    && Money.scale(installment.openingPrincipal()).compareTo(previousClosingPrincipal) != 0) {
                 primaryViolationType = registerScheduleViolation(
                         violations,
                         primaryViolationType,
@@ -268,8 +288,8 @@ public class LoanRepaymentScheduleService {
                 );
             }
 
-            BigDecimal expectedInstallmentAmount = scaleCurrency(installment.principalDue().add(installment.interestDue()));
-            if (scaleCurrency(installment.installmentAmount()).compareTo(expectedInstallmentAmount) != 0) {
+            BigDecimal expectedInstallmentAmount = Money.scale(installment.principalDue().add(installment.interestDue()));
+            if (Money.scale(installment.installmentAmount()).compareTo(expectedInstallmentAmount) != 0) {
                 primaryViolationType = registerScheduleViolation(
                         violations,
                         primaryViolationType,
@@ -279,10 +299,10 @@ public class LoanRepaymentScheduleService {
                 );
             }
 
-            BigDecimal expectedPrincipalFromRow = scaleCurrency(
+            BigDecimal expectedPrincipalFromRow = Money.scale(
                     installment.openingPrincipal().subtract(installment.closingPrincipal())
             );
-            if (scaleCurrency(installment.principalDue()).compareTo(expectedPrincipalFromRow) != 0) {
+            if (Money.scale(installment.principalDue()).compareTo(expectedPrincipalFromRow) != 0) {
                 primaryViolationType = registerScheduleViolation(
                         violations,
                         primaryViolationType,
@@ -292,8 +312,8 @@ public class LoanRepaymentScheduleService {
                 );
             }
 
-            totalPrincipal = scaleCurrency(totalPrincipal.add(installment.principalDue()));
-            previousClosingPrincipal = scaleCurrency(installment.closingPrincipal());
+            totalPrincipal = Money.scale(totalPrincipal.add(installment.principalDue()));
+            previousClosingPrincipal = Money.scale(installment.closingPrincipal());
         }
 
         if (totalPrincipal.compareTo(approvedPrincipal) != 0) {
@@ -307,7 +327,7 @@ public class LoanRepaymentScheduleService {
         }
 
         InstallmentDraft lastInstallment = installments.get(installments.size() - 1);
-        if (scaleCurrency(lastInstallment.closingPrincipal()).compareTo(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)) != 0) {
+        if (Money.scale(lastInstallment.closingPrincipal()).compareTo(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)) != 0) {
             primaryViolationType = registerScheduleViolation(
                     violations,
                     primaryViolationType,
@@ -388,10 +408,6 @@ public class LoanRepaymentScheduleService {
         BigDecimal numerator = principal.multiply(monthlyRate).multiply(compounded);
         BigDecimal denominator = compounded.subtract(BigDecimal.ONE);
         return numerator.divide(denominator, 2, RoundingMode.HALF_UP);
-    }
-
-    private static BigDecimal scaleCurrency(BigDecimal value) {
-        return value.setScale(2, RoundingMode.HALF_UP);
     }
 
     public record InstallmentDraft(

@@ -23,7 +23,7 @@ import type {
 } from "./types";
 import type { ApplicationAuditEvent, LoanApplication } from "@/types";
 import { isUploadedBackendChecklistStatus } from "@/schemas/document";
-import { mapBackendStatus, mapFrontendStatusToBackend } from "./api";
+import { parseLoanApplicationStatus } from "@/lib/loan-application-status";
 
 const BACKEND_BASE = "/api/v1/internal/ops/loan-applications";
 
@@ -147,7 +147,7 @@ function backendToDetail(
     productId: payload.productId,
     requestedAmount,
     tenureMonths,
-    status: mapBackendStatus(payload.status) as LoanApplication["status"],
+    status: parseLoanApplicationStatus(payload.status) ?? "INITIALIZED",
     sourceChannel: safeChannel(payload.sourceChannel),
     createdAt: created,
     updatedAt: updated,
@@ -301,9 +301,11 @@ function toAuditEvent(row: BackendAuditEvent): ApplicationAuditEvent {
     id: row.id,
     applicationId: row.loanApplicationId,
     fromStatus: row.fromStatus
-      ? (mapBackendStatus(row.fromStatus) as ApplicationAuditEvent["fromStatus"])
+      ? (parseLoanApplicationStatus(row.fromStatus) as ApplicationAuditEvent["fromStatus"])
       : null,
-    toStatus: mapBackendStatus(row.toStatus ?? "INITIATED") as ApplicationAuditEvent["toStatus"],
+    toStatus:
+      parseLoanApplicationStatus(row.toStatus) ??
+      ("INITIALIZED" as ApplicationAuditEvent["toStatus"]),
     action: row.action || "transition",
     actorId: row.actorUsername ?? "system",
     actorRole: APPLICATION_ROLE_FALLBACK as ApplicationAuditEvent["actorRole"],
@@ -392,7 +394,7 @@ async function postBackendTransition(
   input: TransitionStatusInput,
   idempotencyKey: string,
 ): Promise<TransitionResponse> {
-  const targetStatus = mapFrontendStatusToBackend(input.to);
+  const targetStatus = input.to;
   const body = {
     targetStatus,
     note: input.reason ?? null,

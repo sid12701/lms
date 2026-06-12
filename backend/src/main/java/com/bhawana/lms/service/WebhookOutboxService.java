@@ -2,6 +2,7 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.WebhookEventOutbox;
 import com.bhawana.lms.domain.WebhookEventOutboxStatus;
@@ -106,7 +107,7 @@ public class WebhookOutboxService {
         }
 
         if (!lspRepository.existsById(lspId)) {
-            throw new IllegalArgumentException("Unknown LSP id: " + lspId);
+            throw new ResourceNotFoundException("Unknown LSP id: " + lspId);
         }
         return webhookEventOutboxRepository.findTop50ByLsp_IdOrderByCreatedAtDesc(lspId);
     }
@@ -127,7 +128,7 @@ public class WebhookOutboxService {
             String correlationId
     ) {
         WebhookEventOutbox event = webhookEventOutboxRepository.findById(eventId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown webhook outbox event id: " + eventId));
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown webhook outbox event id: " + eventId));
 
         if (event.getStatus() != WebhookEventOutboxStatus.PERMANENT_FAILURE) {
             throw new ApiConflictException(

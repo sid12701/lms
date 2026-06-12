@@ -68,8 +68,8 @@ describe("ActivityTab", () => {
             {
               id: "evt-1",
               applicationId: "app-1",
-              fromStatus: "UNDER_REVIEW",
-              toStatus: "APPROVED",
+              fromStatus: "AWAITING_APPROVAL",
+              toStatus: "APPROVED_PENDING_DISBURSAL",
               action: "approve",
               actorId: "user-1",
               actorRole: "OPS_USER",
@@ -98,8 +98,8 @@ describe("ActivityTab", () => {
             {
               id: "evt-1",
               applicationId: "app-1",
-              fromStatus: "UNDER_REVIEW",
-              toStatus: "APPROVED",
+              fromStatus: "AWAITING_APPROVAL",
+              toStatus: "APPROVED_PENDING_DISBURSAL",
               action: "approve",
               actorId: "user-1",
               actorRole: "OPS_USER",

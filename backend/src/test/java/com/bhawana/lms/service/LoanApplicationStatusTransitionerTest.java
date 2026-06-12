@@ -38,7 +38,7 @@ class LoanApplicationStatusTransitionerTest {
     @Test
     void standardContextRejectsApprovedToRejected() {
         assertThrows(
-                IllegalArgumentException.class,
+                BusinessRuleViolationException.class,
                 () -> LoanApplicationStatusTransitioner.enforceTransition(
                         LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
                         LoanApplicationStatus.REJECTED
@@ -48,13 +48,14 @@ class LoanApplicationStatusTransitionerTest {
 
     @Test
     void enforceTransitionRejectsInvalidEdge() {
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        BusinessRuleViolationException exception = assertThrows(
+                BusinessRuleViolationException.class,
                 () -> LoanApplicationStatusTransitioner.enforceTransition(
                         LoanApplicationStatus.REJECTED,
                         LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
                 )
         );
+        assertEquals("INVALID_STATUS_TRANSITION", exception.getErrorCode());
         assertEquals(
                 "Cannot transition loan application from REJECTED to APPROVED_PENDING_DISBURSAL.",
                 exception.getMessage()

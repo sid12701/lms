@@ -789,6 +789,35 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
+    void paymentRequiresIdempotencyKeyHeader() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-IDEM-PAY", "API", "ABCDE1234G");
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
+        disburseLoan(applicationId);
+
+        String installment1Id = installmentIdAt(applicationId, 1);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("targetInstallmentId", installment1Id);
+        body.put("amount", new BigDecimal("4136.32"));
+        body.put("postedAt", LocalDate.now().toString());
+        body.put("channel", "NEFT");
+
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.message").value("Idempotency-Key header is required."));
+    }
+
+    @Test
     void systemAdminCanQuoteAndExecuteForeclosure() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
@@ -1044,8 +1073,8 @@ class LoanApplicationOpsControllerTest {
                         "BANK_TRANSFER",
                         UUID.randomUUID().toString(),
                         LocalDate.now().minusDays(1)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("REPAYMENT_NOT_ALLOWED"));
     }
 
     @Test
@@ -1245,8 +1274,8 @@ class LoanApplicationOpsControllerTest {
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DISBURSEMENT_NOT_ALLOWED"));
 
         transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
@@ -1259,8 +1288,9 @@ class LoanApplicationOpsControllerTest {
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.loanAccount.status").value("DISBURSEMENT_REQUESTED"))
+                .andExpect(jsonPath("$.loanAccountId").isNotEmpty());
     }
 
     @Test
@@ -1387,8 +1417,8 @@ class LoanApplicationOpsControllerTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.errorCode").value("DISBURSEMENT_NOT_REQUESTED"));
     }
 
     @Test
@@ -1497,8 +1527,8 @@ class LoanApplicationOpsControllerTest {
                                 "note", "Force approve",
                                 "reasonCode", "MANUAL_ADMIN_OVERRIDE"
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("MANUAL_OVERRIDE_NOT_ALLOWED"));
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/manual-status", applicationId)
                         .with(systemAdmin())
@@ -1549,8 +1579,8 @@ class LoanApplicationOpsControllerTest {
                                 "targetStatus", "REJECTED",
                                 "note", "Reject after review"
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("REASON_CODE_REQUIRED"));
     }
 
     @Test
@@ -1568,8 +1598,8 @@ class LoanApplicationOpsControllerTest {
                                 "targetStatus", "APPROVED_PENDING_DISBURSAL",
                                 "note", "Skipping review"
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALID_STATUS_TRANSITION"));
 
         transitionApplication(created.get("id").asText(), "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(created.get("id").asText());
@@ -1583,8 +1613,8 @@ class LoanApplicationOpsControllerTest {
                                 "note", "Cannot revert after approval",
                                 "reasonCode", "FAILED_VERIFICATION"
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALID_STATUS_TRANSITION"));
     }
 
     @Test
@@ -1613,8 +1643,8 @@ class LoanApplicationOpsControllerTest {
                                 new BigDecimal("999999.00"),
                                 12
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("AMOUNT_OUT_OF_RANGE"));
     }
 
     @Test
@@ -1645,8 +1675,8 @@ class LoanApplicationOpsControllerTest {
                                 new BigDecimal("45000.00"),
                                 12
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("DUPLICATE_EXTERNAL_LOAN_ID"));
     }
 
     @Test
@@ -1674,8 +1704,8 @@ class LoanApplicationOpsControllerTest {
                                 new BigDecimal("45000.00"),
                                 12
                         ))))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error").value("INVALID_REQUEST"));
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("PRODUCT_NOT_MAPPED"));
     }
 
     @Test
