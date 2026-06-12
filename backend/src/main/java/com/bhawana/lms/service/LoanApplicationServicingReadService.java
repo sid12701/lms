@@ -53,7 +53,7 @@ public class LoanApplicationServicingReadService {
     private final LoanForeclosureQuoteRepository loanForeclosureQuoteRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanApplicationQueryService loanApplicationQueryService;
-    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
+    private final LoanApplicationDocumentChecklistService documentChecklistService;
     private final LoanDocumentService loanDocumentService;
     private final WebhookOutboxService webhookOutboxService;
     private final com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
@@ -72,7 +72,7 @@ public class LoanApplicationServicingReadService {
             LoanForeclosureQuoteRepository loanForeclosureQuoteRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanApplicationQueryService loanApplicationQueryService,
-            LoanApplicationLifecycleService loanApplicationLifecycleService,
+            LoanApplicationDocumentChecklistService documentChecklistService,
             LoanDocumentService loanDocumentService,
             WebhookOutboxService webhookOutboxService,
             com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
@@ -90,7 +90,7 @@ public class LoanApplicationServicingReadService {
         this.loanForeclosureQuoteRepository = loanForeclosureQuoteRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanApplicationQueryService = loanApplicationQueryService;
-        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
+        this.documentChecklistService = documentChecklistService;
         this.loanDocumentService = loanDocumentService;
         this.webhookOutboxService = webhookOutboxService;
         this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
@@ -250,7 +250,7 @@ public class LoanApplicationServicingReadService {
     @Transactional
     public List<LoanApplicationDocumentChecklist> listDocumentChecklist(UUID applicationId, String actorUsername) {
         LoanApplication application = loanApplicationQueryService.getApplication(applicationId);
-        loanApplicationLifecycleService.ensureDocumentChecklist(application);
+        documentChecklistService.ensureDocumentChecklist(application);
         List<LoanApplicationDocumentChecklist> checklist =
                 loanApplicationDocumentChecklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(applicationId);
         loanApplicationDocumentAccessAuditRepository.save(new LoanApplicationDocumentAccessAudit(
