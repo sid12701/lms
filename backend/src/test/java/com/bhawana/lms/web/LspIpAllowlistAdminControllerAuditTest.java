@@ -168,23 +168,23 @@ class LspIpAllowlistAdminControllerAuditTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("cidr", "10.0.0.0/8"))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isConflict());
 
         UUID unknownLspId = UUID.randomUUID();
         mockMvc.perform(post("/api/v1/internal/admin/lsps/{lspId}/api-ip-allowlist", unknownLspId)
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("cidr", "10.1.0.0/8"))))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
 
         mockMvc.perform(delete("/api/v1/internal/admin/lsps/{lspId}/api-ip-allowlist/{entryId}", lspId, UUID.randomUUID())
                         .with(systemAdmin()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
 
         String otherLspId = createLsp();
         mockMvc.perform(delete("/api/v1/internal/admin/lsps/{lspId}/api-ip-allowlist/{entryId}", otherLspId, existingEntryId)
                         .with(systemAdmin()))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isNotFound());
 
         assertEquals(beforeCount, lspAuditEventRepository.count());
     }

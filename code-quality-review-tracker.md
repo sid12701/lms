@@ -54,7 +54,7 @@ Priorities: **P0** = correctness or contract risk now; P1 = structural debt that
 | **B1** | Sound; P0 correctness | **Implemented** — single generator in `LoanRepaymentScheduleService.generateIfAbsent`; duplicate removed from lifecycle |
 | **B2** | Sound but L-effort; do after B6 | **✅ Done (2026-06-12)** — facade deleted; `LoanDisbursementCommandService`, `LoanApplicationServicingReadService`, `LoanDelinquencySupport`; seed + document-download tests on focused services |
 | **B3** | Sound but L-effort | **Partial (step 2)** — `BorrowerOnboardingService`, `LoanApplicationDocumentChecklistService`, `LoanWebhookPayloads`; lifecycle thinned (~450 lines removed); step 1 predicates retained |
-| **B4** | Sound; full 143-site sweep is M-effort | **Partial** — prior service sweep + `ApiClientManagementService` not-found → 404; remaining IAEs are intentional input validation (lifecycle, servicing, controllers) |
+| **B4** | Sound; full 143-site sweep is M-effort | **Partial (2026-06-12)** — service sweep + integration tests aligned to typed 404/409/422; remaining IAEs intentional for input validation; Postman/e2e refresh deferred to F2 pass (#112) |
 | **B5** | Sound; sequence with B3 | **✅ Done (2026-06-11)** — `BorrowerProfile` record + `BorrowerProfileMappers`; slim `LoanApplicationOnboardingCommand` (9 fields); `Borrower` uses profile constructors/merge; intake audit via `intakeAuditEntries()` |
 | **B6** | Sound; M-effort | **✅ Done (2026-06-12)** — `LoanApplicationDetailAssembler` + `LoanApplicationDetailView`; ops/LSP controllers + `LspLoanApiController`; pure `toDetailResponse(LoanApplicationDetailView)` |
 | **B7** | Sound; M-effort | **✅ Done (2026-06-12)** — `OpsAlertEmitters` + `AlertRuleEvaluationWorker`; alerts-cycle `@Lazy` removed; `LazyInjectionArchitectureTest` whitelists only lifecycle↔schedule until B3 step 3 |
@@ -183,7 +183,9 @@ The review was asked to verify the machine-generated reports before trusting the
 
 ## <a id="b4"></a>B4 — Error contract bypassed: everything is a 400 · **P0** · 🔄 In progress (service sweep done)
 
-**Session outcome:** … A5 … **service sweep (2026-06-11)**: `ProductConfigurationService`, `LspStatusService`, `WebhookOutboxService`, `LoanDisbursementService` (`DISBURSEMENT_ALREADY_REQUESTED` 409); idempotency fingerprint mismatch → 409 (`IDEMPOTENCY_CONFLICT`); partner unknown/cross-tenant → 404. **Next:** B4 remainder (lifecycle input IAEs, servicing validation); structural track (B3→B6→B2) after Phase A gate.
+**Session outcome:** … A5 … **service sweep (2026-06-11)**: `ProductConfigurationService`, `LspStatusService`, `WebhookOutboxService`, `LoanDisbursementService` (`DISBURSEMENT_ALREADY_REQUESTED` 409); idempotency fingerprint mismatch → 409 (`IDEMPOTENCY_CONFLICT`); partner unknown/cross-tenant → 404.
+
+**Session outcome (2026-06-12):** Six integration tests updated for typed error contract (404/409 vs blanket 400/IAE); `DocumentUploadLocalProfileIntegrationTest` uses `test` profile to avoid local Redis gate. Full `mvnw test` green on branch. **Next:** Postman/E2E assert refresh with F2; lifecycle input IAEs remain intentional where validation-only.
 
 **Problem (plain English):** The codebase has a proper typed error system — `ResourceNotFoundException` → 404, `ApiConflictException` → 409, `BusinessRuleViolationException` → 422 with error codes — but the services almost never use it. They throw `IllegalArgumentException` for *everything*: unknown IDs, ownership mismatches, illegal state transitions, bad input. The global handler maps IAE to a blanket `400 INVALID_REQUEST`.
 

@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +30,9 @@ import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-@SpringBootTest
+// Rate limiting is forced off: the repo-root .env (imported by the local profile) may enable it,
+// and RateLimitConfig connects to Redis eagerly at startup — this test only needs DB + storage.
+@SpringBootTest(properties = "app.rate-limit.enabled=false")
 @AutoConfigureMockMvc
 @ActiveProfiles("local")
 @TestExecutionListeners(
@@ -67,10 +70,7 @@ class DocumentUploadLocalProfileIntegrationTest {
                         "/api/v1/lsp/loan-applications/{applicationId}/documents", seed.applicationId())
                         .file(file)
                         .param("documentType", LoanApplicationDocumentType.PAN_CARD.name())
-                        .with(jwt().jwt(builder -> builder
-                                .subject(seed.clientId())
-                                .claim("lsp_id", seed.lspId().toString())
-                                .claim("scope", "lsp.api")))
+                        .with(lspApiClient(seed.clientId(), seed.lspId()))
                         .contentType(MediaType.MULTIPART_FORM_DATA))
                 .andDo(print())
                 .andExpect(status().is2xxSuccessful()))
@@ -143,10 +143,7 @@ class DocumentUploadLocalProfileIntegrationTest {
 
         MvcResult appResult = mockMvc.perform(
                         org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/lsp/loan-applications")
-                                .with(jwt().jwt(builder -> builder
-                                        .subject(client.get("clientId").asText())
-                                        .claim("lsp_id", lspId.toString())
-                                        .claim("scope", "lsp.api")))
+                                .with(lspApiClient(client.get("clientId").asText(), lspId))
                                 .header("Idempotency-Key", UUID.randomUUID().toString())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(minimalLoanBody(lspId, UUID.fromString(product.get("id").asText()), suffix)))
@@ -183,7 +180,18 @@ class DocumentUploadLocalProfileIntegrationTest {
     }
 
     private static org.springframework.test.web.servlet.request.RequestPostProcessor opsJwt() {
-        return jwt().jwt(builder -> builder.subject("ops.admin").claim("scope", "admin"));
+        return jwt().jwt(builder -> builder
+                        .subject("ops.admin")
+                        .claim("roles", List.of("SYSTEM_ADMIN", "PRODUCT_ADMIN")))
+                .authorities(() -> "ROLE_SYSTEM_ADMIN", () -> "ROLE_PRODUCT_ADMIN");
+    }
+
+    private static org.springframework.test.web.servlet.request.RequestPostProcessor lspApiClient(String clientId, UUID lspId) {
+        return jwt().jwt(builder -> builder
+                        .subject(clientId)
+                        .claim("roles", List.of("LSP_API_CLIENT"))
+                        .claim("lspId", lspId.toString()))
+                .authorities(() -> "ROLE_LSP_API_CLIENT");
     }
 
     private static Map<String, String> loadRepoRootEnv() throws Exception {
