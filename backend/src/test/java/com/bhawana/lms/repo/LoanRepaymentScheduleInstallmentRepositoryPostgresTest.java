@@ -3,6 +3,7 @@ package com.bhawana.lms.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.bhawana.lms.domain.Borrower;
+import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
@@ -100,15 +101,17 @@ class LoanRepaymentScheduleInstallmentRepositoryPostgresTest extends PostgresDat
     private LoanAccount persistAccount(Lsp lsp, LoanProduct product, String externalLoanId, String accountNumber) {
         Borrower borrower = borrowerRepository.save(new Borrower(
                 lsp,
-                "Borrower " + externalLoanId,
-                "ABCDE" + UUID.randomUUID().toString().substring(0, 4).toUpperCase() + "F",
-                "9000000000",
-                externalLoanId.toLowerCase() + "@example.com",
-                LocalDate.of(1992, 1, 1),
-                "Bengaluru",
-                "Karnataka",
-                "SALARIED",
-                new BigDecimal("75000.00")
+                BorrowerProfile.builder()
+                        .fullName("Borrower " + externalLoanId)
+                        .panNumber("ABCDE" + UUID.randomUUID().toString().substring(0, 4).toUpperCase() + "F")
+                        .mobileNumber("9000000000")
+                        .emailAddress(externalLoanId.toLowerCase() + "@example.com")
+                        .dateOfBirth(LocalDate.of(1992, 1, 1))
+                        .addressCity("Bengaluru")
+                        .addressState("Karnataka")
+                        .employmentStatus("SALARIED")
+                        .monthlyIncome(new BigDecimal("75000.00"))
+                        .build()
         ));
         LoanApplication application = loanApplicationRepository.save(new LoanApplication(
                 borrower,

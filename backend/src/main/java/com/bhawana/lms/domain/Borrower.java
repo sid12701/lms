@@ -126,217 +126,21 @@ public class Borrower {
     }
 
     public Borrower(String fullName, String pan, String mobile, String email) {
-        this(
-                fullName,
-                pan,
-                mobile,
-                email,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
+        this(BorrowerProfile.minimal(fullName, pan, mobile, email));
     }
 
     public Borrower(Lsp lsp, String fullName, String pan, String mobile, String email) {
-        this(fullName, pan, mobile, email);
-        grantVisibilityTo(lsp);
+        this(lsp, BorrowerProfile.minimal(fullName, pan, mobile, email));
     }
 
-    public Borrower(
-            String fullName,
-            String pan,
-            String mobile,
-            String email,
-            LocalDate dateOfBirth,
-            String gender,
-            String maritalStatus,
-            String fatherName,
-            String aadharNumber,
-            String city,
-            String state,
-            String addressLine1,
-            String addressLine2,
-            String addressZipCode,
-            String spouseName,
-            String employmentType,
-            String organizationName,
-            String employeeId,
-            String employmentCity,
-            String employmentState,
-            String employmentZip,
-            BigDecimal monthlyIncome,
-            BigDecimal annualIncome,
-            String bankAccountNumber,
-            String bankName,
-            String ifscCode,
-            String accountHolderName,
-            String referencePersonName,
-            String referencePersonNumber
-    ) {
+    public Borrower(BorrowerProfile profile) {
         this.id = UUID.randomUUID();
-        this.fullName = fullName.trim();
-        this.pan = pan.trim().toUpperCase();
-        this.mobile = mobile.trim();
-        this.email = normalizeEmail(email);
-        this.dateOfBirth = dateOfBirth;
-        this.gender = normalizeCodedValue(gender);
-        this.maritalStatus = normalizeCodedValue(maritalStatus);
-        this.fatherName = normalizeOptional(fatherName);
-        this.aadharNumber = normalizeAadharNumber(aadharNumber);
-        this.city = normalizeOptional(city);
-        this.state = normalizeOptional(state);
-        this.addressLine1 = normalizeOptional(addressLine1);
-        this.addressLine2 = normalizeOptional(addressLine2);
-        this.addressZipCode = normalizeOptional(addressZipCode);
-        this.spouseName = normalizeOptional(spouseName);
-        this.employmentType = normalizeEmploymentType(employmentType);
-        this.organizationName = normalizeOptional(organizationName);
-        this.employeeId = normalizeOptional(employeeId);
-        this.employmentCity = normalizeOptional(employmentCity);
-        this.employmentState = normalizeOptional(employmentState);
-        this.employmentZip = normalizeOptional(employmentZip);
-        this.monthlyIncome = normalizeMonthlyIncome(monthlyIncome);
-        this.annualIncome = normalizeMonthlyIncome(annualIncome);
-        this.bankAccountNumber = normalizeOptional(bankAccountNumber);
-        this.bankName = normalizeOptional(bankName);
-        this.ifscCode = normalizeCodedValue(ifscCode);
-        this.accountHolderName = normalizeOptional(accountHolderName);
-        this.referencePersonName = normalizeOptional(referencePersonName);
-        this.referencePersonNumber = normalizeOptional(referencePersonNumber);
+        applyProfile(profile);
     }
 
-    public Borrower(
-            Lsp lsp,
-            String fullName,
-            String pan,
-            String mobile,
-            String email,
-            LocalDate dateOfBirth,
-            String gender,
-            String maritalStatus,
-            String fatherName,
-            String aadharNumber,
-            String city,
-            String state,
-            String addressLine1,
-            String addressLine2,
-            String addressZipCode,
-            String spouseName,
-            String employmentType,
-            String organizationName,
-            String employeeId,
-            String employmentCity,
-            String employmentState,
-            String employmentZip,
-            BigDecimal monthlyIncome,
-            BigDecimal annualIncome,
-            String bankAccountNumber,
-            String bankName,
-            String ifscCode,
-            String accountHolderName,
-            String referencePersonName,
-            String referencePersonNumber
-    ) {
-        this(
-                fullName,
-                pan,
-                mobile,
-                email,
-                dateOfBirth,
-                gender,
-                maritalStatus,
-                fatherName,
-                aadharNumber,
-                city,
-                state,
-                addressLine1,
-                addressLine2,
-                addressZipCode,
-                spouseName,
-                employmentType,
-                organizationName,
-                employeeId,
-                employmentCity,
-                employmentState,
-                employmentZip,
-                monthlyIncome,
-                annualIncome,
-                bankAccountNumber,
-                bankName,
-                ifscCode,
-                accountHolderName,
-                referencePersonName,
-                referencePersonNumber
-        );
+    public Borrower(Lsp lsp, BorrowerProfile profile) {
+        this(profile);
         grantVisibilityTo(lsp);
-    }
-
-    public Borrower(
-            Lsp lsp,
-            String fullName,
-            String pan,
-            String mobile,
-            String email,
-            LocalDate dateOfBirth,
-            String city,
-            String state,
-            String employmentType,
-            BigDecimal monthlyIncome
-    ) {
-        this(
-                lsp,
-                fullName,
-                pan,
-                mobile,
-                email,
-                dateOfBirth,
-                null,
-                null,
-                null,
-                null,
-                city,
-                state,
-                null,
-                null,
-                null,
-                null,
-                employmentType,
-                null,
-                null,
-                null,
-                null,
-                null,
-                monthlyIncome,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
     }
 
     @PrePersist
@@ -503,163 +307,81 @@ public class Borrower {
         return referencePersonNumber;
     }
 
-    public void refreshProfile(
-            String fullName,
-            String mobile,
-            String email
-    ) {
-        refreshProfile(
-                fullName,
-                mobile,
-                email,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-    }
-
-    public void refreshProfile(
-            String fullName,
-            String mobile,
-            String email,
-            LocalDate dateOfBirth,
-            String gender,
-            String maritalStatus,
-            String fatherName,
-            String aadharNumber,
-            String city,
-            String state,
-            String addressLine1,
-            String addressLine2,
-            String addressZipCode,
-            String spouseName,
-            String employmentType,
-            String organizationName,
-            String employeeId,
-            String employmentCity,
-            String employmentState,
-            String employmentZip,
-            BigDecimal monthlyIncome,
-            BigDecimal annualIncome,
-            String bankAccountNumber,
-            String bankName,
-            String ifscCode,
-            String accountHolderName,
-            String referencePersonName,
-            String referencePersonNumber
-    ) {
+    public void refreshProfile(String fullName, String mobile, String email) {
         this.fullName = fullName.trim();
         this.mobile = mobile.trim();
         this.email = normalizeEmail(email);
-        this.dateOfBirth = dateOfBirth;
-        this.gender = normalizeCodedValue(gender);
-        this.maritalStatus = normalizeCodedValue(maritalStatus);
-        this.fatherName = normalizeOptional(fatherName);
-        this.aadharNumber = normalizeAadharNumber(aadharNumber);
-        this.city = normalizeOptional(city);
-        this.state = normalizeOptional(state);
-        this.addressLine1 = normalizeOptional(addressLine1);
-        this.addressLine2 = normalizeOptional(addressLine2);
-        this.addressZipCode = normalizeOptional(addressZipCode);
-        this.spouseName = normalizeOptional(spouseName);
-        this.employmentType = normalizeEmploymentType(employmentType);
-        this.organizationName = normalizeOptional(organizationName);
-        this.employeeId = normalizeOptional(employeeId);
-        this.employmentCity = normalizeOptional(employmentCity);
-        this.employmentState = normalizeOptional(employmentState);
-        this.employmentZip = normalizeOptional(employmentZip);
-        this.monthlyIncome = normalizeMonthlyIncome(monthlyIncome);
-        this.annualIncome = normalizeMonthlyIncome(annualIncome);
-        this.bankAccountNumber = normalizeOptional(bankAccountNumber);
-        this.bankName = normalizeOptional(bankName);
-        this.ifscCode = normalizeCodedValue(ifscCode);
-        this.accountHolderName = normalizeOptional(accountHolderName);
-        this.referencePersonName = normalizeOptional(referencePersonName);
-        this.referencePersonNumber = normalizeOptional(referencePersonNumber);
     }
 
-    public void mergeLatestProfile(
-            String fullName,
-            String mobile,
-            String email,
-            LocalDate dateOfBirth,
-            String gender,
-            String maritalStatus,
-            String fatherName,
-            String aadharNumber,
-            String city,
-            String state,
-            String addressLine1,
-            String addressLine2,
-            String addressZipCode,
-            String spouseName,
-            String employmentType,
-            String organizationName,
-            String employeeId,
-            String employmentCity,
-            String employmentState,
-            String employmentZip,
-            BigDecimal monthlyIncome,
-            BigDecimal annualIncome,
-            String bankAccountNumber,
-            String bankName,
-            String ifscCode,
-            String accountHolderName,
-            String referencePersonName,
-            String referencePersonNumber
-    ) {
-        refreshProfile(
-                fullName,
-                mobile,
-                email,
-                dateOfBirth,
-                gender,
-                maritalStatus,
-                fatherName,
-                this.aadharNumber == null ? aadharNumber : this.aadharNumber,
-                city,
-                state,
-                addressLine1,
-                addressLine2,
-                addressZipCode,
-                spouseName,
-                employmentType,
-                organizationName,
-                employeeId,
-                employmentCity,
-                employmentState,
-                employmentZip,
-                monthlyIncome,
-                annualIncome,
-                bankAccountNumber,
-                bankName,
-                ifscCode,
-                accountHolderName,
-                referencePersonName,
-                referencePersonNumber
+    public void refreshProfile(BorrowerProfile profile) {
+        applyProfile(profile);
+    }
+
+    public void mergeLatestProfile(BorrowerProfile profile) {
+        BorrowerProfile merged = new BorrowerProfile(
+                profile.fullName(),
+                profile.emailAddress(),
+                profile.mobileNumber(),
+                profile.dateOfBirth(),
+                profile.gender(),
+                profile.maritalStatus(),
+                profile.fatherName(),
+                this.aadharNumber == null ? profile.aadharNumber() : this.aadharNumber,
+                profile.panNumber(),
+                profile.addressLine1(),
+                profile.addressLine2(),
+                profile.addressCity(),
+                profile.addressState(),
+                profile.addressZipcode(),
+                profile.spouseName(),
+                profile.employmentStatus(),
+                profile.organizationName(),
+                profile.empId(),
+                profile.employmentCity(),
+                profile.employmentState(),
+                profile.employmentZip(),
+                profile.monthlyIncome(),
+                profile.annualIncome(),
+                profile.bankAccountNumber(),
+                profile.bankName(),
+                profile.ifscCode(),
+                profile.accountHolderName(),
+                profile.referencePersonName(),
+                profile.referencePersonNumber()
         );
+        applyProfile(merged);
+    }
+
+    private void applyProfile(BorrowerProfile profile) {
+        this.fullName = profile.fullName().trim();
+        this.pan = profile.panNumber().trim().toUpperCase();
+        this.mobile = profile.mobileNumber().trim();
+        this.email = normalizeEmail(profile.emailAddress());
+        this.dateOfBirth = profile.dateOfBirth();
+        this.gender = normalizeCodedValue(profile.gender());
+        this.maritalStatus = normalizeCodedValue(profile.maritalStatus());
+        this.fatherName = normalizeOptional(profile.fatherName());
+        this.aadharNumber = normalizeAadharNumber(profile.aadharNumber());
+        this.city = normalizeOptional(profile.addressCity());
+        this.state = normalizeOptional(profile.addressState());
+        this.addressLine1 = normalizeOptional(profile.addressLine1());
+        this.addressLine2 = normalizeOptional(profile.addressLine2());
+        this.addressZipCode = normalizeOptional(profile.addressZipcode());
+        this.spouseName = normalizeOptional(profile.spouseName());
+        this.employmentType = normalizeEmploymentType(profile.employmentStatus());
+        this.organizationName = normalizeOptional(profile.organizationName());
+        this.employeeId = normalizeOptional(profile.empId());
+        this.employmentCity = normalizeOptional(profile.employmentCity());
+        this.employmentState = normalizeOptional(profile.employmentState());
+        this.employmentZip = normalizeOptional(profile.employmentZip());
+        this.monthlyIncome = normalizeMonthlyIncome(profile.monthlyIncome());
+        this.annualIncome = normalizeMonthlyIncome(profile.annualIncome());
+        this.bankAccountNumber = normalizeOptional(profile.bankAccountNumber());
+        this.bankName = normalizeOptional(profile.bankName());
+        this.ifscCode = normalizeCodedValue(profile.ifscCode());
+        this.accountHolderName = normalizeOptional(profile.accountHolderName());
+        this.referencePersonName = normalizeOptional(profile.referencePersonName());
+        this.referencePersonNumber = normalizeOptional(profile.referencePersonNumber());
     }
 
     private static String normalizeEmail(String email) {

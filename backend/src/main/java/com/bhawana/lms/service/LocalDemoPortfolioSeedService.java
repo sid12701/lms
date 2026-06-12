@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
@@ -324,38 +325,39 @@ public class LocalDemoPortfolioSeedService {
                                 null,
                                 externalId,
                                 "API",
-                                name,
-                                email,
-                                mobile,
-                                LocalDate.of(1990, 1, 1),
-                                "FEMALE",
-                                "SINGLE",
-                                "Demo Parent",
-                                "123412341234",
-                                pan,
                                 amount,
                                 product.getInterestRate(),
                                 tenureMonths,
-                                "Demo Address Line 1",
-                                "Demo Address Line 2",
-                                "Bengaluru",
-                                "Karnataka",
-                                "560001",
-                                null,
-                                "SALARIED",
-                                "Demo Employer",
-                                "EMP-" + externalId,
-                                "Bengaluru",
-                                "Karnataka",
-                                "560001",
-                                new BigDecimal("85000.00"),
-                                new BigDecimal("1020000.00"),
-                                "123456789012",
-                                "Demo Bank",
-                                "HDFC0001234",
-                                name,
-                                "Demo Reference",
-                                "9898989898"
+                                BorrowerProfile.builder()
+                                        .fullName(name)
+                                        .emailAddress(email)
+                                        .mobileNumber(mobile)
+                                        .dateOfBirth(LocalDate.of(1990, 1, 1))
+                                        .gender("FEMALE")
+                                        .maritalStatus("SINGLE")
+                                        .fatherName("Demo Parent")
+                                        .aadharNumber("123412341234")
+                                        .panNumber(pan)
+                                        .addressLine1("Demo Address Line 1")
+                                        .addressLine2("Demo Address Line 2")
+                                        .addressCity("Bengaluru")
+                                        .addressState("Karnataka")
+                                        .addressZipcode("560001")
+                                        .employmentStatus("SALARIED")
+                                        .organizationName("Demo Employer")
+                                        .empId("EMP-" + externalId)
+                                        .employmentCity("Bengaluru")
+                                        .employmentState("Karnataka")
+                                        .employmentZip("560001")
+                                        .monthlyIncome(new BigDecimal("85000.00"))
+                                        .annualIncome(new BigDecimal("1020000.00"))
+                                        .bankAccountNumber("123456789012")
+                                        .bankName("Demo Bank")
+                                        .ifscCode("HDFC0001234")
+                                        .accountHolderName(name)
+                                        .referencePersonName("Demo Reference")
+                                        .referencePersonNumber("9898989898")
+                                        .build()
                         )
                 ));
     }

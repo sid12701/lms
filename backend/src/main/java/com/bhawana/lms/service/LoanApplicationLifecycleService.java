@@ -7,6 +7,7 @@ import com.bhawana.lms.common.web.ApiConflictException;
 import com.bhawana.lms.common.web.BusinessRuleViolationException;
 import com.bhawana.lms.common.web.ResourceNotFoundException;
 import com.bhawana.lms.domain.Borrower;
+import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanAccountStatus;
@@ -169,8 +170,15 @@ public class LoanApplicationLifecycleService {
             );
         }
 
-        BigDecimal monthlyIncome = normalizeMonthlyIncome(command.monthlyIncome(), command.annualIncome());
-        BigDecimal annualIncome = normalizeAnnualIncome(command.monthlyIncome(), command.annualIncome());
+        BorrowerProfile borrowerProfile = command.borrowerProfile();
+        BigDecimal monthlyIncome = normalizeMonthlyIncome(
+                borrowerProfile.monthlyIncome(),
+                borrowerProfile.annualIncome()
+        );
+        BigDecimal annualIncome = normalizeAnnualIncome(
+                borrowerProfile.monthlyIncome(),
+                borrowerProfile.annualIncome()
+        );
         Borrower borrower = borrowerOnboardingService.resolveBorrowerForOnboarding(
                 lsp,
                 command,
@@ -735,35 +743,7 @@ public class LoanApplicationLifecycleService {
         payload.put("sourceChannel", application.getSourceChannel());
         payload.put("requestedAmount", application.getRequestedAmount());
         payload.put("tenureMonths", application.getRequestedTenureMonths());
-        payload.put("borrowerPan", application.getBorrower().getPan());
-        payload.put("borrowerFullName", application.getBorrower().getFullName());
-        payload.put("borrowerMobile", application.getBorrower().getMobile());
-        payload.put("borrowerEmail", application.getBorrower().getEmail());
-        payload.put("borrowerDateOfBirth", application.getBorrower().getDateOfBirth());
-        payload.put("borrowerGender", application.getBorrower().getGender());
-        payload.put("borrowerMaritalStatus", application.getBorrower().getMaritalStatus());
-        payload.put("borrowerFatherName", application.getBorrower().getFatherName());
-        payload.put("borrowerAadharNumber", application.getBorrower().getAadharNumber());
-        payload.put("addressLine1", application.getBorrower().getAddressLine1());
-        payload.put("addressLine2", application.getBorrower().getAddressLine2());
-        payload.put("borrowerCity", application.getBorrower().getCity());
-        payload.put("borrowerState", application.getBorrower().getState());
-        payload.put("addressZipCode", application.getBorrower().getAddressZipCode());
-        payload.put("spouseName", application.getBorrower().getSpouseName());
-        payload.put("borrowerEmploymentType", application.getBorrower().getEmploymentType());
-        payload.put("organizationName", application.getBorrower().getOrganizationName());
-        payload.put("employeeId", application.getBorrower().getEmployeeId());
-        payload.put("employmentCity", application.getBorrower().getEmploymentCity());
-        payload.put("employmentState", application.getBorrower().getEmploymentState());
-        payload.put("employmentZip", application.getBorrower().getEmploymentZip());
-        payload.put("borrowerMonthlyIncome", application.getBorrower().getMonthlyIncome());
-        payload.put("borrowerAnnualIncome", application.getBorrower().getAnnualIncome());
-        payload.put("bankAccountNumber", application.getBorrower().getBankAccountNumber());
-        payload.put("bankName", application.getBorrower().getBankName());
-        payload.put("ifscCode", application.getBorrower().getIfscCode());
-        payload.put("accountHolderName", application.getBorrower().getAccountHolderName());
-        payload.put("referencePersonName", application.getBorrower().getReferencePersonName());
-        payload.put("referencePersonNumber", application.getBorrower().getReferencePersonNumber());
+        payload.putAll(BorrowerProfile.fromEntity(application.getBorrower()).intakeAuditEntries());
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException exception) {

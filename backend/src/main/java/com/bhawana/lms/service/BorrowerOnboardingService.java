@@ -5,6 +5,7 @@ import com.bhawana.lms.common.util.AlertContextJson;
 import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.common.web.ApiConflictException;
 import com.bhawana.lms.domain.Borrower;
+import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.OpsAlertSeverity;
@@ -51,10 +52,9 @@ public class BorrowerOnboardingService {
             BigDecimal annualIncome,
             String actorUsername
     ) {
-        String normalizedPan = normalizePan(command.panNumber());
-        String normalizedMobile = normalizeMobile(command.mobileNumber());
-        String normalizedAadhar = normalizeAadhar(command.aadharNumber());
-        String normalizedFullName = normalizeFullName(command.fullName());
+        BorrowerProfile profile = normalizedProfile(command.borrowerProfile(), monthlyIncome, annualIncome);
+        String normalizedPan = profile.panNumber();
+        String normalizedMobile = profile.mobileNumber();
 
         Borrower borrowerByPan = borrowerRepository.findByPan(normalizedPan).orElse(null);
         Borrower borrowerByMobile = borrowerRepository.findTop10ByMobileOrderByUpdatedAtDesc(normalizedMobile)
@@ -67,43 +67,14 @@ public class BorrowerOnboardingService {
                 raiseBorrowerIdentityConflict(
                         lsp,
                         borrowerByMobile,
-                        command,
+                        profile,
                         actorUsername,
                         "Incoming PAN matches an existing borrower, but the submitted mobile number is already associated with a different borrower."
                 );
             }
-            validateImmutableBorrowerIdentity(lsp, borrowerByPan, normalizedAadhar, command, actorUsername);
-            raiseActiveLoanDuplicateIfPresent(lsp, borrowerByPan, command, actorUsername);
-            borrowerByPan.mergeLatestProfile(
-                    normalizedFullName,
-                    normalizedMobile,
-                    normalizeEmail(command.emailAddress()),
-                    command.dob(),
-                    command.gender(),
-                    command.maritalStatus(),
-                    command.fatherName(),
-                    normalizedAadhar,
-                    command.addressCity(),
-                    command.addressState(),
-                    command.addressLine1(),
-                    command.addressLine2(),
-                    command.addressZipcode(),
-                    command.spouseName(),
-                    command.employmentStatus(),
-                    command.organizationName(),
-                    command.empId(),
-                    command.employmentCity(),
-                    command.employmentState(),
-                    command.employmentZip(),
-                    monthlyIncome,
-                    annualIncome,
-                    command.bankAccountNumber(),
-                    command.bankName(),
-                    command.ifscCode(),
-                    command.accountHolderName(),
-                    command.referencePersonName(),
-                    command.referencePersonNumber()
-            );
+            validateImmutableBorrowerIdentity(lsp, borrowerByPan, profile, actorUsername);
+            raiseActiveLoanDuplicateIfPresent(lsp, borrowerByPan, profile, actorUsername);
+            borrowerByPan.mergeLatestProfile(profile);
             borrowerByPan.grantVisibilityTo(lsp);
             return borrowerRepository.save(borrowerByPan);
         }
@@ -112,60 +83,45 @@ public class BorrowerOnboardingService {
             raiseBorrowerIdentityConflict(
                     lsp,
                     borrowerByMobile,
-                    command,
+                    profile,
                     actorUsername,
                     "Incoming mobile number already belongs to an existing borrower with a different PAN."
             );
         }
 
-        Borrower borrower = new Borrower(
-                normalizedFullName,
-                normalizedPan,
-                normalizedMobile,
-                normalizeEmail(command.emailAddress()),
-                command.dob(),
-                command.gender(),
-                command.maritalStatus(),
-                command.fatherName(),
-                normalizedAadhar,
-                command.addressCity(),
-                command.addressState(),
-                command.addressLine1(),
-                command.addressLine2(),
-                command.addressZipcode(),
-                command.spouseName(),
-                command.employmentStatus(),
-                command.organizationName(),
-                command.empId(),
-                command.employmentCity(),
-                command.employmentState(),
-                command.employmentZip(),
-                monthlyIncome,
-                annualIncome,
-                command.bankAccountNumber(),
-                command.bankName(),
-                command.ifscCode(),
-                command.accountHolderName(),
-                command.referencePersonName(),
-                command.referencePersonNumber()
-        );
+        Borrower borrower = new Borrower(profile);
         borrower.grantVisibilityTo(lsp);
         return borrowerRepository.save(borrower);
+    }
+
+    private BorrowerProfile normalizedProfile(
+            BorrowerProfile profile,
+            BigDecimal monthlyIncome,
+            BigDecimal annualIncome
+    ) {
+        return profile.withScaledIncomes(monthlyIncome, annualIncome)
+                .withNormalizedIdentity(
+                        normalizePan(profile.panNumber()),
+                        normalizeMobile(profile.mobileNumber()),
+                        normalizeFullName(profile.fullName()),
+                        normalizeAadhar(profile.aadharNumber()),
+                        normalizeEmail(profile.emailAddress())
+                );
     }
 
     private void validateImmutableBorrowerIdentity(
             Lsp lsp,
             Borrower borrower,
-            String normalizedAadhar,
-            LoanApplicationOnboardingCommand command,
+            BorrowerProfile profile,
             String actorUsername
     ) {
         String currentAadhar = normalizeAadhar(borrower.getAadharNumber());
+        String normalizedAadhar = profile.aadharNumber();
         if (currentAadhar != null && normalizedAadhar != null && !currentAadhar.equals(normalizedAadhar)) {
             raiseBorrowerIdentityConflict(
                     lsp,
                     borrower,
-                    command,
+                    profile,
                     actorUsername,
                     "Incoming Aadhaar does not match the existing borrower identity for the submitted PAN."
             );
@@ -175,7 +131,7 @@ public class BorrowerOnboardingService {
     private void raiseBorrowerIdentityConflict(
             Lsp lsp,
             Borrower existingBorrower,
-            LoanApplicationOnboardingCommand command,
+            BorrowerProfile profile,
             String actorUsername,
             String reason
     ) {
@@ -187,7 +143,7 @@ public class BorrowerOnboardingService {
                 "BORROWER",
                 existingBorrower == null ? null : existingBorrower.getId(),
                 CorrelationIdHolder.get(),
-                serializeBorrowerConflictContext(lsp, existingBorrower, command, actorUsername, reason)
+                serializeBorrowerConflictContext(lsp, existingBorrower, profile, actorUsername, reason)
         );
         throw new ApiConflictException(
                 "BORROWER_IDENTITY_CONFLICT",
@@ -198,7 +154,7 @@ public class BorrowerOnboardingService {
     private void raiseActiveLoanDuplicateIfPresent(
             Lsp lsp,
             Borrower existingBorrower,
-            LoanApplicationOnboardingCommand command,
+            BorrowerProfile profile,
             String actorUsername
     ) {
         if (existingBorrower == null) {
@@ -219,7 +175,7 @@ public class BorrowerOnboardingService {
                 "BORROWER",
                 existingBorrower.getId(),
                 CorrelationIdHolder.get(),
-                serializeActiveLoanDuplicateContext(lsp, existingBorrower, openLoans, command, actorUsername)
+                serializeActiveLoanDuplicateContext(lsp, existingBorrower, openLoans, profile, actorUsername)
         );
         throw new ApiConflictException(
                 "BORROWER_HAS_ACTIVE_LOAN",
@@ -231,15 +187,15 @@ public class BorrowerOnboardingService {
             Lsp lsp,
             Borrower existingBorrower,
             List<LoanAccount> openLoans,
-            LoanApplicationOnboardingCommand command,
+            BorrowerProfile profile,
             String actorUsername
     ) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("actorUsername", actorUsername);
         payload.put("incomingLspId", lsp == null ? null : lsp.getId());
         payload.put("incomingLspCode", lsp == null ? null : lsp.getCode());
-        payload.put("incomingPan", normalizePan(command.panNumber()));
-        payload.put("incomingMobile", normalizeMobile(command.mobileNumber()));
+        payload.put("incomingPan", profile.panNumber());
+        payload.put("incomingMobile", profile.mobileNumber());
         payload.put("borrowerId", existingBorrower.getId());
         payload.put("borrowerPan", existingBorrower.getPan());
         List<Map<String, Object>> loanEntries = new ArrayList<>(openLoans.size());
@@ -259,7 +215,7 @@ public class BorrowerOnboardingService {
     private String serializeBorrowerConflictContext(
             Lsp lsp,
             Borrower existingBorrower,
-            LoanApplicationOnboardingCommand command,
+            BorrowerProfile profile,
             String actorUsername,
             String reason
     ) {
@@ -268,10 +224,10 @@ public class BorrowerOnboardingService {
         payload.put("actorUsername", Strings.normalizeActor(actorUsername));
         payload.put("lspId", lsp.getId());
         payload.put("lspCode", lsp.getCode());
-        payload.put("incomingPan", normalizePan(command.panNumber()));
-        payload.put("incomingMobile", normalizeMobile(command.mobileNumber()));
-        payload.put("incomingAadhar", normalizeAadhar(command.aadharNumber()));
-        payload.put("incomingFullName", normalizeFullName(command.fullName()));
+        payload.put("incomingPan", profile.panNumber());
+        payload.put("incomingMobile", profile.mobileNumber());
+        payload.put("incomingAadhar", profile.aadharNumber());
+        payload.put("incomingFullName", profile.fullName());
         if (existingBorrower != null) {
             payload.put("existingBorrowerId", existingBorrower.getId());
             payload.put("existingPan", existingBorrower.getPan());

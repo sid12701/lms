@@ -3,6 +3,7 @@ package com.bhawana.lms.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.bhawana.lms.domain.Borrower;
+import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
@@ -146,15 +147,17 @@ class LoanApplicationReadRepositoryTest {
     ) {
         return borrowerRepository.save(new Borrower(
                 lsp,
-                fullName,
-                pan,
-                mobile,
-                email,
-                LocalDate.of(1992, 3, 10),
-                city,
-                state,
-                employmentType,
-                new BigDecimal("75000.00")
+                BorrowerProfile.builder()
+                        .fullName(fullName)
+                        .panNumber(pan)
+                        .mobileNumber(mobile)
+                        .emailAddress(email)
+                        .dateOfBirth(LocalDate.of(1992, 3, 10))
+                        .addressCity(city)
+                        .addressState(state)
+                        .employmentStatus(employmentType)
+                        .monthlyIncome(new BigDecimal("75000.00"))
+                        .build()
         ));
     }
 

@@ -55,7 +55,7 @@ Priorities: **P0** = correctness or contract risk now; P1 = structural debt that
 | **B2** | Sound but L-effort; do after B6 | **Partial** — ops + LSP controllers on focused services; detail reads moved to `LoanApplicationDetailAssembler`; facade retains disbursement + sub-resource lists |
 | **B3** | Sound but L-effort | **Partial (step 2)** — `BorrowerOnboardingService`, `LoanApplicationDocumentChecklistService`, `LoanWebhookPayloads`; lifecycle thinned (~450 lines removed); step 1 predicates retained |
 | **B4** | Sound; full 143-site sweep is M-effort | **Partial** — prior service sweep + `ApiClientManagementService` not-found → 404; remaining IAEs are intentional input validation (lifecycle, servicing, controllers) |
-| **B5** | Sound; sequence with B3 | **Deferred** |
+| **B5** | Sound; sequence with B3 | **✅ Done (2026-06-11)** — `BorrowerProfile` record + `BorrowerProfileMappers`; slim `LoanApplicationOnboardingCommand` (9 fields); `Borrower` uses profile constructors/merge; intake audit via `intakeAuditEntries()` |
 | **B6** | Sound; M-effort | **✅ Done (2026-06-12)** — `LoanApplicationDetailAssembler` + `LoanApplicationDetailView`; ops/LSP controllers + `LspLoanApiController`; pure `toDetailResponse(LoanApplicationDetailView)` |
 | **B7** | Sound; M-effort | **✅ Done (2026-06-12)** — `OpsAlertEmitters` + `AlertRuleEvaluationWorker`; alerts-cycle `@Lazy` removed; `LazyInjectionArchitectureTest` whitelists only lifecycle↔schedule + facade↔document until B2/B3 |
 | **B8** | Sound; depends on B7 step 1 | **✅ Done (2026-06-12)** — `AlertContextJson` + `ObjectMapper` in `OpsAlertEmitters` and `AlertRuleEvaluationWorker`; `escapeJson` removed |

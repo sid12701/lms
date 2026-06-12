@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.domain.Borrower;
+import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.BorrowerRepository;
@@ -137,22 +138,21 @@ class BorrowerAdminControllerTest {
     @Test
     void listBorrowersMasksAadharNumberOnTheWire() throws Exception {
         Borrower borrower = new Borrower(
-                "Anika Sharma",
-                "ABCDE1234F",
-                "9999999991",
-                "anika@example.com",
-                LocalDate.of(1994, 2, 14),
-                "F",
-                "SINGLE",
-                "Suresh Sharma",
-                "1234 5678 9012",
-                "Bengaluru",
-                "Karnataka",
-                null, null, null, null,
-                "SALARIED",
-                null, null, null, null, null,
-                new BigDecimal("85000.00"),
-                null, null, null, null, null, null, null
+                BorrowerProfile.builder()
+                        .fullName("Anika Sharma")
+                        .panNumber("ABCDE1234F")
+                        .mobileNumber("9999999991")
+                        .emailAddress("anika@example.com")
+                        .dateOfBirth(LocalDate.of(1994, 2, 14))
+                        .gender("F")
+                        .maritalStatus("SINGLE")
+                        .fatherName("Suresh Sharma")
+                        .aadharNumber("1234 5678 9012")
+                        .addressCity("Bengaluru")
+                        .addressState("Karnataka")
+                        .employmentStatus("SALARIED")
+                        .monthlyIncome(new BigDecimal("85000.00"))
+                        .build()
         );
         borrowerRepository.save(borrower);
 
@@ -231,18 +231,14 @@ class BorrowerAdminControllerTest {
             String state
     ) {
         Borrower borrower = new Borrower(
-                fullName,
-                pan,
-                mobile,
-                email,
-                null,
-                null, null, null, null,
-                city,
-                state,
-                null, null, null, null,
-                null,
-                null, null, null, null, null,
-                null, null, null, null, null, null, null, null
+                BorrowerProfile.builder()
+                        .fullName(fullName)
+                        .panNumber(pan)
+                        .mobileNumber(mobile)
+                        .emailAddress(email)
+                        .addressCity(city)
+                        .addressState(state)
+                        .build()
         );
         return borrowerRepository.save(borrower);
     }

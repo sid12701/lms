@@ -3,6 +3,7 @@ package com.bhawana.lms.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.bhawana.lms.domain.Borrower;
+import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
@@ -140,15 +141,17 @@ class LoanApplicationReadRepositoryPostgresTest extends PostgresDataJpaTestSuppo
     private Borrower borrower(Lsp lsp, String fullName, String pan, String mobile, String city) {
         return borrowerRepository.save(new Borrower(
                 lsp,
-                fullName,
-                pan,
-                mobile,
-                fullName.replace(' ', '.').toLowerCase() + "@example.com",
-                LocalDate.of(1992, 3, 10),
-                city,
-                "Maharashtra",
-                "SALARIED",
-                new BigDecimal("75000.00")
+                BorrowerProfile.builder()
+                        .fullName(fullName)
+                        .panNumber(pan)
+                        .mobileNumber(mobile)
+                        .emailAddress(fullName.replace(' ', '.').toLowerCase() + "@example.com")
+                        .dateOfBirth(LocalDate.of(1992, 3, 10))
+                        .addressCity(city)
+                        .addressState("Maharashtra")
+                        .employmentStatus("SALARIED")
+                        .monthlyIncome(new BigDecimal("75000.00"))
+                        .build()
         ));
     }
 
