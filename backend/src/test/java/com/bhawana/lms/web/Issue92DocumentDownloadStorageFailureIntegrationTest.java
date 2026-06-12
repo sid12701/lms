@@ -4,7 +4,7 @@ import com.bhawana.lms.common.web.DocumentStorageUnavailableException;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.service.FileSystemLoanDocumentStorageService;
-import com.bhawana.lms.service.LoanApplicationService;
+import com.bhawana.lms.service.LoanApplicationLifecycleService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -54,7 +54,7 @@ class Issue92DocumentDownloadStorageFailureIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private LoanApplicationService loanApplicationService;
+    private LoanApplicationLifecycleService loanApplicationLifecycleService;
 
     @Autowired
     private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
@@ -98,13 +98,13 @@ class Issue92DocumentDownloadStorageFailureIntegrationTest {
     }
 
     private String seedApplicationWithStoredPanCardMetadata() throws Exception {
-        return seedApplicationWithStoredPanCardMetadata(mockMvc, objectMapper, loanApplicationService);
+        return seedApplicationWithStoredPanCardMetadata(mockMvc, objectMapper, loanApplicationLifecycleService);
     }
 
     private static String seedApplicationWithStoredPanCardMetadata(
             MockMvc mockMvc,
             ObjectMapper objectMapper,
-            LoanApplicationService loanApplicationService
+            LoanApplicationLifecycleService loanApplicationLifecycleService
     ) throws Exception {
         LspFixture lsp = createLsp(mockMvc, objectMapper, "ACTIVE");
         ProductFixture product = createProduct(mockMvc, objectMapper, "ACTIVE");
@@ -124,7 +124,7 @@ class Issue92DocumentDownloadStorageFailureIntegrationTest {
 
         transitionApplication(mockMvc, objectMapper, applicationId, "AWAITING_APPROVAL", "Ready for storage failure test");
 
-        loanApplicationService.updateDocumentChecklistItem(
+        loanApplicationLifecycleService.updateDocumentChecklistItem(
                 applicationUuid,
                 LoanApplicationDocumentType.PAN_CARD,
                 "ops.user",
