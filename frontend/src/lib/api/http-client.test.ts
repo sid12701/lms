@@ -39,6 +39,33 @@ describe("http-client", () => {
     );
   });
 
+  it("parses typed 404 NOT_FOUND envelope", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: "NOT_FOUND",
+            message: "Unknown loan application id: 00000000-0000-0000-0000-000000000099",
+            status: 404,
+          }),
+          { status: 404, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    await expect(requestJson("/api/v1/internal/ops/loan-applications/missing")).rejects.toSatisfy(
+      (error: unknown) => {
+        expect(error).toBeInstanceOf(ApiError);
+        const apiError = error as ApiError;
+        expect(apiError.status).toBe(404);
+        expect(apiError.code).toBe("NOT_FOUND");
+        expect(apiError.message).toContain("Unknown loan application");
+        return true;
+      },
+    );
+  });
+
   it("refreshes and retries blob downloads after 401", async () => {
     const fetchMock = vi
       .fn()

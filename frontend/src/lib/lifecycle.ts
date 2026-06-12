@@ -294,6 +294,7 @@ const CORE_TRANSITIONS: TransitionRule[] = [
     allowedRoles: SYS_ADMIN,
     label: "Settle foreclosure",
     intent: "primary",
+    preconditions: requireFreshForeclosureQuote,
   },
 ];
 

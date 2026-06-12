@@ -19,6 +19,7 @@
     "test:cov": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "e2e": "playwright test",
+    "generate:api-types": "openapi-typescript ../openapi/openapi.json -o src/lib/api/generated/schema.ts",
     "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build",
     "prepare": "husky || true"
   },
@@ -79,6 +80,7 @@
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "lint-staged": "^16.4.0",
+    "openapi-typescript": "^7.6.1",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^4.3.0",

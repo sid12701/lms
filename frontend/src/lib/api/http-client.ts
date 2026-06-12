@@ -55,29 +55,27 @@ function buildUrl(path: string): string {
   return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+/** Spring {@code ApiError} envelope emitted by {@code GlobalExceptionHandler}. */
+type ApiErrorEnvelope = {
+  code?: string;
+  errorCode?: string;
+  error?: string;
+  message?: string;
+};
+
 function readResponseError(body: string): { message: string; code: string | null } {
   if (!body.trim()) return { message: "Request failed.", code: null };
   try {
-    const parsed = JSON.parse(body) as Record<string, unknown>;
-    const errors = Array.isArray(parsed.errors)
-      ? (parsed.errors as Array<Record<string, unknown>>)
-      : [];
-    const primary = errors[0];
-    let message = body;
-    if (typeof parsed.message === "string") message = parsed.message;
-    else if (typeof parsed.errorSource === "string") message = parsed.errorSource;
-    else if (typeof primary?.errorSource === "string") message = primary.errorSource as string;
-    else if (typeof parsed.error === "string") message = parsed.error;
-    else if (typeof parsed.detail === "string") message = parsed.detail;
-
-    let code: string | null = null;
-    if (typeof parsed.code === "string") code = parsed.code;
-    else if (typeof parsed.errorReason === "string") code = parsed.errorReason;
-    else if (typeof parsed.errorCode === "string") code = parsed.errorCode;
-    else if (typeof primary?.errorReason === "string") code = primary.errorReason as string;
-    else if (typeof primary?.errorCode === "string") code = primary.errorCode as string;
-    else if (typeof parsed.error === "string") code = parsed.error;
-
+    const parsed = JSON.parse(body) as ApiErrorEnvelope;
+    const code =
+      (typeof parsed.code === "string" && parsed.code) ||
+      (typeof parsed.errorCode === "string" && parsed.errorCode) ||
+      (typeof parsed.error === "string" && parsed.error) ||
+      null;
+    const message =
+      (typeof parsed.message === "string" && parsed.message) ||
+      (typeof parsed.error === "string" && parsed.error) ||
+      body;
     return { message, code };
   } catch {
     return { message: body, code: null };
