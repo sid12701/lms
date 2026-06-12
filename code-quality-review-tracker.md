@@ -52,7 +52,7 @@ Priorities: **P0** = correctness or contract risk now; P1 = structural debt that
 | ID | Review | Outcome |
 |----|--------|---------|
 | **B1** | Sound; P0 correctness | **Implemented** — single generator in `LoanRepaymentScheduleService.generateIfAbsent`; duplicate removed from lifecycle |
-| **B2** | Sound but L-effort; do after B6 | **Partial** — ops + LSP controllers on focused services; detail reads moved to `LoanApplicationDetailAssembler`; facade retains disbursement + sub-resource lists |
+| **B2** | Sound but L-effort; do after B6 | **Partial (2026-06-12)** — `LoanDisbursementCommandService`, `LoanApplicationServicingReadService`, `LoanDelinquencySupport`; ops off facade; facade is thin delegator (delete when seed/tests migrate) |
 | **B3** | Sound but L-effort | **Partial (step 2)** — `BorrowerOnboardingService`, `LoanApplicationDocumentChecklistService`, `LoanWebhookPayloads`; lifecycle thinned (~450 lines removed); step 1 predicates retained |
 | **B4** | Sound; full 143-site sweep is M-effort | **Partial** — prior service sweep + `ApiClientManagementService` not-found → 404; remaining IAEs are intentional input validation (lifecycle, servicing, controllers) |
 | **B5** | Sound; sequence with B3 | **✅ Done (2026-06-11)** — `BorrowerProfile` record + `BorrowerProfileMappers`; slim `LoanApplicationOnboardingCommand` (9 fields); `Borrower` uses profile constructors/merge; intake audit via `intakeAuditEntries()` |
