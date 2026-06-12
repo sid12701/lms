@@ -52,18 +52,18 @@ Priorities: **P0** = correctness or contract risk now; P1 = structural debt that
 | ID | Review | Outcome |
 |----|--------|---------|
 | **B1** | Sound; P0 correctness | **Implemented** — single generator in `LoanRepaymentScheduleService.generateIfAbsent`; duplicate removed from lifecycle |
-| **B2** | Sound but L-effort; do after B6 | **Partial (2026-06-12)** — `LoanDisbursementCommandService`, `LoanApplicationServicingReadService`, `LoanDelinquencySupport`; ops off facade; facade is thin delegator (delete when seed/tests migrate) |
+| **B2** | Sound but L-effort; do after B6 | **✅ Done (2026-06-12)** — facade deleted; `LoanDisbursementCommandService`, `LoanApplicationServicingReadService`, `LoanDelinquencySupport`; seed + document-download tests on focused services |
 | **B3** | Sound but L-effort | **Partial (step 2)** — `BorrowerOnboardingService`, `LoanApplicationDocumentChecklistService`, `LoanWebhookPayloads`; lifecycle thinned (~450 lines removed); step 1 predicates retained |
 | **B4** | Sound; full 143-site sweep is M-effort | **Partial** — prior service sweep + `ApiClientManagementService` not-found → 404; remaining IAEs are intentional input validation (lifecycle, servicing, controllers) |
 | **B5** | Sound; sequence with B3 | **✅ Done (2026-06-11)** — `BorrowerProfile` record + `BorrowerProfileMappers`; slim `LoanApplicationOnboardingCommand` (9 fields); `Borrower` uses profile constructors/merge; intake audit via `intakeAuditEntries()` |
 | **B6** | Sound; M-effort | **✅ Done (2026-06-12)** — `LoanApplicationDetailAssembler` + `LoanApplicationDetailView`; ops/LSP controllers + `LspLoanApiController`; pure `toDetailResponse(LoanApplicationDetailView)` |
-| **B7** | Sound; M-effort | **✅ Done (2026-06-12)** — `OpsAlertEmitters` + `AlertRuleEvaluationWorker`; alerts-cycle `@Lazy` removed; `LazyInjectionArchitectureTest` whitelists only lifecycle↔schedule + facade↔document until B2/B3 |
+| **B7** | Sound; M-effort | **✅ Done (2026-06-12)** — `OpsAlertEmitters` + `AlertRuleEvaluationWorker`; alerts-cycle `@Lazy` removed; `LazyInjectionArchitectureTest` whitelists only lifecycle↔schedule until B3 step 3 |
 | **B8** | Sound; depends on B7 step 1 | **✅ Done (2026-06-12)** — `AlertContextJson` + `ObjectMapper` in `OpsAlertEmitters` and `AlertRuleEvaluationWorker`; `escapeJson` removed |
 | **B9** | Sound; mechanical M | **✅ Done (2026-06-12)** — `AdminDirectoryService` → `LspDirectoryService`, `UserAdminService`, `BorrowerDirectoryService` |
 | **B10** | Sound; M-effort | **✅ Done (2026-06-12)** — `AuthTokenService` + `RefreshCookieFactory`; `AuthController` thinned |
 | **B11** | Sound; partner contract isolation | **Implemented** — LSP DTOs; excludes `storageKey`/`fileChecksum` |
 | **B12** | Sound; complementary to `AuthenticationTenantScopeFilter` | **✅ Done (2026-06-11)** — `runAsAdmin(Supplier)`; manual snapshot/restore removed from `LspLoanApplicationApiController.doCreateApplication`; escalation moves to `BorrowerOnboardingService` with B3 |
-| **B13** | Sound; mechanical S | **✅ Done (2026-06-11)** — `common/util/Strings`, `common/money/Money`; copies replaced in lifecycle, facade, servicing, query, schedule, admin directory, LSP controller |
+| **B13** | Sound; mechanical S | **✅ Done (2026-06-11)** — `common/util/Strings`, `common/money/Money`; copies replaced in lifecycle, servicing, query, schedule, admin directory, LSP controller |
 | **B14** | Sound; quick wins | **Implemented** — `@PreAuthorize` on status transition; dead param removed; identity wrapper inlined |
 | **B15** | Sound; S-effort | **✅ Done (2026-06-11)** — `BusinessCalendar` + `Clock` fixed to `Asia/Kolkata`; IST midnight boundary tests |
 | **F1** | Sound; L-effort P0 | **Implemented** — canonical 10-status module; TRANSITIONS ⊆ backend matrix; removed legacy mappers; `UNKNOWN:*` badges |
@@ -85,7 +85,7 @@ The review was asked to verify the machine-generated reports before trusting the
 | Claim | Verdict |
 |-------|---------|
 | God node `LoanApplicationLifecycleService` (64 edges) | **Valid.** 1,455 lines, ≥5 tangled responsibilities — see B3. |
-| God node `LoanApplicationService` (59 edges) | **Valid but mis-framed.** It is highly connected because it is a pass-through facade, not a core abstraction — see B2. |
+| God node `LoanApplicationService` (59 edges) | **Resolved (B2, 2026-06-12).** Facade deleted; regenerate graph (`graphify update .`) to drop from god-node report. |
 | God nodes `of()` (273 edges), `toString()` (182 edges) | **Noise.** Generic Java method names aggregated across unrelated classes; not abstractions. Ignore. |
 | God node `requestJson()` (115 edges) | **Valid.** It is the single frontend HTTP transport (`frontend/src/lib/api/http-client.ts:116`) — appropriately central, and in good shape (one defect, see F3). |
 | God node `dispatch()` (69 edges) | **Stale.** No `dispatch` function exists anywhere in `frontend/src` today; it lived in the deleted mocks layer / `frontend-2`. |
@@ -131,11 +131,13 @@ The review was asked to verify the machine-generated reports before trusting the
 
 ---
 
-## <a id="b2"></a>B2 — `LoanApplicationService`: a 1,172-line identity facade · P1 · Partial (2026-06-12)
+## <a id="b2"></a>B2 — `LoanApplicationService`: a 1,172-line identity facade · P1 · ✅ Done (2026-06-12)
 
 **Session outcome (A1+A4):** LSP controllers call focused services directly (query/lifecycle/servicing/repayment/document/foreclosure). `recordPaymentTransactionWithRecovery` moved to `LoanRepaymentCommandService`.
 
-**Session outcome (2026-06-12):** `LoanDisbursementCommandService` owns initiate/mock-outcome; `LoanApplicationServicingReadService` owns per-application reads + document-access audit; `LoanDelinquencySupport` + top-level view records replace inner facade types. `LoanApplicationOpsController` injects servicing-read, disbursement-command, repayment-command directly. Facade shrunk to pure delegation (~500 lines, 8 deps, no `@Lazy`). `LoanDocumentService` no longer depends on facade. **Next:** repoint `LocalDemoPortfolioSeedService` + delete facade when call sites are zero.
+**Session outcome (2026-06-12, step 1):** `LoanDisbursementCommandService` owns initiate/mock-outcome; `LoanApplicationServicingReadService` owns per-application reads + document-access audit; `LoanDelinquencySupport` + top-level view records replace inner facade types. `LoanApplicationOpsController` injects servicing-read, disbursement-command, repayment-command directly. Facade shrunk to pure delegation (~500 lines, 8 deps, no `@Lazy`). `LoanDocumentService` no longer depends on facade.
+
+**Session outcome (2026-06-12, step 2 — end state):** `LoanApplicationService` deleted (zero backend references). `LocalDemoPortfolioSeedService` injects lifecycle, query, servicing-read, disbursement-command, repayment-command, foreclosure-command. Document-download integration tests inject `LoanApplicationServicingReadService` / lifecycle directly. Closes tracker mapping to GitHub #99 (facade) and the B2 slice of #98 (god classes).
 
 **Problem (plain English):** The class was correctly decomposed at some point — `LoanApplicationQueryService`, `LoanApplicationLifecycleService`, `LoanRepaymentCommandService`, `LoanForeclosureCommandService`, `LoanDocumentService`, `LoanAutoApprovalGateService` all exist — but the old god class was kept alive as a forwarding layer so callers didn't have to change. Roughly half its methods are one-line delegations.
 
@@ -251,11 +253,11 @@ The review was asked to verify the machine-generated reports before trusting the
 
 ## <a id="b7"></a>B7 — Circular dependencies behind `@Lazy` · P1 · ✅ Done (2026-06-12)
 
-**Session outcome:** `OpsAlertEmitters` (ad-hoc emission) + `AlertRuleEvaluationWorker` (scheduled `evaluate*` + `listRules`); alerts-cycle `@Lazy` removed. `LazyInjectionArchitectureTest` blocks new `@Lazy` constructor injection; only `LoanApplicationLifecycleService` ↔ schedule and `LoanApplicationService` ↔ document remain until B3/B2.
+**Session outcome:** `OpsAlertEmitters` (ad-hoc emission) + `AlertRuleEvaluationWorker` (scheduled `evaluate*` + `listRules`); alerts-cycle `@Lazy` removed. Facade↔document `@Lazy` removed with B2 facade deletion. `LazyInjectionArchitectureTest` blocks new `@Lazy` constructor injection; only `LoanApplicationLifecycleService` ↔ schedule remains until B3 step 3.
 
 **Problem (plain English):** Four injection sites use `@Lazy` to break dependency cycles instead of fixing the shape that created them.
 
-**Evidence (grep-verified, post step 1):** `LoanApplicationLifecycleService` (`@Lazy LoanRepaymentScheduleService`), `LoanApplicationService` (`@Lazy LoanDocumentService`). Alerts-cycle `@Lazy` sites removed.
+**Evidence (grep-verified, post B2):** `LoanApplicationLifecycleService` (`@Lazy LoanRepaymentScheduleService`) only. Alerts-cycle and facade↔document `@Lazy` sites removed.
 
 **Why:** The lifecycle↔alerts cycle exists because `AlertRuleEvaluationService` is two things in one class (see its structure: scheduled `evaluate*` rules at lines 350–646 *and* ad-hoc `emit*` helpers at 110–344 that domain services call). Domain services need the emitters; the evaluator needs domain repositories; fusing them creates the cycle. `@Lazy` hides it and leaves a runtime-proxy landmine (lazy beans fail at first use, not at startup).
 
@@ -263,7 +265,7 @@ The review was asked to verify the machine-generated reports before trusting the
 
 **Detailed solution:**
 1. Split `AlertRuleEvaluationService` (688 lines) into `OpsAlertEmitters` (the 9 `emit*` methods — depends only on `OpsAlertService` + `ObjectMapper`) and `AlertRuleEvaluationWorker` (the scheduled `evaluate*` rules + rule bookkeeping). Domain services inject `OpsAlertEmitters`; the cycle and the `@Lazy` disappear.
-2. `LoanApplicationService`'s `@Lazy LoanDocumentService` dissolves with B2 (the facade dies; `LoanDocumentService` calls the focused services directly).
+2. ~~`LoanApplicationService`'s `@Lazy LoanDocumentService`~~ — **done (B2):** facade deleted; `LoanDocumentService` calls focused services directly.
 3. Audit the remaining two the same way; for `WebhookOutboxDispatchExecutor` the usual fix is extracting the shared lower-level dependency rather than lazy-injecting the peer.
 4. Add ArchUnit (already feasible — tests use JUnit 5) rule: no `@Lazy` on constructor parameters; cycles fail the build.
 
