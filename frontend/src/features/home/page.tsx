@@ -55,7 +55,7 @@ export function HomePage() {
         description="Operational summary across all LSPs — applications, repayments, alerts."
       />
 
-      {query.isPending ? (
+      {query.isPending && query.data === undefined ? (
         <HomeLoadingSkeleton />
       ) : query.isError && isUnauthorizedApiError(query.error) ? (
         <EmptyState

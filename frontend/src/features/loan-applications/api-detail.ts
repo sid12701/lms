@@ -19,10 +19,13 @@ import { loadStoredSession } from "@/lib/api/session-storage";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import type {
   InitiateDisbursementInput,
+  ExecuteForeclosureQuoteInput,
   LoanApplicationActivityResponse,
   LoanApplicationDetail,
+  LoanForeclosureQuote,
   LoanApplicationWebhookDelivery,
   LoanApplicationWebhooksResponse,
+  RequestForeclosureQuoteInput,
   TransitionStatusInput,
 } from "./types";
 import type { ApplicationAuditEvent, LoanApplication } from "@/types";
@@ -45,12 +48,47 @@ export interface DisbursementResponse {
   events: readonly ApplicationAuditEvent[];
 }
 
+interface BackendLoanForeclosureQuoteResponse {
+  id?: string;
+  loanAccountId?: string;
+  version?: number;
+  requestedByUsername?: string;
+  executedByUsername?: string;
+  effectiveDate?: string;
+  outstandingPrincipal?: number;
+  outstandingInterest?: number;
+  settlementAmount?: number;
+  status?: string;
+  executedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 function toAmount(value: number | null | undefined): number {
   return value ?? 0;
 }
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function toForeclosureQuote(row: BackendLoanForeclosureQuoteResponse): LoanForeclosureQuote {
+  const createdAt = row.createdAt ?? nowIso();
+  return {
+    id: row.id ?? "",
+    loanAccountId: row.loanAccountId ?? "",
+    version: row.version ?? 0,
+    requestedByUsername: row.requestedByUsername ?? null,
+    executedByUsername: row.executedByUsername ?? null,
+    effectiveDate: row.effectiveDate ?? createdAt.slice(0, 10),
+    outstandingPrincipal: toAmount(row.outstandingPrincipal),
+    outstandingInterest: toAmount(row.outstandingInterest),
+    settlementAmount: toAmount(row.settlementAmount),
+    status: row.status ?? "UNKNOWN",
+    executedAt: row.executedAt ?? null,
+    createdAt,
+    updatedAt: row.updatedAt ?? createdAt,
+  };
 }
 
 function safeChannel(value: string | null | undefined): "UI" | "API" | "WEBHOOK" {
@@ -307,6 +345,45 @@ export async function fetchLoanApplicationWebhooks(
     `${BACKEND_BASE}/${encodeURIComponent(id)}/webhook-events`,
   );
   return { deliveries: rows.map(toWebhookDelivery) };
+}
+
+export async function fetchForeclosureQuotes(id: string): Promise<readonly LoanForeclosureQuote[]> {
+  const rows = await requestJson<BackendLoanForeclosureQuoteResponse[]>(
+    `${BACKEND_BASE}/${encodeURIComponent(id)}/foreclosure-quotes`,
+    {},
+    { dedupe: false },
+  );
+  return rows.map(toForeclosureQuote);
+}
+
+export async function requestForeclosureQuote(
+  id: string,
+  input: RequestForeclosureQuoteInput,
+): Promise<LoanForeclosureQuote> {
+  const row = await requestJson<BackendLoanForeclosureQuoteResponse>(
+    `${BACKEND_BASE}/${encodeURIComponent(id)}/foreclosure-quotes`,
+    { method: "POST", body: JSON.stringify({ effectiveDate: input.effectiveDate }) },
+  );
+  return toForeclosureQuote(row);
+}
+
+export async function executeForeclosureQuote(
+  id: string,
+  input: ExecuteForeclosureQuoteInput,
+): Promise<LoanForeclosureQuote> {
+  const row = await requestJson<BackendLoanForeclosureQuoteResponse>(
+    `${BACKEND_BASE}/${encodeURIComponent(id)}/foreclosure-quotes/${encodeURIComponent(input.quoteId)}/execute`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        settlementDate: input.settlementDate,
+        reference: input.reference,
+        note: input.note ?? undefined,
+      }),
+    },
+    { idempotencyKey: input.idempotencyKey },
+  );
+  return toForeclosureQuote(row);
 }
 
 function synthesiseTransitionEvent(

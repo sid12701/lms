@@ -5,7 +5,7 @@ import { MemoryRouter, Routes, Route, Navigate } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "@/features/auth/session-context";
 import { LandingRedirect } from "./landing-redirect";
-import { RequireAuth, RequireInternal, RequireLsp } from "./guards";
+import { RequireAuth, RequireInternal, RequireLsp, RequireRole } from "./guards";
 import { defaultLandingFor } from "@/lib/role-gates";
 import type { Session } from "@/features/auth/session-types";
 import {
@@ -57,7 +57,7 @@ describe("route smoke tests", () => {
       "/",
       <Routes>
         <Route path="/" element={<LandingRedirect />} />
-        <Route path="/my-loans" element={<div data-testid="my-loans">my loans</div>} />
+        <Route path="/my-loans" element={<div data-testid="my-loans">Loan applications</div>} />
       </Routes>,
     );
     expect(screen.getByTestId("my-loans")).toBeInTheDocument();
@@ -83,7 +83,7 @@ describe("route smoke tests", () => {
     expect(screen.getByTestId("cp")).toBeInTheDocument();
   });
 
-  it("RequireInternal redirects an LSP user to their default landing", () => {
+  it("RequireInternal shows a permission explanation for an LSP user (NAV-02)", () => {
     renderWithSession(
       lspReadSession,
       "/loan-applications",
@@ -96,13 +96,15 @@ describe("route smoke tests", () => {
             </RequireInternal>
           }
         />
-        <Route path="/my-loans" element={<div data-testid="my-loans">my loans</div>} />
+        <Route path="/my-loans" element={<div data-testid="my-loans">Loan applications</div>} />
       </Routes>,
     );
-    expect(screen.getByTestId("my-loans")).toBeInTheDocument();
+    expect(screen.getByText("Internal workspace only")).toBeInTheDocument();
+    expect(screen.queryByTestId("apps")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("my-loans")).not.toBeInTheDocument();
   });
 
-  it("RequireLsp redirects SYSTEM_ADMIN to /home (Gap #8 default landing)", () => {
+  it("RequireLsp shows a permission explanation for SYSTEM_ADMIN (NAV-02)", () => {
     renderWithSession(
       adminSession,
       "/my-loans",
@@ -111,17 +113,19 @@ describe("route smoke tests", () => {
           path="/my-loans"
           element={
             <RequireLsp>
-              <div data-testid="my-loans">my loans</div>
+              <div data-testid="my-loans">Loan applications</div>
             </RequireLsp>
           }
         />
         <Route path="/home" element={<div data-testid="home">home</div>} />
       </Routes>,
     );
-    expect(screen.getByTestId("home")).toBeInTheDocument();
+    expect(screen.getByText("LSP workspace only")).toBeInTheDocument();
+    expect(screen.queryByTestId("my-loans")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("home")).not.toBeInTheDocument();
   });
 
-  it("RequireLsp redirects OPS_USER to /loan-applications (Gap #8)", () => {
+  it("RequireLsp shows a permission explanation for OPS_USER (NAV-02)", () => {
     const opsSession: Session = {
       user: {
         id: TEST_OPS_USER_ID,
@@ -141,7 +145,7 @@ describe("route smoke tests", () => {
           path="/my-loans"
           element={
             <RequireLsp>
-              <div data-testid="my-loans">my loans</div>
+              <div data-testid="my-loans">Loan applications</div>
             </RequireLsp>
           }
         />
@@ -151,7 +155,39 @@ describe("route smoke tests", () => {
         />
       </Routes>,
     );
-    expect(screen.getByTestId("loan-applications")).toBeInTheDocument();
+    expect(screen.getByText("LSP workspace only")).toBeInTheDocument();
+    expect(screen.queryByTestId("my-loans")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("loan-applications")).not.toBeInTheDocument();
+  });
+
+  it("RequireRole denies PRODUCT_ADMIN from ops-only workspaces", () => {
+    const productSession: Session = {
+      user: {
+        id: "aaaaaaaa-3333-4aaa-8aaa-aaaaaaaaaaaa",
+        username: "product.owner",
+        role: "PRODUCT_ADMIN",
+        lspId: null,
+        mustChangePassword: false,
+      },
+      accessToken: "mock.token",
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    };
+    renderWithSession(
+      productSession,
+      "/loan-applications",
+      <Routes>
+        <Route
+          path="/loan-applications"
+          element={
+            <RequireRole roles={["SYSTEM_ADMIN", "OPS_USER"]}>
+              <div data-testid="loan-applications">apps</div>
+            </RequireRole>
+          }
+        />
+      </Routes>,
+    );
+    expect(screen.getByText("You don't have access to this page")).toBeInTheDocument();
+    expect(screen.queryByTestId("loan-applications")).not.toBeInTheDocument();
   });
 
   it("createAppRouter compiles the route tree without throwing", async () => {

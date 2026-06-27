@@ -19,6 +19,8 @@ import { DataTable } from "@/components/app/data/DataTable";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { TableSkeleton } from "@/components/app/feedback/Skeletons";
+import { isNotFoundApiError } from "@/lib/api/api-errors";
+import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { formatDateTime, formatINR, formatRelative } from "@/lib/format";
 import type { PaymentTransaction } from "@/types";
 import { useLoanApplicationRepayments } from "../../hooks/useLoanApplicationRepayments";
@@ -102,10 +104,21 @@ export function RepaymentsTab({ applicationId }: RepaymentsTabProps) {
     return <TableSkeleton rows={5} cols={6} />;
   }
   if (query.isError) {
+    if (isNotFoundApiError(query.error)) {
+      // No loan account exists yet (e.g. still awaiting approval) — an
+      // expected pre-disbursement state, not a failure.
+      return (
+        <EmptyState
+          icon={Receipt}
+          title="No repayments yet"
+          description="Repayments become available once the loan is disbursed."
+        />
+      );
+    }
     return (
       <ErrorState
         title="Couldn't load repayments"
-        description={query.error instanceof Error ? query.error.message : undefined}
+        description={mapApiErrorMessage(query.error, "Please try again.")}
         retry={{ onClick: () => void query.refetch() }}
       />
     );

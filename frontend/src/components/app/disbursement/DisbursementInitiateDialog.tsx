@@ -23,7 +23,7 @@ import { TABULAR_ATTR } from "@/lib/tabular-nums";
 import { DisbursementInitiateSchema, type DisbursementInitiateValues } from "./schema";
 
 export interface DisbursementTarget {
-  /** Raw account number â€” masked for display via `maskAccount`. */
+  /** Raw account number — masked for display via `maskAccount`. */
   accountNumber: string;
   ifsc: string;
   beneficiaryName: string;
@@ -41,7 +41,7 @@ export interface DisbursementInitiateDialogProps {
     /** Fresh BR-5 idempotency key minted at submit time. */
     idempotencyKey: string;
   }) => Promise<void> | void;
-  /** Disables submit + flips the button to a "Initiatingâ€¦" state. */
+  /** Disables submit + flips the button to a "Initiating…" state. */
   loading?: boolean;
 }
 
@@ -51,7 +51,7 @@ export interface DisbursementInitiateDialogProps {
  * block so the operator visually verifies bank details before initiating.
  *
  * BR-5: a fresh idempotency key is minted on every submit and forwarded to the
- * caller â€” the page-level handler passes it to the backend.
+ * caller — the page-level handler passes it to the backend.
  */
 export function DisbursementInitiateDialog({
   open,
@@ -150,7 +150,7 @@ export function DisbursementInitiateDialog({
             loading={loading}
             onCancel={() => onOpenChange(false)}
             submitLabel="Initiate disbursement"
-            loadingLabel="Initiatingâ€¦"
+            loadingLabel="Initiating…"
           />
         </FormShell>
       </DialogContent>

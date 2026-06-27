@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDensity } from "@/app/providers";
+import { DataTableMobileCards } from "@/components/app/data/DataTableMobileCards";
+import { useMediaQuery } from "@/lib/hooks/use-media-query";
 import { TABULAR_ATTR } from "@/lib/tabular-nums";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +40,8 @@ declare module "@tanstack/react-table" {
     numeric?: boolean;
     /** Display label used by `DataTableViewOptions` toggle list. */
     label?: string;
+    /** Mobile card layout slot (see `DataTableMobileCards`). */
+    mobileCard?: "primary" | "secondary" | "actions";
   }
 }
 
@@ -97,6 +101,8 @@ export interface DataTableProps<TData, TValue> {
   manualSorting?: boolean;
   /** Optional caption rendered for screen readers. */
   ariaLabel?: string;
+  /** At mobile widths, render stacked cards instead of a wide table. */
+  responsiveCards?: boolean;
   /** Header className override. */
   headerClassName?: string;
   className?: string;
@@ -124,11 +130,14 @@ export function DataTable<TData, TValue>({
   getRowAriaLabel,
   manualSorting = false,
   ariaLabel,
+  responsiveCards = true,
   headerClassName,
   className,
 }: DataTableProps<TData, TValue>) {
   const densityCtx = useDensity();
   const density = densityProp ?? densityCtx.density;
+  const isMobile = useMediaQuery("(max-width: 767px)");
+  const showMobileCards = responsiveCards && isMobile;
 
   const sorting = state?.sorting;
   const columnFilters = state?.columnFilters;
@@ -201,6 +210,22 @@ export function DataTable<TData, TValue>({
   const cellPad = density === "compact" ? "px-2.5 py-1.5" : "px-3 py-3";
   const headPad = density === "compact" ? "h-8 px-2.5" : "h-10 px-3";
   const visibleColumnCount = useMemo(() => table.getVisibleLeafColumns().length, [table]);
+
+  if (showMobileCards) {
+    return (
+      <DataTableMobileCards
+        table={table}
+        density={density}
+        loading={loading}
+        skeletonRows={skeletonRows}
+        empty={empty}
+        getRowAction={getRowAction}
+        getRowTestId={getRowTestId}
+        getRowAriaLabel={getRowAriaLabel}
+        className={className}
+      />
+    );
+  }
 
   return (
     <div

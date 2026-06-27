@@ -1,6 +1,7 @@
 import { useId, useMemo } from "react";
 import { X } from "lucide-react";
 import { MultiSelectChip } from "@/components/app/data/MultiSelectChip";
+import { DatePickerField } from "@/components/app/data/DatePickerField";
 import { FilterBarShell } from "@/components/app/data/FilterBarShell";
 import { Button } from "@/components/ui/button";
 import type { Role } from "@/types";
@@ -57,9 +58,7 @@ function isFilterActive(value: AuditFilterValue): boolean {
  * full next snapshot — no partial events — so consumers can persist or
  * sync to URL state without diffing.
  *
- * Date inputs are native `<input type="date">` for v1; Phase 7 will swap
- * them for the shadcn `Calendar` primitive once the date-range component
- * lands.
+ * Date filters use the shared dd/MM/yyyy picker.
  */
 export function AuditFilterBar({
   value,
@@ -120,35 +119,35 @@ export function AuditFilterBar({
       />
 
       <div className="flex items-center gap-1.5">
-        <label
-          htmlFor={fromId}
+        <span
+          id={fromId}
           className="text-foreground-muted text-xs font-medium tracking-wide uppercase"
         >
           From
-        </label>
-        <input
+        </span>
+        <DatePickerField
           id={fromId}
-          type="date"
-          data-slot="audit-filter-from"
-          value={value.fromDate ?? ""}
-          onChange={(e) => handleFromChange(e.target.value)}
-          className="border-border bg-surface text-foreground h-8 rounded-md border px-2 text-xs tabular-nums"
+          value={value.fromDate ?? undefined}
+          onChange={(next) => handleFromChange(next ?? "")}
+          ariaLabel="Audit from date"
+          dataSlot="audit-filter-from"
+          className="w-36"
         />
       </div>
       <div className="flex items-center gap-1.5">
-        <label
-          htmlFor={toId}
+        <span
+          id={toId}
           className="text-foreground-muted text-xs font-medium tracking-wide uppercase"
         >
           To
-        </label>
-        <input
+        </span>
+        <DatePickerField
           id={toId}
-          type="date"
-          data-slot="audit-filter-to"
-          value={value.toDate ?? ""}
-          onChange={(e) => handleToChange(e.target.value)}
-          className="border-border bg-surface text-foreground h-8 rounded-md border px-2 text-xs tabular-nums"
+          value={value.toDate ?? undefined}
+          onChange={(next) => handleToChange(next ?? "")}
+          ariaLabel="Audit to date"
+          dataSlot="audit-filter-to"
+          className="w-36"
         />
       </div>
 

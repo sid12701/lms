@@ -1,15 +1,17 @@
 import type { ReactElement, ReactNode } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "@/features/auth/use-session";
-import { isInternalUser, isLspUiUser, defaultLandingFor } from "@/lib/role-gates";
+import { defaultLandingFor, isInternalUser, isLspUiUser } from "@/lib/role-gates";
+import { formatPermissionDeniedDescription } from "@/lib/api/user-messages";
 import { PermissionDeniedState } from "@/components/app/feedback/PermissionDeniedState";
+import { RouteFallback } from "@/routes/route-fallback";
 import type { Role } from "@/types";
 
 /** Redirect to /login when there is no session. */
 export function RequireAuth({ children }: { children: ReactNode }): ReactElement {
   const { session, isLoading } = useSession();
   const location = useLocation();
-  if (isLoading) return <div aria-busy="true" />;
+  if (isLoading) return <RouteFallback />;
   if (!session) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
@@ -19,22 +21,65 @@ export function RequireAuth({ children }: { children: ReactNode }): ReactElement
   return <>{children}</>;
 }
 
-/** Internal-only routes. Redirects LSP users to their default landing. */
+/**
+ * 403 surface shown when a signed-in user lands on a route their role can't
+ * access. Always offers the same "go to your home" / "go back" escape hatches;
+ * callers vary only the wording and the allow-list used to explain the gate.
+ */
+function PermissionDeniedRoute({
+  title,
+  currentRole,
+  allowedRoles,
+  actionLabel,
+}: {
+  title: string;
+  currentRole: Role;
+  allowedRoles: readonly string[];
+  actionLabel: string;
+}): ReactElement {
+  const navigate = useNavigate();
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center p-6">
+      <PermissionDeniedState
+        title={title}
+        description={formatPermissionDeniedDescription(currentRole, allowedRoles)}
+        action={{ label: actionLabel, onClick: () => navigate(defaultLandingFor(currentRole)) }}
+        secondaryAction={{ label: "Go back", onClick: () => navigate(-1) }}
+      />
+    </div>
+  );
+}
+
+/** Internal-only routes. LSP users see a permission explanation. */
 export function RequireInternal({ children }: { children: ReactNode }): ReactElement {
   const { session } = useSession();
   if (!session) return <Navigate to="/login" replace />;
   if (!isInternalUser(session.user.role)) {
-    return <Navigate to={defaultLandingFor(session.user.role)} replace />;
+    return (
+      <PermissionDeniedRoute
+        title="Internal workspace only"
+        currentRole={session.user.role}
+        allowedRoles={["SYSTEM_ADMIN", "OPS_USER", "PRODUCT_ADMIN"]}
+        actionLabel="Go to loan applications"
+      />
+    );
   }
   return <>{children}</>;
 }
 
-/** LSP-only routes. Redirects internal users to their default landing. */
+/** LSP-only routes. Internal users see a permission explanation. */
 export function RequireLsp({ children }: { children: ReactNode }): ReactElement {
   const { session } = useSession();
   if (!session) return <Navigate to="/login" replace />;
   if (!isLspUiUser(session.user.role)) {
-    return <Navigate to={defaultLandingFor(session.user.role)} replace />;
+    return (
+      <PermissionDeniedRoute
+        title="LSP workspace only"
+        currentRole={session.user.role}
+        allowedRoles={["LSP_UI_READ", "LSP_UI_WRITE"]}
+        actionLabel="Go to workspace home"
+      />
+    );
   }
   return <>{children}</>;
 }
@@ -50,12 +95,12 @@ export function RequireRole({ roles, children }: RequireRoleProps): ReactElement
   if (!session) return <Navigate to="/login" replace />;
   if (!roles.includes(session.user.role)) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center p-6">
-        <PermissionDeniedState
-          currentRole={session.user.role}
-          missingPermission={roles.join(" or ")}
-        />
-      </div>
+      <PermissionDeniedRoute
+        title="You don't have access to this page"
+        currentRole={session.user.role}
+        allowedRoles={roles}
+        actionLabel="Go to your home"
+      />
     );
   }
   return <>{children}</>;

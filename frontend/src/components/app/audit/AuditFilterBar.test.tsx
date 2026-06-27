@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { renderWithProviders } from "@/test/utils";
+import { clearDateField, pickDateInField } from "@/test/date-picker";
 import { AuditFilterBar } from "./AuditFilterBar";
 import { EMPTY_AUDIT_FILTER, type AuditFilterValue } from "./types";
 
@@ -54,15 +55,11 @@ describe("AuditFilterBar", () => {
   }, 15_000);
 
   it("emits a fromDate when the From input changes, null when cleared", async () => {
-    const { onChange, container, rerender } = setup();
-    const input = container.querySelector(
-      '[data-slot="audit-filter-from"]',
-    ) as HTMLInputElement | null;
-    expect(input).not.toBeNull();
-    await userEvent.type(input!, "2026-05-01");
-    // userEvent.type fires per-character; assert the final composed value.
+    const user = userEvent.setup();
+    const { onChange, rerender } = setup();
+    await pickDateInField(user, /Audit from date/i, "2026-05-01");
     const lastCall = onChange.mock.calls.at(-1);
-    expect(lastCall?.[0].fromDate).not.toBeNull();
+    expect(lastCall?.[0].fromDate).toBe("2026-05-01");
 
     onChange.mockClear();
     rerender(
@@ -71,17 +68,16 @@ describe("AuditFilterBar", () => {
         onChange={onChange}
       />,
     );
-    const input2 = container.querySelector('[data-slot="audit-filter-from"]') as HTMLInputElement;
-    await userEvent.clear(input2);
+    await clearDateField(user, /Clear Audit from date/i);
     expect(onChange).toHaveBeenLastCalledWith({ ...EMPTY_AUDIT_FILTER, fromDate: null });
   }, 15_000);
 
   it("emits a toDate when the To input changes", async () => {
-    const { onChange, container } = setup();
-    const input = container.querySelector('[data-slot="audit-filter-to"]') as HTMLInputElement;
-    await userEvent.type(input, "2026-05-31");
+    const user = userEvent.setup();
+    const { onChange } = setup();
+    await pickDateInField(user, /Audit to date/i, "2026-05-31");
     const lastCall = onChange.mock.calls.at(-1);
-    expect(lastCall?.[0].toDate).not.toBeNull();
+    expect(lastCall?.[0].toDate).toBe("2026-05-31");
   }, 15_000);
 
   it("Clear resets every dimension to the empty filter", async () => {

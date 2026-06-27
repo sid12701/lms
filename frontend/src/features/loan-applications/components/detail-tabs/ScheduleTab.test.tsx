@@ -222,8 +222,36 @@ describe("ScheduleTab", () => {
       <ScheduleTab applicationId="app-1" status="DISBURSED" canPost docsComplete scheduleValid />,
     );
     expect(screen.getByText(/Couldn't load repayment schedule/i)).toBeInTheDocument();
+    // Genuine failures still surface the backend message verbatim for debugging.
+    expect(screen.getByText(/network down/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /try again/i }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the no-schedule empty state (not an error) when no loan account exists yet", () => {
+    useScheduleMock.mockReturnValue({
+      isPending: false,
+      isError: true,
+      error: {
+        code: "NOT_FOUND",
+        message: "Loan account is not available for application id: app-1",
+      },
+      data: undefined,
+      refetch: vi.fn(),
+    });
+    renderWithProviders(
+      <ScheduleTab
+        applicationId="app-1"
+        status="AWAITING_APPROVAL"
+        canPost={false}
+        docsComplete={false}
+        scheduleValid={false}
+      />,
+    );
+    expect(screen.getByText(/No repayment schedule yet/i)).toBeInTheDocument();
+    // Not surfaced as a technical error, and no raw "loan account…id: <uuid>" leak.
+    expect(screen.queryByText(/Couldn't load repayment schedule/i)).toBeNull();
+    expect(screen.queryByText(/Loan account is not available/i)).toBeNull();
   });
 
   it("renders the awaiting-schedule banner when approved but no installments are present", () => {

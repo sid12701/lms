@@ -79,6 +79,7 @@ export function UsersTable({
       {
         id: "username",
         header: "Username",
+        meta: { label: "Username", mobileCard: "primary" },
         cell: ({ row }) => (
           <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -116,6 +117,7 @@ export function UsersTable({
       {
         id: "email",
         header: "Email",
+        meta: { label: "Email", mobileCard: "secondary" },
         cell: ({ row }) => (
           <span className="text-foreground-muted text-xs">{row.original.email}</span>
         ),
@@ -123,6 +125,7 @@ export function UsersTable({
       {
         id: "role",
         header: "Role",
+        meta: { label: "Role", mobileCard: "secondary" },
         cell: ({ row }) => (
           <span className="text-foreground text-xs">{ROLE_LABEL[row.original.role]}</span>
         ),
@@ -137,6 +140,7 @@ export function UsersTable({
       {
         id: "status",
         header: "Status",
+        meta: { label: "Status", mobileCard: "primary" },
         cell: ({ row }) => {
           const meta = STATUS_META[row.original.status];
           const Icon = meta.icon;
@@ -167,6 +171,7 @@ export function UsersTable({
       {
         id: "actions",
         header: () => <span className="sr-only">Actions</span>,
+        meta: { mobileCard: "actions" },
         cell: ({ row }) => {
           const u = row.original;
           const isDisabled = u.status === "DISABLED";

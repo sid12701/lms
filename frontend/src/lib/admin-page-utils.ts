@@ -1,3 +1,5 @@
+import { mapApiErrorMessage } from "@/lib/api/user-messages";
+
 export function isUnauthorized(err: unknown): boolean {
   if (!err) return false;
   if (typeof err === "object" && err !== null && "code" in err) {
@@ -10,6 +12,5 @@ export function isUnauthorized(err: unknown): boolean {
 
 export function extractAdminErrorMessage(err: unknown): string | null {
   if (!err) return null;
-  if (err instanceof Error && err.message) return err.message;
-  return "Something went wrong. Try again in a moment.";
+  return mapApiErrorMessage(err, "Something went wrong. Try again in a moment.");
 }

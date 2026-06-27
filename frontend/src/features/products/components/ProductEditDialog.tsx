@@ -1,5 +1,5 @@
 ﻿/**
- * ProductEditDialog â€” RHF + Zod update form, sibling schema in `./schema.ts`.
+ * ProductEditDialog — RHF + Zod update form, sibling schema in `./schema.ts`.
  *
  * Re-uses the create dialog's numeric/RHF wiring but excludes `code`
  * (immutable) and adds a `status` select. The backend maps a status-only
@@ -169,7 +169,7 @@ export function ProductEditDialog({
             loading={loading}
             onCancel={() => onOpenChange(false)}
             submitLabel="Save changes"
-            loadingLabel="Savingâ€¦"
+            loadingLabel="Saving…"
           />
         </FormShell>
       </DialogContent>

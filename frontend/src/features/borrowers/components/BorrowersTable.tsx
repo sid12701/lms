@@ -12,13 +12,10 @@ import { AdminEntityDataTable } from "@/components/app/data/AdminEntityDataTable
 import { DataTableColumnHeader } from "@/components/app/data/DataTableColumnHeader";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { cn } from "@/lib/utils";
+import { shortId } from "@/lib/short-id";
 import type { BorrowerListFilters, BorrowerListResponse, BorrowerSummary } from "../list-types";
 
 const DASH = "—";
-
-function shortId(id: string): string {
-  return `${id.slice(0, 8)}…`;
-}
 
 function formatLocation(row: BorrowerSummary): string {
   const parts = [row.city, row.state].filter(Boolean);
@@ -51,13 +48,13 @@ export function BorrowersTable({
     () => [
       {
         accessorKey: "fullName",
-        meta: { label: "Borrower" },
+        meta: { label: "Borrower", mobileCard: "primary" },
         header: ({ column }) => <DataTableColumnHeader column={column} title="Borrower" />,
         cell: ({ row }) => (
           <div className="flex flex-col">
             <span className="font-medium">{row.original.fullName}</span>
             <span className="text-foreground-muted font-mono text-xs" title={row.original.id}>
-              {shortId(row.original.id)}
+              {shortId(row.original.id)}…
             </span>
           </div>
         ),
@@ -65,14 +62,14 @@ export function BorrowersTable({
       },
       {
         accessorKey: "pan",
-        meta: { label: "PAN" },
+        meta: { label: "PAN", mobileCard: "secondary" },
         header: ({ column }) => <DataTableColumnHeader column={column} title="PAN" />,
         cell: ({ row }) => <span className="font-mono text-xs">{row.original.pan}</span>,
         enableSorting: false,
       },
       {
         accessorKey: "mobile",
-        meta: { label: "Mobile" },
+        meta: { label: "Mobile", mobileCard: "secondary" },
         header: ({ column }) => <DataTableColumnHeader column={column} title="Mobile" />,
         cell: ({ row }) => <span className="tabular-nums">{row.original.mobile}</span>,
         enableSorting: false,
@@ -91,7 +88,7 @@ export function BorrowersTable({
       },
       {
         id: "location",
-        meta: { label: "Location" },
+        meta: { label: "Location", mobileCard: "secondary" },
         header: ({ column }) => <DataTableColumnHeader column={column} title="Location" />,
         cell: ({ row }) => {
           const value = formatLocation(row.original);

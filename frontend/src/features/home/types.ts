@@ -80,20 +80,5 @@ export interface InternalHomeKpis {
   openAlerts: readonly HomeAlertSummary[];
 }
 
-/**
- * LSP-user dashboard payload (LSP_UI_READ, LSP_UI_WRITE).
- * Scoped to the caller's `lspId`; never aggregates across LSPs.
- */
-export interface LspHomeKpis {
-  myActiveApplications: number;
-  myInDisbursement: number;
-  myMtdDisbursedAmount: number;
-  myOverdueLoansCount: number;
-  recentApplications: readonly HomeRecentApplication[];
-  openAlerts: readonly HomeAlertSummary[];
-}
-
 /** Narrow union returned by the home API based on the caller's role. */
-export type HomeKpis =
-  | { kind: "internal"; data: InternalHomeKpis }
-  | { kind: "lsp"; data: LspHomeKpis };
+export type HomeKpis = { kind: "internal"; data: InternalHomeKpis };

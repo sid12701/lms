@@ -1,8 +1,6 @@
 import { forwardRef, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight, FilePlus2, Files, HelpCircle, type LucideIcon } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ChevronRight, Files, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface LspLinkCardGridProps {
@@ -15,34 +13,15 @@ interface LinkCardSpec {
   title: string;
   description: string;
   icon: LucideIcon;
-  /** When true, render as a disabled card with a tooltip rather than a link. */
-  disabled?: boolean;
-  disabledReason?: string;
 }
 
 const CARDS: readonly LinkCardSpec[] = [
   {
-    key: "submit",
-    to: "/my-loans/new",
-    title: "Submit new loan",
-    description: "Start a new application for a borrower in your portfolio.",
-    icon: FilePlus2,
-  },
-  {
     key: "my-loans",
     to: "/my-loans",
-    title: "My loans",
+    title: "Loan applications",
     description: "Review applications and accounts you originated.",
     icon: Files,
-  },
-  {
-    key: "help",
-    to: "#",
-    title: "Help & docs",
-    description: "Integration guides, lifecycle reference, and API playground.",
-    icon: HelpCircle,
-    disabled: true,
-    disabledReason: "Coming soon",
   },
 ];
 
@@ -74,7 +53,7 @@ function CardBody({
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="text-foreground text-sm font-semibold">{title}</span>
-        <span className="text-foreground-muted text-xs leading-[1.25rem]">{description}</span>
+        <span className="text-foreground-muted text-xs leading-5">{description}</span>
       </div>
       <ChevronRight aria-hidden="true" className="text-foreground-muted size-4 shrink-0" />
     </>
@@ -82,11 +61,8 @@ function CardBody({
 }
 
 /**
- * 1×3 shortcut grid for the LSP home. Cards navigate via react-router
- * `<Link>` (so Enter activates them naturally). The "Help & docs" tile
- * is disabled today because `/help` isn't wired up yet — it renders as
- * a non-interactive card with a "Coming soon" tooltip and
- * `aria-disabled`.
+ * Shortcut grid for the LSP workspace. Cards navigate via react-router
+ * `<Link>` so Enter activates them naturally.
  *
  * Entrance animation is a 200ms fade-in; it is suppressed entirely when
  * the user has set `prefers-reduced-motion: reduce`.
@@ -108,37 +84,14 @@ export const LspLinkCardGrid = forwardRef<HTMLDivElement, LspLinkCardGridProps>(
         ref={ref}
         data-slot="lsp-link-card-grid"
         data-reduced-motion={reducedMotion || undefined}
-        className={cn("grid grid-cols-1 gap-4 md:grid-cols-3", className)}
+        className={cn("grid grid-cols-1 gap-4 md:grid-cols-2", className)}
       >
         {CARDS.map((card) => {
-          const ariaLabel = `${card.title}. ${card.description}${card.disabled ? `. ${card.disabledReason}` : ""}`;
-
-          if (card.disabled) {
-            return (
-              <Tooltip key={card.key}>
-                <TooltipTrigger asChild>
-                  <Card
-                    role="link"
-                    aria-disabled="true"
-                    aria-label={ariaLabel}
-                    data-slot="lsp-link-card"
-                    data-disabled="true"
-                    tabIndex={0}
-                    className={cn(cardClasses, "cursor-not-allowed opacity-70")}
-                  >
-                    <CardBody icon={card.icon} title={card.title} description={card.description} />
-                  </Card>
-                </TooltipTrigger>
-                <TooltipContent side="top">{card.disabledReason ?? "Unavailable"}</TooltipContent>
-              </Tooltip>
-            );
-          }
-
           return (
             <Link
               key={card.key}
               to={card.to}
-              aria-label={ariaLabel}
+              aria-label={`${card.title}. ${card.description}`}
               data-slot="lsp-link-card"
               className={cardClasses}
             >

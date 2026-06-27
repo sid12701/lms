@@ -17,6 +17,8 @@ import { toast } from "sonner";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { TableSkeleton } from "@/components/app/feedback/Skeletons";
+import { isNotFoundApiError } from "@/lib/api/api-errors";
+import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { DisbursementGateBanner } from "@/components/app/disbursement/DisbursementGateBanner";
 import {
   RepaymentPostDialog,
@@ -86,7 +88,7 @@ export function ScheduleTab({
       toast.success("Repayment posted");
       setSelected(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to post repayment";
+      const message = mapApiErrorMessage(err, "Failed to post repayment");
       toast.error(message);
     }
   };
@@ -103,10 +105,18 @@ export function ScheduleTab({
           cols={8}
           className="opacity-100 transition-opacity duration-200 motion-reduce:transition-none"
         />
+      ) : query.isError && isNotFoundApiError(query.error) ? (
+        // No loan account exists yet (e.g. still awaiting approval) — an
+        // expected pre-disbursement state, not a failure.
+        <EmptyState
+          icon={CalendarClock}
+          title="No repayment schedule yet"
+          description="A repayment schedule becomes available once the loan is approved and a loan account is created."
+        />
       ) : query.isError ? (
         <ErrorState
           title="Couldn't load repayment schedule"
-          description={query.error instanceof Error ? query.error.message : undefined}
+          description={mapApiErrorMessage(query.error, "Please try again.")}
           retry={{ onClick: () => void query.refetch() }}
         />
       ) : showAwaitingScheduleBanner ? (

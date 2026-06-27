@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, ChevronRight, Loader2 } from "lucide-react";
 
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
+import { ErrorState } from "@/components/app/feedback/ErrorState";
+import { PermissionDeniedState } from "@/components/app/feedback/PermissionDeniedState";
 import { StatusBadge } from "@/components/app/status/StatusBadge";
 import { Button } from "@/components/ui/button";
+import { useSession } from "@/features/auth/session-context";
 import { formatDateTime, formatINR } from "@/lib/format";
+import { hasPermission } from "@/lib/permissions";
 import {
   fetchInvalidReasons,
   fetchMyLoanDetail,
@@ -24,12 +28,15 @@ const TERMINAL_STATUSES = new Set<LoanStatus>(["INVALID", "REJECTED", "CLOSED", 
 
 export function MyLoanDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { session } = useSession();
   const [detail, setDetail] = useState<MyLoanDetail | null>(null);
   const [reasons, setReasons] = useState<readonly InvalidReasonOption[]>([]);
   const [loadingReasons, setLoadingReasons] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [markInvalidOpen, setMarkInvalidOpen] = useState(false);
+  const [reasonsLoadError, setReasonsLoadError] = useState<string | null>(null);
 
   const [prevId, setPrevId] = useState(id);
   if (id !== prevId) {
@@ -61,11 +68,11 @@ export function MyLoanDetailPage() {
     setMarkInvalidOpen(true);
     if (reasons.length === 0 && !loadingReasons) {
       setLoadingReasons(true);
+      setReasonsLoadError(null);
       void fetchInvalidReasons()
         .then((rows) => setReasons(rows))
-        .catch(() => {
-          // Surface the failure inside the dialog (it shows an empty list with
-          // a disabled trigger) — non-fatal for the parent page.
+        .catch((err) => {
+          setReasonsLoadError(safeApiMessage(err, "Could not load invalid reasons."));
         })
         .finally(() => setLoadingReasons(false));
     }
@@ -79,6 +86,7 @@ export function MyLoanDetailPage() {
           icon={AlertTriangle}
           title="Missing loan id"
           description="The URL did not include a loan identifier."
+          action={{ label: "Back to loan applications", onClick: () => navigate("/my-loans") }}
         />
       </div>
     );
@@ -97,20 +105,34 @@ export function MyLoanDetailPage() {
   }
 
   if (error || !detail) {
+    const notFound = error?.toLowerCase().includes("not found");
     return (
       <div className="flex flex-col gap-6 p-6">
         <PageHeader eyebrow="LSP workspace" title="Loan" />
-        <div
-          role="alert"
-          className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-4 py-3 text-sm"
-        >
-          {error ?? "Loan not found."}
-        </div>
+        {notFound ? (
+          <PermissionDeniedState
+            title="Loan not found"
+            description="This loan may have been removed or is outside your LSP scope."
+            action={{ label: "Back to loan applications", onClick: () => navigate("/my-loans") }}
+            secondaryAction={{ label: "Go back", onClick: () => navigate(-1) }}
+          />
+        ) : (
+          <ErrorState
+            title="Couldn't load this loan"
+            description={error ?? "Try again in a moment."}
+            retry={{
+              label: "Retry",
+              onClick: () => window.location.reload(),
+            }}
+          />
+        )}
       </div>
     );
   }
 
   const isTerminal = TERMINAL_STATUSES.has(detail.status);
+  const canWriteLoan = session ? hasPermission(session.user.role, "LOAN_WRITE") : false;
+  const canMutateLoan = canWriteLoan && !isTerminal;
   const eyebrow = detail.externalLoanId
     ? `LSP workspace · ${detail.externalLoanId}`
     : "LSP workspace";
@@ -120,7 +142,7 @@ export function MyLoanDetailPage() {
       <nav aria-label="Breadcrumb" className="text-foreground-muted text-xs">
         <Link to="/my-loans" className="hover:text-foreground inline-flex items-center gap-1">
           <ArrowLeft aria-hidden="true" className="h-3.5 w-3.5" />
-          <span>My loans</span>
+          <span>Loan applications</span>
         </Link>
         <ChevronRight aria-hidden="true" className="mx-1 inline h-3.5 w-3.5 align-text-bottom" />
         <span className="text-foreground">{detail.borrowerFullName}</span>
@@ -136,7 +158,7 @@ export function MyLoanDetailPage() {
               status={detail.status}
               delinquency={detail.loanAccount?.delinquency ?? null}
             />
-            {!isTerminal ? (
+            {canMutateLoan ? (
               <Button type="button" variant="outline" size="sm" onClick={openMarkInvalid}>
                 <AlertTriangle className="h-4 w-4" aria-hidden="true" />
                 <span>Mark invalid</span>
@@ -204,7 +226,7 @@ export function MyLoanDetailPage() {
 
       <MaskedBorrowerCard detail={detail} />
 
-      <DocumentsSection applicationId={id} disabled={isTerminal} />
+      <DocumentsSection applicationId={id} canUpload={canMutateLoan} />
 
       {detail.loanAccount ? (
         <section
@@ -259,6 +281,7 @@ export function MyLoanDetailPage() {
         applicationId={id}
         reasons={reasons}
         loadingReasons={loadingReasons}
+        reasonsLoadError={reasonsLoadError}
         onSuccess={(next) => setDetail(next)}
       />
     </div>

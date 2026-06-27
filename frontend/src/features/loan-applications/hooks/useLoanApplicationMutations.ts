@@ -24,7 +24,10 @@ import {
 import { loanApplicationActivityQueryKey } from "./useLoanApplicationActivity";
 import { LOAN_APPLICATIONS_LIST_QUERY_KEY } from "./useLoanApplications";
 
-function invalidateAll(queryClient: ReturnType<typeof useQueryClient>, id: string): void {
+export function invalidateLoanApplicationDetailCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  id: string,
+): void {
   void queryClient.invalidateQueries({ queryKey: loanApplicationDetailQueryKey(id) });
   void queryClient.invalidateQueries({
     queryKey: loanApplicationActivityQueryKey(id),
@@ -48,7 +51,7 @@ export function useTransitionStatus(
   const queryClient = useQueryClient();
   return useMutation<TransitionResponse, Error, TransitionStatusInput>({
     mutationFn: (input) => postTransition(id, input),
-    onSuccess: () => invalidateAll(queryClient, id),
+    onSuccess: () => invalidateLoanApplicationDetailCaches(queryClient, id),
   });
 }
 
@@ -62,6 +65,6 @@ export function useInitiateDisbursement(
   const queryClient = useQueryClient();
   return useMutation<DisbursementResponse, Error, InitiateDisbursementInput>({
     mutationFn: (input) => postDisbursement(id, input),
-    onSuccess: () => invalidateAll(queryClient, id),
+    onSuccess: () => invalidateLoanApplicationDetailCaches(queryClient, id),
   });
 }

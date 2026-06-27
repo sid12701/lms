@@ -147,4 +147,46 @@ describe("DataTable", () => {
     );
     expect(await axe(container)).toHaveNoViolations();
   });
+
+  it("renders mobile cards when the viewport is narrow", () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: (query: string) => ({
+        matches: query.includes("max-width"),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }),
+    });
+
+    const mobileColumns: ColumnDef<Row>[] = [
+      {
+        accessorKey: "name",
+        header: "Name",
+        meta: { label: "Name", mobileCard: "primary" },
+      },
+      {
+        accessorKey: "amount",
+        header: "Amount",
+        meta: { label: "Amount", numeric: true, mobileCard: "secondary" },
+      },
+    ];
+
+    const { container } = renderWithProviders(
+      withDensity(
+        <DataTable
+          columns={mobileColumns}
+          data={rows}
+          density="comfortable"
+          ariaLabel="Mobile table"
+        />,
+      ),
+    );
+
+    expect(container.querySelector('[data-slot="data-table-mobile-cards"]')).not.toBeNull();
+    expect(container.querySelector("table")).toBeNull();
+    expect(container.textContent).toMatch(/Alpha/);
+    expect(container.textContent).toMatch(/Amount/);
+  });
 });

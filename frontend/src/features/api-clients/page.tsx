@@ -1,5 +1,5 @@
 ﻿/**
- * Phase 9 â€” `/api-clients` admin surface (SYSTEM_ADMIN-only).
+ * Phase 9 — `/api-clients` admin surface (SYSTEM_ADMIN-only).
  *
  * Composes:
  *   - `ApiClientsFilterBar` (URL-bound filters via `useSearchParams`)
@@ -7,18 +7,18 @@
  *   - `ApiClientCreateDialog` (POST /api/v1/admin/api-clients)
  *   - Shared `RotateSecretDialog` from `@/components/app/secrets/...`
  *   - Shared `ApiSecretReveal` banner (renders the cleartext secret exactly
- *     once â€” surfaced both on create and on rotate)
+ *     once — surfaced both on create and on rotate)
  *
  * Role enforcement is server-side (backend 401s non-admin) AND
  * client-side (router-level RequireRole). When a non-admin somehow lands
- * here we surface a friendly EmptyState instead of an ErrorState â€” same
+ * here we surface a friendly EmptyState instead of an ErrorState — same
  * pattern as the LSPs page.
  *
  * Density default = comfortable per D7 (admin list is short).
  *
  * NOTE: An `ApiClientEditDialog` does not exist in `./components/` today,
  * so this page does not surface an edit modal. The table's "Manage" action
- * routes to the shared rotate-secret flow â€” the primary admin operation
+ * routes to the shared rotate-secret flow — the primary admin operation
  * available against an existing client. Edit-name / edit-status /
  * edit-IP-allow-list will land alongside their dialog component later.
  */
@@ -115,7 +115,7 @@ export function ApiClientsPage() {
     [lspsQuery.data],
   );
 
-  // â”€â”€ Create dialog handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Create dialog handlers ─────────────────────────────────────────────────
   const handleCreateOpenChange = (open: boolean) => {
     if (!open) {
       if (create.isPending) return;
@@ -127,7 +127,7 @@ export function ApiClientsPage() {
   };
   const handleCreate = async (input: { name: string; lspId: string; idempotencyKey: string }) => {
     // `ApiClientCreateDialog` renders its own `ApiSecretReveal` inside the
-    // dialog body on success â€” but we also surface the secret as a banner on
+    // dialog body on success — but we also surface the secret as a banner on
     // the page so it persists if the operator closes the dialog before
     // copying. The dialog only echoes back the response; the page is the
     // canonical owner of the "reveal-once" lifecycle.
@@ -139,7 +139,7 @@ export function ApiClientsPage() {
     return res;
   };
 
-  // â”€â”€ Rotate dialog handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Rotate dialog handlers ─────────────────────────────────────────────────
   const handleRotateOpenChange = (open: boolean) => {
     if (!open) {
       if (rotate.isPending) return;
@@ -168,7 +168,7 @@ export function ApiClientsPage() {
       setRotateTarget(null);
       rotate.reset();
     } catch {
-      // Surfaced via `rotate.error` â€” kept inside the dialog while the
+      // Surfaced via `rotate.error` — kept inside the dialog while the
       // operator decides whether to retry or cancel.
     }
   };
@@ -184,7 +184,7 @@ export function ApiClientsPage() {
     <AdminEntityListPage
       testId="api-clients-page"
       title="API clients"
-      description="LSP API credentials and secret rotation. IP allowlists are managed per LSP under Administration â†’ LSPs."
+      description="LSP API credentials and secret rotation. IP allowlists are managed per LSP under Administration → LSPs."
       primaryAction={{
         label: "New API client",
         dataSlot: "api-clients-new-button",
@@ -244,6 +244,7 @@ export function ApiClientsPage() {
             clientLabel={rotateTarget?.name}
             onConfirm={handleRotateConfirm}
             loading={rotate.isPending}
+            errorMessage={rotate.isError ? extractAdminErrorMessage(rotate.error) : null}
           />
         </>
       }

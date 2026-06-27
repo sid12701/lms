@@ -74,6 +74,18 @@ describe("RotateSecretDialog", () => {
     expect(getByRole("button", { name: "Cancel" })).toBeDisabled();
   });
 
+  it("surfaces a server error message when provided", () => {
+    const { getByRole } = renderWithProviders(
+      <RotateSecretDialog
+        open
+        onOpenChange={() => {}}
+        onConfirm={() => {}}
+        errorMessage="Rotation is temporarily unavailable."
+      />,
+    );
+    expect(getByRole("alert")).toHaveTextContent("Rotation is temporarily unavailable.");
+  });
+
   it("has no axe violations when open", async () => {
     const { baseElement } = renderWithProviders(
       <RotateSecretDialog open onOpenChange={() => {}} onConfirm={() => {}} />,

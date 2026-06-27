@@ -141,6 +141,18 @@ async function performFetch(
     }
   }
 
+  if (response.status === 428 && authenticated && typeof window !== "undefined") {
+    if (!window.location.pathname.startsWith("/change-password")) {
+      window.location.assign("/change-password");
+    }
+    throw new ApiError(
+      "Password change required before continuing.",
+      428,
+      await response.text(),
+      "PASSWORD_CHANGE_REQUIRED",
+    );
+  }
+
   return response;
 }
 
@@ -158,35 +170,77 @@ async function throwIfNotOk(response: Response): Promise<void> {
   );
 }
 
-export async function requestJson<T>(
+async function readJsonBody<T>(response: Response): Promise<T> {
+  if (response.status === 204) return undefined as T;
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) return (await response.text()) as T;
+  return (await response.json()) as T;
+}
+
+export interface JsonWithHeaders<T> {
+  data: T;
+  headers: Headers;
+}
+
+/**
+ * Coalesce identical concurrent GETs: when `key` is non-null and a matching
+ * request is already in flight, return the existing promise instead of issuing
+ * a second network call. Entries self-evict once the request settles.
+ */
+function dedupedJsonRequest<T>(key: string | null, run: () => Promise<T>): Promise<T> {
+  if (!key) return run();
+  const existing = inFlightJsonRequests.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+  const promise = run().finally(() => inFlightJsonRequests.delete(key));
+  inFlightJsonRequests.set(key, promise);
+  return promise;
+}
+
+export function requestJsonWithHeaders<T>(
+  path: string,
+  init: RequestInit = {},
+  options: RequestOptions = {},
+): Promise<JsonWithHeaders<T>> {
+  return dedupedJsonRequest(buildJsonDedupeKey(path, init, options, "json-with-headers"), () =>
+    performJsonRequestWithHeaders<T>(path, init, options),
+  );
+}
+
+async function performJsonRequestWithHeaders<T>(
+  path: string,
+  init: RequestInit = {},
+  options: RequestOptions = {},
+): Promise<JsonWithHeaders<T>> {
+  const response = await performFetch(path, init, { ...options, responseType: "json" });
+  await throwIfNotOk(response);
+  const data = await readJsonBody<T>(response);
+  return { data, headers: response.headers };
+}
+
+export function requestJson<T>(
   path: string,
   init: RequestInit = {},
   options: RequestOptions = {},
 ): Promise<T> {
-  const dedupeKey = buildJsonDedupeKey(path, init, options);
-  if (dedupeKey) {
-    const existing = inFlightJsonRequests.get(dedupeKey) as Promise<T> | undefined;
-    if (existing) return existing;
-    const promise = performJsonRequest<T>(path, init, options).finally(() => {
-      inFlightJsonRequests.delete(dedupeKey);
-    });
-    inFlightJsonRequests.set(dedupeKey, promise);
-    return promise;
-  }
-  return performJsonRequest<T>(path, init, options);
+  return dedupedJsonRequest(buildJsonDedupeKey(path, init, options, "json"), () =>
+    performJsonRequest<T>(path, init, options),
+  );
 }
+
+type JsonDedupeMode = "json" | "json-with-headers";
 
 function buildJsonDedupeKey(
   path: string,
   init: RequestInit,
   options: RequestOptions,
+  mode: JsonDedupeMode,
 ): string | null {
   if (options.dedupe === false) return null;
   const method = (init.method ?? "GET").toUpperCase();
   if (method !== "GET" || init.body || options._retried) return null;
   const authenticated = options.authenticated ?? true;
   const token = authenticated ? (options.accessToken ?? getStoredAccessToken()) : null;
-  return `${authenticated ? "auth" : "anon"}:${token ?? ""}:${path}`;
+  return `${mode}:${authenticated ? "auth" : "anon"}:${token ?? ""}:${path}`;
 }
 
 async function performJsonRequest<T>(
@@ -196,11 +250,7 @@ async function performJsonRequest<T>(
 ): Promise<T> {
   const response = await performFetch(path, init, { ...options, responseType: "json" });
   await throwIfNotOk(response);
-
-  if (response.status === 204) return undefined as T;
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/json")) return (await response.text()) as T;
-  return (await response.json()) as T;
+  return readJsonBody<T>(response);
 }
 
 export async function requestBlob(

@@ -12,9 +12,13 @@
  */
 import { useMemo } from "react";
 import { useDebouncedControlledText } from "@/lib/hooks/use-debounced-controlled-text";
-import { Calendar, Search, X } from "lucide-react";
+import { DatePickerField } from "@/components/app/data/DatePickerField";
 import { MultiSelectChip } from "@/components/app/data/MultiSelectChip";
-import { Button } from "@/components/ui/button";
+import {
+  FilterBarClearButton,
+  FilterBarSearchField,
+  FilterBarShell,
+} from "@/components/app/data/FilterBarShell";
 import {
   Select,
   SelectContent,
@@ -23,7 +27,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useUrlFilters } from "@/lib/url-state";
-import { cn } from "@/lib/utils";
 import { LoanApplicationListFilters } from "../types";
 import { STATUS_META } from "@/lib/lifecycle";
 import type { LoanStatus } from "@/types";
@@ -102,12 +105,6 @@ export interface LoanApplicationsFilterBarProps {
   className?: string;
 }
 
-/**
- * Composed filter bar for the loan-applications list.
- *
- * No props are required — the component owns its own URL-state hook and
- * exposes only optional dropdown option lists for the parent to inject.
- */
 export function LoanApplicationsFilterBar({
   lspOptions = [],
   productOptions = [],
@@ -141,31 +138,18 @@ export function LoanApplicationsFilterBar({
   const active = useMemo(() => hasAnyFilter(filters), [filters]);
 
   return (
-    <div
-      data-slot="loan-applications-filter-bar"
-      role="group"
-      aria-label="Loan application filters"
-      className={cn(
-        "border-border bg-surface flex flex-wrap items-center gap-2 rounded-md border p-2",
-        className,
-      )}
+    <FilterBarShell
+      dataSlot="loan-applications-filter-bar"
+      ariaLabel="Loan application filters"
+      className={className}
     >
-      <label className="relative min-w-[200px] flex-1">
-        <span className="sr-only">Search applications</span>
-        <Search
-          aria-hidden="true"
-          className="text-foreground-muted pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
-        />
-        <input
-          type="search"
-          data-slot="loan-applications-search"
-          value={searchField.value}
-          onChange={(e) => searchField.onChange(e.target.value)}
-          placeholder="Search borrower, PAN, mobile, city"
-          aria-label="Search loan applications"
-          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pr-2 pl-7.5 text-sm outline-none focus-visible:ring-[3px]"
-        />
-      </label>
+      <FilterBarSearchField
+        value={searchField.value}
+        onChange={searchField.onChange}
+        placeholder="Search borrower, PAN, mobile, city"
+        ariaLabel="Search loan applications"
+        dataSlot="loan-applications-search"
+      />
 
       <label className="flex min-w-[150px] flex-col gap-1">
         <span className="sr-only">LSP loan ID</span>
@@ -186,7 +170,7 @@ export function LoanApplicationsFilterBar({
       </label>
 
       <label className="flex min-w-[150px] flex-col gap-1">
-        <span className="sr-only">Bhaw loan ID</span>
+        <span className="sr-only">Bhawana loan ID</span>
         <input
           type="search"
           data-slot="loan-applications-bhaw-loan-id-filter"
@@ -197,8 +181,8 @@ export function LoanApplicationsFilterBar({
               page: 0,
             })
           }
-          placeholder="Bhaw Loan ID"
-          aria-label="Bhaw loan ID"
+          placeholder="Bhawana loan ID"
+          aria-label="Bhawana loan ID"
           className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border px-2 text-sm outline-none focus-visible:ring-[3px]"
         />
       </label>
@@ -221,47 +205,21 @@ export function LoanApplicationsFilterBar({
         testId="loan-applications-lsp-filter"
       />
 
-      <label className="relative">
-        <span className="sr-only">Disbursed from</span>
-        <Calendar
-          aria-hidden="true"
-          className="text-foreground-muted pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
-        />
-        <input
-          type="date"
-          data-slot="loan-applications-disbursed-from"
-          value={filters.disbursalDateFrom ?? ""}
-          onChange={(event) =>
-            setFilters({
-              disbursalDateFrom: event.target.value === "" ? undefined : event.target.value,
-              page: 0,
-            })
-          }
-          aria-label="Disbursed from"
-          className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-40 rounded-md border pr-2 pl-8 text-sm outline-none focus-visible:ring-[3px]"
-        />
-      </label>
+      <DatePickerField
+        value={filters.disbursalDateFrom}
+        onChange={(next) => setFilters({ disbursalDateFrom: next, page: 0 })}
+        ariaLabel="Disbursed from"
+        dataSlot="loan-applications-disbursed-from"
+        className="w-40"
+      />
 
-      <label className="relative">
-        <span className="sr-only">Disbursed to</span>
-        <Calendar
-          aria-hidden="true"
-          className="text-foreground-muted pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
-        />
-        <input
-          type="date"
-          data-slot="loan-applications-disbursed-to"
-          value={filters.disbursalDateTo ?? ""}
-          onChange={(event) =>
-            setFilters({
-              disbursalDateTo: event.target.value === "" ? undefined : event.target.value,
-              page: 0,
-            })
-          }
-          aria-label="Disbursed to"
-          className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-40 rounded-md border pr-2 pl-8 text-sm outline-none focus-visible:ring-[3px]"
-        />
-      </label>
+      <DatePickerField
+        value={filters.disbursalDateTo}
+        onChange={(next) => setFilters({ disbursalDateTo: next, page: 0 })}
+        ariaLabel="Disbursed to"
+        dataSlot="loan-applications-disbursed-to"
+        className="w-40"
+      />
 
       <SingleSelect
         value={filters.productId}
@@ -274,19 +232,11 @@ export function LoanApplicationsFilterBar({
 
       <div className="flex-1" />
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
+      <FilterBarClearButton
         onClick={clearAll}
         disabled={!active}
-        data-slot="loan-applications-filter-clear"
-        aria-label="Clear all filters"
-        className="gap-1"
-      >
-        <X aria-hidden="true" className="size-3.5" />
-        Clear filters
-      </Button>
-    </div>
+        dataSlot="loan-applications-filter-clear"
+      />
+    </FilterBarShell>
   );
 }

@@ -18,7 +18,7 @@ export const BREADCRUMB_LABELS: Record<string, string> = {
   products: "Products",
   users: "Users",
   "api-clients": "API clients",
-  "my-loans": "My loans",
+  "my-loans": "Loan applications",
   dev: "Developer",
   components: "Components",
 };

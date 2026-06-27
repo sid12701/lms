@@ -9,7 +9,6 @@ import { RouteFallback } from "@/routes/route-fallback";
 import { AuthenticatedLayout } from "@/routes/authenticated-layout";
 import { AppRoot } from "@/routes/app-root";
 
-const INTERNAL_ALL: readonly Role[] = ["SYSTEM_ADMIN", "OPS_USER", "PRODUCT_ADMIN"] as const;
 const SYSTEM_ADMIN_ONLY: readonly Role[] = ["SYSTEM_ADMIN"] as const;
 const SYSTEM_ADMIN_OR_OPS: readonly Role[] = ["SYSTEM_ADMIN", "OPS_USER"] as const;
 const PRODUCT_ADMIN_OR_SYSTEM: readonly Role[] = ["SYSTEM_ADMIN", "PRODUCT_ADMIN"] as const;
@@ -81,7 +80,7 @@ export function createAppRouter() {
               path: "/loan-applications",
               element: (
                 <RequireInternal>
-                  <RequireRole roles={INTERNAL_ALL}>
+                  <RequireRole roles={SYSTEM_ADMIN_OR_OPS}>
                     {withSuspense(LoanApplicationsPage)}
                   </RequireRole>
                 </RequireInternal>
@@ -91,7 +90,7 @@ export function createAppRouter() {
               path: "/loan-applications/:id",
               element: (
                 <RequireInternal>
-                  <RequireRole roles={INTERNAL_ALL}>
+                  <RequireRole roles={SYSTEM_ADMIN_OR_OPS}>
                     {withSuspense(LoanApplicationDetailPage)}
                   </RequireRole>
                 </RequireInternal>
@@ -101,7 +100,9 @@ export function createAppRouter() {
               path: "/borrowers",
               element: (
                 <RequireInternal>
-                  <RequireRole roles={INTERNAL_ALL}>{withSuspense(BorrowersPage)}</RequireRole>
+                  <RequireRole roles={SYSTEM_ADMIN_OR_OPS}>
+                    {withSuspense(BorrowersPage)}
+                  </RequireRole>
                 </RequireInternal>
               ),
             },
@@ -109,7 +110,9 @@ export function createAppRouter() {
               path: "/borrowers/:id",
               element: (
                 <RequireInternal>
-                  <RequireRole roles={INTERNAL_ALL}>{withSuspense(BorrowerDetailPage)}</RequireRole>
+                  <RequireRole roles={SYSTEM_ADMIN_OR_OPS}>
+                    {withSuspense(BorrowerDetailPage)}
+                  </RequireRole>
                 </RequireInternal>
               ),
             },
@@ -189,6 +192,7 @@ export function createAppRouter() {
                 </RequireLsp>
               ),
             },
+            { path: "*", element: <NotFoundPage inShell /> },
           ],
         },
         { path: "*", element: <NotFoundPage /> },

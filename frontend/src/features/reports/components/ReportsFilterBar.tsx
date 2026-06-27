@@ -1,20 +1,24 @@
 /**
  * Filter bar for `/reports`.
  *
- * Three controls — LSP id (plain text field accepting a UUID; LSPs admin
- * surface lands in Phase 9 so a select-of-LSPs hook is not yet available),
- * a From date input, and a To date input. State is owned by the parent
- * page; the bar emits the filter delta via `onChange`.
- *
- * The lspId input is intentionally a text input (not RHF) — it is a
- * filter, not a form submission, so a debounced commit on blur keeps the
- * query cache stable.
+ * LSP scope uses the same name dropdown as loan applications and users.
+ * Date filters use the shared dd/MM/yyyy picker (browser-locale independent).
  */
-import { Calendar, Search, X } from "lucide-react";
-import { useSyncedState } from "@/lib/hooks/use-synced-state";
-import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import { DatePickerField } from "@/components/app/data/DatePickerField";
+import { FilterBarClearButton, FilterBarShell } from "@/components/app/data/FilterBarShell";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { listLspOptions } from "@/features/lsps/options";
 import { cn } from "@/lib/utils";
 import type { ReportsPageFilters } from "../types";
+
+const ALL_SENTINEL = "__all__";
 
 export interface ReportsFilterBarProps {
   filters: ReportsPageFilters;
@@ -23,120 +27,105 @@ export interface ReportsFilterBarProps {
 }
 
 export function ReportsFilterBar({ filters, onChange, className }: ReportsFilterBarProps) {
-  const [lspIdDraft, setLspIdDraft] = useSyncedState(filters.lspId ?? "");
+  const [lspOptions, setLspOptions] = useState<readonly { value: string; label: string }[]>([]);
 
-  const commitLspId = () => {
-    const next = lspIdDraft.trim();
-    if (next === (filters.lspId ?? "")) return;
-    onChange({ ...filters, lspId: next === "" ? null : next });
+  useEffect(() => {
+    let cancelled = false;
+    void listLspOptions()
+      .then((rows) => {
+        if (cancelled) return;
+        setLspOptions(
+          rows.map((row) => ({
+            value: row.id,
+            label: `${row.name} (${row.code})`,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setLspOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const setDateFrom = (next: string | undefined) => {
+    onChange({ ...filters, dateFrom: next && next !== "" ? next : null });
   };
 
-  const setDateFrom = (next: string) => {
-    onChange({ ...filters, dateFrom: next === "" ? null : next });
+  const setDateTo = (next: string | undefined) => {
+    onChange({ ...filters, dateTo: next && next !== "" ? next : null });
   };
 
-  const setDateTo = (next: string) => {
-    onChange({ ...filters, dateTo: next === "" ? null : next });
+  const setLspId = (next: string) => {
+    onChange({ ...filters, lspId: next === ALL_SENTINEL ? null : next });
   };
 
   const clearAll = () => {
-    setLspIdDraft("");
     onChange({ lspId: null, dateFrom: null, dateTo: null });
   };
 
   const active = Boolean(filters.lspId) || Boolean(filters.dateFrom) || Boolean(filters.dateTo);
 
   return (
-    <div
-      data-slot="reports-filter-bar"
-      role="group"
-      aria-label="Report filters"
-      className={cn(
-        "border-border bg-surface flex flex-wrap items-end gap-3 rounded-md border p-3",
-        className,
-      )}
+    <FilterBarShell
+      dataSlot="reports-filter-bar"
+      ariaLabel="Report filters"
+      className={cn("items-end gap-3 p-3", className)}
     >
-      <label className="flex min-w-[260px] flex-1 flex-col gap-1">
+      <div className="flex min-w-[220px] flex-col gap-1">
         <span className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
-          LSP id
+          LSP
         </span>
-        <span className="relative">
-          <Search
-            aria-hidden="true"
-            className="text-foreground-muted pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
-          />
-          <input
-            type="search"
+        <Select value={filters.lspId ?? ALL_SENTINEL} onValueChange={setLspId}>
+          <SelectTrigger
+            size="sm"
+            aria-label="LSP filter"
             data-slot="reports-lsp-filter"
-            value={lspIdDraft}
-            onChange={(e) => setLspIdDraft(e.target.value)}
-            onBlur={commitLspId}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commitLspId();
-              }
-            }}
-            placeholder="All LSPs (paste a UUID to scope)"
-            aria-label="LSP id filter"
-            className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full rounded-md border pr-2 pl-8 text-sm outline-none focus-visible:ring-[3px]"
-          />
-        </span>
-      </label>
+            className="w-full min-w-[220px]"
+          >
+            <SelectValue placeholder="All LSPs" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_SENTINEL}>All LSPs</SelectItem>
+            {lspOptions.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-      <label className="flex flex-col gap-1">
+      <div className="flex min-w-[220px] flex-col gap-1">
         <span className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
           Disbursed from
         </span>
-        <span className="relative">
-          <Calendar
-            aria-hidden="true"
-            className="text-foreground-muted pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
-          />
-          <input
-            type="date"
-            data-slot="reports-date-from"
-            value={filters.dateFrom ?? ""}
-            onChange={(e) => setDateFrom(e.target.value)}
-            aria-label="Disbursed from"
-            className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-44 rounded-md border pr-2 pl-8 text-sm outline-none focus-visible:ring-[3px]"
-          />
-        </span>
-      </label>
+        <DatePickerField
+          value={filters.dateFrom ?? undefined}
+          onChange={setDateFrom}
+          ariaLabel="Disbursed from"
+          dataSlot="reports-date-from"
+          className="min-w-[220px] [&_button]:h-9"
+        />
+      </div>
 
-      <label className="flex flex-col gap-1">
+      <div className="flex min-w-[220px] flex-col gap-1">
         <span className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
           Disbursed to
         </span>
-        <span className="relative">
-          <Calendar
-            aria-hidden="true"
-            className="text-foreground-muted pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
-          />
-          <input
-            type="date"
-            data-slot="reports-date-to"
-            value={filters.dateTo ?? ""}
-            onChange={(e) => setDateTo(e.target.value)}
-            aria-label="Disbursed to"
-            className="border-border bg-surface text-foreground focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-44 rounded-md border pr-2 pl-8 text-sm outline-none focus-visible:ring-[3px]"
-          />
-        </span>
-      </label>
+        <DatePickerField
+          value={filters.dateTo ?? undefined}
+          onChange={setDateTo}
+          ariaLabel="Disbursed to"
+          dataSlot="reports-date-to"
+          className="min-w-[220px] [&_button]:h-9"
+        />
+      </div>
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={clearAll}
-        disabled={!active}
-        data-slot="reports-filter-clear"
-        aria-label="Clear all filters"
-        className="gap-1"
-      >
-        <X aria-hidden="true" className="size-3.5" />
-        Clear
-      </Button>
-    </div>
+      <div className="flex-1" />
+
+      <FilterBarClearButton onClick={clearAll} disabled={!active} dataSlot="reports-filter-clear" />
+    </FilterBarShell>
   );
 }

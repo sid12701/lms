@@ -12,6 +12,7 @@
  * there is no audited PII reveal endpoint — values are always masked.
  */
 import { requestJson } from "@/lib/api/http-client";
+import { listLspOptions } from "@/features/lsps/options";
 import type { BorrowerDetail } from "./types";
 
 const BACKEND_BASE = "/api/v1/internal/admin/borrowers";
@@ -67,6 +68,7 @@ interface BackendBorrowerDetail {
   referencePersonName: string | null;
   referencePersonNumber: string | null;
   visibleLspIds: string[];
+  visibleLsps?: ReadonlyArray<{ id: string; code: string; name: string }>;
   loans: BackendBorrowerLoanRow[];
   delinquency: BackendBorrowerDelinquency | null;
 }
@@ -99,17 +101,23 @@ const OPEN_STATUSES = new Set([
 
 const CLOSED_STATUSES = new Set(["CLOSED", "FORECLOSED", "REJECTED", "INVALID"]);
 
-function backendToDetail(payload: BackendBorrowerDetail): BorrowerDetail {
-  // Project visibleLsps from the loans collection (the backend gives us
-  // only ids on the borrower; loan rows carry the human-readable name).
+function backendToDetail(
+  payload: BackendBorrowerDetail,
+  lspNamesById: ReadonlyMap<string, string> = new Map(),
+): BorrowerDetail {
   const visibleLsps = (() => {
+    if (payload.visibleLsps && payload.visibleLsps.length > 0) {
+      return payload.visibleLsps.map((lsp) => ({ id: lsp.id, name: lsp.name }));
+    }
     const map = new Map<string, string>();
     for (const loan of payload.loans) {
       if (loan.lspId && loan.lspName) map.set(loan.lspId, loan.lspName);
+      else if (loan.lspId && loan.lspCode) map.set(loan.lspId, loan.lspCode);
     }
-    // Backfill any ids that don't have a loan-row name yet.
     for (const id of payload.visibleLspIds ?? []) {
-      if (!map.has(id)) map.set(id, id.slice(0, 8));
+      if (!map.has(id)) {
+        map.set(id, lspNamesById.get(id) ?? id);
+      }
     }
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   })();
@@ -203,5 +211,9 @@ export async function fetchBorrowerDetail(id: string): Promise<BorrowerDetail> {
   const payload = await requestJson<BackendBorrowerDetail>(
     `${BACKEND_BASE}/${encodeURIComponent(id)}`,
   );
-  return backendToDetail(payload);
+  const lspNamesById =
+    payload.visibleLsps && payload.visibleLsps.length > 0
+      ? new Map<string, string>()
+      : new Map((await listLspOptions()).map((lsp) => [lsp.id, lsp.name]));
+  return backendToDetail(payload, lspNamesById);
 }

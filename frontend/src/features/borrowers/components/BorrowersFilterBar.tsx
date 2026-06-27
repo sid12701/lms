@@ -7,10 +7,12 @@
  * churn with every keystroke.
  */
 import { useDebouncedControlledText } from "@/lib/hooks/use-debounced-controlled-text";
-import { Search, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  FilterBarClearButton,
+  FilterBarSearchField,
+  FilterBarShell,
+} from "@/components/app/data/FilterBarShell";
 import { useUrlFilters } from "@/lib/url-state";
-import { cn } from "@/lib/utils";
 import { BorrowerListFilters } from "../list-types";
 
 const SEARCH_DEBOUNCE_MS = 200;
@@ -36,45 +38,27 @@ export function BorrowersFilterBar({ className }: BorrowersFilterBarProps) {
   const active = Boolean(filters.q && filters.q.length > 0);
 
   return (
-    <div
-      data-slot="borrowers-filter-bar"
-      role="group"
-      aria-label="Borrowers filters"
-      className={cn(
-        "border-border bg-surface flex flex-wrap items-center gap-2 rounded-md border p-2",
-        className,
-      )}
+    <FilterBarShell
+      dataSlot="borrowers-filter-bar"
+      ariaLabel="Borrowers filters"
+      className={className}
     >
-      <label className="relative min-w-[260px] flex-1">
-        <span className="sr-only">Search borrowers</span>
-        <Search
-          aria-hidden="true"
-          className="text-foreground-muted pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
-        />
-        <input
-          type="search"
-          data-slot="borrowers-search"
-          value={searchField.value}
-          onChange={(e) => searchField.onChange(e.target.value)}
-          placeholder="Search by name, PAN, mobile, or email"
-          aria-label="Search borrowers"
-          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border pr-2 pl-7.5 text-sm outline-none focus-visible:ring-[3px]"
-        />
-      </label>
+      <FilterBarSearchField
+        value={searchField.value}
+        onChange={searchField.onChange}
+        placeholder="Search by name, PAN, mobile, or email"
+        ariaLabel="Search borrowers"
+        dataSlot="borrowers-search"
+        className="min-w-[260px]"
+      />
 
-      {active ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={clearAll}
-          aria-label="Clear filters"
-          className="gap-1"
-        >
-          <X aria-hidden="true" className="size-3.5" />
-          Clear
-        </Button>
-      ) : null}
-    </div>
+      <div className="flex-1" />
+
+      <FilterBarClearButton
+        onClick={clearAll}
+        disabled={!active}
+        dataSlot="borrowers-filter-clear"
+      />
+    </FilterBarShell>
   );
 }

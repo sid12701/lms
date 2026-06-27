@@ -2,7 +2,7 @@
  * Compact list of the requesting user's report requests with status badges
  * + a Download CTA that lights up only once status === COMPLETED.
  *
- * The backend auto-advances QUEUED â†’ PROCESSING â†’ COMPLETED on a 5s/10s
+ * The backend auto-advances QUEUED → PROCESSING → COMPLETED on a 5s/10s
  * timer; the parent page polls every 5s so a freshly queued row visibly
  * progresses without manual refresh.
  */
@@ -48,10 +48,10 @@ const STATUS_META: Record<ReportStatus, { label: string; icon: LucideIcon; class
 };
 
 function shortRange(r: ReportRequest): string {
-  const from = r.dateFrom ?? "â€”";
-  const to = r.dateTo ?? "â€”";
-  if (from === "â€”" && to === "â€”") return "Full portfolio";
-  return `${from} â†’ ${to}`;
+  const from = r.dateFrom ?? "—";
+  const to = r.dateTo ?? "—";
+  if (from === "—" && to === "—") return "Full portfolio";
+  return `${from} → ${to}`;
 }
 
 export interface ReportRequestsTableProps {
@@ -153,7 +153,7 @@ export function ReportRequestsTable({
                   {shortRange(row)}
                 </TableCell>
                 <TableCell className="text-foreground-muted px-2.5 py-1.5 font-mono text-[11px]">
-                  {row.lspId ? row.lspId.slice(0, 8) + "â€¦" : "All"}
+                  {row.lspId ? row.lspId.slice(0, 8) + "…" : "All"}
                 </TableCell>
                 <TableCell className="text-foreground-muted px-2.5 py-1.5 text-[11px] tabular-nums">
                   {formatDateTime(row.queuedAt)}
@@ -171,10 +171,10 @@ export function ReportRequestsTable({
                       className="gap-1"
                     >
                       <Download aria-hidden="true" className="size-3.5" />
-                      {isThisDownloading ? "Openingâ€¦" : "Download"}
+                      {isThisDownloading ? "Opening…" : "Download"}
                     </Button>
                   ) : (
-                    <span className="text-foreground-muted text-xs">â€”</span>
+                    <span className="text-foreground-muted text-xs">—</span>
                   )}
                 </TableCell>
               </TableRow>

@@ -2,19 +2,19 @@
  * UI-layer copy + tone catalog for lifecycle transitions.
  *
  * The *gate* (which transitions are allowed, by role + preconditions) lives
- * exclusively in `src/lib/lifecycle.ts` â€” `canTransition()` is the source of
+ * exclusively in `src/lib/lifecycle.ts` — `canTransition()` is the source of
  * truth; backend `LoanApplicationStatusTransitioner` is authoritative.
  *
  * This file maps each (from, to) pair onto:
  *   - a UI label (verb)
- *   - a tone â€” `approve` / `default` / `destructive`
+ *   - a tone — `approve` / `default` / `destructive`
  *   - whether a free-text reason is required at the dialog
  *   - the coarse permission gate the host page should enforce in addition to
  *     the role check baked into `canTransition()`
  *
  * Authoring rule: every action's `(from, to)` MUST exist in `TRANSITIONS`
  * (i.e. `findRule()` returns a rule). The unit tests in `actions.test.ts`
- * assert this contract â€” it makes "the UI can offer a transition the gate
+ * assert this contract — it makes "the UI can offer a transition the gate
  * doesn't know about" impossible by construction.
  */
 import type { LoanStatus, Permission } from "@/types";
@@ -115,7 +115,7 @@ function makeId(from: LoanStatus, to: LoanStatus): string {
 
 /**
  * UI catalog: every (from, to) pair the rule table exposes, projected
- * onto the LifecycleAction shape. Filtered to "human-actionable" rules â€”
+ * onto the LifecycleAction shape. Filtered to "human-actionable" rules —
  * SYSTEM-only transitions (allowedRoles is empty) are dropped because no
  * role would ever see a button for them.
  */

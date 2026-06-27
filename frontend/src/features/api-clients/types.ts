@@ -1,10 +1,10 @@
 ﻿/**
- * View-layer types for the `/api-clients` admin surface (Phase 9 â€” Agent D).
+ * View-layer types for the `/api-clients` admin surface (Phase 9 — Agent D).
  *
  * `ApiClient` is the canonical wire shape from `src/schemas/user.ts`. The row
  * projection adds the LSP name (resolved from `db.lsps`).
  *
- * Create and rotate mutations both return a one-time `clientSecret` field â€”
+ * Create and rotate mutations both return a one-time `clientSecret` field —
  * surfaced exactly once via `ApiSecretReveal`. Subsequent reads return only
  * the non-secret metadata (handled by `ApiClientSecretMeta`).
  *
@@ -51,14 +51,14 @@ export interface ApiClientsListResponse {
 export interface CreateApiClientInput {
   name: string;
   lspId: string;
-  /** @deprecated Per-client allowlists removed â€” use LSP surface allowlists. Backend only. */
+  /** @deprecated Per-client allowlists removed — use LSP surface allowlists. Backend only. */
   ipAllowList?: string[];
   idempotencyKey: string;
 }
 
 export interface CreateApiClientResponse {
   client: ApiClientRow;
-  /** Cleartext secret â€” shown exactly once, never persisted in cleartext. */
+  /** Cleartext secret — shown exactly once, never persisted in cleartext. */
   clientSecret: string;
 }
 
@@ -86,7 +86,7 @@ export interface RotateApiClientSecretResponse {
 }
 
 /**
- * Non-secret metadata required by `ApiClientSecretMeta` â€” the wire shape
+ * Non-secret metadata required by `ApiClientSecretMeta` — the wire shape
  * doesn't carry `lastRotatedAt` today (the schema only has `lastUsedAt`).
  * For Phase 9 we add `lastRotatedAt` as a server-side derived field; until
  * the real backend exposes it, it is sourced from the most recent product

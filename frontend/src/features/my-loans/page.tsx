@@ -1,30 +1,67 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { Folder, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import type { ColumnDef } from "@tanstack/react-table";
+import { Folder } from "lucide-react";
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
-import { buildQueryPath, requestJson, ApiError } from "@/lib/api/http-client";
+import { ErrorState } from "@/components/app/feedback/ErrorState";
+import { AdminEntityDataTable } from "@/components/app/data/AdminEntityDataTable";
+import { LspLinkCardGrid } from "@/features/home/components/LspLinkCardGrid";
+import { StatusBadge } from "@/components/app/status/StatusBadge";
+import { apiLoanStatus } from "@/lib/loan-application-status";
 import { formatINR } from "@/lib/format";
+import { fetchMyLoansPage, type MyLoanListRow } from "./api";
+import { safeApiMessage } from "./utils";
 
-interface LspLoanRow {
-  id: string;
-  externalLoanId: string | null;
-  borrowerFullName: string;
-  productName: string;
-  requestedAmount: number;
-  status: string;
-  createdAt: string;
-}
+const DEFAULT_PAGE_SIZE = 25;
 
-interface BackendResponse {
-  items?: LspLoanRow[];
-  totalCount?: number;
-}
+const COLUMNS: ColumnDef<MyLoanListRow>[] = [
+  {
+    accessorKey: "externalLoanId",
+    meta: { label: "Reference", mobileCard: "primary" },
+    header: () => <span>Reference</span>,
+    cell: ({ row }) => (
+      <span className="text-primary font-mono text-xs">
+        {row.original.externalLoanId ?? row.original.id.slice(0, 8)}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "borrowerFullName",
+    meta: { label: "Borrower", mobileCard: "secondary" },
+    header: () => <span>Borrower</span>,
+    cell: ({ row }) => <span>{row.original.borrowerFullName}</span>,
+  },
+  {
+    accessorKey: "productName",
+    meta: { label: "Product" },
+    header: () => <span>Product</span>,
+    cell: ({ row }) => <span className="text-foreground-muted">{row.original.productName}</span>,
+  },
+  {
+    accessorKey: "requestedAmount",
+    meta: { label: "Amount", numeric: true, mobileCard: "secondary" },
+    header: () => <span>Amount</span>,
+    cell: ({ row }) => (
+      <span className="tabular-nums">{formatINR(Number(row.original.requestedAmount ?? 0))}</span>
+    ),
+  },
+  {
+    accessorKey: "status",
+    meta: { label: "Status", mobileCard: "actions" },
+    header: () => <span>Status</span>,
+    cell: ({ row }) => <StatusBadge status={apiLoanStatus(row.original.status)} variant="subtle" />,
+  },
+];
 
 export function MyLoansPage() {
-  const [items, setItems] = useState<LspLoanRow[] | null>(null);
+  const navigate = useNavigate();
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [items, setItems] = useState<MyLoanListRow[]>([]);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,25 +69,16 @@ export function MyLoansPage() {
       setLoading(true);
       setError(null);
       try {
-        const path = buildQueryPath("/api/v1/lsp/loan-applications", {
-          offset: 0,
-          limit: 50,
-          paginationDetails: "true",
+        const result = await fetchMyLoansPage({
+          offset: page * pageSize,
+          limit: pageSize,
         });
-        const payload = await requestJson<LspLoanRow[] | BackendResponse>(path);
-        const rows = Array.isArray(payload) ? payload : (payload.items ?? []);
-        if (!cancelled) setItems(rows);
+        if (cancelled) return;
+        setItems(result.items);
+        setTotal(result.totalCount);
       } catch (err) {
         if (cancelled) return;
-        const message =
-          err instanceof ApiError
-            ? err.status === 401 || err.status === 403
-              ? "Your role cannot list loans for this LSP."
-              : err.message
-            : err instanceof Error
-              ? err.message
-              : "Failed to load loans.";
-        setError(message);
+        setError(safeApiMessage(err, "Failed to load loans."));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -59,64 +87,52 @@ export function MyLoansPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [page, pageSize]);
+
+  const columns = useMemo(() => COLUMNS, []);
 
   return (
     <div className="flex flex-col gap-6 p-6">
       <PageHeader
         eyebrow="LSP workspace"
-        title="My loans"
-        description="Active loans and applications scoped to your LSP."
+        title="Loan applications"
+        description="Loans and applications for your lending partner."
       />
-      {loading ? (
-        <div role="status" className="text-foreground-muted flex items-center gap-2 text-sm">
-          <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
-          Loading loans…
-        </div>
-      ) : error ? (
-        <div
-          role="alert"
-          className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-4 py-3 text-sm"
-        >
-          {error}
-        </div>
-      ) : !items || items.length === 0 ? (
-        <EmptyState
-          icon={Folder}
-          title="No loans yet"
-          description="When your LSP originates loans through the LMS, they will appear here."
+      <LspLinkCardGrid />
+      {error ? (
+        <ErrorState
+          title="Couldn't load loans"
+          description={error}
+          retry={{
+            label: "Retry",
+            onClick: () => window.location.reload(),
+          }}
         />
       ) : (
-        <div className="border-border overflow-hidden rounded-md border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30 text-foreground-muted text-left text-xs">
-              <tr>
-                <th className="px-4 py-2 font-medium">External ID</th>
-                <th className="px-4 py-2 font-medium">Borrower</th>
-                <th className="px-4 py-2 font-medium">Product</th>
-                <th className="px-4 py-2 font-medium tabular-nums">Amount</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((row) => (
-                <tr key={row.id} className="border-border/40 border-t">
-                  <td className="px-4 py-2 font-mono text-xs">
-                    <Link to={`/my-loans/${row.id}`} className="text-primary hover:underline">
-                      {row.externalLoanId ?? row.id.slice(0, 8)}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2">{row.borrowerFullName}</td>
-                  <td className="px-4 py-2">{row.productName}</td>
-                  <td className="px-4 py-2 tabular-nums">
-                    {formatINR(Number(row.requestedAmount ?? 0))}
-                  </td>
-                  <td className="px-4 py-2">{row.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <AdminEntityDataTable
+          dataSlot="my-loans-table"
+          columns={columns}
+          rows={items}
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          loading={loading}
+          rowIdKey="id"
+          ariaLabel="Loan applications"
+          onPaginationChange={(next) => {
+            setPage(next.pageIndex);
+            setPageSize(next.pageSize);
+          }}
+          getRowAction={(row) => navigate(`/my-loans/${row.original.id}`)}
+          getRowAriaLabel={(row) => `Open loan for ${row.original.borrowerFullName}`}
+          empty={
+            <EmptyState
+              icon={Folder}
+              title="No loans yet"
+              description="When your LSP originates loans through Bhawana, they will appear here."
+            />
+          }
+        />
       )}
     </div>
   );

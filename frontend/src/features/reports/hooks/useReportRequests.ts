@@ -1,9 +1,9 @@
 ﻿/**
  * TanStack Query wrapper around `listRequests` with 5s polling.
  *
- * The backend auto-advances QUEUED â†’ PROCESSING (after 5s) â†’ COMPLETED
+ * The backend auto-advances QUEUED → PROCESSING (after 5s) → COMPLETED
  * (after 10s) on every GET. By polling every 5s the UI's polling cadence
- * drives the server-side ticker â€” no separate timer needed.
+ * drives the server-side ticker — no separate timer needed.
  *
  * `refetchInterval: 5_000` matches the QUEUED-to-PROCESSING window. We
  * intentionally keep polling on a stable cadence so a freshly queued report

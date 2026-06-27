@@ -24,9 +24,9 @@ describe("BreadcrumbBar", () => {
     expect(getByText("API clients")).toBeInTheDocument();
   });
 
-  it("resolves my-loans slug to 'My loans'", () => {
+  it("resolves my-loans slug to 'Loan applications'", () => {
     const { getByText } = renderAt("/my-loans");
-    expect(getByText("My loans")).toBeInTheDocument();
+    expect(getByText("Loan applications")).toBeInTheDocument();
   });
 
   it("renders nested mapped + opaque-id segments correctly", () => {

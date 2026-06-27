@@ -24,6 +24,8 @@ export interface AdminEntityDataTableProps<TData> {
   getRowAriaLabel?: (row: Row<TData>) => string | undefined;
   skeletonRows?: number;
   className?: string;
+  /** Forwarded to `DataTable` — list pages default to mobile cards. */
+  responsiveCards?: boolean;
 }
 
 /**
@@ -50,6 +52,7 @@ export function AdminEntityDataTable<TData>({
   getRowAriaLabel,
   skeletonRows,
   className,
+  responsiveCards = true,
 }: AdminEntityDataTableProps<TData>) {
   const pagination = { pageIndex: page, pageSize };
 
@@ -80,6 +83,7 @@ export function AdminEntityDataTable<TData>({
         getRowAction={getRowAction}
         getRowTestId={getRowTestId}
         getRowAriaLabel={getRowAriaLabel}
+        responsiveCards={responsiveCards}
       />
       <DataTablePagination
         pageIndex={page}

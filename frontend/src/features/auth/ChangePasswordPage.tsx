@@ -18,12 +18,17 @@ import {
 import { completePasswordChange } from "@/features/auth/auth-service";
 import { useSession } from "@/features/auth/session-context";
 import { defaultLandingFor } from "@/lib/role-gates";
+import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { PageEyebrow } from "@/components/app/layout/PageEyebrow";
+import { InlineErrorAlert } from "@/components/app/feedback/InlineErrorAlert";
 
 const ChangePasswordSchema = z
   .object({
-    newPassword: z.string().min(8, "Password must be at least 8 characters"),
-    confirmPassword: z.string().min(8, "Password must be at least 8 characters"),
+    newPassword: z
+      .string()
+      .min(12, "Password must be at least 12 characters")
+      .max(128, "Password must be at most 128 characters"),
+    confirmPassword: z.string().min(12, "Password must be at least 12 characters"),
   })
   .refine((v) => v.newPassword === v.confirmPassword, {
     path: ["confirmPassword"],
@@ -72,7 +77,7 @@ export function ChangePasswordPage() {
       signIn(next);
       navigate(defaultLandingFor(next.user.role), { replace: true });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not update password";
+      const message = mapApiErrorMessage(err, "Could not update password.");
       setSubmitError(message);
     }
   }
@@ -99,14 +104,7 @@ export function ChangePasswordPage() {
           </div>
         </header>
 
-        {submitError ? (
-          <div
-            role="alert"
-            className="border-destructive/30 bg-destructive/5 text-destructive mb-4 rounded-md border px-4 py-3 text-sm"
-          >
-            {submitError}
-          </div>
-        ) : null}
+        <InlineErrorAlert message={submitError} className="mb-4" />
 
         <Form {...form}>
           <form
@@ -124,7 +122,9 @@ export function ChangePasswordPage() {
                   <FormControl>
                     <Input type="password" autoComplete="new-password" {...field} />
                   </FormControl>
-                  <FormDescription>Minimum 8 characters.</FormDescription>
+                  <FormDescription>
+                    At least 12 characters (matches the server password policy).
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

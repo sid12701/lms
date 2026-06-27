@@ -2,6 +2,7 @@ import { ShieldCheck, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { shortId } from "@/lib/short-id";
 import type { BorrowerDetail } from "../types";
 
 export interface BorrowerHeaderProps {
@@ -16,7 +17,7 @@ export interface BorrowerHeaderProps {
  */
 export function BorrowerHeader({ detail }: BorrowerHeaderProps) {
   const { borrower, visibleLsps, totals } = detail;
-  const eyebrow = `Borrower · ${borrower.id.slice(0, 8)}…`;
+  const eyebrow = `Borrower · ${shortId(borrower.id)}…`;
 
   return (
     <div data-slot="borrower-header" className="flex flex-col gap-3">

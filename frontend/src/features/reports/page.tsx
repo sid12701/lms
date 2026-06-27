@@ -1,12 +1,12 @@
 ﻿/**
- * Phase 8 â€” `/reports` portfolio MIS surface (SYSTEM_ADMIN-only).
+ * Phase 8 — `/reports` portfolio MIS surface (SYSTEM_ADMIN-only).
  *
  * Composes the filter bar, KPI summary cards, MIS preview table, the
  * "Generate report" dialog, and the user's request queue. Role enforcement
  * happens in the route layer (`RequireRole` for SYSTEM_ADMIN) and is also
  * defended by the backend (returns FORBIDDEN for any other role).
  *
- * Filter snapshot is page-local React state â€” reports is an internal-ops
+ * Filter snapshot is page-local React state — reports is an internal-ops
  * surface, not a deep-link target, so the URL is intentionally not bound.
  */
 import { useMemo, useState } from "react";
@@ -100,7 +100,7 @@ export function ReportsPage() {
       setDialogOpen(false);
       createMutation.reset();
     } catch {
-      // Error surfaces via `createMutation.error` â†’ dialog `errorMessage` prop.
+      // Error surfaces via `createMutation.error` → dialog `errorMessage` prop.
       // Keep dialog open so the user can retry / cancel.
     }
   };
@@ -120,7 +120,7 @@ export function ReportsPage() {
   };
 
   // Either the summary OR the preview being forbidden indicates an
-  // access-level failure â€” render a friendly empty state instead of an
+  // access-level failure — render a friendly empty state instead of an
   // ErrorState so the screen never looks broken for an under-privileged user
   // who somehow escaped the route guard.
   const accessDenied =
@@ -208,9 +208,10 @@ export function ReportsPage() {
             ) : (
               <MisPreviewTable
                 data={previewQuery.data}
-                isLoading={previewQuery.isPending}
+                isLoading={previewQuery.isPending && previewQuery.data === undefined}
                 filters={previewFilters}
                 onFiltersChange={handlePreviewFiltersChange}
+                onRequestFullExport={() => setDialogOpen(true)}
               />
             )}
           </section>

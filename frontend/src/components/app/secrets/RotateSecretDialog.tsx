@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { FormShell } from "@/components/app/forms/FormShell";
+import { FormDialogErrorAlert } from "@/components/app/forms/FormDialogErrorAlert";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { RotateSecretSchema, type RotateSecretValues } from "./schema";
 
@@ -39,6 +40,8 @@ export interface RotateSecretDialogProps {
   onConfirm: (values: { reason: string; idempotencyKey: string }) => Promise<void> | void;
   /** Disables submit + cancel and shows a working state on the confirm button. */
   loading?: boolean;
+  /** Server-side mutation error surfaced above the footer. */
+  errorMessage?: string | null;
 }
 
 /**
@@ -53,6 +56,7 @@ export function RotateSecretDialog({
   clientLabel,
   onConfirm,
   loading = false,
+  errorMessage = null,
 }: RotateSecretDialogProps) {
   const form = useForm<RotateSecretValues>({
     resolver: zodResolver(RotateSecretSchema),
@@ -111,6 +115,8 @@ export function RotateSecretDialog({
               </FormItem>
             )}
           />
+
+          <FormDialogErrorAlert message={errorMessage} />
 
           <DialogFooter>
             <Button

@@ -4,19 +4,18 @@ import { cn } from "@/lib/utils";
 
 export interface RoleScopeBadgeProps {
   className?: string;
-  /** When the user is LSP, optionally pass the LSP name to surface in the chip. */
-  lspName?: string;
 }
 
 /**
  * Compact chip showing which scope the actor is operating in. For internal
  * users it reads "Internal · All LSPs"; for LSP users, "LSP · {name}".
  */
-export function RoleScopeBadge({ className, lspName }: RoleScopeBadgeProps) {
+export function RoleScopeBadge({ className }: RoleScopeBadgeProps) {
   const { session } = useSession();
   if (!session) return null;
   const internal = isInternalUser(session.user.role);
-  const label = internal ? "Internal · All LSPs" : `LSP · ${lspName ?? "Bhawana Demo LSP"}`;
+  const lspLabel = session.user.lspName?.trim();
+  const label = internal ? "Internal · All LSPs" : lspLabel ? `LSP · ${lspLabel}` : "LSP workspace";
   return (
     <span
       data-slot="role-scope-badge"

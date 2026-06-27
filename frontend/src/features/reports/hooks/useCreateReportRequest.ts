@@ -1,5 +1,5 @@
 ﻿/**
- * Mutation hook â€” queues a new report request via the backend.
+ * Mutation hook — queues a new report request via the backend.
  *
  * The caller mints the BR-5 idempotency key (the dialog does this at submit
  * time). On success the list cache is invalidated so the new QUEUED row

@@ -1,10 +1,10 @@
 ﻿/**
- * Phase 9 â€” `/users` admin surface (SYSTEM_ADMIN-only).
+ * Phase 9 — `/users` admin surface (SYSTEM_ADMIN-only).
  *
  * Composes:
  *   - `UsersFilterBar` (URL-bound filters via `useSearchParams`)
  *   - `UsersTable` (server-paged TanStack table with row actions)
- *   - `UserCreateDialog` (POST /api/v1/admin/users â€” returns temp password)
+ *   - `UserCreateDialog` (POST /api/v1/admin/users — returns temp password)
  *   - `UserEditDialog` (PATCH /api/v1/admin/users/:id)
  *   - `ResetPasswordDialog` (POST /api/v1/admin/users/:id/reset-password)
  *   - `TempPasswordRevealCard` (page-level reveal-once card)
@@ -112,8 +112,8 @@ export function UsersPage() {
   const reset = useResetUserPassword();
   const revokeSessions = useRevokeUserSessions();
 
-  // LSP options for the filter bar + create/edit dialogs. Pull a wide page â€”
-  // the admin LSP list is short enough in practice (BRD Â§1) to fit without
+  // LSP options for the filter bar + create/edit dialogs. Pull a wide page —
+  // the admin LSP list is short enough in practice (BRD §1) to fit without
   // a typeahead.
   const lspsQuery = useLsps({ pageSize: 100 });
   const lspOptions = useMemo(
@@ -123,7 +123,7 @@ export function UsersPage() {
 
   const clearRevealed = () => setRevealedTempPassword(null);
 
-  // â”€â”€ Create dialog handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Create dialog handlers ──────────────────────────────────────────────────
   const handleCreateOpenChange = (open: boolean) => {
     if (!open) {
       if (create.isPending) return;
@@ -169,7 +169,7 @@ export function UsersPage() {
     clearRevealed();
   };
 
-  // â”€â”€ Edit dialog handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Edit dialog handlers ────────────────────────────────────────────────────
   const handleEditOpenChange = (open: boolean) => {
     if (!open) {
       if (update.isPending) return;
@@ -207,7 +207,7 @@ export function UsersPage() {
     }
   };
 
-  // â”€â”€ Reset-password dialog handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Reset-password dialog handlers ──────────────────────────────────────────
   const handleResetOpenChange = (open: boolean) => {
     if (!open) {
       if (reset.isPending) return;
@@ -266,7 +266,7 @@ export function UsersPage() {
     }
   };
 
-  // â”€â”€ Toggle status (Enable / Disable) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Toggle status (Enable / Disable) ────────────────────────────────────────
   const handleToggleStatus = (row: UserRow) => {
     const nextStatus: UserStatusT = row.status === "DISABLED" ? "ACTIVE" : "DISABLED";
     update.mutate({
@@ -288,7 +288,7 @@ export function UsersPage() {
     <AdminEntityListPage
       testId="users-page"
       title="Users"
-      description="Internal and LSP users â€” manage roles and tenant scope."
+      description="Internal and LSP users — manage roles and tenant scope."
       primaryAction={{
         label: "New user",
         dataSlot: "users-new-button",

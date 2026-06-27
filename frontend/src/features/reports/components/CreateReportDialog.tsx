@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePickerField } from "@/components/app/data/DatePickerField";
 import { FormShell } from "@/components/app/forms/FormShell";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import type { CreateReportRequestInput } from "../types";
@@ -137,7 +138,12 @@ export function CreateReportDialog({
                 <FormItem>
                   <FormLabel>Disbursed from</FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} />
+                    <DatePickerField
+                      value={field.value}
+                      onChange={field.onChange}
+                      ariaLabel="Disbursed from"
+                      className="w-full [&_button]:h-9"
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -150,7 +156,12 @@ export function CreateReportDialog({
                 <FormItem>
                   <FormLabel>Disbursed to</FormLabel>
                   <FormControl>
-                    <Input type="date" {...field} />
+                    <DatePickerField
+                      value={field.value}
+                      onChange={field.onChange}
+                      ariaLabel="Disbursed to"
+                      className="w-full [&_button]:h-9"
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

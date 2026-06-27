@@ -20,7 +20,8 @@
     "test:ui": "vitest --ui",
     "e2e": "playwright test",
     "generate:api-types": "openapi-typescript ../openapi/openapi.json -o src/lib/api/generated/schema.ts",
-    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build",
+    "check:encoding": "node scripts/check-encoding.mjs",
+    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run check:encoding && npm run test && npm run build",
     "prepare": "husky || true"
   },
   "lint-staged": {
@@ -40,11 +41,11 @@
     "@tanstack/react-table": "^8.21.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
     "lucide-react": "^1.14.0",
     "radix-ui": "^1.4.3",
     "react": "^19.2.6",
+    "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.6",
     "react-hook-form": "^7.75.0",
     "react-router-dom": "^6.30.3",

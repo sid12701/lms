@@ -24,29 +24,25 @@ beforeEach(() => {
 });
 
 describe("<LspLinkCardGrid />", () => {
-  it("renders three cards with correct hrefs", () => {
+  it("renders the loan applications link without disabled placeholder cards", () => {
     const { container } = renderWithProviders(wrap(<LspLinkCardGrid />));
     const cards = container.querySelectorAll('[data-slot="lsp-link-card"]');
-    expect(cards.length).toBe(3);
+    expect(cards.length).toBe(1);
 
     const links = Array.from(container.querySelectorAll("a"));
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/my-loans/new", "/my-loans"]);
+    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/my-loans"]);
+
+    const disabled = container.querySelectorAll(
+      '[data-slot="lsp-link-card"][data-disabled="true"]',
+    );
+    expect(disabled.length).toBe(0);
   });
 
-  it("renders Submit new loan and My loans titles", () => {
-    const { getByText } = renderWithProviders(wrap(<LspLinkCardGrid />));
-    expect(getByText("Submit new loan")).toBeInTheDocument();
-    expect(getByText("My loans")).toBeInTheDocument();
-    expect(getByText("Help & docs")).toBeInTheDocument();
-  });
-
-  it("marks the Help & docs card as aria-disabled", () => {
-    const { container } = renderWithProviders(wrap(<LspLinkCardGrid />));
-    const disabled = container.querySelector('[data-slot="lsp-link-card"][data-disabled="true"]');
-    expect(disabled).not.toBeNull();
-    expect(disabled!.getAttribute("aria-disabled")).toBe("true");
-    // It is not a real link.
-    expect(disabled!.tagName).not.toBe("A");
+  it("renders only the supported LSP workspace destination", () => {
+    const { getByText, queryByText } = renderWithProviders(wrap(<LspLinkCardGrid />));
+    expect(getByText("Loan applications")).toBeInTheDocument();
+    expect(queryByText("Submit new loan")).not.toBeInTheDocument();
+    expect(queryByText("Help & docs")).not.toBeInTheDocument();
   });
 
   it("disables entrance animation under prefers-reduced-motion", () => {

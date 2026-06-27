@@ -141,7 +141,7 @@ function ColorSwatch({ name, token }: { name: string; token: string }) {
   );
 }
 
-// Item 5 fix â€” lazy-route race on first paint: every useState below initialises
+// Item 5 fix — lazy-route race on first paint: every useState below initialises
 // synchronously so the page commits with a stable shape on first paint, and the
 // body is wrapped in a defensive <Suspense> boundary so any future lazy child
 // renders against a stable fallback instead of flickering the parent.
@@ -196,7 +196,7 @@ export function ComponentsSandboxPage() {
   return (
     <div className="bg-background min-h-screen">
       <div className="mx-auto max-w-[1320px] px-6 pt-6">
-        {/* Item 9 â€” back-link to home (uses react-router Link, not raw anchor). */}
+        {/* Item 9 — back-link to home (uses react-router Link, not raw anchor). */}
         <Link
           to="/home"
           data-slot="sandbox-back-link"
@@ -329,14 +329,14 @@ export function ComponentsSandboxPage() {
               title="StatusBadge, AccountStatusBadge, DpdBadge"
             >
               <h3 className="text-foreground mb-2 text-sm font-semibold">
-                Loan status â€” subtle (default)
+                Loan status — subtle (default)
               </h3>
               <div className="mb-5 flex flex-wrap gap-2">
                 {loanStatuses.map((s) => (
                   <StatusBadge key={s} status={s} />
                 ))}
               </div>
-              <h3 className="text-foreground mb-2 text-sm font-semibold">Loan status â€” solid</h3>
+              <h3 className="text-foreground mb-2 text-sm font-semibold">Loan status — solid</h3>
               <div className="mb-5 flex flex-wrap gap-2">
                 {loanStatuses.slice(0, 8).map((s) => (
                   <StatusBadge key={s} status={s} variant="default" />
@@ -479,7 +479,7 @@ function SandboxTable({
   columns: ColumnDef<SandboxLoanRow>[];
 }) {
   // Wrap DataTable + its toolbar in a small inner component to scope the
-  // shared TanStack instance via state â€” kept inline (not factored out)
+  // shared TanStack instance via state — kept inline (not factored out)
   // because the sandbox is a dev-only review surface.
   return (
     <DataTableScaffold rows={rows} columns={columns}>

@@ -1,6 +1,6 @@
 import { forwardRef, type HTMLAttributes } from "react";
 import { Lock } from "lucide-react";
-import { EmptyState } from "./EmptyState";
+import { EmptyState, type EmptyStateProps } from "./EmptyState";
 import { cn } from "@/lib/utils";
 
 export interface PermissionDeniedStateProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
@@ -10,6 +10,8 @@ export interface PermissionDeniedStateProps extends Omit<HTMLAttributes<HTMLDivE
   currentRole?: string;
   /** Permission(s) that would unblock this view, surfaced for support. */
   missingPermission?: string;
+  action?: EmptyStateProps["action"];
+  secondaryAction?: EmptyStateProps["secondaryAction"];
   className?: string;
 }
 
@@ -23,7 +25,16 @@ const DEFAULT_TITLE = "You don't have access to this page";
  */
 export const PermissionDeniedState = forwardRef<HTMLDivElement, PermissionDeniedStateProps>(
   function PermissionDeniedState(
-    { title = DEFAULT_TITLE, description, currentRole, missingPermission, className, ...rest },
+    {
+      title = DEFAULT_TITLE,
+      description,
+      currentRole,
+      missingPermission,
+      action,
+      secondaryAction,
+      className,
+      ...rest
+    },
     ref,
   ) {
     const composed =
@@ -41,6 +52,8 @@ export const PermissionDeniedState = forwardRef<HTMLDivElement, PermissionDenied
         icon={Lock}
         title={title}
         description={composed}
+        action={action}
+        secondaryAction={secondaryAction}
         className={cn(className)}
         {...rest}
       />

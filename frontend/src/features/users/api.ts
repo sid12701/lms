@@ -13,7 +13,6 @@
  *   - The backend response carries no `mustChangePassword` flag on the
  *     listing; we default to `false`. The reset-password flow does mint
  *     a temporary password and forces password change on next login.
- *   - The backend response carries no `createdAt`; we default to the epoch.
  *   - The frontend's single `role` field is filled from the backend's
  *     `roles[]` by picking the highest-priority role (SYSTEM_ADMIN >
  *     OPS_USER > PRODUCT_ADMIN > LSP_UI_WRITE > LSP_UI_READ > LSP_API_CLIENT).
@@ -36,7 +35,6 @@ import type {
 } from "./types";
 
 const BASE = "/api/v1/internal/admin/users";
-const EPOCH_ISO = "1970-01-01T00:00:00.000Z";
 const TEMP_PASSWORD_LEN = 14;
 
 const ROLE_PRIORITY: Role[] = [
@@ -74,6 +72,7 @@ interface BackendUserResponse {
   roles: string[];
   lockedAt?: string | null;
   lockReason?: string | null;
+  createdAt: string;
 }
 
 function toUserRow(payload: BackendUserResponse): UserRow {
@@ -85,7 +84,7 @@ function toUserRow(payload: BackendUserResponse): UserRow {
     role: pickPrimaryRole(payload.roles),
     lspId: payload.lspId,
     mustChangePassword: false,
-    createdAt: EPOCH_ISO,
+    createdAt: payload.createdAt,
     lockedAt: payload.lockedAt ?? null,
     lockReason: payload.lockReason ?? null,
   };

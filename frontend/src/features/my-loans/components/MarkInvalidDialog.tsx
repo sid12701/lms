@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { InlineErrorAlert } from "@/components/app/feedback/InlineErrorAlert";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { markLoanInvalid, type InvalidReasonOption, type MyLoanDetail } from "../api";
 import { safeApiMessage } from "../utils";
@@ -29,6 +30,7 @@ export interface MarkInvalidDialogProps {
   applicationId: string;
   reasons: readonly InvalidReasonOption[];
   loadingReasons: boolean;
+  reasonsLoadError?: string | null;
   onSuccess: (next: MyLoanDetail) => void;
 }
 
@@ -38,6 +40,7 @@ export function MarkInvalidDialog({
   applicationId,
   reasons,
   loadingReasons,
+  reasonsLoadError,
   onSuccess,
 }: MarkInvalidDialogProps) {
   const [reasonCode, setReasonCode] = useState<string>("");
@@ -131,14 +134,9 @@ export function MarkInvalidDialog({
             </div>
           ) : null}
 
-          {error ? (
-            <div
-              role="alert"
-              className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-3 py-2 text-sm"
-            >
-              {error}
-            </div>
-          ) : null}
+          <InlineErrorAlert message={reasonsLoadError ?? null} />
+
+          <InlineErrorAlert message={error} />
         </div>
 
         <DialogFooter>

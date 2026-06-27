@@ -1,5 +1,5 @@
 ﻿/**
- * ProductCreateDialog â€” RHF + Zod create form, sibling schema in `./schema.ts`.
+ * ProductCreateDialog — RHF + Zod create form, sibling schema in `./schema.ts`.
  *
  * The form mints a BR-5 idempotency key at submit time via
  * `newIdempotencyKey()`. RHF mirrors superRefine errors (principalMax <
@@ -128,7 +128,7 @@ export function ProductCreateDialog({
                     />
                   </FormControl>
                   <FormDescription>
-                    Short identifier. Letters, digits, and hyphens; 2â€“24 chars.
+                    Short identifier. Letters, digits, and hyphens; 2–24 chars.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -141,7 +141,7 @@ export function ProductCreateDialog({
                 <FormItem>
                   <FormLabel>Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="Personal Loan â€” Standard" {...field} />
+                    <Input placeholder="Personal Loan — Standard" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -183,7 +183,7 @@ export function ProductCreateDialog({
             loading={loading}
             onCancel={() => onOpenChange(false)}
             submitLabel="Create product"
-            loadingLabel="Creatingâ€¦"
+            loadingLabel="Creating…"
           />
         </FormShell>
       </DialogContent>

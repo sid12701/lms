@@ -1,7 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,17 +9,24 @@ import { login } from "@/features/auth/auth-service";
 import {
   LOGIN_UI_ROLES,
   loginPresetForRole,
+  type LoginRolePreset,
   type LoginUiRole,
 } from "@/features/auth/login-role-presets";
 import { defaultLandingFor } from "@/lib/role-gates";
 import { cn } from "@/lib/utils";
 import { PageEyebrow } from "@/components/app/layout/PageEyebrow";
 import { ApiError } from "@/lib/api/http-client";
+import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { LOGIN_PAGE_HEADING } from "@/lib/product-branding";
 
 interface RoleCardCopy {
   title: string;
   blurb: string;
+}
+
+interface ConfiguredRoleCard {
+  role: LoginUiRole;
+  preset: LoginRolePreset;
 }
 
 function copyFor(role: LoginUiRole): RoleCardCopy {
@@ -41,12 +47,20 @@ function copyFor(role: LoginUiRole): RoleCardCopy {
 export function LoginPage() {
   const { session, isLoading, signIn } = useSession();
   const navigate = useNavigate();
-  const [username, setUsername] = useState<string>("");
+  const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [selectedRole, setSelectedRole] = useState<LoginUiRole | null>(null);
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const configuredRoleCards = useMemo<ConfiguredRoleCard[]>(
+    () =>
+      LOGIN_UI_ROLES.flatMap((role) => {
+        const preset = loginPresetForRole(role);
+        return preset ? [{ role, preset }] : [];
+      }),
+    [],
+  );
 
   if (isLoading) {
     return (
@@ -69,7 +83,7 @@ export function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const next = await login({ username, password });
+      const next = await login({ email, password });
       signIn(next);
       const target = next.user.mustChangePassword
         ? "/change-password"
@@ -77,26 +91,17 @@ export function LoginPage() {
       navigate(target, { replace: true });
     } catch (err) {
       const message =
-        err instanceof ApiError
-          ? err.status === 401
-            ? "Invalid username or password."
-            : (err.message ?? "Sign-in failed.")
-          : err instanceof Error
-            ? err.message
-            : "Sign-in failed.";
+        err instanceof ApiError && err.status === 401
+          ? "Invalid email or password."
+          : mapApiErrorMessage(err, "Sign-in failed.");
       setError(message);
       setSubmitting(false);
     }
   }
 
-  function handleRoleSelect(role: LoginUiRole): void {
-    const preset = loginPresetForRole(role);
-    if (!preset) {
-      toast.error("No user exists for this role.");
-      return;
-    }
+  function handleRoleSelect(role: LoginUiRole, preset: LoginRolePreset): void {
     setSelectedRole(role);
-    setUsername(preset.username);
+    setEmail(preset.email);
     setPassword(preset.password);
     setShowPassword(false);
     setError(null);
@@ -129,21 +134,22 @@ export function LoginPage() {
           className="border-border bg-card mx-auto flex w-full max-w-md flex-col gap-5 rounded-2xl border p-7 shadow-lg shadow-black/3 sm:p-8"
         >
           <div className="flex flex-col gap-2">
-            <Label htmlFor="username" className="text-sm font-medium">
-              Username
+            <Label htmlFor="email" className="text-sm font-medium">
+              Email
             </Label>
             <Input
-              id="username"
-              name="username"
-              autoComplete="username"
-              value={username}
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              value={email}
               onChange={(event) => {
-                setUsername(event.target.value);
+                setEmail(event.target.value);
                 setSelectedRole(null);
               }}
               disabled={submitting}
               required
-              placeholder="e.g. ops.admin"
+              placeholder="you@company.com"
               className="h-10 rounded-lg px-3 text-sm"
             />
           </div>
@@ -187,7 +193,7 @@ export function LoginPage() {
           {error ? (
             <div
               role="alert"
-              className="border-destructive/30 bg-destructive/5 text-destructive flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm leading-5"
+              className="border-danger/30 bg-danger/5 text-danger flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm leading-5"
             >
               <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{error}</span>
@@ -211,57 +217,59 @@ export function LoginPage() {
           </Button>
         </form>
 
-        <section
-          aria-labelledby="role-quick-fill-title"
-          className="border-border bg-muted/30 flex flex-col gap-4 rounded-2xl border p-6"
-        >
-          <header className="flex flex-col gap-1">
-            <h2
-              id="role-quick-fill-title"
-              className="text-foreground text-base font-semibold tracking-tight"
-            >
-              Sign in by role
-            </h2>
-            <p className="text-foreground-muted text-xs leading-5">
-              Click a role to fill credentials for a matching backend account. Configure usernames
-              and passwords in <code className="font-mono">.env.local</code> to match your
-              environment.
-            </p>
-          </header>
-
-          <ul
-            aria-label="System roles"
-            className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        {import.meta.env.DEV && configuredRoleCards.length > 0 ? (
+          <section
+            aria-labelledby="role-quick-fill-title"
+            className="border-border bg-muted/30 flex flex-col gap-4 rounded-2xl border p-6"
           >
-            {LOGIN_UI_ROLES.map((role) => {
-              const copy = copyFor(role);
-              const isActive = selectedRole === role;
-              return (
-                <li key={role}>
-                  <button
-                    type="button"
-                    onClick={() => handleRoleSelect(role)}
-                    disabled={submitting}
-                    aria-label={`Fill credentials for ${copy.title}`}
-                    aria-pressed={isActive}
-                    className={cn(
-                      "group/card border-border bg-background flex h-full w-full flex-col items-start gap-1 rounded-xl border px-4 py-3 text-left text-sm transition-all duration-150",
-                      "hover:border-brand-500/60 hover:bg-brand-50/40 dark:hover:bg-brand-950/20 hover:-translate-y-px hover:shadow-sm",
-                      "focus-visible:border-brand-500 focus-visible:ring-brand-500/30 outline-none focus-visible:ring-2",
-                      "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none",
-                      isActive &&
-                        "border-brand-500 bg-brand-50/60 dark:bg-brand-950/30 ring-brand-500/20 ring-2",
-                    )}
-                  >
-                    <span className="text-foreground font-semibold">{copy.title}</span>
-                    <span className="text-foreground-muted text-xs leading-5">{copy.blurb}</span>
-                    <span className="text-foreground-subtle font-mono text-[11px]">{role}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+            <header className="flex flex-col gap-1">
+              <h2
+                id="role-quick-fill-title"
+                className="text-foreground text-base font-semibold tracking-tight"
+              >
+                Sign in by role
+              </h2>
+              <p className="text-foreground-muted text-xs leading-5">
+                Click a role to fill credentials for a matching backend account. Configure emails
+                and passwords in <code className="font-mono">.env.local</code> to match your
+                environment.
+              </p>
+            </header>
+
+            <ul
+              aria-label="System roles"
+              className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+            >
+              {configuredRoleCards.map(({ role, preset }) => {
+                const copy = copyFor(role);
+                const isActive = selectedRole === role;
+                return (
+                  <li key={role}>
+                    <button
+                      type="button"
+                      onClick={() => handleRoleSelect(role, preset)}
+                      disabled={submitting}
+                      aria-label={`Fill credentials for ${copy.title}`}
+                      aria-pressed={isActive}
+                      className={cn(
+                        "group/card border-border bg-background flex h-full w-full flex-col items-start gap-1 rounded-xl border px-4 py-3 text-left text-sm transition-all duration-150",
+                        "hover:border-brand-500/60 hover:bg-brand-50/40 dark:hover:bg-brand-950/20 hover:-translate-y-px hover:shadow-sm",
+                        "focus-visible:border-brand-500 focus-visible:ring-brand-500/30 outline-none focus-visible:ring-2",
+                        "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none",
+                        isActive &&
+                          "border-brand-500 bg-brand-50/60 dark:bg-brand-950/30 ring-brand-500/20 ring-2",
+                      )}
+                    >
+                      <span className="text-foreground font-semibold">{copy.title}</span>
+                      <span className="text-foreground-muted text-xs leading-5">{copy.blurb}</span>
+                      <span className="text-foreground-subtle font-mono text-[11px]">{role}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
       </div>
     </main>
   );

@@ -1,11 +1,12 @@
 ﻿/**
- * Mutation hook â€” fetches a download URL for a COMPLETED report request.
+ * Mutation hook — fetches a download URL for a COMPLETED report request.
  *
- * The backend returns a `data:text/csv;base64,â€¦` URL; the consumer
+ * The backend returns a `data:text/csv;base64,…` URL; the consumer
  * calls `window.open(url, "_blank")` after the promise resolves.
  */
 import { useMutation, type UseMutationResult } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { downloadRequest } from "../api";
 
 export interface DownloadReportVariables {
@@ -20,7 +21,7 @@ export function useDownloadReportRequest(): UseMutationResult<
   return useMutation<{ url: string }, Error, DownloadReportVariables>({
     mutationFn: ({ id }) => downloadRequest(id),
     onError: (err) => {
-      toast.error(err.message || "Couldn't fetch the report download URL.");
+      toast.error(mapApiErrorMessage(err, "Couldn't fetch the report download URL."));
     },
   });
 }

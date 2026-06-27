@@ -52,6 +52,7 @@ export function ProductsTable({
       {
         id: "code",
         header: "Code",
+        meta: { label: "Code", mobileCard: "primary" },
         cell: ({ row }) => (
           <span data-slot="products-code" className="text-foreground font-mono text-sm font-medium">
             {row.original.code}
@@ -61,6 +62,7 @@ export function ProductsTable({
       {
         id: "name",
         header: "Name",
+        meta: { label: "Name", mobileCard: "secondary" },
         cell: ({ row }) => (
           <div className="flex flex-col gap-0.5">
             <span className="text-foreground text-sm font-medium">{row.original.name}</span>
@@ -77,6 +79,7 @@ export function ProductsTable({
       {
         id: "status",
         header: "Status",
+        meta: { label: "Status", mobileCard: "primary" },
         cell: ({ row }) => {
           const isActive = row.original.status === "ACTIVE";
           return (
@@ -98,7 +101,7 @@ export function ProductsTable({
       {
         id: "principal",
         header: "Principal range",
-        meta: { numeric: true },
+        meta: { numeric: true, label: "Principal range", mobileCard: "secondary" },
         cell: ({ row }) => (
           <span className="text-foreground text-sm tabular-nums">
             {formatPrincipalRange(row.original.principalMin, row.original.principalMax)}
@@ -128,6 +131,7 @@ export function ProductsTable({
       {
         id: "actions",
         header: () => <span className="sr-only">Actions</span>,
+        meta: { mobileCard: "actions" },
         cell: ({ row }) => {
           const r = row.original;
           return (

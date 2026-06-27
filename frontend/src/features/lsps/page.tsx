@@ -204,7 +204,7 @@ export function LspsPage() {
     <AdminEntityListPage
       testId="lsps-page"
       title="LSPs"
-      description="Manage Loan Service Provider tenants, operational status, and webhook subscriptions."
+      description="Manage Lending Service Provider tenants, operational status, and webhook subscriptions."
       primaryAction={{
         label: "New LSP",
         dataSlot: "lsps-new-button",
@@ -223,7 +223,7 @@ export function LspsPage() {
       catalogueEmpty={{
         icon: Building2,
         title: "No LSPs yet",
-        description: "Register the first Loan Service Provider tenant to get started.",
+        description: "Register the first Lending Service Provider tenant to get started.",
       }}
       filterBar={<LspsFilterBar filters={filters} onChange={setFilters} />}
       table={

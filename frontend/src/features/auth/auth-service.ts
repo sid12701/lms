@@ -71,6 +71,7 @@ async function buildSessionFromToken(
     username: context.username,
     role,
     lspId: context.lspId,
+    lspName: context.lspName,
     mustChangePassword: token.passwordChangeRequired ?? false,
   });
   return Session.parse({
@@ -81,10 +82,10 @@ async function buildSessionFromToken(
 }
 
 export async function login(input: LoginInput): Promise<SessionType> {
-  if (!input.username.trim() || !input.password.trim()) {
-    throw new ApiError("Username and password are required.", 400, "", "VALIDATION");
+  if (!input.email.trim() || !input.password.trim()) {
+    throw new ApiError("Email and password are required.", 400, "", "VALIDATION");
   }
-  const token = await backendLogin(input.username.trim(), input.password);
+  const token = await backendLogin(input.email.trim(), input.password);
   const session = await buildSessionFromToken(token);
   saveStoredSession(session);
   return session;

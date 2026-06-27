@@ -1,11 +1,11 @@
 ﻿/**
  * Payment transactions + allocation.
  *
- * Allocation order per blueprint Â§13 waterfall: penalty â†’ fees â†’ interest â†’ principal.
+ * Allocation order per blueprint §13 waterfall: penalty → fees → interest → principal.
  * Field naming preserves that order for downstream verification by tests.
  *
  * BR-13: a "standard" repayment posting only accepts the FULL outstanding
- * amount of the next installment â€” enforced by the backend using the
+ * amount of the next installment — enforced by the backend using the
  * single-installment-allocation invariant below.
  */
 import { z } from "zod";
@@ -16,7 +16,7 @@ export type PaymentChannel = z.infer<typeof PaymentChannel>;
 
 export const PaymentAllocation = z.object({
   installmentId: Uuid,
-  /** Order matches blueprint Â§13 waterfall. */
+  /** Order matches blueprint §13 waterfall. */
   penalty: MoneyINR,
   fees: MoneyINR,
   interest: MoneyINR,

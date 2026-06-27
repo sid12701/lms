@@ -15,6 +15,8 @@ export interface ActionBarProps {
   role: Role;
   /** Externally-evaluated business gates surfaced as "disabled with reason". */
   gates?: TransitionGates;
+  /** Hide transitions that are handled by a dedicated workflow on the host screen. */
+  hiddenTargetStatuses?: readonly LoanStatus[];
   onConfirm: (args: {
     action: LifecycleAction;
     reason: string | null;
@@ -26,9 +28,14 @@ export interface ActionBarProps {
 const TONE_BUTTON: Record<LifecycleAction["tone"], string> = {
   default: "",
   destructive: "",
-  // No "success" Button variant ships, so we layer brand-success utility
-  // classes on top of the default variant for the approve tone.
   approve: "bg-success text-success-foreground hover:bg-success/90 focus-visible:ring-success/30",
+};
+
+const TONE_BUTTON_DISABLED: Record<LifecycleAction["tone"], string> = {
+  default: "",
+  destructive: "",
+  approve:
+    "bg-surface-muted text-foreground-muted hover:bg-surface-muted border-border border opacity-70",
 };
 
 /**
@@ -42,19 +49,27 @@ const TONE_BUTTON: Record<LifecycleAction["tone"], string> = {
  * Status of the most recent submit is announced via an `aria-live="polite"`
  * region so AT users hear success / failure without re-reading the page.
  */
-export function ActionBar({ currentStatus, role, gates, onConfirm, className }: ActionBarProps) {
+export function ActionBar({
+  currentStatus,
+  role,
+  gates,
+  hiddenTargetStatuses = [],
+  onConfirm,
+  className,
+}: ActionBarProps) {
   const [activeAction, setActiveAction] = useState<LifecycleAction | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
 
   const items = useMemo(() => {
-    const all = actionsFor(currentStatus);
+    const hiddenTargets = new Set(hiddenTargetStatuses);
+    const all = actionsFor(currentStatus).filter((action) => !hiddenTargets.has(action.toStatus));
     return all.map((action) => ({
       action,
       disabledReason: resolveDisabledReason(action, currentStatus, role, gates),
     }));
-  }, [currentStatus, role, gates]);
+  }, [currentStatus, role, gates, hiddenTargetStatuses]);
 
   const handleClick = (action: LifecycleAction) => {
     setActiveAction(action);
@@ -89,6 +104,7 @@ export function ActionBar({ currentStatus, role, gates, onConfirm, className }: 
           </p>
         ) : (
           items.map(({ action, disabledReason }) => {
+            const isDisabled = disabledReason !== null;
             const variant: "default" | "destructive" | "outline" =
               action.tone === "destructive"
                 ? "destructive"
@@ -100,7 +116,9 @@ export function ActionBar({ currentStatus, role, gates, onConfirm, className }: 
                 <Button
                   type="button"
                   variant={variant}
-                  className={cn(TONE_BUTTON[action.tone])}
+                  className={cn(
+                    isDisabled ? TONE_BUTTON_DISABLED[action.tone] : TONE_BUTTON[action.tone],
+                  )}
                   onClick={() => handleClick(action)}
                   data-action-id={action.id}
                   data-tone={action.tone}

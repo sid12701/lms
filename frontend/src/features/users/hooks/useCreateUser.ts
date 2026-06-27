@@ -1,5 +1,5 @@
 ﻿/**
- * Mutation hook â€” creates a new admin / LSP user via the backend.
+ * Mutation hook — creates a new admin / LSP user via the backend.
  *
  * The mutation result carries the one-time `temporaryPassword`; the dialog
  * surfaces it via `TempPasswordRevealCard` and only acknowledges once the

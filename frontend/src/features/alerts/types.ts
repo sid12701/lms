@@ -30,7 +30,7 @@ const AlertsListFilters = z.object({
 export type AlertsListFilters = z.infer<typeof AlertsListFilters>;
 
 /**
- * Row projection used by the list table â€” the wire alert plus the
+ * Row projection used by the list table — the wire alert plus the
  * `acknowledgedByName` lookup the handler resolves from `db.users`.
  */
 export interface AlertRow extends OperationalAlert {

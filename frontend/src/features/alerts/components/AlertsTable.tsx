@@ -16,8 +16,9 @@ import { EntityRowActions } from "@/components/app/data/EntityRowActions";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { resolveAlertSubjectHref } from "@/lib/alert-links";
 import type { AlertRow, AlertsListFilters, AlertsListResponse } from "../types";
-import type { AlertSeverity, AlertSubjectType } from "@/schemas/alert";
+import type { AlertSeverity } from "@/schemas/alert";
 
 const SEVERITY_META: Record<
   AlertSeverity,
@@ -44,27 +45,6 @@ const SEVERITY_META: Record<
     className: "border-border bg-surface-muted text-foreground-muted",
   },
 };
-
-function resolveAlertSubjectHref(
-  subjectType: AlertSubjectType,
-  subjectId: string,
-  correlationId: string,
-): string {
-  switch (subjectType) {
-    case "LOAN_APPLICATION":
-      return `/loan-applications/${subjectId}`;
-    case "LOAN_ACCOUNT":
-      // No dedicated route yet — fall back to the audit explorer.
-      return `/audit?correlationId=${encodeURIComponent(correlationId)}`;
-    case "BORROWER":
-      return `/borrowers/${subjectId}`;
-    case "WEBHOOK_DELIVERY":
-    case "REPORT_REQUEST":
-    case "SYSTEM":
-    default:
-      return `/audit?correlationId=${encodeURIComponent(correlationId)}`;
-  }
-}
 
 export interface AlertsTableProps {
   data: AlertsListResponse | undefined;
@@ -93,6 +73,7 @@ export function AlertsTable({
       {
         id: "severity",
         header: "Severity",
+        meta: { label: "Severity", mobileCard: "primary" },
         cell: ({ row }) => {
           const meta = SEVERITY_META[row.original.severity];
           const Icon = meta.icon;
@@ -111,9 +92,15 @@ export function AlertsTable({
       {
         id: "title",
         header: "Alert",
+        meta: { label: "Alert", mobileCard: "primary" },
         cell: ({ row }) => {
           const a = row.original;
-          const href = resolveAlertSubjectHref(a.subjectType, a.subjectId, a.correlationId);
+          const href = resolveAlertSubjectHref(
+            a.subjectType,
+            a.subjectId,
+            a.correlationId,
+            a.contextJson,
+          );
           return (
             <div className="flex flex-col gap-0.5">
               <Link
@@ -140,6 +127,7 @@ export function AlertsTable({
       {
         id: "created",
         header: "Created",
+        meta: { label: "Created", mobileCard: "secondary" },
         cell: ({ row }) => (
           <span
             title={formatDateTime(row.original.createdAt)}
@@ -152,6 +140,7 @@ export function AlertsTable({
       {
         id: "acknowledgement",
         header: "Status",
+        meta: { label: "Status", mobileCard: "secondary" },
         cell: ({ row }) => {
           const a = row.original;
           if (a.status === "ACKNOWLEDGED") {
@@ -178,6 +167,7 @@ export function AlertsTable({
       {
         id: "actions",
         header: () => <span className="sr-only">Actions</span>,
+        meta: { mobileCard: "actions" },
         cell: ({ row }) => {
           const a = row.original;
           return (

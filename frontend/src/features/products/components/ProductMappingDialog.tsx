@@ -1,5 +1,5 @@
 ﻿/**
- * ProductMappingDialog â€” pick the LSPs a product is offered to.
+ * ProductMappingDialog — pick the LSPs a product is offered to.
  *
  * RHF + Zod simply for symmetry with the other dialogs; the form payload is
  * a single `lspIds` array. The backend emits a MAPPING_CHANGED audit row.
@@ -161,7 +161,7 @@ export function ProductMappingDialog({
                 Cancel
               </Button>
               <Button type="submit" disabled={loading}>
-                {loading ? "Savingâ€¦" : "Save mapping"}
+                {loading ? "Saving…" : "Save mapping"}
               </Button>
             </DialogFooter>
           </FormShell>

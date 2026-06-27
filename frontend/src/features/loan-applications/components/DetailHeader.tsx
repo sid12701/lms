@@ -10,6 +10,9 @@ import { useSession } from "@/features/auth/session-context";
 import { escalateAlert } from "@/features/alerts/api";
 import { useInitiateDisbursement, useTransitionStatus } from "../hooks/useLoanApplicationMutations";
 import type { LoanApplicationDetail, TransitionStatusInput } from "../types";
+import { mapApiErrorMessage, formatLoanStatusLabel } from "@/lib/api/user-messages";
+import { shortId } from "@/lib/short-id";
+import { ForeclosureQuotePanel } from "./ForeclosureQuotePanel";
 
 export interface DetailHeaderProps {
   detail: LoanApplicationDetail;
@@ -18,26 +21,7 @@ export interface DetailHeaderProps {
 }
 
 /**
- * Mask a borrower's full name to the first character + bullets per surname.
- * "Aanya Devi" → "A•••• D•••". Keeps initials visible so collisions are
- * still distinguishable in the audit log; reveal flips to clear text.
- */
-function maskName(name: string): string {
-  if (!name) return "";
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => `${part.charAt(0)}${"•".repeat(Math.max(2, part.length - 1))}`)
-    .join(" ");
-}
-
-void maskName;
-
-/**
- * Detail-page header: eyebrow → masked borrower name (revealable) → status
- * badge → ActionBar. The ActionBar wires `onConfirm` to `useTransitionStatus`
- * so the BR-5 idempotency key minted by `TransitionConfirmDialog` flows
- * straight through to the backend API.
+ * Detail-page header: borrower name → status badge → ActionBar.
  */
 export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps) {
   const { session } = useSession();
@@ -68,7 +52,7 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
       toast.success("Escalation sent to admin.");
       setEscalateOpen(false);
     } catch (err) {
-      const detailMsg = err instanceof Error ? err.message : "Please try again.";
+      const detailMsg = mapApiErrorMessage(err, "Please try again.");
       toast.error(`Failed to send escalation: ${detailMsg}`);
     } finally {
       setEscalateBusy(false);
@@ -103,11 +87,11 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
           idempotencyKey,
         });
       }
-      toast.success(`Application moved to ${action.toStatus.replace(/_/g, " ").toLowerCase()}.`);
+      toast.success(`Application moved to ${formatLoanStatusLabel(action.toStatus)}.`);
       onTransitionSuccess?.();
     } catch (err) {
-      const detailMsg = err instanceof Error ? err.message : "Please try again.";
-      toast.error(`Failed to ${action.label.toLowerCase()}: ${detailMsg}`);
+      const detailMsg = mapApiErrorMessage(err);
+      toast.error(`Could not ${action.label.toLowerCase()}: ${detailMsg}`);
       // Re-throw so ActionBar surfaces the failure in its aria-live region.
       throw err;
     }
@@ -118,7 +102,7 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
       <PageHeader
         eyebrow={`Loan application · ${externalLabel}`}
         title={fullName || "Borrower"}
-        description={`Application ${detail.application.id}`}
+        description={`Application ${shortId(detail.application.id)}`}
         actions={
           <div className="flex items-center gap-2">
             <StatusBadge
@@ -167,7 +151,12 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
             scheduleValid: detail.scheduleValid,
           }}
           onConfirm={handleConfirm}
+          hiddenTargetStatuses={["FORECLOSED"]}
         />
+      ) : null}
+
+      {role === "SYSTEM_ADMIN" ? (
+        <ForeclosureQuotePanel detail={detail} onExecuted={onTransitionSuccess} />
       ) : null}
     </div>
   );

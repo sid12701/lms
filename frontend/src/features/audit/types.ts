@@ -2,7 +2,7 @@
  * View-layer contract for the SYSTEM_ADMIN-only `/audit` page.
  *
  * The backend returns an `AuditEventsResponse` ({@link AuditEventsResponse})
- * â€” a flattened, paginated stream join across all five audit tables defined
+ * — a flattened, paginated stream join across all five audit tables defined
  * in `@/schemas/audit`. Each row is projected to a common discriminated
  * `AuditRow` shape so the table can render a single column layout that
  * adapts to the row's `stream`, and so the detail sheet can deep-link into
@@ -14,7 +14,7 @@
 import { z } from "zod";
 import { Iso8601, IsoDate, Uuid } from "@/schemas/common";
 
-// â”€â”€â”€ Stream discriminator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Stream discriminator ────────────────────────────────────────────────────
 
 export const AUDIT_STREAMS = [
   "APPLICATION",
@@ -56,7 +56,7 @@ export const AUDIT_STREAM_BADGE_TONE: Record<AuditStream, string> = {
   REPORT_ACCESS: "bg-chart-5/15 text-chart-5 border-chart-5/40",
 };
 
-// â”€â”€â”€ Subject discriminator (drives the deep-link button) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Subject discriminator (drives the deep-link button) ─────────────────────
 
 const AUDIT_SUBJECT_TYPES = [
   "LOAN_APPLICATION",
@@ -70,11 +70,11 @@ const AUDIT_SUBJECT_TYPES = [
 const AuditSubjectTypeSchema = z.enum(AUDIT_SUBJECT_TYPES);
 export type AuditSubjectType = z.infer<typeof AuditSubjectTypeSchema>;
 
-// â”€â”€â”€ Row + response shapes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Row + response shapes ───────────────────────────────────────────────────
 
 /**
  * Flattened audit row. Composed in the backend from the five distinct
- * stream tables â€” every consumer of the audit page reads through this shape.
+ * stream tables — every consumer of the audit page reads through this shape.
  */
 export interface AuditRow {
   id: string;
@@ -83,7 +83,7 @@ export interface AuditRow {
   actorId: string;
   /** Resolved from `db.users.get(actorId).username` (or "Unknown actor"). */
   actorName: string;
-  /** When the row's stream schema carries one â€” null for INTAKE. */
+  /** When the row's stream schema carries one — null for INTAKE. */
   actorRole: string | null;
   correlationId: string;
   /** Discriminated subject for deep-link routing. */
@@ -91,7 +91,7 @@ export interface AuditRow {
   subjectId: string | null;
   /** Short human-readable headline e.g. "Approved", "PAN revealed". */
   headline: string;
-  /** Original event payload â€” surfaced in the detail sheet as JSON. */
+  /** Original event payload — surfaced in the detail sheet as JSON. */
   raw?: unknown;
 }
 
@@ -123,7 +123,7 @@ export const AuditEventsResponseSchema: z.ZodType<AuditEventsResponse> = z.objec
   pageSize: z.number().int().positive(),
 });
 
-// â”€â”€â”€ URL-bound filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── URL-bound filters ───────────────────────────────────────────────────────
 
 /**
  * URL-bound filter shape for `/audit`. `streams` defaults to ALL when empty.
@@ -138,7 +138,7 @@ const AuditEventsFilters = z.object({
   dateTo: IsoDate.optional(),
   page: z.coerce.number().int().min(0).optional(),
   pageSize: z.coerce.number().int().min(5).max(200).optional(),
-  /** Set by the table when a row is opened â€” surfaces the detail sheet. */
+  /** Set by the table when a row is opened — surfaces the detail sheet. */
   eventId: z.string().min(1).max(80).optional(),
 });
 

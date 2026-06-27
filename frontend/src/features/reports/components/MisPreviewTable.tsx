@@ -5,13 +5,9 @@
  * Server-paged: the parent owns `{page, pageSize}` filter state; pagination
  * change fires `onFiltersChange`.
  *
- * Gap #10 — the preview now exposes every column the BE returns. Identity +
- * status columns lead; financial + lifecycle dates follow; borrower KYC +
- * banking columns close out the row. Aadhaar values are pre-masked by the
- * BE (Gap #1 + Gap #10) and the column renders a defensive masker as a
- * second line of defence against a misconfigured upstream. The table
- * scrolls horizontally inside the preview card to keep the page chrome
- * stable.
+ * Gap #10 — the in-app preview shows a curated set of key portfolio columns.
+ * Operators can generate a report request to download the full CSV with every
+ * field the backend exports.
  */
 import { useMemo } from "react";
 import {
@@ -34,13 +30,15 @@ import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { TABULAR_ATTR } from "@/lib/tabular-nums";
 import { cn } from "@/lib/utils";
 import type { MisPreviewFilters, MisPreviewResponseDto, MisPreviewRow } from "../types";
-import { buildMisPreviewColumns } from "./mis-preview-columns";
+import { buildMisPreviewSummaryColumns } from "./mis-preview-columns";
 
 export interface MisPreviewTableProps {
   data: MisPreviewResponseDto | undefined;
   isLoading: boolean;
   filters: MisPreviewFilters;
   onFiltersChange: (next: MisPreviewFilters) => void;
+  /** Opens the generate-report dialog for a full CSV export. */
+  onRequestFullExport?: () => void;
   className?: string;
 }
 
@@ -49,6 +47,7 @@ export function MisPreviewTable({
   isLoading,
   filters,
   onFiltersChange,
+  onRequestFullExport,
   className,
 }: MisPreviewTableProps) {
   const pageSize = filters.pageSize ?? 25;
@@ -61,16 +60,7 @@ export function MisPreviewTable({
 
   const rows = useMemo(() => data?.items ?? [], [data?.items]);
 
-  const maxInstallments = useMemo(() => {
-    let max = 0;
-    for (const row of rows) {
-      const count = row.installments?.length ?? 0;
-      if (count > max) max = count;
-    }
-    return max;
-  }, [rows]);
-
-  const columns = useMemo(() => buildMisPreviewColumns(maxInstallments), [maxInstallments]);
+  const columns = useMemo(() => buildMisPreviewSummaryColumns(), []);
 
   const table = useReactTable({
     data: rows as MisPreviewRow[],
@@ -90,20 +80,52 @@ export function MisPreviewTable({
     },
   });
 
-  const visibleColumnCount = table.getVisibleLeafColumns().length;
   const tableRows = table.getRowModel().rows;
   const isEmpty = !isLoading && rows.length === 0;
 
   if (isLoading && rows.length === 0) {
     return (
       <div data-slot="mis-preview-table" className={cn("flex flex-col gap-3", className)}>
-        <TableSkeleton rows={8} cols={12} />
+        <TableSkeleton rows={8} cols={6} />
+      </div>
+    );
+  }
+
+  if (isEmpty) {
+    return (
+      <div data-slot="mis-preview-table" className={cn("flex flex-col gap-3", className)}>
+        <div
+          data-slot="mis-preview-empty"
+          className="border-border bg-surface flex min-h-[220px] items-center justify-center rounded-md border p-6"
+        >
+          <EmptyState
+            variant="filtered-empty"
+            title="No portfolio rows match these filters."
+            description="Widen the date range or clear filters to see more."
+          />
+        </div>
+        <DataTablePagination table={table} totalRows={0} className="px-1" />
       </div>
     );
   }
 
   return (
     <div data-slot="mis-preview-table" className={cn("flex flex-col gap-3", className)}>
+      <p className="text-foreground-muted text-xs leading-5">
+        Key portfolio columns only.{" "}
+        {onRequestFullExport ? (
+          <button
+            type="button"
+            onClick={onRequestFullExport}
+            className="text-primary hover:text-primary/80 font-medium underline underline-offset-2"
+          >
+            Generate a report
+          </button>
+        ) : (
+          "Generate a report"
+        )}{" "}
+        to download the full CSV with all fields.
+      </p>
       <div
         className="border-border bg-surface shadow-e1 overflow-x-auto rounded-md border"
         data-density="compact"
@@ -134,41 +156,29 @@ export function MisPreviewTable({
             ))}
           </TableHeader>
           <TableBody>
-            {isEmpty ? (
-              <TableRow className="border-border hover:bg-transparent">
-                <TableCell colSpan={visibleColumnCount} className="p-0">
-                  <EmptyState
-                    variant="filtered-empty"
-                    title="No portfolio rows match these filters."
-                    description="Widen the date range or clear filters to see more."
-                  />
-                </TableCell>
+            {tableRows.map((row) => (
+              <TableRow
+                key={row.id}
+                data-testid={`mis-preview-row-${row.original.loanId}`}
+                className="border-border"
+              >
+                {row.getVisibleCells().map((cell) => {
+                  const numeric = cell.column.columnDef.meta?.numeric ?? false;
+                  return (
+                    <TableCell
+                      key={cell.id}
+                      {...(numeric ? TABULAR_ATTR : {})}
+                      className={cn(
+                        "text-foreground px-2.5 py-1.5 text-xs",
+                        numeric && "text-right font-mono",
+                      )}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  );
+                })}
               </TableRow>
-            ) : (
-              tableRows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-testid={`mis-preview-row-${row.original.loanId}`}
-                  className="border-border"
-                >
-                  {row.getVisibleCells().map((cell) => {
-                    const numeric = cell.column.columnDef.meta?.numeric ?? false;
-                    return (
-                      <TableCell
-                        key={cell.id}
-                        {...(numeric ? TABULAR_ATTR : {})}
-                        className={cn(
-                          "text-foreground px-2.5 py-1.5 text-xs",
-                          numeric && "text-right font-mono",
-                        )}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              ))
-            )}
+            ))}
           </TableBody>
         </Table>
       </div>

@@ -9,15 +9,14 @@
  * `onChange` callbacks the page provides.
  *
  * Per CLAUDE.md hard-don't #4 every input lives behind a shadcn primitive
- * (`Input`); native `<input type="date">` is acceptable because the date
- * range is a filter, not a form field, and there is no `Calendar` primitive
- * on disk yet.
+ * (`Input` / `DatePickerField`).
  */
 import { useMemo } from "react";
 import { useDebouncedControlledText } from "@/lib/hooks/use-debounced-controlled-text";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePickerField } from "@/components/app/data/DatePickerField";
 import {
   Select,
   SelectContent,
@@ -151,19 +150,18 @@ export function AuditPageFilterBar({
         >
           From
         </span>
-        <Input
-          type="date"
-          data-slot="audit-date-from"
-          aria-labelledby="audit-date-from-label"
-          value={value.dateFrom ?? ""}
-          onChange={(e) =>
+        <DatePickerField
+          dataSlot="audit-date-from"
+          ariaLabel="Audit from date"
+          value={value.dateFrom}
+          onChange={(next) =>
             onChange({
               ...value,
-              dateFrom: e.target.value === "" ? undefined : e.target.value,
+              dateFrom: next,
               page: 0,
             })
           }
-          className="h-8 w-36 px-2 text-xs tabular-nums"
+          className="h-8 w-36"
         />
       </div>
       <div className="flex items-center gap-1.5">
@@ -173,19 +171,18 @@ export function AuditPageFilterBar({
         >
           To
         </span>
-        <Input
-          type="date"
-          data-slot="audit-date-to"
-          aria-labelledby="audit-date-to-label"
-          value={value.dateTo ?? ""}
-          onChange={(e) =>
+        <DatePickerField
+          dataSlot="audit-date-to"
+          ariaLabel="Audit to date"
+          value={value.dateTo}
+          onChange={(next) =>
             onChange({
               ...value,
-              dateTo: e.target.value === "" ? undefined : e.target.value,
+              dateTo: next,
               page: 0,
             })
           }
-          className="h-8 w-36 px-2 text-xs tabular-nums"
+          className="h-8 w-36"
         />
       </div>
 

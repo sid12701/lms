@@ -37,6 +37,10 @@ export interface EmptyStateProps
     onClick: () => void;
     tone?: "primary" | "secondary";
   };
+  secondaryAction?: {
+    label: string;
+    onClick: () => void;
+  };
   /** Defaults to `Inbox` from lucide-react. */
   icon?: LucideIcon;
   className?: string;
@@ -49,7 +53,16 @@ export interface EmptyStateProps
  * loosening filters), `no-permission` (gold-tinted, locked).
  */
 export const EmptyState = forwardRef<HTMLDivElement, EmptyStateProps>(function EmptyState(
-  { variant = "no-data", title, description, action, icon: Icon = Inbox, className, ...rest },
+  {
+    variant = "no-data",
+    title,
+    description,
+    action,
+    secondaryAction,
+    icon: Icon = Inbox,
+    className,
+    ...rest
+  },
   ref,
 ) {
   return (
@@ -64,18 +77,26 @@ export const EmptyState = forwardRef<HTMLDivElement, EmptyStateProps>(function E
       <div className="flex max-w-sm flex-col gap-1">
         <p className="text-foreground text-base leading-6 font-semibold">{title}</p>
         {description ? (
-          <p className="text-foreground-muted text-sm leading-[1.375rem]">{description}</p>
+          <p className="text-foreground-muted text-sm leading-5.5">{description}</p>
         ) : null}
       </div>
-      {action ? (
-        <Button
-          type="button"
-          variant={action.tone === "secondary" ? "outline" : "default"}
-          onClick={action.onClick}
-          className="mt-2"
-        >
-          {action.label}
-        </Button>
+      {action || secondaryAction ? (
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+          {action ? (
+            <Button
+              type="button"
+              variant={action.tone === "secondary" ? "outline" : "default"}
+              onClick={action.onClick}
+            >
+              {action.label}
+            </Button>
+          ) : null}
+          {secondaryAction ? (
+            <Button type="button" variant="outline" onClick={secondaryAction.onClick}>
+              {secondaryAction.label}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

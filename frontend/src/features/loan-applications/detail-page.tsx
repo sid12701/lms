@@ -1,10 +1,11 @@
 import { useCallback, useMemo } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { FileText, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { PermissionDeniedState } from "@/components/app/feedback/PermissionDeniedState";
 import { isNotFoundApiError, isUnauthorizedApiError } from "@/lib/api/api-errors";
+import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { RightRail } from "@/components/app/layout/RightRail";
 import { StatusBadge } from "@/components/app/status/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -94,6 +95,7 @@ function DetailSkeleton() {
  */
 export function LoanApplicationDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const applicationId = id ?? "";
   const detailQuery = useLoanApplicationDetail(applicationId);
   const [activeTab, setActiveTab] = useTabParam();
@@ -149,12 +151,13 @@ export function LoanApplicationDetailPage() {
         <PermissionDeniedState
           title="No application id"
           description="The URL is missing an application identifier."
+          action={{ label: "Back to applications", onClick: () => navigate("/loan-applications") }}
         />
       </div>
     );
   }
 
-  if (detailQuery.isPending) {
+  if (detailQuery.isPending && detailQuery.data === undefined) {
     return (
       <div
         className="flex flex-col gap-6 p-6"
@@ -179,6 +182,11 @@ export function LoanApplicationDetailPage() {
             icon={ShieldAlert}
             title="No access to this application"
             description="You don't have permission to view this loan application."
+            action={{
+              label: "Back to applications",
+              onClick: () => navigate("/loan-applications"),
+            }}
+            secondaryAction={{ label: "Go back", onClick: () => navigate(-1) }}
           />
         </div>
       );
@@ -193,6 +201,11 @@ export function LoanApplicationDetailPage() {
           <PermissionDeniedState
             title="Application not found"
             description="This loan application either doesn't exist or you don't have permission to view it."
+            action={{
+              label: "Back to applications",
+              onClick: () => navigate("/loan-applications"),
+            }}
+            secondaryAction={{ label: "Go back", onClick: () => navigate(-1) }}
           />
         </div>
       );
@@ -206,7 +219,7 @@ export function LoanApplicationDetailPage() {
         <ErrorState
           icon={FileText}
           title="Couldn't load this application"
-          description={detailQuery.error instanceof Error ? detailQuery.error.message : undefined}
+          description={mapApiErrorMessage(detailQuery.error, "Please try again.")}
           retry={{ label: "Retry", onClick: () => void detailQuery.refetch() }}
         />
       </div>

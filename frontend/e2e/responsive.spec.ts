@@ -19,7 +19,7 @@
  * Chromium. We assert `<= clientWidth + 1`.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { signInAsSystemAdmin } from "./helpers/auth";
+import { signInAsLspUser, signInAsSystemAdmin } from "./helpers/auth";
 
 const VIEWPORTS = [
   { name: "mobile-375", width: 375, height: 812 },
@@ -39,22 +39,31 @@ async function measureOverflow(page: Page): Promise<{ scrollWidth: number; clien
   }));
 }
 
-const ROUTES: Array<{ name: string; path: string; waitFor: string }> = [
+type ResponsiveRoute = {
+  name: string;
+  path: string;
+  waitFor: string;
+  signIn?: (page: Page) => Promise<void>;
+};
+
+const ROUTES: ResponsiveRoute[] = [
   { name: "home", path: "/home", waitFor: "main" },
   { name: "loan-applications", path: "/loan-applications", waitFor: "main" },
+  { name: "borrowers", path: "/borrowers", waitFor: "main" },
   { name: "reports", path: "/reports", waitFor: "main" },
   { name: "audit", path: "/audit", waitFor: "main" },
   { name: "lsps", path: "/lsps", waitFor: "main" },
   { name: "products", path: "/products", waitFor: "main" },
   { name: "users", path: "/users", waitFor: "main" },
   { name: "api-clients", path: "/api-clients", waitFor: "main" },
+  { name: "my-loans", path: "/my-loans", waitFor: "main", signIn: signInAsLspUser },
 ];
 
 for (const route of ROUTES) {
   for (const viewport of VIEWPORTS) {
     test(`${route.name} has no horizontal overflow at ${viewport.name}`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await signInAsSystemAdmin(page);
+      await (route.signIn ?? signInAsSystemAdmin)(page);
 
       await page.goto(route.path);
       // Wait for the page's main landmark to be in the DOM — every authenticated

@@ -1,9 +1,9 @@
 ﻿/**
  * Phase 10 responsive-QA smoke test.
  *
- * Mounts the AppShell at the 1024px (lg) breakpoint â€” the most likely
+ * Mounts the AppShell at the 1024px (lg) breakpoint — the most likely
  * culprit for horizontal overflow because the right-rail collapses
- * here per locked decision D6 (rail kept at xl â‰¥ 1280, hidden below).
+ * here per locked decision D6 (rail kept at xl ≥ 1280, hidden below).
  * Asserts that no descendant pushes `document.body.scrollWidth` beyond
  * the viewport's `clientWidth`.
  *
@@ -58,7 +58,7 @@ function SyntheticDashboard() {
       <PageHeader
         eyebrow="Workspace"
         title="Dashboard"
-        description="Responsive QA mount â€” KPI strip + table at 1024px."
+        description="Responsive QA mount — KPI strip + table at 1024px."
       />
       <KpiStrip>
         <div className="border-border bg-surface rounded-md border p-4">
@@ -67,7 +67,7 @@ function SyntheticDashboard() {
         </div>
         <div className="border-border bg-surface rounded-md border p-4">
           <div className="text-foreground-muted text-xs uppercase">Disbursed</div>
-          <div className="text-foreground mt-1 text-2xl font-semibold">â‚¹45.2 Cr</div>
+          <div className="text-foreground mt-1 text-2xl font-semibold">₹45.2 Cr</div>
         </div>
         <div className="border-border bg-surface rounded-md border p-4">
           <div className="text-foreground-muted text-xs uppercase">DPD</div>
@@ -92,13 +92,13 @@ function createQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
-describe("Responsive QA â€” AppShell at lg (1024px)", () => {
+describe("Responsive QA — AppShell at lg (1024px)", () => {
   let originalInnerWidth: number;
   let originalClientWidth: number;
 
   beforeAll(() => {
     originalInnerWidth = window.innerWidth;
-    // jsdom defaults `documentElement.clientWidth` to 0 â€” pin it to the
+    // jsdom defaults `documentElement.clientWidth` to 0 — pin it to the
     // viewport so the assertion's denominator is meaningful.
     const desc = Object.getOwnPropertyDescriptor(Element.prototype, "clientWidth");
     originalClientWidth = desc ? Number(desc.value ?? 0) : 0;
@@ -117,7 +117,7 @@ describe("Responsive QA â€” AppShell at lg (1024px)", () => {
       configurable: true,
       value: originalInnerWidth,
     });
-    // Best-effort restore â€” if the descriptor wasn't there originally we
+    // Best-effort restore — if the descriptor wasn't there originally we
     // leave a getter on the prototype because cleaning it up cleanly is
     // unnecessary for downstream tests (jsdom's default is also 0).
     void originalClientWidth;
