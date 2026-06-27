@@ -10,6 +10,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useSearchParams } from "react-router-dom";
 import type { ReactNode } from "react";
 import { renderWithProviders } from "@/test/utils";
+import { pickDateInField } from "@/test/date-picker";
 import { LoanApplicationsFilterBar } from "./LoanApplicationsFilterBar";
 
 function SearchSpy({ onChange }: { onChange: (search: string) => void }) {
@@ -70,7 +71,7 @@ describe("LoanApplicationsFilterBar", () => {
       screen.getByRole("searchbox", { name: /Search loan applications/i }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/LSP loan ID/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Bhaw loan ID/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Bhawana loan ID/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Disbursed from/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Disbursed to/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /All statuses/i })).toBeInTheDocument();
@@ -177,9 +178,9 @@ describe("LoanApplicationsFilterBar", () => {
     const { latestSearch } = renderBar();
 
     await user.type(screen.getByLabelText(/LSP loan ID/i), "LSP-9001");
-    await user.type(screen.getByLabelText(/Bhaw loan ID/i), "LMS-LN-9001");
-    await user.type(screen.getByLabelText(/Disbursed from/i), "2026-04-01");
-    await user.type(screen.getByLabelText(/Disbursed to/i), "2026-04-30");
+    await user.type(screen.getByLabelText(/Bhawana loan ID/i), "LMS-LN-9001");
+    await pickDateInField(user, /Disbursed from/i, "2026-04-01");
+    await pickDateInField(user, /Disbursed to/i, "2026-04-30");
 
     await waitFor(() => {
       const s = latestSearch();

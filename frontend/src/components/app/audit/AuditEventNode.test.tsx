@@ -24,8 +24,8 @@ function renderNode(entry: Parameters<typeof AuditEventNode>[0]["entry"], compac
 describe("AuditEventNode", () => {
   it("renders an APPLICATION row with the from→to transition", () => {
     const { getByText, container } = renderNode(FIXTURE_APPLICATION);
-    expect(getByText("AWAITING_APPROVAL → APPROVED_PENDING_DISBURSAL")).toBeInTheDocument();
-    expect(getByText("approve")).toBeInTheDocument();
+    expect(getByText("Awaiting approval → Approved · pending disbursal")).toBeInTheDocument();
+    expect(getByText("Approve")).toBeInTheDocument();
     expect(container.querySelector('[data-kind="APPLICATION"]')).toBeInTheDocument();
   });
 
@@ -72,10 +72,13 @@ describe("AuditEventNode", () => {
     expect(relative?.textContent).toMatch(/5\s+minutes? ago/i);
   });
 
-  it("shows the correlation id in a mono span with a hover title", () => {
-    const { container } = renderNode(FIXTURE_APPLICATION);
-    const corr = container.querySelector('[data-slot="audit-event-correlation"]');
-    expect(corr?.getAttribute("title")).toBe(FIXTURE_APPLICATION.event.correlationId);
+  it("tucks the correlation id behind a reveal control", () => {
+    const { container, getByText } = renderNode(FIXTURE_APPLICATION);
+    const corr = container.querySelector('details[data-slot="audit-event-correlation"]');
+    expect(corr).not.toBeNull();
+    expect(getByText("Reference id")).toBeInTheDocument();
+    const code = corr?.querySelector("code");
+    expect(code?.textContent).toBe(FIXTURE_APPLICATION.event.correlationId);
   });
 
   it("flips data-compact when compact=true", () => {

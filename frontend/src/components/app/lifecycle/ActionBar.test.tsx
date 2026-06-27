@@ -50,6 +50,20 @@ describe("<ActionBar />", () => {
     expect(getByText(/No actions available/i)).toBeInTheDocument();
   });
 
+  it("can hide target statuses that are handled by a dedicated workflow", () => {
+    const { queryByRole, getByText } = renderWithProviders(
+      <ActionBar
+        currentStatus="UNDER_REPAYMENT"
+        role="SYSTEM_ADMIN"
+        gates={{ docsComplete: true, scheduleValid: true }}
+        hiddenTargetStatuses={["FORECLOSED"]}
+        onConfirm={() => {}}
+      />,
+    );
+    expect(queryByRole("button", { name: "Settle foreclosure" })).not.toBeInTheDocument();
+    expect(getByText(/No actions available/i)).toBeInTheDocument();
+  });
+
   it("opens the confirm dialog when an enabled action is clicked", async () => {
     const { getByRole, findAllByRole } = renderWithProviders(
       <ActionBar

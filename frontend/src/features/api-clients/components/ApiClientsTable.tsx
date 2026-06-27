@@ -45,6 +45,7 @@ export function ApiClientsTable({
       {
         id: "clientId",
         header: "Client ID",
+        meta: { label: "Client ID", mobileCard: "primary" },
         cell: ({ row }) => (
           <button
             type="button"
@@ -59,6 +60,7 @@ export function ApiClientsTable({
       {
         id: "name",
         header: "Name",
+        meta: { label: "Name", mobileCard: "secondary" },
         cell: ({ row }) => <span className="text-foreground text-sm">{row.original.name}</span>,
       },
       {
@@ -71,6 +73,7 @@ export function ApiClientsTable({
       {
         id: "status",
         header: "Status",
+        meta: { label: "Status", mobileCard: "primary" },
         cell: ({ row }) => {
           const isActive = row.original.status === "ACTIVE";
           const Icon = isActive ? CheckCircle2 : MinusCircle;
@@ -109,6 +112,7 @@ export function ApiClientsTable({
       {
         id: "actions",
         header: () => <span className="sr-only">Actions</span>,
+        meta: { mobileCard: "actions" },
         cell: ({ row }) => (
           <EntityRowActions
             mode="inline"

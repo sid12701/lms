@@ -1,4 +1,4 @@
-import { ApiError } from "@/lib/api/http-client";
+import { mapApiErrorMessage } from "@/lib/api/user-messages";
 
 export function fmt(value: string | null | undefined, fallback = "—"): string {
   if (value == null) return fallback;
@@ -7,12 +7,5 @@ export function fmt(value: string | null | undefined, fallback = "—"): string 
 }
 
 export function safeApiMessage(err: unknown, fallback: string): string {
-  if (err instanceof ApiError) {
-    if (err.status === 401 || err.status === 403) {
-      return "Your role cannot perform this action.";
-    }
-    return err.message || fallback;
-  }
-  if (err instanceof Error) return err.message;
-  return fallback;
+  return mapApiErrorMessage(err, fallback);
 }

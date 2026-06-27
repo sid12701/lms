@@ -3,7 +3,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/utils";
 import type { LoanDocument } from "@/types";
@@ -291,6 +291,45 @@ describe("DocumentsTab", () => {
       "/api/v1/internal/ops/loan-applications/app-1/kyc-documents/PAN_CARD/content",
     );
     expect(getClickedDownload()).toBe("server-pan.pdf");
+  });
+
+  it("opens the preview modal and requests the inline disposition when View is clicked", async () => {
+    requestBlobMock.mockResolvedValue({
+      blob: new Blob(["%PDF-1.4"], { type: "application/pdf" }),
+      filename: null,
+    });
+    stubDownloadApis();
+    useDocumentsMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: {
+        documents: [
+          loanDoc({
+            id: "00000000-0000-4000-8000-000000000012",
+            type: "PAN",
+            fileMeta: {
+              storageKey: "loan/app/pan/uuid-pan.pdf",
+              fileName: "uploaded-pan.pdf",
+              mime: "application/pdf",
+              size: 4096,
+              checksum: "sha256:pan",
+            },
+          }),
+        ],
+      },
+      refetch: vi.fn(),
+    });
+    const user = userEvent.setup();
+
+    renderWithProviders(<DocumentsTab applicationId="app-1" canManage={false} />);
+    await user.click(screen.getByRole("button", { name: /View PAN card/i }));
+
+    await waitFor(() =>
+      expect(requestBlobMock).toHaveBeenCalledWith(
+        "/api/v1/internal/ops/loan-applications/app-1/kyc-documents/PAN_CARD/content?disposition=inline",
+      ),
+    );
+    expect(await screen.findByTitle(/Preview of/i)).toBeInTheDocument();
   });
 
   it("is axe-clean when populated", async () => {

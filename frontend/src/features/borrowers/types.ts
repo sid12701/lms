@@ -2,7 +2,7 @@
  * Shared contract for the Phase 6 borrower-detail surface.
  *
  * The backend returns these shapes; per-tab components consume them.
- * Per the Phase 4 lesson (see `docs/CURRENT-STATE.md` Â§9), `LoanStatus` and
+ * Per the Phase 4 lesson (see `docs/CURRENT-STATE.md` §9), `LoanStatus` and
  * any other Zod enum value MUST be imported from its schema source, not
  * from `@/types` (type-only re-exports crash at runtime).
  */
@@ -15,12 +15,12 @@ import type {
   BorrowerReference,
 } from "@/schemas/borrower";
 
-// â”€â”€â”€ Tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Tabs ────────────────────────────────────────────────────────────────────
 
 export const BorrowerDetailTab = z.enum(["profile", "loans"]);
 export type BorrowerDetailTab = z.infer<typeof BorrowerDetailTab>;
 
-// â”€â”€â”€ Detail surface â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Detail surface ──────────────────────────────────────────────────────────
 
 /**
  * Joined borrower-detail payload. Includes the canonical `Borrower` plus the
@@ -40,10 +40,10 @@ export interface BorrowerDetail {
   };
 }
 
-// â”€â”€â”€ Loans tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Loans tab ───────────────────────────────────────────────────────────────
 
 /**
- * Row of the Loans tab â€” every application this borrower has had with any
+ * Row of the Loans tab — every application this borrower has had with any
  * LSP. Lighter than the triage `LoanApplicationListItem` because the borrower
  * column is implicit and the row links back to the application's detail.
  */
@@ -65,7 +65,7 @@ export interface BorrowerLoansResponse {
   loans: readonly BorrowerLoanRow[];
 }
 
-// â”€â”€â”€ Mutation contracts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Mutation contracts ──────────────────────────────────────────────────────
 
 /**
  * Recorded when an operator opens / previews / downloads a document.
@@ -81,6 +81,6 @@ export interface RecordDocumentAccessResponse {
   auditId: string;
 }
 
-// â”€â”€â”€ Re-exports â€” convenience for tab components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Re-exports — convenience for tab components ─────────────────────────────
 
 export type { Borrower, BorrowerBanking, BorrowerEmployment, BorrowerReference, Lsp, LoanProduct };

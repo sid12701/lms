@@ -4,6 +4,7 @@ import { PRODUCT_ORGANIZATION_NAME, PRODUCT_TAGLINE } from "@/lib/product-brandi
 import { useSession } from "@/features/auth/session-context";
 import { getNavItems } from "./nav-items";
 import { SidebarItem } from "./SidebarItem";
+import { formatRoleLabel } from "@/lib/role-labels";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 
@@ -31,7 +32,7 @@ export function Sidebar({ collapsed = false, onNavigate, className }: SidebarPro
       aria-label="Primary navigation"
       data-collapsed={collapsed || undefined}
       className={cn(
-        "bg-surface flex h-full shrink-0 flex-col border-r border-[var(--color-border)]",
+        "bg-surface flex h-full shrink-0 flex-col border-r border-(--color-border)",
         collapsed ? "w-16" : "w-64",
         className,
       )}
@@ -39,7 +40,7 @@ export function Sidebar({ collapsed = false, onNavigate, className }: SidebarPro
       {/* Brand block */}
       <div
         className={cn(
-          "flex items-center border-b border-[var(--color-border)] px-4 py-4",
+          "flex items-center border-b border-(--color-border) px-4 py-4",
           collapsed && "px-3",
         )}
       >
@@ -87,7 +88,7 @@ export function Sidebar({ collapsed = false, onNavigate, className }: SidebarPro
       {/* Actor footer */}
       <div
         className={cn(
-          "border-t border-[var(--color-border)] px-3 py-3",
+          "border-t border-(--color-border) px-3 py-3",
           collapsed ? "items-center" : "",
         )}
       >
@@ -110,7 +111,7 @@ export function Sidebar({ collapsed = false, onNavigate, className }: SidebarPro
               <p className="text-foreground truncate text-sm font-medium">
                 {session.user.username}
               </p>
-              <p className="text-foreground-muted text-xs">{session.user.role}</p>
+              <p className="text-foreground-muted text-xs">{formatRoleLabel(session.user.role)}</p>
             </div>
             <Button
               type="button"

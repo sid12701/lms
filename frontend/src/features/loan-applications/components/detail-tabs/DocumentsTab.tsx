@@ -8,15 +8,16 @@
  * VERIFIED/REJECTED status is removed. Internal users see a view-only
  * checklist; LSP-owned upload affordances live on the my-loan detail page.
  */
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { FileText } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { TableSkeleton } from "@/components/app/feedback/Skeletons";
-import { DocumentChecklistGroup } from "@/components/app/documents";
+import { DocumentChecklistGroup, DocumentPreviewModal } from "@/components/app/documents";
 import { ApiError, requestBlob } from "@/lib/api/http-client";
-import type { Document, DocumentKind } from "@/schemas/document";
+import { mapApiErrorMessage } from "@/lib/api/user-messages";
+import { DOCUMENT_KIND_LABELS, type Document, type DocumentKind } from "@/schemas/document";
 import type { LoanDocument, LoanDocumentType } from "@/types";
 import { useLoanApplicationDocuments } from "../../hooks/useLoanApplicationDocuments";
 
@@ -76,6 +77,16 @@ function fallbackDownloadFilename(doc: LoanDocument, backendType: string): strin
   );
 }
 
+/** Backend streaming path for a stored document; `inline` selects preview disposition. */
+function documentContentPath(
+  applicationId: string,
+  backendType: string,
+  opts?: { inline?: boolean },
+): string {
+  const base = `/api/v1/internal/ops/loan-applications/${encodeURIComponent(applicationId)}/kyc-documents/${backendType}/content`;
+  return opts?.inline ? `${base}?disposition=inline` : base;
+}
+
 export function adaptLoanDocumentToDocument(doc: LoanDocument): Document {
   return {
     id: doc.id,
@@ -105,6 +116,19 @@ export function DocumentsTab({ applicationId, canManage: _canManage }: Documents
     return map;
   }, [query.data]);
 
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const handleView = useCallback(
+    (doc: Document) => {
+      const original = docsById.get(doc.id);
+      if (!original?.fileMeta) return;
+      setPreviewDoc(doc);
+      setPreviewOpen(true);
+    },
+    [docsById],
+  );
+
   const handleDownload = useCallback(
     async (doc: Document) => {
       const original = docsById.get(doc.id);
@@ -112,7 +136,7 @@ export function DocumentsTab({ applicationId, canManage: _canManage }: Documents
       const backendType = FE_TO_BE_DOCUMENT_TYPE[original.type];
       try {
         const { blob, filename } = await requestBlob(
-          `/api/v1/internal/ops/loan-applications/${encodeURIComponent(applicationId)}/kyc-documents/${backendType}/content`,
+          documentContentPath(applicationId, backendType),
         );
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -127,7 +151,7 @@ export function DocumentsTab({ applicationId, canManage: _canManage }: Documents
           toast.error("Document storage is temporarily unavailable. Please try again in a moment.");
           return;
         }
-        toast.error(err instanceof Error ? err.message : "Couldn't download the document.");
+        toast.error(mapApiErrorMessage(err, "Couldn't download the document."));
       }
     },
     [applicationId, docsById],
@@ -146,7 +170,7 @@ export function DocumentsTab({ applicationId, canManage: _canManage }: Documents
     return (
       <ErrorState
         title="Couldn't load documents"
-        description={query.error instanceof Error ? query.error.message : undefined}
+        description={mapApiErrorMessage(query.error, "Please try again.")}
         retry={{ onClick: () => void query.refetch() }}
       />
     );
@@ -161,9 +185,27 @@ export function DocumentsTab({ applicationId, canManage: _canManage }: Documents
     );
   }
 
+  const previewOriginal = previewDoc ? (docsById.get(previewDoc.id) ?? null) : null;
+  const previewBackendType = previewOriginal ? FE_TO_BE_DOCUMENT_TYPE[previewOriginal.type] : null;
+  const previewContentPath =
+    previewOriginal && previewBackendType
+      ? documentContentPath(applicationId, previewBackendType, { inline: true })
+      : null;
+  const previewTitle =
+    previewOriginal?.fileMeta?.fileName ??
+    (previewDoc ? DOCUMENT_KIND_LABELS[previewDoc.kind] : "Document");
+
   return (
     <div data-slot="documents-tab" className="flex flex-col gap-4">
-      <DocumentChecklistGroup docs={adapted} onDownload={handleDownload} />
+      <DocumentChecklistGroup docs={adapted} onView={handleView} onDownload={handleDownload} />
+      <DocumentPreviewModal
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        title={previewTitle}
+        mimeType={previewOriginal?.fileMeta?.mime ?? null}
+        contentPath={previewContentPath}
+        onDownload={previewDoc ? () => handleDownload(previewDoc) : undefined}
+      />
     </div>
   );
 }

@@ -84,9 +84,9 @@ describe("ActivityTab", () => {
     );
     const { container, getAllByText } = renderWithProviders(<ActivityTab applicationId="app-1" />);
     expect(container.querySelector('[data-slot="audit-timeline"]')).not.toBeNull();
-    // AuditEventNode renders the verb in both the headline (UNDER_REVIEW → APPROVED)
-    // and the detail body — `findAllByText` handles the dual match.
-    expect(getAllByText(/approve/i).length).toBeGreaterThan(0);
+    // AuditEventNode renders humanized status labels and action text.
+    expect(getAllByText(/Awaiting approval/i).length).toBeGreaterThan(0);
+    expect(getAllByText(/Approve/i).length).toBeGreaterThan(0);
   });
 
   it("has no axe violations on the populated state", async () => {

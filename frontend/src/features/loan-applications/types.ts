@@ -192,6 +192,34 @@ export interface InitiateDisbursementInput {
   idempotencyKey: string;
 }
 
+export interface LoanForeclosureQuote {
+  id: string;
+  loanAccountId: string;
+  version: number;
+  requestedByUsername: string | null;
+  executedByUsername: string | null;
+  effectiveDate: string;
+  outstandingPrincipal: number;
+  outstandingInterest: number;
+  settlementAmount: number;
+  status: string;
+  executedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestForeclosureQuoteInput {
+  effectiveDate: string;
+}
+
+export interface ExecuteForeclosureQuoteInput {
+  quoteId: string;
+  settlementDate: string;
+  reference: string;
+  note: string | null;
+  idempotencyKey: string;
+}
+
 // ─── Phase 7: LSP-API contracts ──────────────────────────────────────────────
 //
 // The LSP integrates with the LMS server-to-server: there is no manual UI

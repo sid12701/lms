@@ -7,6 +7,7 @@ export const SessionUser = z.object({
   username: z.string().min(3).max(64),
   role: Role,
   lspId: Uuid.nullable(),
+  lspName: z.string().nullable().optional(),
   mustChangePassword: z.boolean(),
 });
 export type SessionUser = z.infer<typeof SessionUser>;

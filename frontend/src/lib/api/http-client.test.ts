@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, requestBlob, requestJson, setRefreshCallback } from "@/lib/api/http-client";
+import {
+  ApiError,
+  requestBlob,
+  requestJson,
+  requestJsonWithHeaders,
+  setRefreshCallback,
+} from "@/lib/api/http-client";
+import { readPaginationHeaders } from "@/lib/api/pagination-headers";
 
 describe("http-client", () => {
   afterEach(() => {
@@ -64,6 +71,80 @@ describe("http-client", () => {
         return true;
       },
     );
+  });
+
+  it("returns JSON body and response headers", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify([{ id: "loan-1" }]), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Total-Count": "42",
+            "X-Limit": "25",
+            "X-Offset": "50",
+          },
+        }),
+      ),
+    );
+
+    const { data, headers } = await requestJsonWithHeaders<[{ id: string }]>(
+      "/api/v1/lsp/loan-applications?paginationDetails=ON",
+    );
+
+    expect(data).toEqual([{ id: "loan-1" }]);
+    expect(readPaginationHeaders(headers)).toEqual({
+      totalCount: 42,
+      limit: 25,
+      offset: 50,
+    });
+  });
+
+  it("does not dedupe requestJson against requestJsonWithHeaders for the same URL", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify([{ id: "loan-1" }]), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Total-Count": "1",
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const path = "/api/v1/lsp/loan-applications?paginationDetails=ON";
+    const [bodyOnly, withHeaders] = await Promise.all([
+      requestJson<[{ id: string }]>(path),
+      requestJsonWithHeaders<[{ id: string }]>(path),
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(bodyOnly).toEqual([{ id: "loan-1" }]);
+    expect(withHeaders.data).toEqual([{ id: "loan-1" }]);
+    expect(withHeaders.headers.get("X-Total-Count")).toBe("1");
+  });
+
+  it("still dedupes concurrent requestJson calls for the same URL", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const path = "/api/v1/internal/reports/portfolio-mis/summary";
+    const [first, second] = await Promise.all([
+      requestJson<{ ok: boolean }>(path),
+      requestJson<{ ok: boolean }>(path),
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(first).toEqual({ ok: true });
+    expect(second).toEqual({ ok: true });
   });
 
   it("refreshes and retries blob downloads after 401", async () => {

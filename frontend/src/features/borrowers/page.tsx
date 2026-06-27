@@ -7,7 +7,7 @@
  * TanStack-Query cache key is the filter snapshot so back/forward hits
  * the cache instead of re-firing the request.
  *
- * Role enforcement lives in the router (`RequireRole` for `INTERNAL_ALL`);
+ * Role enforcement lives in the router (`RequireRole` for SYSTEM_ADMIN/OPS_USER);
  * this page does not duplicate the gate.
  */
 import { ShieldAlert } from "lucide-react";
@@ -56,7 +56,7 @@ export function BorrowersPage() {
       ) : (
         <BorrowersTable
           data={query.data}
-          isLoading={query.isPending}
+          isLoading={query.isPending && query.data === undefined}
           filters={filters}
           onFiltersChange={setFilters}
         />

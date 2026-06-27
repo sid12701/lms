@@ -14,6 +14,7 @@ const AUTH_FILE =
   process.env["E2E_STORAGE_STATE"] ?? path.join(__dirname, ".auth", "phase8-admin.json");
 
 const APPLICATION_ID = process.env["E2E_APPLICATION_ID"] ?? "";
+const EC111_APPLICATION_ID = process.env["E2E_EC111_APPLICATION_ID"] ?? APPLICATION_ID;
 const API_BASE = process.env["E2E_API_BASE"] ?? "http://localhost:8080";
 
 async function adminToken(request: import("@playwright/test").APIRequestContext): Promise<string> {
@@ -50,7 +51,9 @@ async function openLoanDetail(page: Page): Promise<void> {
   const detail = page.locator('[data-testid="loan-application-detail"]');
   await expect(detail).toBeVisible({ timeout: 45_000 });
   await expect(detail).not.toHaveAttribute("data-loading", "true", { timeout: 45_000 });
-  await expect(page.locator('[data-slot="status-badge"]').first()).toBeVisible({ timeout: 10_000 });
+  await expect(detail).not.toHaveAttribute("data-state", "not-found", { timeout: 5_000 });
+  await expect(detail).not.toHaveAttribute("data-state", "forbidden", { timeout: 5_000 });
+  await expect(page.locator('[data-slot="status-badge"]').first()).toBeVisible({ timeout: 45_000 });
 }
 
 test.beforeAll(() => {
@@ -130,12 +133,15 @@ test.describe("Phase 8 UI edge coverage", () => {
     await expect(page.getByRole("heading", { name: /Audit/i })).toBeVisible({ timeout: 15_000 });
 
     const lastBtn = page.getByRole("button", { name: /Go to last page/i });
+    const firstBtn = page.getByRole("button", { name: /Go to first page/i });
+    const prevBtn = page.getByRole("button", { name: /Go to previous page/i });
+
     if (await lastBtn.isEnabled()) {
       await lastBtn.click();
       await expect(page.getByRole("button", { name: /Go to next page/i })).toBeDisabled();
+      await firstBtn.click();
     }
-    await page.getByRole("button", { name: /Go to first page/i }).click();
-    await expect(page.getByRole("button", { name: /Go to previous page/i })).toBeDisabled();
+    await expect(prevBtn).toBeDisabled();
   });
 
   test("EC-089: status and LSP filters combine in URL", async ({ page }) => {
@@ -196,30 +202,46 @@ test.describe("Phase 8 UI edge coverage", () => {
   test("EC-111: UI stays stale after API status change (known gap)", async ({ page, request }) => {
     const token = await adminToken(request);
     const detail = (await (
-      await request.get(`${API_BASE}/api/v1/internal/ops/loan-applications/${APPLICATION_ID}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      await request.get(
+        `${API_BASE}/api/v1/internal/ops/loan-applications/${EC111_APPLICATION_ID}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      )
     ).json()) as { status: string };
 
     test.skip(detail.status !== "DISBURSED", "EC-111 needs a DISBURSED fixture");
 
     const scheduleRes = await request.get(
-      `${API_BASE}/api/v1/internal/ops/loan-applications/${APPLICATION_ID}/repayment-schedule`,
+      `${API_BASE}/api/v1/internal/ops/loan-applications/${EC111_APPLICATION_ID}/repayment-schedule`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
     expect(scheduleRes.ok()).toBeTruthy();
-    const schedule = (await scheduleRes.json()) as {
-      installments?: { id: string; amount: number; status?: string }[];
-    };
-    const inst =
-      schedule.installments?.find((row) => row.status !== "PAID") ?? schedule.installments?.[0];
+    const scheduleBody = (await scheduleRes.json()) as
+      | { id: string; amount?: number; installmentAmount?: number; status?: string }[]
+      | {
+          installments?: {
+            id: string;
+            amount?: number;
+            installmentAmount?: number;
+            status?: string;
+          }[];
+        };
+    const installments = Array.isArray(scheduleBody)
+      ? scheduleBody
+      : (scheduleBody.installments ?? []);
+    const inst = installments.find((row) => row.status !== "PAID") ?? installments[0];
     test.skip(!inst, "No installment on schedule for payment trigger");
 
-    await openLoanDetail(page);
+    await ensureAuthenticated(page);
+    await page.goto(`/loan-applications/${EC111_APPLICATION_ID}`);
+    await expect(page.locator('[data-testid="loan-application-detail"]')).toBeVisible({
+      timeout: 45_000,
+    });
     await expect(page.locator('[data-slot="status-badge"]').first()).toContainText(/disbursed/i);
 
     await request.post(
-      `${API_BASE}/api/v1/internal/ops/loan-applications/${APPLICATION_ID}/payments`,
+      `${API_BASE}/api/v1/internal/ops/loan-applications/${EC111_APPLICATION_ID}/payments`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -228,7 +250,7 @@ test.describe("Phase 8 UI edge coverage", () => {
         },
         data: {
           targetInstallmentId: inst!.id,
-          amount: inst!.amount,
+          amount: inst!.amount ?? inst!.installmentAmount,
           postedAt: "2026-06-11",
           reference: "EC-111",
           channel: "NEFT",

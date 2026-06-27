@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
+import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { IpAllowListEditor } from "@/features/api-clients/components/IpAllowListEditor";
 import {
   addLspIpAllowlistEntry,
@@ -141,7 +142,7 @@ export function LspIpAllowlistDialog({ open, onOpenChange, lsp }: LspIpAllowlist
       setPendingApi([]);
       await invalidate();
     } catch (err) {
-      setMutationError(err instanceof Error ? err.message : "Failed to save allowlist entries.");
+      setMutationError(mapApiErrorMessage(err, "Failed to save allowlist entries."));
     } finally {
       setMutating(false);
     }
@@ -155,7 +156,7 @@ export function LspIpAllowlistDialog({ open, onOpenChange, lsp }: LspIpAllowlist
       await updateLspAllowlistEnforcement(lspId, patch);
       await invalidate();
     } catch (err) {
-      setMutationError(err instanceof Error ? err.message : "Failed to update enforcement.");
+      setMutationError(mapApiErrorMessage(err, "Failed to update enforcement."));
     } finally {
       setMutating(false);
     }
@@ -169,7 +170,7 @@ export function LspIpAllowlistDialog({ open, onOpenChange, lsp }: LspIpAllowlist
       await removeLspIpAllowlistEntry(lspId, surface, entryId);
       await invalidate();
     } catch (err) {
-      setMutationError(err instanceof Error ? err.message : "Failed to remove entry.");
+      setMutationError(mapApiErrorMessage(err, "Failed to remove entry."));
     } finally {
       setMutating(false);
     }

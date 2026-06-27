@@ -61,7 +61,7 @@ const PREVIEW: MisPreviewResponseDto = {
 };
 
 describe("MisPreviewTable (Gap #10)", () => {
-  it("renders widened columns and defensively masks aadhaar in the preview", () => {
+  it("renders curated summary columns and export guidance", () => {
     renderWithProviders(
       <MisPreviewTable
         data={PREVIEW}
@@ -73,11 +73,8 @@ describe("MisPreviewTable (Gap #10)", () => {
 
     expect(screen.getByText("Apex NBFC")).toBeInTheDocument();
     expect(screen.getByText("Personal Loan A")).toBeInTheDocument();
-    expect(screen.getByText("BHAW-000101")).toBeInTheDocument();
-    expect(screen.getByText("EMI 1")).toBeInTheDocument();
-
-    const aadhaarCell = document.querySelector('[data-pii="aadhaar"]');
-    expect(aadhaarCell?.textContent).toBe("XXXXXXXX1234");
-    expect(aadhaarCell?.textContent).not.toMatch(/\d{12}/);
+    expect(screen.getByText(/Key portfolio columns only/i)).toBeInTheDocument();
+    expect(screen.queryByText("EMI 1")).not.toBeInTheDocument();
+    expect(document.querySelector('[data-pii="aadhaar"]')).toBeNull();
   });
 });

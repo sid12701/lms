@@ -1,10 +1,11 @@
 import { useCallback, useMemo } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ShieldAlert, Users } from "lucide-react";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { PermissionDeniedState } from "@/components/app/feedback/PermissionDeniedState";
 import { isNotFoundApiError, isUnauthorizedApiError } from "@/lib/api/api-errors";
+import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { RightRail } from "@/components/app/layout/RightRail";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatINR } from "@/lib/format";
@@ -75,6 +76,7 @@ function DetailSkeleton() {
  */
 export function BorrowerDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const borrowerId = id ?? "";
   const detailQuery = useBorrowerDetail(borrowerId);
   const [activeTab, setActiveTab] = useBorrowerTabParam();
@@ -98,12 +100,13 @@ export function BorrowerDetailPage() {
         <PermissionDeniedState
           title="Borrower not found"
           description="The URL is missing a borrower identifier."
+          action={{ label: "Back to borrowers", onClick: () => navigate("/borrowers") }}
         />
       </div>
     );
   }
 
-  if (detailQuery.isPending) {
+  if (detailQuery.isPending && detailQuery.data === undefined) {
     return (
       <div className="flex flex-col gap-6 p-6" data-testid="borrower-detail" data-loading="true">
         <DetailSkeleton />
@@ -124,6 +127,8 @@ export function BorrowerDetailPage() {
             icon={ShieldAlert}
             title="No access to this borrower"
             description="You don't have permission to view this borrower record."
+            action={{ label: "Back to borrowers", onClick: () => navigate("/borrowers") }}
+            secondaryAction={{ label: "Go back", onClick: () => navigate(-1) }}
           />
         </div>
       );
@@ -138,6 +143,8 @@ export function BorrowerDetailPage() {
           <PermissionDeniedState
             title="Borrower not found"
             description="This borrower either doesn't exist or you don't have permission to view them."
+            action={{ label: "Back to borrowers", onClick: () => navigate("/borrowers") }}
+            secondaryAction={{ label: "Go back", onClick: () => navigate(-1) }}
           />
         </div>
       );
@@ -147,7 +154,7 @@ export function BorrowerDetailPage() {
         <ErrorState
           icon={Users}
           title="Couldn't load this borrower"
-          description={detailQuery.error instanceof Error ? detailQuery.error.message : undefined}
+          description={mapApiErrorMessage(detailQuery.error, "Please try again.")}
           retry={{ label: "Retry", onClick: () => void detailQuery.refetch() }}
         />
       </div>

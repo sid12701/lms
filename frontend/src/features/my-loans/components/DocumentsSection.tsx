@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/format";
 import {
   listLspSubmittedDocuments,
-  LSP_DOCUMENT_TYPES,
   uploadLspDocument,
   type LspDocumentType,
   type UploadedLspDocument,
@@ -38,10 +37,10 @@ interface DocumentRowProps {
   uploaded: UploadedLspDocument | null;
   onPickFile: (documentType: LspDocumentType, file: File) => Promise<void>;
   busy: boolean;
-  disabled: boolean;
+  canUpload: boolean;
 }
 
-function DocumentRow({ documentType, uploaded, onPickFile, busy, disabled }: DocumentRowProps) {
+function DocumentRow({ documentType, uploaded, onPickFile, busy, canUpload }: DocumentRowProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const label = LSP_DOC_LABELS[documentType];
   const handleChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,24 +82,28 @@ function DocumentRow({ documentType, uploaded, onPickFile, busy, disabled }: Doc
             {uploaded.status}
           </Badge>
         ) : null}
-        <input
-          ref={inputRef}
-          type="file"
-          className="sr-only"
-          onChange={handleChange}
-          aria-label={`Upload ${label}`}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={handleClick}
-          disabled={disabled || busy}
-          aria-busy={busy ? "true" : undefined}
-        >
-          <Upload aria-hidden="true" className="h-4 w-4" />
-          <span>{busy ? "Uploading…" : uploaded ? "Replace" : "Upload"}</span>
-        </Button>
+        {canUpload ? (
+          <>
+            <input
+              ref={inputRef}
+              type="file"
+              className="sr-only"
+              onChange={handleChange}
+              aria-label={`Upload ${label}`}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleClick}
+              disabled={busy}
+              aria-busy={busy ? "true" : undefined}
+            >
+              <Upload aria-hidden="true" className="h-4 w-4" />
+              <span>{busy ? "Uploading…" : uploaded ? "Replace" : "Upload"}</span>
+            </Button>
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -108,10 +111,10 @@ function DocumentRow({ documentType, uploaded, onPickFile, busy, disabled }: Doc
 
 export interface DocumentsSectionProps {
   applicationId: string;
-  disabled: boolean;
+  canUpload: boolean;
 }
 
-export function DocumentsSection({ applicationId, disabled }: DocumentsSectionProps) {
+export function DocumentsSection({ applicationId, canUpload }: DocumentsSectionProps) {
   const [uploads, setUploads] = useState<Record<string, UploadedLspDocument>>({});
   const [busyType, setBusyType] = useState<LspDocumentType | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -174,15 +177,16 @@ export function DocumentsSection({ applicationId, disabled }: DocumentsSectionPr
       <header className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">Documents</h2>
         <p className="text-foreground-muted text-xs">
-          Upload borrower KYC, agreement, and supporting documents. The checklist below is seeded
-          from the LSP-scoped server read on mount and updated live as new files are uploaded.
+          {canUpload
+            ? "Upload borrower KYC, agreement, and supporting documents for this application."
+            : "Review borrower KYC, agreement, and supporting documents for this application."}
         </p>
       </header>
 
       {error ? (
         <div
           role="alert"
-          className="border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-3 py-2 text-sm"
+          className="border-danger/30 bg-danger/5 text-danger rounded-md border px-3 py-2 text-sm"
         >
           {error}
         </div>
@@ -196,7 +200,7 @@ export function DocumentsSection({ applicationId, disabled }: DocumentsSectionPr
             uploaded={uploads[documentType] ?? null}
             onPickFile={handlePickFile}
             busy={busyType === documentType}
-            disabled={disabled}
+            canUpload={canUpload}
           />
         ))}
       </div>
@@ -206,22 +210,23 @@ export function DocumentsSection({ applicationId, disabled }: DocumentsSectionPr
           <div>
             <h3 className="text-sm font-semibold">Other documents</h3>
             <p className="text-foreground-muted text-xs">
-              Ad-hoc uploads recorded in this session.
+              Additional files uploaded during this session.
             </p>
           </div>
-          <DocumentRow
-            documentType="OTHER"
-            uploaded={null}
-            onPickFile={handlePickFile}
-            busy={busyType === "OTHER"}
-            disabled={disabled}
-          />
+          {canUpload ? (
+            <DocumentRow
+              documentType="OTHER"
+              uploaded={null}
+              onPickFile={handlePickFile}
+              busy={busyType === "OTHER"}
+              canUpload
+            />
+          ) : null}
         </div>
         {otherUploads.length > 0 ? (
           <ul className="flex flex-col gap-1 text-xs">
             {otherUploads.map((row) => (
               <li key={row.id} className="text-foreground-muted">
-                <span className="font-mono">{row.id.slice(0, 8)}</span> ·{" "}
                 {row.fileName ?? row.documentDisplayName} ·{" "}
                 <span className="text-foreground">{row.status}</span>
               </li>
@@ -231,9 +236,9 @@ export function DocumentsSection({ applicationId, disabled }: DocumentsSectionPr
       </div>
 
       <p className="text-foreground-muted text-xs">
-        Required document types: {LSP_REQUIRED_DOC_TYPES.length}. The backend validates type + file
-        size on every upload; the UI surfaces failures inline. Tracked via{" "}
-        {LSP_DOCUMENT_TYPES.length} known document types.
+        {canUpload
+          ? "Required documents are validated on upload for type and file size. Replace a file any time before the loan reaches a terminal status."
+          : "Documents are read-only for your account."}
       </p>
     </section>
   );

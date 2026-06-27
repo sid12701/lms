@@ -14,6 +14,7 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { renderWithProviders } from "@/test/utils";
+import { pickDateInField } from "@/test/date-picker";
 import { DensityProvider } from "@/app/providers";
 import type { MisPreviewResponseDto, MisSummary, ReportRequest } from "./types";
 
@@ -251,8 +252,7 @@ describe("ReportsPage — filter bar", () => {
     });
     expect(clearBtn).toBeDisabled();
 
-    const fromInput = screen.getByLabelText(/Disbursed from/i);
-    await user.type(fromInput, "2099-01-01");
+    await pickDateInField(user, /Disbursed from/i, "2026-01-15");
 
     await waitFor(() => expect(clearBtn).not.toBeDisabled());
 

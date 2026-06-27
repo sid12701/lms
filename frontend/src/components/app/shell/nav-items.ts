@@ -40,7 +40,7 @@ export function getNavItems(role: Role): NavGroup[] {
     return [
       {
         label: "Workspace",
-        items: [{ to: "/my-loans", label: "My loans", icon: Folder, match: "startsWith" }],
+        items: [{ to: "/my-loans", label: "Loan applications", icon: Folder, match: "startsWith" }],
       },
     ];
   }
@@ -49,18 +49,20 @@ export function getNavItems(role: Role): NavGroup[] {
   if (role === "SYSTEM_ADMIN") {
     workspace.push({ to: "/home", label: "Home", icon: Home, match: "exact" });
   }
-  workspace.push({
-    to: "/loan-applications",
-    label: "Loan applications",
-    icon: FileText,
-    match: "startsWith",
-  });
-  workspace.push({
-    to: "/borrowers",
-    label: "Borrowers",
-    icon: UserSquare2,
-    match: "startsWith",
-  });
+  if (role === "SYSTEM_ADMIN" || role === "OPS_USER") {
+    workspace.push({
+      to: "/loan-applications",
+      label: "Loan applications",
+      icon: FileText,
+      match: "startsWith",
+    });
+    workspace.push({
+      to: "/borrowers",
+      label: "Borrowers",
+      icon: UserSquare2,
+      match: "startsWith",
+    });
+  }
 
   const reporting: NavItem[] = [];
   if (role === "SYSTEM_ADMIN" || role === "OPS_USER") {

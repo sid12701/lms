@@ -409,3 +409,27 @@ export function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPr
     }),
   ];
 }
+
+const SUMMARY_COLUMN_KEYS = new Set([
+  "loanId",
+  "borrowerName",
+  "lspName",
+  "productName",
+  "amount",
+  "status",
+  "dpd",
+  "overdueAmount",
+  "emiAmount",
+  "disbursalDate",
+]);
+
+/** Curated preview columns — full export is available via report generation. */
+export function buildMisPreviewSummaryColumns(): ColumnDef<MisPreviewRow>[] {
+  return buildMisPreviewColumns(0).filter((column) => {
+    const key =
+      "accessorKey" in column && typeof column.accessorKey === "string"
+        ? column.accessorKey
+        : column.id;
+    return key != null && SUMMARY_COLUMN_KEYS.has(String(key));
+  });
+}

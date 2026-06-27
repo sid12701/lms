@@ -3,9 +3,8 @@
  *
  * Backend contract: `LspAdminController` under `/api/v1/internal/admin/lsps`
  * (SYSTEM_ADMIN only). The frontend shape is assembled from the backend
- * response — fields the backend does not surface (createdAt timestamps,
- * apiClientCount) are filled in with safe defaults so the existing UI
- * continues to render.
+ * response — fields the backend does not surface (apiClientCount) are filled
+ * in with safe defaults so the existing UI continues to render.
  */
 import { requestJson } from "@/lib/api/http-client";
 import type { Lsp, LspStatus, LspStatusChangeReason, LspWebhookSubscription } from "@/schemas/lsp";
@@ -63,6 +62,7 @@ interface BackendLspResponse {
   code: string;
   name: string;
   status: string;
+  createdAt?: string;
   webhookSubscription: BackendWebhookSubscriptionResponse;
   userCount: number;
   portfolioSummary: unknown;
@@ -74,7 +74,7 @@ function projectLspRow(payload: BackendLspResponse): LspRow {
     code: payload.code,
     name: payload.name,
     status: normaliseStatus(payload.status),
-    createdAt: new Date(0).toISOString(),
+    createdAt: payload.createdAt ?? "",
   };
   return {
     ...lsp,

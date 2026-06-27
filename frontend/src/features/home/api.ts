@@ -63,22 +63,12 @@ const InternalHomeKpisSchema = z.object({
   openAlerts: z.array(HomeAlertSummarySchema).readonly(),
 });
 
-const LspHomeKpisSchema = z.object({
-  myActiveApplications: z.number().int().nonnegative(),
-  myInDisbursement: z.number().int().nonnegative(),
-  myMtdDisbursedAmount: z.number().nonnegative(),
-  myOverdueLoansCount: z.number().int().nonnegative(),
-  recentApplications: z.array(HomeRecentApplicationSchema).readonly(),
-  openAlerts: z.array(HomeAlertSummarySchema).readonly(),
-});
-
 /**
  * Discriminated union — must match the `HomeKpis` exported type in
  * `./types.ts`. Keep these two in sync.
  */
 export const HomeKpisSchema: z.ZodType<HomeKpis> = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("internal"), data: InternalHomeKpisSchema }),
-  z.object({ kind: z.literal("lsp"), data: LspHomeKpisSchema }),
 ]);
 
 // ─── Public surface ─────────────────────────────────────────────────────────
@@ -133,6 +123,16 @@ export interface BackendHomeOverview {
     daysPastDue: number;
     loanStatusDisplay: string;
   }>;
+  recentApplications: ReadonlyArray<{
+    id: string;
+    externalLoanId: string | null;
+    borrowerNameMasked: string;
+    lspName: string;
+    productName: string;
+    status: string;
+    requestedAmount: number;
+    createdAt: string;
+  }>;
 }
 
 function safeAlertSubjectType(value: string): HomeAlertSummary["subjectType"] {
@@ -170,15 +170,15 @@ function mapApplicationsByStatus(
 export function mapBackendHomeOverviewToInternalKpis(
   overview: BackendHomeOverview,
 ): InternalHomeKpis {
-  const recentApplications = overview.priorityAccounts.map((account) => ({
-    id: account.applicationId,
-    externalLoanId: account.externalLoanId,
-    borrowerNameMasked: account.customerName,
-    lspName: account.lspCode,
-    productName: account.loanStatusDisplay,
-    status: apiLoanStatus(account.loanStatusDisplay) as LoanStatusType,
-    requestedAmount: account.principalAmount,
-    createdAt: new Date().toISOString(),
+  const recentApplications = (overview.recentApplications ?? []).map((application) => ({
+    id: application.id,
+    externalLoanId: application.externalLoanId,
+    borrowerNameMasked: application.borrowerNameMasked,
+    lspName: application.lspName,
+    productName: application.productName,
+    status: apiLoanStatus(application.status) as LoanStatusType,
+    requestedAmount: application.requestedAmount,
+    createdAt: application.createdAt,
   }));
   const openAlerts: HomeAlertSummary[] = overview.openAlertSummaries.map((alert) => ({
     id: alert.id,

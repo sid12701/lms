@@ -24,9 +24,6 @@ vi.mock("@/features/home/components", () => ({
   InternalKpiSummary: ({ kpis }: { kpis: unknown }) => (
     <div data-testid="internal-kpi-summary">{kpis ? "ok" : "no"}</div>
   ),
-  LspKpiSummary: ({ kpis }: { kpis: unknown }) => (
-    <div data-testid="lsp-kpi-summary">{kpis ? "ok" : "no"}</div>
-  ),
   LoansByDpdBucketCard: () => <div data-testid="loans-by-dpd-card">LoansByDpdBucketCard</div>,
   OpenAlertsCard: () => <div data-testid="open-alerts-card">OpenAlertsCard</div>,
   RecentApplicationsCard: () => (
@@ -164,7 +161,6 @@ describe("HomePage — internal", () => {
     expect(screen.getByTestId("open-alerts-card")).toBeInTheDocument();
     expect(screen.getByTestId("recent-applications-card")).toBeInTheDocument();
     // LSP-only widgets must not appear.
-    expect(screen.queryByTestId("lsp-kpi-summary")).not.toBeInTheDocument();
     expect(screen.queryByTestId("lsp-link-card-grid")).not.toBeInTheDocument();
   });
 

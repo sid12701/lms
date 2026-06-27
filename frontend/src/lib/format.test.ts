@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { maskAadhaar } from "./format";
+import { formatRelative, maskAadhaar } from "./format";
 
 describe("maskAadhaar (gap-fixes.md § Gap #1)", () => {
   it("returns the doc-spec shape: 8 X's + last 4 digits", () => {
@@ -19,5 +19,16 @@ describe("maskAadhaar (gap-fixes.md § Gap #1)", () => {
     expect(maskAadhaar("")).toBe("");
     expect(maskAadhaar(null)).toBe("");
     expect(maskAadhaar(undefined)).toBe("");
+  });
+});
+
+describe("formatRelative", () => {
+  it("returns an em dash for implausibly old timestamps", () => {
+    expect(formatRelative("1970-01-01T00:00:00.000Z")).toBe("—");
+  });
+
+  it("returns relative copy for plausible timestamps", () => {
+    const now = new Date("2026-06-21T12:00:00.000Z");
+    expect(formatRelative("2026-06-21T10:00:00.000Z", now)).toBe("2 hours ago");
   });
 });

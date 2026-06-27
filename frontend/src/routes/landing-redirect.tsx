@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useSession } from "@/features/auth/session-context";
+import { RouteFallback } from "@/routes/route-fallback";
 import { defaultLandingFor } from "@/lib/role-gates";
 
 /**
@@ -10,7 +11,7 @@ import { defaultLandingFor } from "@/lib/role-gates";
  */
 export function LandingRedirect() {
   const { session, isLoading } = useSession();
-  if (isLoading) return <div aria-busy="true" />;
+  if (isLoading) return <RouteFallback />;
   if (!session) return <Navigate to="/login" replace />;
   if (session.user.mustChangePassword) return <Navigate to="/change-password" replace />;
   return <Navigate to={defaultLandingFor(session.user.role)} replace />;

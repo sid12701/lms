@@ -6,13 +6,79 @@
  * endpoints. Document upload (single + batch) is also exposed here for
  * issue #19. All mutations forward an `Idempotency-Key` header.
  */
-import { ApiError, requestJson } from "@/lib/api/http-client";
+import {
+  ApiError,
+  buildQueryPath,
+  requestJson,
+  requestJsonWithHeaders,
+} from "@/lib/api/http-client";
+import { readPaginationHeaders } from "@/lib/api/pagination-headers";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import { parseLoanApplicationStatus } from "@/lib/loan-application-status";
 import type { LoanApplication } from "@/types";
 
 const LSP_BASE = "/api/v1/lsp/loan-applications";
+
+export interface MyLoanListRow {
+  id: string;
+  externalLoanId: string | null;
+  borrowerFullName: string;
+  productName: string;
+  requestedAmount: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface MyLoanListPage {
+  items: MyLoanListRow[];
+  totalCount: number;
+  offset: number;
+  limit: number;
+}
+
+interface BackendLspListItem {
+  id: string;
+  fullName: string;
+  loanProductName: string;
+  loanAmount: number | null;
+  lspLoanId: string | null;
+  status: string;
+  createdAt: string | null;
+}
+
+function toMyLoanListRow(row: BackendLspListItem): MyLoanListRow {
+  return {
+    id: row.id,
+    externalLoanId: row.lspLoanId,
+    borrowerFullName: row.fullName,
+    productName: row.loanProductName,
+    requestedAmount: Number(row.loanAmount ?? 0),
+    status: row.status,
+    createdAt: row.createdAt ?? "",
+  };
+}
+
+/** GET `/api/v1/lsp/loan-applications` with header-based pagination metadata. */
+export async function fetchMyLoansPage(params: {
+  offset: number;
+  limit: number;
+}): Promise<MyLoanListPage> {
+  const path = buildQueryPath(LSP_BASE, {
+    offset: params.offset,
+    limit: params.limit,
+    paginationDetails: "ON",
+  });
+  const { data, headers } = await requestJsonWithHeaders<BackendLspListItem[]>(path);
+  const pagination = readPaginationHeaders(headers);
+  const items = data.map(toMyLoanListRow);
+  return {
+    items,
+    totalCount: pagination.totalCount ?? items.length,
+    offset: pagination.offset ?? params.offset,
+    limit: pagination.limit ?? params.limit,
+  };
+}
 
 export interface MyLoanLoanAccountSummary {
   id: string;

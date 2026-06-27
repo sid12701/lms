@@ -5,7 +5,7 @@
  * close over the live `outstanding` amount without leaking that value into a
  * `.tsx` component (and tripping `react-refresh/only-export-components`).
  *
- * Mode enum is hardcoded per the agent brief â€” it deliberately exceeds the
+ * Mode enum is hardcoded per the agent brief — it deliberately exceeds the
  * narrower `PaymentChannel` enum in `src/schemas/payment.ts` because the UI
  * surface presents a richer set of channels than the backend currently
  * persists.

@@ -33,9 +33,8 @@ describe("TopBar", () => {
     document.documentElement.classList.remove("dark");
   });
 
-  it("renders the command palette trigger and user menu", () => {
-    const { getAllByLabelText, getByLabelText } = renderTopBar();
-    expect(getAllByLabelText("Open command palette").length).toBeGreaterThan(0);
+  it("renders the user menu", () => {
+    const { getByLabelText } = renderTopBar();
     expect(getByLabelText(`Account menu for ${adminSession.user.username}`)).toBeInTheDocument();
   });
 

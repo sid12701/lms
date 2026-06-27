@@ -42,8 +42,8 @@ function useViewportTier(): "mobile" | "compact" | "wide" {
  *
  *  - A skip-to-main-content link (focus-revealed; first focusable in the tree).
  *  - Persistent left `Sidebar` (264px ≥ xl, icon-only at lg–xl, slide-over < lg).
- *  - Sticky `TopBar` (56px) with command-palette trigger, scope chip, user menu.
- *  - `BreadcrumbBar` derived from the route.
+ *  - Sticky `TopBar` (56px) with scope chip, user menu, and theme toggle.
+ *  - `BreadcrumbBar` derived from the route (first child inside `main`).
  *  - The route `Outlet` (passed as children).
  *  - Optional `rightRail` (288px ≥ xl, hidden below).
  *  - A polite `aria-live` region announcing the resolved page label on each
@@ -94,10 +94,10 @@ export function AppShell({ children, rightRail, className }: AppShellProps) {
 
       <div className="flex min-w-0 flex-1 flex-col overflow-x-clip">
         <TopBar onOpenMobileNav={tier === "mobile" ? () => setMobileNavOpen(true) : undefined} />
-        <BreadcrumbBar />
 
         <div className="flex min-h-0 flex-1">
           <main id="main" className="min-w-0 flex-1 overflow-y-auto" tabIndex={-1}>
+            <BreadcrumbBar />
             <div
               role="status"
               aria-live="polite"

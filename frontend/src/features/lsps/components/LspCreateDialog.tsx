@@ -81,8 +81,8 @@ export function LspCreateDialog({
             <DialogTitle>New LSP</DialogTitle>
           </div>
           <DialogDescription>
-            Register a new Loan Service Provider tenant. The code is immutable once created and is
-            the stable tenant identifier across the platform.
+            Register a new Lending Service Provider tenant. The code is immutable once created and
+            is the stable tenant identifier across the platform.
           </DialogDescription>
         </DialogHeader>
 

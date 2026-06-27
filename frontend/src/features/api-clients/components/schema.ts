@@ -9,9 +9,9 @@ export const CreateApiClientSchema = z.object({
   name: z
     .string()
     .trim()
-    .min(1, "Name is required.")
-    .max(120, "Name must be 120 characters or fewer."),
-  lspId: z.string().uuid("Pick an LSP."),
+    .min(1, "Client name is required.")
+    .max(120, "Client name must be 120 characters or fewer."),
+  lspId: z.string().uuid("LSP is required."),
 });
 export type CreateApiClientValues = z.infer<typeof CreateApiClientSchema>;
 

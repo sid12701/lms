@@ -68,6 +68,8 @@ describe("ChangePasswordPage", () => {
     await user.type(screen.getByLabelText(/^new password$/i), "short");
     await user.type(screen.getByLabelText(/confirm new password/i), "short");
     await user.click(screen.getByRole("button", { name: /update password/i }));
-    expect((await screen.findAllByText(/at least 8 characters/i)).length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText(/at least 12 characters/i)).length).toBeGreaterThanOrEqual(
+      1,
+    );
   });
 });

@@ -1,17 +1,18 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DropdownMenu } from "radix-ui";
-import { ChevronDown, User, LogOut } from "lucide-react";
+import { ChevronDown, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/features/auth/session-context";
 import { AvatarInitials } from "@/components/app/misc/AvatarInitials";
+import { formatRoleLabel } from "@/lib/role-labels";
 import { cn } from "@/lib/utils";
 
 const menuContentClass =
-  "z-50 min-w-[12rem] rounded-md border border-[var(--color-border)] bg-popover p-1 shadow-md outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0";
+  "z-50 min-w-[12rem] rounded-md border border-(--color-border) bg-popover p-1 shadow-md outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0";
 
 const itemClass =
-  "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-accent/10 data-[highlighted]:text-foreground";
+  "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-highlighted:bg-accent/10 data-highlighted:text-foreground";
 
 /**
  * TopBar user menu. DropdownMenu (radix) showing role, scope, and sign-out.
@@ -45,12 +46,12 @@ export function UserMenu() {
           <DropdownMenu.Group>
             <div className="px-2 pb-2">
               <p className="text-foreground text-sm font-medium">{session.user.username}</p>
-              <p className="text-foreground-muted text-xs">{session.user.role}</p>
+              <p className="text-foreground-muted text-xs">{formatRoleLabel(session.user.role)}</p>
             </div>
           </DropdownMenu.Group>
-          <DropdownMenu.Separator className="my-1 h-px bg-[var(--color-border)]" />
+          <DropdownMenu.Separator className="my-1 h-px bg-(--color-border)" />
           <DropdownMenu.Item
-            className={cn(itemClass, "text-danger data-[highlighted]:text-danger")}
+            className={cn(itemClass, "text-danger data-highlighted:text-danger")}
             onSelect={async () => {
               await signOut();
               navigate("/login", { replace: true });
@@ -59,17 +60,7 @@ export function UserMenu() {
             <LogOut aria-hidden="true" className="h-4 w-4" />
             <span>Sign out</span>
           </DropdownMenu.Item>
-          <DropdownMenu.Separator className="my-1 h-px bg-[var(--color-border)]" />
-          <DropdownMenu.Item
-            className={itemClass}
-            onSelect={(e) => {
-              e.preventDefault();
-            }}
-            disabled
-          >
-            <User aria-hidden="true" className="h-4 w-4" />
-            <span className="text-foreground-subtle">Profile (Phase 8)</span>
-          </DropdownMenu.Item>
+          <DropdownMenu.Separator className="my-1 h-px bg-(--color-border)" />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

@@ -6,9 +6,7 @@
  *
  * The backend exposes 9 product fields (incl. status/code/name/principal
  * range, interest, processing fee, tenure bounds) plus a mappings endpoint
- * returning the LSPs the product is enabled for. The frontend's
- * `LoanProduct` projection includes a `createdAt` timestamp that the
- * backend does not surface today — we default it to `1970-01-01T00:00:00Z`.
+ * returning the LSPs the product is enabled for.
  */
 import { requestJson } from "@/lib/api/http-client";
 import type { LoanProduct, ProductLspMapping, ProductStatus } from "@/schemas/product";
@@ -24,7 +22,6 @@ import type {
 } from "./types";
 
 const BASE = "/api/v1/internal/admin/products";
-const EPOCH_ISO = "1970-01-01T00:00:00.000Z";
 
 interface BackendProductResponse {
   id: string;
@@ -37,6 +34,7 @@ interface BackendProductResponse {
   minTenureMonths: number;
   maxTenureMonths: number;
   status: string;
+  createdAt: string;
 }
 
 interface BackendMappingResponse {
@@ -59,7 +57,7 @@ function toLoanProduct(payload: BackendProductResponse): LoanProduct {
     processingFeePct: Number(payload.processingFeeRate),
     tenureMinMonths: Number(payload.minTenureMonths),
     tenureMaxMonths: Number(payload.maxTenureMonths),
-    createdAt: EPOCH_ISO,
+    createdAt: payload.createdAt,
   };
 }
 

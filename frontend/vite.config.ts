@@ -7,6 +7,28 @@ import path from "node:path";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          const normalizedId = id.split(path.sep).join("/");
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(normalizedId)) {
+            return "vendor-react";
+          }
+          if (normalizedId.includes("@radix-ui") || normalizedId.includes("@floating-ui")) {
+            return "vendor-ui";
+          }
+          if (normalizedId.includes("@tanstack")) return "vendor-data";
+          if (normalizedId.includes("recharts")) return "vendor-charts";
+          if (normalizedId.includes("date-fns") || normalizedId.includes("react-day-picker")) {
+            return "vendor-date";
+          }
+          return "vendor";
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

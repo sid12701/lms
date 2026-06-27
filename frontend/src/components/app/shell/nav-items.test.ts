@@ -22,15 +22,16 @@ describe("getNavItems (Gap #8)", () => {
     expect(labels).not.toContain("Users");
   });
 
-  it("gives PRODUCT_ADMIN products plus the shared applications list", () => {
+  it("gives PRODUCT_ADMIN only the backend-supported products workspace", () => {
     const labels = flatLabels("PRODUCT_ADMIN");
     expect(labels).toContain("Products");
-    expect(labels).toContain("Loan applications");
+    expect(labels).not.toContain("Loan applications");
+    expect(labels).not.toContain("Borrowers");
   });
 
-  it("gives LSP users only My loans", () => {
+  it("gives LSP users only the loan applications workspace", () => {
     for (const role of ["LSP_UI_READ", "LSP_UI_WRITE"] as const) {
-      expect(flatLabels(role)).toEqual(["My loans"]);
+      expect(flatLabels(role)).toEqual(["Loan applications"]);
     }
   });
 });

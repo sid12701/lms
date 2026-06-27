@@ -39,15 +39,13 @@ import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { StatusBadge } from "@/components/app/status/StatusBadge";
 import { TABULAR_ATTR } from "@/lib/tabular-nums";
 import { formatINR } from "@/lib/format";
+import { mapApiErrorMessage } from "@/lib/api/user-messages";
+import { shortId } from "@/lib/short-id";
 import { cn } from "@/lib/utils";
 import { useBorrowerLoans } from "../../hooks/useBorrowerLoans";
 import type { BorrowerLoanRow } from "../../types";
 
 const SORTABLE_COLUMNS = new Set(["createdAt", "updatedAt", "requestedAmount", "status"]);
-
-function shortId(id: string): string {
-  return id.length > 8 ? `${id.slice(0, 8)}…` : id;
-}
 
 function safeRelative(iso: string): string {
   try {
@@ -85,7 +83,7 @@ export function LoansTab({ borrowerId }: LoansTabProps) {
         header: ({ column }) => <DataTableColumnHeader column={column} title="ID" />,
         cell: ({ row }) => (
           <span className="font-mono text-xs" title={row.original.applicationId}>
-            {shortId(row.original.applicationId)}
+            {shortId(row.original.applicationId)}…
           </span>
         ),
         enableSorting: false,
@@ -176,7 +174,7 @@ export function LoansTab({ borrowerId }: LoansTabProps) {
     return (
       <ErrorState
         title="Couldn't load loans"
-        description={query.error instanceof Error ? query.error.message : undefined}
+        description={mapApiErrorMessage(query.error, "Please try again.")}
         retry={{ label: "Retry", onClick: () => void query.refetch() }}
       />
     );
@@ -241,7 +239,7 @@ export function LoansTab({ borrowerId }: LoansTabProps) {
                 key={row.id}
                 tabIndex={0}
                 role="button"
-                aria-label={`Open application ${shortId(row.original.applicationId)}`}
+                aria-label={`Open application ${shortId(row.original.applicationId)}…`}
                 data-testid={`borrower-loan-row-${row.original.applicationId}`}
                 data-interactive="true"
                 onClick={() => openRow(row)}

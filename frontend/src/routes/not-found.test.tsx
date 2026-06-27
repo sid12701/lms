@@ -3,6 +3,10 @@ import { axe } from "vitest-axe";
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+import { SessionProvider } from "@/features/auth/session-context";
+import { adminSession } from "@/test/session-fixtures";
+import type { Session } from "@/features/auth/session-types";
+import { NotFoundPage } from "./not-found";
 
 const navigateMock = vi.fn();
 
@@ -14,12 +18,12 @@ vi.mock("react-router-dom", async () => {
   };
 });
 
-import { NotFoundPage } from "./not-found";
-
-function renderNotFound() {
+function renderNotFound(session: Session | null = adminSession) {
   return render(
     <MemoryRouter initialEntries={["/something-broken"]}>
-      <NotFoundPage />
+      <SessionProvider skipBootstrap initialSession={session}>
+        <NotFoundPage />
+      </SessionProvider>
     </MemoryRouter>,
   );
 }
@@ -32,12 +36,19 @@ describe("NotFoundPage", () => {
     expect(h1.tagName).toBe("H1");
   });
 
-  it("navigates to /home when the 'Back to home' button is clicked", async () => {
+  it("navigates to the role default landing when the 'Back to home' button is clicked", async () => {
     navigateMock.mockClear();
-    const { getByRole } = renderNotFound();
+    const { getByRole } = renderNotFound(adminSession);
     await userEvent.click(getByRole("button", { name: /back to home/i }));
     expect(navigateMock).toHaveBeenCalledTimes(1);
     expect(navigateMock).toHaveBeenCalledWith("/home");
+  });
+
+  it("navigates to /login when unauthenticated", async () => {
+    navigateMock.mockClear();
+    const { getByRole } = renderNotFound(null);
+    await userEvent.click(getByRole("button", { name: /back to home/i }));
+    expect(navigateMock).toHaveBeenCalledWith("/login");
   });
 
   it("has no axe violations", async () => {

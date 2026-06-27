@@ -26,13 +26,10 @@ export interface BackendSystemContext {
   lspName: string | null;
 }
 
-export function loginWithPassword(
-  username: string,
-  password: string,
-): Promise<BackendTokenResponse> {
+export function loginWithPassword(email: string, password: string): Promise<BackendTokenResponse> {
   return requestJson<BackendTokenResponse>(
     "/api/v1/auth/login",
-    { method: "POST", body: JSON.stringify({ username, password }) },
+    { method: "POST", body: JSON.stringify({ email, password }) },
     { authenticated: false },
   );
 }

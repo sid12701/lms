@@ -59,10 +59,10 @@ export interface RepaymentPostDialogProps {
   installmentLabel?: string;
   /** Default value for the posting timestamp (defaults to "now" on each open). */
   defaultPostedAt?: string;
-  /** Default channel â€” falls back to BANK_TRANSFER. */
+  /** Default channel — falls back to BANK_TRANSFER. */
   defaultMode?: RepaymentPostMode;
   onConfirm: (args: RepaymentPostConfirmArgs) => Promise<void> | void;
-  /** Disables submit + flips the button to a "Postingâ€¦" label. */
+  /** Disables submit + flips the button to a "Posting…" label. */
   loading?: boolean;
 }
 
@@ -156,7 +156,7 @@ export function RepaymentPostDialog({
           </div>
           <DialogDescription>
             Post the full outstanding amount{subjectSuffix}. Per BR-13, partial payments are not
-            accepted â€” the amount must equal{" "}
+            accepted — the amount must equal{" "}
             <strong>{formatINR(outstandingAmount, { decimals: 2 })}</strong>.
           </DialogDescription>
         </DialogHeader>
@@ -216,7 +216,7 @@ export function RepaymentPostDialog({
                   <Input placeholder="UTR / cheque no. / UPI tx id" maxLength={128} {...field} />
                 </FormControl>
                 <FormDescription>
-                  Reconciliation reference â€” can be added later when the bank statement arrives.
+                  Reconciliation reference — can be added later when the bank statement arrives.
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -258,7 +258,7 @@ export function RepaymentPostDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Postingâ€¦" : "Post repayment"}
+              {loading ? "Posting…" : "Post repayment"}
             </Button>
           </DialogFooter>
         </FormShell>

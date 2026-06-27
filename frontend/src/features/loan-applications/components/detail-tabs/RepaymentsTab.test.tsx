@@ -120,8 +120,27 @@ describe("RepaymentsTab", () => {
     const user = userEvent.setup();
     renderWithDensity(<RepaymentsTab applicationId="app-1" />);
     expect(screen.getByText(/Couldn't load repayments/i)).toBeInTheDocument();
+    // Genuine failures still surface the backend message verbatim for debugging.
+    expect(screen.getByText(/boom/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /try again/i }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the empty state (not an error) when no loan account exists yet", () => {
+    useRepaymentsMock.mockReturnValue({
+      isPending: false,
+      isError: true,
+      error: {
+        code: "NOT_FOUND",
+        message: "Loan account is not available for application id: app-1",
+      },
+      data: undefined,
+      refetch: vi.fn(),
+    });
+    renderWithDensity(<RepaymentsTab applicationId="app-1" />);
+    expect(screen.getByText(/No repayments yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't load repayments/i)).toBeNull();
+    expect(screen.queryByText(/Loan account is not available/i)).toBeNull();
   });
 
   it("is axe-clean when populated", async () => {

@@ -1,10 +1,12 @@
-import { forwardRef, type HTMLAttributes } from "react";
+import { forwardRef, useState, type HTMLAttributes } from "react";
 import type { LucideIcon } from "lucide-react";
-import { ArrowRightLeft, Eye, FileSearch, FileText, Package } from "lucide-react";
+import { ArrowRightLeft, Copy, Check, Eye, FileSearch, FileText, Package } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatDateTime, formatRelative } from "@/lib/format";
-import type { Role } from "@/types";
+import { STATUS_META } from "@/lib/lifecycle";
+import type { LoanStatus, Role } from "@/types";
 import { AUDIT_STREAM_LABEL, type AuditEvent, type AuditStreamKind, getAuditCommon } from "./types";
 
 export interface AuditEventNodeProps extends HTMLAttributes<HTMLLIElement> {
@@ -43,26 +45,48 @@ const ROLE_LABEL: Record<Role, string> = {
 };
 
 function formatActor(id: string, role: Role | null): string {
-  // Render a deliberately short actor stamp — full id is shown via title
-  // attribute for hover/tooltip use. The Audit page's filter bar carries
-  // the role legend; we only need a 2-token preview here.
-  const head = id.length > 8 ? `${id.slice(0, 8)}…` : id;
-  return role ? `${ROLE_LABEL[role]} · ${head}` : head;
+  const normalized = id.trim().toLowerCase();
+  if (normalized === "system") return "System";
+  if (normalized.startsWith("cli_")) return ROLE_LABEL.LSP_API_CLIENT;
+  if (role) return ROLE_LABEL[role];
+  if (id.includes("@")) return id;
+  if (id.length <= 24) return id;
+  return `${id.slice(0, 8)}…`;
+}
+
+function humanizeAction(action: string | null | undefined): string | null {
+  if (!action) return null;
+  const lowered = action.replace(/[_-]/g, " ").toLowerCase();
+  return lowered.charAt(0).toUpperCase() + lowered.slice(1);
+}
+
+function statusLabel(status: string | null | undefined): string {
+  if (!status) return "—";
+  if (status in STATUS_META) {
+    return STATUS_META[status as LoanStatus].label;
+  }
+  return status.replace(/_/g, " ").toLowerCase();
 }
 
 function summarize(entry: AuditEvent): { headline: string; detail: string | null } {
   switch (entry.kind) {
     case "APPLICATION": {
       const e = entry.event;
-      const arrow = `${e.fromStatus ?? "—"} → ${e.toStatus}`;
-      return { headline: arrow, detail: e.action };
+      const from = statusLabel(e.fromStatus);
+      const to = statusLabel(e.toStatus);
+      const actionLabel = humanizeAction(e.action);
+      if (e.fromStatus && e.toStatus && e.fromStatus === e.toStatus) {
+        return {
+          headline: actionLabel ?? "Status recorded",
+          detail: `${from} (no change)`,
+        };
+      }
+      return { headline: `${from} → ${to}`, detail: actionLabel };
     }
     case "INTAKE":
       return { headline: "Intake snapshot recorded", detail: null };
     case "PII_REVEAL": {
       const e = entry.event;
-      // PII reveals never expose the cleartext value here — the row records
-      // the *act* of revealing, not the revealed payload (BR-7).
       return { headline: `Revealed ${e.fieldName}`, detail: e.reason };
     }
     case "DOCUMENT_ACCESS":
@@ -75,13 +99,63 @@ function summarize(entry: AuditEvent): { headline: string; detail: string | null
   }
 }
 
+function CorrelationReveal({
+  correlationId,
+  compact,
+}: {
+  correlationId: string;
+  compact: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    void navigator.clipboard?.writeText(correlationId).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <details data-slot="audit-event-correlation" className="text-foreground-muted">
+      <summary
+        className={cn(
+          "cursor-pointer underline decoration-dotted underline-offset-2 select-none",
+          compact ? "text-[11px]" : "text-xs",
+        )}
+      >
+        Reference id
+      </summary>
+      <div className="mt-1 flex items-center gap-1">
+        <code
+          className={cn(
+            "bg-surface-muted text-foreground rounded px-1.5 py-0.5 font-mono",
+            compact ? "text-[11px]" : "text-xs",
+          )}
+        >
+          {correlationId}
+        </code>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          onClick={handleCopy}
+          aria-label={copied ? "Copied reference id" : "Copy reference id"}
+        >
+          {copied ? (
+            <Check className="text-success h-3 w-3" aria-hidden="true" />
+          ) : (
+            <Copy className="h-3 w-3" aria-hidden="true" />
+          )}
+        </Button>
+      </div>
+    </details>
+  );
+}
+
 /**
  * Single timeline entry for any of the five audit streams. Discriminates
  * on `entry.kind`, picks an icon + summary, and renders the shared header
  * row (kind chip · actor · timestamp · correlation id).
- *
- * PII reveal rows surface the long `reason` via a native `<details>`
- * element — no cleartext PII is ever displayed by the audit timeline.
  */
 export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
   function AuditEventNode({ entry, compact = false, now, className, ...rest }, ref) {
@@ -90,6 +164,7 @@ export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
     const { headline, detail } = summarize(entry);
     const absolute = formatDateTime(common.timestamp);
     const relative = formatRelative(common.timestamp, now);
+    const actorLabel = formatActor(common.actorId, common.actorRole);
 
     return (
       <li
@@ -123,20 +198,16 @@ export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
             </Badge>
             <span
               data-slot="audit-event-headline"
-              className={cn(
-                "text-foreground font-medium",
-                compact ? "text-xs" : "text-sm",
-                entry.kind === "APPLICATION" ? "font-mono tabular-nums" : null,
-              )}
+              className={cn("text-foreground font-medium", compact ? "text-xs" : "text-sm")}
             >
               {headline}
             </span>
             <span
               data-slot="audit-event-actor"
               className={cn("text-foreground-muted", compact ? "text-[11px]" : "text-xs")}
-              title={common.actorId}
+              title={common.actorId !== actorLabel ? common.actorId : undefined}
             >
-              {formatActor(common.actorId, common.actorRole)}
+              {actorLabel}
             </span>
           </div>
 
@@ -155,17 +226,7 @@ export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
               </span>
               <span data-slot="audit-event-relative">{relative}</span>
             </time>
-            <span
-              data-slot="audit-event-correlation"
-              title={common.correlationId}
-              className={cn(
-                "text-foreground-muted truncate font-mono",
-                compact ? "max-w-[6rem] text-[11px]" : "max-w-[9rem] text-xs",
-              )}
-              aria-label={`Correlation id ${common.correlationId}`}
-            >
-              {common.correlationId}
-            </span>
+            <CorrelationReveal correlationId={common.correlationId} compact={compact} />
           </div>
 
           {detail ? (

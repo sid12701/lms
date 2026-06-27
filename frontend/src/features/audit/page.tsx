@@ -3,22 +3,22 @@
  *
  * Composes the landed audit primitives into a single page:
  *
- *   PageHeader â†’ AuditStreamTabs (sticky) â†’ AuditPageFilterBar â†’
- *   AuditTable â†’ AuditEventDetailSheet
+ *   PageHeader → AuditStreamTabs (sticky) → AuditPageFilterBar →
+ *   AuditTable → AuditEventDetailSheet
  *
  * Filter state is URL-bound: `streams`, `actorId`, `loanApplicationId`,
  * `correlationId`, `dateFrom`, `dateTo`, `page`, `pageSize`, `eventId`. Deep links
- * from the Alerts table (`/audit?correlationId=â€¦`) pre-fill the bar.
+ * from the Alerts table (`/audit?correlationId=…`) pre-fill the bar.
  *
  * Selecting a row writes `eventId` to the URL and opens the right-anchored
  * detail sheet; closing it strips `eventId`. The detail event is resolved
- * out of the currently-loaded page (no per-event fetch â€” the projection
+ * out of the currently-loaded page (no per-event fetch — the projection
  * carries everything the sheet needs).
  *
  * Role enforcement runs in two layers:
  *   1) page short-circuits when the session role !== SYSTEM_ADMIN, so the
  *      query never fires and OPS_USER does not even hit the handler;
- *   2) the handler itself raises UNAUTHORIZED for non-admin roles â€” the
+ *   2) the handler itself raises UNAUTHORIZED for non-admin roles — the
  *      page surfaces that as a friendly EmptyState if a stale token would
  *      ever slip past the router guard.
  */
@@ -37,7 +37,7 @@ import { AuditPageFilterBar, type ActorOption } from "./components/AuditFilterBa
 import { AuditTable } from "./components/AuditTable";
 import { AuditEventDetailSheet } from "./components/AuditEventDetailSheet";
 
-// â”€â”€â”€ URL â†” filter coercion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── URL ↔ filter coercion ────────────────────────────────────────────────────
 
 const VALID_STREAM_SET = new Set<AuditStream>(AUDIT_STREAMS);
 
@@ -84,7 +84,7 @@ function parseFiltersFromUrl(params: URLSearchParams): AuditEventsFilters {
 function serializeFiltersToUrl(filters: AuditEventsFilters): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.streams && filters.streams.length > 0) {
-    // Repeated params â€” the backend accepts both this and comma-joined,
+    // Repeated params — the backend accepts both this and comma-joined,
     // and repeated params are the convention used elsewhere in this codebase
     // (see useUrlFilters).
     for (const s of filters.streams) params.append("streams", s);
@@ -114,7 +114,7 @@ function distinctActorOptions(rows: ReadonlyArray<AuditRow>): ActorOption[] {
   );
 }
 
-// â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function AuditPage() {
   const { session } = useSession();
@@ -131,7 +131,7 @@ export function AuditPage() {
     [setSearchParams],
   );
 
-  // Strip eventId before firing the query â€” it's a UI-only key for the sheet
+  // Strip eventId before firing the query — it's a UI-only key for the sheet
   // and the handler does not understand it.
   const queryFilters = useMemo<AuditEventsFilters>(() => {
     const { eventId: _ignored, ...rest } = filters;

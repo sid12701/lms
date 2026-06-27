@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { AdminEntityDataTable } from "@/components/app/data/AdminEntityDataTable";
 import { EntityRowActions } from "@/components/app/data/EntityRowActions";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
-import { formatDateTime, formatRelative } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { LspsListFilters, LspsListResponse, LspRow } from "../types";
 import type { LspStatus } from "@/schemas/lsp";
@@ -71,6 +71,7 @@ export function LspsTable({
       {
         id: "code",
         header: "Code",
+        meta: { label: "Code", mobileCard: "primary" },
         cell: ({ row }) => (
           <span data-slot="lsps-code" className="text-foreground font-mono text-sm font-medium">
             {row.original.code}
@@ -80,11 +81,13 @@ export function LspsTable({
       {
         id: "name",
         header: "Name",
+        meta: { label: "Name", mobileCard: "secondary" },
         cell: ({ row }) => <span className="text-foreground text-sm">{row.original.name}</span>,
       },
       {
         id: "status",
         header: "Status",
+        meta: { label: "Status", mobileCard: "primary" },
         cell: ({ row }) => {
           const meta = STATUS_META[row.original.status];
           const Icon = meta.icon;
@@ -132,17 +135,15 @@ export function LspsTable({
         id: "createdAt",
         header: "Created",
         cell: ({ row }) => (
-          <span
-            title={formatDateTime(row.original.createdAt)}
-            className="text-foreground-muted text-xs"
-          >
-            {formatRelative(row.original.createdAt)}
+          <span className="text-foreground-muted text-xs">
+            {row.original.createdAt ? formatDateTime(row.original.createdAt) : "—"}
           </span>
         ),
       },
       {
         id: "actions",
         header: () => <span className="sr-only">Actions</span>,
+        meta: { mobileCard: "actions" },
         cell: ({ row }) => {
           const lsp = row.original;
           return (

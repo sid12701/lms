@@ -11,6 +11,11 @@
 import { format, formatDistanceStrict, formatDistanceToNowStrict, parseISO } from "date-fns";
 
 const BULLET = "•"; // •
+const MIN_PLAUSIBLE_YEAR = 2000;
+
+function isPlausibleInstant(date: Date): boolean {
+  return !Number.isNaN(date.getTime()) && date.getFullYear() >= MIN_PLAUSIBLE_YEAR;
+}
 
 /** ₹ in en-IN locale, tabular figures. */
 export function formatINR(amount: number, opts?: { compact?: boolean; decimals?: 0 | 2 }): string {
@@ -32,6 +37,11 @@ export function formatINR(amount: number, opts?: { compact?: boolean; decimals?:
   }).format(amount);
 }
 
+/** "09/05/2026" — dd/MM/yyyy for date picker display. */
+export function formatPickerDate(iso: string): string {
+  return format(parseISO(iso), "dd/MM/yyyy");
+}
+
 /** "09 May 2026" */
 export function formatDate(iso: string): string {
   return format(parseISO(iso), "dd MMM yyyy");
@@ -47,6 +57,9 @@ export function formatDateTime(iso: string): string {
  */
 export function formatRelative(iso: string, now?: Date): string {
   const date = parseISO(iso);
+  if (!isPlausibleInstant(date)) {
+    return "—";
+  }
   if (now) {
     return formatDistanceStrict(date, now, { addSuffix: true });
   }

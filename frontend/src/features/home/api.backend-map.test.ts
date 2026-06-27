@@ -40,6 +40,18 @@ const OVERVIEW: BackendHomeOverview = {
       loanStatusDisplay: "UNDER_REPAYMENT",
     },
   ],
+  recentApplications: [
+    {
+      id: "app-recent-1",
+      externalLoanId: "EXT-RECENT-1",
+      borrowerNameMasked: "Anika Sharma",
+      lspName: "Apex Finance",
+      productName: "Flex Cash",
+      status: "INITIALIZED",
+      requestedAmount: 150_000,
+      createdAt: "2026-06-18T18:47:44.810085Z",
+    },
+  ],
 };
 
 describe("mapBackendHomeOverviewToInternalKpis (Gap #7)", () => {
@@ -61,6 +73,13 @@ describe("mapBackendHomeOverviewToInternalKpis (Gap #7)", () => {
     ]);
     expect(kpis.openAlerts).toHaveLength(1);
     expect(kpis.openAlerts[0]?.title).toBe("Webhook failing");
-    expect(kpis.recentApplications[0]?.status).toBe("UNDER_REPAYMENT");
+    expect(kpis.recentApplications[0]?.status).toBe("INITIALIZED");
+    expect(kpis.recentApplications[0]?.borrowerNameMasked).toBe("Anika Sharma");
+  });
+
+  it("tolerates older backends that omit recentApplications", () => {
+    const { recentApplications: _ignored, ...legacyOverview } = OVERVIEW;
+    const kpis = mapBackendHomeOverviewToInternalKpis(legacyOverview as BackendHomeOverview);
+    expect(kpis.recentApplications).toEqual([]);
   });
 });

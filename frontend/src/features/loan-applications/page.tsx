@@ -8,7 +8,7 @@
  * cache key is the filter snapshot, so back/forward navigation hits the
  * cache rather than re-firing the request.
  *
- * Role enforcement lives in the router (`RequireRole` for `INTERNAL_ALL`);
+ * Role enforcement lives in the router (`RequireRole` for SYSTEM_ADMIN/OPS_USER);
  * this page does not duplicate the gate.
  */
 import { ShieldAlert } from "lucide-react";
@@ -17,16 +17,20 @@ import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { isUnauthorizedApiError } from "@/lib/api/api-errors";
 import { useUrlFilters } from "@/lib/url-state";
+import { listProducts } from "@/features/products/api";
 import { listLspOptions } from "@/features/lsps/options";
 import { LoanApplicationsFilterBar, LoanApplicationsTable } from "./components";
 import { useLoanApplications } from "./hooks/useLoanApplications";
 import { LoanApplicationListFilters } from "./types";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 export function LoanApplicationsPage() {
   const [filters, setFilters] = useUrlFilters(LoanApplicationListFilters);
   const query = useLoanApplications(filters);
   const [lspOptions, setLspOptions] = useState<readonly { value: string; label: string }[]>([]);
+  const [productOptions, setProductOptions] = useState<readonly { value: string; label: string }[]>(
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -48,12 +52,25 @@ export function LoanApplicationsPage() {
     };
   }, []);
 
-  const productOptions = useMemo(() => {
-    const rows = query.data?.items ?? [];
-    const byId = new Map<string, string>();
-    rows.forEach((row) => byId.set(row.productId, row.productName));
-    return Array.from(byId.entries()).map(([value, label]) => ({ value, label }));
-  }, [query.data?.items]);
+  useEffect(() => {
+    let cancelled = false;
+    void listProducts({ page: 0, pageSize: 500 })
+      .then((response) => {
+        if (cancelled) return;
+        setProductOptions(
+          response.items.map((product) => ({
+            value: product.id,
+            label: `${product.name} (${product.code})`,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setProductOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div
@@ -90,7 +107,7 @@ export function LoanApplicationsPage() {
       ) : (
         <LoanApplicationsTable
           data={query.data}
-          isLoading={query.isPending}
+          isLoading={query.isPending && query.data === undefined}
           filters={filters}
           onFiltersChange={setFilters}
         />

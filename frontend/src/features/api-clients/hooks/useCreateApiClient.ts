@@ -1,5 +1,5 @@
 ﻿/**
- * Mutation hook â€” creates a new API client via the backend.
+ * Mutation hook — creates a new API client via the backend.
  *
  * Invalidates every cached `api-clients` list query on success + surfaces
  * a sonner toast. The caller mints the BR-5 idempotency key (the create

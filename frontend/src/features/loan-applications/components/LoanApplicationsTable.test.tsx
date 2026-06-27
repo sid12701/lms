@@ -88,7 +88,7 @@ describe("LoanApplicationsTable", () => {
     expect(screen.getByText(ROW_A.borrowerNameMasked)).toBeInTheDocument();
     expect(screen.getByText(ROW_B.borrowerNameMasked)).toBeInTheDocument();
     expect(screen.getByText("LSP Loan ID")).toBeInTheDocument();
-    expect(screen.getByText("Bhaw Loan ID")).toBeInTheDocument();
+    expect(screen.getByText("Bhawana loan ID")).toBeInTheDocument();
     expect(screen.getByText("LMS-LN-111111111111")).toBeInTheDocument();
     // Em-dash fallback appears for ROW_B's null LSP loan ID and Bhaw loan ID.
     expect(screen.getAllByText("—")).toHaveLength(2);

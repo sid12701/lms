@@ -86,36 +86,36 @@ export function LoanApplicationsTable({
       },
       {
         accessorKey: "accountNumber",
-        meta: { label: "Bhaw Loan ID" },
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Bhaw Loan ID" />,
+        meta: { label: "Bhawana loan ID" },
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Bhawana loan ID" />,
         cell: ({ row }) =>
           row.original.accountNumber ?? <span className="text-foreground-muted">—</span>,
         enableSorting: false,
       },
       {
         accessorKey: "borrowerNameMasked",
-        meta: { label: "Borrower" },
+        meta: { label: "Borrower", mobileCard: "primary" },
         header: ({ column }) => <DataTableColumnHeader column={column} title="Borrower" />,
         cell: ({ row }) => <span className="font-medium">{row.original.borrowerNameMasked}</span>,
         enableSorting: false,
       },
       {
         accessorKey: "lspName",
-        meta: { label: "LSP" },
+        meta: { label: "LSP", mobileCard: "secondary" },
         header: ({ column }) => <DataTableColumnHeader column={column} title="LSP" />,
         cell: ({ row }) => <span>{row.original.lspName}</span>,
         enableSorting: false,
       },
       {
         accessorKey: "productName",
-        meta: { label: "Product" },
+        meta: { label: "Product", mobileCard: "secondary" },
         header: ({ column }) => <DataTableColumnHeader column={column} title="Product" />,
         cell: ({ row }) => <span>{row.original.productName}</span>,
         enableSorting: false,
       },
       {
         accessorKey: "requestedAmount",
-        meta: { label: "Amount", numeric: true },
+        meta: { label: "Amount", numeric: true, mobileCard: "secondary" },
         header: ({ column }) => <DataTableColumnHeader column={column} title="Amount" numeric />,
         cell: ({ row }) => <span>{formatINR(row.original.requestedAmount)}</span>,
         enableSorting: true,
@@ -129,14 +129,14 @@ export function LoanApplicationsTable({
       },
       {
         accessorKey: "status",
-        meta: { label: "Status" },
+        meta: { label: "Status", mobileCard: "primary" },
         header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
         cell: ({ row }) => <StatusBadge status={row.original.status} />,
         enableSorting: true,
       },
       {
         accessorKey: "updatedAt",
-        meta: { label: "Updated" },
+        meta: { label: "Updated", mobileCard: "secondary" },
         header: ({ column }) => <DataTableColumnHeader column={column} title="Updated" />,
         cell: ({ row }) => (
           <span className="text-foreground-muted text-sm" title={row.original.updatedAt}>

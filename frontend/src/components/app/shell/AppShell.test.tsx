@@ -50,8 +50,8 @@ describe("AppShell", () => {
     expect(getByLabelText("Primary navigation")).toBeInTheDocument();
     // TopBar slot is data-attributed.
     expect(document.querySelector('[data-slot="top-bar"]')).not.toBeNull();
-    // Breadcrumb landmark.
-    expect(container.querySelector('nav[aria-label="Breadcrumb"]')).not.toBeNull();
+    // Breadcrumb landmark (inside main).
+    expect(container.querySelector('main nav[aria-label="Breadcrumb"]')).not.toBeNull();
     // Outlet.
     expect(getByTestId("outlet")).toBeInTheDocument();
   });

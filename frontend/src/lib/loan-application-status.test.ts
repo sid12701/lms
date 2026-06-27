@@ -30,4 +30,14 @@ describe("loan-application-status", () => {
     expect(BACKEND_ALLOWED_TRANSITIONS.INITIALIZED).toEqual(["AWAITING_APPROVAL", "INVALID"]);
     expect(BACKEND_ALLOWED_TRANSITIONS.REJECTED).toEqual([]);
   });
+
+  it("does not allow self-transitions", () => {
+    for (const [status, targets] of Object.entries(BACKEND_ALLOWED_TRANSITIONS)) {
+      expect(targets).not.toContain(status);
+    }
+  });
+
+  it("disbursement retry cannot loop to itself", () => {
+    expect(BACKEND_ALLOWED_TRANSITIONS.DISBURSEMENT_RETRY).toEqual(["DISBURSED", "INVALID"]);
+  });
 });

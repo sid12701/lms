@@ -1,7 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "@/app/App";
+import { installZodErrorMap } from "@/lib/zod-error-map";
 import "@/styles/globals.css";
+
+installZodErrorMap();
 
 const rootEl = document.getElementById("root");
 if (!rootEl) {

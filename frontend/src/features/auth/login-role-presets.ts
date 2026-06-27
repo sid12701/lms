@@ -12,7 +12,7 @@ export const LOGIN_UI_ROLES = [
 export type LoginUiRole = (typeof LOGIN_UI_ROLES)[number];
 
 export interface LoginRolePreset {
-  username: string;
+  email: string;
   password: string;
 }
 
@@ -23,18 +23,18 @@ function readEnv(key: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function usernameEnvKey(role: LoginUiRole): string {
-  return `VITE_LOGIN_${role}_USERNAME`;
+function emailEnvKey(role: LoginUiRole): string {
+  return `VITE_LOGIN_${role}_EMAIL`;
 }
 
 /**
  * Optional quick-fill credentials for local sign-in. Values must match real
  * `app_user` rows in the Spring backend — configure in `.env.local`.
- * Returns `null` when no username is configured for the role.
+ * Returns `null` when no email is configured for the role.
  */
 export function loginPresetForRole(role: LoginUiRole): LoginRolePreset | null {
-  const username = readEnv(usernameEnvKey(role));
-  if (!username) return null;
+  const email = readEnv(emailEnvKey(role));
+  if (!email) return null;
 
   const password =
     role === "SYSTEM_ADMIN"
@@ -42,5 +42,5 @@ export function loginPresetForRole(role: LoginUiRole): LoginRolePreset | null {
       : readEnv("VITE_LOGIN_DEFAULT_PASSWORD");
   if (!password) return null;
 
-  return { username, password };
+  return { email, password };
 }

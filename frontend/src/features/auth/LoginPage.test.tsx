@@ -9,7 +9,6 @@ import type { Session } from "@/features/auth/session-types";
 
 const loginMock = vi.fn();
 const loginPresetForRoleMock = vi.fn();
-const toastErrorMock = vi.fn();
 
 vi.mock("@/features/auth/auth-service", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/features/auth/auth-service")>();
@@ -28,12 +27,6 @@ vi.mock("@/features/auth/login-role-presets", async () => {
     loginPresetForRole: (...args: unknown[]) => loginPresetForRoleMock(...args),
   };
 });
-
-vi.mock("sonner", () => ({
-  toast: {
-    error: (...args: unknown[]) => toastErrorMock(...args),
-  },
-}));
 
 function sessionFor(role: Session["user"]["role"], id: string, username: string): Session {
   return {
@@ -65,7 +58,7 @@ function renderLogin() {
               element={<div data-testid="loan-applications">Applications</div>}
             />
             <Route path="/products" element={<div data-testid="products">Products</div>} />
-            <Route path="/my-loans" element={<div data-testid="my-loans">My loans</div>} />
+            <Route path="/my-loans" element={<div data-testid="my-loans">Loan applications</div>} />
           </Routes>
         </TooltipProvider>
       </SessionProvider>
@@ -80,16 +73,15 @@ beforeEach(() => {
       sessionFor("SYSTEM_ADMIN", "aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa", "ops.admin"),
     );
   loginPresetForRoleMock.mockReset().mockImplementation((role: string) => {
-    const presets: Record<string, { username: string; password: string } | null> = {
-      SYSTEM_ADMIN: { username: "ops.admin", password: "ChangeMe123!" },
-      OPS_USER: { username: "ops.reviewer1", password: "DemoPass123!" },
-      PRODUCT_ADMIN: { username: "product.owner", password: "DemoPass123!" },
-      LSP_UI_READ: { username: "lsp.read1", password: "DemoPass123!" },
-      LSP_UI_WRITE: { username: "lsp.write1", password: "DemoPass123!" },
+    const presets: Record<string, { email: string; password: string } | null> = {
+      SYSTEM_ADMIN: { email: "siddhant@bhawanafinance.com", password: "ChangeMe123!" },
+      OPS_USER: { email: "ops.reviewer1@bhawana.local", password: "DemoPass123!" },
+      PRODUCT_ADMIN: { email: "product.owner@bhawana.local", password: "DemoPass123!" },
+      LSP_UI_READ: { email: "lsp.read1@bhawana.local", password: "DemoPass123!" },
+      LSP_UI_WRITE: { email: "lsp.write1@bhawana.local", password: "DemoPass123!" },
     };
     return presets[role] ?? null;
   });
-  toastErrorMock.mockReset();
 });
 
 afterEach(() => {
@@ -112,21 +104,30 @@ describe("LoginPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("fills username and password when a role with a configured user is selected", async () => {
+  it("fills email and password when a role with a configured user is selected", async () => {
     const user = userEvent.setup();
     renderLogin();
     await user.click(screen.getByLabelText(/Fill credentials for System administrator/i));
-    expect(screen.getByLabelText(/^Username$/i)).toHaveValue("ops.admin");
+    expect(screen.getByLabelText(/^Email$/i)).toHaveValue("siddhant@bhawanafinance.com");
     expect(screen.getByLabelText(/^Password$/i)).toHaveValue("ChangeMe123!");
   });
 
-  it("toasts when no user is configured for the selected role", async () => {
-    loginPresetForRoleMock.mockReturnValueOnce(null);
-    const user = userEvent.setup();
+  it("hides role quick-fill cards without configured credentials", () => {
+    loginPresetForRoleMock.mockImplementation((role: string) => {
+      if (role === "OPS_USER") return null;
+      return { email: `${role.toLowerCase()}@bhawana.local`, password: "DemoPass123!" };
+    });
     renderLogin();
-    await user.click(screen.getByLabelText(/Fill credentials for Operations user/i));
-    expect(toastErrorMock).toHaveBeenCalledWith("No user exists for this role.");
-    expect(screen.getByLabelText(/^Username$/i)).toHaveValue("");
+    expect(
+      screen.queryByLabelText(/Fill credentials for Operations user/i),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Fill credentials for System administrator/i)).toBeInTheDocument();
+  });
+
+  it("hides the role quick-fill section when no presets are configured", () => {
+    loginPresetForRoleMock.mockReturnValue(null);
+    renderLogin();
+    expect(screen.queryByRole("region", { name: /sign in by role/i })).not.toBeInTheDocument();
   });
 
   it("routes SYSTEM_ADMIN to /home after sign-in", async () => {
@@ -136,7 +137,7 @@ describe("LoginPage", () => {
     await user.click(screen.getByRole("button", { name: /^sign in$/i }));
     await waitFor(() =>
       expect(loginMock).toHaveBeenCalledWith({
-        username: "ops.admin",
+        email: "siddhant@bhawanafinance.com",
         password: "ChangeMe123!",
       }),
     );
