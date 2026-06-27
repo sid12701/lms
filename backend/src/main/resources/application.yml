@@ -1,5 +1,8 @@
 server:
   forward-headers-strategy: NATIVE
+  tomcat:
+    # JSON bodies above this limit are rejected with 413 before controller dispatch.
+    max-http-post-size: 10MB
 
 spring:
   application:
@@ -33,6 +36,13 @@ management:
     health:
       probes:
         enabled: true
+      group:
+        default:
+          include: livenessState, readinessState
+        readiness:
+          include: readinessState, db
+        liveness:
+          include: livenessState
 
 springdoc:
   api-docs:
@@ -45,6 +55,7 @@ app:
   security:
     bootstrap-user:
       username: ${APP_SECURITY_BOOTSTRAP_USERNAME:ops.admin}
+      email: ${APP_SECURITY_BOOTSTRAP_EMAIL:siddhant@bhawanafinance.com}
       password: ${APP_SECURITY_BOOTSTRAP_PASSWORD:}
       roles:
         - SYSTEM_ADMIN
@@ -58,9 +69,15 @@ app:
   seed:
     sample-data:
       enabled: false
+    synthetic-portfolio:
+      enabled: false
+      scale-factor: 1.0
+      lsp-count: 10
+      whale-lsp-index: 0
+      whale-volume-share: 0.25
+      batch-size: 5000
+      tenure-months: 12
   webhooks:
-    soft-fourxx:
-      max-attempts: 10
     redrive:
       max-manual-redrives: 3
     delivery:
@@ -161,8 +178,14 @@ app:
     worker:
       enabled: ${APP_DISBURSEMENT_WORKER_ENABLED:true}
       fixed-delay-ms: ${APP_DISBURSEMENT_WORKER_FIXED_DELAY_MS:30000}
+      status-check-delay-ms: ${APP_DISBURSEMENT_WORKER_STATUS_CHECK_DELAY_MS:60000}
       max-attempts: ${APP_DISBURSEMENT_WORKER_MAX_ATTEMPTS:5}
       auto-resolve-mock-outcome: ${APP_DISBURSEMENT_WORKER_AUTO_RESOLVE_MOCK:true}
+    mock:
+      imps-max-amount: ${APP_DISBURSEMENT_MOCK_IMPS_MAX_AMOUNT:500000}
+      status-check:
+        min-polls: ${APP_DISBURSEMENT_MOCK_STATUS_CHECK_MIN_POLLS:1}
+        max-polls: ${APP_DISBURSEMENT_MOCK_STATUS_CHECK_MAX_POLLS:6}
   borrower:
     bank-details:
       velocity-max-updates: ${APP_BORROWER_BANK_DETAILS_VELOCITY_MAX_UPDATES:3}

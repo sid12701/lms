@@ -1,9 +1,9 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.common.web.ApiConflictException;
-import com.bhawana.lms.common.web.LspStatusUpdateException;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
+import com.bhawana.lms.common.api.error.LspStatusUpdateException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspAuditEvent;

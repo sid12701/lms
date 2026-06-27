@@ -1,7 +1,7 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.ApiClientAuditEvent;
 import com.bhawana.lms.domain.ApiClientStatus;

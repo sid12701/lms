@@ -1,6 +1,6 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.PagedResult;
+import com.bhawana.lms.common.api.PagedResult;
 import com.bhawana.lms.repo.AuditExplorerRepository;
 import com.bhawana.lms.repo.AuditExplorerRepository.UnifiedAuditEventRow;
 import com.bhawana.lms.service.AuditExplorerQuery.AuditStream;

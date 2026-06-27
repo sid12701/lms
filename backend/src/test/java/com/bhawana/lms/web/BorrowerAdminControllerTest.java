@@ -219,7 +219,10 @@ class BorrowerAdminControllerTest {
                 .andExpect(jsonPath("$.pan").value("ABCDE1234F"))
                 .andExpect(jsonPath("$.visibleLspIds.length()").value(2))
                 .andExpect(jsonPath("$.visibleLspIds[?(@ == '" + apex.getId() + "')]").isNotEmpty())
-                .andExpect(jsonPath("$.visibleLspIds[?(@ == '" + north.getId() + "')]").isNotEmpty());
+                .andExpect(jsonPath("$.visibleLspIds[?(@ == '" + north.getId() + "')]").isNotEmpty())
+                .andExpect(jsonPath("$.visibleLsps.length()").value(2))
+                .andExpect(jsonPath("$.visibleLsps[?(@.name == 'Apex Visibility Detail')]").isNotEmpty())
+                .andExpect(jsonPath("$.visibleLsps[?(@.name == 'Northbridge Visibility Detail')]").isNotEmpty());
     }
 
     private Borrower seedBorrower(

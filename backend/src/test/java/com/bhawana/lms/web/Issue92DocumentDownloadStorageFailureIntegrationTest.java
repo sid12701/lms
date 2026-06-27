@@ -1,6 +1,6 @@
 package com.bhawana.lms.web;
 
-import com.bhawana.lms.common.web.DocumentStorageUnavailableException;
+import com.bhawana.lms.common.api.error.DocumentStorageUnavailableException;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.service.FileSystemLoanDocumentStorageService;
@@ -75,7 +75,7 @@ class Issue92DocumentDownloadStorageFailureIntegrationTest {
     void downloadWhenStorageUnavailableReturns503WithDocumentStorageUnavailableCode() throws Exception {
         String applicationId = seedApplicationWithStoredPanCardMetadata();
 
-        when(fileSystemLoanDocumentStorageService.retrieve(anyString()))
+        when(fileSystemLoanDocumentStorageService.openStream(anyString()))
                 .thenThrow(new DocumentStorageUnavailableException(
                         "loan/test/pan.pdf",
                         "LOCAL",

@@ -1,7 +1,8 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
-import com.bhawana.lms.common.web.DocumentNotFoundException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.DocumentNotFoundException;
+import com.bhawana.lms.common.api.error.UnsupportedDocumentPreviewException;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
@@ -90,8 +91,48 @@ public class LoanDocumentService {
         return outcome.checklistItem();
     }
 
-    @Transactional(readOnly = true)
-    public RetrievedDocumentContent retrieveDocumentContent(UUID applicationId, LoanApplicationDocumentType documentType) {
+    /**
+     * Open a streaming handle to a single stored document for download or inline
+     * preview, without buffering the whole file into heap.
+     *
+     * <p>The checklist metadata is read first (a short, self-contained query that
+     * does not hold a connection across the storage round-trip), the inline-preview
+     * allowlist is enforced before any bytes are fetched, and only then is the
+     * storage object opened. Existence/availability failures surface eagerly from
+     * {@code openStream} so the caller can map them to a clean 4xx/5xx before the
+     * response body is committed. The returned stream must be closed by the caller.
+     */
+    public StreamedDocumentContent openDocumentStream(
+            UUID applicationId,
+            LoanApplicationDocumentType documentType,
+            boolean inlinePreview
+    ) {
+        RetrievableDocumentRef ref = resolveRetrievableDocumentRef(applicationId, documentType);
+        if (inlinePreview && !DocumentPreviewSupport.isInlinePreviewable(ref.contentType())) {
+            throw new UnsupportedDocumentPreviewException(
+                    "Document type " + documentType.name() + " has content type "
+                            + ref.contentType() + " which is not supported for inline preview."
+            );
+        }
+        LoanDocumentStorageService.RetrievedDocumentStream stream =
+                loanDocumentStorageService.openStream(ref.storageKey());
+        return new StreamedDocumentContent(
+                ref.fileName(),
+                ref.contentType(),
+                stream.content(),
+                stream.contentLength()
+        );
+    }
+
+    // Intentionally not @Transactional: each repository read runs in its own short
+    // transaction and releases its connection immediately, so no pooled connection
+    // is held across the (potentially slow) object-storage round-trip in
+    // openDocumentStream. Tenant/RLS scope is re-applied on every connection
+    // checkout from the thread-local context, so it is unaffected by the split.
+    private RetrievableDocumentRef resolveRetrievableDocumentRef(
+            UUID applicationId,
+            LoanApplicationDocumentType documentType
+    ) {
         LoanApplicationDocumentChecklist checklistItem =
                 getDocumentChecklistItem(applicationId, documentType);
         if (!checklistItem.isLmsManagedContent() || checklistItem.getStorageKey() == null) {
@@ -99,15 +140,29 @@ public class LoanDocumentService {
                     "Document content is not LMS-managed or has no storage key: " + documentType.name()
             );
         }
-        byte[] content = loanDocumentStorageService.retrieve(checklistItem.getStorageKey());
-        return new RetrievedDocumentContent(
+        return new RetrievableDocumentRef(
+                checklistItem.getStorageKey(),
                 checklistItem.getFileName() != null ? checklistItem.getFileName() : "document.bin",
-                checklistItem.getContentType() != null ? checklistItem.getContentType() : "application/octet-stream",
-                content
+                checklistItem.getContentType() != null ? checklistItem.getContentType() : "application/octet-stream"
         );
     }
 
-    public record RetrievedDocumentContent(String fileName, String contentType, byte[] content) {
+    /** Resolved storage coordinates for a single retrievable document. */
+    private record RetrievableDocumentRef(String storageKey, String fileName, String contentType) {
+    }
+
+    /** A lazily-streamed single document body with its display metadata and length. */
+    public record StreamedDocumentContent(
+            String fileName,
+            String contentType,
+            java.io.InputStream content,
+            long contentLength
+    ) implements java.io.Closeable {
+
+        @Override
+        public void close() throws java.io.IOException {
+            content.close();
+        }
     }
 
     public ZipBuildResult buildDocumentZip(UUID applicationId) {

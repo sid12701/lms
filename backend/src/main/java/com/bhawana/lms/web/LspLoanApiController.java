@@ -3,13 +3,19 @@ package com.bhawana.lms.web;
 import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanForeclosureQuote;
+import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.service.LoanApplicationDetailAssembler;
 import com.bhawana.lms.service.LoanForeclosureCommandService;
 import com.bhawana.lms.service.LoanRepaymentCommandService;
 import com.bhawana.lms.service.LoanServicingSupportService;
 import com.bhawana.lms.service.LspApiIdempotencyService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PastOrPresent;
+import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -87,7 +93,7 @@ public class LspLoanApiController {
 
     @GetMapping("/{loanId}/payments")
     @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_READ','LSP_UI_WRITE')")
-    public List<LoanApplicationOpsController.LoanPaymentTransactionResponse> listPayments(
+    public List<LspPaymentTransactionResponse> listPayments(
             Authentication authentication,
             @PathVariable UUID loanId
     ) {
@@ -95,23 +101,23 @@ public class LspLoanApiController {
                         LspAuthenticationSupport.authenticatedLspId(authentication),
                         loanId
                 ).stream()
-                .map(LoanApplicationOpsResponses::toPaymentTransactionResponse)
+                .map(LspLoanApiResponses::toPaymentTransactionResponse)
                 .toList();
     }
 
     @PostMapping("/{loanId}/payments")
     @PreAuthorize("hasRole('LSP_API_CLIENT')")
-    public LoanApplicationOpsController.LoanPaymentTransactionResponse recordPayment(
+    public LspPaymentTransactionResponse recordPayment(
             Authentication authentication,
             @PathVariable UUID loanId,
             @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
-            @Valid @RequestBody LoanApplicationOpsController.LoanPaymentTransactionRequest request
+            @Valid @RequestBody LspPaymentTransactionRequest request
     ) {
         LoanAccount loanAccount = loanServicingSupportService.getLoanAccountForLsp(
                 LspAuthenticationSupport.authenticatedLspId(authentication),
                 loanId
         );
-        return LoanApplicationOpsResponses.toPaymentTransactionResponse(
+        return LspLoanApiResponses.toPaymentTransactionResponse(
                 loanRepaymentCommandService.recordPaymentTransactionWithRecovery(
                         loanAccount.getLoanApplication().getId(),
                         authentication.getName(),
@@ -127,7 +133,7 @@ public class LspLoanApiController {
 
     @PostMapping("/{loanId}/foreclosure-quote")
     @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_WRITE')")
-    public LoanApplicationOpsController.LoanForeclosureQuoteResponse requestForeclosureQuote(
+    public LspForeclosureQuoteResponse requestForeclosureQuote(
             Authentication authentication,
             @PathVariable UUID loanId,
             @Valid @RequestBody LspLoanForeclosureQuoteRequest request
@@ -138,17 +144,17 @@ public class LspLoanApiController {
                 authentication.getName(),
                 request.effectiveDate()
         );
-        return LoanApplicationOpsResponses.toForeclosureQuoteResponse(quote);
+        return LspLoanApiResponses.toForeclosureQuoteResponse(quote);
     }
 
     @PostMapping("/{loanId}/foreclosure-quotes/{quoteId}/execute")
     @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_WRITE')")
-    public LoanApplicationOpsController.LoanForeclosureQuoteResponse executeForeclosureQuote(
+    public LspForeclosureQuoteResponse executeForeclosureQuote(
             Authentication authentication,
             @PathVariable UUID loanId,
             @PathVariable UUID quoteId,
             @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
-            @Valid @RequestBody LoanApplicationOpsController.LoanForeclosureExecutionRequest request
+            @Valid @RequestBody LspForeclosureExecutionRequest request
     ) {
         UUID lspId = LspAuthenticationSupport.authenticatedLspId(authentication);
         return lspApiIdempotencyService.execute(
@@ -162,8 +168,8 @@ public class LspLoanApiController {
                         request.reference(),
                         request.note()
                 ),
-                LoanApplicationOpsController.LoanForeclosureQuoteResponse.class,
-                () -> LoanApplicationOpsResponses.toForeclosureQuoteResponse(
+                LspForeclosureQuoteResponse.class,
+                () -> LspLoanApiResponses.toForeclosureQuoteResponse(
                         loanForeclosureCommandService.executeForeclosureQuoteForLsp(
                                 lspId,
                                 loanId,
@@ -175,6 +181,58 @@ public class LspLoanApiController {
                         )
                 )
         );
+    }
+
+    public record LspPaymentTransactionRequest(
+            @NotNull UUID targetInstallmentId,
+            @NotNull @DecimalMin("0.01") BigDecimal amount,
+            @NotNull @PastOrPresent LocalDate postedAt,
+            @NotNull LoanPaymentChannel channel,
+            @Size(max = 128) String reference
+    ) {
+    }
+
+    public record LspPaymentTransactionResponse(
+            String id,
+            String loanAccountId,
+            String targetInstallmentId,
+            String actorUsername,
+            BigDecimal amount,
+            LocalDate paymentDate,
+            String reference,
+            String channel,
+            String status,
+            BigDecimal allocatedAmount,
+            BigDecimal unallocatedAmount,
+            String note,
+            String correlationId,
+            String createdAt,
+            String updatedAt
+    ) {
+    }
+
+    public record LspForeclosureExecutionRequest(
+            @NotNull @PastOrPresent LocalDate settlementDate,
+            @NotBlank @Size(max = 128) String reference,
+            @Size(max = 500) String note
+    ) {
+    }
+
+    public record LspForeclosureQuoteResponse(
+            String id,
+            String loanAccountId,
+            Integer version,
+            String requestedByUsername,
+            String executedByUsername,
+            LocalDate effectiveDate,
+            BigDecimal outstandingPrincipal,
+            BigDecimal outstandingInterest,
+            BigDecimal settlementAmount,
+            String status,
+            String executedAt,
+            String createdAt,
+            String updatedAt
+    ) {
     }
 
     public record LspLoanForeclosureQuoteRequest(@NotNull LocalDate effectiveDate) {

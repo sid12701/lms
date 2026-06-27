@@ -1,6 +1,6 @@
 package com.bhawana.lms.web;
 
-import com.bhawana.lms.common.web.PagedResult;
+import com.bhawana.lms.common.api.PagedResult;
 import com.bhawana.lms.domain.AuthEventAudit;
 import com.bhawana.lms.domain.AuthEventType;
 import com.bhawana.lms.service.AuthAuditService;

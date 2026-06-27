@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.api.TokenResponse;
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.AuthEventFailureReason;
@@ -9,7 +10,6 @@ import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
 import com.bhawana.lms.security.ApiClientJwtSessionValidator;
 import com.bhawana.lms.security.SecurityProperties;
-import com.bhawana.lms.web.AuthController;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -60,7 +60,7 @@ public class AuthTokenService {
         this.apiClientAuthenticationService = apiClientAuthenticationService;
     }
 
-    public AuthController.TokenResponse mintTokenForAppUser(AppUser user) {
+    public TokenResponse mintTokenForAppUser(AppUser user) {
         return mintTokenResponse(
                 user.getUsername(),
                 loadRolesForUsername(user.getUsername()),
@@ -69,7 +69,7 @@ public class AuthTokenService {
         );
     }
 
-    public AuthController.TokenResponse mintTokenForApiClient(ApiClient apiClient) {
+    public TokenResponse mintTokenForApiClient(ApiClient apiClient) {
         ApiClientAuthenticationService.AuthenticatedApiClient view =
                 apiClientAuthenticationService.lookupByClientId(apiClient.getClientId());
         ApiClient freshClient = apiClientRepository.findByClientId(view.clientId())
@@ -90,7 +90,7 @@ public class AuthTokenService {
         );
     }
 
-    public AuthController.TokenResponse mintTokenResponse(Authentication authentication) {
+    public TokenResponse mintTokenResponse(Authentication authentication) {
         return mintTokenResponse(
                 authentication.getName(),
                 extractRoles(authentication),
@@ -99,7 +99,7 @@ public class AuthTokenService {
         );
     }
 
-    public AuthController.TokenResponse mintTokenResponse(
+    public TokenResponse mintTokenResponse(
             String subject,
             List<String> roles,
             ManagedUserState managedUserState,
@@ -126,7 +126,7 @@ public class AuthTokenService {
 
         JwsHeader jwsHeader = JwsHeader.with(MacAlgorithm.HS256).build();
         String token = jwtEncoder.encode(JwtEncoderParameters.from(jwsHeader, claimsBuilder.build())).getTokenValue();
-        return new AuthController.TokenResponse(
+        return new TokenResponse(
                 token,
                 "Bearer",
                 expiresAt.getEpochSecond() - issuedAt.getEpochSecond(),
@@ -287,13 +287,13 @@ public class AuthTokenService {
             boolean success,
             AuthEventFailureReason failureReason,
             String subjectUsername,
-            AuthController.TokenResponse tokenResponse,
+            TokenResponse tokenResponse,
             String newRawRefreshToken,
             UUID userId,
             UUID apiClientId
     ) {
         public static RefreshOutcome success(
-                AuthController.TokenResponse tokenResponse,
+                TokenResponse tokenResponse,
                 String newRawRefreshToken,
                 String subjectUsername,
                 UUID userId,

@@ -17,7 +17,7 @@ import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
-import com.bhawana.lms.service.LoanDisbursementService;
+import com.bhawana.lms.service.DisbursementPreflightValidator;
 import com.bhawana.lms.service.LoanDisbursementWorkerService;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -98,7 +98,7 @@ class Issue125BankDetailHolderNameMatchIntegrationTest {
                         .content(disbursementCheckPayload("123456789012", "MR. JOHN K")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("WARN"))
-                .andExpect(jsonPath("$.warnings[0].code").value(LoanDisbursementService.HOLDER_NAME_SOFT_MISMATCH_CODE));
+                .andExpect(jsonPath("$.warnings[0].code").value(DisbursementPreflightValidator.HOLDER_NAME_SOFT_MISMATCH_CODE));
     }
 
     @Test

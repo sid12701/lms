@@ -1,8 +1,8 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.common.money.Money;
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
@@ -29,20 +29,20 @@ public class LoanRepaymentScheduleService {
     private final LoanAccountRepository loanAccountRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
-    private final OpsAlertEmitters opsAlertEmitters;
+    private final LspValidationAuditService lspValidationAuditService;
 
     public LoanRepaymentScheduleService(
             LoanApplicationQueryService loanApplicationQueryService,
             LoanAccountRepository loanAccountRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
-            OpsAlertEmitters opsAlertEmitters
+            LspValidationAuditService lspValidationAuditService
     ) {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanAccountRepository = loanAccountRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
-        this.opsAlertEmitters = opsAlertEmitters;
+        this.lspValidationAuditService = lspValidationAuditService;
     }
 
     /**
@@ -68,7 +68,7 @@ public class LoanRepaymentScheduleService {
         return loanRepaymentScheduleInstallmentRepository.saveAll(generated);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = BusinessRuleViolationException.class)
     public List<LoanRepaymentScheduleInstallment> replaceWithProvidedScheduleForLsp(
             UUID lspId,
             UUID applicationId,
@@ -80,7 +80,7 @@ public class LoanRepaymentScheduleService {
             validateProvidedInstallments(loanAccount, installments);
         } catch (BusinessRuleViolationException exception) {
             if ("REPAYMENT_SCHEDULE_INVALID".equals(exception.getErrorCode())) {
-                opsAlertEmitters.emitLspProvidedScheduleViolation(
+                lspValidationAuditService.recordLspProvidedScheduleViolation(
                         application,
                         resolveScheduleViolationType(exception),
                         exception.getMessage(),

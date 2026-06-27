@@ -131,6 +131,10 @@ public class LoanProduct {
         return status;
     }
 
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
     public void update(
             String code,
             String name,

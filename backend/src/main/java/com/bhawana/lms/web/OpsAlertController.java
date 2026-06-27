@@ -1,22 +1,27 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.common.web.PagedResult;
-import com.bhawana.lms.common.web.PaginationResponseBuilder;
+import com.bhawana.lms.common.util.AlertContextJson;
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
+import com.bhawana.lms.domain.AlertRule;
 import com.bhawana.lms.domain.OpsAlert;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertStatus;
 import com.bhawana.lms.domain.OpsAlertType;
-import com.bhawana.lms.domain.AlertRule;
 import com.bhawana.lms.service.AlertRuleEvaluationWorker;
 import com.bhawana.lms.service.OpsAlertService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -35,15 +40,20 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class OpsAlertController {
 
+    private static final Logger log = LoggerFactory.getLogger(OpsAlertController.class);
+
     private final OpsAlertService opsAlertService;
     private final AlertRuleEvaluationWorker alertRuleEvaluationWorker;
+    private final ObjectMapper objectMapper;
 
     public OpsAlertController(
             OpsAlertService opsAlertService,
-            AlertRuleEvaluationWorker alertRuleEvaluationWorker
+            AlertRuleEvaluationWorker alertRuleEvaluationWorker,
+            ObjectMapper objectMapper
     ) {
         this.opsAlertService = opsAlertService;
         this.alertRuleEvaluationWorker = alertRuleEvaluationWorker;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping("/rules")
@@ -98,7 +108,11 @@ public class OpsAlertController {
         String trimmedSubjectType = body.subjectType() == null ? "" : body.subjectType().trim();
         String subjectType = trimmedSubjectType.isEmpty() ? "SYSTEM" : trimmedSubjectType.toUpperCase();
         UUID subjectId = parseOptionalUuid(body.subjectId());
-        String contextJson = "{\"escalatedByUsername\":\"" + escapeJson(actor) + "\"}";
+        String contextJson = AlertContextJson.serialize(
+                objectMapper,
+                log,
+                Map.of("escalatedByUsername", actor)
+        );
         OpsAlert created = opsAlertService.createAlert(
                 OpsAlertType.OPS_USER_ESCALATION,
                 OpsAlertSeverity.HIGH,
@@ -125,13 +139,6 @@ public class OpsAlertController {
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException("Invalid subjectId: must be a UUID.", ex);
         }
-    }
-
-    private static String escapeJson(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private static OpsAlertResponse toResponse(OpsAlert alert) {

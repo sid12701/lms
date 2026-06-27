@@ -138,7 +138,7 @@ class AuthControllerTest {
 
     @Test
     void loginEndpointReturnsJwtForBootstrapUser() throws Exception {
-        AuthController.LoginRequest loginRequest = new AuthController.LoginRequest("test.admin", "TestPassword123!");
+        AuthApiResponses.LoginRequest loginRequest = new AuthApiResponses.LoginRequest("test.admin@bhawana.local", "TestPassword123!");
 
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -163,7 +163,7 @@ class AuthControllerTest {
 
     @Test
     void loginEndpointReturnsJwtForManagedUser() throws Exception {
-        AuthController.LoginRequest loginRequest = new AuthController.LoginRequest("test.user", "TestPassword123!");
+        AuthApiResponses.LoginRequest loginRequest = new AuthApiResponses.LoginRequest("test.user@bhawana.local", "TestPassword123!");
 
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -190,7 +190,7 @@ class AuthControllerTest {
         MvcResult tokenResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("test.user", "TestPassword123!"))))
+                                new AuthApiResponses.LoginRequest("test.user@bhawana.local", "TestPassword123!"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.passwordChangeRequired").value(false))
                 .andReturn();
@@ -241,7 +241,7 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("test.user", resetResult.temporaryPassword()))))
+                                new AuthApiResponses.LoginRequest("test.user@bhawana.local", resetResult.temporaryPassword()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
@@ -261,7 +261,7 @@ class AuthControllerTest {
         MvcResult resetLoginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("test.user", resetResult.temporaryPassword()))))
+                                new AuthApiResponses.LoginRequest("test.user@bhawana.local", resetResult.temporaryPassword()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.passwordChangeRequired").value(true))
                 .andReturn();
@@ -273,11 +273,13 @@ class AuthControllerTest {
 
         mockMvc.perform(get("/api/v1/internal/system/context")
                         .header("Authorization", "Bearer " + resetToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("test.user"));
+
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .header("Authorization", "Bearer " + resetToken))
                 .andExpect(status().isPreconditionRequired())
-                .andExpect(jsonPath("$.code").value("PASSWORD_CHANGE_REQUIRED"))
-                .andExpect(jsonPath("$.errorReason").value("PASSWORD_CHANGE_REQUIRED"))
-                .andExpect(jsonPath("$.errorSource").value("Password change is required before accessing internal routes"))
-                .andExpect(jsonPath("$.errors[0].errorReason").value("PASSWORD_CHANGE_REQUIRED"));
+                .andExpect(jsonPath("$.code").value("PASSWORD_CHANGE_REQUIRED"));
 
         assert resetRefreshCookie != null : "Login response must include lms-refresh cookie";
         mockMvc.perform(post("/api/v1/auth/refresh")
@@ -289,7 +291,7 @@ class AuthControllerTest {
                         .header("Authorization", "Bearer " + resetToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.ChangePasswordRequest("NewPassword456!"))))
+                                new AuthApiResponses.ChangePasswordRequest("NewPassword456!"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.passwordChangeRequired").value(false))
                 .andReturn();
@@ -301,7 +303,7 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("test.user", "NewPassword456!"))))
+                                new AuthApiResponses.LoginRequest("test.user@bhawana.local", "NewPassword456!"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.passwordChangeRequired").value(false));
 
@@ -320,7 +322,7 @@ class AuthControllerTest {
         MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("test.user", "TestPassword123!"))))
+                                new AuthApiResponses.LoginRequest("test.user@bhawana.local", "TestPassword123!"))))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -368,7 +370,7 @@ class AuthControllerTest {
 
         MvcResult result = mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 createdApiClient.client().getClientId(),
                                 createdApiClient.rawSecret()
                         ))))
@@ -399,7 +401,7 @@ class AuthControllerTest {
 
         MvcResult tokenResult = mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 created.client().getClientId(),
                                 created.rawSecret()
                         ))))
@@ -444,7 +446,7 @@ class AuthControllerTest {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("tenant.viewer", "TestPassword123!"))))
+                                new AuthApiResponses.LoginRequest("tenant.viewer@bhawana.local", "TestPassword123!"))))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -473,7 +475,7 @@ class AuthControllerTest {
 
         MvcResult tokenResult = mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 created.client().getClientId(),
                                 created.rawSecret()
                         ))))
@@ -505,7 +507,7 @@ class AuthControllerTest {
         MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("test.user", "TestPassword123!"))))
+                                new AuthApiResponses.LoginRequest("test.user@bhawana.local", "TestPassword123!"))))
                 .andExpect(status().isOk())
                 .andReturn();
 

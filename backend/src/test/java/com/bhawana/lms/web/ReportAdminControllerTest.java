@@ -35,7 +35,6 @@ import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.ReportAccessAuditRepository;
 import com.bhawana.lms.repo.ReportRequestRepository;
-import com.bhawana.lms.service.ReportRequestService;
 import com.bhawana.lms.support.MinioTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -133,9 +132,6 @@ class ReportAdminControllerTest extends MinioTestSupport {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
-
-    @Autowired
-    private ReportRequestService reportRequestService;
 
     @Autowired
     private ReportRequestRepository reportRequestRepository;
@@ -339,7 +335,13 @@ class ReportAdminControllerTest extends MinioTestSupport {
                 .andExpect(jsonPath("$[0].id").value(requestId))
                 .andExpect(jsonPath("$[0].status").value("PENDING"));
 
-        reportRequestService.processPendingRequests(10);
+        mockMvc.perform(post("/api/v1/internal/reports/requests/process")
+                        .with(systemAdmin())
+                        .queryParam("batchSize", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.processed").value(1))
+                .andExpect(jsonPath("$.completed").value(1))
+                .andExpect(jsonPath("$.failed").value(0));
 
         mockMvc.perform(get("/api/v1/internal/reports/requests")
                         .with(systemAdmin()))

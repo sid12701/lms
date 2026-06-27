@@ -32,4 +32,15 @@ public class LoanDisbursementWorker {
             log.debug("Loan disbursement worker processed {} application(s).", processed);
         }
     }
+
+    @Scheduled(fixedDelayString = "${app.disbursement.worker.status-check-delay-ms:60000}")
+    public void runStatusChecks() {
+        if (!properties.isEnabled()) {
+            return;
+        }
+        int resolved = workerService.processPendingStatusChecks();
+        if (resolved > 0) {
+            log.debug("Loan disbursement status-check worker resolved {} transaction(s).", resolved);
+        }
+    }
 }

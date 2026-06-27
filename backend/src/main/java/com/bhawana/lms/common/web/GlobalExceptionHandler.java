@@ -1,6 +1,18 @@
 package com.bhawana.lms.common.web;
 
 import com.bhawana.lms.common.api.ApiError;
+import com.bhawana.lms.common.api.error.ApiConflictException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.DocumentNotFoundException;
+import com.bhawana.lms.common.api.error.DocumentStorageMisconfiguredException;
+import com.bhawana.lms.common.api.error.DocumentStorageUnavailableException;
+import com.bhawana.lms.common.api.error.DocumentUploadRequiredException;
+import com.bhawana.lms.common.api.error.KycCompletionRequiredException;
+import com.bhawana.lms.common.api.error.LspStatusUpdateException;
+import com.bhawana.lms.common.api.error.LspSurfaceIpAccessDeniedException;
+import com.bhawana.lms.common.api.error.PayloadTooLargeException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.UnsupportedDocumentPreviewException;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.tenant.MissingTenantContextException;
@@ -50,7 +62,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException exception, HttpServletRequest request) {
         Map<String, String> fieldErrors = new LinkedHashMap<>();
         for (FieldError fieldError : exception.getBindingResult().getFieldErrors()) {
-            fieldErrors.put(fieldError.getField(), fieldError.getDefaultMessage());
+            fieldErrors.put(fieldError.getField(), friendlyValidationMessage(fieldError.getDefaultMessage()));
         }
 
         return build(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed", request, fieldErrors);
@@ -66,7 +78,7 @@ public class GlobalExceptionHandler {
             String path = violation.getPropertyPath().toString();
             int dot = path.lastIndexOf('.');
             String field = dot >= 0 ? path.substring(dot + 1) : path;
-            fieldErrors.put(field, violation.getMessage());
+            fieldErrors.put(field, friendlyValidationMessage(violation.getMessage()));
         }
 
         return build(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed", request, fieldErrors);
@@ -162,6 +174,20 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, "NOT_FOUND", exception.getMessage(), request, Map.of());
     }
 
+    @ExceptionHandler(UnsupportedDocumentPreviewException.class)
+    public ResponseEntity<ApiError> handleUnsupportedDocumentPreview(
+            UnsupportedDocumentPreviewException exception,
+            HttpServletRequest request
+    ) {
+        return build(
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                "DOCUMENT_PREVIEW_UNSUPPORTED",
+                exception.getMessage(),
+                request,
+                Map.of()
+        );
+    }
+
     @ExceptionHandler(DocumentStorageUnavailableException.class)
     public ResponseEntity<ApiError> handleDocumentStorageUnavailable(
             DocumentStorageUnavailableException exception,
@@ -223,12 +249,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException exception, HttpServletRequest request) {
         meterRegistry.counter(UNTYPED_API_ERROR_COUNTER).increment();
+        String friendly = friendlyIllegalArgumentMessage(exception.getMessage());
         log.warn(
                 "Untyped IllegalArgumentException mapped to 400 INVALID_REQUEST at {}: {}",
                 request.getRequestURI(),
                 exception.getMessage()
         );
-        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", exception.getMessage(), request, Map.of());
+        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", friendly, request, Map.of());
     }
 
     @ExceptionHandler(LspSurfaceIpAccessDeniedException.class)
@@ -305,11 +332,34 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, request, fieldErrors);
     }
 
+    @ExceptionHandler(PayloadTooLargeException.class)
+    public ResponseEntity<ApiError> handlePayloadTooLarge(
+            PayloadTooLargeException exception,
+            HttpServletRequest request
+    ) {
+        return build(
+                HttpStatus.PAYLOAD_TOO_LARGE,
+                "PAYLOAD_TOO_LARGE",
+                "Request body exceeds the maximum permitted size.",
+                request,
+                Map.of()
+        );
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiError> handleUnreadableBody(
             HttpMessageNotReadableException exception,
             HttpServletRequest request
     ) {
+        if (causedBy(exception, PayloadTooLargeException.class)) {
+            return build(
+                    HttpStatus.PAYLOAD_TOO_LARGE,
+                    "PAYLOAD_TOO_LARGE",
+                    "Request body exceeds the maximum permitted size.",
+                    request,
+                    Map.of()
+            );
+        }
         Throwable cause = exception.getMostSpecificCause();
         String message;
         Map<String, String> fieldErrors = new LinkedHashMap<>();
@@ -428,5 +478,66 @@ public class GlobalExceptionHandler {
                 CorrelationIdHolder.get(),
                 fieldErrors
         ));
+    }
+
+    private static boolean causedBy(Throwable throwable, Class<? extends Throwable> type) {
+        for (Throwable current = throwable; current != null; current = current.getCause()) {
+            if (type.isInstance(current)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String friendlyValidationMessage(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "This field is invalid.";
+        }
+        if (raw.contains("must not be blank")
+                || raw.contains("must not be null")
+                || raw.contains("must not be empty")) {
+            return "This field is required.";
+        }
+        if (raw.contains("must be a well-formed email address")) {
+            return "Enter a valid email address.";
+        }
+        if (raw.contains("must match")) {
+            return "Enter a value in the required format.";
+        }
+        if (raw.contains("must be a past date") || raw.contains("must be in the past")) {
+            return "Enter a date in the past.";
+        }
+        if (raw.contains("Idempotency-Key must be a UUID v4")) {
+            return "Idempotency-Key must be a valid UUID v4.";
+        }
+        if (raw.startsWith("must be greater than or equal to ")) {
+            return "Enter a value greater than or equal to "
+                    + raw.substring("must be greater than or equal to ".length())
+                    + ".";
+        }
+        if (raw.startsWith("must be less than or equal to ")) {
+            return "Enter a value less than or equal to "
+                    + raw.substring("must be less than or equal to ".length())
+                    + ".";
+        }
+        if (raw.startsWith("size must be between ")) {
+            return "Enter text with "
+                    + raw.substring("size must be between ".length())
+                    + " characters.";
+        }
+        return raw;
+    }
+
+    private static String friendlyIllegalArgumentMessage(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "The request could not be processed.";
+        }
+        if (raw.contains("Idempotency-Key must be a UUID v4")) {
+            return "Idempotency-Key must be a valid UUID v4.";
+        }
+        if (raw.startsWith("Unknown LSP id:")) {
+            return "The selected LSP was not found.";
+        }
+        return raw;
     }
 }

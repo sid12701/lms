@@ -2,9 +2,9 @@ package com.bhawana.lms.service;
 
 
 
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 
-import com.bhawana.lms.common.web.DocumentStorageMisconfiguredException;
+import com.bhawana.lms.common.api.error.DocumentStorageMisconfiguredException;
 
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 
@@ -93,6 +93,42 @@ public class ConfigurableLoanDocumentStorageService implements LoanDocumentStora
         }
 
         return r2Storage.retrieve(storageKey);
+
+    }
+
+
+
+    @Override
+
+    public RetrievedDocumentStream openStream(String storageKey) {
+
+        if (storageKey == null || storageKey.isBlank()) {
+
+            throw new IllegalArgumentException("Storage key is required for document retrieval.");
+
+        }
+
+        return switch (properties.getProvider()) {
+
+            case R2 -> openStreamFromR2OrFail(storageKey);
+
+            case LOCAL -> fileSystemStorage.openStream(storageKey);
+
+        };
+
+    }
+
+
+
+    private RetrievedDocumentStream openStreamFromR2OrFail(String storageKey) {
+
+        if (!properties.getR2().isConfigured()) {
+
+            throw r2Misconfigured();
+
+        }
+
+        return r2Storage.openStream(storageKey);
 
     }
 

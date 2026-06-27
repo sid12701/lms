@@ -1,14 +1,16 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.domain.LspApiIdempotencyRecord;
 import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
+import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
+import com.bhawana.lms.tenant.TenantAccessContext;
+import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class LspApiIdempotencyService {
@@ -16,18 +18,20 @@ public class LspApiIdempotencyService {
     private final LspApiIdempotencyRecordRepository lspApiIdempotencyRecordRepository;
     private final ObjectMapper objectMapper;
     private final IdempotencyClaimService idempotencyClaimService;
+    private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
 
     public LspApiIdempotencyService(
             LspApiIdempotencyRecordRepository lspApiIdempotencyRecordRepository,
             ObjectMapper objectMapper,
-            IdempotencyClaimService idempotencyClaimService
+            IdempotencyClaimService idempotencyClaimService,
+            AdminScopedTransactionExecutor adminScopedTransactionExecutor
     ) {
         this.lspApiIdempotencyRecordRepository = lspApiIdempotencyRecordRepository;
         this.objectMapper = objectMapper;
         this.idempotencyClaimService = idempotencyClaimService;
+        this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
     }
 
-    @Transactional
     public <T> T execute(
             UUID lspId,
             String operationKey,
@@ -39,28 +43,25 @@ public class LspApiIdempotencyService {
         String normalizedKey = requireUuidV4(idempotencyKey);
         String requestFingerprint = fingerprint(requestFingerprintSource);
 
-        LspApiIdempotencyRecord existingRecord = lspApiIdempotencyRecordRepository
-                .findByLspIdAndOperationKeyAndIdempotencyKey(lspId, operationKey, normalizedKey)
-                .orElse(null);
+        LspApiIdempotencyRecord existingRecord = findRecord(lspId, operationKey, normalizedKey);
         if (existingRecord != null) {
-            if (!existingRecord.getRequestFingerprint().equals(requestFingerprint)) {
-                throw new ApiConflictException(
-                        "IDEMPOTENCY_CONFLICT",
-                        "Idempotency-Key has already been used for a different request."
-                );
-            }
-            return deserialize(existingRecord.getResponseBody(), responseType);
+            return replayExisting(existingRecord, requestFingerprint, responseType);
         }
 
-        T response = action.get();
-        String serializedBody = serialize(response);
+        // Run the wrapped action under admin scope but NOT inside an idempotency transaction:
+        // the action manages its own transaction(s). Holding one transaction open across the
+        // action would pin an admin connection for the whole request, and the claim below needs
+        // a second admin connection (REQUIRES_NEW) — under concurrent idempotent calls every
+        // request would hold one connection while waiting for another, deadlocking the pool.
+        T response = runUnderAdminScope(action);
+
         boolean claimed = idempotencyClaimService.claimLspApiIdempotencyRecord(new LspApiIdempotencyRecord(
                 lspId,
                 operationKey,
                 normalizedKey,
                 requestFingerprint,
                 200,
-                serializedBody
+                serialize(response)
         ));
         if (!claimed) {
             return recoverAfterIdempotencyRace(
@@ -74,6 +75,36 @@ public class LspApiIdempotencyService {
         return response;
     }
 
+    private LspApiIdempotencyRecord findRecord(UUID lspId, String operationKey, String normalizedKey) {
+        return adminScopedTransactionExecutor.call(() -> lspApiIdempotencyRecordRepository
+                .findByLspIdAndOperationKeyAndIdempotencyKey(lspId, operationKey, normalizedKey)
+                .orElse(null));
+    }
+
+    private <T> T replayExisting(
+            LspApiIdempotencyRecord record,
+            String requestFingerprint,
+            Class<T> responseType
+    ) {
+        if (!record.getRequestFingerprint().equals(requestFingerprint)) {
+            throw new ApiConflictException(
+                    "IDEMPOTENCY_CONFLICT",
+                    "Idempotency-Key has already been used for a different request."
+            );
+        }
+        return deserialize(record.getResponseBody(), responseType);
+    }
+
+    private <T> T runUnderAdminScope(Supplier<T> action) {
+        TenantAccessContext previous = TenantDataAccessContextHolder.snapshot();
+        TenantDataAccessContextHolder.useAdmin();
+        try {
+            return action.get();
+        } finally {
+            TenantDataAccessContextHolder.restore(previous);
+        }
+    }
+
     private <T> T recoverAfterIdempotencyRace(
             UUID lspId,
             String operationKey,
@@ -81,18 +112,13 @@ public class LspApiIdempotencyService {
             String requestFingerprint,
             Class<T> responseType
     ) {
-        LspApiIdempotencyRecord racedRecord = lspApiIdempotencyRecordRepository
-                .findByLspIdAndOperationKeyAndIdempotencyKey(lspId, operationKey, normalizedKey)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Idempotency row missing after unique violation for key " + normalizedKey
-                ));
-        if (!racedRecord.getRequestFingerprint().equals(requestFingerprint)) {
-            throw new ApiConflictException(
-                    "IDEMPOTENCY_CONFLICT",
-                    "Idempotency-Key has already been used for a different request."
+        LspApiIdempotencyRecord racedRecord = findRecord(lspId, operationKey, normalizedKey);
+        if (racedRecord == null) {
+            throw new IllegalStateException(
+                    "Idempotency row missing after unique violation for key " + normalizedKey
             );
         }
-        return deserialize(racedRecord.getResponseBody(), responseType);
+        return replayExisting(racedRecord, requestFingerprint, responseType);
     }
 
     public String requireUuidV4(String idempotencyKey) {

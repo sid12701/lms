@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.Strings;
 import jakarta.persistence.Column;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Entity;
@@ -185,10 +186,10 @@ public class Borrower {
             String ifscCode,
             String accountHolderName
     ) {
-        this.bankAccountNumber = normalizeOptional(bankAccountNumber);
-        this.bankName = normalizeOptional(bankName);
+        this.bankAccountNumber = Strings.normalizeOptional(bankAccountNumber);
+        this.bankName = Strings.normalizeOptional(bankName);
         this.ifscCode = normalizeCodedValue(ifscCode);
-        this.accountHolderName = normalizeOptional(accountHolderName);
+        this.accountHolderName = Strings.normalizeOptional(accountHolderName);
     }
 
     public String getFullName() {
@@ -360,28 +361,28 @@ public class Borrower {
         this.dateOfBirth = profile.dateOfBirth();
         this.gender = normalizeCodedValue(profile.gender());
         this.maritalStatus = normalizeCodedValue(profile.maritalStatus());
-        this.fatherName = normalizeOptional(profile.fatherName());
+        this.fatherName = Strings.normalizeOptional(profile.fatherName());
         this.aadharNumber = normalizeAadharNumber(profile.aadharNumber());
-        this.city = normalizeOptional(profile.addressCity());
-        this.state = normalizeOptional(profile.addressState());
-        this.addressLine1 = normalizeOptional(profile.addressLine1());
-        this.addressLine2 = normalizeOptional(profile.addressLine2());
-        this.addressZipCode = normalizeOptional(profile.addressZipcode());
-        this.spouseName = normalizeOptional(profile.spouseName());
+        this.city = Strings.normalizeOptional(profile.addressCity());
+        this.state = Strings.normalizeOptional(profile.addressState());
+        this.addressLine1 = Strings.normalizeOptional(profile.addressLine1());
+        this.addressLine2 = Strings.normalizeOptional(profile.addressLine2());
+        this.addressZipCode = Strings.normalizeOptional(profile.addressZipcode());
+        this.spouseName = Strings.normalizeOptional(profile.spouseName());
         this.employmentType = normalizeEmploymentType(profile.employmentStatus());
-        this.organizationName = normalizeOptional(profile.organizationName());
-        this.employeeId = normalizeOptional(profile.empId());
-        this.employmentCity = normalizeOptional(profile.employmentCity());
-        this.employmentState = normalizeOptional(profile.employmentState());
-        this.employmentZip = normalizeOptional(profile.employmentZip());
+        this.organizationName = Strings.normalizeOptional(profile.organizationName());
+        this.employeeId = Strings.normalizeOptional(profile.empId());
+        this.employmentCity = Strings.normalizeOptional(profile.employmentCity());
+        this.employmentState = Strings.normalizeOptional(profile.employmentState());
+        this.employmentZip = Strings.normalizeOptional(profile.employmentZip());
         this.monthlyIncome = normalizeMonthlyIncome(profile.monthlyIncome());
         this.annualIncome = normalizeMonthlyIncome(profile.annualIncome());
-        this.bankAccountNumber = normalizeOptional(profile.bankAccountNumber());
-        this.bankName = normalizeOptional(profile.bankName());
+        this.bankAccountNumber = Strings.normalizeOptional(profile.bankAccountNumber());
+        this.bankName = Strings.normalizeOptional(profile.bankName());
         this.ifscCode = normalizeCodedValue(profile.ifscCode());
-        this.accountHolderName = normalizeOptional(profile.accountHolderName());
-        this.referencePersonName = normalizeOptional(profile.referencePersonName());
-        this.referencePersonNumber = normalizeOptional(profile.referencePersonNumber());
+        this.accountHolderName = Strings.normalizeOptional(profile.accountHolderName());
+        this.referencePersonName = Strings.normalizeOptional(profile.referencePersonName());
+        this.referencePersonNumber = Strings.normalizeOptional(profile.referencePersonNumber());
     }
 
     private static String normalizeEmail(String email) {
@@ -391,27 +392,18 @@ public class Borrower {
         return email.trim().toLowerCase();
     }
 
-    private static String normalizeOptional(String value) {
-        if (value == null) {
-            return null;
-        }
-
-        String normalized = value.trim();
-        return normalized.isBlank() ? null : normalized;
-    }
-
     private static String normalizeEmploymentType(String employmentType) {
-        String normalized = normalizeOptional(employmentType);
+        String normalized = Strings.normalizeOptional(employmentType);
         return normalized == null ? null : normalized.toUpperCase();
     }
 
     private static String normalizeCodedValue(String value) {
-        String normalized = normalizeOptional(value);
+        String normalized = Strings.normalizeOptional(value);
         return normalized == null ? null : normalized.toUpperCase();
     }
 
     private static String normalizeAadharNumber(String aadharNumber) {
-        String normalized = normalizeOptional(aadharNumber);
+        String normalized = Strings.normalizeOptional(aadharNumber);
         return normalized == null ? null : normalized.replace(" ", "");
     }
 

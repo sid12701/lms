@@ -2,9 +2,9 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.money.Money;
-import com.bhawana.lms.common.web.ApiConflictException;
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductAuditAction;
 import com.bhawana.lms.domain.LoanProductAuditEvent;
@@ -81,8 +81,8 @@ public class ProductConfigurationService {
         LoanProduct product = new LoanProduct(
                 normalizedCode,
                 name.trim(),
-                scaleCurrency(minPrincipal),
-                scaleCurrency(maxPrincipal),
+                Money.scale(minPrincipal),
+                Money.scale(maxPrincipal),
                 scaleRate(interestRate),
                 scaleRate(processingFeeRate),
                 minTenureMonths,
@@ -126,8 +126,8 @@ public class ProductConfigurationService {
         product.update(
                 normalizedCode,
                 name.trim(),
-                scaleCurrency(minPrincipal),
-                scaleCurrency(maxPrincipal),
+                Money.scale(minPrincipal),
+                Money.scale(maxPrincipal),
                 scaleRate(interestRate),
                 scaleRate(processingFeeRate),
                 minTenureMonths,
@@ -313,10 +313,6 @@ public class ProductConfigurationService {
         Map<String, String> fieldErrors = new LinkedHashMap<>();
         fieldErrors.put(field, detail);
         return new BusinessRuleViolationException("PRODUCT_CONFIG_INVALID", message, fieldErrors);
-    }
-
-    private static BigDecimal scaleCurrency(BigDecimal value) {
-        return Money.scale(value);
     }
 
     private static BigDecimal scaleRate(BigDecimal value) {

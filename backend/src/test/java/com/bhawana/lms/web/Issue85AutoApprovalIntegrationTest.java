@@ -11,13 +11,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
-import com.bhawana.lms.service.LoanApprovalService;
+import com.bhawana.lms.service.LoanApplicationLifecycleService;
 import com.bhawana.lms.service.LoanDisbursementWorkerService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -66,7 +66,7 @@ class Issue85AutoApprovalIntegrationTest {
     private LoanDisbursementWorkerService loanDisbursementWorkerService;
 
     @Autowired
-    private LoanApprovalService loanApprovalService;
+    private LoanApplicationLifecycleService loanApplicationLifecycleService;
 
     @Test
     void workerDisbursesWithoutWritingRejectedAuditEvent() throws Exception {
@@ -95,7 +95,7 @@ class Issue85AutoApprovalIntegrationTest {
 
         BusinessRuleViolationException exception = assertThrows(
                 BusinessRuleViolationException.class,
-                () -> loanApprovalService.autoApproveIfEligibleForLsp(applicationUuid, "lsp.api")
+                () -> loanApplicationLifecycleService.autoApproveIfEligibleForLsp(applicationUuid, "lsp.api")
         );
         assertEquals("AUTO_APPROVAL_NOT_ALLOWED", exception.getErrorCode());
         assertEquals(

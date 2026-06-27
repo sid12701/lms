@@ -141,7 +141,7 @@ class ApiClientAdminControllerTest {
 
         mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 fixture.clientId(),
                                 originalSecret
                         ))))
@@ -203,7 +203,7 @@ class ApiClientAdminControllerTest {
     private void issueClientCredentialsToken(String clientId, String clientSecret) throws Exception {
         mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 clientId,
                                 clientSecret
                         ))))

@@ -121,6 +121,18 @@ public class ReportAdminController {
                 .toList();
     }
 
+    /**
+     * Manually drains the async report queue — mirrors webhook outbox dispatch for E2E and
+     * environments where {@code app.reports.processing.enabled=false}.
+     */
+    @PostMapping("/requests/process")
+    public ProcessReportRequestsResponse processReportRequests(
+            @RequestParam(defaultValue = "10") int batchSize
+    ) {
+        ReportRequestService.ProcessingSummary summary = reportRequestService.processPendingRequests(batchSize);
+        return new ProcessReportRequestsResponse(summary.processed(), summary.completed(), summary.failed());
+    }
+
     @GetMapping("/requests/{requestId}/download")
     public ResponseEntity<byte[]> downloadGeneratedReport(
             @AuthenticationPrincipal Jwt principal,
@@ -174,6 +186,13 @@ public class ReportAdminController {
             LocalDate disbursalDateFrom,
             LocalDate disbursalDateTo,
             @Email String recipientEmail
+    ) {
+    }
+
+    public record ProcessReportRequestsResponse(
+            int processed,
+            int completed,
+            int failed
     ) {
     }
 
@@ -236,6 +255,7 @@ public class ReportAdminController {
             Integer loanYear,
             BigDecimal processingFeeAmount,
             BigDecimal disbursalAmount,
+            BigDecimal netDisbursedAmount,
             BigDecimal interestRate,
             int tenureMonths,
             String borrowerId,
@@ -293,6 +313,7 @@ public class ReportAdminController {
                 row.loanYear(),
                 row.processingFeeAmount(),
                 row.disbursalAmount(),
+                row.netDisbursedAmount(),
                 row.interestRate(),
                 row.tenureMonths(),
                 row.borrowerId(),

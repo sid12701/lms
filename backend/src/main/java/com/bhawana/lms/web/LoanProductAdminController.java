@@ -120,7 +120,8 @@ public class LoanProductAdminController {
                 product.getProcessingFeeRate(),
                 product.getMinTenureMonths(),
                 product.getMaxTenureMonths(),
-                product.getStatus().name()
+                product.getStatus().name(),
+                product.getCreatedAt()
         );
     }
 
@@ -173,7 +174,8 @@ public class LoanProductAdminController {
             BigDecimal processingFeeRate,
             Integer minTenureMonths,
             Integer maxTenureMonths,
-            String status
+            String status,
+            Instant createdAt
     ) {
     }
 

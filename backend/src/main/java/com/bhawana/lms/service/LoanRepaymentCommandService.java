@@ -1,7 +1,7 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanApplication;
@@ -28,7 +28,7 @@ public class LoanRepaymentCommandService {
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanServicingSupportService loanServicingSupportService;
-    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
+    private final LoanApplicationStatusWriter loanApplicationStatusWriter;
     private final WebhookOutboxService webhookOutboxService;
     private final ObjectMapper objectMapper;
     private final IdempotencyClaimService idempotencyClaimService;
@@ -37,7 +37,7 @@ public class LoanRepaymentCommandService {
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanServicingSupportService loanServicingSupportService,
-            LoanApplicationLifecycleService loanApplicationLifecycleService,
+            LoanApplicationStatusWriter loanApplicationStatusWriter,
             WebhookOutboxService webhookOutboxService,
             ObjectMapper objectMapper,
             IdempotencyClaimService idempotencyClaimService
@@ -45,7 +45,7 @@ public class LoanRepaymentCommandService {
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanServicingSupportService = loanServicingSupportService;
-        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
+        this.loanApplicationStatusWriter = loanApplicationStatusWriter;
         this.webhookOutboxService = webhookOutboxService;
         this.objectMapper = objectMapper;
         this.idempotencyClaimService = idempotencyClaimService;
@@ -314,7 +314,7 @@ public class LoanRepaymentCommandService {
                 : " (ref " + paymentTransaction.getReference() + ").")
                 + " [idem=" + idempotencyKey + "]";
 
-        loanApplicationLifecycleService.recordAuditEvent(
+        loanApplicationStatusWriter.recordAuditEvent(
                 application,
                 LoanApplicationAuditAction.PAYMENT_RECORDED,
                 application.getStatus(),
@@ -331,7 +331,7 @@ public class LoanRepaymentCommandService {
             String note
     ) {
         if (application.getStatus() == LoanApplicationStatus.DISBURSED) {
-            loanApplicationLifecycleService.updateApplicationStatus(
+            loanApplicationStatusWriter.updateStatus(
                     application,
                     LoanApplicationStatusTransitionCommand.statusTransition(
                             LoanApplicationStatus.UNDER_REPAYMENT,

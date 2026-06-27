@@ -22,7 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class LoanAutoApprovalGateServiceTest {
 
     @Mock
-    private LoanApprovalService loanApprovalService;
+    private LoanApplicationLifecycleService loanApplicationLifecycleService;
 
     @Mock
     private LoanApplicationRepository loanApplicationRepository;
@@ -34,7 +34,7 @@ class LoanAutoApprovalGateServiceTest {
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
         gateService = new LoanAutoApprovalGateService(
-                loanApprovalService,
+                loanApplicationLifecycleService,
                 loanApplicationRepository,
                 meterRegistry
         );
@@ -46,7 +46,7 @@ class LoanAutoApprovalGateServiceTest {
 
         gateService.maybeTriggerAutoApproval(applicationId, "lsp.api", false);
 
-        verify(loanApprovalService, never()).autoApproveIfEligibleForLsp(eq(applicationId), eq("lsp.api"));
+        verify(loanApplicationLifecycleService, never()).autoApproveIfEligibleForLsp(eq(applicationId), eq("lsp.api"));
         assertEquals(1.0, meterRegistry.get("lms.auto_approval.gate").tag("outcome", "skipped_incomplete").counter().count());
     }
 
@@ -59,7 +59,7 @@ class LoanAutoApprovalGateServiceTest {
 
         gateService.maybeTriggerAutoApproval(applicationId, "lsp.api", true);
 
-        verify(loanApprovalService, never()).autoApproveIfEligibleForLsp(eq(applicationId), eq("lsp.api"));
+        verify(loanApplicationLifecycleService, never()).autoApproveIfEligibleForLsp(eq(applicationId), eq("lsp.api"));
         assertEquals(1.0, meterRegistry.get("lms.auto_approval.gate").tag("outcome", "skipped_status").counter().count());
     }
 
@@ -72,7 +72,7 @@ class LoanAutoApprovalGateServiceTest {
 
         gateService.maybeTriggerAutoApproval(applicationId, "lsp.api", true);
 
-        verify(loanApprovalService).autoApproveIfEligibleForLsp(applicationId, "lsp.api");
+        verify(loanApplicationLifecycleService).autoApproveIfEligibleForLsp(applicationId, "lsp.api");
         assertEquals(1.0, meterRegistry.get("lms.auto_approval.gate").tag("outcome", "fired").counter().count());
     }
 }

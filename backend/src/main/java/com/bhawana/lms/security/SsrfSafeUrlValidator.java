@@ -13,7 +13,26 @@ public final class SsrfSafeUrlValidator {
     private SsrfSafeUrlValidator() {
     }
 
+    /**
+     * Strict validation for the moment of egress (webhook delivery): the host must resolve and must
+     * not map to a private/reserved address. Use this immediately before opening a connection.
+     */
     public static void validate(String url) {
+        validate(url, true);
+    }
+
+    /**
+     * Registration-time validation (e.g. saving a webhook subscription). Validates scheme, host and
+     * blocks resolvable private/reserved addresses, but does NOT require the host to resolve right
+     * now — a partner endpoint may be temporarily unresolvable when configured. SSRF is still enforced
+     * at delivery time by {@link #validate(String)}, which re-resolves immediately before connecting
+     * (so this is not a TOCTOU weakening).
+     */
+    public static void validateRegistrationTarget(String url) {
+        validate(url, false);
+    }
+
+    private static void validate(String url, boolean requireResolvableHost) {
         if (url == null || url.isBlank()) {
             throw new IllegalArgumentException("URL must not be blank.");
         }
@@ -39,6 +58,10 @@ public final class SsrfSafeUrlValidator {
         try {
             resolved = InetAddress.getByName(host);
         } catch (UnknownHostException exception) {
+            if (requireResolvableHost) {
+                throw new IllegalArgumentException("URL host could not be resolved: " + host);
+            }
+            // Cannot classify an unresolvable host; defer SSRF enforcement to delivery time.
             return;
         }
 

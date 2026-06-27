@@ -24,6 +24,7 @@ app:
   security:
     bootstrap-user:
       username: test.admin
+      email: test.admin@bhawana.local
       password: TestPassword123!
       roles:
         - SYSTEM_ADMIN
@@ -46,6 +47,11 @@ app:
   disbursement:
     worker:
       enabled: false
+    mock:
+      imps-max-amount: 500000
+      status-check:
+        min-polls: 1
+        max-polls: 2
   borrower:
     bank-details:
       velocity-max-updates: 2

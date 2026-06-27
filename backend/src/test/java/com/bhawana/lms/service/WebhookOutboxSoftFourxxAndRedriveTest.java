@@ -87,8 +87,8 @@ class WebhookOutboxSoftFourxxAndRedriveTest {
     }
 
     @Test
-    void webhook404DoesNotBecomePermanentOnFirstAttempt() {
-        Lsp lsp = saveWebhookLsp("SOFT404");
+    void webhook404BecomesPermanentOnFirstAttemptWithDeadLetterAlert() {
+        Lsp lsp = saveWebhookLsp("HARD404");
         WebhookEventOutbox event = savePendingEvent(lsp, "evt-404");
 
         given(webhookDeliveryClient.deliver(any()))
@@ -96,37 +96,38 @@ class WebhookOutboxSoftFourxxAndRedriveTest {
 
         WebhookOutboxService.DispatchSummary summary = webhookOutboxService.dispatchPending(1);
 
-        assertThat(summary.permanentFailures()).isZero();
-        assertThat(summary.retryableFailures()).isEqualTo(1);
+        assertThat(summary.permanentFailures()).isEqualTo(1);
+        assertThat(summary.retryableFailures()).isZero();
 
         WebhookEventOutbox updated = webhookEventOutboxRepository.findById(event.getId()).orElseThrow();
-        assertThat(updated.getStatus()).isEqualTo(WebhookEventOutboxStatus.RETRYABLE_FAILURE);
+        assertThat(updated.getStatus()).isEqualTo(WebhookEventOutboxStatus.PERMANENT_FAILURE);
         assertThat(updated.getAttemptCount()).isEqualTo(1);
-        assertThat(updated.getNextAttemptAt()).isNotNull();
+        assertThat(updated.getNextAttemptAt()).isNull();
         assertThat(opsAlertRepository.existsByTypeAndSubjectIdAndStatus(
                 OpsAlertType.WEBHOOK_DEAD_LETTER,
                 event.getId(),
                 OpsAlertStatus.NEW
-        )).isFalse();
+        )).isTrue();
     }
 
     @Test
-    void webhook410BehavesLike404() {
-        Lsp lsp = saveWebhookLsp("SOFT410");
+    void webhook410BecomesPermanentOnFirstAttempt() {
+        Lsp lsp = saveWebhookLsp("HARD410");
         WebhookEventOutbox event = savePendingEvent(lsp, "evt-410");
 
         given(webhookDeliveryClient.deliver(any()))
                 .willReturn(new WebhookDeliveryClient.WebhookDeliveryResponse(410, "gone"));
 
-        webhookOutboxService.dispatchPending(1);
+        WebhookOutboxService.DispatchSummary summary = webhookOutboxService.dispatchPending(1);
 
+        assertThat(summary.permanentFailures()).isEqualTo(1);
         WebhookEventOutbox updated = webhookEventOutboxRepository.findById(event.getId()).orElseThrow();
-        assertThat(updated.getStatus()).isEqualTo(WebhookEventOutboxStatus.RETRYABLE_FAILURE);
+        assertThat(updated.getStatus()).isEqualTo(WebhookEventOutboxStatus.PERMANENT_FAILURE);
         assertThat(updated.getAttemptCount()).isEqualTo(1);
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {400, 401, 403, 422})
+    @ValueSource(ints = {400, 401, 403, 404, 410, 422})
     void nonSoftClientErrorsRemainPermanentOnFirstAttempt(int statusCode) {
         Lsp lsp = saveWebhookLsp("HARD-" + statusCode);
         WebhookEventOutbox event = savePendingEvent(lsp, "evt-" + statusCode);
@@ -140,68 +141,6 @@ class WebhookOutboxSoftFourxxAndRedriveTest {
         WebhookEventOutbox updated = webhookEventOutboxRepository.findById(event.getId()).orElseThrow();
         assertThat(updated.getStatus()).isEqualTo(WebhookEventOutboxStatus.PERMANENT_FAILURE);
         assertThat(updated.getAttemptCount()).isEqualTo(1);
-    }
-
-    @Test
-    void webhook404RetriesUpToCapThenPermanentsWithSingleDeadLetterAlert() {
-        Lsp lsp = saveWebhookLsp("CAP404");
-        WebhookEventOutbox event = savePendingEvent(lsp, "evt-cap");
-
-        given(webhookDeliveryClient.deliver(any()))
-                .willReturn(new WebhookDeliveryClient.WebhookDeliveryResponse(404, "not found"));
-
-        for (int attempt = 1; attempt <= 9; attempt++) {
-            makeDueForDispatch(event.getId());
-            WebhookOutboxService.DispatchSummary summary = webhookOutboxService.dispatchPending(1);
-            assertThat(summary.retryableFailures()).isEqualTo(1);
-            WebhookEventOutbox current = webhookEventOutboxRepository.findById(event.getId()).orElseThrow();
-            assertThat(current.getStatus()).isEqualTo(WebhookEventOutboxStatus.RETRYABLE_FAILURE);
-            assertThat(current.getAttemptCount()).isEqualTo(attempt);
-        }
-
-        makeDueForDispatch(event.getId());
-        WebhookOutboxService.DispatchSummary finalSummary = webhookOutboxService.dispatchPending(1);
-        assertThat(finalSummary.permanentFailures()).isEqualTo(1);
-
-        WebhookEventOutbox exhausted = webhookEventOutboxRepository.findById(event.getId()).orElseThrow();
-        assertThat(exhausted.getStatus()).isEqualTo(WebhookEventOutboxStatus.PERMANENT_FAILURE);
-        assertThat(exhausted.getAttemptCount()).isEqualTo(10);
-        assertThat(opsAlertRepository.existsByTypeAndSubjectIdAndStatus(
-                OpsAlertType.WEBHOOK_DEAD_LETTER,
-                event.getId(),
-                OpsAlertStatus.NEW
-        )).isTrue();
-    }
-
-    @Test
-    void webhook404RecoversWhenPartnerFixesUrlWithinCap() {
-        Lsp lsp = saveWebhookLsp("RECOVER");
-        WebhookEventOutbox event = savePendingEvent(lsp, "evt-recover");
-
-        given(webhookDeliveryClient.deliver(any()))
-                .willReturn(
-                        new WebhookDeliveryClient.WebhookDeliveryResponse(404, "not found"),
-                        new WebhookDeliveryClient.WebhookDeliveryResponse(404, "not found"),
-                        new WebhookDeliveryClient.WebhookDeliveryResponse(404, "not found"),
-                        new WebhookDeliveryClient.WebhookDeliveryResponse(202, "accepted")
-                );
-
-        for (int attempt = 0; attempt < 3; attempt++) {
-            makeDueForDispatch(event.getId());
-            webhookOutboxService.dispatchPending(1);
-        }
-
-        makeDueForDispatch(event.getId());
-        WebhookOutboxService.DispatchSummary summary = webhookOutboxService.dispatchPending(1);
-
-        assertThat(summary.delivered()).isEqualTo(1);
-        WebhookEventOutbox delivered = webhookEventOutboxRepository.findById(event.getId()).orElseThrow();
-        assertThat(delivered.getStatus()).isEqualTo(WebhookEventOutboxStatus.DELIVERED);
-        assertThat(opsAlertRepository.existsByTypeAndSubjectIdAndStatus(
-                OpsAlertType.WEBHOOK_DEAD_LETTER,
-                event.getId(),
-                OpsAlertStatus.NEW
-        )).isFalse();
     }
 
     @Test

@@ -4,9 +4,9 @@ import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanAccountStatus;
-import com.bhawana.lms.common.web.ApiConflictException;
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
@@ -36,7 +36,7 @@ public class LoanForeclosureCommandService {
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanServicingSupportService loanServicingSupportService;
-    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
+    private final LoanApplicationStatusWriter loanApplicationStatusWriter;
     private final WebhookOutboxService webhookOutboxService;
     private final OpsAlertEmitters opsAlertEmitters;
 
@@ -45,7 +45,7 @@ public class LoanForeclosureCommandService {
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanServicingSupportService loanServicingSupportService,
-            LoanApplicationLifecycleService loanApplicationLifecycleService,
+            LoanApplicationStatusWriter loanApplicationStatusWriter,
             WebhookOutboxService webhookOutboxService,
             OpsAlertEmitters opsAlertEmitters
     ) {
@@ -53,7 +53,7 @@ public class LoanForeclosureCommandService {
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanServicingSupportService = loanServicingSupportService;
-        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
+        this.loanApplicationStatusWriter = loanApplicationStatusWriter;
         this.webhookOutboxService = webhookOutboxService;
         this.opsAlertEmitters = opsAlertEmitters;
     }
@@ -274,7 +274,7 @@ public class LoanForeclosureCommandService {
                 normalizedActorUsername,
                 LoanAccountClosureReason.FORECLOSURE
         );
-        loanApplicationLifecycleService.recordAuditEvent(
+        loanApplicationStatusWriter.recordAuditEvent(
                 application,
                 LoanApplicationAuditAction.FORECLOSURE_EXECUTED,
                 statusBeforeForeclosure,

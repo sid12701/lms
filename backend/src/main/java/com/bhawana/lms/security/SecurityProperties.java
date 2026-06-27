@@ -37,6 +37,8 @@ public class SecurityProperties {
         @NotBlank
         private String username;
 
+        private String email;
+
         @NotBlank
         private String password;
 
@@ -52,6 +54,22 @@ public class SecurityProperties {
 
         public void setUsername(String username) {
             this.username = username;
+        }
+
+        /**
+         * Email the bootstrap admin signs in with. Defaults to the derived
+         * {@code <username>@bhawana.local} (matching LocalBootstrapAdminSyncService's
+         * historical behaviour) when not explicitly configured.
+         */
+        public String getEmail() {
+            if (email == null || email.isBlank()) {
+                return (getUsername() + "@bhawana.local").toLowerCase();
+            }
+            return email.trim().toLowerCase();
+        }
+
+        public void setEmail(String email) {
+            this.email = email;
         }
 
         public String getPassword() {

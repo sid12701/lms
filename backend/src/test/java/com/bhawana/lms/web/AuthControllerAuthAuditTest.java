@@ -109,7 +109,7 @@ class AuthControllerAuthAuditTest {
                         .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID)
                         .header("X-Forwarded-For", CLIENT_IP)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("test.user", "TestPassword123!"))))
+                                new AuthApiResponses.LoginRequest("test.user@bhawana.local", "TestPassword123!"))))
                 .andExpect(status().isOk());
 
         AppUser user = appUserRepository.findByUsername("test.user").orElseThrow();
@@ -136,7 +136,7 @@ class AuthControllerAuthAuditTest {
                         .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID)
                         .header("X-Forwarded-For", CLIENT_IP)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("test.user", "WrongPassword123!"))))
+                                new AuthApiResponses.LoginRequest("test.user@bhawana.local", "WrongPassword123!"))))
                 .andExpect(status().isUnauthorized());
 
         mockMvc.perform(get("/api/v1/internal/ops/auth-audit")
@@ -166,7 +166,7 @@ class AuthControllerAuthAuditTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("inactive.user", "TestPassword123!"))))
+                                new AuthApiResponses.LoginRequest("inactive.user@bhawana.local", "TestPassword123!"))))
                 .andExpect(status().isUnauthorized());
 
         mockMvc.perform(get("/api/v1/internal/ops/auth-audit")
@@ -193,7 +193,7 @@ class AuthControllerAuthAuditTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID)
                         .header("X-Forwarded-For", CLIENT_IP)
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 created.client().getClientId(),
                                 created.rawSecret()
                         ))))
@@ -210,7 +210,7 @@ class AuthControllerAuthAuditTest {
         mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header(CorrelationIdFilter.HEADER_NAME, "bad-secret-corr")
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 created.client().getClientId(),
                                 "not-the-secret"
                         ))))
@@ -231,7 +231,7 @@ class AuthControllerAuthAuditTest {
                         .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID)
                         .header("X-Forwarded-For", CLIENT_IP)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("test.user", "TestPassword123!"))))
+                                new AuthApiResponses.LoginRequest("test.user@bhawana.local", "TestPassword123!"))))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -293,7 +293,7 @@ class AuthControllerAuthAuditTest {
         MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("test.user", resetResult.temporaryPassword()))))
+                                new AuthApiResponses.LoginRequest("test.user@bhawana.local", resetResult.temporaryPassword()))))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -306,7 +306,7 @@ class AuthControllerAuthAuditTest {
                         .header("X-Forwarded-For", CLIENT_IP)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.ChangePasswordRequest("BrandNewPassword123!"))))
+                                new AuthApiResponses.ChangePasswordRequest("BrandNewPassword123!"))))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/internal/ops/auth-audit")

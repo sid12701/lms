@@ -13,9 +13,9 @@ import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LspRepository;
-import com.bhawana.lms.common.web.ApiConflictException;
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.security.SsrfSafeUrlValidator;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -168,7 +168,7 @@ public class LspDirectoryService {
                 );
             }
             try {
-                SsrfSafeUrlValidator.validate(normalizedEndpointUrl);
+                SsrfSafeUrlValidator.validateRegistrationTarget(normalizedEndpointUrl);
             } catch (IllegalArgumentException ex) {
                 throw new BusinessRuleViolationException(
                         "WEBHOOK_ENDPOINT_UNSAFE",

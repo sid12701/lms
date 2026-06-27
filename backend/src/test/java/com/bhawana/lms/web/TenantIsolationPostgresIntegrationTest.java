@@ -6,8 +6,10 @@ import org.springframework.test.context.TestExecutionListeners;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
@@ -246,6 +248,133 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
     }
 
     @Test
+    void lspBankDetailsPatchPersistsUnderTenantScopedRequest() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode apiClient = createApiClient(lsp.id(), "Bank Patch Client");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        JsonNode application = createExternalApplication(
+                accessToken,
+                lsp.id(),
+                product.id(),
+                "BANK-PATCH-001",
+                "ABCDE1234F"
+        );
+        String borrowerId = application.get("borrowerId").asText();
+
+        mockMvc.perform(patch("/api/v1/lsp/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "998877665544",
+                                "bankName", "Updated Bank",
+                                "ifscCode", "HDFC0001234",
+                                "accountHolderName", "Worker Borrower"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bankAccountNumber").value("998877665544"));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/v1/lsp/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bankAccountNumber").value("998877665544"));
+    }
+
+    @Test
+    void parallelLspLoanCreatesDoNotReturnServerError() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode apiClient = createApiClient(lsp.id(), "Parallel Create Client");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(12)) {
+            var futures = new java.util.ArrayList<java.util.concurrent.Future<Integer>>();
+            for (int index = 0; index < 12; index++) {
+                String externalLoanId = "PAR-" + index + "-" + UUID.randomUUID().toString().substring(0, 8);
+                futures.add(executor.submit(() -> postLoanApplicationStatus(
+                        accessToken,
+                        lsp.id(),
+                        product.id(),
+                        externalLoanId
+                )));
+            }
+
+            for (var future : futures) {
+                int statusCode = future.get();
+                org.assertj.core.api.Assertions.assertThat(statusCode)
+                        .isIn(200, 409, 422, 429);
+            }
+        }
+    }
+
+    private int postLoanApplicationStatus(
+            String accessToken,
+            String lspId,
+            String productId,
+            String externalLoanId
+    ) {
+        try {
+            LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+            payload.put("lspId", lspId);
+            payload.put("productId", productId);
+            payload.put("lspLoanId", externalLoanId);
+            payload.put("fullName", "Borrower " + externalLoanId);
+            payload.put("emailAddress", externalLoanId.toLowerCase() + "@example.com");
+            payload.put("mobileNumber", "9" + String.format("%09d", Math.abs(externalLoanId.hashCode()) % 1_000_000_000));
+            payload.put("dob", "1992-03-10");
+            payload.put("gender", "FEMALE");
+            payload.put("maritalStatus", "SINGLE");
+            payload.put("fatherName", "Ramesh Sharma");
+            payload.put("aadharNumber", "123412341234");
+            payload.put("panNumber", "ABCDE1234F");
+            payload.put("loanAmount", new BigDecimal("45000.00"));
+            payload.put("interestRate", new BigDecimal("18.50"));
+            payload.put("loanTenure", 12);
+            payload.put("addressLine1", "Palm Residency");
+            payload.put("addressLine2", "Andheri East");
+            payload.put("addressCity", "Mumbai");
+            payload.put("addressState", "Maharashtra");
+            payload.put("addressZipcode", "400001");
+            payload.put("employmentStatus", "SALARIED");
+            payload.put("organizationName", "Apex Corp");
+            payload.put("empId", "EMP-001");
+            payload.put("employmentCity", "Mumbai");
+            payload.put("employmentState", "Maharashtra");
+            payload.put("employmentZip", "400001");
+            payload.put("monthlyIncome", new BigDecimal("78000.00"));
+            payload.put("annualIncome", new BigDecimal("936000.00"));
+            payload.put("bankAccountNumber", "123456789012");
+            payload.put("bankName", "Demo Bank");
+            payload.put("ifscCode", "HDFC0001234");
+            payload.put("accountHolderName", "Anika Sharma");
+            payload.put("referencePersonName", "Neha Verma");
+            payload.put("referencePersonNumber", "9888877777");
+
+            MvcResult result = mockMvc.perform(post("/api/v1/lsp/loan-applications")
+                            .header("Authorization", "Bearer " + accessToken)
+                            .header("Idempotency-Key", UUID.randomUUID().toString())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(payload)))
+                    .andReturn();
+            return result.getResponse().getStatus();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Parallel loan create failed.", exception);
+        }
+    }
+
+    @Test
     void tenantRlsFailsClosedWithoutTenantContextAndAdminPathStillReadsPrimaryAndChildTables() throws Exception {
         LspFixture apex = createLsp("ACTIVE");
         LspFixture north = createLsp("ACTIVE");
@@ -418,7 +547,7 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
     private String issueClientCredentialsToken(String clientId, String clientSecret) throws Exception {
         JsonNode tokenResponse = readJson(mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 clientId,
                                 clientSecret
                         ))))

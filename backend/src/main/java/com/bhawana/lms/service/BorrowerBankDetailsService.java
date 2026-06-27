@@ -1,7 +1,7 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.BorrowerBankDetailsUpdateAudit;
 import com.bhawana.lms.domain.LoanApplication;
@@ -13,6 +13,7 @@ import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
 import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
 import java.time.Clock;
 import java.time.Duration;
@@ -21,7 +22,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -36,6 +36,7 @@ public class BorrowerBankDetailsService {
     private final OpsAlertEmitters opsAlertEmitters;
     private final BorrowerBankDetailsProperties properties;
     private final Clock clock;
+    private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
 
     public BorrowerBankDetailsService(
             BorrowerRepository borrowerRepository,
@@ -46,7 +47,8 @@ public class BorrowerBankDetailsService {
             WebhookOutboxService webhookOutboxService,
             OpsAlertEmitters opsAlertEmitters,
             BorrowerBankDetailsProperties properties,
-            Clock clock
+            Clock clock,
+            AdminScopedTransactionExecutor adminScopedTransactionExecutor
     ) {
         this.borrowerRepository = borrowerRepository;
         this.lspRepository = lspRepository;
@@ -57,17 +59,7 @@ public class BorrowerBankDetailsService {
         this.opsAlertEmitters = opsAlertEmitters;
         this.properties = properties;
         this.clock = clock;
-    }
-
-    @Transactional(readOnly = true)
-    public Borrower getBorrowerForLsp(UUID lspId, UUID borrowerId) {
-        TenantDataAccessContextHolder.useAdmin();
-        Borrower borrower = borrowerRepository.findById(borrowerId)
-                .orElseThrow(() -> new ResourceNotFoundException("Unknown borrower id: " + borrowerId));
-        if (!borrower.hasVisibilityFor(lspId)) {
-            throw new ResourceNotFoundException("Unknown borrower id: " + borrowerId);
-        }
-        return borrower;
+        this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
     }
 
     @Transactional(readOnly = true)
@@ -77,7 +69,10 @@ public class BorrowerBankDetailsService {
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown borrower id: " + borrowerId));
     }
 
-    @Transactional
+    public Borrower getBorrowerForLsp(UUID lspId, UUID borrowerId) {
+        return adminScopedTransactionExecutor.call(() -> loadBorrowerForLsp(lspId, borrowerId));
+    }
+
     public Borrower updateBankDetailsForLsp(
             UUID lspId,
             UUID borrowerId,
@@ -85,14 +80,14 @@ public class BorrowerBankDetailsService {
             String actorUsername,
             String clientIp
     ) {
-        return updateBankDetails(
+        return adminScopedTransactionExecutor.call(() -> updateBankDetails(
                 lspId,
                 borrowerId,
                 command,
                 actorUsername,
                 "LSP_API_CLIENT",
                 clientIp
-        );
+        ));
     }
 
     @Transactional
@@ -113,8 +108,23 @@ public class BorrowerBankDetailsService {
         );
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordHardDisbursementBankMismatch(
+            LoanApplication application,
+            UUID lspId,
+            String submittedBankAccountNumber,
+            String submittedIfscCode,
+            String submittedAccountHolderName
+    ) {
+        adminScopedTransactionExecutor.run(() -> recordHardDisbursementBankMismatchAsAdmin(
+                application,
+                lspId,
+                submittedBankAccountNumber,
+                submittedIfscCode,
+                submittedAccountHolderName
+        ));
+    }
+
+    private void recordHardDisbursementBankMismatchAsAdmin(
             LoanApplication application,
             UUID lspId,
             String submittedBankAccountNumber,
@@ -158,8 +168,21 @@ public class BorrowerBankDetailsService {
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordSoftHolderNameMismatch(
+            LoanApplication application,
+            UUID lspId,
+            String submittedAccountHolderName,
+            String onFileAccountHolderName
+    ) {
+        adminScopedTransactionExecutor.run(() -> recordSoftHolderNameMismatchAsAdmin(
+                application,
+                lspId,
+                submittedAccountHolderName,
+                onFileAccountHolderName
+        ));
+    }
+
+    private void recordSoftHolderNameMismatchAsAdmin(
             LoanApplication application,
             UUID lspId,
             String submittedAccountHolderName,
@@ -181,6 +204,16 @@ public class BorrowerBankDetailsService {
                 onFileAccountHolderName,
                 CorrelationIdHolder.get()
         );
+    }
+
+    private Borrower loadBorrowerForLsp(UUID lspId, UUID borrowerId) {
+        TenantDataAccessContextHolder.useAdmin();
+        Borrower borrower = borrowerRepository.findById(borrowerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown borrower id: " + borrowerId));
+        if (!borrower.hasVisibilityFor(lspId)) {
+            throw new ResourceNotFoundException("Unknown borrower id: " + borrowerId);
+        }
+        return borrower;
     }
 
     private Borrower updateBankDetails(

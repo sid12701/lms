@@ -260,7 +260,8 @@ class Issue80SessionRevocationIntegrationTest {
 
     private LoginArtifacts login(String username, String password) throws Exception {
         ObjectNode body = objectMapper.createObjectNode();
-        body.put("username", username);
+        // Login authenticates by email; the seeded users use <username>@bhawana.local.
+        body.put("email", username + "@bhawana.local");
         body.put("password", password);
 
         MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")

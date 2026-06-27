@@ -1,7 +1,7 @@
 package com.bhawana.lms.web;
 
-import com.bhawana.lms.common.web.PagedResult;
-import com.bhawana.lms.common.web.PaginationResponseBuilder;
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.service.BorrowerDirectoryService;
 import com.bhawana.lms.service.BorrowerDirectoryService.BorrowerDelinquencyAggregate;
@@ -145,6 +145,13 @@ public class BorrowerAdminController {
                 borrower.getVisibleLspIds().stream()
                         .map(UUID::toString)
                         .collect(Collectors.toUnmodifiableSet()),
+                view.visibleLsps().stream()
+                        .map(lsp -> new VisibleLspResponse(
+                                lsp.id().toString(),
+                                lsp.code(),
+                                lsp.name()
+                        ))
+                        .toList(),
                 view.loans().stream()
                         .map(BorrowerAdminController::toLoanResponse)
                         .toList(),
@@ -226,8 +233,16 @@ public class BorrowerAdminController {
             String referencePersonName,
             String referencePersonNumber,
             Set<String> visibleLspIds,
+            List<VisibleLspResponse> visibleLsps,
             List<BorrowerLoanResponse> loans,
             BorrowerDelinquencyResponse delinquency
+    ) {
+    }
+
+    public record VisibleLspResponse(
+            String id,
+            String code,
+            String name
     ) {
     }
 

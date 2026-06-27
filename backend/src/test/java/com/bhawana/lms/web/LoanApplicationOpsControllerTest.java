@@ -574,7 +574,7 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].action").value("CHECKLIST_VIEWED"))
                 .andExpect(jsonPath("$[0].actorUsername").value("ops.user"))
-                .andExpect(jsonPath("$[0].summary").value("Viewed 8 KYC document placeholders"))
+                .andExpect(jsonPath("$[0].summary").value("Viewed 8 KYC documents"))
                 .andExpect(jsonPath("$[0].documentTypes.length()").value(8))
                 .andExpect(jsonPath("$[0].documentTypes[0]").value("PAN_CARD"))
                 .andExpect(jsonPath("$[0].correlationId").isNotEmpty());
@@ -1255,12 +1255,12 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].actorUsername").value("ops.admin"))
-                .andExpect(jsonPath("$[0].amount").value(45000.00))
-                .andExpect(jsonPath("$[0].providerName").value("MOCK_DISBURSEMENT"))
-                .andExpect(jsonPath("$[0].providerRequestId", containsString("MDB-")))
-                .andExpect(jsonPath("$[0].providerStatus").value("ACCEPTED"))
+                .andExpect(jsonPath("$[0].amount").value(43987.50))
+                .andExpect(jsonPath("$[0].providerName").value("MOCK_ICICI"))
+                .andExpect(jsonPath("$[0].providerRequestId", containsString("ICI")))
+                .andExpect(jsonPath("$[0].providerStatus").value("SUCCESS"))
                 .andExpect(jsonPath("$[0].requestPayloadJson", containsString("\"externalLoanId\":\"EXT-968\"")))
-                .andExpect(jsonPath("$[0].responsePayloadJson", containsString("\"status\":\"ACCEPTED\"")));
+                .andExpect(jsonPath("$[0].responsePayloadJson", containsString("\"ActCode\":\"0\"")));
     }
 
     @Test

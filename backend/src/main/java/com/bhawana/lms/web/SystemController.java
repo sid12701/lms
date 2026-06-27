@@ -1,10 +1,8 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.domain.AppUser;
-import com.bhawana.lms.repo.AppUserRepository;
+import com.bhawana.lms.service.SystemContextService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -23,11 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class SystemController {
 
     private final Environment environment;
-    private final AppUserRepository appUserRepository;
+    private final SystemContextService systemContextService;
 
-    public SystemController(Environment environment, AppUserRepository appUserRepository) {
+    public SystemController(Environment environment, SystemContextService systemContextService) {
         this.environment = environment;
-        this.appUserRepository = appUserRepository;
+        this.systemContextService = systemContextService;
     }
 
     @GetMapping("/context")
@@ -44,9 +42,7 @@ public class SystemController {
             lspName = jwt.getClaimAsString("lspName");
         }
 
-        UUID userId = appUserRepository.findByUsername(authentication.getName())
-                .map(AppUser::getId)
-                .orElseGet(() -> deterministicBootstrapId(authentication.getName()));
+        UUID userId = systemContextService.resolveUserId(authentication.getName());
 
         String[] activeProfiles = environment.getActiveProfiles();
         return new SystemContextResponse(
@@ -59,14 +55,6 @@ public class SystemController {
                 lspId,
                 lspName
         );
-    }
-
-    /**
-     * Stable UUID for the in-memory bootstrap admin used when no app_user row exists
-     * (test/profile edge cases). Hash-based so it's deterministic across requests.
-     */
-    private static UUID deterministicBootstrapId(String username) {
-        return UUID.nameUUIDFromBytes(("lms-bootstrap:" + username).getBytes(StandardCharsets.UTF_8));
     }
 
     public record SystemContextResponse(

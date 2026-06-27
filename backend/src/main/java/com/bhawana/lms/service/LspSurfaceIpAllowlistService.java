@@ -1,6 +1,6 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.LspSurfaceIpAccessDeniedException;
+import com.bhawana.lms.common.api.error.LspSurfaceIpAccessDeniedException;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspIpAllowlistEntry;
 import com.bhawana.lms.domain.LspIpAllowlistSurface;

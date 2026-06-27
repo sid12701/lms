@@ -1,7 +1,10 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -28,24 +31,38 @@ public final class DocumentUploadPolicy {
             "image/jpeg"
     );
 
+    private static final byte[] PNG_SIGNATURE = {
+            (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
+    };
+
     private DocumentUploadPolicy() {
     }
 
     static void validate(LoanApplicationDocumentType documentType, MultipartFile file) {
-        Constraints constraints = constraintsFor(documentType);
-        long declaredSize = file.getSize();
-        if (declaredSize > constraints.maxBytes()) {
-            throw fileTooLarge(documentType, declaredSize, constraints.maxBytes());
-        }
+        validateFileName(file.getOriginalFilename());
 
+        Constraints constraints = constraintsFor(documentType);
         String normalizedMime = normalizeMime(file.getContentType());
         if (normalizedMime == null || !constraints.allowedMimeTypes().contains(normalizedMime)) {
             throw mimeNotAllowed(documentType, file.getContentType(), constraints.allowedMimeTypes());
         }
+
+        byte[] content = readContent(file);
+        if (content.length > constraints.maxBytes()) {
+            throw fileTooLarge(documentType, content.length, constraints.maxBytes());
+        }
+        validateContentMatchesMime(normalizedMime, content);
     }
 
     static long maxBytesFor(LoanApplicationDocumentType documentType) {
         return constraintsFor(documentType).maxBytes();
+    }
+
+    static void validateFileName(String originalFileName) {
+        String candidate = originalFileName == null ? "" : originalFileName.trim();
+        if (candidate.isEmpty() || candidate.contains("..")) {
+            throw fileNameInvalid(originalFileName);
+        }
     }
 
     private static Constraints constraintsFor(LoanApplicationDocumentType documentType) {
@@ -54,6 +71,44 @@ public final class DocumentUploadPolicy {
             case PAN_CARD, AADHAAR_FILE -> new Constraints(IDENTITY_DOCUMENT_MAX_BYTES, IDENTITY_DOCUMENT_MIME_TYPES);
             default -> new Constraints(GLOBAL_MAX_BYTES, GLOBAL_ALLOWED_MIME_TYPES);
         };
+    }
+
+    private static byte[] readContent(MultipartFile file) {
+        try (InputStream inputStream = file.getInputStream()) {
+            return inputStream.readAllBytes();
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to read multipart document content.", exception);
+        }
+    }
+
+    private static void validateContentMatchesMime(String normalizedMime, byte[] content) {
+        if (content.length == 0) {
+            throw contentInvalid("Document content is empty.");
+        }
+        boolean valid = switch (normalizedMime) {
+            case "application/pdf" -> startsWith(content, "%PDF".getBytes(StandardCharsets.US_ASCII));
+            case "image/jpeg" -> content.length >= 3
+                    && (content[0] & 0xFF) == 0xFF
+                    && (content[1] & 0xFF) == 0xD8
+                    && (content[2] & 0xFF) == 0xFF;
+            case "image/png" -> startsWith(content, PNG_SIGNATURE);
+            default -> false;
+        };
+        if (!valid) {
+            throw contentInvalid("Document content does not match declared MIME type " + normalizedMime + ".");
+        }
+    }
+
+    private static boolean startsWith(byte[] content, byte[] prefix) {
+        if (content.length < prefix.length) {
+            return false;
+        }
+        for (int index = 0; index < prefix.length; index++) {
+            if (content[index] != prefix[index]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static String normalizeMime(String contentType) {
@@ -99,6 +154,24 @@ public final class DocumentUploadPolicy {
                         "fileSizeBytes", String.valueOf(actualBytes),
                         "maxFileSizeBytes", String.valueOf(maxBytes)
                 )
+        );
+    }
+
+    private static BusinessRuleViolationException fileNameInvalid(String originalFileName) {
+        return new BusinessRuleViolationException(
+                "DOCUMENT_FILE_NAME_INVALID",
+                "Document file name is not allowed.",
+                Map.of(
+                        "fileName", originalFileName == null ? "<missing>" : originalFileName
+                )
+        );
+    }
+
+    private static BusinessRuleViolationException contentInvalid(String message) {
+        return new BusinessRuleViolationException(
+                "DOCUMENT_CONTENT_INVALID",
+                message,
+                Map.of()
         );
     }
 

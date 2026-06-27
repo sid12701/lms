@@ -1,8 +1,8 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.common.web.ApiConflictException;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.WebhookEventOutbox;
 import com.bhawana.lms.domain.WebhookEventOutboxStatus;
@@ -37,6 +37,7 @@ public class WebhookOutboxService {
     private final LspRepository lspRepository;
     private final ObjectMapper objectMapper;
     private final WebhookOutboxDispatchExecutor webhookOutboxDispatchExecutor;
+    private final WebhookDeliveryClient webhookDeliveryClient;
     private final ThreadPoolTaskExecutor webhookDeliveryExecutor;
     private final WebhookOutboxProperties webhookOutboxProperties;
     private final WebhookOutboxRedriveAuditService webhookOutboxRedriveAuditService;
@@ -46,6 +47,7 @@ public class WebhookOutboxService {
             LspRepository lspRepository,
             ObjectMapper objectMapper,
             WebhookOutboxDispatchExecutor webhookOutboxDispatchExecutor,
+            WebhookDeliveryClient webhookDeliveryClient,
             @Qualifier("webhookDeliveryExecutor") ThreadPoolTaskExecutor webhookDeliveryExecutor,
             WebhookOutboxProperties webhookOutboxProperties,
             WebhookOutboxRedriveAuditService webhookOutboxRedriveAuditService
@@ -54,6 +56,7 @@ public class WebhookOutboxService {
         this.lspRepository = lspRepository;
         this.objectMapper = objectMapper;
         this.webhookOutboxDispatchExecutor = webhookOutboxDispatchExecutor;
+        this.webhookDeliveryClient = webhookDeliveryClient;
         this.webhookDeliveryExecutor = webhookDeliveryExecutor;
         this.webhookOutboxProperties = webhookOutboxProperties;
         this.webhookOutboxRedriveAuditService = webhookOutboxRedriveAuditService;
@@ -173,7 +176,7 @@ public class WebhookOutboxService {
 
         List<Future<DeliveryOutcome>> deliveries = batch.stream()
                 .map(event -> webhookDeliveryExecutor.submit(() -> TenantScopedExecution.callAsAdmin(
-                        () -> webhookOutboxDispatchExecutor.deliverOne(event.getId()))))
+                        () -> deliverOne(event.getId()))))
                 .toList();
 
         for (Future<DeliveryOutcome> delivery : deliveries) {
@@ -203,6 +206,41 @@ public class WebhookOutboxService {
                 elapsedMillis(startedAt)
         );
         return new DispatchSummary(batch.size(), delivered, retryableFailures, permanentFailures);
+    }
+
+    /**
+     * Per-event orchestration: prepare+sign (executor read tx) → HTTP delivery (no tx) →
+     * record outcome (executor write tx). Each executor call crosses the bean proxy so its
+     * {@code @Transactional} boundary applies, and the HTTP call deliberately runs between the
+     * two transactions so a slow partner never holds a DB connection. The event's correlation
+     * id is bound for the delivery and restored afterwards so logs/attempts stay traceable.
+     */
+    private DeliveryOutcome deliverOne(UUID eventId) {
+        WebhookOutboxDispatchExecutor.PreparedDelivery prepared =
+                webhookOutboxDispatchExecutor.prepareDelivery(eventId);
+        if (prepared == null) {
+            return DeliveryOutcome.RETRYABLE_FAILURE;
+        }
+
+        String previousCorrelationId = CorrelationIdHolder.get();
+        if (prepared.correlationId() != null && !prepared.correlationId().isBlank()) {
+            CorrelationIdHolder.set(prepared.correlationId());
+        }
+        try {
+            try {
+                WebhookDeliveryClient.WebhookDeliveryResponse response =
+                        webhookDeliveryClient.deliver(prepared.request());
+                return webhookOutboxDispatchExecutor.recordDeliveryOutcome(prepared, response, null);
+            } catch (RuntimeException exception) {
+                return webhookOutboxDispatchExecutor.recordDeliveryOutcome(prepared, null, exception);
+            }
+        } finally {
+            if (previousCorrelationId == null || previousCorrelationId.isBlank()) {
+                CorrelationIdHolder.clear();
+            } else {
+                CorrelationIdHolder.set(previousCorrelationId);
+            }
+        }
     }
 
     private String serializePayload(Map<String, Object> payload) {

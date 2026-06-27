@@ -1,8 +1,9 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.DocumentNotFoundException;
-import com.bhawana.lms.common.web.DocumentStorageUnavailableException;
+import com.bhawana.lms.common.api.error.DocumentNotFoundException;
+import com.bhawana.lms.common.api.error.DocumentStorageUnavailableException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -50,6 +51,27 @@ public class FileSystemLoanDocumentStorageService {
         }
         try {
             return Files.readAllBytes(targetPath);
+        } catch (IOException exception) {
+            throw new DocumentStorageUnavailableException(
+                    storageKey,
+                    DocumentStorageProperties.DocumentStorageProvider.LOCAL.name(),
+                    "Unable to retrieve document from LMS-managed local storage: " + storageKey,
+                    exception
+            );
+        }
+    }
+
+    public LoanDocumentStorageService.RetrievedDocumentStream openStream(String storageKey) {
+        Path targetPath = properties.getRootPath().resolve(storageKey);
+        if (!Files.exists(targetPath)) {
+            throw new DocumentNotFoundException(
+                    "Document not found in LMS-managed local storage: " + storageKey
+            );
+        }
+        try {
+            long contentLength = Files.size(targetPath);
+            InputStream content = Files.newInputStream(targetPath);
+            return new LoanDocumentStorageService.RetrievedDocumentStream(content, contentLength);
         } catch (IOException exception) {
             throw new DocumentStorageUnavailableException(
                     storageKey,

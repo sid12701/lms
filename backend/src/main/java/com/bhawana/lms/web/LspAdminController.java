@@ -2,7 +2,7 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.ClientIpAddresses;
-import com.bhawana.lms.common.web.LspStatusUpdateException;
+import com.bhawana.lms.common.api.error.LspStatusUpdateException;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspAuditEvent;
 import com.bhawana.lms.domain.LspStatus;
@@ -109,6 +109,7 @@ public class LspAdminController {
                 lsp.getCode(),
                 lsp.getName(),
                 lsp.getStatus().name(),
+                lsp.getCreatedAt().toString(),
                 new WebhookSubscriptionResponse(
                         lsp.isWebhookEnabled(),
                         lsp.getWebhookEndpointUrl(),
@@ -127,6 +128,7 @@ public class LspAdminController {
                 lsp.getCode(),
                 lsp.getName(),
                 lsp.getStatus().name(),
+                lsp.getCreatedAt().toString(),
                 new WebhookSubscriptionResponse(
                         lsp.isWebhookEnabled(),
                         lsp.getWebhookEndpointUrl(),
@@ -145,6 +147,7 @@ public class LspAdminController {
                 lsp.getCode(),
                 lsp.getName(),
                 lsp.getStatus().name(),
+                lsp.getCreatedAt().toString(),
                 new WebhookSubscriptionResponse(
                         lsp.isWebhookEnabled(),
                         lsp.getWebhookEndpointUrl(),
@@ -264,6 +267,7 @@ public class LspAdminController {
             String code,
             String name,
             String status,
+            String createdAt,
             WebhookSubscriptionResponse webhookSubscription,
             int userCount,
             PortfolioSummaryResponse portfolioSummary
@@ -275,6 +279,7 @@ public class LspAdminController {
             String code,
             String name,
             String status,
+            String createdAt,
             WebhookSubscriptionResponse webhookSubscription,
             int userCount,
             PortfolioSummaryResponse portfolioSummary,

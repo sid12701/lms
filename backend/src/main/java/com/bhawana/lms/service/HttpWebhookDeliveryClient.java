@@ -37,16 +37,17 @@ public class HttpWebhookDeliveryClient implements WebhookDeliveryClient {
                 .header("X-Webhook-Signature", request.signature())
                 .body(request.payloadJson())
                 .exchange((httpRequest, response) -> {
-                    try {
-                        String responseBody = null;
-                        if (response.getBody() != null) {
+                    int statusCode = response.getStatusCode().value();
+                    String responseBody = null;
+                    if (response.getBody() != null) {
+                        try {
                             byte[] limited = response.getBody().readNBytes(MAX_RESPONSE_BYTES);
                             responseBody = new String(limited, StandardCharsets.UTF_8);
+                        } catch (IOException exception) {
+                            // Response body is optional; HTTP status drives retry classification.
                         }
-                        return new WebhookDeliveryResponse(response.getStatusCode().value(), responseBody);
-                    } catch (IOException exception) {
-                        throw new IllegalStateException("Unable to read webhook delivery response body.", exception);
                     }
+                    return new WebhookDeliveryResponse(statusCode, responseBody);
                 });
     }
 }

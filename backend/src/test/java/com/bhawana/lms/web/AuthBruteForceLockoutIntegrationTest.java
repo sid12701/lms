@@ -399,7 +399,8 @@ class AuthBruteForceLockoutIntegrationTest {
 
     private ResultActions attemptLogin(String username, String password, String clientIp) throws Exception {
         ObjectNode body = objectMapper.createObjectNode();
-        body.put("username", username);
+        // Login authenticates by email; the seeded users use <username>@bhawana.local.
+        body.put("email", username + "@bhawana.local");
         body.put("password", password);
 
         return mockMvc.perform(post("/api/v1/auth/login")

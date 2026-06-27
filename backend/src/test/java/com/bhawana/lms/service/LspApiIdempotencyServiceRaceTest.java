@@ -94,7 +94,7 @@ class LspApiIdempotencyServiceRaceTest {
                     String.class,
                     () -> "second-response"
             );
-        } catch (com.bhawana.lms.common.web.ApiConflictException exception) {
+        } catch (com.bhawana.lms.common.api.error.ApiConflictException exception) {
             assertEquals("IDEMPOTENCY_CONFLICT", exception.getErrorCode());
             return;
         }

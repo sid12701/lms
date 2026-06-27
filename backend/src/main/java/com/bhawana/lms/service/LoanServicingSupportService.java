@@ -3,11 +3,11 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanAccountStatus;
-import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.common.money.Money;
 import com.bhawana.lms.common.util.Strings;
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
@@ -38,20 +38,20 @@ public class LoanServicingSupportService {
     private final LoanAccountRepository loanAccountRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
-    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
+    private final LoanApplicationStatusWriter loanApplicationStatusWriter;
 
     public LoanServicingSupportService(
             LoanApplicationRepository loanApplicationRepository,
             LoanAccountRepository loanAccountRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
-            LoanApplicationLifecycleService loanApplicationLifecycleService
+            LoanApplicationStatusWriter loanApplicationStatusWriter
     ) {
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
-        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
+        this.loanApplicationStatusWriter = loanApplicationStatusWriter;
     }
 
     @Transactional(readOnly = true)
@@ -268,7 +268,7 @@ public class LoanServicingSupportService {
         if (closureReason == LoanAccountClosureReason.FORECLOSURE) {
             loanAccount.close(LoanAccountClosureReason.FORECLOSURE, actorUsername, Instant.now());
             loanAccountRepository.save(loanAccount);
-            loanApplicationLifecycleService.updateApplicationStatus(
+            loanApplicationStatusWriter.updateStatus(
                     application,
                     LoanApplicationStatusTransitionCommand.statusTransition(
                             LoanApplicationStatus.FORECLOSED,
@@ -284,7 +284,7 @@ public class LoanServicingSupportService {
         if (loanAccount.getStatus() == LoanAccountStatus.DISBURSED) {
             loanAccount.close(LoanAccountClosureReason.FULLY_REPAID, actorUsername, Instant.now());
             loanAccountRepository.save(loanAccount);
-            loanApplicationLifecycleService.updateApplicationStatus(
+            loanApplicationStatusWriter.updateStatus(
                     application,
                     LoanApplicationStatusTransitionCommand.statusTransition(
                             LoanApplicationStatus.CLOSED,
