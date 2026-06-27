@@ -1,0 +1,39 @@
+197	WI-0.1: Synthetic portfolio seeder for staging-scale testing
+198	WI-0.2: Two-instance staging stack matching launch topology (2 API + 1 worker)
+199	WI-0.3: Concurrency race harness + instrumented mock disbursement adapter
+200	WI-0.4: Load-test suite + recorded baseline
+201	WI-1.1: Hikari pool sizing (both datasources) + Postgres statement timeouts
+202	WI-1.2: Claim-before-execute LSP idempotency with status column
+203	WI-1.3a: Disbursement worker — SKIP-LOCKED claim, per-loan transactions, atomic retry budget
+204	WI-1.3b: Disbursement intent rows, provider call outside transaction, stale-claim sweeper, parallel delivery
+205	WI-1.4: Payment row and allocation commit in the same transaction (no orphan payments)
+206	WI-1.5: Installment row locking on payment posting
+207	WI-1.7: Map write conflicts to 409 + constrain manual status override
+208	WI-1.10: Monthly range partitions for the big six audit/event tables + partition-creation job
+209	WI-1.11: Retention sweeps — idempotency records + delivered webhook outbox rows
+210	WI-1.13b: ICICI integration design ADR (inbox/outbox/recon, go-live checklist)
+211	WI-2.1a: KPI snapshot table + nightly SQL aggregation job + admin recompute
+212	WI-2.1b: Dashboard serves KPI snapshots + as-of date UI + three live counters
+213	WI-2.2a: Report worker transaction split + processing lease + retry budget
+214	WI-2.3: Audit explorer guardrails — mandatory date window, indexed predicates, keyset pagination
+215	WI-2.6b: LSP self-serve report API (request, list, download)
+216	WI-2.6c: Collections/DPD report + disbursement register generators
+217	WI-3.1: Prometheus metrics + actuator exposure + Postgres telemetry
+218	WI-3.2: JSON structured logging + MDC enrichment (lspId, applicationId, actor)
+219	WI-3.6: Grafana dashboards as code + full alert rule set
+220	WI-3.7: Runbooks per failure mode + automated alert-path verification
+221	WI-3.8: Upload malware scanning with quarantine states
+222	WI-1.6: Payment bounce/reversal incl. closed-loan reopen + webhook event
+223	WI-1.8: Redis failure policy for rate limiting (fail-open LSP / fail-closed auth)
+224	WI-1.9: ApiClient credential lockout parity with AppUser
+225	WI-1.12: Document upload outside the DB transaction + explicit multipart limits
+226	WI-1.13a: Housekeeping — remove RabbitMQ; ADRs for INR-only and deployment topology
+227	WI-2.2b: Streaming report generation (keyset-paged) + request guardrails
+228	WI-2.2c: Provider-agnostic time-limited download URLs for reports (R2 presign)
+229	WI-2.4a: DB-backed per-LSP rate limits + LSP read lane + Retry-After
+230	WI-2.4b: Per-LSP webhook delivery concurrency cap
+231	WI-2.5: Bulk repayment ingestion — batch endpoint + payment inbox + drain worker
+232	WI-2.6a: Nightly partner MIS auto-enqueuer
+233	WI-2.6d: Generic parameterized regulatory extract generator with presets
+234	WI-3.3: Domain metrics — queue depths, oldest-pending ages, per-LSP counters
+235	WI-3.4: AlertNotifier fan-out — email digests + generic webhook with severity routing

@@ -1,0 +1,16 @@
+[INFO] setup: product processingFeeRate=1.5 (expect 1.5)
+[PASS] disbursed: loan disbursed -> DISBURSED
+[INFO] MIS.row: processingFeeAmount=2250.0 disbursalAmount=150000.0 netDisbursedAmount=147750.0
+[PASS] B2.fee: MIS processingFeeAmount=2250 (got 2250.0)
+[PASS] B2.gross: MIS disbursalAmount=150000 gross (got 150000.0)
+[PASS] B2.net: MIS netDisbursedAmount=147750 (got 147750.0)
+[PASS] B2.csvcol: MIS CSV has 'Net Disbursed Amount' column
+[INFO] webhook.payload: {"principalAmount": 150000.0, "processingFeeAmount": 2250.0, "netDisbursedAmount": 147750.0}
+[PASS] B2.webhook.fee: webhook processingFeeAmount=2250 (got 2250.0)
+[PASS] B2.webhook.net: webhook netDisbursedAmount=147750 (got 147750.0)
+
+B2 verify app=37a6a6a5-01ae-41a2-ac87-2a38f3c32288
+
+======================================================================
+PASS=7  FAIL=0  INFO=3
+======================================================================

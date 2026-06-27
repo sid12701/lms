@@ -1,0 +1,164 @@
+{
+  "scenario": "concurrency",
+  "timestamp": "20260614-125740",
+  "config_snapshot": {
+    "ADMIN_USERNAME": "ops.admin",
+    "APP_STORAGE_DOCUMENTS_PROVIDER": "FILE_SYSTEM",
+    "BASE_URL": "http://localhost:8080",
+    "FRONTEND_URL": "http://127.0.0.1:5173",
+    "PERF_BURST_FACTOR": "10",
+    "PERF_CONCURRENCY": "10",
+    "PERF_DURATION_SEC": "300",
+    "PERF_FIXTURES_JSON": ".perf-runs/fixtures.json",
+    "PERF_ITERATIONS": "0",
+    "PERF_PEAK_FACTOR": "3.5",
+    "PERF_RAMP_DOWN_SEC": "15",
+    "PERF_RAMP_UP_SEC": "30",
+    "PERF_REPORT_DIR": ".perf-runs/reports",
+    "PERF_RUN_PREFIX": "PERF",
+    "PERF_TARGET_LOANS_PER_DAY": "100000",
+    "PERF_UI_CONCURRENT_BROWSERS": "2",
+    "PERF_UI_SAMPLE_PAGES": "home,loan-applications,reports"
+  },
+  "summary": {
+    "total_requests": 29,
+    "duration_sec": 110.61,
+    "rps": 0.262,
+    "error_count": 0,
+    "error_rate_pct": 0.0,
+    "timeout_count": 0,
+    "latency_ms": {
+      "p50": 6128.562500000044,
+      "p90": 8325.742799999716,
+      "p95": 8531.342800000857,
+      "p99": 10534.103500000128
+    },
+    "by_endpoint": {
+      "POST POST /api/v1/lsp/loan-applications": {
+        "count": 11,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.099,
+        "p50": 6128.562500000044,
+        "p90": 6420.813700000508,
+        "p95": 6778.790699998353,
+        "p99": 6778.790699998353
+      },
+      "POST POST /api/v1/lsp/loan-applications/{id}/documents": {
+        "count": 8,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.072,
+        "p50": 3025.572100001227,
+        "p90": 10534.103500000128,
+        "p95": 10534.103500000128,
+        "p99": 10534.103500000128
+      },
+      "GET GET /api/v1/lsp/loan-applications/{id}": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.009,
+        "p50": 3223.636999999144,
+        "p90": 3223.636999999144,
+        "p95": 3223.636999999144,
+        "p99": 3223.636999999144
+      },
+      "GET GET /api/v1/internal/ops/loan-applications/{id}": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.009,
+        "p50": 1687.8429999997024,
+        "p90": 1687.8429999997024,
+        "p95": 1687.8429999997024,
+        "p99": 1687.8429999997024
+      },
+      "POST POST .../disbursement-requests": {
+        "count": 8,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.072,
+        "p50": 7718.3369000013045,
+        "p90": 8531.342800000857,
+        "p95": 8531.342800000857,
+        "p99": 8531.342800000857
+      }
+    },
+    "by_workflow": {
+      "origination.create": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.009,
+        "p50": 6420.813700000508,
+        "p90": 6420.813700000508,
+        "p95": 6420.813700000508,
+        "p99": 6420.813700000508
+      },
+      "origination.upload_doc": {
+        "count": 8,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.072,
+        "p50": 3025.572100001227,
+        "p90": 10534.103500000128,
+        "p95": 10534.103500000128,
+        "p99": 10534.103500000128
+      },
+      "origination.status_read": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.009,
+        "p50": 3223.636999999144,
+        "p90": 3223.636999999144,
+        "p95": 3223.636999999144,
+        "p99": 3223.636999999144
+      },
+      "origination.approval_poll": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.009,
+        "p50": 1687.8429999997024,
+        "p90": 1687.8429999997024,
+        "p95": 1687.8429999997024,
+        "p99": 1687.8429999997024
+      },
+      "race.disbursement": {
+        "count": 8,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.072,
+        "p50": 7718.3369000013045,
+        "p90": 8531.342800000857,
+        "p95": 8531.342800000857,
+        "p99": 8531.342800000857
+      },
+      "race.idempotency_create": {
+        "count": 5,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.045,
+        "p50": 6182.9778000010265,
+        "p90": 6778.790699998353,
+        "p95": 6778.790699998353,
+        "p99": 6778.790699998353
+      },
+      "race.idempotency_replay": {
+        "count": 5,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.045,
+        "p50": 1280.3920000005746,
+        "p90": 1741.5400999998383,
+        "p95": 1741.5400999998383,
+        "p99": 1741.5400999998383
+      }
+    }
+  },
+  "extra": {
+    "run_id": "PERF-20260614-125550-9a22e6"
+  }
+}

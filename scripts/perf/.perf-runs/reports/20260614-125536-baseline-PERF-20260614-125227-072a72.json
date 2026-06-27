@@ -1,0 +1,294 @@
+{
+  "scenario": "baseline",
+  "timestamp": "20260614-125536",
+  "config_snapshot": {
+    "ADMIN_USERNAME": "ops.admin",
+    "APP_STORAGE_DOCUMENTS_PROVIDER": "FILE_SYSTEM",
+    "BASE_URL": "http://localhost:8080",
+    "FRONTEND_URL": "http://127.0.0.1:5173",
+    "PERF_BURST_FACTOR": "10",
+    "PERF_CONCURRENCY": "10",
+    "PERF_DURATION_SEC": "300",
+    "PERF_FIXTURES_JSON": ".perf-runs/fixtures.json",
+    "PERF_ITERATIONS": "0",
+    "PERF_PEAK_FACTOR": "3.5",
+    "PERF_RAMP_DOWN_SEC": "15",
+    "PERF_RAMP_UP_SEC": "30",
+    "PERF_REPORT_DIR": ".perf-runs/reports",
+    "PERF_RUN_PREFIX": "PERF",
+    "PERF_TARGET_LOANS_PER_DAY": "100000",
+    "PERF_UI_CONCURRENT_BROWSERS": "2",
+    "PERF_UI_SAMPLE_PAGES": "home,loan-applications,reports"
+  },
+  "summary": {
+    "total_requests": 64,
+    "duration_sec": 189.0,
+    "rps": 0.339,
+    "error_count": 3,
+    "error_rate_pct": 4.69,
+    "timeout_count": 0,
+    "latency_ms": {
+      "p50": 1743.2712000008905,
+      "p90": 3162.817800000994,
+      "p95": 3870.0905999994575,
+      "p99": 15737.160000000586
+    },
+    "by_endpoint": {
+      "POST POST /api/v1/lsp/loan-applications": {
+        "count": 3,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.016,
+        "p50": 7339.07840000029,
+        "p90": 7383.604999999079,
+        "p95": 7383.604999999079,
+        "p99": 7383.604999999079
+      },
+      "POST POST /api/v1/lsp/loan-applications/{id}/documents": {
+        "count": 3,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.016,
+        "p50": 3353.4801000005245,
+        "p90": 3468.045499999789,
+        "p95": 3468.045499999789,
+        "p99": 3468.045499999789
+      },
+      "GET GET /api/v1/lsp/loan-applications/{id}": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 2882.2194000003947,
+        "p90": 2882.2194000003947,
+        "p95": 2882.2194000003947,
+        "p99": 2882.2194000003947
+      },
+      "GET GET /api/v1/internal/ops/loan-applications/{id}": {
+        "count": 50,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.265,
+        "p50": 1732.8257999997732,
+        "p90": 1842.7626000011514,
+        "p95": 1857.5791999992362,
+        "p99": 2464.893000000302
+      },
+      "POST POST /api/v1/internal/ops/loan-applications/{id}/disbursement-requests": {
+        "count": 1,
+        "error_count": 1,
+        "error_rate_pct": 100.0,
+        "rps": 0.005,
+        "p50": 3870.0905999994575,
+        "p90": 3870.0905999994575,
+        "p95": 3870.0905999994575,
+        "p99": 3870.0905999994575
+      },
+      "POST POST .../disbursement-requests/mock-outcome": {
+        "count": 1,
+        "error_count": 1,
+        "error_rate_pct": 100.0,
+        "rps": 0.005,
+        "p50": 700.7928000002721,
+        "p90": 700.7928000002721,
+        "p95": 700.7928000002721,
+        "p99": 700.7928000002721
+      },
+      "GET GET /api/v1/internal/home/overview": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 15737.160000000586,
+        "p90": 15737.160000000586,
+        "p95": 15737.160000000586,
+        "p99": 15737.160000000586
+      },
+      "GET GET /api/v1/internal/ops/loan-applications": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 1374.8859000006632,
+        "p90": 1374.8859000006632,
+        "p95": 1374.8859000006632,
+        "p99": 1374.8859000006632
+      },
+      "GET GET /api/v1/internal/reports/portfolio-mis/preview": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 1118.6619999989489,
+        "p90": 1118.6619999989489,
+        "p95": 1118.6619999989489,
+        "p99": 1118.6619999989489
+      },
+      "GET GET /api/v1/internal/alerts": {
+        "count": 1,
+        "error_count": 1,
+        "error_rate_pct": 100.0,
+        "rps": 0.005,
+        "p50": 585.9149000007164,
+        "p90": 585.9149000007164,
+        "p95": 585.9149000007164,
+        "p99": 585.9149000007164
+      },
+      "GET GET /api/v1/internal/admin/audit-events": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 2289.110800000344,
+        "p90": 2289.110800000344,
+        "p95": 2289.110800000344,
+        "p99": 2289.110800000344
+      }
+    },
+    "by_workflow": {
+      "origination.create": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 7339.07840000029,
+        "p90": 7339.07840000029,
+        "p95": 7339.07840000029,
+        "p99": 7339.07840000029
+      },
+      "origination.upload_doc": {
+        "count": 3,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.016,
+        "p50": 3353.4801000005245,
+        "p90": 3468.045499999789,
+        "p95": 3468.045499999789,
+        "p99": 3468.045499999789
+      },
+      "origination.status_read": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 2882.2194000003947,
+        "p90": 2882.2194000003947,
+        "p95": 2882.2194000003947,
+        "p99": 2882.2194000003947
+      },
+      "origination.approval_poll": {
+        "count": 30,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.159,
+        "p50": 1735.067199999321,
+        "p90": 1842.7626000011514,
+        "p95": 1845.7622000005358,
+        "p99": 1926.533300000301
+      },
+      "disbursement.initiate": {
+        "count": 1,
+        "error_count": 1,
+        "error_rate_pct": 100.0,
+        "rps": 0.005,
+        "p50": 3870.0905999994575,
+        "p90": 3870.0905999994575,
+        "p95": 3870.0905999994575,
+        "p99": 3870.0905999994575
+      },
+      "disbursement.poll": {
+        "count": 20,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.106,
+        "p50": 1708.986100000402,
+        "p90": 1857.5791999992362,
+        "p95": 2464.893000000302,
+        "p99": 2464.893000000302
+      },
+      "disbursement.mock_outcome": {
+        "count": 1,
+        "error_count": 1,
+        "error_rate_pct": 100.0,
+        "rps": 0.005,
+        "p50": 700.7928000002721,
+        "p90": 700.7928000002721,
+        "p95": 700.7928000002721,
+        "p99": 700.7928000002721
+      },
+      "admin.dashboard": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 15737.160000000586,
+        "p90": 15737.160000000586,
+        "p95": 15737.160000000586,
+        "p99": 15737.160000000586
+      },
+      "admin.loan_list": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 1374.8859000006632,
+        "p90": 1374.8859000006632,
+        "p95": 1374.8859000006632,
+        "p99": 1374.8859000006632
+      },
+      "admin.report_preview": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 1118.6619999989489,
+        "p90": 1118.6619999989489,
+        "p95": 1118.6619999989489,
+        "p99": 1118.6619999989489
+      },
+      "admin.alerts": {
+        "count": 1,
+        "error_count": 1,
+        "error_rate_pct": 100.0,
+        "rps": 0.005,
+        "p50": 585.9149000007164,
+        "p90": 585.9149000007164,
+        "p95": 585.9149000007164,
+        "p99": 585.9149000007164
+      },
+      "admin.audit": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 2289.110800000344,
+        "p90": 2289.110800000344,
+        "p95": 2289.110800000344,
+        "p99": 2289.110800000344
+      },
+      "race.idempotency_create": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 7383.604999999079,
+        "p90": 7383.604999999079,
+        "p95": 7383.604999999079,
+        "p99": 7383.604999999079
+      },
+      "race.idempotency_replay": {
+        "count": 1,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.005,
+        "p50": 1397.9493999995611,
+        "p90": 1397.9493999995611,
+        "p95": 1397.9493999995611,
+        "p99": 1397.9493999995611
+      }
+    }
+  },
+  "extra": {
+    "run_id": "PERF-20260614-125227-072a72"
+  }
+}

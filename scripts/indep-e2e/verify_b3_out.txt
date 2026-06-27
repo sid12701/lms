@@ -1,0 +1,18 @@
+[PASS] EC-048.match: bank-check MATCH -> 200 {"status":"OK","warnings":[]}
+[PASS] EC-048: bank-check NAME-MISMATCH -> 422 (was 500) code=DISBURSEMENT_VALIDATION_FAILED
+[PASS] EC-048.code: structured error code=DISBURSEMENT_VALIDATION_FAILED
+[PASS] EC-048.acct: bank-check ACCT-MISMATCH -> 422 (was 500)
+[PASS] EC-106: bank-check case-variant -> 200 (no 500); {"status":"OK","warnings":[]}
+[PASS] EC-107: LSP_PROVIDED bad sum -> 422 (was 500) code=REPAYMENT_SCHEDULE_INVALID
+[PASS] EC-107.code: structured code=REPAYMENT_SCHEDULE_INVALID
+[PASS] EC-107.alert_written: ops-alert write succeeded under admin scope (NEW alerts 50 -> 50; >= means write didn't crash/rollback)
+[PASS] EC-107.valid: GENERATED schedule still works -> 200
+[FAIL] regression.disburse: clean disbursement still works -> INITIALIZED
+[PASS] EC-048.repeat: repeated mismatches all 422 (no 500) codes=[422, 422, 422, 422, 422, 422]
+
+======================================================================
+PASS=10  FAIL=1  INFO=0
+
+FAILURES:
+  - regression.disburse: clean disbursement still works -> INITIALIZED
+======================================================================

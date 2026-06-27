@@ -1,6 +1,6 @@
 # ADR 0004 — Processing fee is deducted at disbursement; borrower receives net cash, owes gross principal
 
-- **Status:** Proposed (2026-06-08)
+- **Status:** Accepted (2026-06-14) — implemented via `LoanFeeCalculator`, migration `V97`, net-of-fee disbursal in `LoanDisbursementCommandService`, persisted `loan_account.processing_fee_amount`, MIS reads-persisted-with-calculator-fallback + Net Disbursed column, and `processingFeeAmount`/`netDisbursedAmount` on the disbursement webhook. A min-net guard rejects disbursal when the fee would consume the whole principal. Borrower-facing disclosure is delivered to partners via the API/webhook fields (no LMS-generated sanction letter; origination is API-only per ADR 0003). Superseded by initial: Proposed (2026-06-08).
 - **Drives:** #160 ([R-5] rescoped — processing fee deduction at disbursement + persisted fee + MIS parity)
 - **Related:** #66 (Payments revamp — allocation rows, deferred), ADR 0001 (frontend integration model), ADR 0003 (LSP origination is API-only)
 
@@ -25,7 +25,7 @@ Adopt **Model 1**.
 1. `LoanFeeCalculator.computeProcessingFee(principal, processingFeeRate) → BigDecimal` (scale 2, HALF_UP) is the single source of truth for the fee amount.
 2. `LoanDisbursementService` computes the fee at disbursement, **persists** it on `loan_account.processing_fee_amount`, and reduces the cash-to-borrower amount by the fee. The lender retains the fee.
 3. The principal recorded against the loan stays the **requested** amount. Repayment schedule, EMI, interest accrual, and foreclosure quote are all computed on the requested principal and are **unchanged** by this ADR.
-4. The MIS report (`AdminReportingService`) reads the persisted `processing_fee_amount` for newly-disbursed loans. For legacy loans (column is null), it falls back to `LoanFeeCalculator.computeProcessingFee(...)` using the current product config — preserving today's MIS output verbatim. **No backfill** of historical loans.
+4. The MIS report (`AdminReportingService`) reads the persisted `processing_fee_amount` for newly-disbursed loans. For legacy loans (column is null), MIS reports **zero** fee and net disbursed equal to gross principal — the borrower received full principal with no fee deducted. **No backfill** of historical loans.
 5. GST on the processing fee is **out of scope** for this ADR. The fee amount persisted and surfaced is pre-tax. A separate ticket and ADR are required if/when GST capture is added.
 
 ## Rationale
@@ -50,7 +50,7 @@ Adopt **Model 1**.
 
 ### System-facing
 - `loan_account.processing_fee_amount NUMERIC(...)` nullable column added by Flyway migration. Newly-disbursed loans persist a value. Legacy rows stay null.
-- `AdminReportingService` reads the persisted column when non-null, computes via the calculator when null. Today's MIS output for historical loans is unchanged.
+- `AdminReportingService` reads the persisted column when non-null; legacy null rows report zero fee (actual cash disbursed was gross principal).
 - Disbursement reversal restores both principal and fee. The reversal path must zero the persisted `processing_fee_amount` (or otherwise reflect the reversal); pinned with a regression test.
 - `LoanFeeCalculator` becomes the only place that converts (principal, rate) to fee. Inline math in `AdminReportingService` is deleted.
 

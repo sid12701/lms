@@ -1,0 +1,22 @@
+[Fail          ] EC-103: NOT IMPLEMENTED. disbursalAmount=150000.0 == full principal 150000; processingFeeAmount=2250.0 is synthetic (principal*rate/100). No deduction, no persisted fee column.
+[Pass          ] UC-031: foreclosure quote -> 200; quoteId=a8ad555a-c986-428d-8642-a2fc80696098; payoff fields=['id', 'loanAccountId', 'version', 'requestedByUsername', 'executedByUsername', 'effectiveDate', 'outstandingPrincipal', 'outstandingInterest']
+[Pass          ] UC-032: execute -> 200; final status=FORECLOSED
+[Pass          ] EC-060: re-execute on FORECLOSED -> n/a
+[Pass          ] EC-058: foreclosure quote on INITIALIZED -> 422
+[Pass          ] UC-023: invalidate INITIALIZED -> 200; status=INVALID
+[Pass          ] EC-038: replay same key -> 200 (status stays INVALID)
+[Pass          ] EC-036: INVALID->APPROVED -> 422
+[Pass          ] EC-037: invalidate DISBURSED -> 422
+[Fail          ] EC-049: mock FAILED x6 codes=[500, 422, 422, 422, 422, 422]; final status=DISBURSEMENT_RETRY
+[Pass          ] UC-020: download PAN_CARD -> 200; content-type=application/pdf; bytes=69
+[Pass          ] EC-095: download -> 200; document-access-audit rows=1
+[Fail          ] EC-044: download for random/non-existent app -> 401
+[Fail          ] EC-045: download PAN_CARD when none uploaded -> 401
+[Fail          ] EC-048: bank-check w/ wrong holder name -> 500; result={}
+[Blocked       ] EC-106: fuzzy holder-name check -> 500; result={"timestamp":"2026-06-13T19:04:25.228383400Z","status":500,"code":"INTERNAL_SERVER_ERROR","error":"INTERNAL_SERVER_ERROR","message":"An unexpected error occurre
+[Pass          ] EC-107: PROVIDED schedule (1 installment, sum!=principal) -> 400; {"timestamp":"2026-06-13T19:04:32.008303Z","status":400,"code":"INVALID_REQUEST","error":"INVALID_REQUEST","message":"Invalid value 'PROVIDED' for field 'mode'.
+[Pass          ] EC-108: PUT repayment-schedule on DISBURSED loan -> 409; {"timestamp":"2026-06-13T19:07:46.536585600Z","status":409,"code":"REPAYMENT_SCHEDULE_LOCKED","error":"REPAYMENT_SCHEDULE_LOCKED","message":
+[Fail          ] EC-112: bankAccountNumberMasked field returns RAW value '' (field named *Masked* but unmasked). MIS CSV 'Bank Account Number' + INTAKE audit also raw. Aadhaar IS masked.
+[Fail          ] EC-113: Aadhaar: masked everywhere (pass). Bank account: RAW in borrower-360, MIS preview/CSV, INTAKE audit, and UI. Full-body regex finds the unmasked account.
+
+Collected 20 rows -> gap_results.json
