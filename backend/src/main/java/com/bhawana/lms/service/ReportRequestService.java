@@ -1,8 +1,8 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.ApiConflictException;
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.ReportRequest;
 import com.bhawana.lms.domain.ReportRequestStatus;
 import com.bhawana.lms.domain.ReportType;

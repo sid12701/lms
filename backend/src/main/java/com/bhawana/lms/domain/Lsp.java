@@ -96,6 +96,10 @@ public class Lsp {
         return name;
     }
 
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
     public LspStatus getStatus() {
         return status;
     }

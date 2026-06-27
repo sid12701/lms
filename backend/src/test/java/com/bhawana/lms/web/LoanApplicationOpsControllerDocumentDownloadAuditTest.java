@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -46,7 +47,7 @@ import org.springframework.test.web.servlet.MvcResult;
 class LoanApplicationOpsControllerDocumentDownloadAuditTest {
 
     private static final String CLIENT_IP = "203.0.113.50";
-    private static final byte[] PAN_CONTENT = "pan-card-pdf-content".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] PAN_CONTENT = "%PDF-1.4 pan-card-pdf-content".getBytes(StandardCharsets.UTF_8);
 
     @Autowired
     private MockMvc mockMvc;
@@ -94,6 +95,54 @@ class LoanApplicationOpsControllerDocumentDownloadAuditTest {
                 .andExpect(jsonPath("$[0].actorIp").value(CLIENT_IP))
                 .andExpect(jsonPath("$[0].byteCount").value(downloadedBytes))
                 .andExpect(jsonPath("$[0].correlationId").isNotEmpty());
+    }
+
+    @Test
+    void inlinePreviewServesInlineDispositionAndWritesPreviewAuditRow() throws Exception {
+        String applicationId = seedApplicationWithStoredPanCard();
+
+        MvcResult previewResult = mockMvc.perform(get(
+                        "/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}/content",
+                        applicationId,
+                        "PAN_CARD")
+                        .param("disposition", "inline")
+                        .with(opsUser())
+                        .header("X-Forwarded-For", CLIENT_IP))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.startsWith("inline")))
+                .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")))
+                .andReturn();
+
+        int previewedBytes = previewResult.getResponse().getContentAsByteArray().length;
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/document-access-audits", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].action").value("SINGLE_DOCUMENT_PREVIEWED"))
+                .andExpect(jsonPath("$[0].actorUsername").value("ops.user"))
+                .andExpect(jsonPath("$[0].documentTypes[0]").value("PAN_CARD"))
+                .andExpect(jsonPath("$[0].actorIp").value(CLIENT_IP))
+                .andExpect(jsonPath("$[0].byteCount").value(previewedBytes))
+                .andExpect(jsonPath("$[0].correlationId").isNotEmpty());
+    }
+
+    @Test
+    void defaultDispositionStillDownloadsAsAttachment() throws Exception {
+        String applicationId = seedApplicationWithStoredPanCard();
+
+        mockMvc.perform(get(
+                        "/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/{documentType}/content",
+                        applicationId,
+                        "PAN_CARD")
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.startsWith("attachment")));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/document-access-audits", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].action").value("SINGLE_DOCUMENT_DOWNLOADED"));
     }
 
     @Test
@@ -204,7 +253,7 @@ class LoanApplicationOpsControllerDocumentDownloadAuditTest {
                 applicationUuid,
                 LoanApplicationDocumentType.LOAN_AGREEMENT,
                 "loan_agreement.pdf",
-                "loan-agreement-content".getBytes(StandardCharsets.UTF_8)
+                "%PDF-1.4 loan-agreement-content".getBytes(StandardCharsets.UTF_8)
         );
 
         return applicationId;

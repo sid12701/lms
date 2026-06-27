@@ -170,6 +170,29 @@ class LoanProductAdminControllerTest {
     }
 
     @Test
+    void validationErrorsUseFriendlyConstraintMessages() throws Exception {
+        mockMvc.perform(post("/api/v1/internal/admin/products")
+                        .with(productAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "code", "INVALID-RATES",
+                                "name", "Invalid Rates",
+                                "minPrincipal", new BigDecimal("5000.00"),
+                                "maxPrincipal", new BigDecimal("250000.00"),
+                                "interestRate", new BigDecimal("-1.00"),
+                                "processingFeeRate", new BigDecimal("-0.25"),
+                                "minTenureMonths", 6,
+                                "maxTenureMonths", 24,
+                                "status", "ACTIVE"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.violations[?(@.field=='interestRate')].message")
+                        .value(org.hamcrest.Matchers.hasItem("Enter a value greater than or equal to 0.00.")))
+                .andExpect(jsonPath("$.violations[?(@.field=='processingFeeRate')].message")
+                        .value(org.hamcrest.Matchers.hasItem("Enter a value greater than or equal to 0.00.")));
+    }
+
+    @Test
     void opsUserCannotAccessProductAdminEndpoints() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/products").with(opsUser()))
                 .andExpect(status().isForbidden());

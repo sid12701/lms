@@ -1,8 +1,8 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.common.util.Strings;
-import com.bhawana.lms.common.web.PagedResult;
-import com.bhawana.lms.common.web.PaginationResponseBuilder;
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
@@ -14,11 +14,10 @@ import com.bhawana.lms.service.LoanApplicationDetailAssembler;
 import com.bhawana.lms.service.LoanApplicationLifecycleService;
 import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
 import com.bhawana.lms.service.LoanApplicationQueryService;
-import com.bhawana.lms.service.LoanDisbursementService;
+import com.bhawana.lms.service.DisbursementPreflightValidator;
 import com.bhawana.lms.service.LoanDocumentService;
 import com.bhawana.lms.service.LspApiIdempotencyService;
 import com.bhawana.lms.service.LoanRepaymentScheduleService;
-import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
@@ -67,7 +66,7 @@ public class LspLoanApplicationApiController {
     private final LoanDocumentService loanDocumentService;
     private final LoanRepaymentScheduleService loanRepaymentScheduleService;
     private final LspApiIdempotencyService lspApiIdempotencyService;
-    private final LoanDisbursementService loanDisbursementService;
+    private final DisbursementPreflightValidator disbursementPreflightValidator;
     private final BusinessCalendar businessCalendar;
 
     public LspLoanApplicationApiController(
@@ -77,7 +76,7 @@ public class LspLoanApplicationApiController {
             LoanDocumentService loanDocumentService,
             LoanRepaymentScheduleService loanRepaymentScheduleService,
             LspApiIdempotencyService lspApiIdempotencyService,
-            LoanDisbursementService loanDisbursementService,
+            DisbursementPreflightValidator disbursementPreflightValidator,
             BusinessCalendar businessCalendar
     ) {
         this.loanApplicationQueryService = loanApplicationQueryService;
@@ -86,7 +85,7 @@ public class LspLoanApplicationApiController {
         this.loanDocumentService = loanDocumentService;
         this.loanRepaymentScheduleService = loanRepaymentScheduleService;
         this.lspApiIdempotencyService = lspApiIdempotencyService;
-        this.loanDisbursementService = loanDisbursementService;
+        this.disbursementPreflightValidator = disbursementPreflightValidator;
         this.businessCalendar = businessCalendar;
     }
 
@@ -228,23 +227,22 @@ public class LspLoanApplicationApiController {
             UUID authenticatedLspId,
             LspLoanApplicationRequest request
     ) {
-        return TenantDataAccessContextHolder.runAsAdmin(() -> {
-            LoanApplication application = loanApplicationLifecycleService.createApplication(
-                    authentication.getName(),
-                    new LoanApplicationOnboardingCommand(
-                            authenticatedLspId,
-                            request.productId(),
-                            request.loanProduct(),
-                            request.lspLoanId(),
-                            DEFAULT_SOURCE_CHANNEL,
-                            request.loanAmount(),
-                            request.interestRate(),
-                            request.loanTenure(),
-                            BorrowerProfileMappers.fromLsp(request)
-                    )
-            );
-            return LspLoanApplicationResponses.toResponse(application);
-        });
+        LoanApplication application = loanApplicationLifecycleService.createApplication(
+                authentication.getName(),
+                new LoanApplicationOnboardingCommand(
+                        authenticatedLspId,
+                        request.productId(),
+                        request.loanProduct(),
+                        request.lspLoanId(),
+                        DEFAULT_SOURCE_CHANNEL,
+                        request.loanAmount(),
+                        request.interestRate(),
+                        request.loanTenure(),
+                        BorrowerProfileMappers.fromLsp(request)
+                ),
+                authenticatedLspId
+        );
+        return LspLoanApplicationResponses.toResponse(application);
     }
 
     /**
@@ -403,7 +401,7 @@ public class LspLoanApplicationApiController {
             @PathVariable UUID applicationId,
             @Valid @RequestBody LspLoanDisbursementRequest request
     ) {
-        BankDetailsCheckResult result = loanDisbursementService.verifyDisbursementBankDetailsForLsp(
+        BankDetailsCheckResult result = disbursementPreflightValidator.verifyDisbursementBankDetailsForLsp(
                 LspAuthenticationSupport.authenticatedLspId(authentication),
                 applicationId,
                 request.bankAccountNumber(),
@@ -413,6 +411,7 @@ public class LspLoanApplicationApiController {
         return LspBankDetailsCheckResponse.from(result);
     }
 
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = false)
     public record LspLoanApplicationRequest(
             @NotNull UUID lspId,
             UUID productId,

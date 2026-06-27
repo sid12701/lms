@@ -1,8 +1,11 @@
 package com.bhawana.lms.tenant;
 
 import com.zaxxer.hikari.HikariDataSource;
+import java.sql.Connection;
 import java.util.Map;
 import javax.sql.DataSource;
+import org.springframework.boot.actuate.health.Health;
+import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -83,5 +86,18 @@ public class TenantIsolationDataSourceConfig {
         ));
         routingDataSource.afterPropertiesSet();
         return routingDataSource;
+    }
+
+    @Bean(name = "dbHealthIndicator")
+    HealthIndicator dbHealthIndicator(@Qualifier("adminDataSource") DataSource adminDataSource) {
+        return () -> {
+            try (Connection connection = adminDataSource.getConnection()) {
+                return connection.isValid(2)
+                        ? Health.up().build()
+                        : Health.down().withDetail("error", "Database connection is not valid.").build();
+            } catch (Exception ex) {
+                return Health.down(ex).build();
+            }
+        };
     }
 }

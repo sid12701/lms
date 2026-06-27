@@ -137,6 +137,10 @@ public class AppUser {
         return roles;
     }
 
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
     public long getTokenVersion() {
         return tokenVersion;
     }

@@ -142,7 +142,10 @@ class HomeDashboardControllerTest {
                 .andExpect(jsonPath("$.dpdBuckets[?(@.bucket == 'DPD_90_PLUS')].count").value(1))
                 .andExpect(jsonPath("$.openAlerts").value(3))
                 .andExpect(jsonPath("$.openAlertSummaries", hasSize(3)))
-                .andExpect(jsonPath("$.openAlertSummaries[?(@.title == 'Duplicate PAN detected')]").exists());
+                .andExpect(jsonPath("$.openAlertSummaries[?(@.title == 'Duplicate PAN detected')]").exists())
+                .andExpect(jsonPath("$.recentApplications", hasSize(3)))
+                .andExpect(jsonPath("$.recentApplications[0].status").exists())
+                .andExpect(jsonPath("$.recentApplications[?(@.externalLoanId == 'APEX-HOME-002')]").exists());
     }
 
     @Test

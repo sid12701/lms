@@ -1,7 +1,8 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.money.Money;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
@@ -24,7 +25,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -224,7 +224,7 @@ public class AdminReportingService {
             LocalDate disbursalDateTo
     ) {
         List<PortfolioMisRow> rows = buildPortfolioMisReport(lspId, disbursalDateFrom, disbursalDateTo);
-        String csv = buildPortfolioMisCsv(rows);
+        String csv = PortfolioMisCsvWriter.toCsv(rows);
         return new GeneratedReport(
                 "portfolio-mis-" + businessCalendar.today() + ".csv",
                 "text/csv;charset=UTF-8",
@@ -292,10 +292,11 @@ public class AdminReportingService {
         Integer loanYear = disbursalDate != null ? disbursalDate.getYear()
                 : application.getCreatedAt().atZone(ZoneOffset.UTC).getYear();
 
-        // Processing fee amount = principal * processingFeeRate / 100
-        BigDecimal processingFeeAmount = loanAccount.getPrincipalAmount()
-                .multiply(product.getProcessingFeeRate())
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        // ADR 0004: report the fee actually charged at disbursement (persisted on the loan account).
+        // Legacy rows predating the change carry no persisted fee — no fee was deducted at disbursal,
+        // so MIS shows zero fee and net disbursed equals gross principal (no calculator fiction).
+        BigDecimal processingFeeAmount = resolveProcessingFeeAmount(loanAccount);
+        BigDecimal netDisbursedAmount = Money.scale(loanAccount.getPrincipalAmount().subtract(processingFeeAmount));
 
         // Per-EMI amount: use installment amount from the first installment, or compute principal/tenure
         BigDecimal perEmiAmount;
@@ -366,6 +367,7 @@ public class AdminReportingService {
                 loanYear,
                 processingFeeAmount,
                 loanAccount.getPrincipalAmount(),
+                netDisbursedAmount,
                 product.getInterestRate(),
                 loanAccount.getTenureMonths(),
                 borrower.getId().toString(),
@@ -464,6 +466,20 @@ public class AdminReportingService {
     ) {
     }
 
+    /**
+     * Fee charged at disbursement: the value persisted on the loan account when it was disbursed
+     * (ADR 0004). Legacy loans disbursed before that change carry no persisted fee — the borrower
+     * received the full principal with no fee deducted, so MIS reports zero rather than a synthetic
+     * calculator figure that would misstate cash actually disbursed.
+     */
+    static BigDecimal resolveProcessingFeeAmount(LoanAccount loanAccount) {
+        BigDecimal persisted = loanAccount.getProcessingFeeAmount();
+        if (persisted != null) {
+            return Money.scale(persisted);
+        }
+        return Money.scale(BigDecimal.ZERO);
+    }
+
     public record PortfolioMisRow(
             String lspCode,
             String lspName,
@@ -484,6 +500,7 @@ public class AdminReportingService {
             Integer loanYear,
             BigDecimal processingFeeAmount,
             BigDecimal disbursalAmount,
+            BigDecimal netDisbursedAmount,
             BigDecimal interestRate,
             int tenureMonths,
             String borrowerId,
@@ -513,146 +530,5 @@ public class AdminReportingService {
             String mediaType,
             byte[] content
     ) {
-    }
-
-    public static String buildPortfolioMisCsv(List<PortfolioMisRow> rows) {
-        // First pass: determine max installments across all rows
-        int maxInstallments = rows.stream()
-                .mapToInt(row -> row.installments() == null ? 0 : row.installments().size())
-                .max()
-                .orElse(0);
-
-        StringBuilder csv = new StringBuilder();
-
-        // Fixed header columns
-        List<String> headerColumns = new ArrayList<>(List.of(
-                "LSP Code",
-                "LSP Name",
-                "Application ID",
-                "External Loan ID",
-                "Borrower Name",
-                "Product Code",
-                "Product Name",
-                "Account Number",
-                "Principal Amount",
-                "Account Status",
-                "Disbursal Date",
-                "Delinquency Bucket",
-                "Overdue Amount",
-                "Closure Reason",
-                "Closed Date",
-                "Application Created At",
-                "Loan Year",
-                "Processing Fee",
-                "Disbursal Amount",
-                "Interest Rate",
-                "Tenure Months",
-                "Borrower ID",
-                "Per EMI Amount",
-                "Loan Status",
-                "Foreclosed Repaid Amount",
-                "Foreclosure Date",
-                "Normal Closure Date",
-                "Days Past Due",
-                "Customer Name",
-                "Address",
-                "Zip Code",
-                "State",
-                "IFSC Code",
-                "Bank Account Number",
-                "Gender",
-                "Aadhar Number",
-                "PAN Number",
-                "Profession",
-                "Income"
-        ));
-
-        // Dynamic EMI columns
-        for (int i = 1; i <= maxInstallments; i++) {
-            headerColumns.add("EMI " + i + " Due Date");
-            headerColumns.add("EMI " + i + " Amount");
-            headerColumns.add("EMI " + i + " Paid Amount");
-            headerColumns.add("EMI " + i + " Received");
-        }
-
-        csv.append(String.join(",", headerColumns)).append('\n');
-
-        for (PortfolioMisRow row : rows) {
-            // Fixed columns
-            csv.append(toCsvCell(row.lspCode())).append(',')
-                    .append(toCsvCell(row.lspName())).append(',')
-                    .append(toCsvCell(row.applicationId())).append(',')
-                    .append(toCsvCell(row.externalLoanId())).append(',')
-                    .append(toCsvCell(row.borrowerFullName())).append(',')
-                    .append(toCsvCell(row.productCode())).append(',')
-                    .append(toCsvCell(row.productName())).append(',')
-                    .append(toCsvCell(row.accountNumber())).append(',')
-                    .append(toCsvCell(row.principalAmount())).append(',')
-                    .append(toCsvCell(row.accountStatus())).append(',')
-                    .append(toCsvCell(row.disbursalDate())).append(',')
-                    .append(toCsvCell(row.delinquencyBucket())).append(',')
-                    .append(toCsvCell(row.overdueAmount())).append(',')
-                    .append(toCsvCell(row.closureReason())).append(',')
-                    .append(toCsvCell(row.closedDate())).append(',')
-                    .append(toCsvCell(row.applicationCreatedAt())).append(',')
-                    .append(toCsvCell(row.loanYear())).append(',')
-                    .append(toCsvCell(row.processingFeeAmount())).append(',')
-                    .append(toCsvCell(row.disbursalAmount())).append(',')
-                    .append(toCsvCell(row.interestRate())).append(',')
-                    .append(toCsvCell(row.tenureMonths())).append(',')
-                    .append(toCsvCell(row.borrowerId())).append(',')
-                    .append(toCsvCell(row.perEmiAmount())).append(',')
-                    .append(toCsvCell(row.loanStatusDisplay())).append(',')
-                    .append(toCsvCell(row.foreclosedRepaidAmount())).append(',')
-                    .append(toCsvCell(row.foreclosureDate())).append(',')
-                    .append(toCsvCell(row.normalClosureDate())).append(',')
-                    .append(toCsvCell(row.daysPastDue())).append(',')
-                    .append(toCsvCell(row.customerName())).append(',')
-                    .append(toCsvCell(row.address())).append(',')
-                    .append(toCsvCell(row.zipCode())).append(',')
-                    .append(toCsvCell(row.borrowerState())).append(',')
-                    .append(toCsvCell(row.ifscCode())).append(',')
-                    .append(toCsvCell(row.bankAccountNumber())).append(',')
-                    .append(toCsvCell(row.gender())).append(',')
-                    .append(toCsvCell(row.aadharNumber())).append(',')
-                    .append(toCsvCell(row.panNumber())).append(',')
-                    .append(toCsvCell(row.profession())).append(',')
-                    .append(toCsvCell(row.income()));
-
-            // Dynamic EMI columns
-            List<InstallmentSnapshot> installmentList = row.installments() != null
-                    ? row.installments()
-                    : Collections.emptyList();
-            for (int i = 0; i < maxInstallments; i++) {
-                if (i < installmentList.size()) {
-                    InstallmentSnapshot snap = installmentList.get(i);
-                    csv.append(',').append(toCsvCell(snap.dueDate()))
-                            .append(',').append(toCsvCell(snap.installmentAmount()))
-                            .append(',').append(toCsvCell(snap.paidAmount()))
-                            .append(',').append(toCsvCell(snap.received() ? "Yes" : "No"));
-                } else {
-                    csv.append(",,,," );
-                }
-            }
-
-            csv.append('\n');
-        }
-
-        return csv.toString();
-    }
-
-    private static String toCsvCell(Object value) {
-        if (value == null) {
-            return "";
-        }
-        if (value instanceof BigDecimal decimal) {
-            return decimal.toPlainString();
-        }
-
-        String text = value.toString();
-        if (!text.contains(",") && !text.contains("\"") && !text.contains("\n")) {
-            return text;
-        }
-        return "\"" + text.replace("\"", "\"\"") + "\"";
     }
 }

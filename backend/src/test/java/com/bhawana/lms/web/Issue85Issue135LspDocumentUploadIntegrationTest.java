@@ -111,7 +111,7 @@ class Issue85Issue135LspDocumentUploadIntegrationTest {
     private String issueClientCredentialsToken(String clientId, String clientSecret) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 clientId,
                                 clientSecret
                         ))))

@@ -625,7 +625,7 @@ class LspLoanApplicationApiControllerTest {
                         ))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("INVALID_REQUEST"))
-                .andExpect(jsonPath("$.message").value("Idempotency-Key must be a UUID v4 value."));
+                .andExpect(jsonPath("$.message").value("Idempotency-Key must be a valid UUID v4."));
 
         mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/invalid", applicationId)
                         .header("Authorization", "Bearer " + accessToken)
@@ -1997,7 +1997,7 @@ class LspLoanApplicationApiControllerTest {
                                 "file",
                                 documentType.toLowerCase() + ".pdf",
                                 "application/pdf",
-                                ("content-" + documentType).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                                ("%PDF-1.4 content-" + documentType).getBytes(java.nio.charset.StandardCharsets.UTF_8)
                         ))
                         .header("Authorization", "Bearer " + accessToken)
                         .param("documentType", documentType)
@@ -2035,7 +2035,7 @@ class LspLoanApplicationApiControllerTest {
                     "files",
                     documentType.toLowerCase() + ".pdf",
                     "application/pdf",
-                    ("content-" + documentType).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                    ("%PDF-1.4 content-" + documentType).getBytes(java.nio.charset.StandardCharsets.UTF_8)
             ));
         }
         requestBuilder.file(new MockMultipartFile(
@@ -2112,7 +2112,7 @@ class LspLoanApplicationApiControllerTest {
     private String issueClientCredentialsToken(String clientId, String clientSecret) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 clientId,
                                 clientSecret
                         ))))

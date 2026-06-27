@@ -55,7 +55,7 @@ class Issue64LspSurfaceIpAllowlistIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     objectMapper.writeValueAsString(
-                        new AuthController.ClientCredentialsRequest(
+                        new AuthApiResponses.ClientCredentialsRequest(
                             seed.clientId(), seed.clientSecret()))))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.error").value("API_CLIENT_IP_NOT_ALLOWED"));
@@ -74,7 +74,7 @@ class Issue64LspSurfaceIpAllowlistIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     objectMapper.writeValueAsString(
-                        new AuthController.ClientCredentialsRequest(
+                        new AuthApiResponses.ClientCredentialsRequest(
                             seed.clientId(), seed.clientSecret()))))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.accessToken").isString());
@@ -126,7 +126,7 @@ class Issue64LspSurfaceIpAllowlistIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     objectMapper.writeValueAsString(
-                        new AuthController.ClientCredentialsRequest(
+                        new AuthApiResponses.ClientCredentialsRequest(
                             seed.clientId(), seed.clientSecret()))))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.error").value("API_CLIENT_IP_NOT_ALLOWED"));
@@ -145,7 +145,7 @@ class Issue64LspSurfaceIpAllowlistIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     objectMapper.writeValueAsString(
-                        new AuthController.ClientCredentialsRequest(
+                        new AuthApiResponses.ClientCredentialsRequest(
                             seed.clientId(), seed.clientSecret()))))
         .andExpect(status().isOk());
   }
@@ -159,7 +159,7 @@ class Issue64LspSurfaceIpAllowlistIntegrationTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         objectMapper.writeValueAsString(
-                            new AuthController.ClientCredentialsRequest(
+                            new AuthApiResponses.ClientCredentialsRequest(
                                 seed.clientId(), seed.clientSecret()))))
             .andExpect(status().isOk())
             .andReturn();

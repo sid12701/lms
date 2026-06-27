@@ -36,6 +36,9 @@ public interface LoanApplicationRepository extends JpaRepository<LoanApplication
     @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
     List<LoanApplication> findDetailedByOrderByCreatedAtDesc();
 
+    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
+    List<LoanApplication> findTop8ByOrderByCreatedAtDesc();
+
     List<LoanApplication> findAllByOrderByCreatedAtDesc();
 
     long countByStatus(LoanApplicationStatus status);

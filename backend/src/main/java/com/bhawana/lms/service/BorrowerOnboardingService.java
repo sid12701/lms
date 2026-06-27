@@ -3,7 +3,7 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.util.AlertContextJson;
 import com.bhawana.lms.common.util.Strings;
-import com.bhawana.lms.common.web.ApiConflictException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.LoanAccount;
@@ -44,6 +44,12 @@ public class BorrowerOnboardingService {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * Resolve (find-or-create) the global borrower for an onboarding request. The borrower
+     * directory is shared across every LSP; the caller runs this inside an admin-scoped
+     * transaction so the dedup {@code findByPan} can see a borrower another LSP already created
+     * (tenant row-level security would otherwise hide it and force a duplicate-PAN insert).
+     */
     @Transactional
     public Borrower resolveBorrowerForOnboarding(
             Lsp lsp,

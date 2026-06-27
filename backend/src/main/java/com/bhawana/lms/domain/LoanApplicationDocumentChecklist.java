@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.Strings;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -94,8 +95,8 @@ public class LoanApplicationDocumentChecklist {
         this.documentType = documentType;
         this.required = required;
         this.status = status;
-        this.note = normalizeOptional(note);
-        this.updatedByUsername = normalizeOptional(updatedByUsername);
+        this.note = Strings.normalizeOptional(note);
+        this.updatedByUsername = Strings.normalizeOptional(updatedByUsername);
     }
 
     @PrePersist
@@ -224,15 +225,15 @@ public class LoanApplicationDocumentChecklist {
             boolean lmsManagedContent
     ) {
         this.status = status;
-        this.note = normalizeOptional(note);
-        this.fileName = normalizeOptional(fileName);
-        this.fileReference = normalizeOptional(fileReference);
-        this.sourceReference = normalizeOptional(sourceReference);
-        this.contentType = normalizeOptional(contentType);
-        this.updatedByUsername = normalizeOptional(updatedByUsername);
+        this.note = Strings.normalizeOptional(note);
+        this.fileName = Strings.normalizeOptional(fileName);
+        this.fileReference = Strings.normalizeOptional(fileReference);
+        this.sourceReference = Strings.normalizeOptional(sourceReference);
+        this.contentType = Strings.normalizeOptional(contentType);
+        this.updatedByUsername = Strings.normalizeOptional(updatedByUsername);
         this.fileSizeBytes = fileSizeBytes;
-        this.fileChecksum = normalizeOptional(fileChecksum);
-        this.storageKey = normalizeOptional(storageKey);
+        this.fileChecksum = Strings.normalizeOptional(fileChecksum);
+        this.storageKey = Strings.normalizeOptional(storageKey);
         this.lmsManagedContent = lmsManagedContent;
         if (hasUploadMetadata()) {
             this.uploadedAt = Instant.now();
@@ -249,14 +250,5 @@ public class LoanApplicationDocumentChecklist {
 
     private boolean hasUploadMetadata() {
         return fileName != null || fileReference != null || sourceReference != null || contentType != null;
-    }
-
-    private static String normalizeOptional(String value) {
-        if (value == null) {
-            return null;
-        }
-
-        String normalized = value.trim();
-        return normalized.isBlank() ? null : normalized;
     }
 }

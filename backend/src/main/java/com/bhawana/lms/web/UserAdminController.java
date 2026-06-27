@@ -131,7 +131,8 @@ public class UserAdminController {
                 user.getLsp() == null ? "All LSPs" : user.getLsp().getName(),
                 user.getRoles().stream().map(role -> role.getCode().name()).sorted().toList(),
                 user.getLockedAt() == null ? null : user.getLockedAt().toString(),
-                user.getLockReason()
+                user.getLockReason(),
+                user.getCreatedAt().toString()
         );
     }
 
@@ -177,7 +178,8 @@ public class UserAdminController {
             String lspName,
             List<String> roles,
             String lockedAt,
-            String lockReason
+            String lockReason,
+            String createdAt
     ) {
     }
 

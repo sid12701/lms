@@ -2,11 +2,8 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
-import com.bhawana.lms.domain.LoanApplicationStatus;
-import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
-import com.bhawana.lms.common.web.PagedResult;
-import com.bhawana.lms.domain.LoanPaymentChannel;
-import com.bhawana.lms.common.web.PaginationResponseBuilder;
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.config.BusinessCalendar;
@@ -17,27 +14,36 @@ import com.bhawana.lms.service.LoanApplicationQueryService;
 import com.bhawana.lms.service.LoanApplicationServicingReadService;
 import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.service.LoanRepaymentCommandService;
-import com.bhawana.lms.service.LoanApplicationWebhookEventProjection;
 import com.bhawana.lms.service.LoanDocumentService;
 import com.bhawana.lms.service.LoanForeclosureCommandService;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanApplicationAuditEventResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanApplicationDetailResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanApplicationDocumentAccessAuditResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanApplicationDocumentChecklistResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanApplicationIntakeAuditResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanApplicationRequest;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanApplicationResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanApplicationStatusTransitionRequest;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanApplicationStatusTransitionResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanDisbursementRequestResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanForeclosureExecutionRequest;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanForeclosureQuoteRequest;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanForeclosureQuoteResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanPaymentTransactionRequest;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanPaymentTransactionResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanRepaymentScheduleInstallmentResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.ManualStatusUpdateRequest;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.WebhookEventDeliveryResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Past;
-import jakarta.validation.constraints.PastOrPresent;
-import jakarta.validation.constraints.Size;
-import java.math.BigDecimal;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ContentDisposition;
@@ -237,25 +243,63 @@ public class LoanApplicationOpsController {
                 .body(zipContent);
     }
 
+    /**
+     * Stream a single stored document either as a download ({@code disposition=attachment},
+     * the default) or for safe in-browser preview ({@code disposition=inline}). Inline is
+     * restricted server-side to the preview allowlist (PDF/JPEG/PNG) and rejected with 415
+     * otherwise. Content is always served {@code Cache-Control: no-store} (KYC PII) and the
+     * matching access-audit row (PREVIEWED vs DOWNLOADED) is written by the read service.
+     */
     @GetMapping("/{applicationId}/kyc-documents/{documentType}/content")
-    public ResponseEntity<byte[]> downloadDocumentContent(
+    public ResponseEntity<Resource> getDocumentContent(
             Authentication authentication,
             HttpServletRequest request,
             @PathVariable UUID applicationId,
-            @PathVariable LoanApplicationDocumentType documentType
+            @PathVariable LoanApplicationDocumentType documentType,
+            @RequestParam(name = "disposition", defaultValue = "attachment") String disposition
     ) {
-        LoanDocumentService.RetrievedDocumentContent content = loanApplicationServicingReadService.downloadDocumentContent(
+        boolean inline = "inline".equalsIgnoreCase(disposition);
+        LoanDocumentService.StreamedDocumentContent content = loanApplicationServicingReadService.accessDocumentContent(
                 applicationId,
                 documentType,
+                inline,
                 authentication.getName(),
                 ClientIpAddresses.resolve(request),
                 CorrelationIdHolder.get()
         );
+        ContentDisposition contentDisposition = (inline
+                ? ContentDisposition.inline()
+                : ContentDisposition.attachment())
+                .filename(content.fileName())
+                .build();
+        // Stream the bytes straight from storage (closed by the MVC layer after the
+        // body is written) instead of buffering the whole document into heap.
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(content.fileName()).build().toString())
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .contentType(MediaType.parseMediaType(content.contentType()))
-                .contentLength(content.content().length)
-                .body(content.content());
+                .contentLength(content.contentLength())
+                .body(new KnownLengthInputStreamResource(content.content(), content.contentLength()));
+    }
+
+    /**
+     * {@link InputStreamResource} whose {@link #contentLength()} returns the known
+     * size instead of draining the stream to count bytes (the default behaviour,
+     * which would consume the single-shot storage stream before it is written).
+     */
+    private static final class KnownLengthInputStreamResource extends InputStreamResource {
+
+        private final long contentLength;
+
+        private KnownLengthInputStreamResource(java.io.InputStream inputStream, long contentLength) {
+            super(inputStream);
+            this.contentLength = contentLength;
+        }
+
+        @Override
+        public long contentLength() {
+            return contentLength;
+        }
     }
 
     @PostMapping
@@ -345,6 +389,22 @@ public class LoanApplicationOpsController {
         return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
     }
 
+    @PostMapping("/{applicationId}/disbursement-requests/status-check")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public LoanApplicationDetailResponse runDisbursementStatusCheck(
+            Authentication authentication,
+            HttpServletRequest httpRequest,
+            @PathVariable UUID applicationId
+    ) {
+        loanDisbursementCommandService.pollPendingDisbursement(
+                applicationId,
+                authentication.getName(),
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get()
+        );
+        return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
+    }
+
     @PostMapping("/{applicationId}/payments")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public LoanPaymentTransactionResponse recordPaymentTransaction(
@@ -395,342 +455,5 @@ public class LoanApplicationOpsController {
                 request.reference(),
                 request.note()
         ));
-    }
-
-    public record LoanApplicationRequest(
-            @NotNull UUID lspId,
-            @NotNull UUID productId,
-            @NotBlank String externalLoanId,
-            @NotBlank String sourceChannel,
-            @NotBlank @Pattern(regexp = "^[A-Za-z]{5}[0-9]{4}[A-Za-z]$", message = "PAN must be a valid 10-character PAN") String borrowerPan,
-            @NotBlank String borrowerFullName,
-            @NotBlank @Pattern(regexp = "^[0-9]{10,15}$", message = "Mobile must contain 10 to 15 digits") String borrowerMobile,
-            @Email String borrowerEmail,
-            @Past LocalDate borrowerDateOfBirth,
-            @Size(max = 128) String borrowerCity,
-            @Size(max = 128) String borrowerState,
-            @Size(max = 64) String borrowerEmploymentType,
-            @DecimalMin(value = "0.01") BigDecimal borrowerMonthlyIncome,
-            @NotNull @DecimalMin("0.01") BigDecimal requestedAmount,
-            @NotNull @Min(1) Integer tenureMonths
-    ) {
-    }
-
-    public record LoanApplicationResponse(
-            String id,
-            String borrowerId,
-            String borrowerFullName,
-            String borrowerPan,
-            String borrowerMobile,
-            String borrowerEmail,
-            LocalDate borrowerDateOfBirth,
-            String borrowerCity,
-            String borrowerState,
-            String borrowerEmploymentType,
-            BigDecimal borrowerMonthlyIncome,
-            String lspId,
-            String lspCode,
-            String lspName,
-            String productId,
-            String productCode,
-            String productName,
-            String externalLoanId,
-            String accountNumber,
-            String sourceChannel,
-            BigDecimal requestedAmount,
-            Integer tenureMonths,
-            String status,
-            String createdAt
-    ) {
-    }
-
-    public record LoanApplicationDetailResponse(
-            String id,
-            String loanAccountId,
-            String borrowerId,
-            String borrowerFullName,
-            String borrowerPan,
-            String borrowerMobile,
-            String borrowerEmail,
-            LocalDate borrowerDateOfBirth,
-            String borrowerCity,
-            String borrowerState,
-            String borrowerEmploymentType,
-            BigDecimal borrowerMonthlyIncome,
-            String lspId,
-            String lspCode,
-            String lspName,
-            String productId,
-            String productCode,
-            String productName,
-            String externalLoanId,
-            String sourceChannel,
-            BigDecimal requestedAmount,
-            Integer tenureMonths,
-            String status,
-            String invalidReasonCode,
-            String invalidReasonText,
-            String invalidatedByUsername,
-            String invalidatedAt,
-            String createdAt,
-            String updatedAt,
-            LoanAccountSummaryResponse loanAccount,
-            LoanApplicationLastActivityResponse lastActivity
-    ) {
-    }
-
-    public record LoanAccountSummaryResponse(
-            String id,
-            String accountNumber,
-            String status,
-            BigDecimal principalAmount,
-            Integer tenureMonths,
-            String approvedAt,
-            String createdAt,
-            String closureReason,
-            String closedAt,
-            String closedByUsername,
-            LoanDelinquencySummaryResponse delinquency,
-            LoanRepaymentScheduleSummaryResponse repaymentSchedule
-    ) {
-    }
-
-    public record LoanDelinquencySummaryResponse(
-            Integer maxDaysPastDue,
-            String bucket,
-            Integer overdueInstallmentCount,
-            BigDecimal overdueAmount
-    ) {
-    }
-
-    public record LoanRepaymentScheduleSummaryResponse(
-            Integer installmentCount,
-            BigDecimal installmentAmount,
-            LocalDate firstDueDate,
-            LocalDate finalDueDate
-    ) {
-    }
-
-    public record LoanApplicationLastActivityResponse(
-            String activityType,
-            String actorUsername,
-            String summary,
-            String detail,
-            String correlationId,
-            String occurredAt
-    ) {
-    }
-
-    public record LoanApplicationIntakeAuditResponse(
-            String id,
-            String loanApplicationId,
-            String actorUsername,
-            String correlationId,
-            String payloadJson,
-            Instant createdAt
-    ) {
-    }
-
-    public record LoanApplicationStatusTransitionRequest(
-            @NotNull LoanApplicationStatus targetStatus,
-            @Size(max = 500) String note,
-            LoanApplicationStatusReasonCode reasonCode
-    ) {
-    }
-
-    public record ManualStatusUpdateRequest(
-            @NotNull LoanApplicationStatus targetStatus,
-            @NotBlank @Size(max = 500) String note,
-            @NotNull LoanApplicationStatusReasonCode reasonCode
-    ) {
-    }
-
-    public record LoanPaymentTransactionRequest(
-            @NotNull UUID targetInstallmentId,
-            @NotNull @DecimalMin("0.01") BigDecimal amount,
-            @NotNull @PastOrPresent LocalDate postedAt,
-            @NotNull LoanPaymentChannel channel,
-            @Size(max = 128) String reference
-    ) {
-    }
-
-    public record LoanForeclosureExecutionRequest(
-            @NotNull @PastOrPresent LocalDate settlementDate,
-            @NotBlank @Size(max = 128) String reference,
-            @Size(max = 500) String note
-    ) {
-    }
-
-    public record LoanForeclosureQuoteRequest(
-            @NotNull LocalDate effectiveDate
-    ) {
-    }
-
-    public record LoanApplicationStatusTransitionResponse(
-            String id,
-            String loanApplicationId,
-            String actorUsername,
-            String fromStatus,
-            String toStatus,
-            String note,
-            String reasonCode,
-            String correlationId,
-            String createdAt,
-            RejectionReason rejectionReason
-    ) {
-    }
-
-    public record RejectionReason(java.util.List<String> failedRules) {
-    }
-
-    public record LoanApplicationAuditEventResponse(
-            String id,
-            String loanApplicationId,
-            String action,
-            String actorUsername,
-            String fromStatus,
-            String toStatus,
-            String note,
-            String reasonCode,
-            String correlationId,
-            String createdAt
-    ) {
-    }
-
-    public record LoanDisbursementRequestResponse(
-            String id,
-            String loanAccountId,
-            String actorUsername,
-            BigDecimal amount,
-            String providerName,
-            String providerRequestId,
-            String providerStatus,
-            String requestPayloadJson,
-            String responsePayloadJson,
-            String correlationId,
-            String createdAt,
-            String updatedAt
-    ) {
-    }
-
-    public record LoanRepaymentScheduleInstallmentResponse(
-            String id,
-            String loanAccountId,
-            Integer installmentNumber,
-            LocalDate dueDate,
-            BigDecimal openingPrincipal,
-            BigDecimal principalDue,
-            BigDecimal interestDue,
-            BigDecimal installmentAmount,
-            BigDecimal closingPrincipal,
-            String status,
-            BigDecimal paidPrincipal,
-            BigDecimal paidInterest,
-            BigDecimal paidAmount,
-            BigDecimal outstandingAmount,
-            Integer daysPastDue,
-            String delinquencyBucket,
-            String createdAt
-    ) {
-    }
-
-    public record LoanPaymentTransactionResponse(
-            String id,
-            String loanAccountId,
-            String targetInstallmentId,
-            String actorUsername,
-            BigDecimal amount,
-            LocalDate paymentDate,
-            String reference,
-            String channel,
-            String status,
-            BigDecimal allocatedAmount,
-            BigDecimal unallocatedAmount,
-            String note,
-            String correlationId,
-            String createdAt,
-            String updatedAt
-    ) {
-    }
-
-    public record LoanForeclosureQuoteResponse(
-            String id,
-            String loanAccountId,
-            Integer version,
-            String requestedByUsername,
-            String executedByUsername,
-            LocalDate effectiveDate,
-            BigDecimal outstandingPrincipal,
-            BigDecimal outstandingInterest,
-            BigDecimal settlementAmount,
-            String status,
-            String executedAt,
-            String createdAt,
-            String updatedAt
-    ) {
-    }
-
-    public record LoanApplicationDocumentChecklistResponse(
-            String id,
-            String loanApplicationId,
-            String documentType,
-            String documentDisplayName,
-            boolean required,
-            String status,
-            String note,
-            String fileName,
-            String fileReference,
-            String contentType,
-            String sourceReference,
-            boolean lmsManagedContent,
-            String storageKey,
-            String fileChecksum,
-            Long fileSizeBytes,
-            Instant uploadedAt,
-            String uploadedByUsername,
-            String updatedByUsername,
-            String createdAt,
-            String updatedAt
-    ) {
-    }
-
-    public record WebhookEventDeliveryResponse(
-            String eventId,
-            String eventType,
-            String targetUrl,
-            String status,
-            int attempts,
-            String lastAttemptAt,
-            Integer lastResponseCode,
-            String lastError,
-            String createdAt
-    ) {
-        static WebhookEventDeliveryResponse from(LoanApplicationWebhookEventProjection projection) {
-            return new WebhookEventDeliveryResponse(
-                    projection.eventId(),
-                    projection.eventType(),
-                    projection.targetUrl(),
-                    projection.status(),
-                    projection.attempts(),
-                    projection.lastAttemptAt() == null ? null : projection.lastAttemptAt().toString(),
-                    projection.lastResponseCode(),
-                    projection.lastError(),
-                    projection.createdAt() == null ? null : projection.createdAt().toString()
-            );
-        }
-    }
-
-    public record LoanApplicationDocumentAccessAuditResponse(
-            String id,
-            String loanApplicationId,
-            String action,
-            String actorUsername,
-            String summary,
-            List<String> documentTypes,
-            String correlationId,
-            String actorIp,
-            Long byteCount,
-            String createdAt
-    ) {
     }
 }

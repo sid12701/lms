@@ -1,6 +1,6 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;

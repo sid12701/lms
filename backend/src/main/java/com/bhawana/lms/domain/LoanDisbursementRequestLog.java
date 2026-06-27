@@ -3,6 +3,8 @@ package com.bhawana.lms.domain;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -42,6 +44,27 @@ public class LoanDisbursementRequestLog {
     @Column(name = "provider_status", nullable = false, length = 64)
     private String providerStatus;
 
+    // ICICI Composite Pay mirror fields. Nullable so legacy rows stay valid (see V98).
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_mode", length = 16)
+    private DisbursementPaymentMode paymentMode;
+
+    @Column(name = "tran_ref_no", length = 64)
+    private String tranRefNo;
+
+    @Column(name = "provider_act_code", length = 16)
+    private String providerActCode;
+
+    @Column(name = "bank_rrn", length = 32)
+    private String bankRrn;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "decline_kind", length = 16)
+    private DisbursementDeclineKind declineKind;
+
+    @Column(name = "status_check_count", nullable = false)
+    private int statusCheckCount;
+
     @Column(name = "request_payload_json", nullable = false, columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
     private JsonNode requestPayloadJson;
@@ -69,6 +92,11 @@ public class LoanDisbursementRequestLog {
             String providerName,
             String providerRequestId,
             String providerStatus,
+            DisbursementPaymentMode paymentMode,
+            String tranRefNo,
+            String providerActCode,
+            String bankRrn,
+            DisbursementDeclineKind declineKind,
             String requestPayloadJson,
             String responsePayloadJson,
             String correlationId
@@ -80,6 +108,12 @@ public class LoanDisbursementRequestLog {
         this.providerName = providerName;
         this.providerRequestId = providerRequestId;
         this.providerStatus = providerStatus;
+        this.paymentMode = paymentMode;
+        this.tranRefNo = tranRefNo;
+        this.providerActCode = providerActCode;
+        this.bankRrn = bankRrn;
+        this.declineKind = declineKind;
+        this.statusCheckCount = 0;
         this.requestPayloadJson = JsonPayloads.requiredObject(requestPayloadJson, "requestPayloadJson");
         this.responsePayloadJson = JsonPayloads.requiredObject(responsePayloadJson, "responsePayloadJson");
         this.correlationId = correlationId;
@@ -125,6 +159,30 @@ public class LoanDisbursementRequestLog {
         return providerStatus;
     }
 
+    public DisbursementPaymentMode getPaymentMode() {
+        return paymentMode;
+    }
+
+    public String getTranRefNo() {
+        return tranRefNo;
+    }
+
+    public String getProviderActCode() {
+        return providerActCode;
+    }
+
+    public String getBankRrn() {
+        return bankRrn;
+    }
+
+    public DisbursementDeclineKind getDeclineKind() {
+        return declineKind;
+    }
+
+    public int getStatusCheckCount() {
+        return statusCheckCount;
+    }
+
     public String getRequestPayloadJson() {
         return JsonPayloads.asString(requestPayloadJson);
     }
@@ -145,8 +203,29 @@ public class LoanDisbursementRequestLog {
         return updatedAt;
     }
 
-    public void updateOutcome(String providerStatus, String responsePayloadJson) {
+    /** Records the terminal provider verdict once a request resolves (synchronously or via status check). */
+    public void updateOutcome(
+            String providerStatus,
+            String providerActCode,
+            String bankRrn,
+            DisbursementDeclineKind declineKind,
+            String responsePayloadJson
+    ) {
         this.providerStatus = providerStatus;
+        if (providerActCode != null) {
+            this.providerActCode = providerActCode;
+        }
+        if (bankRrn != null) {
+            this.bankRrn = bankRrn;
+        }
+        if (declineKind != null) {
+            this.declineKind = declineKind;
+        }
         this.responsePayloadJson = JsonPayloads.requiredObject(responsePayloadJson, "responsePayloadJson");
+    }
+
+    /** Each status-check poll bumps this; the worker parks the transaction once the cap is reached. */
+    public void recordStatusCheck() {
+        this.statusCheckCount += 1;
     }
 }

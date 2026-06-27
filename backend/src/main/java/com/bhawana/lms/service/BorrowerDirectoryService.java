@@ -9,9 +9,11 @@ import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
-import com.bhawana.lms.common.web.PagedResult;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
-import com.bhawana.lms.common.web.PaginationResponseBuilder;
+import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.domain.Lsp;
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
@@ -37,17 +39,20 @@ public class BorrowerDirectoryService {
     private final BorrowerRepository borrowerRepository;
     private final LoanAccountRepository loanAccountRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
+    private final LspRepository lspRepository;
     private final BusinessCalendar businessCalendar;
 
     public BorrowerDirectoryService(
             BorrowerRepository borrowerRepository,
             LoanAccountRepository loanAccountRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
+            LspRepository lspRepository,
             BusinessCalendar businessCalendar
     ) {
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
+        this.lspRepository = lspRepository;
         this.businessCalendar = businessCalendar;
     }
 
@@ -135,7 +140,11 @@ public class BorrowerDirectoryService {
                 .toList();
 
         BorrowerDelinquencyAggregate delinquency = computeDelinquencyAggregate(loans);
-        return new BorrowerDetailView(borrower, loanViews, delinquency);
+        List<VisibleLspView> visibleLsps = lspRepository.findAllById(borrower.getVisibleLspIds()).stream()
+                .sorted(Comparator.comparing(Lsp::getName, String.CASE_INSENSITIVE_ORDER))
+                .map(lsp -> new VisibleLspView(lsp.getId(), lsp.getCode(), lsp.getName()))
+                .toList();
+        return new BorrowerDetailView(borrower, loanViews, delinquency, visibleLsps);
     }
 
     /**
@@ -198,7 +207,15 @@ public class BorrowerDirectoryService {
     public record BorrowerDetailView(
             Borrower borrower,
             List<BorrowerLoanView> loans,
-            BorrowerDelinquencyAggregate delinquency
+            BorrowerDelinquencyAggregate delinquency,
+            List<VisibleLspView> visibleLsps
+    ) {
+    }
+
+    public record VisibleLspView(
+            UUID id,
+            String code,
+            String name
     ) {
     }
 

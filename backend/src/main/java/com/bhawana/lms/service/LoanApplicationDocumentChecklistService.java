@@ -1,9 +1,9 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.util.Strings;
-import com.bhawana.lms.common.web.DocumentUploadRequiredException;
-import com.bhawana.lms.common.web.KycCompletionRequiredException;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.DocumentUploadRequiredException;
+import com.bhawana.lms.common.api.error.KycCompletionRequiredException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;

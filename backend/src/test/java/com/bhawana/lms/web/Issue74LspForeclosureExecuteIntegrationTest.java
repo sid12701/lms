@@ -427,7 +427,7 @@ class Issue74LspForeclosureExecuteIntegrationTest {
     private String issueToken(JsonNode apiClient) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 apiClient.get("clientId").asText(),
                                 apiClient.get("clientSecret").asText()
                         ))))

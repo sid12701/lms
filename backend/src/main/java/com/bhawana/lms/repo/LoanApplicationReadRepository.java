@@ -1,6 +1,6 @@
 package com.bhawana.lms.repo;
 
-import com.bhawana.lms.common.web.PagedResult;
+import com.bhawana.lms.common.api.PagedResult;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import jakarta.persistence.EntityManager;

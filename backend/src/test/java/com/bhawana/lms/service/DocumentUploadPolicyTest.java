@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
@@ -61,18 +61,14 @@ class DocumentUploadPolicyTest {
 
     @Test
     void panCardRejectsDeclaredSizeAboveFiveMegabytes() {
-        long sixMegabytes = 6L * 1024L * 1024L;
+        byte[] sixMegabytes = new byte[6 * 1024 * 1024];
+        System.arraycopy("%PDF-1.4".getBytes(java.nio.charset.StandardCharsets.US_ASCII), 0, sixMegabytes, 0, 8);
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "pan.pdf",
                 "application/pdf",
-                new byte[0]
-        ) {
-            @Override
-            public long getSize() {
-                return sixMegabytes;
-            }
-        };
+                sixMegabytes
+        );
 
         BusinessRuleViolationException ex = assertThrows(
                 BusinessRuleViolationException.class,
@@ -87,6 +83,9 @@ class DocumentUploadPolicyTest {
     @Test
     void panCardAcceptsFourMegabyteJpeg() {
         byte[] fourMegabytes = new byte[4 * 1024 * 1024];
+        fourMegabytes[0] = (byte) 0xFF;
+        fourMegabytes[1] = (byte) 0xD8;
+        fourMegabytes[2] = (byte) 0xFF;
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "pan.jpg",
@@ -95,6 +94,40 @@ class DocumentUploadPolicyTest {
         );
 
         assertDoesNotThrow(() -> DocumentUploadPolicy.validate(LoanApplicationDocumentType.PAN_CARD, file));
+    }
+
+    @Test
+    void panCardRejectsPlainTextDeclaredAsPdf() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "fake.pdf",
+                "application/pdf",
+                "not a pdf".getBytes()
+        );
+
+        BusinessRuleViolationException ex = assertThrows(
+                BusinessRuleViolationException.class,
+                () -> DocumentUploadPolicy.validate(LoanApplicationDocumentType.PAN_CARD, file)
+        );
+
+        assertEquals("DOCUMENT_CONTENT_INVALID", ex.getErrorCode());
+    }
+
+    @Test
+    void rejectsPathTraversalFileName() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "../evil.pdf",
+                "application/pdf",
+                "%PDF-1.4".getBytes()
+        );
+
+        BusinessRuleViolationException ex = assertThrows(
+                BusinessRuleViolationException.class,
+                () -> DocumentUploadPolicy.validate(LoanApplicationDocumentType.PAN_CARD, file)
+        );
+
+        assertEquals("DOCUMENT_FILE_NAME_INVALID", ex.getErrorCode());
     }
 
     @Test
@@ -111,6 +144,9 @@ class DocumentUploadPolicyTest {
         );
 
         byte[] fourMegabytes = new byte[4 * 1024 * 1024];
+        fourMegabytes[0] = (byte) 0xFF;
+        fourMegabytes[1] = (byte) 0xD8;
+        fourMegabytes[2] = (byte) 0xFF;
         MockMultipartFile jpeg = new MockMultipartFile(
                 "file",
                 "aadhaar.jpg",
@@ -123,6 +159,14 @@ class DocumentUploadPolicyTest {
     @Test
     void addressProofKeepsGlobalTenMegabyteCapAndPngMime() {
         byte[] nineMegabytes = new byte[9 * 1024 * 1024];
+        nineMegabytes[0] = (byte) 0x89;
+        nineMegabytes[1] = 0x50;
+        nineMegabytes[2] = 0x4E;
+        nineMegabytes[3] = 0x47;
+        nineMegabytes[4] = 0x0D;
+        nineMegabytes[5] = 0x0A;
+        nineMegabytes[6] = 0x1A;
+        nineMegabytes[7] = 0x0A;
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "address.png",

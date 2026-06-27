@@ -1,7 +1,10 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.DocumentNotFoundException;
-import com.bhawana.lms.common.web.DocumentStorageUnavailableException;
+import com.bhawana.lms.common.api.error.DocumentNotFoundException;
+import com.bhawana.lms.common.api.error.DocumentStorageUnavailableException;
+import java.io.FilterInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,6 +12,7 @@ import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
@@ -81,6 +85,42 @@ public class R2LoanDocumentStorageService {
         }
     }
 
+    public LoanDocumentStorageService.RetrievedDocumentStream openStream(String storageKey) {
+        DocumentStorageProperties.R2 r2 = properties.getR2();
+        // The S3Client must outlive this method: it is closed only when the
+        // returned stream is closed (after the response body has been written),
+        // so the object body is streamed straight to the client without buffering
+        // the whole document into heap.
+        S3Client s3Client = buildClient(r2);
+        try {
+            ResponseInputStream<GetObjectResponse> responseStream = s3Client.getObject(
+                    GetObjectRequest.builder()
+                            .bucket(r2.getBucket())
+                            .key(storageKey)
+                            .build()
+            );
+            long contentLength = responseStream.response().contentLength();
+            return new LoanDocumentStorageService.RetrievedDocumentStream(
+                    new ClientClosingInputStream(responseStream, s3Client),
+                    contentLength
+            );
+        } catch (NoSuchKeyException exception) {
+            s3Client.close();
+            throw new DocumentNotFoundException("Document not found in R2 storage: " + storageKey);
+        } catch (S3Exception | SdkClientException exception) {
+            s3Client.close();
+            throw new DocumentStorageUnavailableException(
+                    storageKey,
+                    DocumentStorageProperties.DocumentStorageProvider.R2.name(),
+                    "Unable to retrieve document from R2 storage: " + storageKey,
+                    exception
+            );
+        } catch (RuntimeException exception) {
+            s3Client.close();
+            throw exception;
+        }
+    }
+
     public StoredDocument store(DocumentStorageDescriptor descriptor, byte[] content) {
         DocumentStorageProperties.R2 r2 = properties.getR2();
         try (S3Client s3Client = buildClient(r2)) {
@@ -112,5 +152,29 @@ public class R2LoanDocumentStorageService {
                 .region(Region.of(r2.getRegion()))
                 .forcePathStyle(true)
                 .build();
+    }
+
+    /**
+     * Wraps the S3 object stream so that closing it also closes the owning
+     * {@link S3Client}, preventing the per-request client (and its connection
+     * pool) from leaking once the response body has been streamed.
+     */
+    private static final class ClientClosingInputStream extends FilterInputStream {
+
+        private final S3Client client;
+
+        private ClientClosingInputStream(InputStream delegate, S3Client client) {
+            super(delegate);
+            this.client = client;
+        }
+
+        @Override
+        public void close() throws IOException {
+            try {
+                super.close();
+            } finally {
+                client.close();
+            }
+        }
     }
 }

@@ -35,6 +35,12 @@ public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
     @Query("select u from AppUser u where u.username = lower(:username)")
     Optional<AppUser> findByUsername(@Param("username") String username);
 
+    // Login authenticates operators by email (resolved to the internal username
+    // before authentication). Mirrors findByUsername: LOWER(:email) keeps the
+    // predicate a constant so the unique email index satisfies the lookup.
+    @Query("select u from AppUser u where u.email = lower(:email)")
+    Optional<AppUser> findByEmail(@Param("email") String email);
+
     @Query("""
             select count(distinct u)
             from AppUser u

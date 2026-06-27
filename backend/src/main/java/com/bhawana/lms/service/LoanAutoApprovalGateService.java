@@ -14,18 +14,18 @@ import org.springframework.stereotype.Service;
 @Service
 public class LoanAutoApprovalGateService {
 
-    private final LoanApprovalService loanApprovalService;
+    private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final LoanApplicationRepository loanApplicationRepository;
     private final Counter gateSkippedIncomplete;
     private final Counter gateSkippedStatus;
     private final Counter gateFired;
 
     public LoanAutoApprovalGateService(
-            LoanApprovalService loanApprovalService,
+            LoanApplicationLifecycleService loanApplicationLifecycleService,
             LoanApplicationRepository loanApplicationRepository,
             MeterRegistry meterRegistry
     ) {
-        this.loanApprovalService = loanApprovalService;
+        this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.loanApplicationRepository = loanApplicationRepository;
         this.gateSkippedIncomplete = Counter.builder("lms.auto_approval.gate")
                 .description("Auto-approval gate decisions after document upload")
@@ -58,6 +58,6 @@ public class LoanAutoApprovalGateService {
             return;
         }
         gateFired.increment();
-        loanApprovalService.autoApproveIfEligibleForLsp(applicationId, actorUsername);
+        loanApplicationLifecycleService.autoApproveIfEligibleForLsp(applicationId, actorUsername);
     }
 }

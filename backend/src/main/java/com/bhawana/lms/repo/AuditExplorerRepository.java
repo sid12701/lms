@@ -2,7 +2,7 @@ package com.bhawana.lms.repo;
 
 import com.bhawana.lms.service.AuditExplorerQuery;
 import com.bhawana.lms.service.AuditExplorerQuery.AuditStream;
-import com.bhawana.lms.common.web.PagedResult;
+import com.bhawana.lms.common.api.PagedResult;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;

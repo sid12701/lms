@@ -47,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 )
 class Issue92DocumentDownloadIntegrationTest {
 
-    private static final byte[] PAN_CONTENT = "pan-card-pdf-content".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] PAN_CONTENT = "%PDF-1.4 pan-card-pdf-content".getBytes(StandardCharsets.UTF_8);
 
     @Autowired
     private MockMvc mockMvc;

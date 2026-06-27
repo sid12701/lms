@@ -7,7 +7,7 @@ public final class BorrowerProfileMappers {
     private BorrowerProfileMappers() {
     }
 
-    public static BorrowerProfile fromOps(LoanApplicationOpsController.LoanApplicationRequest request) {
+    public static BorrowerProfile fromOps(LoanApplicationOpsApiTypes.LoanApplicationRequest request) {
         return BorrowerProfile.builder()
                 .fullName(request.borrowerFullName())
                 .emailAddress(request.borrowerEmail())

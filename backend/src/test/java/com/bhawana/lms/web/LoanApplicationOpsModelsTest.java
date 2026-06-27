@@ -23,8 +23,8 @@ class LoanApplicationOpsModelsTest {
                 Instant.parse("2026-01-01T00:00:01Z")
         );
 
-        LoanApplicationOpsController.WebhookEventDeliveryResponse response =
-                LoanApplicationOpsController.WebhookEventDeliveryResponse.from(projection);
+        LoanApplicationOpsApiTypes.WebhookEventDeliveryResponse response =
+                LoanApplicationOpsApiTypes.WebhookEventDeliveryResponse.from(projection);
 
         assertThat(response.eventId()).isEqualTo("event-1");
         assertThat(response.eventType()).isEqualTo("LOAN_CREATED");

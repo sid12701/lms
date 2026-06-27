@@ -74,6 +74,9 @@ class AuthControllerRefreshFailureBodyTest {
     void setUpUser() {
         authEventAuditRepository.deleteAll();
         refreshTokenRepository.deleteAll();
+        // app_user_audit_event rows written by earlier test classes in the shared Spring context
+        // FK-reference app_user; clear them first so deleting users here is order-independent.
+        jdbcTemplate.update("delete from app_user_audit_event");
         appUserRepository.deleteAll();
 
         AppRole opsUserRole = appRoleRepository.findByCodeIn(List.of(RoleCode.OPS_USER)).stream()
@@ -167,7 +170,7 @@ class AuthControllerRefreshFailureBodyTest {
         MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("test.user", "TestPassword123!"))))
+                                new AuthApiResponses.LoginRequest("test.user@bhawana.local", "TestPassword123!"))))
                 .andExpect(status().isOk())
                 .andReturn();
 

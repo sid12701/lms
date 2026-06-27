@@ -53,6 +53,8 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
 
     Optional<LoanAccount> findByLoanApplication_Id(UUID applicationId);
 
+    List<LoanAccount> findByStatus(LoanAccountStatus status);
+
     @Query("""
             select account.loanApplication.id as applicationId,
                    account.accountNumber as accountNumber

@@ -15,9 +15,9 @@ import com.bhawana.lms.repo.LspRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.bhawana.lms.common.web.ApiConflictException;
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.LinkedHashSet;
@@ -102,6 +102,7 @@ public class UserAdminService {
             lsp = lspRepository.findById(lspId)
                     .orElseThrow(() -> new ResourceNotFoundException("Unknown LSP id: " + lspId));
         }
+        validateRoleLspConsistency(roleCodes, lsp);
 
         // F-11: canonicalise username + email to lowercase so the unique indexes
         // can satisfy the new raw-equality lookups in AppUserRepository.
@@ -210,6 +211,23 @@ public class UserAdminService {
         }
 
         return saved;
+    }
+
+    @Transactional
+    public AppUser completeRequiredPasswordChange(String username, String newPassword) {
+        AppUser user = appUserRepository.findByUsername(username)
+                .orElseThrow(() -> new IllegalArgumentException("Password changes are only supported for managed users."));
+
+        if (!user.isPasswordChangeRequired()) {
+            throw new IllegalArgumentException("Password change is not required for this account.");
+        }
+
+        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("New password must differ from the temporary password.");
+        }
+
+        user.changePassword(passwordEncoder.encode(newPassword));
+        return appUserRepository.save(user);
     }
 
     @Transactional

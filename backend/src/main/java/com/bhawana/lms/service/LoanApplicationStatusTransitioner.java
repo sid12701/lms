@@ -1,6 +1,6 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -59,7 +59,8 @@ public final class LoanApplicationStatusTransitioner {
         return switch (context) {
             case STANDARD -> false;
             case MANUAL_OVERRIDE -> true;
-            case WORKER -> fromStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
+            case WORKER -> (fromStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL
+                    || fromStatus == LoanApplicationStatus.DISBURSEMENT_RETRY)
                     && toStatus == LoanApplicationStatus.REJECTED;
         };
     }

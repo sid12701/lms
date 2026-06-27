@@ -2,8 +2,8 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.util.Strings;
-import com.bhawana.lms.common.web.DocumentNotFoundException;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.DocumentNotFoundException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanApplication;
@@ -30,6 +30,7 @@ import com.bhawana.lms.repo.LoanForeclosureQuoteRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -58,6 +59,7 @@ public class LoanApplicationServicingReadService {
     private final WebhookOutboxService webhookOutboxService;
     private final com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
     private final BusinessCalendar businessCalendar;
+    private final org.springframework.transaction.support.TransactionTemplate documentAccessAuditTransactionTemplate;
 
     public LoanApplicationServicingReadService(
             LoanAccountRepository loanAccountRepository,
@@ -76,7 +78,8 @@ public class LoanApplicationServicingReadService {
             LoanDocumentService loanDocumentService,
             WebhookOutboxService webhookOutboxService,
             com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
-            BusinessCalendar businessCalendar
+            BusinessCalendar businessCalendar,
+            org.springframework.transaction.PlatformTransactionManager transactionManager
     ) {
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationAuditEventRepository = loanApplicationAuditEventRepository;
@@ -95,6 +98,7 @@ public class LoanApplicationServicingReadService {
         this.webhookOutboxService = webhookOutboxService;
         this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
         this.businessCalendar = businessCalendar;
+        this.documentAccessAuditTransactionTemplate = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
     }
 
     @Transactional(readOnly = true)
@@ -209,8 +213,14 @@ public class LoanApplicationServicingReadService {
         if (applicationId == null || !loanApplicationRepository.existsById(applicationId)) {
             throw new ResourceNotFoundException("Loan application not found: " + applicationId);
         }
-        return webhookOutboxService.listOutboxForLoanApplication(applicationId).stream()
-                .map(this::toWebhookEventProjection)
+        List<com.bhawana.lms.domain.WebhookEventOutbox> events =
+                webhookOutboxService.listOutboxForLoanApplication(applicationId);
+        Map<UUID, Integer> latestResponseCodes = resolveLatestDeliveryResponseCodes(events);
+        return events.stream()
+                .map(event -> toWebhookEventProjection(
+                        event,
+                        latestResponseCodes.get(event.getId())
+                ))
                 .toList();
     }
 
@@ -257,7 +267,7 @@ public class LoanApplicationServicingReadService {
                 application,
                 LoanApplicationDocumentAccessAuditAction.CHECKLIST_VIEWED,
                 Strings.normalizeActor(actorUsername),
-                "Viewed " + checklist.size() + " KYC document placeholders",
+                "Viewed " + checklist.size() + " KYC documents",
                 checklist.stream().map(LoanApplicationDocumentChecklist::getDocumentType).toList(),
                 CorrelationIdHolder.get()
         ));
@@ -270,28 +280,82 @@ public class LoanApplicationServicingReadService {
         return loanApplicationDocumentAccessAuditRepository.findTop20ByLoanApplication_IdOrderByCreatedAtDesc(applicationId);
     }
 
-    @Transactional
-    public LoanDocumentService.RetrievedDocumentContent downloadDocumentContent(
+    /**
+     * Open a single stored document for inline preview ({@code inlinePreview=true})
+     * or download ({@code inlinePreview=false}) and record the matching access audit
+     * row ({@code SINGLE_DOCUMENT_PREVIEWED} vs {@code SINGLE_DOCUMENT_DOWNLOADED}).
+     *
+     * <p>The bytes are streamed rather than buffered into heap, and the object-storage
+     * round-trip happens outside any database transaction — only the short audit
+     * insert runs transactionally — so a pooled DB connection is never held while the
+     * (potentially large/slow) document is read. The inline-preview allowlist is
+     * enforced and existence/availability failures surface <em>before</em> the audit
+     * row is written, so a rejected/missing document is never logged as a successful
+     * access. The caller (the MVC layer) must close the returned stream once the
+     * response body has been written; if the audit write fails the stream is closed
+     * here and the failure is propagated, so access is denied without leaking it.
+     */
+    public LoanDocumentService.StreamedDocumentContent accessDocumentContent(
             UUID applicationId,
             LoanApplicationDocumentType documentType,
+            boolean inlinePreview,
             String actorUsername,
             String actorIp,
             String correlationId
     ) {
-        LoanApplication application = loanApplicationQueryService.getApplication(applicationId);
-        LoanDocumentService.RetrievedDocumentContent content =
-                loanDocumentService.retrieveDocumentContent(applicationId, documentType);
-        loanApplicationDocumentAccessAuditRepository.save(new LoanApplicationDocumentAccessAudit(
-                application,
-                LoanApplicationDocumentAccessAuditAction.SINGLE_DOCUMENT_DOWNLOADED,
-                Strings.normalizeActor(actorUsername),
-                "Downloaded " + documentType.name(),
-                List.of(documentType),
-                correlationId,
-                actorIp,
-                (long) content.content().length
-        ));
+        LoanDocumentService.StreamedDocumentContent content =
+                loanDocumentService.openDocumentStream(applicationId, documentType, inlinePreview);
+        try {
+            recordDocumentAccessAudit(
+                    applicationId,
+                    documentType,
+                    inlinePreview,
+                    actorUsername,
+                    actorIp,
+                    correlationId,
+                    content.contentLength()
+            );
+        } catch (RuntimeException auditFailure) {
+            closeQuietly(content);
+            throw auditFailure;
+        }
         return content;
+    }
+
+    private void recordDocumentAccessAudit(
+            UUID applicationId,
+            LoanApplicationDocumentType documentType,
+            boolean inlinePreview,
+            String actorUsername,
+            String actorIp,
+            String correlationId,
+            long byteCount
+    ) {
+        LoanApplicationDocumentAccessAuditAction action = inlinePreview
+                ? LoanApplicationDocumentAccessAuditAction.SINGLE_DOCUMENT_PREVIEWED
+                : LoanApplicationDocumentAccessAuditAction.SINGLE_DOCUMENT_DOWNLOADED;
+        String verb = inlinePreview ? "Previewed " : "Downloaded ";
+        documentAccessAuditTransactionTemplate.executeWithoutResult(status -> {
+            LoanApplication application = loanApplicationQueryService.getApplication(applicationId);
+            loanApplicationDocumentAccessAuditRepository.save(new LoanApplicationDocumentAccessAudit(
+                    application,
+                    action,
+                    Strings.normalizeActor(actorUsername),
+                    verb + documentType.name(),
+                    List.of(documentType),
+                    correlationId,
+                    actorIp,
+                    byteCount
+            ));
+        });
+    }
+
+    private static void closeQuietly(java.io.Closeable closeable) {
+        try {
+            closeable.close();
+        } catch (java.io.IOException ignored) {
+            // Best-effort cleanup; the caller propagates the original failure.
+        }
     }
 
     @Transactional
@@ -337,14 +401,28 @@ public class LoanApplicationServicingReadService {
                 ));
     }
 
-    private LoanApplicationWebhookEventProjection toWebhookEventProjection(
-            com.bhawana.lms.domain.WebhookEventOutbox event
+    private Map<UUID, Integer> resolveLatestDeliveryResponseCodes(
+            List<com.bhawana.lms.domain.WebhookEventOutbox> events
     ) {
-        java.util.Optional<com.bhawana.lms.domain.WebhookEventDeliveryAttempt> latestAttempt =
-                webhookEventDeliveryAttemptRepository.findFirstByOutboxEvent_IdOrderByCreatedAtDesc(event.getId());
-        Integer responseCode = latestAttempt
-                .map(com.bhawana.lms.domain.WebhookEventDeliveryAttempt::getResponseStatusCode)
-                .orElse(null);
+        if (events.isEmpty()) {
+            return Map.of();
+        }
+        List<UUID> outboxEventIds = events.stream()
+                .map(com.bhawana.lms.domain.WebhookEventOutbox::getId)
+                .toList();
+        Map<UUID, Integer> latestResponseCodes = new HashMap<>();
+        for (com.bhawana.lms.domain.WebhookEventDeliveryAttempt attempt
+                : webhookEventDeliveryAttemptRepository.findByOutboxEvent_IdInOrderByCreatedAtDesc(outboxEventIds)) {
+            UUID outboxEventId = attempt.getOutboxEvent().getId();
+            latestResponseCodes.putIfAbsent(outboxEventId, attempt.getResponseStatusCode());
+        }
+        return latestResponseCodes;
+    }
+
+    private LoanApplicationWebhookEventProjection toWebhookEventProjection(
+            com.bhawana.lms.domain.WebhookEventOutbox event,
+            Integer responseCode
+    ) {
         return new LoanApplicationWebhookEventProjection(
                 event.getId().toString(),
                 event.getEventType().name(),

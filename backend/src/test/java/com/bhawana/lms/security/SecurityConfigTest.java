@@ -18,7 +18,7 @@ class SecurityConfigTest {
 
     @Test
     void corsExposesContentDispositionSoUiCanPreserveDownloadFilenames() {
-        CorsConfiguration configuration = new SecurityConfig()
+        CorsConfiguration configuration = new SecurityFilterChainConfig()
                 .corsConfigurationSource()
                 .getCorsConfiguration(new MockHttpServletRequest(
                         "GET",

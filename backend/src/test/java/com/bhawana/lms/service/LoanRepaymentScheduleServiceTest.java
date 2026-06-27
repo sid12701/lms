@@ -43,7 +43,7 @@ class LoanRepaymentScheduleServiceTest {
     private LoanPaymentTransactionRepository loanPaymentTransactionRepository;
 
     @Mock
-    private OpsAlertEmitters opsAlertEmitters;
+    private LspValidationAuditService lspValidationAuditService;
 
     private LoanRepaymentScheduleService scheduleService;
 
@@ -54,7 +54,7 @@ class LoanRepaymentScheduleServiceTest {
                 loanAccountRepository,
                 loanRepaymentScheduleInstallmentRepository,
                 loanPaymentTransactionRepository,
-                opsAlertEmitters
+                lspValidationAuditService
         );
     }
 

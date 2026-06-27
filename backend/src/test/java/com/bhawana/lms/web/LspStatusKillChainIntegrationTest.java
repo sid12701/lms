@@ -318,7 +318,7 @@ class LspStatusKillChainIntegrationTest {
         JsonNode apiClient = createApiClient(lspId, "Refresh client");
         MvcResult tokenResult = mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 apiClient.get("clientId").asText(),
                                 apiClient.get("clientSecret").asText()
                         ))))
@@ -387,7 +387,7 @@ class LspStatusKillChainIntegrationTest {
     private String issueClientCredentialsToken(String clientId, String clientSecret) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AuthController.ClientCredentialsRequest(
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 clientId,
                                 clientSecret
                         ))))

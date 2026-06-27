@@ -1,6 +1,8 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.money.Money;
 import com.bhawana.lms.config.BusinessCalendar;
+import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.Lsp;
@@ -123,11 +125,16 @@ public class HomeDashboardService {
                 .stream()
                 .map(this::toOpenAlertSummary)
                 .toList();
+        List<RecentApplication> recentApplications = loanApplicationRepository
+                .findTop8ByOrderByCreatedAtDesc()
+                .stream()
+                .map(this::toRecentApplication)
+                .toList();
 
         return new HomeDashboardSummary(
-                scaleCurrency(totalDisbursedAmount),
-                scaleCurrency(totalOutstandingAmount),
-                scaleCurrency(dpd90PlusAmount),
+                Money.scale(totalDisbursedAmount),
+                Money.scale(totalOutstandingAmount),
+                Money.scale(dpd90PlusAmount),
                 dpd90PlusLoanCount,
                 applicationsAwaitingApproval,
                 applicationsInDisbursement,
@@ -137,7 +144,21 @@ public class HomeDashboardService {
                 openAlerts,
                 openAlertSummaries,
                 lspBreakdown,
-                priorityAccounts
+                priorityAccounts,
+                recentApplications
+        );
+    }
+
+    private RecentApplication toRecentApplication(LoanApplication application) {
+        return new RecentApplication(
+                application.getId().toString(),
+                application.getExternalLoanId(),
+                application.getBorrower().getFullName(),
+                application.getLsp().getName(),
+                application.getLoanProduct().getName(),
+                application.getStatus().name(),
+                Money.scale(application.getRequestedAmount()),
+                application.getCreatedAt().toString()
         );
     }
 
@@ -205,8 +226,8 @@ public class HomeDashboardService {
 
         return new AccountSnapshot(
                 snapshot.getLspId(),
-                scaleCurrency(disbursedAmount),
-                scaleCurrency(outstandingAmount),
+                Money.scale(disbursedAmount),
+                Money.scale(outstandingAmount),
                 bucket
         );
     }
@@ -225,10 +246,10 @@ public class HomeDashboardService {
                 snapshot.getExternalLoanId(),
                 snapshot.getCustomerName(),
                 snapshot.getLspCode(),
-                scaleCurrency(defaultCurrency(snapshot.getPrincipalAmount())),
-                scaleCurrency(defaultCurrency(snapshot.getInterestRate())),
+                Money.scale(defaultCurrency(snapshot.getPrincipalAmount())),
+                Money.scale(defaultCurrency(snapshot.getInterestRate())),
                 snapshot.getLoanStatus().name(),
-                scaleCurrency(defaultCurrency(snapshot.getOverdueAmount())),
+                Money.scale(defaultCurrency(snapshot.getOverdueAmount())),
                 daysPastDue
         );
     }
@@ -261,9 +282,9 @@ public class HomeDashboardService {
                 lsp.getId().toString(),
                 lsp.getCode(),
                 lsp.getName(),
-                scaleCurrency(disbursedAmount),
-                scaleCurrency(outstandingAmount),
-                scaleCurrency(dpd90PlusAmount),
+                Money.scale(disbursedAmount),
+                Money.scale(outstandingAmount),
+                Money.scale(dpd90PlusAmount),
                 dpd90PlusLoanCount,
                 percentage(disbursedAmount, totalDisbursedAmount),
                 percentage(dpd90PlusAmount, totalDpd90PlusAmount),
@@ -285,7 +306,7 @@ public class HomeDashboardService {
 
         return new LspBucketBreakdown(
                 bucket.name(),
-                scaleCurrency(outstandingAmount),
+                Money.scale(outstandingAmount),
                 loanCount
         );
     }
@@ -296,10 +317,6 @@ public class HomeDashboardService {
 
     private static BigDecimal defaultCurrency(BigDecimal value) {
         return value == null ? zeroCurrency() : value;
-    }
-
-    private static BigDecimal scaleCurrency(BigDecimal value) {
-        return value.setScale(2, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal percentage(BigDecimal value, BigDecimal total) {
@@ -331,7 +348,20 @@ public class HomeDashboardService {
             long openAlerts,
             List<OpenAlertSummary> openAlertSummaries,
             List<LspBreakdown> lspBreakdown,
-            List<PriorityAccount> priorityAccounts
+            List<PriorityAccount> priorityAccounts,
+            List<RecentApplication> recentApplications
+    ) {
+    }
+
+    public record RecentApplication(
+            String id,
+            String externalLoanId,
+            String borrowerNameMasked,
+            String lspName,
+            String productName,
+            String status,
+            BigDecimal requestedAmount,
+            String createdAt
     ) {
     }
 

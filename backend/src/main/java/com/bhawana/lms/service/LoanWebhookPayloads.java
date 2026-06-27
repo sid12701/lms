@@ -5,8 +5,12 @@ import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
+import com.bhawana.lms.common.money.LoanFeeCalculator;
+import com.bhawana.lms.common.money.Money;
+import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,12 +66,37 @@ public final class LoanWebhookPayloads {
     }
 
     public static Map<String, Object> disbursement(LoanApplication application, LoanAccount loanAccount) {
+        return disbursement(application, loanAccount, null);
+    }
+
+    public static Map<String, Object> disbursement(
+            LoanApplication application,
+            LoanAccount loanAccount,
+            LoanDisbursementRequestLog requestLog
+    ) {
         LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
         payload.put("loanApplicationId", application.getId());
         payload.put("loanAccountId", loanAccount.getId());
         payload.put("accountNumber", loanAccount.getAccountNumber());
         payload.put("loanAccountStatus", loanAccount.getStatus().name());
         payload.put("principalAmount", loanAccount.getPrincipalAmount());
+        // ADR 0004: partners reconcile against the cash the borrower actually received.
+        // Use the persisted fee once disbursed; before that, surface the fee that will be charged.
+        BigDecimal processingFeeAmount = loanAccount.getProcessingFeeAmount() != null
+                ? Money.scale(loanAccount.getProcessingFeeAmount())
+                : LoanFeeCalculator.computeProcessingFee(
+                        loanAccount.getPrincipalAmount(),
+                        loanAccount.getLoanProduct().getProcessingFeeRate()
+                );
+        payload.put("processingFeeAmount", processingFeeAmount);
+        payload.put("netDisbursedAmount", Money.scale(loanAccount.getPrincipalAmount().subtract(processingFeeAmount)));
+        // Mock ICICI rail + provider verdict, so partners can reconcile by tranRefNo / BankRRN.
+        if (requestLog != null) {
+            payload.put("paymentMode", requestLog.getPaymentMode() == null ? null : requestLog.getPaymentMode().name());
+            payload.put("tranRefNo", requestLog.getTranRefNo());
+            payload.put("providerActCode", requestLog.getProviderActCode());
+            payload.put("bankRrn", requestLog.getBankRrn());
+        }
         return payload;
     }
 

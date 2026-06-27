@@ -128,7 +128,7 @@ class UserAdminControllerTest {
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new AuthController.LoginRequest("test.user", temporaryPassword))))
+                                new AuthApiResponses.LoginRequest("test.user@bhawana.local", temporaryPassword))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
@@ -251,6 +251,48 @@ class UserAdminControllerTest {
     }
 
     @Test
+    void createUserRejectsLspRoleWithoutLspAssignment() throws Exception {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("username", "missing.lsp.user");
+        body.put("email", "missing.lsp.user@bhawana.local");
+        body.put("password", "TempPassword123!");
+        body.set("roles", objectMapper.createArrayNode().add("LSP_UI_READ"));
+
+        mockMvc.perform(post("/api/v1/internal/admin/users")
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.toString()))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("ROLE_SCOPE_CONFLICT"))
+                .andExpect(jsonPath("$.violations[0].field").value("lspId"))
+                .andExpect(jsonPath("$.violations[0].message").value("required for LSP-scoped roles"));
+    }
+
+    @Test
+    void createUserValidationUsesFriendlyMessages() throws Exception {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("username", "");
+        body.put("email", "not-an-email");
+        body.put("password", "");
+        body.set("roles", objectMapper.createArrayNode());
+
+        mockMvc.perform(post("/api/v1/internal/admin/users")
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.violations[?(@.field=='username')].message")
+                        .value(org.hamcrest.Matchers.hasItem("This field is required.")))
+                .andExpect(jsonPath("$.violations[?(@.field=='password')].message")
+                        .value(org.hamcrest.Matchers.hasItem("This field is required.")))
+                .andExpect(jsonPath("$.violations[?(@.field=='roles')].message")
+                        .value(org.hamcrest.Matchers.hasItem("This field is required.")))
+                .andExpect(jsonPath("$.violations[?(@.field=='email')].message")
+                        .value(org.hamcrest.Matchers.hasItem("Enter a valid email address.")));
+    }
+
+    @Test
     void adminResetPasswordWritesAuditRowWithExpectedShape() throws Exception {
         AppUser managedUser = appUserRepository.findByUsername("test.user").orElseThrow();
         assertFalse(managedUser.isPasswordChangeRequired());
@@ -360,7 +402,8 @@ class UserAdminControllerTest {
 
     private String loginAccessToken(String username, String password) throws Exception {
         ObjectNode body = objectMapper.createObjectNode();
-        body.put("username", username);
+        // Login authenticates by email; the seeded users use <username>@bhawana.local.
+        body.put("email", username + "@bhawana.local");
         body.put("password", password);
 
         MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")

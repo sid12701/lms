@@ -1,0 +1,20 @@
+spring:
+  config:
+    activate:
+      on-profile: staging
+
+app:
+  seed:
+    synthetic-portfolio:
+      enabled: false
+  webhooks:
+    delivery:
+      enabled: false
+  reports:
+    processing:
+      enabled: false
+  disbursement:
+    worker:
+      enabled: false
+  alert-rules:
+    scheduler-enabled: false

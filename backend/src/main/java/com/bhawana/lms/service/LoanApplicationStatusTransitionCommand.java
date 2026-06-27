@@ -5,7 +5,7 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 
 /**
- * Single call shape for {@link LoanApplicationLifecycleService#updateApplicationStatus}.
+ * Single call shape for {@link LoanApplicationStatusWriter#updateStatus}.
  */
 public record LoanApplicationStatusTransitionCommand(
         LoanApplicationStatus targetStatus,

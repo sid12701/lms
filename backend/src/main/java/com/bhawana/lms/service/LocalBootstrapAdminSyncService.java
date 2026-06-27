@@ -67,7 +67,9 @@ public class LocalBootstrapAdminSyncService implements ApplicationRunner {
         // so the unique indexes can satisfy the new raw-equality lookups.
         String username = securityProperties.getBootstrapUser().getUsername().trim().toLowerCase();
         String rawPassword = securityProperties.getBootstrapUser().getPassword();
-        String email = (username + "@bhawana.local").toLowerCase();
+        // Email is the login identifier; honour the configured bootstrap email
+        // (getEmail() falls back to <username>@bhawana.local when unset).
+        String email = securityProperties.getBootstrapUser().getEmail();
         Set<RoleCode> roleCodes = securityProperties.getBootstrapUser().getRoles().stream()
                 .map(this::toRoleCode)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));

@@ -1,39 +1,41 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.web.ApiConflictException;
-import com.bhawana.lms.common.web.BusinessRuleViolationException;
-import com.bhawana.lms.common.web.PagedResult;
-import com.bhawana.lms.common.web.PaginationResponseBuilder;
-import com.bhawana.lms.common.web.ResourceNotFoundException;
+import com.bhawana.lms.common.api.error.ApiConflictException;
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.OpsAlert;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertStatus;
 import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.repo.OpsAlertRepository;
-import com.bhawana.lms.tenant.TenantAccessContext;
-import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
+import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class OpsAlertService {
 
     private final OpsAlertRepository opsAlertRepository;
+    private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
 
-    public OpsAlertService(OpsAlertRepository opsAlertRepository) {
+    public OpsAlertService(
+            OpsAlertRepository opsAlertRepository,
+            AdminScopedTransactionExecutor adminScopedTransactionExecutor
+    ) {
         this.opsAlertRepository = opsAlertRepository;
+        this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
     }
 
     /**
      * Creates an alert only when no open (NEW) alert already exists for the same
      * type + subject — prevents scheduled rules from spamming the inbox.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public OpsAlert createAlertIfAbsent(
             OpsAlertType type,
             OpsAlertSeverity severity,
@@ -44,36 +46,16 @@ public class OpsAlertService {
             String correlationId,
             String contextJson
     ) {
-        if (subjectId != null
-                && opsAlertRepository.existsByTypeAndSubjectIdAndStatus(type, subjectId, OpsAlertStatus.NEW)) {
-            return null;
-        }
-        if (subjectId == null
-                && correlationId != null
-                && opsAlertRepository.existsByTypeAndCorrelationIdAndStatus(type, correlationId, OpsAlertStatus.NEW)) {
-            return null;
-        }
-        return createAlert(type, severity, title, message, subjectType, subjectId, correlationId, contextJson);
-    }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public OpsAlert createAlert(
-            OpsAlertType type,
-            OpsAlertSeverity severity,
-            String title,
-            String message,
-            String subjectType,
-            UUID subjectId,
-            String correlationId,
-            String contextJson
-    ) {
-        // Ops alerts are a global/internal facility and must not ride on the
-        // tenant datasource. Flip to admin for this REQUIRES_NEW boundary and
-        // restore the caller's context on exit so the outer tenant-bound
-        // transaction (if any) continues correctly after we return.
-        TenantAccessContext previous = TenantDataAccessContextHolder.snapshot();
-        TenantDataAccessContextHolder.useAdmin();
-        try {
+        return adminScopedTransactionExecutor.call(() -> {
+            if (subjectId != null
+                    && opsAlertRepository.existsByTypeAndSubjectIdAndStatus(type, subjectId, OpsAlertStatus.NEW)) {
+                return null;
+            }
+            if (subjectId == null
+                    && correlationId != null
+                    && opsAlertRepository.existsByTypeAndCorrelationIdAndStatus(type, correlationId, OpsAlertStatus.NEW)) {
+                return null;
+            }
             return opsAlertRepository.save(new OpsAlert(
                     type,
                     severity,
@@ -84,9 +66,29 @@ public class OpsAlertService {
                     correlationId,
                     contextJson
             ));
-        } finally {
-            TenantDataAccessContextHolder.restore(previous);
-        }
+        });
+    }
+
+    public OpsAlert createAlert(
+            OpsAlertType type,
+            OpsAlertSeverity severity,
+            String title,
+            String message,
+            String subjectType,
+            UUID subjectId,
+            String correlationId,
+            String contextJson
+    ) {
+        return adminScopedTransactionExecutor.call(() -> opsAlertRepository.save(new OpsAlert(
+                type,
+                severity,
+                title,
+                message,
+                subjectType,
+                subjectId,
+                correlationId,
+                contextJson
+        )));
     }
 
     /**

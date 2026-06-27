@@ -1,5 +1,7 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.pii.AadhaarMasking;
+
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditEvent;
@@ -29,15 +31,15 @@ public final class LoanApplicationOpsResponses {
     private LoanApplicationOpsResponses() {
     }
 
-    public static LoanApplicationOpsController.LoanApplicationResponse toResponse(LoanApplication application) {
+    public static LoanApplicationOpsApiTypes.LoanApplicationResponse toResponse(LoanApplication application) {
         return toResponse(application, null);
     }
 
-    public static LoanApplicationOpsController.LoanApplicationResponse toResponse(
+    public static LoanApplicationOpsApiTypes.LoanApplicationResponse toResponse(
             LoanApplication application,
             String accountNumber
     ) {
-        return new LoanApplicationOpsController.LoanApplicationResponse(
+        return new LoanApplicationOpsApiTypes.LoanApplicationResponse(
                 application.getId().toString(),
                 application.getBorrower().getId().toString(),
                 application.getBorrower().getFullName(),
@@ -65,7 +67,7 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    public static LoanApplicationOpsController.LoanApplicationDetailResponse toDetailResponse(
+    public static LoanApplicationOpsApiTypes.LoanApplicationDetailResponse toDetailResponse(
             LoanApplicationDetailView detail
     ) {
         return toDetailResponse(
@@ -77,14 +79,14 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    public static LoanApplicationOpsController.LoanApplicationDetailResponse toDetailResponse(
+    public static LoanApplicationOpsApiTypes.LoanApplicationDetailResponse toDetailResponse(
             LoanApplication application,
             LoanApplicationLastActivity lastActivity,
             LoanAccount loanAccount,
             LoanRepaymentScheduleSummary repaymentScheduleSummary,
             LoanDelinquencySummary delinquencySummary
     ) {
-        return new LoanApplicationOpsController.LoanApplicationDetailResponse(
+        return new LoanApplicationOpsApiTypes.LoanApplicationDetailResponse(
                 application.getId().toString(),
                 loanAccount == null ? null : loanAccount.getId().toString(),
                 application.getBorrower().getId().toString(),
@@ -119,10 +121,10 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    public static LoanApplicationOpsController.LoanApplicationIntakeAuditResponse toAuditResponse(
+    public static LoanApplicationOpsApiTypes.LoanApplicationIntakeAuditResponse toAuditResponse(
             LoanApplicationIntakeAudit audit
     ) {
-        return new LoanApplicationOpsController.LoanApplicationIntakeAuditResponse(
+        return new LoanApplicationOpsApiTypes.LoanApplicationIntakeAuditResponse(
                 audit.getId().toString(),
                 audit.getLoanApplication().getId().toString(),
                 audit.getActorUsername(),
@@ -132,10 +134,10 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    public static LoanApplicationOpsController.LoanApplicationStatusTransitionResponse toTransitionResponse(
+    public static LoanApplicationOpsApiTypes.LoanApplicationStatusTransitionResponse toTransitionResponse(
             LoanApplicationStatusTransition transition
     ) {
-        return new LoanApplicationOpsController.LoanApplicationStatusTransitionResponse(
+        return new LoanApplicationOpsApiTypes.LoanApplicationStatusTransitionResponse(
                 transition.getId().toString(),
                 transition.getLoanApplication().getId().toString(),
                 transition.getActorUsername(),
@@ -149,7 +151,7 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    private static LoanApplicationOpsController.RejectionReason parseRejectionReason(String rejectionReasonJson) {
+    private static LoanApplicationOpsApiTypes.RejectionReason parseRejectionReason(String rejectionReasonJson) {
         if (rejectionReasonJson == null || rejectionReasonJson.isBlank()) {
             return null;
         }
@@ -165,7 +167,7 @@ public final class LoanApplicationOpsResponses {
                     failedRules.add(node.asText());
                 }
             });
-            return new LoanApplicationOpsController.RejectionReason(java.util.List.copyOf(failedRules));
+            return new LoanApplicationOpsApiTypes.RejectionReason(java.util.List.copyOf(failedRules));
         } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {
             return null;
         }
@@ -174,10 +176,10 @@ public final class LoanApplicationOpsResponses {
     private static final com.fasterxml.jackson.databind.ObjectMapper REJECTION_REASON_MAPPER =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
-    public static LoanApplicationOpsController.LoanApplicationAuditEventResponse toAuditEventResponse(
+    public static LoanApplicationOpsApiTypes.LoanApplicationAuditEventResponse toAuditEventResponse(
             LoanApplicationAuditEvent event
     ) {
-        return new LoanApplicationOpsController.LoanApplicationAuditEventResponse(
+        return new LoanApplicationOpsApiTypes.LoanApplicationAuditEventResponse(
                 event.getId().toString(),
                 event.getLoanApplication().getId().toString(),
                 event.getAction().name(),
@@ -191,10 +193,10 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    public static LoanApplicationOpsController.LoanDisbursementRequestResponse toDisbursementRequestResponse(
+    public static LoanApplicationOpsApiTypes.LoanDisbursementRequestResponse toDisbursementRequestResponse(
             LoanDisbursementRequestLog request
     ) {
-        return new LoanApplicationOpsController.LoanDisbursementRequestResponse(
+        return new LoanApplicationOpsApiTypes.LoanDisbursementRequestResponse(
                 request.getId().toString(),
                 request.getLoanAccount().getId().toString(),
                 request.getActorUsername(),
@@ -210,7 +212,7 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    public static LoanApplicationOpsController.LoanRepaymentScheduleInstallmentResponse toRepaymentScheduleInstallmentResponse(
+    public static LoanApplicationOpsApiTypes.LoanRepaymentScheduleInstallmentResponse toRepaymentScheduleInstallmentResponse(
             LoanRepaymentScheduleInstallment installment,
             LocalDate businessDate
     ) {
@@ -218,7 +220,7 @@ public final class LoanApplicationOpsResponses {
                 installment,
                 businessDate
         );
-        return new LoanApplicationOpsController.LoanRepaymentScheduleInstallmentResponse(
+        return new LoanApplicationOpsApiTypes.LoanRepaymentScheduleInstallmentResponse(
                 installment.getId().toString(),
                 installment.getLoanAccount().getId().toString(),
                 installment.getInstallmentNumber(),
@@ -239,10 +241,10 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    public static LoanApplicationOpsController.LoanPaymentTransactionResponse toPaymentTransactionResponse(
+    public static LoanApplicationOpsApiTypes.LoanPaymentTransactionResponse toPaymentTransactionResponse(
             LoanPaymentTransaction paymentTransaction
     ) {
-        return new LoanApplicationOpsController.LoanPaymentTransactionResponse(
+        return new LoanApplicationOpsApiTypes.LoanPaymentTransactionResponse(
                 paymentTransaction.getId().toString(),
                 paymentTransaction.getLoanAccount().getId().toString(),
                 paymentTransaction.getRepaymentInstallment() == null
@@ -263,10 +265,10 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    public static LoanApplicationOpsController.LoanForeclosureQuoteResponse toForeclosureQuoteResponse(
+    public static LoanApplicationOpsApiTypes.LoanForeclosureQuoteResponse toForeclosureQuoteResponse(
             LoanForeclosureQuote quote
     ) {
-        return new LoanApplicationOpsController.LoanForeclosureQuoteResponse(
+        return new LoanApplicationOpsApiTypes.LoanForeclosureQuoteResponse(
                 quote.getId().toString(),
                 quote.getLoanAccount().getId().toString(),
                 quote.getVersion(),
@@ -283,10 +285,10 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    public static LoanApplicationOpsController.LoanApplicationDocumentChecklistResponse toDocumentChecklistResponse(
+    public static LoanApplicationOpsApiTypes.LoanApplicationDocumentChecklistResponse toDocumentChecklistResponse(
             LoanApplicationDocumentChecklist checklistItem
     ) {
-        return new LoanApplicationOpsController.LoanApplicationDocumentChecklistResponse(
+        return new LoanApplicationOpsApiTypes.LoanApplicationDocumentChecklistResponse(
                 checklistItem.getId().toString(),
                 checklistItem.getLoanApplication().getId().toString(),
                 checklistItem.getDocumentType().name(),
@@ -310,10 +312,10 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    public static LoanApplicationOpsController.LoanApplicationDocumentAccessAuditResponse toDocumentAccessAuditResponse(
+    public static LoanApplicationOpsApiTypes.LoanApplicationDocumentAccessAuditResponse toDocumentAccessAuditResponse(
             LoanApplicationDocumentAccessAudit audit
     ) {
-        return new LoanApplicationOpsController.LoanApplicationDocumentAccessAuditResponse(
+        return new LoanApplicationOpsApiTypes.LoanApplicationDocumentAccessAuditResponse(
                 audit.getId().toString(),
                 audit.getLoanApplication().getId().toString(),
                 audit.getAction().name(),
@@ -327,7 +329,7 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    private static LoanApplicationOpsController.LoanAccountSummaryResponse toLoanAccountSummary(
+    private static LoanApplicationOpsApiTypes.LoanAccountSummaryResponse toLoanAccountSummary(
             LoanAccount loanAccount,
             LoanRepaymentScheduleSummary repaymentScheduleSummary,
             LoanDelinquencySummary delinquencySummary
@@ -335,7 +337,7 @@ public final class LoanApplicationOpsResponses {
         if (loanAccount == null) {
             return null;
         }
-        return new LoanApplicationOpsController.LoanAccountSummaryResponse(
+        return new LoanApplicationOpsApiTypes.LoanAccountSummaryResponse(
                 loanAccount.getId().toString(),
                 loanAccount.getAccountNumber(),
                 loanAccount.getStatus().name(),
@@ -346,13 +348,13 @@ public final class LoanApplicationOpsResponses {
                 loanAccount.getClosureReason() == null ? null : loanAccount.getClosureReason().name(),
                 loanAccount.getClosedAt() == null ? null : loanAccount.getClosedAt().toString(),
                 loanAccount.getClosedByUsername(),
-                delinquencySummary == null ? null : new LoanApplicationOpsController.LoanDelinquencySummaryResponse(
+                delinquencySummary == null ? null : new LoanApplicationOpsApiTypes.LoanDelinquencySummaryResponse(
                         delinquencySummary.maxDaysPastDue(),
                         delinquencySummary.bucket().name(),
                         delinquencySummary.overdueInstallmentCount(),
                         delinquencySummary.overdueAmount()
                 ),
-                repaymentScheduleSummary == null ? null : new LoanApplicationOpsController.LoanRepaymentScheduleSummaryResponse(
+                repaymentScheduleSummary == null ? null : new LoanApplicationOpsApiTypes.LoanRepaymentScheduleSummaryResponse(
                         repaymentScheduleSummary.installmentCount(),
                         repaymentScheduleSummary.installmentAmount(),
                         repaymentScheduleSummary.firstDueDate(),
@@ -361,13 +363,13 @@ public final class LoanApplicationOpsResponses {
         );
     }
 
-    private static LoanApplicationOpsController.LoanApplicationLastActivityResponse toLastActivityResponse(
+    private static LoanApplicationOpsApiTypes.LoanApplicationLastActivityResponse toLastActivityResponse(
             LoanApplicationLastActivity lastActivity
     ) {
         if (lastActivity == null) {
             return null;
         }
-        return new LoanApplicationOpsController.LoanApplicationLastActivityResponse(
+        return new LoanApplicationOpsApiTypes.LoanApplicationLastActivityResponse(
                 lastActivity.activityType(),
                 lastActivity.actorUsername(),
                 lastActivity.summary(),
@@ -405,10 +407,9 @@ public final class LoanApplicationOpsResponses {
         objectNode.fieldNames().forEachRemaining(fieldName -> {
             JsonNode child = objectNode.get(fieldName);
             if (child != null && child.isTextual()) {
-                objectNode.put(fieldName, switch (fieldName) {
-                    case "aadharNumber", "aadhaarNumber", "aadhar", "aadhaar", "incomingAadhar" -> maskAadhar(child.asText());
-                    default -> child.asText();
-                });
+                objectNode.put(fieldName, AadhaarMasking.isJsonFieldName(fieldName)
+                        ? AadhaarMasking.mask(child.asText())
+                        : child.asText());
             } else {
                 maskSensitiveNode(child);
             }
@@ -416,14 +417,4 @@ public final class LoanApplicationOpsResponses {
         return objectNode;
     }
 
-    private static String maskAadhar(String value) {
-        if (value == null || value.isBlank()) {
-            return value;
-        }
-        String digits = value.replaceAll("\\s", "");
-        if (digits.length() < 4) {
-            return "XXXXXXXX";
-        }
-        return "XXXXXXXX" + digits.substring(digits.length() - 4);
-    }
 }

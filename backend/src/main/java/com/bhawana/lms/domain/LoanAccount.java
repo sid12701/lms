@@ -59,6 +59,9 @@ public class LoanAccount {
     @Column(name = "disbursed_at")
     private Instant disbursedAt;
 
+    @Column(name = "processing_fee_amount", precision = 19, scale = 2)
+    private BigDecimal processingFeeAmount;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "closure_reason", length = 32)
     private LoanAccountClosureReason closureReason;
@@ -162,9 +165,19 @@ public class LoanAccount {
     }
 
     public void updateDisbursementStatus(LoanAccountStatus status, Instant occurredAt) {
+        updateDisbursementStatus(status, occurredAt, null);
+    }
+
+    /**
+     * Records the disbursement outcome. On a successful DISBURSED transition the processing fee
+     * that was actually charged (principal minus cash sent to the borrower) is persisted; for
+     * non-success outcomes the fee argument is ignored.
+     */
+    public void updateDisbursementStatus(LoanAccountStatus status, Instant occurredAt, BigDecimal processingFeeAmount) {
         this.status = status;
         if (status == LoanAccountStatus.DISBURSED) {
             this.disbursedAt = occurredAt;
+            this.processingFeeAmount = processingFeeAmount;
         }
     }
 
@@ -174,6 +187,10 @@ public class LoanAccount {
 
     public Instant getDisbursedAt() {
         return disbursedAt;
+    }
+
+    public BigDecimal getProcessingFeeAmount() {
+        return processingFeeAmount;
     }
 
     public LoanAccountClosureReason getClosureReason() {
