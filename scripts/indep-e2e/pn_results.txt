@@ -1,0 +1,12 @@
+[PASS] setup.disbursed: loan disbursed, acct=28ea08b0-28b3-4782-89dd-acc9e02df3cd
+[PASS] EC-051: no Idempotency-Key -> 400
+[PASS] EC-052: no targetInstallmentId -> 400
+[PASS] EC-053: partial amount -> 422
+[PASS] EC-056: invalid channel BITCOIN -> 400
+[PASS] EC-056b: UPI channel valid -> 200
+[PASS] EC-055: payment idempotent replay -> 200
+[PASS] EC-054: double-pay installment 1 -> 409
+
+======================================================================
+PASS=8  FAIL=0  INFO=0
+======================================================================

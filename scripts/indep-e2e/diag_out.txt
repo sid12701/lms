@@ -1,0 +1,10 @@
+EC-107 LSP_PROVIDED bad sum -> 422: {"timestamp":"2026-06-13T19:10:41.640277400Z","status":422,"code":"LOAN_NOT_APPROVED","error":"LOAN_NOT_APPROVED","message":"Repayment schedule can only be set after the loan has been auto-approved.",
+EC-025 bank-check MATCH -> 200: {"status":"OK","warnings":[]}
+EC-048 bank-check NAME-MISMATCH -> 500: {"timestamp":"2026-06-13T19:10:51.320616900Z","status":500,"code":"INTERNAL_SERVER_ERROR","error":"INTERNAL_SERVER_ERROR","message":"An unexpected error occurred","path":"/api/v1/lsp/loan-applications/8243f4dd-ed19-4c01-
+EC-048 bank-check ACCT-MISMATCH -> 500: {"timestamp":"2026-06-13T19:10:53.496080300Z","status":500,"code":"INTERNAL_SERVER_ERROR","error":"INTERNAL_SERVER_ERROR","message":"An unexpected error occurred","path":"/api/v1/lsp/loan-applications/8243f4dd-ed19-4c01-
+EC-044 download random app -> 404
+EC-045 download missing-type (real app, no docs) -> 404
+EC-112 fresh borrower bankAccountNumberMasked='256335623472' (on-file acct was 256335623472) aadharNumberMasked='XXXXXXXX7956'
+EC-049 initiate -> 200
+EC-049 mock FAILED #1 -> 200: {"id":"fbb0e9e3-1180-4b3f-85a9-3441bf091008","loanAccountId":"f0cf47e3-06a3-41d5-91c0-dfdfba11dc75","borrowerId":"ae2134d5-e416-470a-9068-44e09c3c9f34","borrowerFullName":"Diag f7c3a6","borrowerPan":"
+EC-049 status after 1 FAILED -> DISBURSEMENT_RETRY

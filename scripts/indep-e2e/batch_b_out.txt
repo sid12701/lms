@@ -1,0 +1,12 @@
+[Pass     ] UC-042: enqueued 1 event(s) on status change; dispatch -> 200 summary={'processed': 1, 'delivered': 1, 'retryableFailures': 0, 'permanentFailures': 0} (subscr
+[Pass     ] EC-105: 1 events monotonic by createdAt = True
+[Pass     ] EC-062: subscriber httpbin 500; dispatch summary={'processed': 1, 'delivered': 0, 'retryableFailures': 1, 'permanentFailures': 0}
+[Fail     ] EC-063: subscriber httpbin 404; dispatch summary={'processed': 1, 'delivered': 0, 'retryableFailures': 1, 'permanentFailures': 0}
+[Pass     ] EC-061: unresolvable host rejected at SAVE -> 422 (SsrfSafeUrlValidator InetAddress.getByName fails). Never reaches dispatch.
+[Pass     ] EC-010: addCidr=201 enforce=200; blocked-IP token -> 403; allowed-IP token -> 200
+[Pass     ] UC-009: add CIDR -> 201; list -> 200 (1 entries); enforcement -> 200
+[Fail     ] EC-107: approved loan + LSP_PROVIDED bad-sum schedule -> 500: {"timestamp":"2026-06-13T19:16:23.304992900Z","status":500,"code":"INTERNAL_SERVER_ERROR","error
+[Pass     ] EC-003: 12 wrong-login codes=[401, 401, 401, 401, 401, 429, 429, 429, 401, 429, 429, 429]; correct-pw-after -> 429 (locked/limited=True)
+[Blocked  ] EC-114: Cannot create an overdue installment in this environment: schedule due dates are future (2026-07+) and there is no business-date override to time-trav
+
+Total rows now: 29 -> gap_results.json

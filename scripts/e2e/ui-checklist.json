@@ -1,0 +1,121 @@
+{
+  "description": "Chrome DevTools MCP UI edge cases — Phase 8. Run with frontend on FRONTEND_URL and ops.admin logged in.",
+  "prerequisites": [
+    "Backend http://localhost:8080 UP",
+    "Frontend http://127.0.0.1:5173 UP",
+    "Newman run 5 or fixtures.py produced applicationId in .e2e-runs/edge-fixtures.json"
+  ],
+  "cases": [
+    {
+      "id": "EC-083",
+      "title": "Browser refresh preserves session on loan detail",
+      "route": "/loan-applications/{{applicationId}}",
+      "steps": [
+        "Login as ops.admin",
+        "Navigate to loan application detail",
+        "Hard refresh (F5)",
+        "Assert still authenticated (no redirect to /login)",
+        "Assert detail content reloads"
+      ],
+      "pass": "Session cookie valid; page shows loan data after refresh"
+    },
+    {
+      "id": "EC-085",
+      "title": "No console errors on primary screens",
+      "routes": ["/home", "/loan-applications", "/audit", "/borrowers"],
+      "steps": [
+        "Open DevTools Console",
+        "Visit each route",
+        "Record console.error and uncaught exceptions"
+      ],
+      "pass": "Zero console.error on load (warnings allowed)"
+    },
+    {
+      "id": "EC-086",
+      "title": "Failed network shows ErrorState",
+      "route": "/loan-applications/{{applicationId}}",
+      "steps": [
+        "Enable network request blocking for /api/v1/internal/ops/loan-applications/*",
+        "Reload detail page",
+        "Assert user-visible error state (not blank screen)"
+      ],
+      "pass": "ErrorState or equivalent error UI visible"
+    },
+    {
+      "id": "EC-087",
+      "title": "Empty list states",
+      "route": "/loan-applications",
+      "steps": [
+        "Apply filters that yield zero results (e.g. status + date impossible combo)",
+        "Assert empty state message/component"
+      ],
+      "pass": "Empty state copy visible; table not broken"
+    },
+    {
+      "id": "EC-088",
+      "title": "Pagination boundaries on audit",
+      "route": "/audit",
+      "steps": [
+        "Navigate to last page of audit results",
+        "Assert page controls disabled appropriately on last page",
+        "Navigate back to first page"
+      ],
+      "pass": "Pagination works at boundaries"
+    },
+    {
+      "id": "EC-089",
+      "title": "Filter combinations on loan applications",
+      "route": "/loan-applications",
+      "steps": [
+        "Set status filter DISBURSED",
+        "Add LSP filter",
+        "Assert list updates and URL/query reflects filters"
+      ],
+      "pass": "Combined filters apply; results consistent with API"
+    },
+    {
+      "id": "EC-090",
+      "title": "Sensitive-data toggle",
+      "route": "/loan-applications/{{applicationId}}",
+      "steps": [
+        "Locate PII mask toggle (aadhaar/PAN)",
+        "Toggle reveal and mask",
+        "Assert masked format when masked"
+      ],
+      "pass": "Toggle changes displayed PII format"
+    },
+    {
+      "id": "EC-096",
+      "title": "UI status matches API",
+      "route": "/loan-applications/{{applicationId}}",
+      "steps": [
+        "GET /api/v1/internal/ops/loan-applications/{id} for status",
+        "Compare status badge/label on screen"
+      ],
+      "pass": "UI status string matches API status enum"
+    },
+    {
+      "id": "EC-097",
+      "title": "Webhook tab count matches API",
+      "route": "/loan-applications/{{applicationId}}",
+      "steps": [
+        "GET /api/v1/internal/ops/loan-applications/{id}/webhook-events count",
+        "Open Webhooks section in UI",
+        "Compare event count"
+      ],
+      "pass": "Counts match (or documented pagination difference)"
+    },
+    {
+      "id": "EC-111",
+      "title": "UI does not poll after external API status change",
+      "route": "/loan-applications/{{applicationId}}",
+      "steps": [
+        "Open detail while status DISBURSED",
+        "POST status transition via API (or mock disburse) without UI action",
+        "Wait 10s without reload",
+        "Observe stale status on screen"
+      ],
+      "pass": "Expected Fail — documents UC-053 known gap until polling added"
+    }
+  ]
+}

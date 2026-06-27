@@ -20,3 +20,7 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context layout: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## AXI tooling
+
+Use `gh-axi` for GitHub and `chrome-devtools-axi` for browser automation.

@@ -1,0 +1,316 @@
+{
+  "states": [
+    {
+      "route": "/home",
+      "url": "http://localhost:5173/home",
+      "elapsedMs": 5985,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--home.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nHome\nHome page\n\nINTERNAL WORKSPACE\n\nHome\n\nOperational summary across all LSPs — applications, repayments, alerts."
+    },
+    {
+      "route": "/loan-applications",
+      "url": "http://localhost:5173/loan-applications",
+      "elapsedMs": 5965,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--loan-applications.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nLoan applications\nLoan applications page\n\nWORKSPACE\n\nLoan applications\n\nBrowse, filter, and act on every loan application across LSPs.\n\nSearch loan applications\nLSP loan ID\nBhawana loan ID\nAll statuses\nAll LSPs\ndd/mm/yyyy\ndd/mm/yyyy\nAll products\nClear\nID\tLSP LOAN ID\tBHAWANA LOAN ID\tBORROWER\tLSP\tPRODUCT\t\nAMOUNT\n\t\nTENURE\n\t\nSTATUS\n\t\nUPDATED\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\n\t\nRows per page\n25\n\nLoading…\n\n1 / 1"
+    },
+    {
+      "route": "/borrowers",
+      "url": "http://localhost:5173/borrowers",
+      "elapsedMs": 6237,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--borrowers.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nBorrowers\nBorrowers page\n\nWORKSPACE\n\nBorrowers\n\nBrowse and search the borrower directory across every LSP.\n\nSearch borrowers\nClear\nBORROWER\tPAN\tMOBILE\tEMAIL\tLOCATION\tAADHAAR\n\nAarav Mehta\na60a4f64…\n\tTUGJC6876Z\t6751724266\taarav.mehta.1ee75b@seed.example.com\tMumbai, Maharashtra\tXXXXXXXX8672\n\nAarav Singh\n2d39b372…\n\tWCEKQ3200G\t8317703019\taarav.singh.0a400b@seed.example.com\tMumbai, Maharashtra\tXXXXXXXX8994\n\nAnika Sharma\n2b3765d8…\n\tJUYXU6694W\t8754283272\tanika.sharma.9b9669@seed.example.com\tMumbai, Maharashtra\tXXXXXXXX8526\n\nDiya Das\n0444b746…\n\tVWZQH0723R\t7368143232\tdiya.das.1ab1a8@seed.example.com\tMumbai, Maharashtra\tXXXXXXXX7026\n\nDoc Borrower\n6f4c4a3c…\n\tABCDE5027F\t9876511941\tdoc2f1ef94f@example.com\tMumbai, MH\tXXXXXXXX5027\n\nKabir Singh\n2b77dbc8…\n\tRMGCW0325P\t7704761047\tkabir.singh.ebee0c@seed.example.com\tMumbai, Maharashtra\tXXXXXXXX4796\n\nNeha Singh\naeb4b102…\n\tHWFUP5371E\t7269800039\tneha.singh.4ecb84@seed.example.com\tMumbai, Maharashtra\tXXXXXXXX9746\n\nRohan Das\n8ee358a1…\n\tUJWGI8201P\t9492736438\trohan.das.12601c@seed.example.com\tMumbai, Maharashtra\tXXXXXXXX2904\n\nRohan Patel\n3fe83731…\n\tAPOWW2066Y\t9303442905\trohan.patel.bd396d@seed.example.com\tMumbai, Maharashtra\tXXXXXXXX6315\n\nVikram Nair\n48aa08c0…\n\tVOLYY0967C\t8242197228\tvikram.nair.152520@seed.example.com\tMumbai, Maharashtra\tXXXXXXXX4439\n\nVikram Singh\n7e182bbf…\n\tEMJSU9861P\t6434760639\tvikram.singh.926ba3@seed.example.com\tMumbai, Maharashtra\tXXXXXXXX3296\nRows per page\n25\n\nShowing 1–11 of 11\n\n1 / 1"
+    },
+    {
+      "route": "/alerts",
+      "url": "http://localhost:5173/alerts",
+      "elapsedMs": 5926,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--alerts.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nAlerts\nAlerts page\n\nREPORTING\n\nAlerts\n\nOperational alerts across applications, disbursements, and repayments.\n\nLoading alert rules…\n\nAll\nOpen\nAcknowledged\nAll severities\nAll subjects\nSearch alerts\nClear\nSeverity\tAlert\tSubject\tCreated\tStatus\t\nActions\n\n\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\nRows per page\n25\n\nLoading…\n\n1 / 1"
+    },
+    {
+      "route": "/reports",
+      "url": "http://localhost:5173/reports",
+      "elapsedMs": 6134,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--reports.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nReports\nReports page\n\nREPORTING\n\nReports\n\nPortfolio MIS preview and downloadable report generation.\n\nGenerate report\nLSP\nAll LSPs\nDISBURSED FROM\ndd/mm/yyyy\nDISBURSED TO\ndd/mm/yyyy\nClear\n\nTOTAL DISBURSED (MTD)\n\n₹20L\n\nACTIVE LOANS\n\n8\n\nTOTAL LOANS\n\n8\n\nWEIGHTED-AVG YIELD\n\n14.50%\n\nPORTFOLIO AT RISK 30+\n\n0.00%\n\nYour report requests\n\nNo reports queued yet\n\nGenerate a portfolio MIS report to see it appear here.\n\nPortfolio preview"
+    },
+    {
+      "route": "/lsps",
+      "url": "http://localhost:5173/lsps",
+      "elapsedMs": 5665,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--lsps.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nLSPs\nLSPs page\n\nADMINISTRATION\n\nLSPs\n\nManage Lending Service Provider tenants, operational status, and webhook subscriptions.\n\nNew LSP\nAll statuses\nSearch LSPs\nClear\nCode\tName\tStatus\tAPI clients\tWebhook\tCreated\t\nActions\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\nRows per page\n25\n\nLoading…\n\n1 / 1"
+    },
+    {
+      "route": "/products",
+      "url": "http://localhost:5173/products",
+      "elapsedMs": 5611,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--products.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nProducts\nProducts page\n\nADMINISTRATION\n\nProducts\n\nLoan products, tenor and rate bands, and per-LSP availability.\n\nNew product\nAll\nActive\nInactive\nSearch products\nClear\nCode\tName\tStatus\tPrincipal range\tInterest\tTenure\t\nActions\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\n\n\n\t\n\t\n\t\n\t\n\t\n\t\nRows per page\n25\n\nLoading…\n\n1 / 1"
+    },
+    {
+      "route": "/users",
+      "url": "http://localhost:5173/users",
+      "elapsedMs": 5676,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--users.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nUsers\nUsers page\n\nADMINISTRATION\n\nUsers\n\nInternal and LSP users — manage roles and tenant scope.\n\nNew user\nAll roles\nAll statuses\nAll LSPs\nSearch users\nClear\nUsername\tEmail\tRole\tLSP\tStatus\tCreated\t\nActions\n\n\nops.admin\n\tops.admin@bhawana.local\tSystem admin\tAll LSPs\t\nActive\n\t2 days ago\t\nEdit\nReset password\nRevoke sessions\nDisable\nRows per page\n25\n\nShowing 1–1 of 1\n\n1 / 1"
+    },
+    {
+      "route": "/api-clients",
+      "url": "http://localhost:5173/api-clients",
+      "elapsedMs": 5808,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--api-clients.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nAPI clients\nAPI clients page\n\nADMINISTRATION\n\nAPI clients\n\nLSP API credentials and secret rotation. IP allowlists are managed per LSP under Administration → LSPs.\n\nNew API client\nAll\nActive\nDisabled\nAll LSPs\nSearch API clients\nClear\nClient ID\tName\tLSP\tStatus\tLast used\t\nActions\n\ncli_bf3afd5945444ab09042eb8f2fa6fab8\tdoc-upload-client\tDoc Upload Test\t\nActive\n\t9 hours ago\t\nManage\nRows per page\n25\n\nShowing 1–1 of 1\n\n1 / 1"
+    },
+    {
+      "route": "/audit",
+      "url": "http://localhost:5173/audit",
+      "elapsedMs": 5489,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--audit.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nAudit\nAudit page\n\nADMINISTRATION\n\nAudit log\n\nApplication, intake, document access, product, app user, API client, disbursement, and report access audit streams.\n\nAll\nApplication\nIntake\nPII reveal\nDocument access\nProduct\nApp user\nAPI client\nDisbursement\nReport access\nAll actors\nLOAN\nFROM\ndd/mm/yyyy\nTO\ndd/mm/yyyy\nCORRELATION\nClear"
+    },
+    {
+      "route": "/my-loans",
+      "url": "http://localhost:5173/my-loans",
+      "elapsedMs": 5564,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--my-loans.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nMy loans\nMy loans page\n\nLSP workspace only\n\nSigned in as System admin. This area is limited to LSP viewer or LSP user. Contact your administrator if you need access."
+    },
+    {
+      "route": "/not-a-real-route",
+      "url": "http://localhost:5173/not-a-real-route",
+      "elapsedMs": 5518,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--not-a-real-route.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nNot A Real Route\nNot A Real Route page\nPage not found\n\nPage not found\n\nThe page you are looking for does not exist or has been moved.\n\nBack to home"
+    },
+    {
+      "route": "/loan-applications/00000000-0000-0000-0000-000000000000",
+      "url": "http://localhost:5173/loan-applications/00000000-0000-0000-0000-000000000000",
+      "elapsedMs": 5732,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--loan-applications-00000000-0000-0000-0000-000000000000.png",
+      "spinners": 0,
+      "errors": [
+        {
+          "status": 404,
+          "url": "http://localhost:8080/api/v1/internal/ops/loan-applications/00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nLoan applications\nDetail\nDetail page"
+    },
+    {
+      "route": "/borrowers/00000000-0000-0000-0000-000000000000",
+      "url": "http://localhost:5173/borrowers/00000000-0000-0000-0000-000000000000",
+      "elapsedMs": 5594,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--borrowers-00000000-0000-0000-0000-000000000000.png",
+      "spinners": 0,
+      "errors": [
+        {
+          "status": 404,
+          "url": "http://localhost:8080/api/v1/internal/admin/borrowers/00000000-0000-0000-0000-000000000000"
+        }
+      ],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nBorrowers\nDetail\nDetail page"
+    },
+    {
+      "route": "/my-loans/00000000-0000-0000-0000-000000000000",
+      "url": "http://localhost:5173/my-loans/00000000-0000-0000-0000-000000000000",
+      "elapsedMs": 5546,
+      "file": "D:\\Desktop-New\\Folders\\LMS\\outputs\\ux-audit-2026-06-21\\auth-route--my-loans-00000000-0000-0000-0000-000000000000.png",
+      "spinners": 0,
+      "errors": [],
+      "text": "Skip to main content\n\nBhawana Capital\n\nSovereign Ledger\n\nWORKSPACE\n\nHome\nLoan applications\nBorrowers\n\nREPORTING\n\nAlerts\nReports\n\nADMINISTRATION\n\nLSPs\nProducts\nUsers\nAPI clients\nAudit log\n\nops.admin\n\nSystem admin\n\nSearch applications, borrowers…\nCtrl K\nInternal · All LSPs\nOP\nops.admin\nHome\nMy loans\nDetail\nDetail page\n\nLSP workspace only\n\nSigned in as System admin. This area is limited to LSP viewer or LSP user. Contact your administrator if you need access."
+    }
+  ],
+  "consoleEvents": [
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/login"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/home"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/home"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/loan-applications"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/loan-applications"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/borrowers"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/borrowers"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/alerts"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/alerts"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/reports"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/reports"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/lsps"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/lsps"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/products"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/products"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/users"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/users"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/api-clients"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/api-clients"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/audit"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/audit"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/my-loans"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/my-loans"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/not-a-real-route"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/not-a-real-route"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/loan-applications/00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/loan-applications/00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "http://localhost:5173/loan-applications/00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/borrowers/00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/borrowers/00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "http://localhost:5173/borrowers/00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "level": "warning",
+      "text": "⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.",
+      "url": "http://localhost:5173/my-loans/00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "level": "error",
+      "text": "Fix any of the following:\n  Some page content is not contained by landmarks",
+      "url": "http://localhost:5173/my-loans/00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}

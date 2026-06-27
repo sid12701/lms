@@ -1,0 +1,204 @@
+{
+  "scenario": "reporting",
+  "timestamp": "20260614-125930",
+  "config_snapshot": {
+    "ADMIN_USERNAME": "ops.admin",
+    "APP_STORAGE_DOCUMENTS_PROVIDER": "FILE_SYSTEM",
+    "BASE_URL": "http://localhost:8080",
+    "FRONTEND_URL": "http://127.0.0.1:5173",
+    "PERF_BURST_FACTOR": "10",
+    "PERF_CONCURRENCY": "10",
+    "PERF_DURATION_SEC": "300",
+    "PERF_FIXTURES_JSON": ".perf-runs/fixtures.json",
+    "PERF_ITERATIONS": "0",
+    "PERF_PEAK_FACTOR": "3.5",
+    "PERF_RAMP_DOWN_SEC": "15",
+    "PERF_RAMP_UP_SEC": "30",
+    "PERF_REPORT_DIR": ".perf-runs/reports",
+    "PERF_RUN_PREFIX": "PERF",
+    "PERF_TARGET_LOANS_PER_DAY": "100000",
+    "PERF_UI_CONCURRENT_BROWSERS": "2",
+    "PERF_UI_SAMPLE_PAGES": "home,loan-applications,reports"
+  },
+  "summary": {
+    "total_requests": 168,
+    "duration_sec": 108.9,
+    "rps": 1.543,
+    "error_count": 48,
+    "error_rate_pct": 28.57,
+    "timeout_count": 0,
+    "latency_ms": {
+      "p50": 1543.0853999987448,
+      "p90": 2285.701299999346,
+      "p95": 16113.647399999536,
+      "p99": 16693.32570000006
+    },
+    "by_endpoint": {
+      "GET GET /api/v1/internal/home/overview": {
+        "count": 12,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.11,
+        "p50": 16246.58239999917,
+        "p90": 16693.32570000006,
+        "p95": 32291.32279999976,
+        "p99": 32291.32279999976
+      },
+      "GET GET /api/v1/internal/ops/loan-applications": {
+        "count": 12,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.11,
+        "p50": 1914.8703000009846,
+        "p90": 2067.801099999997,
+        "p95": 2230.7619000002887,
+        "p99": 2230.7619000002887
+      },
+      "GET GET /api/v1/internal/reports/portfolio-mis/preview": {
+        "count": 12,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.11,
+        "p50": 1833.8952000012796,
+        "p90": 2052.143899998555,
+        "p95": 2191.2013000001025,
+        "p99": 2191.2013000001025
+      },
+      "GET GET /api/v1/internal/alerts": {
+        "count": 12,
+        "error_count": 12,
+        "error_rate_pct": 100.0,
+        "rps": 0.11,
+        "p50": 968.7139999987266,
+        "p90": 1121.1832000008144,
+        "p95": 1139.78010000028,
+        "p99": 1139.78010000028
+      },
+      "GET GET /api/v1/internal/admin/audit-events": {
+        "count": 12,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.11,
+        "p50": 1781.8372000001546,
+        "p90": 2041.7417000007845,
+        "p95": 2180.810300000303,
+        "p99": 2180.810300000303
+      },
+      "POST POST /api/v1/internal/reports/portfolio-mis/requests": {
+        "count": 12,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.11,
+        "p50": 2024.8620999991545,
+        "p90": 2560.059400000682,
+        "p95": 2561.5648000002693,
+        "p99": 2561.5648000002693
+      },
+      "GET GET /api/v1/internal/reports/requests": {
+        "count": 48,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.441,
+        "p50": 1385.5891000002885,
+        "p90": 1858.5603999999876,
+        "p95": 1984.3660999995336,
+        "p99": 15148.4032999997
+      },
+      "GET GET /api/v1/internal/reports/requests/{id}/download": {
+        "count": 48,
+        "error_count": 36,
+        "error_rate_pct": 75.0,
+        "rps": 0.441,
+        "p50": 1141.5288000007422,
+        "p90": 1875.6642999996984,
+        "p95": 1929.9227999999857,
+        "p99": 2195.7259999999224
+      }
+    },
+    "by_workflow": {
+      "admin.dashboard": {
+        "count": 12,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.11,
+        "p50": 16246.58239999917,
+        "p90": 16693.32570000006,
+        "p95": 32291.32279999976,
+        "p99": 32291.32279999976
+      },
+      "admin.loan_list": {
+        "count": 12,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.11,
+        "p50": 1914.8703000009846,
+        "p90": 2067.801099999997,
+        "p95": 2230.7619000002887,
+        "p99": 2230.7619000002887
+      },
+      "admin.report_preview": {
+        "count": 12,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.11,
+        "p50": 1833.8952000012796,
+        "p90": 2052.143899998555,
+        "p95": 2191.2013000001025,
+        "p99": 2191.2013000001025
+      },
+      "admin.alerts": {
+        "count": 12,
+        "error_count": 12,
+        "error_rate_pct": 100.0,
+        "rps": 0.11,
+        "p50": 968.7139999987266,
+        "p90": 1121.1832000008144,
+        "p95": 1139.78010000028,
+        "p99": 1139.78010000028
+      },
+      "admin.audit": {
+        "count": 12,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.11,
+        "p50": 1781.8372000001546,
+        "p90": 2041.7417000007845,
+        "p95": 2180.810300000303,
+        "p99": 2180.810300000303
+      },
+      "report.async_create": {
+        "count": 12,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.11,
+        "p50": 2024.8620999991545,
+        "p90": 2560.059400000682,
+        "p95": 2561.5648000002693,
+        "p99": 2561.5648000002693
+      },
+      "report.poll": {
+        "count": 48,
+        "error_count": 0,
+        "error_rate_pct": 0.0,
+        "rps": 0.441,
+        "p50": 1385.5891000002885,
+        "p90": 1858.5603999999876,
+        "p95": 1984.3660999995336,
+        "p99": 15148.4032999997
+      },
+      "report.download": {
+        "count": 48,
+        "error_count": 36,
+        "error_rate_pct": 75.0,
+        "rps": 0.441,
+        "p50": 1141.5288000007422,
+        "p90": 1875.6642999996984,
+        "p95": 1929.9227999999857,
+        "p99": 2195.7259999999224
+      }
+    }
+  },
+  "extra": {
+    "run_id": "PERF-20260614-125741-4079fe"
+  }
+}

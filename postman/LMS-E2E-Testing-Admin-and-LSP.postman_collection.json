@@ -38,21 +38,22 @@
       "description": "Fail-fast if the backend is unreachable.",
       "item": [
         {
-          "name": "Backend health",
+          "name": "Backend liveness",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/actuator/health",
+              "raw": "{{baseUrl}}/actuator/health/liveness",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "actuator",
-                "health"
+                "health",
+                "liveness"
               ]
             },
-            "description": "Spring Boot Actuator probe. Run first to confirm the API is up."
+            "description": "Liveness probe (not aggregate /actuator/health, which can be DOWN when the DB pool is saturated)."
           },
           "event": [
             {
@@ -62,7 +63,7 @@
                 "exec": [
                   "pm.test('200 OK', () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
-                  "pm.test('status UP', () => pm.expect(body.status).to.eql('UP'));"
+                  "pm.test('liveness UP', () => pm.expect(body.status).to.eql('UP'));"
                 ]
               }
             }
@@ -99,7 +100,7 @@
             "description": "POST /api/v1/auth/login — password grant for ops.admin. If passwordChangeRequired, a nested call to /auth/password rotates the password to adminNewPassword (env var) and stores the new token.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminCurrentPassword}}\"\n}",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminCurrentPassword}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -114,6 +115,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "// Keep adminCurrentPassword explicit, but allow reruns to reuse the stored value",
+                  "if (!pm.environment.get('adminEmail')) {",
+                  "    pm.environment.set('adminEmail', pm.environment.get('adminUsername') + '@bhawana.local');",
+                  "}",
                   "const currentPassword = pm.environment.get('adminCurrentPassword');",
                   "if (!currentPassword) {",
                   "    const rotated = pm.environment.get('adminPasswordChangeRequired') === 'false';",
@@ -741,7 +745,7 @@
             "description": "Password grant for the LSP UI user. If passwordChangeRequired, rotates inline and stores the new password.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"{{lspUiUsername}}\",\n  \"password\": \"{{lspUiCurrentPassword}}\"\n}",
+              "raw": "{\n  \"email\": \"{{lspUiUsername}}@demo.local\",\n  \"password\": \"{{lspUiCurrentPassword}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2482,6 +2486,56 @@
           ]
         },
         {
+          "name": "Process report queue",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/internal/reports/requests/process?batchSize=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "internal",
+                "reports",
+                "requests",
+                "process"
+              ],
+              "query": [
+                {
+                  "key": "batchSize",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Drains pending MIS report jobs when the scheduled worker is disabled (staging) or for faster E2E feedback."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('process OK or absent (worker fallback)', () => pm.expect([200, 404]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) {",
+                  "    const s = pm.response.json();",
+                  "    console.log('[mis] process processed=' + s.processed + ' completed=' + s.completed + ' failed=' + s.failed);",
+                  "} else {",
+                  "    console.warn('[mis] POST /reports/requests/process not found — using scheduled worker; rebuild backend for manual dispatch');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Poll MIS status",
           "request": {
             "method": "GET",
@@ -2504,7 +2558,7 @@
                 "requests"
               ]
             },
-            "description": "Polls until the MIS request is COMPLETED. Re-queues itself up to 10x; backend worker runs every 15s."
+            "description": "Polls until the MIS request is COMPLETED. Re-queues with a 2s delay and triggers queue processing when the worker is off or slow."
           },
           "event": [
             {
@@ -2515,14 +2569,25 @@
                   "pm.test('200 OK', () => pm.response.to.have.status(200));",
                   "const target = pm.environment.get('reportRequestId');",
                   "const list = pm.response.json();",
-                  "const me = (list.content || list).find(r => r.id === target);",
+                  "const rows = Array.isArray(list) ? list : (list.content || []);",
+                  "const me = rows.find(r => r.id === target);",
                   "if (!me) { console.warn('[mis] request not found in list'); return; }",
                   "console.log('[mis] status=' + me.status);",
                   "const attempts = parseInt(pm.environment.get('reportPollAttempts') || '0', 10) + 1;",
                   "pm.environment.set('reportPollAttempts', String(attempts));",
-                  "if (me.status !== 'COMPLETED' && me.status !== 'FAILED' && attempts < 10) {",
-                  "    setTimeout(() => {}, 0);",
-                  "    postman.setNextRequest('Poll MIS status');",
+                  "const maxAttempts = 20;",
+                  "if (me.status !== 'COMPLETED' && me.status !== 'FAILED' && attempts < maxAttempts) {",
+                  "    const baseUrl = pm.environment.get('baseUrl');",
+                  "    const token = pm.environment.get('adminToken');",
+                  "    setTimeout(function () {",
+                  "        pm.sendRequest({",
+                  "            url: baseUrl + '/api/v1/internal/reports/requests/process?batchSize=10',",
+                  "            method: 'POST',",
+                  "            header: { Authorization: 'Bearer ' + token }",
+                  "        }, function () {",
+                  "            postman.setNextRequest('Poll MIS status');",
+                  "        });",
+                  "    }, 2000);",
                   "} else if (me.status !== 'COMPLETED') {",
                   "    console.warn('[mis] giving up — status=' + me.status + ' attempts=' + attempts);",
                   "}"
@@ -2706,7 +2771,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"wrong-password\"\n}",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"wrong-password\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2840,7 +2905,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "assertApiError(404, 'NOT_FOUND');"
+                  "pm.test('status 404', function () { pm.response.to.have.status(404); });",
+                  "const body = pm.response.json();",
+                  "pm.test('code NOT_FOUND', function () { pm.expect(body.code).to.eql('NOT_FOUND'); });",
+                  "pm.test('message present', function () { pm.expect(body.message).to.be.a('string').and.not.empty; });"
                 ]
               }
             }
@@ -2879,7 +2947,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "assertApiError(404, 'NOT_FOUND');"
+                  "pm.test('status 404', function () { pm.response.to.have.status(404); });",
+                  "const body = pm.response.json();",
+                  "pm.test('code NOT_FOUND', function () { pm.expect(body.code).to.eql('NOT_FOUND'); });",
+                  "pm.test('message present', function () { pm.expect(body.message).to.be.a('string').and.not.empty; });"
                 ]
               }
             }

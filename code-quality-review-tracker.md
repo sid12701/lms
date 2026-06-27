@@ -56,14 +56,14 @@ Priorities: **P0** = correctness or contract risk now; P1 = structural debt that
 | **B3** | Sound but L-effort | **✅ Done (2026-06-11)** — step 1 predicates; step 2 extractions (`BorrowerOnboardingService`, `LoanApplicationDocumentChecklistService`, `LoanWebhookPayloads`); step 3 `LoanApplicationStatusTransitionCommand` (single `updateApplicationStatus`), lifecycle↔schedule `@Lazy` removed via servicing-read → checklist direct wire |
 | **B4** | Sound; full 143-site sweep is M-effort | **✅ Done (2026-06-12)** — service sweep + integration tests; Postman folder 14 asserts typed `404 NOT_FOUND` via `assertApiError`; frontend `readResponseError` trusts `{ code, message }` envelope |
 | **B5** | Sound; sequence with B3 | **✅ Done (2026-06-11)** — `BorrowerProfile` record + `BorrowerProfileMappers`; slim `LoanApplicationOnboardingCommand` (9 fields); `Borrower` uses profile constructors/merge; intake audit via `intakeAuditEntries()` |
-| **B6** | Sound; M-effort | **✅ Done (2026-06-12)** — `LoanApplicationDetailAssembler` + `LoanApplicationDetailView`; ops/LSP controllers + `LspLoanApiController`; pure `toDetailResponse(LoanApplicationDetailView)` |
+| **B6** | Sound; M-effort | **✅ Done (2026-06-12)** — assembler + detail view; webhook listing batched via `findByOutboxEvent_IdInOrderByCreatedAtDesc` (no per-event N+1) |
 | **B7** | Sound; M-effort | **✅ Done (2026-06-11)** — `OpsAlertEmitters` + `AlertRuleEvaluationWorker`; all constructor `@Lazy` removed; `LazyInjectionArchitectureTest` expects zero lazy owners |
-| **B8** | Sound; depends on B7 step 1 | **✅ Done (2026-06-12)** — `AlertContextJson` + `ObjectMapper` in `OpsAlertEmitters` and `AlertRuleEvaluationWorker`; `escapeJson` removed |
+| **B8** | Sound; depends on B7 step 1 | **✅ Done (2026-06-12)** — `AlertContextJson` + `ObjectMapper` in emitters/worker; `OpsAlertController` escalation context migrated; all `escapeJson` copies removed |
 | **B9** | Sound; mechanical M | **✅ Done (2026-06-12)** — `AdminDirectoryService` → `LspDirectoryService`, `UserAdminService`, `BorrowerDirectoryService` |
 | **B10** | Sound; M-effort | **✅ Done (2026-06-12)** — `AuthTokenService` + `RefreshCookieFactory`; `AuthController` thinned |
-| **B11** | Sound; partner contract isolation | **Implemented** — LSP DTOs; excludes `storageKey`/`fileChecksum` |
+| **B11** | Sound; partner contract isolation | **✅ Done (2026-06-12)** — LSP-owned payment/foreclosure DTOs in `LspLoanApiController`; `LspLoanApiResponses` mappers; `LspSurfaceArchitectureTest` blocks ops-type leakage |
 | **B12** | Sound; complementary to `AuthenticationTenantScopeFilter` | **✅ Done (2026-06-11)** — `runAsAdmin(Supplier)`; manual snapshot/restore removed from `LspLoanApplicationApiController.doCreateApplication`; escalation moves to `BorrowerOnboardingService` with B3 |
-| **B13** | Sound; mechanical S | **✅ Done (2026-06-11)** — `common/util/Strings`, `common/money/Money`; copies replaced in lifecycle, servicing, query, schedule, admin directory, LSP controller |
+| **B13** | Sound; mechanical S | **✅ Done (2026-06-12)** — `Strings`/`Money` canonical helpers; domain (`Borrower`, `LoanApplicationDocumentChecklist`) and dashboard/product copies removed |
 | **B14** | Sound; quick wins | **Implemented** — `@PreAuthorize` on status transition; dead param removed; identity wrapper inlined |
 | **B15** | Sound; S-effort | **✅ Done (2026-06-11)** — `BusinessCalendar` + `Clock` fixed to `Asia/Kolkata`; IST midnight boundary tests |
 | **F1** | Sound; L-effort P0 | **Implemented** — canonical 10-status module; TRANSITIONS ⊆ backend matrix; removed legacy mappers; `UNKNOWN:*` badges |
@@ -71,7 +71,7 @@ Priorities: **P0** = correctness or contract risk now; P1 = structural debt that
 | **F3** | Sound | **Implemented** — shared `performFetch` with 401 refresh for blobs |
 | **F4** | Sound; mechanical S | **✅ Done (2026-06-11)** — `MarkInvalidDialog`, `MaskedBorrowerCard`, `DocumentsSection` extracted; `detail-page.tsx` ~270 lines |
 | **F5** | Clone group **no longer present** in current `DataTable.tsx` | **No change** — already resolved or fallow stale |
-| **C1** | Sound housekeeping | **Implemented** — untracked scratch removed; `.gitignore` extended; `graphify-out/` and tracked Postman collection untouched |
+| **C1** | Sound housekeeping | **✅ Done (2026-06-12)** — `.gitignore` extended for e2e/issue scratch + root log patterns (`*.log` already present); local litter stays untracked |
 | **C2** | Sound | **Blocked in agent env** — Siddhant: run `graphify update .` locally after each code batch (CLI not on agent PATH) |
 
 ---

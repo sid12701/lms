@@ -1,0 +1,18 @@
+﻿Diagram update QA - 2026-06-19
+
+Scope:
+- Replaced PowerPoint slides 3 and 4 with full-slide detailed engineering diagram screenshots.
+- Diagram content is grounded in graphify report, backend/frontend package files, application.yml, infra docker-compose, generated API schema, controllers, services, workers, and Flyway migrations.
+
+Artifacts:
+- PPTX: outputs/lms-ceo-ready-platform-overview-diagrams-v3.pptx
+- Editable Draw.io graph sources: outputs/diagrams/lms-engineering-architecture.drawio; outputs/diagrams/lms-engineering-data-flow.drawio
+- Slide screenshot PNGs: outputs/diagrams/lms-engineering-architecture-slide.png; outputs/diagrams/lms-engineering-data-flow-slide.png
+
+Verification:
+- Deck regenerated with artifact-tool.
+- Rendered previews checked for slides 3 and 4.
+- PPTX integrity check: 14 slide XML files, 14 previews, 14 layout exports, inspect sidecar removed.
+
+Note:
+- Draw.io desktop exported editable graph PNGs successfully, but PNG/SVG image-wrapper Draw.io exports rendered blank in this local installation. The PowerPoint uses the nonblank raster screenshots generated from the diagram artwork; editable .drawio graph sources are provided separately for manual edits in Draw.io desktop.
