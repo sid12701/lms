@@ -2,7 +2,9 @@ package com.bhawana.lms.repo;
 
 import com.bhawana.lms.service.AuditExplorerQuery;
 import com.bhawana.lms.service.AuditExplorerQuery.AuditStream;
-import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.CursorPagedResult;
+import com.bhawana.lms.service.AuditExplorerCursorCodec.AuditExplorerCursor;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -11,9 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.sql.Connection;
-import java.sql.SQLException;
-import javax.sql.DataSource;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -23,63 +22,15 @@ import org.springframework.stereotype.Repository;
  *
  * <p>Gap #3 — Unified cross-domain audit search. Each enabled stream
  * contributes one SELECT branch with filters pushed down; the outer query
- * orders by {@code occurred_at DESC} and applies {@code OFFSET}/{@code LIMIT}.
- * Total-count is computed via a separate {@code COUNT(*)} wrap when the
- * caller opts in (paginationDetails=true).
+ * orders by {@code occurred_at DESC} and applies keyset pagination.
  */
 @Repository
 public class AuditExplorerRepository {
 
-    private final DataSource dataSource;
     private final NamedParameterJdbcTemplate jdbc;
-    private volatile Boolean h2Database;
 
-    public AuditExplorerRepository(DataSource dataSource) {
-        this.dataSource = dataSource;
-        this.jdbc = new NamedParameterJdbcTemplate(dataSource);
-    }
-
-    private boolean h2Database() {
-        Boolean cached = h2Database;
-        if (cached != null) {
-            return cached;
-        }
-        synchronized (this) {
-            if (h2Database == null) {
-                h2Database = isH2(dataSource);
-            }
-            return h2Database;
-        }
-    }
-
-    private static boolean isH2(DataSource dataSource) {
-        try (Connection connection = dataSource.getConnection()) {
-            return connection.getMetaData().getDatabaseProductName().toLowerCase().contains("h2");
-        } catch (SQLException ex) {
-            throw new IllegalStateException("Unable to detect database product for audit explorer.", ex);
-        }
-    }
-
-    private static final String REPORT_ACCESS_LSP_ID_JSON_PATTERN =
-            "\"lspId\"\\s*:\\s*\"([0-9a-fA-F-]{36})\"";
-
-    private String reportAccessFilterPayloadLspIdExpression() {
-        if (h2Database()) {
-            return "cast(regexp_substr(cast(r.filter_payload as varchar(10000)), '"
-                    + REPORT_ACCESS_LSP_ID_JSON_PATTERN
-                    + "', 1, 1, null, 1) as uuid)";
-        }
-        return "cast(substring(cast(r.filter_payload as text) from '"
-                + REPORT_ACCESS_LSP_ID_JSON_PATTERN
-                + "') as uuid)";
-    }
-
-    private String reportAccessLspIdExpression() {
-        return "coalesce(rr.lsp_id, " + reportAccessFilterPayloadLspIdExpression() + ")";
-    }
-
-    private String reportAccessLspFilterPredicate() {
-        return reportAccessFilterPayloadLspIdExpression() + " = cast(:__lspId as uuid)";
+    public AuditExplorerRepository(NamedParameterJdbcTemplate jdbc) {
+        this.jdbc = jdbc;
     }
 
     private static String correlationIdPredicate(String columnRef) {
@@ -87,19 +38,51 @@ public class AuditExplorerRepository {
                 + columnRef + " = cast(:__correlationId as varchar(128)))";
     }
 
-    public PagedResult<UnifiedAuditEventRow> search(AuditExplorerQuery query) {
+    private static String keysetPredicate() {
+        return """
+                and (
+                  cast(:__cursorOccurredAt as timestamp) is null
+                  or u.occurred_at < cast(:__cursorOccurredAt as timestamp)
+                  or (
+                    u.occurred_at = cast(:__cursorOccurredAt as timestamp)
+                    and (
+                      u.stream < cast(:__cursorStream as varchar(32))
+                      or (
+                        u.stream = cast(:__cursorStream as varchar(32))
+                        and u.native_id < cast(:__cursorNativeId as uuid)
+                      )
+                    )
+                  )
+                )
+                """;
+    }
+
+    public CursorPagedResult<UnifiedAuditEventRow> search(AuditExplorerQuery query, AuditExplorerCursor cursor) {
         Set<AuditStream> effectiveStreams = effectiveStreams(query);
         if (effectiveStreams.isEmpty()) {
-            return new PagedResult<>(List.of(), query.includePaginationDetails() ? 0L : -1L, query.offset(), query.limit());
+            return new CursorPagedResult<>(List.of(), null, query.limit());
         }
 
         Map<String, Object> parameters = new HashMap<>();
         String unionSql = buildUnionSql(effectiveStreams, query, parameters);
 
-        String pageSql = "select * from (" + unionSql + ") u order by u.occurred_at desc, u.native_id desc"
-                + " limit :__limit offset :__offset";
-        parameters.put("__offset", query.offset());
-        parameters.put("__limit", query.limit());
+        String pageSql = "select * from (" + unionSql + ") u"
+                + " where 1=1 "
+                + keysetPredicate()
+                + " order by u.occurred_at desc, u.stream desc, u.native_id desc"
+                + " limit :__limit";
+        parameters.put("__limit", query.limit() + 1);
+        if (cursor == null) {
+            parameters.put("__cursorOccurredAt", null);
+            parameters.put("__cursorStream", null);
+            parameters.put("__cursorNativeId", null);
+        } else {
+            // PostgreSQL's JDBC driver cannot infer a SQL type for java.time.Instant,
+            // so timestamp params are bound as java.sql.Timestamp (see toTimestamp).
+            parameters.put("__cursorOccurredAt", toTimestamp(cursor.occurredAt()));
+            parameters.put("__cursorStream", cursor.stream());
+            parameters.put("__cursorNativeId", cursor.nativeId());
+        }
 
         List<UnifiedAuditEventRow> rows = jdbc.query(pageSql, new MapSqlParameterSource(parameters),
                 (rs, rowNum) -> new UnifiedAuditEventRow(
@@ -121,25 +104,19 @@ public class AuditExplorerRepository {
                         rs.getString("document_types")
                 ));
 
-        long totalCount;
-        if (query.includePaginationDetails()) {
-            String countSql = "select count(*) from (" + unionSql + ") u";
-            Map<String, Object> countParams = new HashMap<>(parameters);
-            countParams.remove("__offset");
-            countParams.remove("__limit");
-            Long count = jdbc.queryForObject(countSql, new MapSqlParameterSource(countParams), Long.class);
-            totalCount = count == null ? 0L : count;
-        } else {
-            totalCount = -1L;
+        String nextCursor = null;
+        if (rows.size() > query.limit()) {
+            rows = rows.subList(0, query.limit());
+            nextCursor = "HAS_MORE";
         }
 
-        return new PagedResult<>(rows, totalCount, query.offset(), query.limit());
+        return new CursorPagedResult<>(rows, nextCursor, query.limit());
     }
 
     public List<DocumentAccessDocumentTypeCountRow> countDocumentAccessByDocumentType(Instant since, Instant until) {
         Map<String, Object> parameters = new HashMap<>();
-        parameters.put("__since", since);
-        parameters.put("__until", until);
+        parameters.put("__since", toTimestamp(since));
+        parameters.put("__until", toTimestamp(until));
 
         return jdbc.query("""
                 select
@@ -193,8 +170,8 @@ public class AuditExplorerRepository {
         parameters.put("__loanApplicationId", query.loanApplicationId());
         parameters.put("__borrowerId", query.borrowerId());
         parameters.put("__productId", query.productId());
-        parameters.put("__since", query.since());
-        parameters.put("__until", query.until());
+        parameters.put("__since", toTimestamp(query.since()));
+        parameters.put("__until", toTimestamp(query.until()));
         parameters.put("__correlationId", query.correlationId());
 
         List<String> branches = new ArrayList<>();
@@ -382,7 +359,7 @@ public class AuditExplorerRepository {
                       cast(r.correlation_id as varchar(128)) as correlation_id,
                       cast(null as uuid) as loan_application_id,
                       cast(null as uuid) as borrower_id,
-                      %s as lsp_id,
+                      coalesce(r.lsp_id, rr.lsp_id) as lsp_id,
                       cast(null as varchar(64)) as product_id,
                       cast(r.action as varchar(64)) as action,
                       cast(null as varchar(500)) as summary,
@@ -395,12 +372,10 @@ public class AuditExplorerRepository {
                     left join report_request rr on rr.id = r.report_request_id
                     where (cast(:__actorUsername as varchar(255)) is null or r.actor_username = cast(:__actorUsername as varchar(255)))
                       and (cast(:__lspId as uuid) is null
-                        or rr.lsp_id = cast(:__lspId as uuid)
-                        or %s)
+                        or coalesce(r.lsp_id, rr.lsp_id) = cast(:__lspId as uuid))
                       and (cast(:__since as timestamp) is null or r.created_at >= cast(:__since as timestamp))
                       and (cast(:__until as timestamp) is null or r.created_at <= cast(:__until as timestamp))
-                      """.formatted(reportAccessLspIdExpression(), reportAccessLspFilterPredicate())
-                    + correlationIdPredicate("r.correlation_id") + "\n");
+                      """ + correlationIdPredicate("r.correlation_id") + "\n");
         }
 
         if (streams.contains(AuditStream.DISBURSEMENT)) {
@@ -434,6 +409,13 @@ public class AuditExplorerRepository {
         }
 
         return String.join("\nunion all\n", branches);
+    }
+
+    // PostgreSQL's JDBC driver rejects java.time.Instant params ("Can't infer the SQL
+    // type ... for java.time.Instant"). Bind timestamp filters as java.sql.Timestamp,
+    // which pgjdbc maps using the session time zone it already aligns to the JVM.
+    private static Timestamp toTimestamp(Instant instant) {
+        return instant == null ? null : Timestamp.from(instant);
     }
 
     private static UUID toUuid(Object value) {
