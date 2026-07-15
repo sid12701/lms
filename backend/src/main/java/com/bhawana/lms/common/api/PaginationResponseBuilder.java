@@ -12,6 +12,8 @@ public final class PaginationResponseBuilder {
     public static final String LIMIT_HEADER = "X-Limit";
     public static final String OFFSET_HEADER = "X-Offset";
     public static final int DEFAULT_LIMIT = 50;
+    /** Max rows when the client omits pagination params (replaces unbounded Integer.MAX_VALUE). */
+    public static final int MAX_FALLBACK_LIMIT = 200;
 
     private PaginationResponseBuilder() {
     }
@@ -44,7 +46,7 @@ public final class PaginationResponseBuilder {
 
     public static int resolveLimit(Integer limit, boolean paginationRequested) {
         if (!paginationRequested) {
-            return Integer.MAX_VALUE;
+            return MAX_FALLBACK_LIMIT;
         }
         return limit == null ? DEFAULT_LIMIT : limit;
     }
@@ -54,10 +56,12 @@ public final class PaginationResponseBuilder {
             boolean includePaginationDetails
     ) {
         HttpHeaders headers = new HttpHeaders();
+        // Offset/limit are always known, so always emit them. The total count needs an
+        // extra COUNT query, so it stays behind the paginationDetails=ON opt-in.
+        headers.add(LIMIT_HEADER, Integer.toString(page.limit()));
+        headers.add(OFFSET_HEADER, Integer.toString(page.offset()));
         if (includePaginationDetails) {
             headers.add(TOTAL_COUNT_HEADER, Long.toString(page.totalCount()));
-            headers.add(LIMIT_HEADER, Integer.toString(page.limit()));
-            headers.add(OFFSET_HEADER, Integer.toString(page.offset()));
         }
         return new ResponseEntity<>(page.items(), headers, HttpStatus.OK);
     }

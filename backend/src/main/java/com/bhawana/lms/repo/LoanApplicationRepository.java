@@ -16,7 +16,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface LoanApplicationRepository extends JpaRepository<LoanApplication, UUID> {
 
-    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
+    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct", "loanProductVersion"})
     Optional<LoanApplication> findDetailedById(UUID id);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -25,21 +25,16 @@ public interface LoanApplicationRepository extends JpaRepository<LoanApplication
 
     boolean existsByLsp_IdAndExternalLoanIdIgnoreCase(UUID lspId, String externalLoanId);
 
-    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
+    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct", "loanProductVersion"})
     Optional<LoanApplication> findDetailedByLsp_IdAndExternalLoanIdIgnoreCase(UUID lspId, String externalLoanId);
 
-    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
+    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct", "loanProductVersion"})
     Optional<LoanApplication> findTopByBorrower_IdAndLsp_IdOrderByCreatedAtDesc(UUID borrowerId, UUID lspId);
 
     Optional<LoanApplication> findByLsp_IdAndExternalLoanIdIgnoreCase(UUID lspId, String externalLoanId);
 
-    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
-    List<LoanApplication> findDetailedByOrderByCreatedAtDesc();
-
-    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
+    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct", "loanProductVersion"})
     List<LoanApplication> findTop8ByOrderByCreatedAtDesc();
-
-    List<LoanApplication> findAllByOrderByCreatedAtDesc();
 
     long countByStatus(LoanApplicationStatus status);
 
@@ -90,12 +85,18 @@ public interface LoanApplicationRepository extends JpaRepository<LoanApplication
         long getApprovedLoanCount();
     }
 
-    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
+    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct", "loanProductVersion"})
     List<LoanApplication> findByStatusAndCreatedAtBefore(
             LoanApplicationStatus status,
             Instant createdAtBefore
     );
 
-    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct"})
+    @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct", "loanProductVersion"})
     List<LoanApplication> findByStatus(LoanApplicationStatus status);
+
+    boolean existsByBorrower_IdAndLsp_IdAndStatusIn(
+            UUID borrowerId,
+            UUID lspId,
+            Collection<LoanApplicationStatus> statuses
+    );
 }

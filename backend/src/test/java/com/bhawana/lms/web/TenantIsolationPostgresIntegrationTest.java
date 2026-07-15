@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
+import com.bhawana.lms.repo.BorrowerLspRelationshipRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
@@ -36,6 +37,7 @@ import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.support.PostgresDataJpaTestSupport;
 import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -125,6 +127,9 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
     private BorrowerRepository borrowerRepository;
 
     @Autowired
+    private BorrowerLspRelationshipRepository borrowerLspRelationshipRepository;
+
+    @Autowired
     private ApiClientAuditEventRepository apiClientAuditEventRepository;
 
     @Autowired
@@ -174,6 +179,7 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
         lspApiIdempotencyRecordRepository.deleteAllInBatch();
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
+        borrowerLspRelationshipRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
         apiClientAuditEventRepository.deleteAllInBatch();
         apiClientRepository.deleteAllInBatch();
@@ -245,6 +251,11 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
         assertEquals("NORTH-RLS-001", northList.get(0).get("lspLoanId").asText());
         assertEquals(1, queryCountAsTenant(UUID.fromString(apex.id()), "borrower"));
         assertEquals(1, queryCountAsTenant(UUID.fromString(north.id()), "borrower"));
+        assertEquals(1, queryCountAsTenant(UUID.fromString(apex.id()), "borrower_lsp_relationship"));
+        assertEquals(1, queryCountAsTenant(UUID.fromString(north.id()), "borrower_lsp_relationship"));
+        assertEquals(2L, TenantScopedExecution.callAsAdmin(() ->
+                borrowerLspRelationshipRepository.countByBorrower_Id(
+                        UUID.fromString(apexApplication.get("borrowerId").asText()))));
     }
 
     @Test

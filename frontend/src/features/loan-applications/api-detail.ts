@@ -17,6 +17,7 @@ import type {
 import { ApiError, requestJson } from "@/lib/api/http-client";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import { newIdempotencyKey } from "@/lib/idempotency";
+import { LoanAccountStatus } from "@/schemas/loan-account";
 import type {
   InitiateDisbursementInput,
   ExecuteForeclosureQuoteInput,
@@ -93,7 +94,10 @@ function toForeclosureQuote(row: BackendLoanForeclosureQuoteResponse): LoanForec
 
 function safeChannel(value: string | null | undefined): "UI" | "API" | "WEBHOOK" {
   const upper = (value ?? "").toUpperCase();
-  if (upper === "API") return "API";
+  // Backend sends ONBOARDING_API for LSP-originated applications; anything
+  // API-flavoured must not fall through to "UI" (audit F7 — every application
+  // showed the wrong source channel).
+  if (upper === "API" || upper.endsWith("_API") || upper.startsWith("API_")) return "API";
   if (upper === "WEBHOOK") return "WEBHOOK";
   return "UI";
 }
@@ -192,11 +196,9 @@ function backendToDetail(
         id: payload.loanAccount.id ?? "",
         applicationId,
         accountNumber: payload.loanAccount.accountNumber ?? "",
-        accountStatus: (payload.loanAccount.status ?? "PENDING_DISBURSEMENT") as
-          | "PENDING_DISBURSEMENT"
-          | "ACTIVE"
-          | "CLOSED"
-          | "FORECLOSED",
+        accountStatus: LoanAccountStatus.parse(
+          payload.loanAccount.status ?? "PENDING_DISBURSEMENT",
+        ),
         principal: toAmount(payload.loanAccount.principalAmount),
         tenureMonths: payload.loanAccount.tenureMonths ?? tenureMonths,
         approvedAt: payload.loanAccount.approvedAt ?? created,
@@ -415,12 +417,19 @@ async function postBackendTransition(
   const body = {
     targetStatus,
     note: input.reason ?? null,
+    reasonCode: input.reasonCode ?? null,
   };
 
   const tryEndpoint = async (endpoint: "status-transitions" | "manual-status") => {
+    // manual-status always requires a code; MANUAL_ADMIN_OVERRIDE is the
+    // backend enum member for that path ("OTHER" is not a valid code).
     const requestBody =
       endpoint === "manual-status"
-        ? { ...body, note: body.note ?? "Manual override", reasonCode: "OTHER" }
+        ? {
+            ...body,
+            note: body.note ?? "Manual override",
+            reasonCode: body.reasonCode ?? "MANUAL_ADMIN_OVERRIDE",
+          }
         : body;
     return requestJson<OpsLoanApplicationDetailResponse>(
       `${BACKEND_BASE}/${encodeURIComponent(id)}/${endpoint}`,
@@ -474,6 +483,97 @@ export async function postTransition(
 }
 
 /** Initiate disbursement (SYSTEM_ADMIN only on the live backend). */
+export interface DisbursementPreviewResponse {
+  applicationId: string;
+  loanAccountId: string;
+  loanAccountNumber: string;
+  externalLoanId: string;
+  principal: number;
+  processingFee: number;
+  netDisbursalAmount: number;
+  paymentMode: string;
+  beneficiaryAccountHolderName: string;
+  beneficiaryBankName?: string | null;
+  beneficiaryIfsc: string;
+  maskedBeneficiaryAccountNumber: string;
+  beneficiarySource?: string | null;
+  pendingIntentId?: string | null;
+  pendingIntentTranRefNo?: string | null;
+  pendingIntentState?: string | null;
+}
+
+interface BackendDisbursementRequestRow {
+  providerRequestId?: string;
+  requestPayloadJson?: string;
+}
+
+interface DisbursementReferenceResponse {
+  tranRefNo: string;
+  source: string;
+  intentId?: string | null;
+  intentState?: string | null;
+}
+
+function toPreviewAmount(value: number | null | undefined): number {
+  return value ?? 0;
+}
+
+/** Read-only disbursement figures for the confirmation dialog (SYSTEM_ADMIN). */
+export async function fetchDisbursementPreview(id: string): Promise<DisbursementPreviewResponse> {
+  if (!isSystemAdmin()) {
+    throw new ApiError(
+      "Disbursement preview requires a system administrator session.",
+      403,
+      "",
+      "FORBIDDEN",
+    );
+  }
+
+  const payload = await requestJson<DisbursementPreviewResponse>(
+    `${BACKEND_BASE}/${encodeURIComponent(id)}/disbursement-preview`,
+    { method: "GET" },
+  );
+  return {
+    ...payload,
+    principal: toPreviewAmount(payload.principal),
+    processingFee: toPreviewAmount(payload.processingFee),
+    netDisbursalAmount: toPreviewAmount(payload.netDisbursalAmount),
+  };
+}
+
+/**
+ * Durable provider/intent reference after initiate — works when intent workflow
+ * has committed Tx-A but the request log is not yet written.
+ */
+export async function fetchLatestDisbursementReference(id: string): Promise<string | null> {
+  try {
+    const reference = await requestJson<DisbursementReferenceResponse | undefined>(
+      `${BACKEND_BASE}/${encodeURIComponent(id)}/disbursement-reference`,
+      { method: "GET" },
+    );
+    if (reference?.tranRefNo) return reference.tranRefNo;
+  } catch {
+    // Fall through to request-log scan for older backends / empty 204.
+  }
+
+  const rows = await requestJson<BackendDisbursementRequestRow[]>(
+    `${BACKEND_BASE}/${encodeURIComponent(id)}/disbursement-requests`,
+    { method: "GET" },
+  );
+  const latest = rows[0];
+  if (!latest) return null;
+  if (latest.providerRequestId) return latest.providerRequestId;
+  if (latest.requestPayloadJson) {
+    try {
+      const parsed = JSON.parse(latest.requestPayloadJson) as { tranRefNo?: string };
+      if (parsed.tranRefNo) return parsed.tranRefNo;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 export async function postDisbursement(
   id: string,
   input: InitiateDisbursementInput,

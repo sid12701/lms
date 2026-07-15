@@ -111,7 +111,7 @@ Disbursement is orchestrated via a pluggable adapter (today a mock adapter; prod
 
 The repayment schedule is produced in one of two governed ways:
 - **Platform-generated schedule** — Bhawana's engine computes a standard EMI schedule from the approved principal, tenure, and product interest rate (amortised monthly, first due date one month after approval).
-- **LSP-provided schedule** — Partner LSPs may submit their own schedule via the external API. The platform validates it end-to-end before accepting: installment count must match approved tenure, numbering must be contiguous, due dates must be strictly increasing, amounts non-negative, each installment's principal-due plus interest-due must equal the stated installment amount, and total principal-due must reconcile to the approved principal.
+- **LSP-provided schedule** — Partner LSPs may submit their own schedule via the external API. The platform validates it end-to-end before accepting: installment count must match approved tenure, numbering must be contiguous, amounts non-negative, each installment's principal-due plus interest-due must equal the stated installment amount, opening/closing balances must chain, and total principal-due must reconcile to the approved principal. **In addition (Spec S20 / BR-11):** due dates must be strictly increasing **and** satisfy first-due window, anchored monthly cadence, and tenure horizon rules; interest must reconcile to the frozen product rate within product-accepted tolerances. See `docs/partner-schedule-validation.md`. Invalid schedules return `422 REPAYMENT_SCHEDULE_INVALID`.
 
 Schedule replacement is allowed only before disbursement is requested and only while no repayments have been posted. Once disbursed, the schedule is frozen. Each installment is tracked through its lifecycle and delinquency is bucketed daily (DPD 0, 1-30, 31-60, 61-90, 90+).
 
@@ -228,7 +228,7 @@ The platform maintains five distinct, append-only audit streams:
 - **BR-8** LSP API traffic is permitted only from allow-listed IPs for the corresponding API client.
 - **BR-9** Foreclosure quotes have an expiry window; stale quotes are rejected for settlement.
 - **BR-10** Disbursement cannot proceed unless a valid repayment schedule already exists for the loan account.
-- **BR-11** LSP-provided repayment schedules must reconcile to the approved principal and tenure; installment amount must equal principal-due + interest-due for every row; due dates must be strictly increasing.
+- **BR-11** LSP-provided repayment schedules must reconcile to the approved principal and tenure; installment amount must equal principal-due + interest-due for every row; due dates must be strictly increasing **and** within Spec S20 date discipline (first-due window, monthly cadence, horizon); interest must reconcile to the frozen product rate within configured tolerance (see `docs/partner-schedule-validation.md`).
 - **BR-12** The repayment schedule may be replaced only before disbursement is requested and only while no repayments have been posted; once disbursed, the schedule is frozen.
 - **BR-13** Standard repayment posting accepts only the full outstanding amount of the next installment; partial installment payments are rejected.
 - **BR-14** On the first posted repayment, the application auto-transitions from DISBURSED to UNDER_REPAYMENT.

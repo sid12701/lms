@@ -19,6 +19,7 @@ import {
 } from "./api";
 import type { LoanStatus } from "@/types";
 import { DocumentsSection } from "./components/DocumentsSection";
+import { LoanServicingPanel } from "./components/LoanServicingPanel";
 import { DetailField } from "./components/DetailField";
 import { MarkInvalidDialog } from "./components/MarkInvalidDialog";
 import { MaskedBorrowerCard } from "./components/MaskedBorrowerCard";
@@ -133,6 +134,7 @@ export function MyLoanDetailPage() {
   const isTerminal = TERMINAL_STATUSES.has(detail.status);
   const canWriteLoan = session ? hasPermission(session.user.role, "LOAN_WRITE") : false;
   const canMutateLoan = canWriteLoan && !isTerminal;
+  const documentsReadOnlyReason = canMutateLoan ? null : isTerminal ? "terminal" : "role";
   const eyebrow = detail.externalLoanId
     ? `LSP workspace · ${detail.externalLoanId}`
     : "LSP workspace";
@@ -226,7 +228,32 @@ export function MyLoanDetailPage() {
 
       <MaskedBorrowerCard detail={detail} />
 
-      <DocumentsSection applicationId={id} canUpload={canMutateLoan} />
+      <DocumentsSection
+        applicationId={id}
+        canUpload={canMutateLoan}
+        readOnlyReason={documentsReadOnlyReason}
+      />
+
+      {detail.lastActivity ? (
+        <section
+          data-slot="loan-activity-card"
+          className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
+        >
+          <h2 className="text-base font-semibold">Recent activity</h2>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+            <DetailField label="Type" value={detail.lastActivity.activityType} />
+            <DetailField label="Summary" value={detail.lastActivity.summary} />
+            <DetailField label="Actor" value={detail.lastActivity.actorUsername} />
+            <DetailField
+              label="Occurred at"
+              value={formatDateTime(detail.lastActivity.occurredAt)}
+            />
+          </dl>
+          {detail.lastActivity.detail ? (
+            <p className="text-foreground-muted text-xs">{detail.lastActivity.detail}</p>
+          ) : null}
+        </section>
+      ) : null}
 
       {detail.loanAccount ? (
         <section
@@ -260,7 +287,71 @@ export function MyLoanDetailPage() {
                 detail.loanAccount.closedAt ? formatDateTime(detail.loanAccount.closedAt) : null
               }
             />
+            {detail.loanAccount.closureReason ? (
+              <DetailField label="Closure reason" value={detail.loanAccount.closureReason} />
+            ) : null}
           </dl>
+          {detail.loanAccount.delinquency ? (
+            <div className="border-border bg-surface-muted rounded-md border p-3 text-sm">
+              <h3 className="mb-2 font-medium">Delinquency</h3>
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+                <DetailField label="Bucket" value={detail.loanAccount.delinquency.bucket} />
+                <DetailField
+                  label="Overdue amount"
+                  value={formatINR(detail.loanAccount.delinquency.overdueAmount)}
+                  mono
+                />
+                <DetailField
+                  label="Overdue installments"
+                  value={
+                    detail.loanAccount.delinquency.overdueInstallmentCount != null
+                      ? String(detail.loanAccount.delinquency.overdueInstallmentCount)
+                      : null
+                  }
+                />
+                <DetailField
+                  label="Max days past due"
+                  value={
+                    detail.loanAccount.delinquency.maxDaysPastDue != null
+                      ? String(detail.loanAccount.delinquency.maxDaysPastDue)
+                      : null
+                  }
+                />
+              </dl>
+            </div>
+          ) : null}
+          {detail.loanAccount.disbursement ? (
+            <div className="border-border bg-surface-muted rounded-md border p-3 text-sm">
+              <h3 className="mb-2 font-medium">Disbursement</h3>
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+                <DetailField label="Status" value={detail.loanAccount.disbursement.status} />
+                <DetailField
+                  label="Gross amount"
+                  value={formatINR(detail.loanAccount.disbursement.grossAmount)}
+                  mono
+                />
+                <DetailField
+                  label="Net disbursed"
+                  value={formatINR(detail.loanAccount.disbursement.netDisbursedAmount)}
+                  mono
+                />
+                <DetailField
+                  label="Disbursed at"
+                  value={
+                    detail.loanAccount.disbursement.disbursedAt
+                      ? formatDateTime(detail.loanAccount.disbursement.disbursedAt)
+                      : null
+                  }
+                />
+                {detail.loanAccount.disbursement.failureReason ? (
+                  <DetailField
+                    label="Failure reason"
+                    value={detail.loanAccount.disbursement.failureReason}
+                  />
+                ) : null}
+              </dl>
+            </div>
+          ) : null}
           {detail.loanAccount.repaymentSchedule ? (
             <p className="text-foreground-muted text-xs">
               Schedule: {detail.loanAccount.repaymentSchedule.installmentCount ?? 0} installments of{" "}
@@ -273,6 +364,10 @@ export function MyLoanDetailPage() {
             </p>
           ) : null}
         </section>
+      ) : null}
+
+      {detail.loanAccount ? (
+        <LoanServicingPanel key={detail.loanAccount.id} loanAccountId={detail.loanAccount.id} />
       ) : null}
 
       <MarkInvalidDialog

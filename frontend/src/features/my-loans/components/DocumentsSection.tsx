@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/format";
 import {
+  fetchLspDocumentRequirements,
   listLspSubmittedDocuments,
   uploadLspDocument,
   type LspDocumentType,
@@ -11,13 +12,14 @@ import {
 } from "../api";
 import { safeApiMessage } from "../utils";
 
-const LSP_REQUIRED_DOC_TYPES: readonly LspDocumentType[] = [
+const FALLBACK_REQUIRED_DOC_TYPES: readonly LspDocumentType[] = [
   "PAN",
   "AADHAAR",
   "ADDRESS_PROOF",
   "INCOME_PROOF",
   "BANK_STATEMENT",
   "PHOTOGRAPH",
+  "KFS",
   "LOAN_AGREEMENT",
 ];
 
@@ -28,21 +30,46 @@ const LSP_DOC_LABELS: Record<LspDocumentType, string> = {
   INCOME_PROOF: "Income proof",
   BANK_STATEMENT: "Bank statement",
   PHOTOGRAPH: "Photograph",
+  KFS: "Key Facts Statement",
   LOAN_AGREEMENT: "Loan agreement",
   OTHER: "Other",
 };
 
+const BE_TO_FE_SLOT: Record<string, LspDocumentType> = {
+  PAN_CARD: "PAN",
+  AADHAAR_FILE: "AADHAAR",
+  ADDRESS_PROOF: "ADDRESS_PROOF",
+  INCOME_PROOF: "INCOME_PROOF",
+  BANK_STATEMENT: "BANK_STATEMENT",
+  SELFIE_PHOTOGRAPH: "PHOTOGRAPH",
+  KFS: "KFS",
+  LOAN_AGREEMENT: "LOAN_AGREEMENT",
+};
+
+function backendCodeToSlot(code: string): LspDocumentType | null {
+  return BE_TO_FE_SLOT[code] ?? null;
+}
+
+export type DocumentsReadOnlyReason = "terminal" | "role" | null;
+
 interface DocumentRowProps {
   documentType: LspDocumentType;
+  label: string;
   uploaded: UploadedLspDocument | null;
   onPickFile: (documentType: LspDocumentType, file: File) => Promise<void>;
   busy: boolean;
   canUpload: boolean;
 }
 
-function DocumentRow({ documentType, uploaded, onPickFile, busy, canUpload }: DocumentRowProps) {
+function DocumentRow({
+  documentType,
+  label,
+  uploaded,
+  onPickFile,
+  busy,
+  canUpload,
+}: DocumentRowProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const label = LSP_DOC_LABELS[documentType];
   const handleChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -112,12 +139,50 @@ function DocumentRow({ documentType, uploaded, onPickFile, busy, canUpload }: Do
 export interface DocumentsSectionProps {
   applicationId: string;
   canUpload: boolean;
+  readOnlyReason?: DocumentsReadOnlyReason;
 }
 
-export function DocumentsSection({ applicationId, canUpload }: DocumentsSectionProps) {
+export function DocumentsSection({
+  applicationId,
+  canUpload,
+  readOnlyReason = null,
+}: DocumentsSectionProps) {
+  const [requiredDocTypes, setRequiredDocTypes] = useState<readonly LspDocumentType[]>(
+    FALLBACK_REQUIRED_DOC_TYPES,
+  );
+  const [docLabels, setDocLabels] = useState<Record<LspDocumentType, string>>(LSP_DOC_LABELS);
   const [uploads, setUploads] = useState<Record<string, UploadedLspDocument>>({});
   const [busyType, setBusyType] = useState<LspDocumentType | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchLspDocumentRequirements()
+      .then((rows) => {
+        if (cancelled) return;
+        const intakeSlots = rows
+          .filter((row) => row.requiredForDisbursement)
+          .map((row) => backendCodeToSlot(row.code))
+          .filter((slot): slot is LspDocumentType => slot != null);
+        if (intakeSlots.length > 0) {
+          setRequiredDocTypes(intakeSlots);
+        }
+        const labels = { ...LSP_DOC_LABELS };
+        for (const row of rows) {
+          const slot = backendCodeToSlot(row.code);
+          if (slot) {
+            labels[slot] = row.displayName;
+          }
+        }
+        setDocLabels(labels);
+      })
+      .catch(() => {
+        // Fall back to the static taxonomy when metadata is unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,8 +194,7 @@ export function DocumentsSection({ applicationId, canUpload }: DocumentsSectionP
           seeded[row.documentType] = {
             id: `${row.documentType}-${row.uploadedAt ?? "seed"}`,
             documentType: row.documentType,
-            documentDisplayName:
-              LSP_DOC_LABELS[row.documentType as LspDocumentType] ?? row.documentType,
+            documentDisplayName: docLabels[row.documentType as LspDocumentType] ?? row.documentType,
             status: row.status,
             fileName: row.fileName,
             contentType: row.contentType,
@@ -147,7 +211,7 @@ export function DocumentsSection({ applicationId, canUpload }: DocumentsSectionP
     return () => {
       cancelled = true;
     };
-  }, [applicationId]);
+  }, [applicationId, docLabels]);
 
   const handlePickFile = useCallback(
     async (documentType: LspDocumentType, file: File) => {
@@ -157,17 +221,26 @@ export function DocumentsSection({ applicationId, canUpload }: DocumentsSectionP
         const uploaded = await uploadLspDocument({ applicationId, documentType, file });
         setUploads((prev) => ({ ...prev, [documentType]: uploaded }));
       } catch (err) {
-        setError(safeApiMessage(err, `Failed to upload ${LSP_DOC_LABELS[documentType]}.`));
+        setError(safeApiMessage(err, `Failed to upload ${docLabels[documentType]}.`));
       } finally {
         setBusyType(null);
       }
     },
-    [applicationId],
+    [applicationId, docLabels],
   );
 
   const otherUploads = Object.values(uploads).filter(
     (row) => row.documentType.toUpperCase() === "OTHER",
   );
+
+  const readOnlyMessage =
+    readOnlyReason === "terminal"
+      ? "Documents are read-only because this loan has reached a final status."
+      : readOnlyReason === "role"
+        ? "Documents are read-only for your access level."
+        : canUpload
+          ? "Required documents are validated on upload for type and file size. Replace a file any time before the loan reaches a terminal status."
+          : "Documents are read-only for your account.";
 
   return (
     <section
@@ -193,10 +266,11 @@ export function DocumentsSection({ applicationId, canUpload }: DocumentsSectionP
       ) : null}
 
       <div className="flex flex-col gap-2">
-        {LSP_REQUIRED_DOC_TYPES.map((documentType) => (
+        {requiredDocTypes.map((documentType) => (
           <DocumentRow
             key={documentType}
             documentType={documentType}
+            label={docLabels[documentType]}
             uploaded={uploads[documentType] ?? null}
             onPickFile={handlePickFile}
             busy={busyType === documentType}
@@ -216,6 +290,7 @@ export function DocumentsSection({ applicationId, canUpload }: DocumentsSectionP
           {canUpload ? (
             <DocumentRow
               documentType="OTHER"
+              label={docLabels.OTHER}
               uploaded={null}
               onPickFile={handlePickFile}
               busy={busyType === "OTHER"}
@@ -235,11 +310,7 @@ export function DocumentsSection({ applicationId, canUpload }: DocumentsSectionP
         ) : null}
       </div>
 
-      <p className="text-foreground-muted text-xs">
-        {canUpload
-          ? "Required documents are validated on upload for type and file size. Replace a file any time before the loan reaches a terminal status."
-          : "Documents are read-only for your account."}
-      </p>
+      <p className="text-foreground-muted text-xs">{readOnlyMessage}</p>
     </section>
   );
 }

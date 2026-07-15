@@ -1,12 +1,5 @@
 /**
- * Audit explorer API client.
- *
- * Gap #3 / #76 — the backend exposes a single unified endpoint at
- *   GET /api/v1/internal/admin/audit-events
- * that UNION-ALLs across the eight supported audit streams on the server
- * side. This module routes the page's URL-bound filters into that request
- * and projects each row into the long-standing {@link AuditRow} shape so
- * the table/sheet keep rendering unchanged. All filters are server-side.
+ * Audit explorer API client — cursor pagination against the unified backend endpoint.
  */
 import { buildQueryPath, requestJson } from "@/lib/api/http-client";
 import {
@@ -19,8 +12,8 @@ import {
 
 const ENDPOINT = "/api/v1/internal/admin/audit-events";
 const DEFAULT_PAGE_SIZE = 25;
+const DEFAULT_WINDOW_DAYS = 7;
 
-/** Streams backed by the live unified audit endpoint (#159 / #151). */
 const BACKEND_STREAMS: ReadonlySet<AuditStream> = new Set<AuditStream>([
   "APPLICATION",
   "INTAKE",
@@ -47,10 +40,9 @@ interface BackendUnifiedAuditEvent {
   correlationId: string | null;
 }
 
-interface BackendPagedAuditEvents {
+interface BackendCursorPagedAuditEvents {
   items: BackendUnifiedAuditEvent[];
-  totalCount: number;
-  offset: number;
+  nextCursor: string | null;
   limit: number;
 }
 
@@ -60,34 +52,35 @@ function backendSubsetOf(streams: readonly AuditStream[] | undefined): AuditStre
   return filtered.length > 0 ? filtered : undefined;
 }
 
+function defaultDateFrom(): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - DEFAULT_WINDOW_DAYS);
+  return date.toISOString().slice(0, 10);
+}
+
 function toIsoStart(date: string | undefined): string | undefined {
-  if (!date) return undefined;
-  return `${date}T00:00:00Z`;
+  return date ? `${date}T00:00:00Z` : `${defaultDateFrom()}T00:00:00Z`;
 }
 
 function toIsoEnd(date: string | undefined): string | undefined {
-  if (!date) return undefined;
-  return `${date}T23:59:59.999Z`;
+  return date ? `${date}T23:59:59.999Z` : undefined;
 }
 
 function buildBackendQueryParams(
   filters: AuditEventsFilters,
 ): Record<string, string | number | undefined> {
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-  const page = filters.page ?? 0;
   const streams = backendSubsetOf(filters.streams);
 
   const params: Record<string, string | number | undefined> = {
-    paginationDetails: "true",
     limit: pageSize,
-    offset: page * pageSize,
   };
+  if (filters.cursor) params["cursor"] = filters.cursor;
   if (streams) params["streams"] = streams.join(",");
   if (filters.actorId) params["actorUsername"] = filters.actorId;
   if (filters.loanApplicationId) params["loanApplicationId"] = filters.loanApplicationId;
   if (filters.correlationId) params["correlationId"] = filters.correlationId;
-  const since = toIsoStart(filters.dateFrom);
-  if (since) params["since"] = since;
+  params["since"] = toIsoStart(filters.dateFrom);
   const until = toIsoEnd(filters.dateTo);
   if (until) params["until"] = until;
   return params;
@@ -151,29 +144,22 @@ function humanize(action: string | null | undefined): string {
 
 async function fetchFromBackend(filters: AuditEventsFilters): Promise<AuditEventsResponse> {
   const path = buildQueryPath(ENDPOINT, buildBackendQueryParams(filters));
-  const payload = await requestJson<BackendPagedAuditEvents>(path);
+  const payload = await requestJson<BackendCursorPagedAuditEvents>(path);
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-  const page = filters.page ?? 0;
-
-  const items = payload.items.map(projectAuditRow);
-  const total = payload.totalCount >= 0 ? payload.totalCount : items.length + page * pageSize;
 
   return {
-    items,
-    total,
-    page,
+    items: payload.items.map(projectAuditRow),
+    total: payload.items.length,
+    page: filters.page ?? 0,
     pageSize,
+    nextCursor: payload.nextCursor,
   };
 }
 
-/**
- * Fetch the audit-events page from the live unified backend endpoint.
- */
 export async function fetchAuditEvents(filters: AuditEventsFilters): Promise<AuditEventsResponse> {
   return fetchFromBackend(filters);
 }
 
-/** Retained for URL-bound filter callers that still want to serialise a snapshot. */
 export function buildAuditEventsQuery(filters: AuditEventsFilters): string {
   const params = buildBackendQueryParams(filters);
   const out = new URLSearchParams();

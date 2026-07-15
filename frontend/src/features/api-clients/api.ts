@@ -10,6 +10,7 @@
 import { requestJson } from "@/lib/api/http-client";
 import type { ApiClient, ApiClientStatus } from "@/schemas/user";
 import type {
+  ApiClientMutationResponse,
   ApiClientRow,
   ApiClientsListFilters,
   ApiClientsListResponse,
@@ -17,6 +18,7 @@ import type {
   CreateApiClientResponse,
   RotateApiClientSecretInput,
   RotateApiClientSecretResponse,
+  UpdateApiClientInput,
 } from "./types";
 
 const BASE = "/api/v1/internal/admin/api-clients";
@@ -57,6 +59,7 @@ function toApiClient(payload: BackendApiClientResponse): ApiClient {
     status: frontendStatus(payload.status),
     createdAt: payload.createdAt,
     lastUsedAt: payload.lastUsedAt,
+    lastRotatedAt: payload.lastRotatedAt ?? null,
     ipAllowList: [],
   };
 }
@@ -69,8 +72,6 @@ function toRow(payload: BackendApiClientResponse): ApiClientRow {
     ipAllowlistCount: 0,
   };
 }
-
-const lastRotatedAtById = new Map<string, string>();
 
 export async function listApiClients(
   filters: ApiClientsListFilters = {},
@@ -117,6 +118,31 @@ export async function createApiClient(
   return { client: row, clientSecret: payload.clientSecret };
 }
 
+/**
+ * Updates an API client's name and/or status via `PUT /api-clients/{id}`.
+ *
+ * Status is translated to the backend vocabulary (frontend DISABLED → backend
+ * INACTIVE). Fields left undefined are sent as null, which the backend treats
+ * as "leave unchanged".
+ */
+export async function updateApiClient(
+  id: string,
+  input: UpdateApiClientInput,
+): Promise<ApiClientMutationResponse> {
+  const payload = await requestJson<BackendApiClientResponse>(
+    `${BASE}/${id}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        name: input.name ?? null,
+        status: input.status ? (input.status === "DISABLED" ? "INACTIVE" : "ACTIVE") : null,
+      }),
+    },
+    { idempotencyKey: input.idempotencyKey },
+  );
+  return { client: toRow(payload) };
+}
+
 export async function rotateApiClientSecret(
   id: string,
   _input: RotateApiClientSecretInput,
@@ -130,18 +156,10 @@ export async function rotateApiClientSecret(
     { idempotencyKey: _input.idempotencyKey },
   );
 
+  // Re-read the client so the returned row carries the backend's freshly updated
+  // metadata (including the authoritative `lastRotatedAt`).
   const list = await requestJson<BackendApiClientResponse[]>(BASE);
   const found = list.find((row) => row.id === id);
   if (!found) throw new Error(`API client ${id} not found`);
-  const row = toRow(found);
-  if (payload.oldSecretValidUntil) {
-    lastRotatedAtById.set(id, payload.oldSecretValidUntil);
-  } else {
-    lastRotatedAtById.set(id, new Date().toISOString());
-  }
-  return { client: row, clientSecret: payload.clientSecret };
-}
-
-export function getApiClientLastRotatedAt(id: string): string | null {
-  return lastRotatedAtById.get(id) ?? null;
+  return { client: toRow(found), clientSecret: payload.clientSecret };
 }

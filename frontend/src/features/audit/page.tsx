@@ -22,7 +22,7 @@
  *      page surfaces that as a friendly EmptyState if a stale token would
  *      ever slip past the router guard.
  */
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Lock, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/layout/PageHeader";
@@ -36,6 +36,11 @@ import { AuditStreamTabs } from "./components/AuditStreamTabs";
 import { AuditPageFilterBar, type ActorOption } from "./components/AuditFilterBar";
 import { AuditTable } from "./components/AuditTable";
 import { AuditEventDetailSheet } from "./components/AuditEventDetailSheet";
+import {
+  accumulateAuditRowsReducer,
+  auditFilterKey,
+  type AccumulatedAuditRowsState,
+} from "./accumulateAuditRows";
 
 // ─── URL ↔ filter coercion ────────────────────────────────────────────────────
 
@@ -140,7 +145,50 @@ export function AuditPage() {
 
   const query = useAuditEvents(queryFilters, { enabled: isSystemAdmin });
 
-  const rows = useMemo(() => query.data?.items ?? [], [query.data?.items]);
+  const filterKey = useMemo(() => auditFilterKey(queryFilters), [queryFilters]);
+  const [rowState, dispatchRows] = useReducer(accumulateAuditRowsReducer, {
+    filterKey: "",
+    rows: [],
+  } satisfies AccumulatedAuditRowsState);
+  const appliedFetchRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!query.data || !query.isSuccess) {
+      if (query.isPending && !query.data) {
+        appliedFetchRef.current = null;
+      }
+      return;
+    }
+
+    const fetchToken = `${filterKey}|${queryFilters.cursor ?? "initial"}|${query.dataUpdatedAt}`;
+    if (appliedFetchRef.current === fetchToken) {
+      return;
+    }
+
+    appliedFetchRef.current = fetchToken;
+    const action = {
+      type: queryFilters.cursor ? ("append" as const) : ("replace" as const),
+      filterKey,
+      items: query.data.items,
+    };
+
+    const frame = requestAnimationFrame(() => {
+      dispatchRows(action);
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [
+    filterKey,
+    query.data,
+    query.dataUpdatedAt,
+    query.isPending,
+    query.isSuccess,
+    queryFilters.cursor,
+  ]);
+
+  const rows = rowState.rows;
   const actorOptions = useMemo(() => distinctActorOptions(rows), [rows]);
 
   const selectedEvent = useMemo<AuditRow | null>(() => {
@@ -150,7 +198,7 @@ export function AuditPage() {
 
   const handleStreamsChange = useCallback(
     (streams: AuditStream[] | undefined) => {
-      updateFilters({ ...filters, streams, page: 0 });
+      updateFilters({ ...filters, streams, page: 0, cursor: undefined });
     },
     [filters, updateFilters],
   );
@@ -227,11 +275,14 @@ export function AuditPage() {
             actorOptions={actorOptions}
           />
           <AuditTable
-            data={query.data}
+            data={query.data ? { ...query.data, items: rows } : undefined}
             isLoading={query.isPending}
-            filters={filters}
-            onFiltersChange={updateFilters}
             onSelect={handleSelect}
+            onLoadMore={
+              query.data?.nextCursor
+                ? () => updateFilters({ ...filters, cursor: query.data?.nextCursor ?? undefined })
+                : undefined
+            }
           />
           <AuditEventDetailSheet
             event={selectedEvent}

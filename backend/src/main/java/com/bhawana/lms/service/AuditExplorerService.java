@@ -1,8 +1,9 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.CursorPagedResult;
 import com.bhawana.lms.repo.AuditExplorerRepository;
 import com.bhawana.lms.repo.AuditExplorerRepository.UnifiedAuditEventRow;
+import com.bhawana.lms.service.AuditExplorerCursorCodec.AuditExplorerCursor;
 import com.bhawana.lms.service.AuditExplorerQuery.AuditStream;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -44,13 +45,24 @@ public class AuditExplorerService {
     }
 
     @Transactional(readOnly = true)
-    public PagedResult<AuditExplorerEvent> search(AuditExplorerQuery query) {
-        PagedResult<UnifiedAuditEventRow> raw = repository.search(query);
+    public CursorPagedResult<AuditExplorerEvent> search(AuditExplorerQuery query) {
+        AuditExplorerCursor cursor = query.cursor() == null
+                ? null
+                : AuditExplorerCursorCodec.decode(query.cursor(), objectMapper);
+        CursorPagedResult<UnifiedAuditEventRow> raw = repository.search(query, cursor);
         List<AuditExplorerEvent> projected = new ArrayList<>(raw.items().size());
         for (UnifiedAuditEventRow row : raw.items()) {
             projected.add(project(row));
         }
-        return new PagedResult<>(projected, raw.totalCount(), raw.offset(), raw.limit());
+        String nextCursor = null;
+        if (raw.nextCursor() != null && !raw.items().isEmpty()) {
+            UnifiedAuditEventRow last = raw.items().get(raw.items().size() - 1);
+            nextCursor = AuditExplorerCursorCodec.encode(
+                    new AuditExplorerCursor(last.occurredAt(), last.stream(), last.nativeId()),
+                    objectMapper
+            );
+        }
+        return new CursorPagedResult<>(projected, nextCursor, raw.limit());
     }
 
     @Transactional(readOnly = true)

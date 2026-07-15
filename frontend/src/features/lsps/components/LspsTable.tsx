@@ -104,11 +104,11 @@ export function LspsTable({
         },
       },
       {
-        id: "apiClients",
-        header: "API clients",
+        id: "users",
+        header: "Users",
         cell: ({ row }) => (
           <span className="text-foreground-muted text-xs tabular-nums">
-            {row.original.apiClientCount}
+            {row.original.userCount}
           </span>
         ),
         meta: { numeric: true },
@@ -154,18 +154,21 @@ export function LspsTable({
                 {
                   id: "details",
                   label: "Details",
+                  ariaLabel: `Details for ${lsp.code}`,
                   dataSlot: "lsps-details-button",
                   onSelect: () => onDetails(lsp),
                 },
                 {
                   id: "status",
                   label: "Status",
+                  ariaLabel: `Change status of ${lsp.code}`,
                   dataSlot: "lsps-status-button",
                   onSelect: () => onChangeStatus(lsp),
                 },
                 {
                   id: "audit",
                   label: "Audit",
+                  ariaLabel: `Audit trail for ${lsp.code}`,
                   variant: "ghost",
                   dataSlot: "lsps-audit-button",
                   onSelect: () => onViewAudit(lsp),
@@ -173,6 +176,7 @@ export function LspsTable({
                 {
                   id: "webhook",
                   label: "Webhook",
+                  ariaLabel: `Webhook subscription for ${lsp.code}`,
                   variant: "ghost",
                   dataSlot: "lsps-webhook-button",
                   onSelect: () => onEditWebhook(lsp),

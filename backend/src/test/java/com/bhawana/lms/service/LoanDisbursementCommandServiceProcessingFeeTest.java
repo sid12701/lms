@@ -19,6 +19,7 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.domain.LoanProduct;
+import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.repo.LoanAccountRepository;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @ExtendWith(MockitoExtension.class)
 class LoanDisbursementCommandServiceProcessingFeeTest {
@@ -49,11 +51,14 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
     @Mock private LoanApplicationStatusWriter loanApplicationStatusWriter;
     @Mock private DisbursementOutcomeAuditService disbursementOutcomeAuditService;
     @Mock private OpsAlertEmitters opsAlertEmitters;
+    @Mock private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+    @Mock private TransactionTemplate transactionTemplate;
 
     @Mock private LoanApplication application;
     @Mock private Borrower borrower;
     @Mock private Lsp lsp;
     @Mock private LoanProduct loanProduct;
+    @Mock private LoanProductVersion loanProductVersion;
 
     private LoanDisbursementCommandService service;
     private final UUID applicationId = UUID.randomUUID();
@@ -69,6 +74,9 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
                 disbursementOutcomeAuditService,
                 new ObjectMapper()
         );
+        DisbursementIntentWorkflowProperties intentWorkflowProperties = new DisbursementIntentWorkflowProperties();
+        intentWorkflowProperties.setEnabled(false);
+        LoanDisbursementMockProperties mockProperties = new LoanDisbursementMockProperties();
         service = new LoanDisbursementCommandService(
                 loanApplicationRepository,
                 loanAccountRepository,
@@ -79,14 +87,18 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
                 loanApplicationDocumentChecklistService,
                 loanApplicationStatusWriter,
                 disbursementOutcomeApplier,
-                new LoanDisbursementMockProperties(),
+                mockProperties,
+                disbursementIntentWorkflowService,
+                intentWorkflowProperties,
+                new DisbursementPaymentModeSelector(mockProperties),
+                transactionTemplate,
                 new ObjectMapper()
         );
     }
 
     private LoanAccount account(BigDecimal principal, LoanAccountStatus status) {
         return new LoanAccount(
-                application, borrower, lsp, loanProduct, "LMS-LN-TEST", principal, 12, status, Instant.now()
+                application, borrower, lsp, loanProduct, loanProductVersion, "LMS-LN-TEST", principal, 12, status, Instant.now()
         );
     }
 
@@ -101,7 +113,7 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
     @Test
     void initiateDisbursementSendsPrincipalMinusFeeToAdapter() {
         stubLockAndResolve(account(new BigDecimal("150000"), LoanAccountStatus.PENDING_DISBURSEMENT));
-        when(loanProduct.getProcessingFeeRate()).thenReturn(new BigDecimal("1.5"));
+        when(loanProductVersion.getProcessingFeeRate()).thenReturn(new BigDecimal("1.5"));
         when(application.getBorrower()).thenReturn(borrower);
         when(application.getExternalLoanId()).thenReturn("EXT-1");
         when(application.getLsp()).thenReturn(lsp);
@@ -128,7 +140,7 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
     @Test
     void initiateDisbursementRejectsWhenFeeWouldLeaveNoNetCash() {
         stubLockAndResolve(account(new BigDecimal("150000"), LoanAccountStatus.PENDING_DISBURSEMENT));
-        when(loanProduct.getProcessingFeeRate()).thenReturn(new BigDecimal("100"));
+        when(loanProductVersion.getProcessingFeeRate()).thenReturn(new BigDecimal("100"));
 
         assertThrows(
                 BusinessRuleViolationException.class,

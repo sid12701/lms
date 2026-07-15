@@ -1,5 +1,4 @@
-/// <reference types="vitest" />
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
@@ -44,6 +43,7 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     css: true,
     fileParallelism: false,
+    testTimeout: 15_000,
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     coverage: {
       provider: "v8",

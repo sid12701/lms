@@ -1,25 +1,16 @@
 /**
  * UI performance sampling while API load runs in parallel.
  *
- * Prereq: backend + frontend running; admin session cookie or use login flow.
- * Run:
- *   cd frontend && npx playwright test e2e/perf-under-load.spec.ts
- *
- * Env:
- *   PERF_BASE_URL=http://127.0.0.1:5173
- *   PERF_ADMIN_PASSWORD=...
+ * Prereq: backend + frontend running.
+ * Env (required — no hardcoded secrets):
+ *   E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD
+ *   PERF_BASE_URL=http://127.0.0.1:5173 (optional)
  */
 import { test, expect } from "@playwright/test";
-
-const ADMIN_USER = process.env["PERF_ADMIN_USER"] || "ops.admin";
-const ADMIN_PASS = process.env["PERF_ADMIN_PASSWORD"] || "ChangeMe123!";
+import { signInAsSystemAdmin } from "./helpers/auth";
 
 async function login(page: import("@playwright/test").Page) {
-  await page.goto("/login");
-  await page.getByLabel(/username/i).fill(ADMIN_USER);
-  await page.getByLabel(/password/i).fill(ADMIN_PASS);
-  await page.getByRole("button", { name: /sign in|log in/i }).click();
-  await page.waitForURL(/\/(home|dashboard|loan)/, { timeout: 30_000 });
+  await signInAsSystemAdmin(page);
 }
 
 test.describe("UI under load — page timing", () => {

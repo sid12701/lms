@@ -17,6 +17,7 @@ public class AlertRuleProperties {
     private int authBruteForceDistributedThreshold = 20;
     private int authBruteForceDistributedDistinctIpMin = 5;
     private int authBruteForceDistributedWindowHours = 24;
+    private int evaluationBatchLimit = 500;
 
     public boolean isSchedulerEnabled() {
         return schedulerEnabled;
@@ -112,5 +113,13 @@ public class AlertRuleProperties {
 
     public void setAuthBruteForceDistributedWindowHours(int authBruteForceDistributedWindowHours) {
         this.authBruteForceDistributedWindowHours = authBruteForceDistributedWindowHours;
+    }
+
+    public int getEvaluationBatchLimit() {
+        return evaluationBatchLimit;
+    }
+
+    public void setEvaluationBatchLimit(int evaluationBatchLimit) {
+        this.evaluationBatchLimit = evaluationBatchLimit;
     }
 }

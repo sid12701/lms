@@ -38,7 +38,7 @@ const FIXTURE: BorrowerListResponse = {
   items: [],
   total: 3,
   page: 0,
-  pageSize: 25,
+  pageSize: 50,
 };
 
 function renderPage() {

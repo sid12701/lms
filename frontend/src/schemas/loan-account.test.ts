@@ -5,6 +5,7 @@ import {
   InstallmentStatus,
   LoanAccount,
   LoanAccountStatus,
+  LOAN_ACCOUNT_STATUSES,
   RepaymentInstallment,
   RepaymentSchedule,
   ScheduleGenerator,
@@ -14,10 +15,11 @@ const UUID = "550e8400-e29b-41d4-a716-446655440000";
 const NOW = "2026-05-09T10:00:00.000Z";
 
 describe("loan-account enums", () => {
-  it("LoanAccountStatus members", () => {
-    for (const s of ["PENDING_DISBURSEMENT", "ACTIVE", "CLOSED", "FORECLOSED"]) {
+  it("LoanAccountStatus matches every backend literal and rejects ACTIVE", () => {
+    for (const s of LOAN_ACCOUNT_STATUSES) {
       expect(LoanAccountStatus.safeParse(s).success).toBe(true);
     }
+    expect(LoanAccountStatus.safeParse("ACTIVE").success).toBe(false);
     expect(LoanAccountStatus.safeParse("OPEN").success).toBe(false);
   });
 
@@ -55,7 +57,7 @@ describe("LoanAccount", () => {
       id: UUID,
       applicationId: UUID,
       accountNumber: "ACC-0001",
-      accountStatus: "ACTIVE" as const,
+      accountStatus: "DISBURSED" as const,
       principal: 50_000,
       tenureMonths: 12,
       approvedAt: NOW,

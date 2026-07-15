@@ -10,12 +10,15 @@ import com.bhawana.lms.domain.LoanProductAuditAction;
 import com.bhawana.lms.domain.LoanProductAuditEvent;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
+import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
+import com.bhawana.lms.repo.LoanProductVersionRepository;
 import com.bhawana.lms.repo.LspRepository;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,17 +33,20 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProductConfigurationService {
 
     private final LoanProductRepository loanProductRepository;
+    private final LoanProductVersionRepository loanProductVersionRepository;
     private final LspRepository lspRepository;
     private final LoanProductLspMappingRepository loanProductLspMappingRepository;
     private final LoanProductAuditEventRepository loanProductAuditEventRepository;
 
     public ProductConfigurationService(
             LoanProductRepository loanProductRepository,
+            LoanProductVersionRepository loanProductVersionRepository,
             LspRepository lspRepository,
             LoanProductLspMappingRepository loanProductLspMappingRepository,
             LoanProductAuditEventRepository loanProductAuditEventRepository
     ) {
         this.loanProductRepository = loanProductRepository;
+        this.loanProductVersionRepository = loanProductVersionRepository;
         this.lspRepository = lspRepository;
         this.loanProductLspMappingRepository = loanProductLspMappingRepository;
         this.loanProductAuditEventRepository = loanProductAuditEventRepository;
@@ -90,6 +96,7 @@ public class ProductConfigurationService {
                 status
         );
         LoanProduct savedProduct = loanProductRepository.save(product);
+        loanProductVersionRepository.save(initialVersion(savedProduct, 1, Instant.now(), currentActorUsername()));
         recordAuditEvent(
                 savedProduct,
                 LoanProductAuditAction.PRODUCT_CREATED,
@@ -123,6 +130,16 @@ public class ProductConfigurationService {
                     throw new ApiConflictException("PRODUCT_CODE_EXISTS", "Loan product code already exists: " + normalizedCode);
                 });
 
+        boolean termsChanged = termsDiffer(
+                product,
+                minPrincipal,
+                maxPrincipal,
+                interestRate,
+                processingFeeRate,
+                minTenureMonths,
+                maxTenureMonths
+        );
+
         product.update(
                 normalizedCode,
                 name.trim(),
@@ -135,6 +152,13 @@ public class ProductConfigurationService {
                 status
         );
         LoanProduct savedProduct = loanProductRepository.save(product);
+        if (termsChanged) {
+            int nextVersion = loanProductVersionRepository
+                    .findTopByLoanProduct_IdOrderByVersionNumberDesc(productId)
+                    .map(version -> version.getVersionNumber() + 1)
+                    .orElse(1);
+            loanProductVersionRepository.save(initialVersion(savedProduct, nextVersion, Instant.now(), currentActorUsername()));
+        }
         recordAuditEvent(
                 savedProduct,
                 LoanProductAuditAction.PRODUCT_UPDATED,
@@ -317,5 +341,42 @@ public class ProductConfigurationService {
 
     private static BigDecimal scaleRate(BigDecimal value) {
         return value.setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private static LoanProductVersion initialVersion(
+            LoanProduct product,
+            int versionNumber,
+            Instant effectiveFrom,
+            String createdBy
+    ) {
+        return new LoanProductVersion(
+                product,
+                versionNumber,
+                product.getMinPrincipal(),
+                product.getMaxPrincipal(),
+                product.getInterestRate(),
+                product.getProcessingFeeRate(),
+                product.getMinTenureMonths(),
+                product.getMaxTenureMonths(),
+                effectiveFrom,
+                createdBy
+        );
+    }
+
+    private static boolean termsDiffer(
+            LoanProduct product,
+            BigDecimal minPrincipal,
+            BigDecimal maxPrincipal,
+            BigDecimal interestRate,
+            BigDecimal processingFeeRate,
+            int minTenureMonths,
+            int maxTenureMonths
+    ) {
+        return Money.scale(minPrincipal).compareTo(product.getMinPrincipal()) != 0
+                || Money.scale(maxPrincipal).compareTo(product.getMaxPrincipal()) != 0
+                || scaleRate(interestRate).compareTo(product.getInterestRate()) != 0
+                || scaleRate(processingFeeRate).compareTo(product.getProcessingFeeRate()) != 0
+                || minTenureMonths != product.getMinTenureMonths()
+                || maxTenureMonths != product.getMaxTenureMonths();
     }
 }

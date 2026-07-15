@@ -7,10 +7,10 @@ export interface MaskedBorrowerCardProps {
 }
 
 /**
- * Read-only borrower PII summary. Per the masking-everywhere posture
- * (see `docs/gap-fixes.md` § Gap #1), PII fields are never unmasked at
- * the API or UI layer — the backend serves masked values; the FE
- * displays them as-is.
+ * Read-only borrower identity summary. The backend serves Aadhaar masked;
+ * PAN is returned as submitted by this LSP (they originated it), so the
+ * card must not promise blanket masking (audit LSP pass — the old copy
+ * said "masked everywhere" directly above a cleartext PAN).
  */
 export function MaskedBorrowerCard({ detail }: MaskedBorrowerCardProps) {
   return (
@@ -22,11 +22,11 @@ export function MaskedBorrowerCard({ detail }: MaskedBorrowerCardProps) {
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <ShieldAlert className="text-warning h-4 w-4" aria-hidden="true" />
-            <h2 className="text-base font-semibold">Borrower PII (masked)</h2>
+            <h2 className="text-base font-semibold">Borrower identity</h2>
           </div>
           <p className="text-foreground-muted text-xs">
-            Identity numbers are masked everywhere. Re-issue the application if the borrower&apos;s
-            identity needs to be re-verified.
+            Aadhaar is shown masked. Handle identity details per your data-processing agreement;
+            re-issue the application if the borrower&apos;s identity needs to be re-verified.
           </p>
         </div>
       </header>

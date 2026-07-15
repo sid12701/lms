@@ -128,7 +128,7 @@ public class DisbursementPreflightValidator {
         BigDecimal principalAmount = Money.scale(rawPrincipal);
         BigDecimal processingFee = LoanFeeCalculator.computeProcessingFee(
                 principalAmount,
-                loanAccount.getLoanProduct().getProcessingFeeRate()
+                loanAccount.getLoanProductVersion().getProcessingFeeRate()
         );
         BigDecimal netDisbursal = Money.scale(principalAmount.subtract(processingFee));
         if (netDisbursal.compareTo(BigDecimal.ZERO) <= 0) {

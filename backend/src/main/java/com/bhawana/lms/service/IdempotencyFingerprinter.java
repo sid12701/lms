@@ -7,7 +7,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
-final class IdempotencyFingerprinter {
+public final class IdempotencyFingerprinter {
 
     private static final HexFormat HEX = HexFormat.of();
 
@@ -22,6 +22,15 @@ final class IdempotencyFingerprinter {
             return HEX.formatHex(digest.digest(payload));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to serialize idempotency fingerprint payload.", exception);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 digest is not available.", exception);
+        }
+    }
+
+    public static String sha256Hex(byte[] content) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HEX.formatHex(digest.digest(content));
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 digest is not available.", exception);
         }

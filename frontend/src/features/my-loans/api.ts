@@ -102,6 +102,14 @@ export interface MyLoanLoanAccountSummary {
     firstDueDate: string | null;
     finalDueDate: string | null;
   } | null;
+  disbursement: {
+    status: string;
+    failureReasonCode: string | null;
+    failureReason: string | null;
+    disbursedAt: string | null;
+    grossAmount: number;
+    netDisbursedAmount: number;
+  } | null;
 }
 
 export interface MyLoanDetail {
@@ -134,6 +142,14 @@ export interface MyLoanDetail {
   createdAt: string | null;
   updatedAt: string | null;
   loanAccount: MyLoanLoanAccountSummary | null;
+  lastActivity: {
+    activityType: string;
+    actorUsername: string | null;
+    summary: string;
+    detail: string | null;
+    correlationId: string | null;
+    occurredAt: string;
+  } | null;
 }
 
 export interface InvalidReasonOption {
@@ -169,6 +185,14 @@ interface BackendLspDetail {
   invalidatedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  lastActivity?: {
+    activityType: string;
+    actorUsername: string | null;
+    summary: string;
+    detail: string | null;
+    correlationId: string | null;
+    occurredAt: string;
+  } | null;
   loanAccount: {
     id: string | null;
     accountNumber: string | null;
@@ -190,6 +214,14 @@ interface BackendLspDetail {
       installmentAmount: number | string | null;
       firstDueDate: string | null;
       finalDueDate: string | null;
+    } | null;
+    disbursement?: {
+      status: string;
+      failureReasonCode: string | null;
+      failureReason: string | null;
+      disbursedAt: string | null;
+      grossAmount: number | string | null;
+      netDisbursedAmount: number | string | null;
     } | null;
   } | null;
 }
@@ -251,6 +283,16 @@ function backendToDetail(payload: BackendLspDetail): MyLoanDetail {
     invalidatedAt: payload.invalidatedAt,
     createdAt: payload.createdAt,
     updatedAt: payload.updatedAt,
+    lastActivity: payload.lastActivity
+      ? {
+          activityType: payload.lastActivity.activityType,
+          actorUsername: payload.lastActivity.actorUsername,
+          summary: payload.lastActivity.summary,
+          detail: payload.lastActivity.detail,
+          correlationId: payload.lastActivity.correlationId,
+          occurredAt: payload.lastActivity.occurredAt,
+        }
+      : null,
     loanAccount: payload.loanAccount
       ? {
           id: payload.loanAccount.id ?? "",
@@ -278,6 +320,16 @@ function backendToDetail(payload: BackendLspDetail): MyLoanDetail {
                 ),
                 firstDueDate: payload.loanAccount.repaymentSchedule.firstDueDate,
                 finalDueDate: payload.loanAccount.repaymentSchedule.finalDueDate,
+              }
+            : null,
+          disbursement: payload.loanAccount.disbursement
+            ? {
+                status: payload.loanAccount.disbursement.status,
+                failureReasonCode: payload.loanAccount.disbursement.failureReasonCode,
+                failureReason: payload.loanAccount.disbursement.failureReason,
+                disbursedAt: payload.loanAccount.disbursement.disbursedAt,
+                grossAmount: toNumber(payload.loanAccount.disbursement.grossAmount),
+                netDisbursedAmount: toNumber(payload.loanAccount.disbursement.netDisbursedAmount),
               }
             : null,
         }
@@ -342,6 +394,7 @@ export const LSP_DOCUMENT_TYPES = [
   "INCOME_PROOF",
   "BANK_STATEMENT",
   "PHOTOGRAPH",
+  "KFS",
   "LOAN_AGREEMENT",
   "OTHER",
 ] as const;
@@ -356,9 +409,24 @@ const FE_TO_BE_DOCUMENT_TYPE: Record<LspDocumentType, string> = {
   INCOME_PROOF: "INCOME_PROOF",
   BANK_STATEMENT: "BANK_STATEMENT",
   PHOTOGRAPH: "SELFIE_PHOTOGRAPH",
+  KFS: "KFS",
   LOAN_AGREEMENT: "LOAN_AGREEMENT",
   OTHER: "OTHER",
 };
+
+// Inverse map: backend responses must land back on the FE slot names or the
+// checklist can't match rows to slots (PAN_CARD uploads showed as a missing
+// "PAN" — audit LSP pass).
+const BE_TO_FE_DOCUMENT_TYPE: Record<string, LspDocumentType> = Object.fromEntries(
+  (Object.entries(FE_TO_BE_DOCUMENT_TYPE) as [LspDocumentType, string][]).map(([fe, be]) => [
+    be,
+    fe,
+  ]),
+) as Record<string, LspDocumentType>;
+
+function normaliseDocumentType(backendType: string): string {
+  return BE_TO_FE_DOCUMENT_TYPE[backendType] ?? backendType;
+}
 
 export interface UploadLspDocumentInput {
   applicationId: string;
@@ -396,7 +464,7 @@ export interface UploadedLspDocument {
 function toUploadedDocument(payload: BackendLspChecklistResponse): UploadedLspDocument {
   return {
     id: payload.id,
-    documentType: payload.documentType,
+    documentType: normaliseDocumentType(payload.documentType),
     documentDisplayName: payload.documentDisplayName,
     status: payload.status,
     fileName: payload.fileName,
@@ -433,7 +501,7 @@ export interface SubmittedLspDocument {
 
 function toSubmittedLspDocument(payload: BackendLspSubmittedDocument): SubmittedLspDocument {
   return {
-    documentType: payload.documentType,
+    documentType: normaliseDocumentType(payload.documentType),
     status: payload.status === "SUBMITTED" ? "SUBMITTED" : "PENDING",
     fileName: payload.fileName,
     contentType: payload.contentType,
@@ -518,4 +586,111 @@ export async function uploadLspDocumentsBatch(
     { method: "POST", body: form },
   );
   return payload.map(toUploadedDocument);
+}
+
+export interface LspDocumentRequirement {
+  code: string;
+  displayName: string;
+  requiredForApproval: boolean;
+  requiredForDisbursement: boolean;
+}
+
+interface BackendLspDocumentRequirement {
+  code: string;
+  displayName: string;
+  requiredForApproval: boolean;
+  requiredForDisbursement: boolean;
+}
+
+/** GET `/api/v1/lsp/loan-applications/document-requirements`. */
+export async function fetchLspDocumentRequirements(): Promise<LspDocumentRequirement[]> {
+  ensureLspSession();
+  const rows = await requestJson<BackendLspDocumentRequirement[]>(
+    `${LSP_BASE}/document-requirements`,
+  );
+  return rows.map((row) => ({
+    code: row.code,
+    displayName: row.displayName,
+    requiredForApproval: row.requiredForApproval,
+    requiredForDisbursement: row.requiredForDisbursement,
+  }));
+}
+
+export interface MyLoanScheduleInstallment {
+  id: string;
+  installmentNumber: number;
+  dueDate: string;
+  installmentAmount: number;
+  paidAmount: number;
+  outstandingAmount: number;
+  status: string;
+  daysPastDue: number | null;
+}
+
+interface BackendLspScheduleInstallment {
+  id: string;
+  installmentNumber: number;
+  dueDate: string;
+  installmentAmount: number | string;
+  paidAmount: number | string | null;
+  outstandingAmount: number | string | null;
+  status: string;
+  daysPastDue: number | null;
+}
+
+/** GET `/api/v1/lsp/loans/{loanId}/repayment-schedule`. */
+export async function fetchMyLoanRepaymentSchedule(
+  loanId: string,
+): Promise<MyLoanScheduleInstallment[]> {
+  ensureLspSession();
+  const rows = await requestJson<BackendLspScheduleInstallment[]>(
+    `/api/v1/lsp/loans/${encodeURIComponent(loanId)}/repayment-schedule`,
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    installmentNumber: row.installmentNumber,
+    dueDate: row.dueDate,
+    installmentAmount: toNumber(row.installmentAmount),
+    paidAmount: toNumber(row.paidAmount),
+    outstandingAmount: toNumber(row.outstandingAmount),
+    status: row.status,
+    daysPastDue: row.daysPastDue,
+  }));
+}
+
+export interface MyLoanPayment {
+  id: string;
+  amount: number;
+  paymentDate: string;
+  channel: string;
+  reference: string | null;
+  status: string;
+  createdAt: string | null;
+}
+
+interface BackendLspPayment {
+  id: string;
+  amount: number | string;
+  paymentDate: string;
+  channel: string;
+  reference: string | null;
+  status: string;
+  createdAt: string | null;
+}
+
+/** GET `/api/v1/lsp/loans/{loanId}/payments`. */
+export async function fetchMyLoanPayments(loanId: string): Promise<MyLoanPayment[]> {
+  ensureLspSession();
+  const rows = await requestJson<BackendLspPayment[]>(
+    `/api/v1/lsp/loans/${encodeURIComponent(loanId)}/payments`,
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    amount: toNumber(row.amount),
+    paymentDate: row.paymentDate,
+    channel: row.channel,
+    reference: row.reference,
+    status: row.status,
+    createdAt: row.createdAt,
+  }));
 }

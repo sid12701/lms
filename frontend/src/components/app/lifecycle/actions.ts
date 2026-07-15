@@ -32,9 +32,20 @@ export interface LifecycleAction {
   tone: LifecycleActionTone;
   /** When true, the confirm dialog requires a non-empty reason. */
   requiresReason: boolean;
+  /**
+   * When true, the confirm dialog must also collect a structured reason code —
+   * the backend rejects these transitions without one (REASON_CODE_REQUIRED).
+   */
+  requiresReasonCode: boolean;
   /** Coarse permission gate the host page should consult. */
   permission: Permission;
 }
+
+/** Targets whose transitions the backend refuses without a structured reason code. */
+const REASON_CODE_TARGETS: ReadonlySet<LoanStatus> = new Set<LoanStatus>([
+  "REJECTED",
+  "DISBURSEMENT_RETRY",
+]);
 
 // Re-export the gate so callers don't have to reach into `lib/lifecycle`
 // for the precondition check while still using this UI layer.
@@ -135,6 +146,7 @@ export const LIFECYCLE_ACTIONS: LifecycleAction[] = TRANSITIONS.filter(
     // Destructive transitions always require a reason so the audit log
     // captures intent, regardless of the per-target default.
     requiresReason: tone === "destructive" ? true : ov.requiresReason,
+    requiresReasonCode: REASON_CODE_TARGETS.has(rule.to),
     permission: ov.permission,
   };
 });
@@ -154,6 +166,7 @@ export function actionsFor(from: LoanStatus): LifecycleAction[] {
       toStatus: rule.to,
       tone,
       requiresReason: tone === "destructive" ? true : ov.requiresReason,
+      requiresReasonCode: REASON_CODE_TARGETS.has(rule.to),
       permission: ov.permission,
     };
   });

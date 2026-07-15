@@ -3,16 +3,9 @@ import { axe } from "vitest-axe";
 import { renderWithProviders } from "@/test/utils";
 import { STATUS_META } from "@/lib/lifecycle";
 import { LOAN_APPLICATION_STATUSES } from "@/lib/loan-application-status";
-import type { LoanAccountStatus } from "@/types";
+import { LOAN_ACCOUNT_STATUSES } from "@/schemas/loan-account";
 import { StatusBadge } from "./StatusBadge";
 import { resolveStatusMeta } from "./statusBadgeMeta";
-
-const ACCOUNT_STATUSES: LoanAccountStatus[] = [
-  "PENDING_DISBURSEMENT",
-  "ACTIVE",
-  "CLOSED",
-  "FORECLOSED",
-];
 
 describe("StatusBadge", () => {
   it("renders the status label and an icon by default", () => {
@@ -50,7 +43,7 @@ describe("StatusBadge", () => {
   });
 
   it("maps every LoanAccountStatus enum value to a non-empty meta entry", () => {
-    for (const s of ACCOUNT_STATUSES) {
+    for (const s of LOAN_ACCOUNT_STATUSES) {
       const meta = resolveStatusMeta(s);
       expect(meta.label.length).toBeGreaterThan(0);
       expect(meta.intent.length).toBeGreaterThan(0);

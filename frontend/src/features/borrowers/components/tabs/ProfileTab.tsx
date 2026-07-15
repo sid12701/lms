@@ -166,16 +166,25 @@ export function ProfileTab({ detail }: ProfileTabProps) {
         )}
       </Section>
 
-      <Section title="LSP visibility" className="lg:col-span-2">
+      <Section title="LSP relationships" className="lg:col-span-2">
         {visibleLsps.length === 0 ? (
           <p className="text-foreground-muted text-sm">No LSPs currently see this borrower</p>
         ) : (
-          <ul data-slot="lsp-chip-cloud" className="flex flex-wrap gap-2">
+          <ul data-slot="lsp-relationship-list" className="flex flex-col gap-2">
             {visibleLsps.map((lsp) => (
-              <li key={lsp.id}>
+              <li
+                key={lsp.id}
+                className="border-border flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2"
+              >
                 <Badge variant="outline" className="border-border">
                   {lsp.name}
                 </Badge>
+                <span className="text-foreground-muted text-xs">
+                  {lsp.firstSourcedAt
+                    ? `Linked ${formatDate(lsp.firstSourcedAt)}`
+                    : "Linked (legacy visibility)"}
+                  {lsp.sourceChannel ? ` · ${lsp.sourceChannel}` : ""}
+                </span>
               </li>
             ))}
           </ul>

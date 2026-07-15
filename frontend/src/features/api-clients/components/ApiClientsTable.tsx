@@ -1,10 +1,9 @@
 /**
  * `ApiClientsTable` — TanStack-table view of the api-clients admin list.
  *
- * Columns: Client ID, Name, LSP, Status, IP rules count, Last used. Each
- * row exposes a "Manage" button that bubbles up via `onSelect`. Click on
- * the client-id cell also opens the edit dialog (the parent owns the
- * dialog state).
+ * Columns: Client ID, Name, LSP, Status, Last used. Each row exposes "Edit"
+ * (rename / enable-disable) and "Rotate secret" actions; clicking the
+ * client-id cell opens the edit dialog. The parent owns the dialog state.
  */
 import { useCallback, useMemo } from "react";
 import type { ColumnDef, PaginationState } from "@tanstack/react-table";
@@ -22,8 +21,10 @@ export interface ApiClientsTableProps {
   isLoading: boolean;
   filters: ApiClientsListFilters;
   onFiltersChange: (next: ApiClientsListFilters) => void;
-  /** Called when the operator wants to edit a row. */
-  onSelect: (row: ApiClientRow) => void;
+  /** Called when the operator wants to edit (rename / enable-disable) a row. */
+  onEdit: (row: ApiClientRow) => void;
+  /** Called when the operator wants to rotate a row's secret. */
+  onRotate: (row: ApiClientRow) => void;
   className?: string;
 }
 
@@ -32,7 +33,8 @@ export function ApiClientsTable({
   isLoading,
   filters,
   onFiltersChange,
-  onSelect,
+  onEdit,
+  onRotate,
   className,
 }: ApiClientsTableProps) {
   const rows = data?.items ?? [];
@@ -50,7 +52,7 @@ export function ApiClientsTable({
           <button
             type="button"
             data-slot="api-clients-row-link"
-            onClick={() => onSelect(row.original)}
+            onClick={() => onEdit(row.original)}
             className="text-foreground focus-visible:ring-ring/50 rounded-sm font-mono text-sm tabular-nums outline-none hover:underline focus-visible:underline focus-visible:ring-2"
           >
             {row.original.clientId}
@@ -118,17 +120,25 @@ export function ApiClientsTable({
             mode="inline"
             items={[
               {
-                id: "manage",
-                label: "Manage",
-                dataSlot: "api-clients-manage-button",
-                onSelect: () => onSelect(row.original),
+                id: "edit",
+                label: "Edit",
+                ariaLabel: `Edit ${row.original.name}`,
+                dataSlot: "api-clients-edit-button",
+                onSelect: () => onEdit(row.original),
+              },
+              {
+                id: "rotate",
+                label: "Rotate secret",
+                ariaLabel: `Rotate secret for ${row.original.name}`,
+                dataSlot: "api-clients-rotate-button",
+                onSelect: () => onRotate(row.original),
               },
             ]}
           />
         ),
       },
     ],
-    [onSelect],
+    [onEdit, onRotate],
   );
 
   const handlePaginationChange = useCallback(

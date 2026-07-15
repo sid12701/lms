@@ -1,95 +1,26 @@
 package com.bhawana.lms.web;
 
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.bhawana.lms.domain.LoanApplicationDocumentType;
-import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
-import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIf;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-// Rate limiting is forced off: the repo-root .env (imported by the local profile) may enable it,
-// and RateLimitConfig connects to Redis eagerly at startup — this test only needs DB + storage.
-@SpringBootTest(properties = "app.rate-limit.enabled=false")
-@AutoConfigureMockMvc
-@ActiveProfiles("local")
-@TestExecutionListeners(
-        value = TenantContextTestExecutionListener.class,
-        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
-)
-class DocumentUploadLocalProfileIntegrationTest {
+final class DocumentUploadTestSupport {
 
-    @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
-    private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
-
-    @BeforeEach
-    void setUp() {
-        integrationTestDatabaseCleaner.cleanIntegrationTestData();
+    private DocumentUploadTestSupport() {
     }
 
-    @Test
-    @EnabledIf("supabaseEnvPresent")
-    void lspMultipartDocumentUploadDoesNotReturn500() throws Exception {
-        Seed seed = seedLspApplication();
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "pan.pdf",
-                "application/pdf",
-                Files.readAllBytes(Path.of("../postman/assets/sample-pan.pdf"))
-        );
-
-        assertThatCode(() -> mockMvc.perform(multipart(
-                        "/api/v1/lsp/loan-applications/{applicationId}/documents", seed.applicationId())
-                        .file(file)
-                        .param("documentType", LoanApplicationDocumentType.PAN_CARD.name())
-                        .with(lspApiClient(seed.clientId(), seed.lspId()))
-                        .contentType(MediaType.MULTIPART_FORM_DATA))
-                .andDo(print())
-                .andExpect(status().is2xxSuccessful()))
-                .doesNotThrowAnyException();
-    }
-
-    static boolean supabaseEnvPresent() {
-        try {
-            Map<String, String> env = loadRepoRootEnv();
-            return env.getOrDefault("LMS_DB_URL", "").contains("supabase");
-        } catch (Exception exception) {
-            return false;
-        }
-    }
-
-    private Seed seedLspApplication() throws Exception {
+    static Seed seedLspApplication(MockMvc mockMvc, ObjectMapper objectMapper) throws Exception {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         MvcResult lspResult = mockMvc.perform(
-                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/internal/admin/lsps")
+                        post("/api/v1/internal/admin/lsps")
                                 .with(opsJwt())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
@@ -101,7 +32,7 @@ class DocumentUploadLocalProfileIntegrationTest {
         UUID lspId = UUID.fromString(lsp.get("id").asText());
 
         MvcResult productResult = mockMvc.perform(
-                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/internal/admin/products")
+                        post("/api/v1/internal/admin/products")
                                 .with(opsJwt())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
@@ -123,7 +54,7 @@ class DocumentUploadLocalProfileIntegrationTest {
                 .andExpect(status().isOk());
 
         MvcResult clientResult = mockMvc.perform(
-                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/internal/admin/api-clients")
+                        post("/api/v1/internal/admin/api-clients")
                                 .with(opsJwt())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
@@ -134,7 +65,7 @@ class DocumentUploadLocalProfileIntegrationTest {
         JsonNode client = objectMapper.readTree(clientResult.getResponse().getContentAsString());
 
         mockMvc.perform(
-                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/auth/token")
+                        post("/api/v1/auth/token")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                         {"clientId":"%s","clientSecret":"%s"}
@@ -142,7 +73,7 @@ class DocumentUploadLocalProfileIntegrationTest {
                 .andExpect(status().isOk());
 
         MvcResult appResult = mockMvc.perform(
-                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/v1/lsp/loan-applications")
+                        post("/api/v1/lsp/loan-applications")
                                 .with(lspApiClient(client.get("clientId").asText(), lspId))
                                 .header("Idempotency-Key", UUID.randomUUID().toString())
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -179,14 +110,14 @@ class DocumentUploadLocalProfileIntegrationTest {
         );
     }
 
-    private static org.springframework.test.web.servlet.request.RequestPostProcessor opsJwt() {
+    static org.springframework.test.web.servlet.request.RequestPostProcessor opsJwt() {
         return jwt().jwt(builder -> builder
                         .subject("ops.admin")
                         .claim("roles", List.of("SYSTEM_ADMIN", "PRODUCT_ADMIN")))
                 .authorities(() -> "ROLE_SYSTEM_ADMIN", () -> "ROLE_PRODUCT_ADMIN");
     }
 
-    private static org.springframework.test.web.servlet.request.RequestPostProcessor lspApiClient(String clientId, UUID lspId) {
+    static org.springframework.test.web.servlet.request.RequestPostProcessor lspApiClient(String clientId, UUID lspId) {
         return jwt().jwt(builder -> builder
                         .subject(clientId)
                         .claim("roles", List.of("LSP_API_CLIENT"))
@@ -194,19 +125,6 @@ class DocumentUploadLocalProfileIntegrationTest {
                 .authorities(() -> "ROLE_LSP_API_CLIENT");
     }
 
-    private static Map<String, String> loadRepoRootEnv() throws Exception {
-        Path envFile = Path.of("..", ".env").normalize();
-        Map<String, String> env = new HashMap<>();
-        for (String line : Files.readAllLines(envFile)) {
-            if (line.isBlank() || line.startsWith("#") || !line.contains("=")) {
-                continue;
-            }
-            int idx = line.indexOf('=');
-            env.put(line.substring(0, idx).trim(), line.substring(idx + 1).trim());
-        }
-        return env;
-    }
-
-    private record Seed(UUID lspId, String clientId, UUID applicationId) {
+    record Seed(UUID lspId, String clientId, UUID applicationId) {
     }
 }

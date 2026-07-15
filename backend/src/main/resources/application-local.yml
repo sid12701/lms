@@ -17,6 +17,8 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+    placeholders:
+      tenant_app_password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
   jpa:
     open-in-view: false
     hibernate:
@@ -51,9 +53,15 @@ app:
     # Off by default for local: avoids a hard Redis dependency at startup.
     # Set APP_RATE_LIMIT_ENABLED=true when infra/redis is running (docker compose).
     enabled: ${APP_RATE_LIMIT_ENABLED:false}
+  alert-rules:
+    # Local seed and UI testing intentionally exercises repeated authentication.
+    # Keep portfolio alerts enabled without auto-locking the bootstrap operator.
+    auth-brute-force-threshold: ${APP_ALERT_RULES_AUTH_BRUTE_FORCE_THRESHOLD:1000}
+    auth-brute-force-distributed-threshold: ${APP_ALERT_RULES_AUTH_BRUTE_FORCE_DISTRIBUTED_THRESHOLD:1000}
   security:
     bootstrap-user:
       username: ${APP_SECURITY_BOOTSTRAP_USERNAME}
+      email: ${APP_SECURITY_BOOTSTRAP_EMAIL:${APP_SECURITY_BOOTSTRAP_USERNAME}@bhawana.local}
       password: ${APP_SECURITY_BOOTSTRAP_PASSWORD}
       roles:
         - SYSTEM_ADMIN

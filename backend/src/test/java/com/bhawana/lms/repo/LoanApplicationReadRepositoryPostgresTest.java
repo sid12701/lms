@@ -10,8 +10,10 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductStatus;
+import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
+import com.bhawana.lms.support.LoanProductVersionTestSupport;
 import com.bhawana.lms.support.PostgresDataJpaTestSupport;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -47,14 +49,17 @@ class LoanApplicationReadRepositoryPostgresTest extends PostgresDataJpaTestSuppo
     private LoanProductRepository loanProductRepository;
 
     @Autowired
+    private LoanProductVersionRepository loanProductVersionRepository;
+
+    @Autowired
     private LspRepository lspRepository;
 
     @Test
     void filtersApplicationsByStructuredParametersAndSearchQueryOnPostgres() {
         Lsp apex = lspRepository.save(new Lsp("APEX-PG", "Apex Finance", LspStatus.ACTIVE));
         Lsp north = lspRepository.save(new Lsp("NORTH-PG", "Northbridge Capital", LspStatus.ACTIVE));
-        LoanProduct salaryProduct = loanProductRepository.save(product("SALARY-PG", "Salary Plus"));
-        LoanProduct merchantProduct = loanProductRepository.save(product("MERCHANT-PG", "Merchant Flex"));
+        LoanProduct salaryProduct = persistProduct(product("SALARY-PG", "Salary Plus"));
+        LoanProduct merchantProduct = persistProduct(product("MERCHANT-PG", "Merchant Flex"));
 
         loanApplicationRepository.save(application(
                 borrower(apex, "Anika Sharma", "ABCDE1234F", "9999999999", "Bengaluru"),
@@ -100,7 +105,7 @@ class LoanApplicationReadRepositoryPostgresTest extends PostgresDataJpaTestSuppo
     @Test
     void filtersApplicationsByDisbursalDateRangeOnPostgres() {
         Lsp lsp = lspRepository.save(new Lsp("SUPAONE-PG", "Supa One Finance", LspStatus.ACTIVE));
-        LoanProduct product = loanProductRepository.save(product("SUPA-FLEX-PG", "Supa Flex"));
+        LoanProduct product = persistProduct(product("SUPA-FLEX-PG", "Supa Flex"));
 
         LoanApplication marchApplication = loanApplicationRepository.save(application(
                 borrower(lsp, "Aman Verma", "ABCDE1001F", "9000001001", "Mumbai"),
@@ -139,9 +144,7 @@ class LoanApplicationReadRepositoryPostgresTest extends PostgresDataJpaTestSuppo
     }
 
     private Borrower borrower(Lsp lsp, String fullName, String pan, String mobile, String city) {
-        return borrowerRepository.save(new Borrower(
-                lsp,
-                BorrowerProfile.builder()
+        return borrowerRepository.save(new Borrower(BorrowerProfile.builder()
                         .fullName(fullName)
                         .panNumber(pan)
                         .mobileNumber(mobile)
@@ -163,16 +166,26 @@ class LoanApplicationReadRepositoryPostgresTest extends PostgresDataJpaTestSuppo
             String sourceChannel,
             LoanApplicationStatus status
     ) {
+        LoanProductVersion version = loanProductVersionRepository
+                .findTopByLoanProduct_IdOrderByVersionNumberDesc(product.getId())
+                .orElseThrow();
         return new LoanApplication(
                 borrower,
                 lsp,
                 product,
+                version,
                 externalLoanId,
                 sourceChannel,
                 new BigDecimal("45000.00"),
                 12,
                 status
         );
+    }
+
+    private LoanProduct persistProduct(LoanProduct product) {
+        LoanProduct saved = loanProductRepository.save(product);
+        loanProductVersionRepository.save(LoanProductVersionTestSupport.versionOne(saved));
+        return saved;
     }
 
     private LoanProduct product(String code, String name) {
@@ -200,6 +213,7 @@ class LoanApplicationReadRepositoryPostgresTest extends PostgresDataJpaTestSuppo
                 application.getBorrower(),
                 application.getLsp(),
                 application.getLoanProduct(),
+                application.getLoanProductVersion(),
                 accountNumber,
                 principalAmount,
                 application.getTenureMonths(),

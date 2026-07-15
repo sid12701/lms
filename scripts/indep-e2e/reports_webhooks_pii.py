@@ -53,6 +53,10 @@ if r.ok:
     bj = r.json(); txt = json.dumps(bj)
     aad = bj.get("aadharNumber") or bj.get("aadhaarNumber") or ""
     check("EC-073", not AADHAAR_12.search(str(aad)), f"borrower aadhaar masked: {aad!r}")
+    # EC-112 standing guard (bug B1, fixed 2026-07-02): the *Masked field must actually be masked.
+    acct_masked = str(bj.get("bankAccountNumberMasked") or "")
+    check("EC-112", acct_masked == "" or bool(MASKED.fullmatch(acct_masked)),
+          f"borrower bank acct masked: {acct_masked!r}")
     check("UC-034", bool(bj.get("id")), f"borrower 360 returns profile (keys={list(bj)[:8]})")
     # full-body scan for any 12-digit aadhaar leak
     leaks = [m for m in AADHAAR_12.findall(txt) if not bj.get("mobileNumber","").endswith(m)]
@@ -60,7 +64,10 @@ if r.ok:
 else:
     info("EC-073", f"borrower GET -> {r.status_code}")
 
-# ===== EC-067 MIS preview masks aadhaar + bank account =====
+# ===== EC-067 MIS preview masks aadhaar =====
+# NOTE: the MIS "Bank Account Number" column is DELIBERATELY raw pending a compliance
+# decision (docs/api-consistency-backlog.md) — do not add a bank-acct assertion here
+# until that call is made. Aadhaar must always be masked.
 qs = "disbursalDateFrom=2026-01-01&disbursalDateTo=2026-12-31"
 r = req("GET", f"/api/v1/internal/reports/portfolio-mis/preview?{qs}", token=t)
 check("UC-037.preview", r.status_code == 200, f"MIS preview -> {r.status_code}")

@@ -3,8 +3,10 @@
  *
  * Composes:
  *   - `ApiClientsFilterBar` (URL-bound filters via `useSearchParams`)
- *   - `ApiClientsTable` (server-paged TanStack table with a "Manage" action)
- *   - `ApiClientCreateDialog` (POST /api/v1/admin/api-clients)
+ *   - `ApiClientsTable` (server-paged TanStack table with Edit + Rotate actions)
+ *   - `ApiClientCreateDialog` (POST /api/v1/internal/admin/api-clients)
+ *   - `ApiClientEditDialog` (PUT /api/v1/internal/admin/api-clients/{id}) —
+ *     rename + enable/disable
  *   - Shared `RotateSecretDialog` from `@/components/app/secrets/...`
  *   - Shared `ApiSecretReveal` banner (renders the cleartext secret exactly
  *     once — surfaced both on create and on rotate)
@@ -16,11 +18,7 @@
  *
  * Density default = comfortable per D7 (admin list is short).
  *
- * NOTE: An `ApiClientEditDialog` does not exist in `./components/` today,
- * so this page does not surface an edit modal. The table's "Manage" action
- * routes to the shared rotate-secret flow — the primary admin operation
- * available against an existing client. Edit-name / edit-status /
- * edit-IP-allow-list will land alongside their dialog component later.
+ * IP allow-lists are managed per LSP (Administration → LSPs), not per client.
  */
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -31,8 +29,10 @@ import { ApiSecretReveal, RotateSecretDialog } from "@/components/app/secrets";
 import { ApiClientsFilterBar } from "./components/ApiClientsFilterBar";
 import { ApiClientsTable } from "./components/ApiClientsTable";
 import { ApiClientCreateDialog } from "./components/ApiClientCreateDialog";
+import { ApiClientEditDialog } from "./components/ApiClientEditDialog";
 import { useApiClients } from "./hooks/useApiClients";
 import { useCreateApiClient } from "./hooks/useCreateApiClient";
+import { useUpdateApiClient } from "./hooks/useUpdateApiClient";
 import { useRotateApiClientSecret } from "./hooks/useRotateApiClientSecret";
 import { useLsps } from "@/features/lsps/hooks/useLsps";
 import type { ApiClientRow, ApiClientsListFilters } from "./types";
@@ -91,6 +91,7 @@ export function ApiClientsPage() {
   };
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<ApiClientRow | null>(null);
   const [rotateTarget, setRotateTarget] = useState<ApiClientRow | null>(null);
   const [revealedSecret, setRevealedSecret] = useState<{
     clientName: string;
@@ -100,6 +101,7 @@ export function ApiClientsPage() {
   const list = useApiClients(filters);
   const listLoading = list.isPending || (list.isFetching && list.data === undefined);
   const create = useCreateApiClient();
+  const update = useUpdateApiClient();
   const rotate = useRotateApiClientSecret();
 
   // Surface every LSP for the filter + create dropdowns. We ask for a large
@@ -137,6 +139,34 @@ export function ApiClientsPage() {
       secret: res.clientSecret,
     });
     return res;
+  };
+
+  // ── Edit dialog handlers ───────────────────────────────────────────────────
+  const handleEditOpenChange = (open: boolean) => {
+    if (!open) {
+      if (update.isPending) return;
+      setEditTarget(null);
+      update.reset();
+    }
+  };
+  const handleEditSave = async ({
+    name,
+    status,
+    idempotencyKey,
+  }: {
+    name: string;
+    status: ApiClientStatus;
+    idempotencyKey: string;
+  }) => {
+    if (!editTarget) return;
+    try {
+      await update.mutateAsync({ id: editTarget.id, name, status, idempotencyKey });
+      setEditTarget(null);
+      update.reset();
+    } catch {
+      // Surfaced via `update.error` — kept inside the dialog while the operator
+      // decides whether to retry or cancel.
+    }
   };
 
   // ── Rotate dialog handlers ─────────────────────────────────────────────────
@@ -223,7 +253,8 @@ export function ApiClientsPage() {
           isLoading={listLoading}
           filters={filters}
           onFiltersChange={setFilters}
-          onSelect={(row) => setRotateTarget(row)}
+          onEdit={(row) => setEditTarget(row)}
+          onRotate={(row) => setRotateTarget(row)}
         />
       }
       dialogs={
@@ -236,6 +267,15 @@ export function ApiClientsPage() {
             onSecretAcknowledge={() => setRevealedSecret(null)}
             loading={create.isPending}
             errorMessage={create.isError ? extractAdminErrorMessage(create.error) : null}
+          />
+
+          <ApiClientEditDialog
+            open={editTarget !== null}
+            onOpenChange={handleEditOpenChange}
+            client={editTarget}
+            onSave={handleEditSave}
+            loading={update.isPending}
+            errorMessage={update.isError ? extractAdminErrorMessage(update.error) : null}
           />
 
           <RotateSecretDialog

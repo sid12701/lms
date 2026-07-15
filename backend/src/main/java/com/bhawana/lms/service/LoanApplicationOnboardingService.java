@@ -15,12 +15,14 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
+import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
+import com.bhawana.lms.repo.LoanProductVersionRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
 import java.math.BigDecimal;
@@ -39,6 +41,7 @@ public class LoanApplicationOnboardingService {
     private final LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanProductRepository loanProductRepository;
+    private final LoanProductVersionRepository loanProductVersionRepository;
     private final LspRepository lspRepository;
     private final LoanProductLspMappingRepository loanProductLspMappingRepository;
     private final BorrowerOnboardingService borrowerOnboardingService;
@@ -51,6 +54,7 @@ public class LoanApplicationOnboardingService {
             LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository,
             LoanApplicationRepository loanApplicationRepository,
             LoanProductRepository loanProductRepository,
+            LoanProductVersionRepository loanProductVersionRepository,
             LspRepository lspRepository,
             LoanProductLspMappingRepository loanProductLspMappingRepository,
             BorrowerOnboardingService borrowerOnboardingService,
@@ -62,6 +66,7 @@ public class LoanApplicationOnboardingService {
         this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanProductRepository = loanProductRepository;
+        this.loanProductVersionRepository = loanProductVersionRepository;
         this.lspRepository = lspRepository;
         this.loanProductLspMappingRepository = loanProductLspMappingRepository;
         this.borrowerOnboardingService = borrowerOnboardingService;
@@ -123,7 +128,12 @@ public class LoanApplicationOnboardingService {
             );
         }
 
-        validateInterestRate(command.interestRate(), loanProduct.getInterestRate());
+        LoanProductVersion latestVersion = loanProductVersionRepository
+                .findTopByLoanProduct_IdOrderByVersionNumberDesc(loanProduct.getId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Loan product " + loanProduct.getId() + " has no version rows"));
+
+        validateInterestRate(command.interestRate(), latestVersion.getInterestRate());
 
         LoanProductLspMapping mapping = loanProductLspMappingRepository.findByLsp_IdAndLoanProduct_Id(command.lspId(), loanProduct.getId())
                 .orElseThrow(() -> new BusinessRuleViolationException(
@@ -188,11 +198,22 @@ public class LoanApplicationOnboardingService {
                 annualIncome,
                 actorUsername
         );
+        if (enforcedLspId != null) {
+            Map<String, String> missingBorrowerFields = BorrowerOnboardingRequirements.missingRequiredFieldErrors(borrower);
+            if (!missingBorrowerFields.isEmpty()) {
+                throw new BusinessRuleViolationException(
+                        "BORROWER_REQUIRED_FIELDS_MISSING",
+                        "Borrower is missing required onboarding fields.",
+                        missingBorrowerFields
+                );
+            }
+        }
 
         LoanApplication application = new LoanApplication(
                 borrower,
                 lsp,
                 loanProduct,
+                latestVersion,
                 normalizedExternalLoanId,
                 normalizeSourceChannel(command.sourceChannel()),
                 scaledRequestedAmount,

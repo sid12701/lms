@@ -47,6 +47,15 @@ public class LspApiIdempotencyRecord {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "lease_owner", length = 128)
+    private String leaseOwner;
+
+    @Column(name = "lease_expires_at")
+    private Instant leaseExpiresAt;
+
+    @Column(name = "attempt", nullable = false)
+    private int attempt = 1;
+
     protected LspApiIdempotencyRecord() {
     }
 
@@ -113,5 +122,29 @@ public class LspApiIdempotencyRecord {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public void completeResponse(int responseStatus, String responseBody) {
+        this.responseStatus = responseStatus;
+        this.responseBody = responseBody;
+        this.leaseOwner = null;
+        this.leaseExpiresAt = null;
+    }
+
+    public String getLeaseOwner() {
+        return leaseOwner;
+    }
+
+    public Instant getLeaseExpiresAt() {
+        return leaseExpiresAt;
+    }
+
+    public int getAttempt() {
+        return attempt;
+    }
+
+    public void stampLease(String leaseOwner, Instant leaseExpiresAt) {
+        this.leaseOwner = leaseOwner;
+        this.leaseExpiresAt = leaseExpiresAt;
     }
 }

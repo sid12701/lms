@@ -224,6 +224,23 @@ public class LoanDisbursementRequestLog {
         this.responsePayloadJson = JsonPayloads.requiredObject(responsePayloadJson, "responsePayloadJson");
     }
 
+    /** Completes the placeholder written before the provider call without creating a duplicate log. */
+    public void updateProviderSubmission(
+            String providerName,
+            String providerRequestId,
+            String providerStatus,
+            DisbursementPaymentMode paymentMode,
+            String providerActCode,
+            String bankRrn,
+            DisbursementDeclineKind declineKind,
+            String responsePayloadJson
+    ) {
+        this.providerName = providerName;
+        this.providerRequestId = providerRequestId;
+        this.paymentMode = paymentMode;
+        updateOutcome(providerStatus, providerActCode, bankRrn, declineKind, responsePayloadJson);
+    }
+
     /** Each status-check poll bumps this; the worker parks the transaction once the cap is reached. */
     public void recordStatusCheck() {
         this.statusCheckCount += 1;

@@ -40,7 +40,7 @@ Detailed response and error examples are documented in [api-standards.md](C:/Use
 | POST | `/{applicationId}/invalid` | Mark a loan application invalid using a constrained reason catalog (`REASON_A`, `REASON_B`, `REASON_C`, `OTHERS`) and a required `Idempotency-Key` UUID v4 header | LSP_API_CLIENT, LSP_UI_WRITE |
 | POST | `/{applicationId}/documents` | Submit document metadata (legacy compatibility) | LSP_API_CLIENT, LSP_UI_WRITE |
 | POST | `/{applicationId}/documents/batch` (`multipart/form-data`) | Upload one or more documents into LMS-managed storage in a single API call | LSP_API_CLIENT, LSP_UI_WRITE |
-| PUT | `/{applicationId}/repayment-schedule` | Generate or replace repayment schedule before disbursement | LSP_API_CLIENT |
+| PUT | `/{applicationId}/repayment-schedule` | Generate or replace repayment schedule before disbursement. `LSP_PROVIDED` schedules must pass principal + S20 date/interest checks (see `docs/partner-schedule-validation.md`); failures return `422 REPAYMENT_SCHEDULE_INVALID`. | LSP_API_CLIENT |
 | POST | `/{applicationId}/disbursement` | Request disbursement with compliance checks on documents, schedule, and deduction cap | LSP_API_CLIENT |
 
 **Create Application Request fields:** borrower info (name, email, mobile, DOB, gender, marital status, father name, Aadhaar, PAN), address, employment, income, bank details, reference person, loan details (amount, tenure, productId, lspLoanId)

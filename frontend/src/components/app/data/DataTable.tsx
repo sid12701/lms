@@ -308,13 +308,17 @@ export function DataTable<TData, TValue>({
               const rowTestId = getRowTestId?.(row);
               const rowAriaLabel = isInteractive ? getRowAriaLabel?.(row) : undefined;
               return (
+                // Interactive rows stay `role=row`: overriding to `button`
+                // breaks table semantics for AT and nests any in-row action
+                // buttons inside a button (invalid). Keyboard access comes
+                // from tabIndex + Enter/Space; the aria-label names the row
+                // action for focus announcements.
                 <TableRow
                   key={row.id}
                   data-state={row.getIsSelected() ? "selected" : undefined}
                   data-interactive={isInteractive || undefined}
                   data-testid={rowTestId}
                   tabIndex={isInteractive ? 0 : undefined}
-                  role={isInteractive ? "button" : undefined}
                   aria-label={rowAriaLabel}
                   onClick={isInteractive ? () => getRowAction?.(row) : undefined}
                   onKeyDown={onKeyDown}

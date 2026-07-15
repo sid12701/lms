@@ -3,6 +3,7 @@
  *
  * - Builds URLs from `VITE_API_BASE_URL` (defaults to http://localhost:8080).
  * - Injects `Authorization: Bearer <token>` for authenticated requests.
+ * - Refuses credential-bearing requests to any origin other than the API base.
  * - Normalises Spring's error envelope into a typed `ApiError`.
  * - On 401, calls a registered refresh callback once and retries the request.
  * - De-duplicates concurrent GETs by URL+token.
@@ -11,6 +12,7 @@
 import { getStoredAccessToken } from "@/lib/api/session-storage";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+const API_ORIGIN = new URL(API_BASE_URL).origin;
 
 type QueryParamValue = string | number | boolean | null | undefined;
 
@@ -53,6 +55,32 @@ function readRetryAfterSeconds(response: Response): number | null {
 function buildUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/** Resolve a path against the configured API base and return a concrete URL. */
+function resolveUrl(path: string): URL {
+  return new URL(buildUrl(path), API_BASE_URL);
+}
+
+function assertSameOriginApiUrl(url: URL): void {
+  if (url.origin !== API_ORIGIN) {
+    throw new Error("Refusing cross-origin authenticated request");
+  }
+}
+
+/**
+ * Unauthenticated fetch to an arbitrary URL. Never attaches credentials, cookies,
+ * Authorization, or Idempotency-Key. Use for legitimate third-party calls only.
+ */
+export async function fetchExternal(url: string | URL, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  headers.delete("Authorization");
+  headers.delete("Idempotency-Key");
+  return fetch(url, {
+    ...init,
+    headers,
+    credentials: "omit",
+  });
 }
 
 /** Spring {@code ApiError} envelope emitted by {@code GlobalExceptionHandler}. */
@@ -115,24 +143,42 @@ type FetchRequestOptions = RequestOptions & {
   responseType: "json" | "blob";
 };
 
-async function performFetch(
-  path: string,
-  init: RequestInit = {},
+function applyAuthHeaders(
+  headers: Headers,
   options: FetchRequestOptions,
-): Promise<Response> {
+  init: RequestInit,
+): { authenticated: boolean; accessToken: string | null } {
   const authenticated = options.authenticated ?? true;
-  const headers = new Headers(init.headers);
   const accessToken = authenticated ? (options.accessToken ?? getStoredAccessToken()) : null;
 
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (options.idempotencyKey) headers.set("Idempotency-Key", options.idempotencyKey);
 
-  const response = await fetch(buildUrl(path), {
+  return { authenticated, accessToken };
+}
+
+async function executeFetch(url: URL, init: RequestInit, headers: Headers): Promise<Response> {
+  return fetch(url, {
     ...init,
     headers,
     credentials: "include",
   });
+}
+
+async function performFetch(
+  path: string,
+  init: RequestInit = {},
+  options: FetchRequestOptions,
+): Promise<Response> {
+  const url = resolveUrl(path);
+  // All API-client traffic (including cookie-bearing unauthenticated calls) must stay same-origin.
+  assertSameOriginApiUrl(url);
+
+  const headers = new Headers(init.headers);
+  const { authenticated } = applyAuthHeaders(headers, options, init);
+
+  const response = await executeFetch(url, init, headers);
 
   if (response.status === 401 && authenticated && !options._retried && onUnauthorizedRefresh) {
     const newToken = await onUnauthorizedRefresh();

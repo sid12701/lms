@@ -86,7 +86,7 @@ public final class LoanWebhookPayloads {
                 ? Money.scale(loanAccount.getProcessingFeeAmount())
                 : LoanFeeCalculator.computeProcessingFee(
                         loanAccount.getPrincipalAmount(),
-                        loanAccount.getLoanProduct().getProcessingFeeRate()
+                        loanAccount.getLoanProductVersion().getProcessingFeeRate()
                 );
         payload.put("processingFeeAmount", processingFeeAmount);
         payload.put("netDisbursedAmount", Money.scale(loanAccount.getPrincipalAmount().subtract(processingFeeAmount)));

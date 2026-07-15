@@ -30,6 +30,11 @@ public class MockLoanDisbursementAdapter implements LoanDisbursementAdapter {
     }
 
     @Override
+    public String providerName() {
+        return PROVIDER_NAME;
+    }
+
+    @Override
     public DisbursementResult requestDisbursement(DisbursementCommand command) {
         MockIciciDisbursementScenario scenario = MockIciciDisbursementScenario.forIfsc(command.beneficiaryIfsc());
         DisbursementPaymentMode mode = command.paymentMode() != null

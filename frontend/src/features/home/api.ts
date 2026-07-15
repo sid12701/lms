@@ -133,6 +133,7 @@ export interface BackendHomeOverview {
     requestedAmount: number;
     createdAt: string;
   }>;
+  dataAsOf: string;
 }
 
 function safeAlertSubjectType(value: string): HomeAlertSummary["subjectType"] {

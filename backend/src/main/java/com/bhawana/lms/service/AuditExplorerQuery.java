@@ -1,6 +1,7 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
@@ -8,10 +9,6 @@ import java.util.UUID;
 
 /**
  * Filter snapshot for {@link AuditExplorerService#search(AuditExplorerQuery)}.
- *
- * <p>Gap #3 — Unified cross-domain audit search. The endpoint executes a
- * native UNION ALL across the eight supported audit tables; this record
- * carries the filter values that push down per branch.
  */
 public record AuditExplorerQuery(
         Set<AuditStream> streams,
@@ -23,10 +20,12 @@ public record AuditExplorerQuery(
         Instant since,
         Instant until,
         String correlationId,
-        int offset,
-        int limit,
-        boolean includePaginationDetails
+        String cursor,
+        int limit
 ) {
+
+    public static final Duration DEFAULT_WINDOW = Duration.ofDays(7);
+    public static final Duration MAX_WINDOW = Duration.ofDays(90);
 
     /** All eight streams in canonical order. */
     public static final Set<AuditStream> ALL_STREAMS = Set.of(
@@ -44,13 +43,6 @@ public record AuditExplorerQuery(
         if (streams == null || streams.isEmpty()) {
             streams = ALL_STREAMS;
         }
-        if (offset < 0) {
-            throw new BusinessRuleViolationException(
-                    "INVALID_OFFSET",
-                    "offset must be non-negative",
-                    Map.of("offset", "must be non-negative")
-            );
-        }
         if (limit < 1 || limit > 500) {
             throw new BusinessRuleViolationException(
                     "INVALID_LIMIT",
@@ -58,13 +50,24 @@ public record AuditExplorerQuery(
                     Map.of("limit", "must be in [1, 500]")
             );
         }
-        if (since != null && until != null && since.isAfter(until)) {
+        Instant effectiveUntil = until == null ? Instant.now() : until;
+        Instant effectiveSince = since == null ? effectiveUntil.minus(DEFAULT_WINDOW) : since;
+        if (effectiveSince.isAfter(effectiveUntil)) {
             throw new BusinessRuleViolationException(
                     "INVALID_TIME_RANGE",
                     "since must not be after until",
                     Map.of("since", "must not be after until")
             );
         }
+        if (Duration.between(effectiveSince, effectiveUntil).compareTo(MAX_WINDOW) > 0) {
+            throw new BusinessRuleViolationException(
+                    "VALIDATION_FAILED",
+                    "audit window must not exceed 90 days",
+                    Map.of("window", "must not exceed 90 days")
+            );
+        }
+        since = effectiveSince;
+        until = effectiveUntil;
     }
 
     public enum AuditStream {

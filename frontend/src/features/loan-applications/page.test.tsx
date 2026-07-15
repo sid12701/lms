@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import type { ReactNode } from "react";
@@ -197,6 +197,8 @@ describe("LoanApplicationsPage", () => {
       refetch: refetchMock,
     });
     const { container } = renderPage();
-    expect(await axe(container)).toHaveNoViolations();
+    await act(async () => {
+      expect(await axe(container)).toHaveNoViolations();
+    });
   });
 });

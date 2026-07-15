@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { renderWithProviders } from "@/test/utils";
@@ -76,7 +77,10 @@ describe("DocumentUploadRow", () => {
     const busyBtn = await findByRole("button", { name: /Upload PAN card/i });
     expect(busyBtn).toBeDisabled();
     expect(busyBtn.getAttribute("aria-busy")).toBe("true");
-    resolve?.();
+    await act(async () => {
+      resolve?.();
+    });
+    expect(busyBtn).not.toBeDisabled();
   }, 15_000);
 
   it("applies compact styling via data-compact='true' when compact", () => {

@@ -23,9 +23,11 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
             "loanApplication.borrower",
             "loanApplication.lsp",
             "loanApplication.loanProduct",
+            "loanApplication.loanProductVersion",
             "borrower",
             "lsp",
-            "loanProduct"
+            "loanProduct",
+            "loanProductVersion"
     })
     Optional<LoanAccount> findDetailedById(UUID id);
 
@@ -34,23 +36,15 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
             "loanApplication.borrower",
             "loanApplication.lsp",
             "loanApplication.loanProduct",
+            "loanApplication.loanProductVersion",
             "borrower",
             "lsp",
-            "loanProduct"
+            "loanProduct",
+            "loanProductVersion"
     })
     Optional<LoanAccount> findDetailedByLoanApplication_Id(UUID applicationId);
 
-    @EntityGraph(attributePaths = {
-            "loanApplication",
-            "loanApplication.borrower",
-            "loanApplication.lsp",
-            "loanApplication.loanProduct",
-            "borrower",
-            "lsp",
-            "loanProduct"
-    })
-    List<LoanAccount> findDetailedBy();
-
+    @EntityGraph(attributePaths = {"loanApplication"})
     Optional<LoanAccount> findByLoanApplication_Id(UUID applicationId);
 
     List<LoanAccount> findByStatus(LoanAccountStatus status);
@@ -102,27 +96,12 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
     Optional<LspAccountSummaryProjection> summarizeAccountsForLsp(@Param("lspId") UUID lspId);
 
     @Query("""
-            select account.lsp.id as lspId,
-                   case when account.disbursedAt is null then 0 else account.principalAmount end as disbursedAmount,
-                   coalesce(sum(installment.outstandingAmount), 0) as outstandingAmount,
-                   min(case
-                       when installment.outstandingAmount > 0 and installment.dueDate < :today
-                       then installment.dueDate
-                       else null
-                   end) as oldestOverdueDueDate
-            from LoanAccount account
-            left join LoanRepaymentScheduleInstallment installment on installment.loanAccount = account
-            group by account.id, account.lsp.id, account.disbursedAt, account.principalAmount
-            """)
-    List<HomeDashboardAccountSnapshotProjection> findHomeDashboardAccountSnapshots(@Param("today") LocalDate today);
-
-    @Query("""
             select application.id as applicationId,
                    application.externalLoanId as externalLoanId,
                    borrower.fullName as customerName,
                    lsp.code as lspCode,
                    account.principalAmount as principalAmount,
-                   product.interestRate as interestRate,
+                   productVersion.interestRate as interestRate,
                    application.status as loanStatus,
                    coalesce(sum(case
                        when installment.outstandingAmount > 0 and installment.dueDate < :today
@@ -138,7 +117,7 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
             join account.loanApplication application
             join account.borrower borrower
             join account.lsp lsp
-            join account.loanProduct product
+            join account.loanProductVersion productVersion
             left join LoanRepaymentScheduleInstallment installment on installment.loanAccount = account
             group by account.id,
                      application.id,
@@ -146,7 +125,7 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
                      borrower.fullName,
                      lsp.code,
                      account.principalAmount,
-                     product.interestRate,
+                     productVersion.interestRate,
                      application.status,
                      account.createdAt
             order by case
@@ -189,16 +168,6 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
         UUID getApplicationId();
 
         String getAccountNumber();
-    }
-
-    interface HomeDashboardAccountSnapshotProjection {
-        UUID getLspId();
-
-        BigDecimal getDisbursedAmount();
-
-        BigDecimal getOutstandingAmount();
-
-        LocalDate getOldestOverdueDueDate();
     }
 
     interface HomeDashboardPriorityAccountProjection {

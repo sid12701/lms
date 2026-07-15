@@ -48,6 +48,8 @@ export const ApiClient = z.object({
   status: ApiClientStatus,
   createdAt: Iso8601,
   lastUsedAt: Iso8601.nullable(),
+  /** ISO timestamp of the last secret rotation; null when never rotated. */
+  lastRotatedAt: Iso8601.nullable(),
   ipAllowList: z.array(IpCidr),
 });
 export type ApiClient = z.infer<typeof ApiClient>;

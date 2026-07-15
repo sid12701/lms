@@ -18,6 +18,8 @@ import com.bhawana.lms.service.LoanApplicationLastActivity;
 import com.bhawana.lms.service.LoanDelinquencySummary;
 import com.bhawana.lms.service.LoanDelinquencySupport;
 import com.bhawana.lms.service.LoanRepaymentScheduleSummary;
+import com.bhawana.lms.service.DisbursementPreview;
+import com.bhawana.lms.service.DisbursementReference;
 import java.time.LocalDate;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -40,8 +42,8 @@ public final class LoanApplicationOpsResponses {
             String accountNumber
     ) {
         return new LoanApplicationOpsApiTypes.LoanApplicationResponse(
-                application.getId().toString(),
-                application.getBorrower().getId().toString(),
+                application.getId(),
+                application.getBorrower().getId(),
                 application.getBorrower().getFullName(),
                 application.getBorrower().getPan(),
                 application.getBorrower().getMobile(),
@@ -51,10 +53,10 @@ public final class LoanApplicationOpsResponses {
                 application.getBorrower().getState(),
                 application.getBorrower().getEmploymentType(),
                 application.getBorrower().getMonthlyIncome(),
-                application.getLsp().getId().toString(),
+                application.getLsp().getId(),
                 application.getLsp().getCode(),
                 application.getLsp().getName(),
-                application.getLoanProduct().getId().toString(),
+                application.getLoanProduct().getId(),
                 application.getLoanProduct().getCode(),
                 application.getLoanProduct().getName(),
                 application.getExternalLoanId(),
@@ -63,7 +65,7 @@ public final class LoanApplicationOpsResponses {
                 application.getRequestedAmount(),
                 application.getRequestedTenureMonths(),
                 application.getStatus().name(),
-                application.getCreatedAt().toString()
+                application.getCreatedAt()
         );
     }
 
@@ -87,9 +89,9 @@ public final class LoanApplicationOpsResponses {
             LoanDelinquencySummary delinquencySummary
     ) {
         return new LoanApplicationOpsApiTypes.LoanApplicationDetailResponse(
-                application.getId().toString(),
-                loanAccount == null ? null : loanAccount.getId().toString(),
-                application.getBorrower().getId().toString(),
+                application.getId(),
+                loanAccount == null ? null : loanAccount.getId(),
+                application.getBorrower().getId(),
                 application.getBorrower().getFullName(),
                 application.getBorrower().getPan(),
                 application.getBorrower().getMobile(),
@@ -99,10 +101,10 @@ public final class LoanApplicationOpsResponses {
                 application.getBorrower().getState(),
                 application.getBorrower().getEmploymentType(),
                 application.getBorrower().getMonthlyIncome(),
-                application.getLsp().getId().toString(),
+                application.getLsp().getId(),
                 application.getLsp().getCode(),
                 application.getLsp().getName(),
-                application.getLoanProduct().getId().toString(),
+                application.getLoanProduct().getId(),
                 application.getLoanProduct().getCode(),
                 application.getLoanProduct().getName(),
                 application.getExternalLoanId(),
@@ -113,9 +115,9 @@ public final class LoanApplicationOpsResponses {
                 application.getInvalidReasonCode() == null ? null : application.getInvalidReasonCode().name(),
                 application.getInvalidReasonText(),
                 application.getInvalidatedByUsername(),
-                application.getInvalidatedAt() == null ? null : application.getInvalidatedAt().toString(),
-                application.getCreatedAt().toString(),
-                application.getUpdatedAt().toString(),
+                application.getInvalidatedAt(),
+                application.getCreatedAt(),
+                application.getUpdatedAt(),
                 toLoanAccountSummary(loanAccount, repaymentScheduleSummary, delinquencySummary),
                 toLastActivityResponse(lastActivity)
         );
@@ -125,8 +127,8 @@ public final class LoanApplicationOpsResponses {
             LoanApplicationIntakeAudit audit
     ) {
         return new LoanApplicationOpsApiTypes.LoanApplicationIntakeAuditResponse(
-                audit.getId().toString(),
-                audit.getLoanApplication().getId().toString(),
+                audit.getId(),
+                audit.getLoanApplication().getId(),
                 audit.getActorUsername(),
                 audit.getCorrelationId(),
                 maskSensitivePayloadJson(audit.getPayloadJson()),
@@ -138,15 +140,15 @@ public final class LoanApplicationOpsResponses {
             LoanApplicationStatusTransition transition
     ) {
         return new LoanApplicationOpsApiTypes.LoanApplicationStatusTransitionResponse(
-                transition.getId().toString(),
-                transition.getLoanApplication().getId().toString(),
+                transition.getId(),
+                transition.getLoanApplication().getId(),
                 transition.getActorUsername(),
                 transition.getFromStatus().name(),
                 transition.getToStatus().name(),
                 transition.getNote(),
                 transition.getReasonCode() == null ? null : transition.getReasonCode().name(),
                 transition.getCorrelationId(),
-                transition.getCreatedAt().toString(),
+                transition.getCreatedAt(),
                 parseRejectionReason(transition.getRejectionReasonJson())
         );
     }
@@ -180,8 +182,8 @@ public final class LoanApplicationOpsResponses {
             LoanApplicationAuditEvent event
     ) {
         return new LoanApplicationOpsApiTypes.LoanApplicationAuditEventResponse(
-                event.getId().toString(),
-                event.getLoanApplication().getId().toString(),
+                event.getId(),
+                event.getLoanApplication().getId(),
                 event.getAction().name(),
                 event.getActorUsername(),
                 event.getFromStatus().name(),
@@ -189,7 +191,7 @@ public final class LoanApplicationOpsResponses {
                 event.getNote(),
                 event.getReasonCode() == null ? null : event.getReasonCode().name(),
                 event.getCorrelationId(),
-                event.getCreatedAt().toString()
+                event.getCreatedAt()
         );
     }
 
@@ -197,8 +199,8 @@ public final class LoanApplicationOpsResponses {
             LoanDisbursementRequestLog request
     ) {
         return new LoanApplicationOpsApiTypes.LoanDisbursementRequestResponse(
-                request.getId().toString(),
-                request.getLoanAccount().getId().toString(),
+                request.getId(),
+                request.getLoanAccount().getId(),
                 request.getActorUsername(),
                 request.getAmount(),
                 request.getProviderName(),
@@ -207,8 +209,42 @@ public final class LoanApplicationOpsResponses {
                 request.getRequestPayloadJson(),
                 request.getResponsePayloadJson(),
                 request.getCorrelationId(),
-                request.getCreatedAt().toString(),
-                request.getUpdatedAt().toString()
+                request.getCreatedAt(),
+                request.getUpdatedAt()
+        );
+    }
+
+    public static LoanApplicationOpsApiTypes.DisbursementPreviewResponse toDisbursementPreviewResponse(
+            DisbursementPreview preview
+    ) {
+        return new LoanApplicationOpsApiTypes.DisbursementPreviewResponse(
+                preview.applicationId(),
+                preview.loanAccountId(),
+                preview.loanAccountNumber(),
+                preview.externalLoanId(),
+                preview.principal(),
+                preview.processingFee(),
+                preview.netDisbursalAmount(),
+                preview.paymentMode().name(),
+                preview.beneficiaryAccountHolderName(),
+                preview.beneficiaryBankName(),
+                preview.beneficiaryIfsc(),
+                preview.maskedBeneficiaryAccountNumber(),
+                preview.beneficiarySource(),
+                preview.pendingIntentId(),
+                preview.pendingIntentTranRefNo(),
+                preview.pendingIntentState()
+        );
+    }
+
+    public static LoanApplicationOpsApiTypes.DisbursementReferenceResponse toDisbursementReferenceResponse(
+            DisbursementReference reference
+    ) {
+        return new LoanApplicationOpsApiTypes.DisbursementReferenceResponse(
+                reference.tranRefNo(),
+                reference.source(),
+                reference.intentId(),
+                reference.intentState()
         );
     }
 
@@ -221,8 +257,8 @@ public final class LoanApplicationOpsResponses {
                 businessDate
         );
         return new LoanApplicationOpsApiTypes.LoanRepaymentScheduleInstallmentResponse(
-                installment.getId().toString(),
-                installment.getLoanAccount().getId().toString(),
+                installment.getId(),
+                installment.getLoanAccount().getId(),
                 installment.getInstallmentNumber(),
                 installment.getDueDate(),
                 installment.getOpeningPrincipal(),
@@ -237,7 +273,7 @@ public final class LoanApplicationOpsResponses {
                 installment.getOutstandingAmount(),
                 daysPastDue,
                 LoanDelinquencySupport.resolveDelinquencyBucket(daysPastDue).name(),
-                installment.getCreatedAt().toString()
+                installment.getCreatedAt()
         );
     }
 
@@ -245,11 +281,11 @@ public final class LoanApplicationOpsResponses {
             LoanPaymentTransaction paymentTransaction
     ) {
         return new LoanApplicationOpsApiTypes.LoanPaymentTransactionResponse(
-                paymentTransaction.getId().toString(),
-                paymentTransaction.getLoanAccount().getId().toString(),
+                paymentTransaction.getId(),
+                paymentTransaction.getLoanAccount().getId(),
                 paymentTransaction.getRepaymentInstallment() == null
                         ? null
-                        : paymentTransaction.getRepaymentInstallment().getId().toString(),
+                        : paymentTransaction.getRepaymentInstallment().getId(),
                 paymentTransaction.getActorUsername(),
                 paymentTransaction.getAmount(),
                 paymentTransaction.getPaymentDate(),
@@ -260,8 +296,8 @@ public final class LoanApplicationOpsResponses {
                 paymentTransaction.getUnallocatedAmount(),
                 paymentTransaction.getNote(),
                 paymentTransaction.getCorrelationId(),
-                paymentTransaction.getCreatedAt().toString(),
-                paymentTransaction.getUpdatedAt().toString()
+                paymentTransaction.getCreatedAt(),
+                paymentTransaction.getUpdatedAt()
         );
     }
 
@@ -269,8 +305,8 @@ public final class LoanApplicationOpsResponses {
             LoanForeclosureQuote quote
     ) {
         return new LoanApplicationOpsApiTypes.LoanForeclosureQuoteResponse(
-                quote.getId().toString(),
-                quote.getLoanAccount().getId().toString(),
+                quote.getId(),
+                quote.getLoanAccount().getId(),
                 quote.getVersion(),
                 quote.getRequestedByUsername(),
                 quote.getExecutedByUsername(),
@@ -279,9 +315,9 @@ public final class LoanApplicationOpsResponses {
                 quote.getOutstandingInterest(),
                 quote.getSettlementAmount(),
                 quote.getStatus().name(),
-                quote.getExecutedAt() == null ? null : quote.getExecutedAt().toString(),
-                quote.getCreatedAt().toString(),
-                quote.getUpdatedAt().toString()
+                quote.getExecutedAt(),
+                quote.getCreatedAt(),
+                quote.getUpdatedAt()
         );
     }
 
@@ -289,8 +325,8 @@ public final class LoanApplicationOpsResponses {
             LoanApplicationDocumentChecklist checklistItem
     ) {
         return new LoanApplicationOpsApiTypes.LoanApplicationDocumentChecklistResponse(
-                checklistItem.getId().toString(),
-                checklistItem.getLoanApplication().getId().toString(),
+                checklistItem.getId(),
+                checklistItem.getLoanApplication().getId(),
                 checklistItem.getDocumentType().name(),
                 checklistItem.getDocumentType().getDisplayName(),
                 checklistItem.isRequired(),
@@ -307,8 +343,8 @@ public final class LoanApplicationOpsResponses {
                 checklistItem.getUploadedAt(),
                 checklistItem.getUploadedByUsername(),
                 checklistItem.getUpdatedByUsername(),
-                checklistItem.getCreatedAt().toString(),
-                checklistItem.getUpdatedAt().toString()
+                checklistItem.getCreatedAt(),
+                checklistItem.getUpdatedAt()
         );
     }
 
@@ -316,8 +352,8 @@ public final class LoanApplicationOpsResponses {
             LoanApplicationDocumentAccessAudit audit
     ) {
         return new LoanApplicationOpsApiTypes.LoanApplicationDocumentAccessAuditResponse(
-                audit.getId().toString(),
-                audit.getLoanApplication().getId().toString(),
+                audit.getId(),
+                audit.getLoanApplication().getId(),
                 audit.getAction().name(),
                 audit.getActorUsername(),
                 audit.getSummary(),
@@ -325,7 +361,7 @@ public final class LoanApplicationOpsResponses {
                 audit.getCorrelationId(),
                 audit.getActorIp(),
                 audit.getByteCount(),
-                audit.getCreatedAt().toString()
+                audit.getCreatedAt()
         );
     }
 
@@ -338,15 +374,15 @@ public final class LoanApplicationOpsResponses {
             return null;
         }
         return new LoanApplicationOpsApiTypes.LoanAccountSummaryResponse(
-                loanAccount.getId().toString(),
+                loanAccount.getId(),
                 loanAccount.getAccountNumber(),
-                loanAccount.getStatus().name(),
+                loanAccount.getStatus(),
                 loanAccount.getPrincipalAmount(),
                 loanAccount.getTenureMonths(),
-                loanAccount.getApprovedAt().toString(),
-                loanAccount.getCreatedAt().toString(),
+                loanAccount.getApprovedAt(),
+                loanAccount.getCreatedAt(),
                 loanAccount.getClosureReason() == null ? null : loanAccount.getClosureReason().name(),
-                loanAccount.getClosedAt() == null ? null : loanAccount.getClosedAt().toString(),
+                loanAccount.getClosedAt(),
                 loanAccount.getClosedByUsername(),
                 delinquencySummary == null ? null : new LoanApplicationOpsApiTypes.LoanDelinquencySummaryResponse(
                         delinquencySummary.maxDaysPastDue(),
@@ -375,7 +411,7 @@ public final class LoanApplicationOpsResponses {
                 lastActivity.summary(),
                 lastActivity.detail(),
                 lastActivity.correlationId(),
-                lastActivity.occurredAt().toString()
+                lastActivity.occurredAt()
         );
     }
 

@@ -13,7 +13,7 @@ export const BorrowerListFilters = z.object({
   q: z.string().trim().min(1).max(120).optional(),
   /** Page index, zero-based. Defaults to 0. */
   page: z.coerce.number().int().min(0).optional(),
-  /** Page size. Defaults to 25. */
+  /** Page size. Defaults to 50. */
   pageSize: z.coerce.number().int().min(5).max(100).optional(),
 });
 export type BorrowerListFilters = z.infer<typeof BorrowerListFilters>;

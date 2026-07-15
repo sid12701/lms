@@ -26,9 +26,14 @@ public class ApiClientJwtSessionValidator implements OAuth2TokenValidator<Jwt> {
     public static final String TV_API_CLIENT_CLAIM = "tvApiClient";
 
     private final ApiClientRepository apiClientRepository;
+    private final AuthPrincipalCache authPrincipalCache;
 
-    public ApiClientJwtSessionValidator(ApiClientRepository apiClientRepository) {
+    public ApiClientJwtSessionValidator(
+            ApiClientRepository apiClientRepository,
+            AuthPrincipalCache authPrincipalCache
+    ) {
         this.apiClientRepository = apiClientRepository;
+        this.authPrincipalCache = authPrincipalCache;
     }
 
     @Override
@@ -43,34 +48,45 @@ public class ApiClientJwtSessionValidator implements OAuth2TokenValidator<Jwt> {
         }
 
         return TenantScopedExecution.callAsAdmin(() -> {
-            Optional<ApiClient> apiClientOptional = apiClientRepository.findByClientId(clientId.trim());
-            if (apiClientOptional.isEmpty()) {
+            Optional<AuthPrincipalCache.ApiClientSnapshot> snapshotOptional = authPrincipalCache.getApiClient(
+                    clientId,
+                    () -> apiClientRepository.findByClientId(clientId.trim()).map(ApiClientJwtSessionValidator::toSnapshot)
+            );
+            if (snapshotOptional.isEmpty()) {
                 return failure("API_CLIENT_TOKEN_REVOKED", "API client no longer exists.");
             }
 
-            ApiClient apiClient = apiClientOptional.get();
-            Lsp lsp = apiClient.getLsp();
-
+            AuthPrincipalCache.ApiClientSnapshot snapshot = snapshotOptional.get();
             long tokenLspVersion = longClaim(jwt, TV_LSP_CLAIM);
-            if (tokenLspVersion != lsp.getTokenVersion()) {
+            if (tokenLspVersion != snapshot.lspTokenVersion()) {
                 return failure("LSP_TOKEN_REVOKED", "LSP session is no longer valid.");
             }
 
             long tokenClientVersion = longClaim(jwt, TV_API_CLIENT_CLAIM);
-            if (tokenClientVersion != apiClient.getTokenVersion()) {
+            if (tokenClientVersion != snapshot.apiClientTokenVersion()) {
                 return failure("API_CLIENT_TOKEN_REVOKED", "API client session is no longer valid.");
             }
 
-            if (lsp.getStatus() != LspStatus.ACTIVE) {
+            if (snapshot.lspStatus() != LspStatus.ACTIVE) {
                 return failure("LSP_INACTIVE", "LSP is not active.");
             }
 
-            if (apiClient.getStatus() != ApiClientStatus.ACTIVE) {
+            if (snapshot.apiClientStatus() != ApiClientStatus.ACTIVE) {
                 return failure("API_CLIENT_INACTIVE", "API client is not active.");
             }
 
             return OAuth2TokenValidatorResult.success();
         });
+    }
+
+    private static AuthPrincipalCache.ApiClientSnapshot toSnapshot(ApiClient apiClient) {
+        Lsp lsp = apiClient.getLsp();
+        return new AuthPrincipalCache.ApiClientSnapshot(
+                lsp.getTokenVersion(),
+                apiClient.getTokenVersion(),
+                lsp.getStatus(),
+                apiClient.getStatus()
+        );
     }
 
     private static long longClaim(Jwt jwt, String claimName) {

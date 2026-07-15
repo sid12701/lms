@@ -8,12 +8,14 @@ import com.bhawana.lms.domain.LspAuditEvent;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.LspStatusChangeReason;
 import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.service.AdminApiIdempotencyService;
 import com.bhawana.lms.service.LspDirectoryService;
 import com.bhawana.lms.service.LspStatusService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -32,12 +35,22 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasRole('SYSTEM_ADMIN')")
 public class LspAdminController {
 
+    private static final String LSP_CREATE = "LSP_CREATE";
+    private static final String LSP_STATUS_UPDATE = "LSP_STATUS_UPDATE";
+    private static final String LSP_WEBHOOK_SUBSCRIPTION_UPDATE = "LSP_WEBHOOK_SUBSCRIPTION_UPDATE";
+
     private final LspDirectoryService lspDirectoryService;
     private final LspStatusService lspStatusService;
+    private final AdminApiIdempotencyService adminApiIdempotencyService;
 
-    public LspAdminController(LspDirectoryService lspDirectoryService, LspStatusService lspStatusService) {
+    public LspAdminController(
+            LspDirectoryService lspDirectoryService,
+            LspStatusService lspStatusService,
+            AdminApiIdempotencyService adminApiIdempotencyService
+    ) {
         this.lspDirectoryService = lspDirectoryService;
         this.lspStatusService = lspStatusService;
+        this.adminApiIdempotencyService = adminApiIdempotencyService;
     }
 
     @GetMapping
@@ -53,7 +66,23 @@ public class LspAdminController {
     }
 
     @PostMapping
-    public LspResponse createLsp(@Valid @RequestBody CreateLspRequest request) {
+    public LspResponse createLsp(
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody CreateLspRequest request
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doCreateLsp(request);
+        }
+        return adminApiIdempotencyService.execute(
+                LSP_CREATE,
+                idempotencyKey,
+                request,
+                LspResponse.class,
+                () -> doCreateLsp(request)
+        );
+    }
+
+    private LspResponse doCreateLsp(CreateLspRequest request) {
         Lsp lsp = lspDirectoryService.createLsp(request.code(), request.name(), request.status());
         return toResponse(lsp);
     }
@@ -61,9 +90,23 @@ public class LspAdminController {
     @PutMapping("/{lspId}/status")
     public LspResponse updateStatus(
             @PathVariable UUID lspId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody UpdateLspStatusRequest request,
             @AuthenticationPrincipal Jwt principal
     ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doUpdateStatus(lspId, request, principal);
+        }
+        return adminApiIdempotencyService.execute(
+                LSP_STATUS_UPDATE,
+                idempotencyKey,
+                new LspStatusUpdateFingerprint(lspId.toString(), request),
+                LspResponse.class,
+                () -> doUpdateStatus(lspId, request, principal)
+        );
+    }
+
+    private LspResponse doUpdateStatus(UUID lspId, UpdateLspStatusRequest request, Jwt principal) {
         String actorUsername = principal == null ? "unknown" : principal.getSubject();
         Lsp lsp = lspStatusService.updateStatus(
                 lspId,
@@ -85,8 +128,27 @@ public class LspAdminController {
     @PutMapping("/{lspId}/webhook-subscription")
     public LspResponse updateWebhookSubscription(
             @PathVariable UUID lspId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody UpdateWebhookSubscriptionRequest request,
             @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doUpdateWebhookSubscription(lspId, request, principal, httpRequest);
+        }
+        return adminApiIdempotencyService.execute(
+                LSP_WEBHOOK_SUBSCRIPTION_UPDATE,
+                idempotencyKey,
+                new WebhookSubscriptionUpdateFingerprint(lspId.toString(), request),
+                LspResponse.class,
+                () -> doUpdateWebhookSubscription(lspId, request, principal, httpRequest)
+        );
+    }
+
+    private LspResponse doUpdateWebhookSubscription(
+            UUID lspId,
+            UpdateWebhookSubscriptionRequest request,
+            Jwt principal,
             HttpServletRequest httpRequest
     ) {
         String actorUsername = principal == null ? "unknown" : principal.getSubject();
@@ -105,17 +167,12 @@ public class LspAdminController {
 
     private static LspResponse toResponse(Lsp lsp) {
         return new LspResponse(
-                lsp.getId().toString(),
+                lsp.getId(),
                 lsp.getCode(),
                 lsp.getName(),
                 lsp.getStatus().name(),
-                lsp.getCreatedAt().toString(),
-                new WebhookSubscriptionResponse(
-                        lsp.isWebhookEnabled(),
-                        lsp.getWebhookEndpointUrl(),
-                        lsp.getWebhookSigningSecret(),
-                        lsp.getWebhookEventTypes().stream().map(Enum::name).toList()
-                ),
+                lsp.getCreatedAt(),
+                toWebhookSubscriptionResponse(lsp),
                 0,
                 new PortfolioSummaryResponse(0, 0, 0, java.math.BigDecimal.ZERO, null)
         );
@@ -124,17 +181,12 @@ public class LspAdminController {
     private static LspResponse toResponse(LspDirectoryService.LspDirectoryView view) {
         Lsp lsp = view.lsp();
         return new LspResponse(
-                lsp.getId().toString(),
+                lsp.getId(),
                 lsp.getCode(),
                 lsp.getName(),
                 lsp.getStatus().name(),
-                lsp.getCreatedAt().toString(),
-                new WebhookSubscriptionResponse(
-                        lsp.isWebhookEnabled(),
-                        lsp.getWebhookEndpointUrl(),
-                        lsp.getWebhookSigningSecret(),
-                        lsp.getWebhookEventTypes().stream().map(Enum::name).toList()
-                ),
+                lsp.getCreatedAt(),
+                toWebhookSubscriptionResponse(lsp),
                 view.userCount(),
                 toPortfolioSummaryResponse(view.portfolioSummary())
         );
@@ -143,22 +195,17 @@ public class LspAdminController {
     private static LspDetailResponse toDetailResponse(LspDirectoryService.LspDetailView view) {
         Lsp lsp = view.lsp();
         return new LspDetailResponse(
-                lsp.getId().toString(),
+                lsp.getId(),
                 lsp.getCode(),
                 lsp.getName(),
                 lsp.getStatus().name(),
-                lsp.getCreatedAt().toString(),
-                new WebhookSubscriptionResponse(
-                        lsp.isWebhookEnabled(),
-                        lsp.getWebhookEndpointUrl(),
-                        lsp.getWebhookSigningSecret(),
-                        lsp.getWebhookEventTypes().stream().map(Enum::name).toList()
-                ),
+                lsp.getCreatedAt(),
+                toWebhookSubscriptionResponse(lsp),
                 view.users().size(),
                 toPortfolioSummaryResponse(view.portfolioSummary()),
                 view.users().stream()
                         .map(user -> new LspUserResponse(
-                                user.id().toString(),
+                                user.id(),
                                 user.username(),
                                 user.email(),
                                 user.status().name(),
@@ -168,10 +215,25 @@ public class LspAdminController {
         );
     }
 
+    /**
+     * The signing secret is write-only: reads always emit {@code signingSecret: null}
+     * plus {@code secretSet} so the admin UI knows whether one is configured.
+     * Rotation is a plain PUT with the new value; blank keeps the current one.
+     */
+    private static WebhookSubscriptionResponse toWebhookSubscriptionResponse(Lsp lsp) {
+        return new WebhookSubscriptionResponse(
+                lsp.isWebhookEnabled(),
+                lsp.getWebhookEndpointUrl(),
+                null,
+                lsp.getWebhookSigningSecret() != null && !lsp.getWebhookSigningSecret().isBlank(),
+                lsp.getWebhookEventTypes().stream().map(Enum::name).toList()
+        );
+    }
+
     private static LspAuditEventResponse toAuditEventResponse(UUID lspId, LspAuditEvent event) {
         return new LspAuditEventResponse(
-                event.getId().toString(),
-                lspId.toString(),
+                event.getId(),
+                lspId,
                 event.getAction(),
                 event.getActorUsername(),
                 event.getActorIp(),
@@ -180,7 +242,7 @@ public class LspAdminController {
                 event.getCascadedClientCount(),
                 event.getDetailsJson() == null ? null : event.getDetailsJson().toString(),
                 event.getCorrelationId(),
-                event.getCreatedAt().toString()
+                event.getCreatedAt()
         );
     }
 
@@ -240,8 +302,8 @@ public class LspAdminController {
     }
 
     public record LspAuditEventResponse(
-            String id,
-            String lspId,
+            UUID id,
+            UUID lspId,
             String action,
             String actorUsername,
             String actorIp,
@@ -250,24 +312,26 @@ public class LspAdminController {
             int cascadedClientCount,
             String detailsJson,
             String correlationId,
-            String createdAt
+            Instant createdAt
     ) {
     }
 
+    /** {@code signingSecret} is always null on reads (write-only); {@code secretSet} says whether one exists. */
     public record WebhookSubscriptionResponse(
             boolean enabled,
             String endpointUrl,
             String signingSecret,
+            boolean secretSet,
             List<String> eventTypes
     ) {
     }
 
     public record LspResponse(
-            String id,
+            UUID id,
             String code,
             String name,
             String status,
-            String createdAt,
+            Instant createdAt,
             WebhookSubscriptionResponse webhookSubscription,
             int userCount,
             PortfolioSummaryResponse portfolioSummary
@@ -275,11 +339,11 @@ public class LspAdminController {
     }
 
     public record LspDetailResponse(
-            String id,
+            UUID id,
             String code,
             String name,
             String status,
-            String createdAt,
+            Instant createdAt,
             WebhookSubscriptionResponse webhookSubscription,
             int userCount,
             PortfolioSummaryResponse portfolioSummary,
@@ -297,11 +361,17 @@ public class LspAdminController {
     }
 
     public record LspUserResponse(
-            String id,
+            UUID id,
             String username,
             String email,
             String status,
             List<String> roles
     ) {
+    }
+
+    private record LspStatusUpdateFingerprint(String lspId, UpdateLspStatusRequest request) {
+    }
+
+    private record WebhookSubscriptionUpdateFingerprint(String lspId, UpdateWebhookSubscriptionRequest request) {
     }
 }

@@ -14,6 +14,7 @@ import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
+import com.bhawana.lms.repo.LoanProductVersionRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
 import java.util.Optional;
@@ -38,6 +39,7 @@ class LoanApplicationOnboardingServiceLspGuardTest {
     @Mock private LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
     @Mock private LoanApplicationRepository loanApplicationRepository;
     @Mock private LoanProductRepository loanProductRepository;
+    @Mock private LoanProductVersionRepository loanProductVersionRepository;
     @Mock private LspRepository lspRepository;
     @Mock private LoanProductLspMappingRepository loanProductLspMappingRepository;
     @Mock private BorrowerOnboardingService borrowerOnboardingService;
@@ -54,6 +56,7 @@ class LoanApplicationOnboardingServiceLspGuardTest {
                 loanApplicationIntakeAuditRepository,
                 loanApplicationRepository,
                 loanProductRepository,
+                loanProductVersionRepository,
                 lspRepository,
                 loanProductLspMappingRepository,
                 borrowerOnboardingService,

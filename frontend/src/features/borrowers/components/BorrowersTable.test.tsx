@@ -40,7 +40,7 @@ const RESPONSE: BorrowerListResponse = {
   items: [ROW_A, ROW_B],
   total: 2,
   page: 0,
-  pageSize: 25,
+  pageSize: 50,
 };
 
 function renderTable(props: {
@@ -97,7 +97,7 @@ describe("BorrowersTable", () => {
   });
 
   it("shows an empty-state message when the post-fetch list is empty", () => {
-    renderTable({ data: { items: [], total: 0, page: 0, pageSize: 25 } });
+    renderTable({ data: { items: [], total: 0, page: 0, pageSize: 50 } });
     expect(screen.getByText(/no borrowers/i)).toBeInTheDocument();
   });
 

@@ -151,6 +151,12 @@ class ReportAdminControllerTest extends MinioTestSupport {
     @Autowired
     private com.bhawana.lms.repo.DisbursementOutcomeAuditRepository disbursementOutcomeAuditRepository;
 
+    @Autowired
+    private com.bhawana.lms.repo.BorrowerPiiRevealAuditRepository borrowerPiiRevealAuditRepository;
+
+    @Autowired
+    private com.bhawana.lms.repo.LoanProductVersionRepository loanProductVersionRepository;
+
     @BeforeEach
     void setUp() {
         disbursementOutcomeAuditRepository.deleteAllInBatch();
@@ -168,9 +174,12 @@ class ReportAdminControllerTest extends MinioTestSupport {
         loanApplicationStatusTransitionRepository.deleteAllInBatch();
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
+        borrowerPiiRevealAuditRepository.deleteAllInBatch();
+        jdbcTemplate.execute("DELETE FROM borrower_lsp_relationship");
         borrowerRepository.deleteAllInBatch();
         loanProductAuditEventRepository.deleteAllInBatch();
         loanProductLspMappingRepository.deleteAllInBatch();
+        loanProductVersionRepository.deleteAllInBatch();
         loanProductRepository.deleteAllInBatch();
         reportAccessAuditRepository.deleteAllInBatch();
         reportRequestRepository.deleteAllInBatch();
@@ -253,9 +262,7 @@ class ReportAdminControllerTest extends MinioTestSupport {
         // Seed the borrower's aadhaar + bank account directly so the masking
         // contract has something to mask. The intake flow does not currently
         // collect these, so we patch via jdbc. The two values must not share a
-        // substring (the raw bank account is emitted, the raw aadhaar must not
-        // leak — keep them disjoint so a substring check on the response body
-        // can distinguish them).
+        // substring so a substring check on the response body can distinguish them.
         jdbcTemplate.update(
                 "update borrower set aadhar_number = ?, bank_account_number = ? "
                         + "where id = (select borrower_id from loan_application where id = ?)",
@@ -269,12 +276,13 @@ class ReportAdminControllerTest extends MinioTestSupport {
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].aadharNumber").value("XXXXXXXX1012"))
-                .andExpect(jsonPath("$.content[0].bankAccountNumber").value("1122334455667788"))
-                .andExpect(jsonPath("$.content[0].panNumber").value("ABCDE1234F"))
+                .andExpect(jsonPath("$.content[0].bankAccountNumber").value("XXXXXXXX7788"))
+                .andExpect(jsonPath("$.content[0].panNumber").value("XXXXXX234F"))
                 .andReturn();
         String previewBody = preview.getResponse().getContentAsString();
         assertFalse(previewBody.contains("987654321012"), "raw aadhaar must not leak through the preview");
-        assertTrue(previewBody.contains("1122334455667788"), "raw bank account should be visible in the preview");
+        assertFalse(previewBody.contains("1122334455667788"), "raw bank account must not leak through the preview");
+        assertFalse(previewBody.contains("ABCDE1234F"), "raw PAN must not leak through the preview");
 
         // CSV download surface inherits the same row projection.
         String csv = mockMvc.perform(get("/api/v1/internal/reports/portfolio-mis")
@@ -282,9 +290,11 @@ class ReportAdminControllerTest extends MinioTestSupport {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         assertTrue(csv.contains("XXXXXXXX1012"), "CSV must carry masked aadhaar");
-        assertTrue(csv.contains("1122334455667788"), "CSV must carry raw bank account");
-        assertTrue(csv.contains("ABCDE1234F"), "CSV must carry raw PAN");
+        assertTrue(csv.contains("XXXXXXXX7788"), "CSV must carry masked bank account");
+        assertTrue(csv.contains("XXXXXX234F"), "CSV must carry masked PAN");
         assertFalse(csv.contains("987654321012"), "raw aadhaar must not leak through the CSV");
+        assertFalse(csv.contains("1122334455667788"), "raw bank account must not leak through the CSV");
+        assertFalse(csv.contains("ABCDE1234F"), "raw PAN must not leak through the CSV");
     }
 
     @Test

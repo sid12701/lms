@@ -350,7 +350,9 @@ Each finding includes: affected modules, business impact, and mapped remediation
 | **Affected** | `LoanDisbursementCommandService.initiateDisbursement` |
 | **Current** | `loanDisbursementAdapter.requestDisbursement` before commit; mock adapter masks risk |
 | **Business impact** | Crash after bank success, before commit → retry may **double-pay** at real bank |
-| **Fix** | #204 intent row + call outside tx + sweeper |
+| **Fix** | #204 intent row + call outside tx + sweeper — **implemented 2026-07-13 (Spec S3)**; see `docs/implementation-log.md` |
+
+> **Remediation note (2026-07-13):** `disbursement_intent` workflow landed behind `app.disbursement.intent-workflow.enabled`. This historical finding describes pre-S3 behavior.
 
 #### F-MNY-02 · P0 · Disbursement worker single mega-transaction
 

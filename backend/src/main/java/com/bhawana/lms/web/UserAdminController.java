@@ -5,6 +5,7 @@ import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
+import com.bhawana.lms.service.AdminApiIdempotencyService;
 import com.bhawana.lms.service.UserAdminService;
 import com.bhawana.lms.service.SessionRevocationService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,8 +14,10 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -23,6 +26,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,10 +35,19 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasRole('SYSTEM_ADMIN')")
 public class UserAdminController {
 
-    private final UserAdminService userAdminService;
+    private static final String USER_CREATE = "USER_CREATE";
+    private static final String USER_UPDATE = "USER_UPDATE";
+    private static final String USER_RESET_PASSWORD = "USER_RESET_PASSWORD";
 
-    public UserAdminController(UserAdminService userAdminService) {
+    private final UserAdminService userAdminService;
+    private final AdminApiIdempotencyService adminApiIdempotencyService;
+
+    public UserAdminController(
+            UserAdminService userAdminService,
+            AdminApiIdempotencyService adminApiIdempotencyService
+    ) {
         this.userAdminService = userAdminService;
+        this.adminApiIdempotencyService = adminApiIdempotencyService;
     }
 
     @GetMapping
@@ -45,7 +58,23 @@ public class UserAdminController {
     }
 
     @PostMapping
-    public UserResponse createUser(@Valid @RequestBody CreateUserRequest request) {
+    public UserResponse createUser(
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody CreateUserRequest request
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doCreateUser(request);
+        }
+        return adminApiIdempotencyService.execute(
+                USER_CREATE,
+                idempotencyKey,
+                request,
+                UserResponse.class,
+                () -> doCreateUser(request)
+        );
+    }
+
+    private UserResponse doCreateUser(CreateUserRequest request) {
         AppUser user = userAdminService.createUser(
                 request.username(),
                 request.email(),
@@ -60,8 +89,27 @@ public class UserAdminController {
     @PutMapping("/{userId}")
     public UserResponse updateUser(
             @PathVariable UUID userId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody UpdateUserRequest updateRequest,
             @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doUpdateUser(userId, updateRequest, principal, httpRequest);
+        }
+        return adminApiIdempotencyService.execute(
+                USER_UPDATE,
+                idempotencyKey,
+                new UserUpdateFingerprint(userId.toString(), updateRequest),
+                UserResponse.class,
+                () -> doUpdateUser(userId, updateRequest, principal, httpRequest)
+        );
+    }
+
+    private UserResponse doUpdateUser(
+            UUID userId,
+            UpdateUserRequest updateRequest,
+            Jwt principal,
             HttpServletRequest httpRequest
     ) {
         String actorUsername = principal == null ? "unknown" : principal.getSubject();
@@ -80,20 +128,53 @@ public class UserAdminController {
     @PostMapping("/{userId}/reset-password")
     public ResetPasswordResponse resetPassword(
             @PathVariable UUID userId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @AuthenticationPrincipal Jwt principal,
             HttpServletRequest httpRequest
     ) {
-        String actorUsername = principal == null ? "unknown" : principal.getSubject();
-        UserAdminService.ResetPasswordResult result = userAdminService.resetUserPassword(
-                userId,
-                actorUsername,
-                ClientIpAddresses.resolve(httpRequest),
-                CorrelationIdHolder.get()
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doResetPassword(userId, principal, httpRequest);
+        }
+
+        AtomicReference<String> temporaryPasswordHolder = new AtomicReference<>();
+        ResetPasswordResponse stored = adminApiIdempotencyService.execute(
+                USER_RESET_PASSWORD,
+                idempotencyKey,
+                Map.of("userId", userId.toString()),
+                ResetPasswordResponse.class,
+                () -> {
+                    UserAdminService.ResetPasswordResult result = performResetPassword(userId, principal, httpRequest);
+                    temporaryPasswordHolder.set(result.temporaryPassword());
+                    return new ResetPasswordResponse(
+                            result.user().getId().toString(),
+                            result.user().getUsername(),
+                            null
+                    );
+                }
         );
+        return new ResetPasswordResponse(stored.id(), stored.username(), temporaryPasswordHolder.get());
+    }
+
+    private ResetPasswordResponse doResetPassword(UUID userId, Jwt principal, HttpServletRequest httpRequest) {
+        UserAdminService.ResetPasswordResult result = performResetPassword(userId, principal, httpRequest);
         return new ResetPasswordResponse(
                 result.user().getId().toString(),
                 result.user().getUsername(),
                 result.temporaryPassword()
+        );
+    }
+
+    private UserAdminService.ResetPasswordResult performResetPassword(
+            UUID userId,
+            Jwt principal,
+            HttpServletRequest httpRequest
+    ) {
+        String actorUsername = principal == null ? "unknown" : principal.getSubject();
+        return userAdminService.resetUserPassword(
+                userId,
+                actorUsername,
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get()
         );
     }
 
@@ -132,6 +213,7 @@ public class UserAdminController {
                 user.getRoles().stream().map(role -> role.getCode().name()).sorted().toList(),
                 user.getLockedAt() == null ? null : user.getLockedAt().toString(),
                 user.getLockReason(),
+                user.isPasswordChangeRequired(),
                 user.getCreatedAt().toString()
         );
     }
@@ -179,6 +261,7 @@ public class UserAdminController {
             List<String> roles,
             String lockedAt,
             String lockReason,
+            boolean passwordChangeRequired,
             String createdAt
     ) {
     }
@@ -199,5 +282,8 @@ public class UserAdminController {
             long newTokenVersion,
             int refreshTokensRevoked
     ) {
+    }
+
+    private record UserUpdateFingerprint(String userId, UpdateUserRequest request) {
     }
 }

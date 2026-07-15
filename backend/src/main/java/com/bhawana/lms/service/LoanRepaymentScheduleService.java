@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,19 +31,22 @@ public class LoanRepaymentScheduleService {
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final LspValidationAuditService lspValidationAuditService;
+    private final ScheduleValidationProperties scheduleValidationProperties;
 
     public LoanRepaymentScheduleService(
             LoanApplicationQueryService loanApplicationQueryService,
             LoanAccountRepository loanAccountRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
-            LspValidationAuditService lspValidationAuditService
+            LspValidationAuditService lspValidationAuditService,
+            ScheduleValidationProperties scheduleValidationProperties
     ) {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanAccountRepository = loanAccountRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.lspValidationAuditService = lspValidationAuditService;
+        this.scheduleValidationProperties = scheduleValidationProperties;
     }
 
     /**
@@ -128,7 +132,12 @@ public class LoanRepaymentScheduleService {
                         installment.getClosingPrincipal()
                 ))
                 .toList();
-        validateProvidedInstallments(loanAccount, drafts, "DISBURSEMENT_VALIDATION_FAILED", "Stored repayment schedule is invalid for the current loan terms.");
+        validateProvidedInstallments(
+                loanAccount,
+                drafts,
+                "DISBURSEMENT_VALIDATION_FAILED",
+                "Stored repayment schedule is invalid for the current loan terms."
+        );
     }
 
     private LoanAccount getMutableLoanAccountForLsp(UUID lspId, UUID applicationId) {
@@ -155,18 +164,35 @@ public class LoanRepaymentScheduleService {
     }
 
     private List<LoanRepaymentScheduleInstallment> buildGeneratedInstallments(LoanAccount loanAccount) {
+        return projectGeneratedInstallmentDrafts(loanAccount).stream()
+                .map(draft -> new LoanRepaymentScheduleInstallment(
+                        loanAccount,
+                        draft.installmentNumber(),
+                        draft.dueDate(),
+                        draft.openingPrincipal(),
+                        draft.principalDue(),
+                        draft.interestDue(),
+                        draft.installmentAmount(),
+                        draft.closingPrincipal()
+                ))
+                .toList();
+    }
+
+    /**
+     * Shared amortisation + interest projection used by the platform generator and S20 interest totals.
+     */
+    List<InstallmentDraft> projectGeneratedInstallmentDrafts(LoanAccount loanAccount) {
         BigDecimal principal = Money.scale(loanAccount.getPrincipalAmount());
         int tenureMonths = loanAccount.getTenureMonths();
-        BigDecimal annualRate = loanAccount.getLoanProduct().getInterestRate();
-        BigDecimal monthlyRate = annualRate.divide(BigDecimal.valueOf(1200), 10, RoundingMode.HALF_UP);
+        BigDecimal monthlyRate = monthlyRate(loanAccount);
         BigDecimal emiAmount = calculateMonthlyEmi(principal, monthlyRate, tenureMonths);
-        LocalDate firstDueDate = loanAccount.getApprovedAt().atZone(ZoneOffset.UTC).toLocalDate().plusMonths(1);
+        LocalDate firstDueDate = approvalDate(loanAccount).plusMonths(1);
 
         BigDecimal remainingPrincipal = principal;
-        List<LoanRepaymentScheduleInstallment> installments = new ArrayList<>();
+        List<InstallmentDraft> installments = new ArrayList<>();
         for (int installmentNumber = 1; installmentNumber <= tenureMonths; installmentNumber++) {
             BigDecimal openingPrincipal = Money.scale(remainingPrincipal);
-            BigDecimal interestDue = Money.scale(openingPrincipal.multiply(monthlyRate));
+            BigDecimal interestDue = expectedInterestForOpening(openingPrincipal, monthlyRate);
             BigDecimal installmentAmount = emiAmount;
             BigDecimal principalDue = Money.scale(installmentAmount.subtract(interestDue));
             if (installmentNumber == tenureMonths) {
@@ -177,8 +203,7 @@ public class LoanRepaymentScheduleService {
             if (closingPrincipal.compareTo(BigDecimal.ZERO) < 0) {
                 closingPrincipal = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
             }
-            installments.add(new LoanRepaymentScheduleInstallment(
-                    loanAccount,
+            installments.add(new InstallmentDraft(
                     installmentNumber,
                     firstDueDate.plusMonths(installmentNumber - 1L),
                     openingPrincipal,
@@ -341,9 +366,144 @@ public class LoanRepaymentScheduleService {
             );
         }
 
+        primaryViolationType = validateDateDiscipline(loanAccount, installments, violations, primaryViolationType);
+        primaryViolationType = validateInterestDiscipline(loanAccount, installments, violations, primaryViolationType);
+
         if (!violations.isEmpty()) {
             throw scheduleViolation(errorCode, message, violations, primaryViolationType);
         }
+    }
+
+    private ScheduleViolationType validateDateDiscipline(
+            LoanAccount loanAccount,
+            List<InstallmentDraft> installments,
+            Map<String, String> violations,
+            ScheduleViolationType primaryViolationType
+    ) {
+        LocalDate approvalDate = approvalDate(loanAccount);
+        LocalDate firstDue = installments.get(0).dueDate();
+        LocalDate minFirstDue = approvalDate.plusDays(scheduleValidationProperties.getFirstDueMinDays());
+        LocalDate maxFirstDue = approvalDate.plusDays(scheduleValidationProperties.getFirstDueMaxDays());
+        if (firstDue.isBefore(minFirstDue) || firstDue.isAfter(maxFirstDue)) {
+            primaryViolationType = registerScheduleViolation(
+                    violations,
+                    primaryViolationType,
+                    ScheduleViolationType.SCHEDULE_FIRST_DUE_OUT_OF_WINDOW,
+                    "installments[0].dueDate",
+                    "First due date must fall between "
+                            + minFirstDue
+                            + " and "
+                            + maxFirstDue
+                            + " (approval date + configured window)."
+            );
+        }
+
+        int cadenceTolerance = scheduleValidationProperties.getCadenceToleranceDays();
+        for (int index = 1; index < installments.size(); index++) {
+            LocalDate actual = installments.get(index).dueDate();
+            LocalDate expected = firstDue.plusMonths(index);
+            long driftDays = Math.abs(ChronoUnit.DAYS.between(expected, actual));
+            if (driftDays > cadenceTolerance) {
+                primaryViolationType = registerScheduleViolation(
+                        violations,
+                        primaryViolationType,
+                        ScheduleViolationType.SCHEDULE_CADENCE_VIOLATION,
+                        "installments[" + index + "].dueDate",
+                        "Due date must be within ±"
+                                + cadenceTolerance
+                                + " days of "
+                                + expected
+                                + " (anchored monthly cadence)."
+                );
+            }
+        }
+
+        LocalDate lastDue = installments.get(installments.size() - 1).dueDate();
+        LocalDate horizonCap = approvalDate
+                .plusMonths(loanAccount.getTenureMonths())
+                .plusDays(scheduleValidationProperties.getHorizonGraceDays());
+        if (lastDue.isAfter(horizonCap)) {
+            primaryViolationType = registerScheduleViolation(
+                    violations,
+                    primaryViolationType,
+                    ScheduleViolationType.SCHEDULE_HORIZON_EXCEEDED,
+                    "installments[" + (installments.size() - 1) + "].dueDate",
+                    "Final due date must not exceed " + horizonCap + " (tenure + horizon grace)."
+            );
+        }
+        return primaryViolationType;
+    }
+
+    private ScheduleViolationType validateInterestDiscipline(
+            LoanAccount loanAccount,
+            List<InstallmentDraft> installments,
+            Map<String, String> violations,
+            ScheduleViolationType primaryViolationType
+    ) {
+        BigDecimal monthlyRate = monthlyRate(loanAccount);
+        BigDecimal providedInterestTotal = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+
+        for (int index = 0; index < installments.size(); index++) {
+            InstallmentDraft installment = installments.get(index);
+            BigDecimal expected = expectedInterestForOpening(installment.openingPrincipal(), monthlyRate);
+            BigDecimal actual = Money.scale(installment.interestDue());
+            providedInterestTotal = Money.scale(providedInterestTotal.add(actual));
+            BigDecimal tolerance = interestTolerance(
+                    expected,
+                    scheduleValidationProperties.getInterestRowToleranceAbs(),
+                    scheduleValidationProperties.getInterestRowTolerancePct()
+            );
+            if (actual.subtract(expected).abs().compareTo(tolerance) > 0) {
+                primaryViolationType = registerScheduleViolation(
+                        violations,
+                        primaryViolationType,
+                        ScheduleViolationType.SCHEDULE_INTEREST_ROW_MISMATCH,
+                        "installments[" + index + "].interestDue",
+                        "Interest due must be within tolerance of expected "
+                                + expected.toPlainString()
+                                + " (opening × product monthly rate)."
+                );
+            }
+        }
+
+        BigDecimal generatedInterestTotal = projectGeneratedInstallmentDrafts(loanAccount).stream()
+                .map(InstallmentDraft::interestDue)
+                .reduce(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), (left, right) -> Money.scale(left.add(right)));
+        BigDecimal totalTolerance = interestTolerance(
+                generatedInterestTotal,
+                scheduleValidationProperties.getInterestTotalToleranceAbs(),
+                scheduleValidationProperties.getInterestTotalTolerancePct()
+        );
+        if (providedInterestTotal.subtract(generatedInterestTotal).abs().compareTo(totalTolerance) > 0) {
+            primaryViolationType = registerScheduleViolation(
+                    violations,
+                    primaryViolationType,
+                    ScheduleViolationType.SCHEDULE_INTEREST_TOTAL_MISMATCH,
+                    "interestDueTotal",
+                    "Total interest must be within tolerance of generated schedule total "
+                            + generatedInterestTotal.toPlainString()
+                            + "."
+            );
+        }
+        return primaryViolationType;
+    }
+
+    private static BigDecimal interestTolerance(BigDecimal expected, BigDecimal absTolerance, BigDecimal pctTolerance) {
+        BigDecimal pctComponent = Money.scale(expected.abs().multiply(pctTolerance));
+        return absTolerance.max(pctComponent);
+    }
+
+    private static LocalDate approvalDate(LoanAccount loanAccount) {
+        return loanAccount.getApprovedAt().atZone(ZoneOffset.UTC).toLocalDate();
+    }
+
+    private static BigDecimal monthlyRate(LoanAccount loanAccount) {
+        BigDecimal annualRate = loanAccount.getLoanProductVersion().getInterestRate();
+        return annualRate.divide(BigDecimal.valueOf(1200), 10, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal expectedInterestForOpening(BigDecimal openingPrincipal, BigDecimal monthlyRate) {
+        return Money.scale(Money.scale(openingPrincipal).multiply(monthlyRate));
     }
 
     private static ScheduleViolationType registerScheduleViolation(
@@ -372,7 +532,12 @@ public class LoanRepaymentScheduleService {
             case SCHEDULE_FINAL_NONZERO -> 4;
             case SCHEDULE_PRINCIPAL_NOT_CLOSED -> 5;
             case SCHEDULE_INSTALLMENT_COUNT_MISMATCH -> 6;
-            case SCHEDULE_GENERIC -> 7;
+            case SCHEDULE_FIRST_DUE_OUT_OF_WINDOW -> 7;
+            case SCHEDULE_CADENCE_VIOLATION -> 8;
+            case SCHEDULE_HORIZON_EXCEEDED -> 9;
+            case SCHEDULE_INTEREST_ROW_MISMATCH -> 10;
+            case SCHEDULE_INTEREST_TOTAL_MISMATCH -> 11;
+            case SCHEDULE_GENERIC -> 12;
         };
     }
 

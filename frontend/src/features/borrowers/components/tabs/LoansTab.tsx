@@ -126,8 +126,11 @@ export function LoansTab({ borrowerId }: LoansTabProps) {
       },
       {
         accessorKey: "status",
-        meta: { label: "Status" },
-        header: ({ column }) => <DataTableColumnHeader column={column} title="Status" />,
+        // These rows come from the borrower's loan *accounts*, whose status
+        // (e.g. "Disbursed") can lag the application status shown elsewhere
+        // ("Under repayment"). Label it so the two aren't read as conflicting.
+        meta: { label: "Account status" },
+        header: ({ column }) => <DataTableColumnHeader column={column} title="Account status" />,
         cell: ({ row }) => <StatusBadge status={row.original.status} />,
         enableSorting: true,
       },

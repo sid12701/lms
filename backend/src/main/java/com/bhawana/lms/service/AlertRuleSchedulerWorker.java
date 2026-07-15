@@ -12,14 +12,20 @@ public class AlertRuleSchedulerWorker {
     private static final Logger log = LoggerFactory.getLogger(AlertRuleSchedulerWorker.class);
 
     private final AlertRuleEvaluationWorker alertRuleEvaluationWorker;
+    private final PostgresAdvisoryLockSupport advisoryLockSupport;
+    private final PortfolioKpiProperties portfolioKpiProperties;
     private final boolean enabled;
 
     public AlertRuleSchedulerWorker(
             AlertRuleEvaluationWorker alertRuleEvaluationWorker,
-            AlertRuleProperties properties
+            PostgresAdvisoryLockSupport advisoryLockSupport,
+            PortfolioKpiProperties portfolioKpiProperties,
+            AlertRuleProperties alertRuleProperties
     ) {
         this.alertRuleEvaluationWorker = alertRuleEvaluationWorker;
-        this.enabled = properties.isSchedulerEnabled();
+        this.advisoryLockSupport = advisoryLockSupport;
+        this.portfolioKpiProperties = portfolioKpiProperties;
+        this.enabled = alertRuleProperties.isSchedulerEnabled();
     }
 
     @Scheduled(fixedDelayString = "${app.alert-rules.scheduler-fixed-delay-ms:300000}")
@@ -27,15 +33,26 @@ public class AlertRuleSchedulerWorker {
         if (!enabled) {
             return;
         }
-        AlertRuleEvaluationWorker.EvaluationSummary summary = TenantScopedExecution.callAsAdmin(
-                alertRuleEvaluationWorker::evaluateScheduledRules
-        );
-        if (summary.alertsEmitted() > 0) {
-            log.info(
-                    "Alert rule scheduler emitted {} new alert(s) at {}",
-                    summary.alertsEmitted(),
-                    summary.evaluatedAt()
-            );
+        TenantScopedExecution.runAsAdmin(this::evaluateScheduledAlertRulesUnderAdminScope);
+    }
+
+    void evaluateScheduledAlertRulesUnderAdminScope() {
+        long lockId = portfolioKpiProperties.getAdvisoryLockId() + 1L;
+        if (!advisoryLockSupport.tryAcquire(lockId)) {
+            log.debug("alert_rule_scheduler_skipped lock_not_acquired lockId={}", lockId);
+            return;
+        }
+        try {
+            AlertRuleEvaluationWorker.EvaluationSummary summary = alertRuleEvaluationWorker.evaluateScheduledRules();
+            if (summary.alertsEmitted() > 0) {
+                log.info(
+                        "Alert rule scheduler emitted {} new alert(s) at {}",
+                        summary.alertsEmitted(),
+                        summary.evaluatedAt()
+                );
+            }
+        } finally {
+            advisoryLockSupport.release(lockId);
         }
     }
 }

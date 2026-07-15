@@ -2,7 +2,9 @@
 Thumbs.db
 
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 *.iml
 
 *.log
@@ -100,3 +102,7 @@ _COMMUNITY_*.md
 
 # Ad-hoc screenshots dropped at the frontend root (e.g. theme migration captures)
 /frontend/*.png
+
+# B12: local prod schema diff outputs (reference artifact is committed)
+/scripts/schema-diff/artifacts/prod-schema.normalized.sql
+/scripts/schema-diff/artifacts/prod-vs-reference.diff

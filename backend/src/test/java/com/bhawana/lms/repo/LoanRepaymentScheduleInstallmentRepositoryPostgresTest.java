@@ -10,9 +10,11 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductStatus;
+import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
+import com.bhawana.lms.support.LoanProductVersionTestSupport;
 import com.bhawana.lms.support.PostgresDataJpaTestSupport;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -46,12 +48,15 @@ class LoanRepaymentScheduleInstallmentRepositoryPostgresTest extends PostgresDat
     private LoanProductRepository loanProductRepository;
 
     @Autowired
+    private LoanProductVersionRepository loanProductVersionRepository;
+
+    @Autowired
     private LspRepository lspRepository;
 
     @Test
     void deleteByLoanAccountIdRemovesOnlyTargetAccountInstallments() {
         Lsp lsp = lspRepository.save(new Lsp("INST-DEL-LSP", "Installment Delete LSP", LspStatus.ACTIVE));
-        LoanProduct product = loanProductRepository.save(product("INST-DEL-PROD"));
+        LoanProduct product = persistProduct(product("INST-DEL-PROD"));
         LoanAccount targetAccount = persistAccount(lsp, product, "INST-DEL-A", "ACCT-DEL-A");
         LoanAccount otherAccount = persistAccount(lsp, product, "INST-DEL-B", "ACCT-DEL-B");
 
@@ -75,7 +80,7 @@ class LoanRepaymentScheduleInstallmentRepositoryPostgresTest extends PostgresDat
     @Test
     void deleteByLoanAccountIdReturnsNumberOfRowsRemoved() {
         Lsp lsp = lspRepository.save(new Lsp("INST-CNT-LSP", "Installment Count LSP", LspStatus.ACTIVE));
-        LoanProduct product = loanProductRepository.save(product("INST-CNT-PROD"));
+        LoanProduct product = persistProduct(product("INST-CNT-PROD"));
         LoanAccount account = persistAccount(lsp, product, "INST-CNT-A", "ACCT-CNT-A");
 
         installmentRepository.saveAll(List.of(
@@ -99,9 +104,7 @@ class LoanRepaymentScheduleInstallmentRepositoryPostgresTest extends PostgresDat
     }
 
     private LoanAccount persistAccount(Lsp lsp, LoanProduct product, String externalLoanId, String accountNumber) {
-        Borrower borrower = borrowerRepository.save(new Borrower(
-                lsp,
-                BorrowerProfile.builder()
+        Borrower borrower = borrowerRepository.save(new Borrower(BorrowerProfile.builder()
                         .fullName("Borrower " + externalLoanId)
                         .panNumber("ABCDE" + UUID.randomUUID().toString().substring(0, 4).toUpperCase() + "F")
                         .mobileNumber("9000000000")
@@ -113,10 +116,14 @@ class LoanRepaymentScheduleInstallmentRepositoryPostgresTest extends PostgresDat
                         .monthlyIncome(new BigDecimal("75000.00"))
                         .build()
         ));
+        LoanProductVersion version = loanProductVersionRepository
+                .findTopByLoanProduct_IdOrderByVersionNumberDesc(product.getId())
+                .orElseThrow();
         LoanApplication application = loanApplicationRepository.save(new LoanApplication(
                 borrower,
                 lsp,
                 product,
+                version,
                 externalLoanId,
                 "API",
                 new BigDecimal("50000.00"),
@@ -128,12 +135,19 @@ class LoanRepaymentScheduleInstallmentRepositoryPostgresTest extends PostgresDat
                 borrower,
                 lsp,
                 product,
+                version,
                 accountNumber,
                 new BigDecimal("50000.00"),
                 12,
                 LoanAccountStatus.PENDING_DISBURSEMENT,
                 Instant.parse("2026-03-01T00:00:00Z")
         ));
+    }
+
+    private LoanProduct persistProduct(LoanProduct product) {
+        LoanProduct saved = loanProductRepository.save(product);
+        loanProductVersionRepository.save(LoanProductVersionTestSupport.versionOne(saved));
+        return saved;
     }
 
     private LoanProduct product(String code) {

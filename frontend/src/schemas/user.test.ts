@@ -75,6 +75,7 @@ describe("ApiClient schema", () => {
     status: "ACTIVE" as const,
     createdAt: NOW,
     lastUsedAt: null,
+    lastRotatedAt: null,
     ipAllowList: ["10.0.0.0/8", "192.168.1.1"],
   };
 

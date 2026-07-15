@@ -13,13 +13,7 @@
  */
 import { useMemo } from "react";
 import { Copy, ExternalLink, ScrollText } from "lucide-react";
-import {
-  type ColumnDef,
-  type PaginationState,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
+import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { formatDistanceToNow } from "date-fns";
 import {
   Table,
@@ -31,7 +25,6 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { DataTablePagination } from "@/components/app/data/DataTablePagination";
 import { TableSkeleton } from "@/components/app/feedback/Skeletons";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { TABULAR_ATTR } from "@/lib/tabular-nums";
@@ -39,7 +32,6 @@ import { cn } from "@/lib/utils";
 import {
   AUDIT_STREAM_BADGE_TONE,
   AUDIT_STREAM_LABEL,
-  type AuditEventsFilters,
   type AuditEventsResponse,
   type AuditRow,
 } from "../types";
@@ -112,28 +104,12 @@ async function copyToClipboard(value: string): Promise<void> {
 export interface AuditTableProps {
   data: AuditEventsResponse | undefined;
   isLoading: boolean;
-  filters: AuditEventsFilters;
-  onFiltersChange: (next: AuditEventsFilters) => void;
   onSelect: (row: AuditRow) => void;
+  onLoadMore?: () => void;
   className?: string;
 }
 
-export function AuditTable({
-  data,
-  isLoading,
-  filters,
-  onFiltersChange,
-  onSelect,
-  className,
-}: AuditTableProps) {
-  const pageSize = filters.pageSize ?? 50;
-  const pageIndex = filters.page ?? 0;
-
-  const pagination: PaginationState = useMemo(
-    () => ({ pageIndex, pageSize }),
-    [pageIndex, pageSize],
-  );
-
+export function AuditTable({ data, isLoading, onSelect, onLoadMore, className }: AuditTableProps) {
   const columns = useMemo<ColumnDef<AuditRow>[]>(
     () => [
       {
@@ -241,19 +217,8 @@ export function AuditTable({
   const table = useReactTable({
     data: rows as AuditRow[],
     columns,
-    state: { pagination },
-    manualPagination: true,
-    rowCount: data?.total ?? 0,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => row.id,
-    onPaginationChange: (updater) => {
-      const next = typeof updater === "function" ? updater(pagination) : updater;
-      onFiltersChange({
-        ...filters,
-        page: next.pageIndex,
-        pageSize: next.pageSize,
-      });
-    },
   });
 
   const visibleColumnCount = table.getVisibleLeafColumns().length;
@@ -337,7 +302,19 @@ export function AuditTable({
         </Table>
       </div>
 
-      <DataTablePagination table={table} totalRows={data?.total ?? 0} className="px-1" />
+      {onLoadMore ? (
+        <div className="flex justify-center px-1 pt-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onLoadMore}
+            disabled={isLoading}
+          >
+            Load more
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

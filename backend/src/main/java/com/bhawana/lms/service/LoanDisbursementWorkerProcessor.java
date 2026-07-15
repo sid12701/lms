@@ -37,6 +37,7 @@ public class LoanDisbursementWorkerProcessor {
     private final BorrowerBankDetailsService borrowerBankDetailsService;
     private final OpsAlertEmitters opsAlertEmitters;
     private final LoanDisbursementWorkerProperties properties;
+    private final DisbursementIntentWorkflowProperties intentWorkflowProperties;
 
     public LoanDisbursementWorkerProcessor(
             LoanAccountRepository loanAccountRepository,
@@ -47,7 +48,8 @@ public class LoanDisbursementWorkerProcessor {
             DisbursementPreflightValidator disbursementPreflightValidator,
             BorrowerBankDetailsService borrowerBankDetailsService,
             OpsAlertEmitters opsAlertEmitters,
-            LoanDisbursementWorkerProperties properties
+            LoanDisbursementWorkerProperties properties,
+            DisbursementIntentWorkflowProperties intentWorkflowProperties
     ) {
         this.loanAccountRepository = loanAccountRepository;
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
@@ -58,6 +60,7 @@ public class LoanDisbursementWorkerProcessor {
         this.borrowerBankDetailsService = borrowerBankDetailsService;
         this.opsAlertEmitters = opsAlertEmitters;
         this.properties = properties;
+        this.intentWorkflowProperties = intentWorkflowProperties;
     }
 
     /**
@@ -128,7 +131,9 @@ public class LoanDisbursementWorkerProcessor {
 
         try {
             loanDisbursementCommandService.initiateDisbursement(applicationId, LoanDisbursementWorkerService.WORKER_ACTOR);
-            if (properties.isAutoResolveMockOutcome()) {
+            // Intent workflow (S3): only Tx-A runs here. The provider call must happen after this
+            // transaction commits — LoanDisbursementWorkerService executes the committed intent.
+            if (!intentWorkflowProperties.isEnabled() && properties.isAutoResolveMockOutcome()) {
                 loanDisbursementCommandService.autoResolveAfterInitiate(
                         applicationId,
                         LoanDisbursementWorkerService.WORKER_ACTOR,

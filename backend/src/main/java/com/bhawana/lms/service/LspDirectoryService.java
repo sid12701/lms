@@ -150,6 +150,12 @@ public class LspDirectoryService {
 
         String normalizedEndpointUrl = Strings.normalizeOptional(endpointUrl);
         String normalizedSigningSecret = Strings.normalizeOptional(signingSecret);
+        // The secret is write-only on reads, so the admin UI cannot echo it back on
+        // edits. A blank secret means "keep the current one"; the required-when-enabled
+        // rule below still fires when no secret has ever been configured.
+        if (normalizedSigningSecret == null) {
+            normalizedSigningSecret = Strings.normalizeOptional(lsp.getWebhookSigningSecret());
+        }
         List<WebhookEventType> normalizedEventTypes = eventTypes == null ? List.of() : eventTypes.stream().distinct().toList();
 
         if (enabled) {

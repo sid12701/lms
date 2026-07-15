@@ -42,6 +42,63 @@ The session pooler caps clients at ~15. Both Hikari pools honor `spring.datasour
 
 Optional: copy `src/main/resources/application-local.yml.example` if you need to customize non-secret local settings.
 
+## Tests
+
+From `backend/`:
+
+```bash
+./mvnw test          # macOS/Linux/Git Bash
+mvnw.cmd test        # Windows
+```
+
+Compile test sources only: `mvnw.cmd test-compile`.
+
+### Database safety (default `mvn test`)
+
+Routine `mvn test` is safe when a repo-root `.env` points at a shared database:
+
+1. **`IntegrationTestDatabaseTargetGuard`** — `IntegrationTestDatabaseCleaner` refuses non-ephemeral JDBC URLs unless `LMS_IT_EXTERNAL_DB=true` (with a logged warning).
+2. **Testcontainers by default** — upload regression runs on ephemeral PostgreSQL (`DocumentUploadPostgresIntegrationTest`), not `@ActiveProfiles("local")`.
+3. **Opt-in external DB** — `DocumentUploadExternalDbIntegrationTest` is tagged `external-db`, excluded from the default Surefire run. Run explicitly: `mvnw test -Pexternal-it` with `LMS_IT_EXTERNAL_DB=true`.
+
+### Integration-test tenant scope
+
+`TenantContextTestExecutionListener` (`src/test/java/com/bhawana/lms/support/`) applies admin datasource scope before each `@SpringBootTest` method so fixture setup can write across tenants. Tests that assert missing context opt out with `@RequiresEmptyTenantContext`. Registered in `src/test/resources/META-INF/spring.factories` and via `@TestExecutionListeners` on many controller tests; the `@LmsSpringBootTest` stereotype bundles the same listeners.
+
+### IDE troubleshooting
+
+The Maven reactor is rooted at the repo `pom.xml` (`lms` aggregator → `backend` module). If the editor reports unresolved imports for classes under `com.bhawana.lms.support` while `mvnw.cmd test-compile` succeeds, reload the Java language server (**Java: Clean Java Language Server Workspace** → Reload). Repo-wide editor settings live in `.vscode/settings.json`.
+
+### Disbursement intent workflow (S3 / MNY-01)
+
+When `app.disbursement.intent-workflow.enabled=true` (default in `application.yml`):
+
+1. **Request** — `POST …/disbursement-requests` commits a `disbursement_intent` row before any bank call.
+2. **Execute** — `LoanDisbursementWorker` claims intents with `SKIP LOCKED` and calls the provider outside a transaction.
+3. **Outcome** — request log, intent state, and webhooks are written in a short follow-up transaction.
+
+Ops money preview (Spec S12):
+
+- `GET /api/v1/internal/ops/loan-applications/{id}/disbursement-preview` — principal, fee, net, payment mode, masked beneficiary (`beneficiarySource=LIVE_BORROWER` until Spec S5).
+- `GET /api/v1/internal/ops/loan-applications/{id}/disbursement-reference` — durable `tranRefNo` from live intent (after Tx-A) or request log.
+
+Integration tests default to the legacy inline path (`application-test.yml` sets intent workflow `enabled: false`). Opt-in: `DisbursementIntentWorkflowIntegrationTest` enables the workflow via `@TestPropertySource`.
+
+Full record: `docs/implementation-log.md`.
+
+### Partner repayment schedule validation (S20 / SCH-01)
+
+`PUT /api/v1/lsp/loan-applications/{id}/repayment-schedule` with `mode: LSP_PROVIDED` always enforces principal integrity **and** date/interest discipline under `app.schedule.validation.*` (product-accepted defaults; checks always on).
+
+| Bound | Default |
+|---|---|
+| First due after approval | 1–60 days |
+| Cadence drift vs `firstDue + i months` | ±7 days |
+| Horizon grace beyond tenure | 75 days |
+| Interest row / total tolerance | max(₹10, 2%) / max(₹100, 1%) |
+
+Partner contract and violation codes: `docs/partner-schedule-validation.md`. Platform `mode: GENERATED` schedules self-validate.
+
 ## Bootstrap auth
 
 The service exposes `POST /api/v1/auth/login` for local user sign-in and `POST /api/v1/auth/token` for API client token issuance.
@@ -49,7 +106,10 @@ The service exposes `POST /api/v1/auth/login` for local user sign-in and `POST /
 Local credentials are defined in the repo-root `.env`:
 
 - `APP_SECURITY_BOOTSTRAP_USERNAME` (default in `backend/.env.example`: `ops.admin`)
-- `APP_SECURITY_BOOTSTRAP_PASSWORD`
+- `APP_SECURITY_BOOTSTRAP_EMAIL` (optional; defaults from username)
+- `APP_SECURITY_BOOTSTRAP_PASSWORD` (single password input — do not use deprecated `APP_SECURITY_BOOTSTRAP_LOGIN_PASSWORD`)
+
+On-demand heal without restart (Spec S10): `POST /api/v1/internal/system/bootstrap-sync` (SYSTEM_ADMIN) re-runs `LocalBootstrapAdminSyncService`.
 
 ## Production / staging
 

@@ -22,11 +22,13 @@ export function formatINR(amount: number, opts?: { compact?: boolean; decimals?:
   const decimals = opts?.decimals ?? 0;
   if (opts?.compact) {
     // Indian compact: lakh / crore — Intl supports `notation: "compact"` with en-IN.
+    // Keep one fraction digit unless the caller asks for more: with 0 digits,
+    // ₹1,50,000 rounds to "₹2L" — a materially wrong figure on finance surfaces.
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
       notation: "compact",
-      maximumFractionDigits: decimals,
+      maximumFractionDigits: Math.max(opts?.decimals ?? 1, 1),
     }).format(amount);
   }
   return new Intl.NumberFormat("en-IN", {

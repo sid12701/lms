@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { DatePickerField } from "@/components/app/data/DatePickerField";
 import { InlineErrorAlert } from "@/components/app/feedback/InlineErrorAlert";
 import { StatusBadge, type AnyStatus } from "@/components/app/status/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -120,11 +121,12 @@ export function ForeclosureQuotePanel({ detail, onExecuted }: ForeclosureQuotePa
         <div className="grid gap-3 md:grid-cols-[minmax(12rem,16rem)_auto] md:items-end">
           <div className="flex flex-col gap-1">
             <Label htmlFor="foreclosure-effective-date">Quote effective date</Label>
-            <Input
+            <DatePickerField
               id="foreclosure-effective-date"
-              type="date"
-              value={effectiveDate}
-              onChange={(event) => setEffectiveDate(event.target.value)}
+              value={effectiveDate || undefined}
+              onChange={(next) => setEffectiveDate(next ?? "")}
+              ariaLabel="Quote effective date"
+              dataSlot="foreclosure-effective-date"
               disabled={requestMutation.isPending || executeMutation.isPending}
             />
           </div>

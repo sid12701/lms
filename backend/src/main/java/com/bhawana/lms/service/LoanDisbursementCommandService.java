@@ -1,7 +1,6 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.common.money.LoanFeeCalculator;
 import com.bhawana.lms.common.money.Money;
 import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.common.api.error.ApiConflictException;
@@ -25,9 +24,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Owns disbursement <em>initiation</em> (raising a provider request) and the orchestration of the
@@ -48,6 +49,10 @@ public class LoanDisbursementCommandService {
     private final LoanApplicationStatusWriter loanApplicationStatusWriter;
     private final DisbursementOutcomeApplier disbursementOutcomeApplier;
     private final LoanDisbursementMockProperties mockProperties;
+    private final DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+    private final DisbursementIntentWorkflowProperties intentWorkflowProperties;
+    private final DisbursementPaymentModeSelector paymentModeSelector;
+    private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
 
     public LoanDisbursementCommandService(
@@ -61,6 +66,10 @@ public class LoanDisbursementCommandService {
             LoanApplicationStatusWriter loanApplicationStatusWriter,
             DisbursementOutcomeApplier disbursementOutcomeApplier,
             LoanDisbursementMockProperties mockProperties,
+            DisbursementIntentWorkflowService disbursementIntentWorkflowService,
+            DisbursementIntentWorkflowProperties intentWorkflowProperties,
+            DisbursementPaymentModeSelector paymentModeSelector,
+            TransactionTemplate transactionTemplate,
             ObjectMapper objectMapper
     ) {
         this.loanApplicationRepository = loanApplicationRepository;
@@ -73,6 +82,10 @@ public class LoanDisbursementCommandService {
         this.loanApplicationStatusWriter = loanApplicationStatusWriter;
         this.disbursementOutcomeApplier = disbursementOutcomeApplier;
         this.mockProperties = mockProperties;
+        this.disbursementIntentWorkflowService = disbursementIntentWorkflowService;
+        this.intentWorkflowProperties = intentWorkflowProperties;
+        this.paymentModeSelector = paymentModeSelector;
+        this.transactionTemplate = transactionTemplate;
         this.objectMapper = objectMapper;
     }
 
@@ -87,29 +100,11 @@ public class LoanDisbursementCommandService {
         if (loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED) {
             return application;
         }
-        return initiateDisbursement(applicationId, actorUsername, netDisbursalAmount(loanAccount));
-    }
-
-    /**
-     * ADR 0004 — cash sent to the borrower is the requested principal minus the processing fee.
-     * The recorded principal (the debt the borrower repays) is unchanged. Rejects the rare case
-     * where the fee would consume the entire principal, leaving nothing to disburse.
-     */
-    private BigDecimal netDisbursalAmount(LoanAccount loanAccount) {
-        BigDecimal principal = Money.scale(loanAccount.getPrincipalAmount());
-        BigDecimal fee = LoanFeeCalculator.computeProcessingFee(
-                principal,
-                loanAccount.getLoanProduct().getProcessingFeeRate()
+        return initiateDisbursement(
+                applicationId,
+                actorUsername,
+                DisbursementAmounts.fromLoanAccount(loanAccount).netDisbursalAmount()
         );
-        BigDecimal net = Money.scale(principal.subtract(fee));
-        if (net.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BusinessRuleViolationException(
-                    "DISBURSEMENT_FEE_EXCEEDS_PRINCIPAL",
-                    "Processing fee leaves no net amount to disburse to the borrower.",
-                    Map.of("principal", principal.toPlainString(), "processingFee", fee.toPlainString())
-            );
-        }
-        return net;
     }
 
     @Transactional
@@ -147,7 +142,35 @@ public class LoanDisbursementCommandService {
         }
 
         BigDecimal scaledDisbursementAmount = Money.scale(Money.requirePositive(disbursementAmount, "Disbursement amount"));
-        DisbursementPaymentMode paymentMode = selectPaymentMode(scaledDisbursementAmount);
+        DisbursementPaymentMode paymentMode = paymentModeSelector.selectPaymentMode(scaledDisbursementAmount);
+
+        if (intentWorkflowProperties.isEnabled()) {
+            disbursementIntentWorkflowService.createIntent(
+                    application,
+                    loanAccount,
+                    scaledDisbursementAmount,
+                    paymentMode,
+                    actorUsername
+            );
+            return application;
+        }
+
+        return initiateDisbursementInline(
+                application,
+                loanAccount,
+                scaledDisbursementAmount,
+                paymentMode,
+                actorUsername
+        );
+    }
+
+    private LoanApplication initiateDisbursementInline(
+            LoanApplication application,
+            LoanAccount loanAccount,
+            BigDecimal scaledDisbursementAmount,
+            DisbursementPaymentMode paymentMode,
+            String actorUsername
+    ) {
         String tranRefNo = newTranRefNo();
         LoanDisbursementAdapter.DisbursementCommand command = new LoanDisbursementAdapter.DisbursementCommand(
                 loanAccount.getAccountNumber(),
@@ -237,8 +260,20 @@ public class LoanDisbursementCommandService {
      *
      * @return true when the transaction reached a terminal/parked state; false when still pending.
      */
-    @Transactional
     public boolean pollPendingDisbursement(
+            UUID applicationId,
+            String actorUsername,
+            String actorIp,
+            String correlationId
+    ) {
+        if (intentWorkflowProperties.isEnabled()) {
+            return pollPendingDisbursementWithIntentWorkflow(applicationId, actorUsername, actorIp, correlationId);
+        }
+        return pollPendingDisbursementInline(applicationId, actorUsername, actorIp, correlationId);
+    }
+
+    @Transactional
+    boolean pollPendingDisbursementInline(
             UUID applicationId,
             String actorUsername,
             String actorIp,
@@ -264,6 +299,57 @@ public class LoanDisbursementCommandService {
                         latestRequest.getStatusCheckCount()
                 )
         );
+        return applyStatusPollResult(application, loanAccount, latestRequest, statusResult, actorUsername, actorIp, correlationId);
+    }
+
+    private boolean pollPendingDisbursementWithIntentWorkflow(
+            UUID applicationId,
+            String actorUsername,
+            String actorIp,
+            String correlationId
+    ) {
+        Optional<DisbursementIntentWorkflowService.StatusPollContext> context =
+                disbursementIntentWorkflowService.loadStatusPollContext(applicationId);
+        if (context.isEmpty()) {
+            return false;
+        }
+
+        LoanDisbursementAdapter.DisbursementStatusResult statusResult =
+                loanDisbursementAdapter.checkStatus(context.get().query());
+
+        return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+            DisbursementIntentWorkflowService.StatusPollContext pollContext = context.get();
+            LoanDisbursementRequestLog latestRequest = loanDisbursementRequestLogRepository
+                    .findById(pollContext.latestRequest().getId())
+                    .orElse(null);
+            if (latestRequest == null) {
+                return false;
+            }
+            boolean terminal = applyStatusPollResult(
+                    pollContext.application(),
+                    pollContext.loanAccount(),
+                    latestRequest,
+                    statusResult,
+                    actorUsername,
+                    actorIp,
+                    correlationId
+            );
+            if (statusResult.isQueryResolved() && statusResult.disposition() != DisbursementDisposition.PENDING) {
+                disbursementIntentWorkflowService.markIntentFromStatusPoll(pollContext.loanAccount().getId(), statusResult);
+            }
+            return terminal;
+        }));
+    }
+
+    private boolean applyStatusPollResult(
+            LoanApplication application,
+            LoanAccount loanAccount,
+            LoanDisbursementRequestLog latestRequest,
+            LoanDisbursementAdapter.DisbursementStatusResult statusResult,
+            String actorUsername,
+            String actorIp,
+            String correlationId
+    ) {
         latestRequest.recordStatusCheck();
         loanDisbursementRequestLogRepository.save(latestRequest);
 
@@ -370,12 +456,6 @@ public class LoanDisbursementCommandService {
                     DisbursementDisposition.PENDING, DisbursementDeclineKind.NONE, null, null,
                     "Mock disbursement is awaiting reconciliation.");
         };
-    }
-
-    private DisbursementPaymentMode selectPaymentMode(BigDecimal amount) {
-        return amount.compareTo(mockProperties.getImpsMaxAmount()) > 0
-                ? DisbursementPaymentMode.NEFT
-                : DisbursementPaymentMode.IMPS;
     }
 
     private static String newTranRefNo() {

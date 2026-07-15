@@ -159,6 +159,25 @@ public class LoanServicingSupportService {
                         "Repayment installment not found: " + targetInstallmentId
                 ));
 
+        return validateResolvableInstallment(loanAccount, installment);
+    }
+
+    public LoanRepaymentScheduleInstallment resolveTargetInstallmentForUpdate(
+            LoanAccount loanAccount,
+            UUID targetInstallmentId
+    ) {
+        LoanRepaymentScheduleInstallment installment = loanRepaymentScheduleInstallmentRepository.findByIdForUpdate(targetInstallmentId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Repayment installment not found: " + targetInstallmentId
+                ));
+
+        return validateResolvableInstallment(loanAccount, installment);
+    }
+
+    private LoanRepaymentScheduleInstallment validateResolvableInstallment(
+            LoanAccount loanAccount,
+            LoanRepaymentScheduleInstallment installment
+    ) {
         if (!installment.getLoanAccount().getId().equals(loanAccount.getId())) {
             throw new AccessDeniedException("Repayment installment does not belong to this loan application.");
         }

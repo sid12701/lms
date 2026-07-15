@@ -4,6 +4,7 @@ import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.RevocationSource;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
+import com.bhawana.lms.security.AuthPrincipalCache;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,15 +14,18 @@ public class SessionRevocationService {
     private final AppUserRepository appUserRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final AuthAuditService authAuditService;
+    private final AuthPrincipalCache authPrincipalCache;
 
     public SessionRevocationService(
             AppUserRepository appUserRepository,
             RefreshTokenRepository refreshTokenRepository,
-            AuthAuditService authAuditService
+            AuthAuditService authAuditService,
+            AuthPrincipalCache authPrincipalCache
     ) {
         this.appUserRepository = appUserRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.authAuditService = authAuditService;
+        this.authPrincipalCache = authPrincipalCache;
     }
 
     @Transactional
@@ -48,6 +52,7 @@ public class SessionRevocationService {
                 saved.getTokenVersion(),
                 refreshTokensRevoked
         );
+        authPrincipalCache.evictAppUser(saved.getUsername());
         return new RevocationResult(previousTokenVersion, saved.getTokenVersion(), refreshTokensRevoked);
     }
 

@@ -8,11 +8,13 @@ import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.OpsAlert;
 import com.bhawana.lms.domain.OpsAlertStatus;
+import com.bhawana.lms.domain.PortfolioKpiSnapshot;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
-import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
+import com.bhawana.lms.repo.PortfolioKpiSnapshotRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
@@ -20,7 +22,10 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,74 +38,67 @@ public class HomeDashboardService {
             LoanApplicationStatus.DISBURSEMENT_RETRY
     );
 
+    private static final List<LoanDelinquencyBucket> BUCKET_ORDER = List.of(
+            LoanDelinquencyBucket.CURRENT,
+            LoanDelinquencyBucket.DPD_1_30,
+            LoanDelinquencyBucket.DPD_31_60,
+            LoanDelinquencyBucket.DPD_61_90,
+            LoanDelinquencyBucket.DPD_90_PLUS
+    );
+
     private final LspRepository lspRepository;
     private final LoanAccountRepository loanAccountRepository;
     private final LoanApplicationRepository loanApplicationRepository;
-    private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
     private final OpsAlertRepository opsAlertRepository;
+    private final PortfolioKpiSnapshotRepository portfolioKpiSnapshotRepository;
+    private final PortfolioKpiSnapshotComputationService portfolioKpiSnapshotComputationService;
     private final BusinessCalendar businessCalendar;
 
     public HomeDashboardService(
             LspRepository lspRepository,
             LoanAccountRepository loanAccountRepository,
             LoanApplicationRepository loanApplicationRepository,
-            LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
             OpsAlertRepository opsAlertRepository,
+            PortfolioKpiSnapshotRepository portfolioKpiSnapshotRepository,
+            PortfolioKpiSnapshotComputationService portfolioKpiSnapshotComputationService,
             BusinessCalendar businessCalendar
     ) {
         this.lspRepository = lspRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationRepository = loanApplicationRepository;
-        this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
         this.opsAlertRepository = opsAlertRepository;
+        this.portfolioKpiSnapshotRepository = portfolioKpiSnapshotRepository;
+        this.portfolioKpiSnapshotComputationService = portfolioKpiSnapshotComputationService;
         this.businessCalendar = businessCalendar;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public HomeDashboardSummary getSummary() {
-        List<LoanDelinquencyBucket> bucketOrder = List.of(
-                LoanDelinquencyBucket.CURRENT,
-                LoanDelinquencyBucket.DPD_1_30,
-                LoanDelinquencyBucket.DPD_31_60,
-                LoanDelinquencyBucket.DPD_61_90,
-                LoanDelinquencyBucket.DPD_90_PLUS
-        );
+        PortfolioKpiSnapshot globalSnapshot = resolveGlobalSnapshot();
+        Map<UUID, PortfolioKpiSnapshot> perLspSnapshots = portfolioKpiSnapshotRepository.findLatestPerLsp().stream()
+                .filter(snapshot -> snapshot.getLspId() != null)
+                .collect(Collectors.toMap(PortfolioKpiSnapshot::getLspId, Function.identity(), (left, right) -> left));
+
         List<Lsp> lsps = lspRepository.findAllByOrderByNameAsc().stream()
                 .sorted(Comparator.comparing(Lsp::getName, String.CASE_INSENSITIVE_ORDER))
                 .toList();
         LocalDate today = businessCalendar.today();
-        List<AccountSnapshot> accountSnapshots = loanAccountRepository.findHomeDashboardAccountSnapshots(today).stream()
-                .map(snapshot -> toAccountSnapshot(snapshot, today))
-                .toList();
         List<PriorityAccount> priorityAccounts = loanAccountRepository
                 .findHomeDashboardPriorityAccounts(today, PageRequest.of(0, 8))
                 .stream()
                 .map(snapshot -> toPriorityAccount(snapshot, today))
                 .toList();
 
-        BigDecimal totalDisbursedAmount = accountSnapshots.stream()
-                .map(AccountSnapshot::disbursedAmount)
-                .reduce(zeroCurrency(), BigDecimal::add);
-        BigDecimal totalOutstandingAmount = accountSnapshots.stream()
-                .map(AccountSnapshot::outstandingAmount)
-                .reduce(zeroCurrency(), BigDecimal::add);
-        BigDecimal dpd90PlusAmount = accountSnapshots.stream()
-                .filter(snapshot -> snapshot.bucket() == LoanDelinquencyBucket.DPD_90_PLUS)
-                .map(AccountSnapshot::outstandingAmount)
-                .reduce(zeroCurrency(), BigDecimal::add);
-        long dpd90PlusLoanCount = accountSnapshots.stream()
-                .filter(snapshot -> snapshot.bucket() == LoanDelinquencyBucket.DPD_90_PLUS)
-                .count();
+        BigDecimal totalDisbursedAmount = globalSnapshot.getTotalDisbursed();
+        BigDecimal totalOutstandingAmount = globalSnapshot.getTotalOutstanding();
+        BucketTotals dpd90PlusTotals = bucketTotals(globalSnapshot, LoanDelinquencyBucket.DPD_90_PLUS);
 
         List<LspBreakdown> lspBreakdown = lsps.stream()
                 .map(lsp -> toLspBreakdown(
                         lsp,
-                        accountSnapshots.stream()
-                                .filter(snapshot -> snapshot.lspId().equals(lsp.getId()))
-                                .toList(),
+                        perLspSnapshots.get(lsp.getId()),
                         totalDisbursedAmount,
-                        dpd90PlusAmount,
-                        bucketOrder
+                        dpd90PlusTotals.outstandingAmount()
                 ))
                 .toList();
 
@@ -108,16 +106,8 @@ public class HomeDashboardService {
                 loanApplicationRepository.countByStatus(LoanApplicationStatus.AWAITING_APPROVAL));
         int applicationsInDisbursement = Math.toIntExact(
                 loanApplicationRepository.countByStatusIn(IN_DISBURSEMENT_STATUSES));
-        List<StatusCount> applicationsByStatus = loanApplicationRepository.countGroupByStatus().stream()
-                .map(row -> new StatusCount(row.getStatus().name(), row.getCount()))
-                .sorted(Comparator.comparing(StatusCount::status))
-                .toList();
-        List<DpdBucketCount> dpdBuckets = bucketOrder.stream()
-                .map(bucket -> new DpdBucketCount(
-                        bucket.name(),
-                        accountSnapshots.stream().filter(snapshot -> snapshot.bucket() == bucket).count()
-                ))
-                .toList();
+        List<StatusCount> applicationsByStatus = readStatusCounts(globalSnapshot);
+        List<DpdBucketCount> dpdBuckets = readDpdBucketCounts(globalSnapshot);
         long openAlerts = opsAlertRepository.countByStatus(OpsAlertStatus.NEW);
         List<OpenAlertSummary> openAlertSummaries = opsAlertRepository
                 .findByStatusOrderByCreatedAtDesc(OpsAlertStatus.NEW, PageRequest.of(0, 5))
@@ -131,22 +121,66 @@ public class HomeDashboardService {
                 .map(this::toRecentApplication)
                 .toList();
 
+        Double avgApprovalTatHours = globalSnapshot.getAvgApprovalTatHours() == null
+                ? null
+                : globalSnapshot.getAvgApprovalTatHours().setScale(1, RoundingMode.HALF_UP).doubleValue();
+
         return new HomeDashboardSummary(
                 Money.scale(totalDisbursedAmount),
                 Money.scale(totalOutstandingAmount),
-                Money.scale(dpd90PlusAmount),
-                dpd90PlusLoanCount,
+                Money.scale(dpd90PlusTotals.outstandingAmount()),
+                dpd90PlusTotals.loanCount(),
                 applicationsAwaitingApproval,
                 applicationsInDisbursement,
-                computeAvgApprovalTatHours(Instant.now().minus(30, ChronoUnit.DAYS)),
+                avgApprovalTatHours,
                 applicationsByStatus,
                 dpdBuckets,
                 openAlerts,
                 openAlertSummaries,
                 lspBreakdown,
                 priorityAccounts,
-                recentApplications
+                recentApplications,
+                globalSnapshot.getComputedAt()
         );
+    }
+
+    private PortfolioKpiSnapshot resolveGlobalSnapshot() {
+        return portfolioKpiSnapshotRepository.findLatestGlobal()
+                .orElseGet(() -> {
+                    portfolioKpiSnapshotComputationService.computeAndPersistSnapshots();
+                    return portfolioKpiSnapshotRepository.findLatestGlobal()
+                            .orElseThrow(() -> new IllegalStateException("Portfolio KPI snapshot unavailable."));
+                });
+    }
+
+    private List<StatusCount> readStatusCounts(PortfolioKpiSnapshot snapshot) {
+        JsonNode statusCounts = snapshot.getStatusCounts();
+        return java.util.stream.StreamSupport.stream(
+                        ((Iterable<String>) statusCounts::fieldNames).spliterator(),
+                        false
+                )
+                .map(field -> new StatusCount(field, statusCounts.get(field).asLong()))
+                .sorted(Comparator.comparing(StatusCount::status))
+                .toList();
+    }
+
+    private List<DpdBucketCount> readDpdBucketCounts(PortfolioKpiSnapshot snapshot) {
+        return BUCKET_ORDER.stream()
+                .map(bucket -> new DpdBucketCount(
+                        bucket.name(),
+                        bucketTotals(snapshot, bucket).loanCount()
+                ))
+                .toList();
+    }
+
+    private BucketTotals bucketTotals(PortfolioKpiSnapshot snapshot, LoanDelinquencyBucket bucket) {
+        JsonNode bucketNode = snapshot.getDpdBuckets().get(bucket.name());
+        if (bucketNode == null || bucketNode.isNull()) {
+            return new BucketTotals(0L, zeroCurrency());
+        }
+        long loanCount = bucketNode.path("loanCount").asLong(0L);
+        String outstandingRaw = bucketNode.path("outstandingAmount").asText("0");
+        return new BucketTotals(loanCount, new BigDecimal(outstandingRaw));
     }
 
     private RecentApplication toRecentApplication(LoanApplication application) {
@@ -162,46 +196,6 @@ public class HomeDashboardService {
         );
     }
 
-    private Double computeAvgApprovalTatHours(Instant windowStart) {
-        List<com.bhawana.lms.domain.LoanApplicationStatusTransition> approvals =
-                loanApplicationStatusTransitionRepository.findByToStatusAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
-                        LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
-                        windowStart
-                );
-        if (approvals.isEmpty()) {
-            return null;
-        }
-
-        double totalHours = 0.0;
-        int samples = 0;
-        for (var approval : approvals) {
-            UUID applicationId = approval.getLoanApplication().getId();
-            Instant approvalAt = approval.getCreatedAt();
-            Instant awaitingAt = loanApplicationStatusTransitionRepository
-                    .findByLoanApplication_IdAndToStatusOrderByCreatedAtAsc(
-                            applicationId,
-                            LoanApplicationStatus.AWAITING_APPROVAL
-                    )
-                    .stream()
-                    .map(com.bhawana.lms.domain.LoanApplicationStatusTransition::getCreatedAt)
-                    .filter(createdAt -> !createdAt.isAfter(approvalAt))
-                    .max(Instant::compareTo)
-                    .orElse(null);
-            if (awaitingAt == null || !approvalAt.isAfter(awaitingAt)) {
-                continue;
-            }
-            double hours = ChronoUnit.MINUTES.between(awaitingAt, approvalAt) / 60.0;
-            totalHours += hours;
-            samples += 1;
-        }
-        if (samples == 0) {
-            return null;
-        }
-        return BigDecimal.valueOf(totalHours / samples)
-                .setScale(1, RoundingMode.HALF_UP)
-                .doubleValue();
-    }
-
     private OpenAlertSummary toOpenAlertSummary(OpsAlert alert) {
         return new OpenAlertSummary(
                 alert.getId().toString(),
@@ -210,25 +204,6 @@ public class HomeDashboardService {
                 alert.getSubjectType() == null ? "UNKNOWN" : alert.getSubjectType(),
                 alert.getSubjectId() == null ? "" : alert.getSubjectId().toString(),
                 alert.getCreatedAt().toString()
-        );
-    }
-
-    private AccountSnapshot toAccountSnapshot(
-            LoanAccountRepository.HomeDashboardAccountSnapshotProjection snapshot,
-            LocalDate today
-    ) {
-        BigDecimal disbursedAmount = defaultCurrency(snapshot.getDisbursedAmount());
-        BigDecimal outstandingAmount = defaultCurrency(snapshot.getOutstandingAmount());
-        int maxDaysPastDue = snapshot.getOldestOverdueDueDate() == null
-                ? 0
-                : Math.toIntExact(ChronoUnit.DAYS.between(snapshot.getOldestOverdueDueDate(), today));
-        LoanDelinquencyBucket bucket = LoanDelinquencySupport.resolveDelinquencyBucket(maxDaysPastDue);
-
-        return new AccountSnapshot(
-                snapshot.getLspId(),
-                Money.scale(disbursedAmount),
-                Money.scale(outstandingAmount),
-                bucket
         );
     }
 
@@ -256,58 +231,50 @@ public class HomeDashboardService {
 
     private LspBreakdown toLspBreakdown(
             Lsp lsp,
-            List<AccountSnapshot> snapshots,
+            PortfolioKpiSnapshot snapshot,
             BigDecimal totalDisbursedAmount,
-            BigDecimal totalDpd90PlusAmount,
-            List<LoanDelinquencyBucket> bucketOrder
+            BigDecimal totalDpd90PlusAmount
     ) {
-        BigDecimal disbursedAmount = snapshots.stream()
-                .map(AccountSnapshot::disbursedAmount)
-                .reduce(zeroCurrency(), BigDecimal::add);
-        BigDecimal outstandingAmount = snapshots.stream()
-                .map(AccountSnapshot::outstandingAmount)
-                .reduce(zeroCurrency(), BigDecimal::add);
-        BigDecimal dpd90PlusAmount = snapshots.stream()
-                .filter(snapshot -> snapshot.bucket() == LoanDelinquencyBucket.DPD_90_PLUS)
-                .map(AccountSnapshot::outstandingAmount)
-                .reduce(zeroCurrency(), BigDecimal::add);
-        long dpd90PlusLoanCount = snapshots.stream()
-                .filter(snapshot -> snapshot.bucket() == LoanDelinquencyBucket.DPD_90_PLUS)
-                .count();
-        List<LspBucketBreakdown> bucketBreakdown = bucketOrder.stream()
-                .map(bucket -> toBucketBreakdown(bucket, snapshots))
+        if (snapshot == null) {
+            return new LspBreakdown(
+                    lsp.getId().toString(),
+                    lsp.getCode(),
+                    lsp.getName(),
+                    zeroCurrency(),
+                    zeroCurrency(),
+                    zeroCurrency(),
+                    0L,
+                    zeroCurrency(),
+                    zeroCurrency(),
+                    BUCKET_ORDER.stream()
+                            .map(bucket -> new LspBucketBreakdown(bucket.name(), zeroCurrency(), 0L))
+                            .toList()
+            );
+        }
+
+        BucketTotals dpd90PlusTotals = bucketTotals(snapshot, LoanDelinquencyBucket.DPD_90_PLUS);
+        List<LspBucketBreakdown> bucketBreakdown = BUCKET_ORDER.stream()
+                .map(bucket -> {
+                    BucketTotals totals = bucketTotals(snapshot, bucket);
+                    return new LspBucketBreakdown(
+                            bucket.name(),
+                            Money.scale(totals.outstandingAmount()),
+                            totals.loanCount()
+                    );
+                })
                 .toList();
 
         return new LspBreakdown(
                 lsp.getId().toString(),
                 lsp.getCode(),
                 lsp.getName(),
-                Money.scale(disbursedAmount),
-                Money.scale(outstandingAmount),
-                Money.scale(dpd90PlusAmount),
-                dpd90PlusLoanCount,
-                percentage(disbursedAmount, totalDisbursedAmount),
-                percentage(dpd90PlusAmount, totalDpd90PlusAmount),
+                Money.scale(snapshot.getTotalDisbursed()),
+                Money.scale(snapshot.getTotalOutstanding()),
+                Money.scale(dpd90PlusTotals.outstandingAmount()),
+                dpd90PlusTotals.loanCount(),
+                percentage(snapshot.getTotalDisbursed(), totalDisbursedAmount),
+                percentage(dpd90PlusTotals.outstandingAmount(), totalDpd90PlusAmount),
                 bucketBreakdown
-        );
-    }
-
-    private LspBucketBreakdown toBucketBreakdown(
-            LoanDelinquencyBucket bucket,
-            List<AccountSnapshot> snapshots
-    ) {
-        BigDecimal outstandingAmount = snapshots.stream()
-                .filter(snapshot -> snapshot.bucket() == bucket)
-                .map(AccountSnapshot::outstandingAmount)
-                .reduce(zeroCurrency(), BigDecimal::add);
-        long loanCount = snapshots.stream()
-                .filter(snapshot -> snapshot.bucket() == bucket)
-                .count();
-
-        return new LspBucketBreakdown(
-                bucket.name(),
-                Money.scale(outstandingAmount),
-                loanCount
         );
     }
 
@@ -327,12 +294,7 @@ public class HomeDashboardService {
                 .divide(total, 2, RoundingMode.HALF_UP);
     }
 
-    private record AccountSnapshot(
-            UUID lspId,
-            BigDecimal disbursedAmount,
-            BigDecimal outstandingAmount,
-            LoanDelinquencyBucket bucket
-    ) {
+    private record BucketTotals(long loanCount, BigDecimal outstandingAmount) {
     }
 
     public record HomeDashboardSummary(
@@ -349,7 +311,8 @@ public class HomeDashboardService {
             List<OpenAlertSummary> openAlertSummaries,
             List<LspBreakdown> lspBreakdown,
             List<PriorityAccount> priorityAccounts,
-            List<RecentApplication> recentApplications
+            List<RecentApplication> recentApplications,
+            Instant dataAsOf
     ) {
     }
 

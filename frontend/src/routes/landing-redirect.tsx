@@ -11,7 +11,7 @@ import { defaultLandingFor } from "@/lib/role-gates";
  */
 export function LandingRedirect() {
   const { session, isLoading } = useSession();
-  if (isLoading) return <RouteFallback />;
+  if (isLoading) return <RouteFallback standalone />;
   if (!session) return <Navigate to="/login" replace />;
   if (session.user.mustChangePassword) return <Navigate to="/change-password" replace />;
   return <Navigate to={defaultLandingFor(session.user.role)} replace />;

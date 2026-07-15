@@ -20,6 +20,7 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.domain.LoanProduct;
+import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.LoanAccountRepository;
@@ -54,6 +55,7 @@ class DisbursementOutcomeApplierTest {
     @Mock private Borrower borrower;
     @Mock private Lsp lsp;
     @Mock private LoanProduct loanProduct;
+    @Mock private LoanProductVersion loanProductVersion;
     @Mock private LoanDisbursementRequestLog requestLog;
 
     private DisbursementOutcomeApplier applier;
@@ -73,7 +75,7 @@ class DisbursementOutcomeApplierTest {
 
     private LoanAccount account(BigDecimal principal) {
         return new LoanAccount(
-                application, borrower, lsp, loanProduct, "LMS-LN-TEST", principal, 12,
+                application, borrower, lsp, loanProduct, loanProductVersion, "LMS-LN-TEST", principal, 12,
                 LoanAccountStatus.DISBURSEMENT_REQUESTED, Instant.now()
         );
     }
@@ -115,7 +117,7 @@ class DisbursementOutcomeApplierTest {
         LoanAccount acct = account(new BigDecimal("150000"));
         when(application.getLsp()).thenReturn(lsp);
         when(application.getId()).thenReturn(UUID.randomUUID());
-        when(loanProduct.getProcessingFeeRate()).thenReturn(new BigDecimal("1.5"));
+        when(loanProductVersion.getProcessingFeeRate()).thenReturn(new BigDecimal("1.5"));
 
         applier.apply(
                 application, acct, requestLog,
@@ -139,7 +141,7 @@ class DisbursementOutcomeApplierTest {
         LoanAccount acct = account(new BigDecimal("150000"));
         when(application.getLsp()).thenReturn(lsp);
         when(application.getId()).thenReturn(UUID.randomUUID());
-        when(loanProduct.getProcessingFeeRate()).thenReturn(new BigDecimal("1.5"));
+        when(loanProductVersion.getProcessingFeeRate()).thenReturn(new BigDecimal("1.5"));
 
         applier.apply(
                 application, acct, requestLog,

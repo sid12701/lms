@@ -12,6 +12,9 @@ import java.math.BigDecimal;
  */
 public interface LoanDisbursementAdapter {
 
+    /** Stable provider identifier persisted before the network call for crash-safe reconciliation. */
+    String providerName();
+
     /**
      * Submits a payment request (ICICI {@code /composite-payment}). For IMPS the result is often
      * terminal on the spot; for NEFT (and IMPS timeout codes) it is {@link DisbursementDisposition#PENDING}

@@ -21,4 +21,17 @@ class SyntheticPortfolioSpecTest {
         assertThat(spec.statusBuckets().stream().mapToInt(SyntheticPortfolioSpec.StatusBucket::count).sum())
                 .isEqualTo(1_000);
     }
+
+    @Test
+    void accountOnlyModeCreatesAnAccountForEveryApplication() {
+        SyntheticPortfolioSeedProperties properties = new SyntheticPortfolioSeedProperties();
+        properties.setApplicationCountOverride(31);
+        properties.setAccountOnly(true);
+
+        SyntheticPortfolioSpec spec = SyntheticPortfolioSpec.from(properties);
+
+        assertThat(spec.totalApplications()).isEqualTo(31);
+        assertThat(spec.activeUnderRepayment()).isEqualTo(31);
+        assertThat(spec.accountsWithSchedules()).isEqualTo(31);
+    }
 }

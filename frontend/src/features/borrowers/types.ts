@@ -30,7 +30,13 @@ export type BorrowerDetailTab = z.infer<typeof BorrowerDetailTab>;
 export interface BorrowerDetail {
   borrower: Borrower;
   /** Resolved labels for every id in `borrower.visibleLspIds`. */
-  visibleLsps: readonly { id: string; name: string }[];
+  visibleLsps: readonly {
+    id: string;
+    name: string;
+    firstSourcedAt?: string | null;
+    lastTouchedAt?: string | null;
+    sourceChannel?: string | null;
+  }[];
   /** Tally for the Profile tab's at-a-glance card. */
   totals: {
     openApplicationsCount: number;

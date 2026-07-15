@@ -25,6 +25,11 @@ export interface IpAllowListEditorProps {
   id?: string;
   /** Disables every interactive control (chip remove + add input + add btn). */
   disabled?: boolean;
+  /**
+   * Empty-state line. Override when the surface isn't an API client —
+   * e.g. the LSP UI-login allowlist talks about sign-ins, not clients.
+   */
+  emptyHint?: string;
   className?: string;
 }
 
@@ -33,6 +38,7 @@ export function IpAllowListEditor({
   onChange,
   id,
   disabled = false,
+  emptyHint = "No IP restrictions. The client will be reachable from any source IP until you add an entry.",
   className,
 }: IpAllowListEditorProps) {
   const [adding, setAdding] = useState(false);
@@ -86,10 +92,7 @@ export function IpAllowListEditor({
   return (
     <div data-slot="ip-allow-list-editor" id={id} className={cn("flex flex-col gap-2", className)}>
       {value.length === 0 && !adding ? (
-        <p className="text-foreground-muted text-xs">
-          No IP restrictions. The client will be reachable from any source IP until you add an
-          entry.
-        </p>
+        <p className="text-foreground-muted text-xs">{emptyHint}</p>
       ) : null}
 
       {value.length > 0 ? (

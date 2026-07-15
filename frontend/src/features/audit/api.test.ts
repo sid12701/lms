@@ -21,18 +21,16 @@ describe("fetchAuditEvents", () => {
     requestJsonMock.mockReset();
   });
 
-  it("sends correlationId and loanApplicationId to the backend", async () => {
+  it("sends correlationId, loanApplicationId, and default since window to the backend", async () => {
     requestJsonMock.mockResolvedValue({
       items: [],
-      totalCount: 0,
-      offset: 0,
+      nextCursor: null,
       limit: 25,
     });
 
     await fetchAuditEvents({
       correlationId: "corr-deep",
       loanApplicationId: "11111111-1111-4111-8111-111111111111",
-      page: 0,
       pageSize: 25,
     });
 
@@ -40,6 +38,8 @@ describe("fetchAuditEvents", () => {
     const path = requestJsonMock.mock.calls[0]?.[0] as string;
     expect(path).toContain("correlationId=corr-deep");
     expect(path).toContain("loanApplicationId=11111111-1111-4111-8111-111111111111");
+    expect(path).toContain("since=");
+    expect(path).toContain("limit=25");
   });
 
   it("returns backend rows without client-side post-filtering", async () => {
@@ -60,19 +60,17 @@ describe("fetchAuditEvents", () => {
           correlationId: "corr-deep",
         },
       ],
-      totalCount: 1,
-      offset: 0,
+      nextCursor: "cursor-token",
       limit: 25,
     });
 
     const result = await fetchAuditEvents({
       correlationId: "corr-deep",
-      page: 0,
       pageSize: 25,
     });
 
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.correlationId).toBe("corr-deep");
-    expect(result.total).toBe(1);
+    expect(result.nextCursor).toBe("cursor-token");
   });
 });

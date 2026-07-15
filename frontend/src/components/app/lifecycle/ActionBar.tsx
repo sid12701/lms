@@ -9,10 +9,16 @@ import {
   type TransitionGates,
 } from "./TransitionDisabledTooltip";
 import { TransitionConfirmDialog } from "./TransitionConfirmDialog";
+import {
+  fetchDisbursementPreview,
+  type DisbursementPreviewResponse,
+} from "@/features/loan-applications/api-detail";
 
 export interface ActionBarProps {
   currentStatus: LoanStatus;
   role: Role;
+  /** Loan application id — required for disbursement preview on DISBURSED actions. */
+  applicationId?: string;
   /** Externally-evaluated business gates surfaced as "disabled with reason". */
   gates?: TransitionGates;
   /** Hide transitions that are handled by a dedicated workflow on the host screen. */
@@ -20,6 +26,7 @@ export interface ActionBarProps {
   onConfirm: (args: {
     action: LifecycleAction;
     reason: string | null;
+    reasonCode: string | null;
     idempotencyKey: string;
   }) => Promise<void> | void;
   className?: string;
@@ -52,6 +59,7 @@ const TONE_BUTTON_DISABLED: Record<LifecycleAction["tone"], string> = {
 export function ActionBar({
   currentStatus,
   role,
+  applicationId,
   gates,
   hiddenTargetStatuses = [],
   onConfirm,
@@ -61,6 +69,7 @@ export function ActionBar({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   const items = useMemo(() => {
     const hiddenTargets = new Set(hiddenTargetStatuses);
@@ -73,15 +82,18 @@ export function ActionBar({
 
   const handleClick = (action: LifecycleAction) => {
     setActiveAction(action);
+    setDialogError(null);
     setOpen(true);
   };
 
   const handleConfirm = async (args: {
     action: LifecycleAction;
     reason: string | null;
+    reasonCode: string | null;
     idempotencyKey: string;
   }) => {
     setBusy(true);
+    setDialogError(null);
     try {
       await onConfirm(args);
       setStatusMessage(`Action "${args.action.label}" completed.`);
@@ -90,6 +102,8 @@ export function ActionBar({
     } catch (e) {
       const detail = e instanceof Error ? e.message : "Please try again.";
       setStatusMessage(`Action "${args.action.label}" failed: ${detail}`);
+      // Keep the dialog open and show the failure where the user is looking.
+      setDialogError(detail);
     } finally {
       setBusy(false);
     }
@@ -140,12 +154,38 @@ export function ActionBar({
         onOpenChange={(next) => {
           if (busy) return;
           setOpen(next);
-          if (!next) setActiveAction(null);
+          if (!next) {
+            setActiveAction(null);
+            setDialogError(null);
+          }
         }}
         action={activeAction}
+        applicationId={applicationId}
+        loadDisbursementPreview={loadDisbursementPreviewForDialog}
         onConfirm={handleConfirm}
         loading={busy}
+        errorMessage={dialogError}
       />
     </div>
   );
 }
+
+function mapDisbursementPreview(response: DisbursementPreviewResponse) {
+  return {
+    principal: response.principal,
+    processingFee: response.processingFee,
+    netDisbursalAmount: response.netDisbursalAmount,
+    paymentMode: response.paymentMode,
+    beneficiaryAccountHolderName: response.beneficiaryAccountHolderName,
+    beneficiaryBankName: response.beneficiaryBankName,
+    beneficiaryIfsc: response.beneficiaryIfsc,
+    maskedBeneficiaryAccountNumber: response.maskedBeneficiaryAccountNumber,
+    externalLoanId: response.externalLoanId,
+    loanAccountNumber: response.loanAccountNumber,
+    beneficiarySource: response.beneficiarySource,
+    pendingIntentTranRefNo: response.pendingIntentTranRefNo,
+  };
+}
+
+const loadDisbursementPreviewForDialog = (id: string) =>
+  fetchDisbursementPreview(id).then(mapDisbursementPreview);

@@ -2,6 +2,7 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
+import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.service.LoanApplicationWebhookEventProjection;
 import jakarta.validation.constraints.DecimalMin;
@@ -23,6 +24,10 @@ import java.util.UUID;
  * Request/response wire contracts for the internal ops loan-application API. Kept separate from
  * {@link LoanApplicationOpsController} (endpoints) and {@link LoanApplicationOpsResponses} (mapping)
  * so the HTTP surface is one scannable type catalogue. Internal-only; not part of the LSP contract.
+ *
+ * <p>Identifiers are typed {@link UUID} and timestamps {@link Instant} so the OpenAPI schema types
+ * match the request side; the wire representation (canonical UUID string / ISO-8601 UTC) is
+ * unchanged.
  */
 public final class LoanApplicationOpsApiTypes {
 
@@ -32,10 +37,10 @@ public final class LoanApplicationOpsApiTypes {
     public record LoanApplicationRequest(
             @NotNull UUID lspId,
             @NotNull UUID productId,
-            @NotBlank String externalLoanId,
-            @NotBlank String sourceChannel,
+            @NotBlank @Size(max = 128) String externalLoanId,
+            @NotBlank @Size(max = 64) String sourceChannel,
             @NotBlank @Pattern(regexp = "^[A-Za-z]{5}[0-9]{4}[A-Za-z]$", message = "PAN must be a valid 10-character PAN") String borrowerPan,
-            @NotBlank String borrowerFullName,
+            @NotBlank @Size(max = 255) String borrowerFullName,
             @NotBlank @Pattern(regexp = "^[0-9]{10,15}$", message = "Mobile must contain 10 to 15 digits") String borrowerMobile,
             @Email String borrowerEmail,
             @Past LocalDate borrowerDateOfBirth,
@@ -49,8 +54,8 @@ public final class LoanApplicationOpsApiTypes {
     }
 
     public record LoanApplicationResponse(
-            String id,
-            String borrowerId,
+            UUID id,
+            UUID borrowerId,
             String borrowerFullName,
             String borrowerPan,
             String borrowerMobile,
@@ -60,10 +65,10 @@ public final class LoanApplicationOpsApiTypes {
             String borrowerState,
             String borrowerEmploymentType,
             BigDecimal borrowerMonthlyIncome,
-            String lspId,
+            UUID lspId,
             String lspCode,
             String lspName,
-            String productId,
+            UUID productId,
             String productCode,
             String productName,
             String externalLoanId,
@@ -72,14 +77,14 @@ public final class LoanApplicationOpsApiTypes {
             BigDecimal requestedAmount,
             Integer tenureMonths,
             String status,
-            String createdAt
+            Instant createdAt
     ) {
     }
 
     public record LoanApplicationDetailResponse(
-            String id,
-            String loanAccountId,
-            String borrowerId,
+            UUID id,
+            UUID loanAccountId,
+            UUID borrowerId,
             String borrowerFullName,
             String borrowerPan,
             String borrowerMobile,
@@ -89,10 +94,10 @@ public final class LoanApplicationOpsApiTypes {
             String borrowerState,
             String borrowerEmploymentType,
             BigDecimal borrowerMonthlyIncome,
-            String lspId,
+            UUID lspId,
             String lspCode,
             String lspName,
-            String productId,
+            UUID productId,
             String productCode,
             String productName,
             String externalLoanId,
@@ -103,24 +108,24 @@ public final class LoanApplicationOpsApiTypes {
             String invalidReasonCode,
             String invalidReasonText,
             String invalidatedByUsername,
-            String invalidatedAt,
-            String createdAt,
-            String updatedAt,
+            Instant invalidatedAt,
+            Instant createdAt,
+            Instant updatedAt,
             LoanAccountSummaryResponse loanAccount,
             LoanApplicationLastActivityResponse lastActivity
     ) {
     }
 
     public record LoanAccountSummaryResponse(
-            String id,
+            UUID id,
             String accountNumber,
-            String status,
+            LoanAccountStatus status,
             BigDecimal principalAmount,
             Integer tenureMonths,
-            String approvedAt,
-            String createdAt,
+            Instant approvedAt,
+            Instant createdAt,
             String closureReason,
-            String closedAt,
+            Instant closedAt,
             String closedByUsername,
             LoanDelinquencySummaryResponse delinquency,
             LoanRepaymentScheduleSummaryResponse repaymentSchedule
@@ -149,13 +154,13 @@ public final class LoanApplicationOpsApiTypes {
             String summary,
             String detail,
             String correlationId,
-            String occurredAt
+            Instant occurredAt
     ) {
     }
 
     public record LoanApplicationIntakeAuditResponse(
-            String id,
-            String loanApplicationId,
+            UUID id,
+            UUID loanApplicationId,
             String actorUsername,
             String correlationId,
             String payloadJson,
@@ -199,15 +204,15 @@ public final class LoanApplicationOpsApiTypes {
     }
 
     public record LoanApplicationStatusTransitionResponse(
-            String id,
-            String loanApplicationId,
+            UUID id,
+            UUID loanApplicationId,
             String actorUsername,
             String fromStatus,
             String toStatus,
             String note,
             String reasonCode,
             String correlationId,
-            String createdAt,
+            Instant createdAt,
             RejectionReason rejectionReason
     ) {
     }
@@ -216,8 +221,8 @@ public final class LoanApplicationOpsApiTypes {
     }
 
     public record LoanApplicationAuditEventResponse(
-            String id,
-            String loanApplicationId,
+            UUID id,
+            UUID loanApplicationId,
             String action,
             String actorUsername,
             String fromStatus,
@@ -225,13 +230,13 @@ public final class LoanApplicationOpsApiTypes {
             String note,
             String reasonCode,
             String correlationId,
-            String createdAt
+            Instant createdAt
     ) {
     }
 
     public record LoanDisbursementRequestResponse(
-            String id,
-            String loanAccountId,
+            UUID id,
+            UUID loanAccountId,
             String actorUsername,
             BigDecimal amount,
             String providerName,
@@ -240,14 +245,42 @@ public final class LoanApplicationOpsApiTypes {
             String requestPayloadJson,
             String responsePayloadJson,
             String correlationId,
-            String createdAt,
-            String updatedAt
+            Instant createdAt,
+            Instant updatedAt
+    ) {
+    }
+
+    public record DisbursementPreviewResponse(
+            UUID applicationId,
+            UUID loanAccountId,
+            String loanAccountNumber,
+            String externalLoanId,
+            BigDecimal principal,
+            BigDecimal processingFee,
+            BigDecimal netDisbursalAmount,
+            String paymentMode,
+            String beneficiaryAccountHolderName,
+            String beneficiaryBankName,
+            String beneficiaryIfsc,
+            String maskedBeneficiaryAccountNumber,
+            String beneficiarySource,
+            UUID pendingIntentId,
+            String pendingIntentTranRefNo,
+            String pendingIntentState
+    ) {
+    }
+
+    public record DisbursementReferenceResponse(
+            String tranRefNo,
+            String source,
+            UUID intentId,
+            String intentState
     ) {
     }
 
     public record LoanRepaymentScheduleInstallmentResponse(
-            String id,
-            String loanAccountId,
+            UUID id,
+            UUID loanAccountId,
             Integer installmentNumber,
             LocalDate dueDate,
             BigDecimal openingPrincipal,
@@ -262,14 +295,14 @@ public final class LoanApplicationOpsApiTypes {
             BigDecimal outstandingAmount,
             Integer daysPastDue,
             String delinquencyBucket,
-            String createdAt
+            Instant createdAt
     ) {
     }
 
     public record LoanPaymentTransactionResponse(
-            String id,
-            String loanAccountId,
-            String targetInstallmentId,
+            UUID id,
+            UUID loanAccountId,
+            UUID targetInstallmentId,
             String actorUsername,
             BigDecimal amount,
             LocalDate paymentDate,
@@ -280,14 +313,14 @@ public final class LoanApplicationOpsApiTypes {
             BigDecimal unallocatedAmount,
             String note,
             String correlationId,
-            String createdAt,
-            String updatedAt
+            Instant createdAt,
+            Instant updatedAt
     ) {
     }
 
     public record LoanForeclosureQuoteResponse(
-            String id,
-            String loanAccountId,
+            UUID id,
+            UUID loanAccountId,
             Integer version,
             String requestedByUsername,
             String executedByUsername,
@@ -296,15 +329,15 @@ public final class LoanApplicationOpsApiTypes {
             BigDecimal outstandingInterest,
             BigDecimal settlementAmount,
             String status,
-            String executedAt,
-            String createdAt,
-            String updatedAt
+            Instant executedAt,
+            Instant createdAt,
+            Instant updatedAt
     ) {
     }
 
     public record LoanApplicationDocumentChecklistResponse(
-            String id,
-            String loanApplicationId,
+            UUID id,
+            UUID loanApplicationId,
             String documentType,
             String documentDisplayName,
             boolean required,
@@ -321,8 +354,8 @@ public final class LoanApplicationOpsApiTypes {
             Instant uploadedAt,
             String uploadedByUsername,
             String updatedByUsername,
-            String createdAt,
-            String updatedAt
+            Instant createdAt,
+            Instant updatedAt
     ) {
     }
 
@@ -332,10 +365,10 @@ public final class LoanApplicationOpsApiTypes {
             String targetUrl,
             String status,
             int attempts,
-            String lastAttemptAt,
+            Instant lastAttemptAt,
             Integer lastResponseCode,
             String lastError,
-            String createdAt
+            Instant createdAt
     ) {
         static WebhookEventDeliveryResponse from(LoanApplicationWebhookEventProjection projection) {
             return new WebhookEventDeliveryResponse(
@@ -344,17 +377,17 @@ public final class LoanApplicationOpsApiTypes {
                     projection.targetUrl(),
                     projection.status(),
                     projection.attempts(),
-                    projection.lastAttemptAt() == null ? null : projection.lastAttemptAt().toString(),
+                    projection.lastAttemptAt(),
                     projection.lastResponseCode(),
                     projection.lastError(),
-                    projection.createdAt() == null ? null : projection.createdAt().toString()
+                    projection.createdAt()
             );
         }
     }
 
     public record LoanApplicationDocumentAccessAuditResponse(
-            String id,
-            String loanApplicationId,
+            UUID id,
+            UUID loanApplicationId,
             String action,
             String actorUsername,
             String summary,
@@ -362,7 +395,7 @@ public final class LoanApplicationOpsApiTypes {
             String correlationId,
             String actorIp,
             Long byteCount,
-            String createdAt
+            Instant createdAt
     ) {
     }
 }

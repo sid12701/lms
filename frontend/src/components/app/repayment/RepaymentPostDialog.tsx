@@ -155,9 +155,8 @@ export function RepaymentPostDialog({
             <DialogTitle>Record repayment</DialogTitle>
           </div>
           <DialogDescription>
-            Post the full outstanding amount{subjectSuffix}. Per BR-13, partial payments are not
-            accepted — the amount must equal{" "}
-            <strong>{formatINR(outstandingAmount, { decimals: 2 })}</strong>.
+            Post the full outstanding amount{subjectSuffix}. Partial payments are not accepted — the
+            amount must equal <strong>{formatINR(outstandingAmount, { decimals: 2 })}</strong>.
           </DialogDescription>
         </DialogHeader>
 

@@ -4,6 +4,7 @@ import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductAuditEvent;
 import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.Lsp;
+import com.bhawana.lms.service.AdminApiIdempotencyService;
 import com.bhawana.lms.service.ProductConfigurationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,10 +32,18 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','PRODUCT_ADMIN')")
 public class LoanProductAdminController {
 
-    private final ProductConfigurationService productConfigurationService;
+    private static final String PRODUCT_CREATE = "PRODUCT_CREATE";
+    private static final String PRODUCT_UPDATE = "PRODUCT_UPDATE";
 
-    public LoanProductAdminController(ProductConfigurationService productConfigurationService) {
+    private final ProductConfigurationService productConfigurationService;
+    private final AdminApiIdempotencyService adminApiIdempotencyService;
+
+    public LoanProductAdminController(
+            ProductConfigurationService productConfigurationService,
+            AdminApiIdempotencyService adminApiIdempotencyService
+    ) {
         this.productConfigurationService = productConfigurationService;
+        this.adminApiIdempotencyService = adminApiIdempotencyService;
     }
 
     @GetMapping
@@ -49,7 +59,23 @@ public class LoanProductAdminController {
     }
 
     @PostMapping
-    public ProductResponse createProduct(@Valid @RequestBody ProductRequest request) {
+    public ProductResponse createProduct(
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody ProductRequest request
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doCreateProduct(request);
+        }
+        return adminApiIdempotencyService.execute(
+                PRODUCT_CREATE,
+                idempotencyKey,
+                request,
+                ProductResponse.class,
+                () -> doCreateProduct(request)
+        );
+    }
+
+    private ProductResponse doCreateProduct(ProductRequest request) {
         LoanProduct product = productConfigurationService.createProduct(
                 request.code(),
                 request.name(),
@@ -65,7 +91,24 @@ public class LoanProductAdminController {
     }
 
     @PutMapping("/{productId}")
-    public ProductResponse updateProduct(@PathVariable UUID productId, @Valid @RequestBody ProductRequest request) {
+    public ProductResponse updateProduct(
+            @PathVariable UUID productId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody ProductRequest request
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doUpdateProduct(productId, request);
+        }
+        return adminApiIdempotencyService.execute(
+                PRODUCT_UPDATE,
+                idempotencyKey,
+                new ProductUpdateFingerprint(productId.toString(), request),
+                ProductResponse.class,
+                () -> doUpdateProduct(productId, request)
+        );
+    }
+
+    private ProductResponse doUpdateProduct(UUID productId, ProductRequest request) {
         LoanProduct product = productConfigurationService.updateProduct(
                 productId,
                 request.code(),
@@ -209,5 +252,8 @@ public class LoanProductAdminController {
             String correlationId,
             Instant createdAt
     ) {
+    }
+
+    private record ProductUpdateFingerprint(String productId, ProductRequest request) {
     }
 }

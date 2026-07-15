@@ -10,6 +10,7 @@ import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.security.AuthPrincipalCache;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.security.SecureRandom;
@@ -35,19 +36,22 @@ public class ApiClientManagementService {
     private final LspRepository lspRepository;
     private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
+    private final AuthPrincipalCache authPrincipalCache;
 
     public ApiClientManagementService(
             ApiClientRepository apiClientRepository,
             ApiClientAuditEventRepository apiClientAuditEventRepository,
             LspRepository lspRepository,
             PasswordEncoder passwordEncoder,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            AuthPrincipalCache authPrincipalCache
     ) {
         this.apiClientRepository = apiClientRepository;
         this.apiClientAuditEventRepository = apiClientAuditEventRepository;
         this.lspRepository = lspRepository;
         this.passwordEncoder = passwordEncoder;
         this.objectMapper = objectMapper;
+        this.authPrincipalCache = authPrincipalCache;
     }
 
     @Transactional
@@ -89,6 +93,18 @@ public class ApiClientManagementService {
         return new CreatedApiClient(saved, clientSecret);
     }
 
+    /**
+     * Resolves the owning LSP id for a client, used to scope the idempotency record for
+     * rotate-secret before the mutation runs. Throws {@link ResourceNotFoundException} (404) for an
+     * unknown client so the not-found path is preserved ahead of any idempotency handling.
+     */
+    @Transactional(readOnly = true)
+    public UUID requireOwningLspId(UUID clientId) {
+        return apiClientRepository.findById(clientId)
+                .map(client -> client.getLsp().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown API client id: " + clientId));
+    }
+
     @Transactional(readOnly = true)
     public List<ApiClientView> listClients() {
         return apiClientRepository.findAll().stream()
@@ -120,6 +136,9 @@ public class ApiClientManagementService {
                 status
         );
         ApiClient saved = apiClientRepository.save(client);
+        // A status flip (e.g. ACTIVE → INACTIVE) must drop the cached auth snapshot so an
+        // in-flight token stops validating immediately rather than after the cache TTL.
+        authPrincipalCache.evictApiClient(saved.getClientId());
 
         recordAudit(
                 saved,
@@ -163,6 +182,9 @@ public class ApiClientManagementService {
             client.updateManagedProfile(null, null, ApiClientStatus.ACTIVE);
         }
         ApiClient saved = apiClientRepository.save(client);
+        // Secret rotation bumps the client token version; evict the cached snapshot so outstanding
+        // access tokens are rejected on their next request instead of surviving the cache TTL.
+        authPrincipalCache.evictApiClient(saved.getClientId());
 
         Map<String, Object> rotateDetails = new LinkedHashMap<>();
         rotateDetails.put("graceSeconds", effectiveGraceSeconds);

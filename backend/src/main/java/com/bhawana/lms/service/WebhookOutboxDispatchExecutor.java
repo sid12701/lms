@@ -6,6 +6,8 @@ import com.bhawana.lms.domain.WebhookEventOutbox;
 import com.bhawana.lms.domain.WebhookEventOutboxStatus;
 import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
 import com.bhawana.lms.repo.WebhookEventOutboxRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HexFormat;
@@ -37,15 +39,38 @@ public class WebhookOutboxDispatchExecutor {
     private final WebhookEventOutboxRepository webhookEventOutboxRepository;
     private final WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
     private final OpsAlertEmitters opsAlertEmitters;
+    private final WebhookOutboxProperties webhookOutboxProperties;
+    private final Counter outcomeDelivered;
+    private final Counter outcomeRetryableFailure;
+    private final Counter outcomePermanentFailure;
+    private final Counter retriesExhausted;
 
     public WebhookOutboxDispatchExecutor(
             WebhookEventOutboxRepository webhookEventOutboxRepository,
             WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
-            OpsAlertEmitters opsAlertEmitters
+            OpsAlertEmitters opsAlertEmitters,
+            WebhookOutboxProperties webhookOutboxProperties,
+            MeterRegistry meterRegistry
     ) {
         this.webhookEventOutboxRepository = webhookEventOutboxRepository;
         this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
         this.opsAlertEmitters = opsAlertEmitters;
+        this.webhookOutboxProperties = webhookOutboxProperties;
+        this.outcomeDelivered = Counter.builder("lms.webhook.delivery.outcome")
+                .description("Webhook outbox delivery outcomes")
+                .tag("outcome", "delivered")
+                .register(meterRegistry);
+        this.outcomeRetryableFailure = Counter.builder("lms.webhook.delivery.outcome")
+                .description("Webhook outbox delivery outcomes")
+                .tag("outcome", "retryable_failure")
+                .register(meterRegistry);
+        this.outcomePermanentFailure = Counter.builder("lms.webhook.delivery.outcome")
+                .description("Webhook outbox delivery outcomes")
+                .tag("outcome", "permanent_failure")
+                .register(meterRegistry);
+        this.retriesExhausted = Counter.builder("lms.webhook.delivery.retries_exhausted")
+                .description("Webhook outbox events that exhausted the retry budget")
+                .register(meterRegistry);
     }
 
     @Transactional
@@ -138,11 +163,21 @@ public class WebhookOutboxDispatchExecutor {
                     prepared.attemptNumber(),
                     response.statusCode()
             );
+            outcomeDelivered.increment();
             return WebhookOutboxService.DeliveryOutcome.DELIVERED;
         }
 
         String errorMessage = "Webhook delivery failed with HTTP status " + response.statusCode() + ".";
         if (attemptStatus == WebhookEventDeliveryAttemptStatus.RETRYABLE_FAILURE) {
+            if (isRetryBudgetExhausted(prepared)) {
+                return recordRetriesExhausted(
+                        event,
+                        prepared,
+                        buildRetriesExhaustedMessage(prepared.attemptNumber(), errorMessage),
+                        response.statusCode(),
+                        null
+                );
+            }
             event.markRetryableFailure(
                     prepared.attemptedAt(),
                     prepared.attemptedAt().plusSeconds(calculateBackoffSeconds(prepared.attemptNumber())),
@@ -161,6 +196,7 @@ public class WebhookOutboxDispatchExecutor {
                     prepared.attemptNumber(),
                     response.statusCode()
             );
+            outcomeRetryableFailure.increment();
             return WebhookOutboxService.DeliveryOutcome.RETRYABLE_FAILURE;
         }
 
@@ -179,6 +215,7 @@ public class WebhookOutboxDispatchExecutor {
                 prepared.attemptNumber(),
                 response.statusCode()
         );
+        outcomePermanentFailure.increment();
         return WebhookOutboxService.DeliveryOutcome.PERMANENT_FAILURE;
     }
 
@@ -200,6 +237,15 @@ public class WebhookOutboxDispatchExecutor {
                 exception.getMessage(),
                 WebhookEventDeliveryAttemptStatus.RETRYABLE_FAILURE
         ));
+        if (isRetryBudgetExhausted(prepared)) {
+            return recordRetriesExhausted(
+                    event,
+                    prepared,
+                    buildRetriesExhaustedMessage(prepared.attemptNumber(), exception.getMessage()),
+                    null,
+                    exception.getMessage()
+            );
+        }
         event.markRetryableFailure(
                 prepared.attemptedAt(),
                 prepared.attemptedAt().plusSeconds(calculateBackoffSeconds(prepared.attemptNumber())),
@@ -218,7 +264,65 @@ public class WebhookOutboxDispatchExecutor {
                 prepared.attemptNumber(),
                 exception.getMessage()
         );
+        outcomeRetryableFailure.increment();
         return WebhookOutboxService.DeliveryOutcome.RETRYABLE_FAILURE;
+    }
+
+    private WebhookOutboxService.DeliveryOutcome recordRetriesExhausted(
+            WebhookEventOutbox event,
+            PreparedDelivery prepared,
+            String message,
+            Integer lastHttpStatus,
+            String transportErrorMessage
+    ) {
+        event.markPermanentFailure(prepared.attemptedAt(), message);
+        webhookEventOutboxRepository.save(event);
+        opsAlertEmitters.emitWebhookDeadLetter(event, message);
+        if (lastHttpStatus != null) {
+            log.warn(
+                    "webhook_outbox_retries_exhausted eventId={} lspId={} eventType={} attemptCount={} lastHttpStatus={}",
+                    event.getId(),
+                    event.getLsp().getId(),
+                    event.getEventType(),
+                    event.getAttemptCount(),
+                    lastHttpStatus
+            );
+        } else {
+            log.warn(
+                    "webhook_outbox_retries_exhausted eventId={} lspId={} eventType={} attemptCount={} errorMessage={}",
+                    event.getId(),
+                    event.getLsp().getId(),
+                    event.getEventType(),
+                    event.getAttemptCount(),
+                    transportErrorMessage
+            );
+        }
+        log.info(
+                "webhook_outbox_event_processed eventId={} lspId={} eventType={} aggregateType={} aggregateId={} correlationId={} outcome={} attemptNumber={} httpStatus={}",
+                event.getId(),
+                event.getLsp().getId(),
+                event.getEventType(),
+                event.getAggregateType(),
+                event.getAggregateId(),
+                event.getCorrelationId(),
+                WebhookOutboxService.DeliveryOutcome.PERMANENT_FAILURE,
+                prepared.attemptNumber(),
+                lastHttpStatus
+        );
+        retriesExhausted.increment();
+        outcomePermanentFailure.increment();
+        return WebhookOutboxService.DeliveryOutcome.PERMANENT_FAILURE;
+    }
+
+    private boolean isRetryBudgetExhausted(PreparedDelivery prepared) {
+        return prepared.attemptNumber() >= webhookOutboxProperties.getDelivery().getMaxAttempts();
+    }
+
+    private static String buildRetriesExhaustedMessage(int attemptNumber, String underlyingError) {
+        return "Webhook delivery retries exhausted after "
+                + attemptNumber
+                + " attempts: "
+                + underlyingError;
     }
 
     private WebhookDeliveryClient.WebhookDeliveryRequest buildDeliveryRequest(WebhookEventOutbox event, Instant attemptedAt) {

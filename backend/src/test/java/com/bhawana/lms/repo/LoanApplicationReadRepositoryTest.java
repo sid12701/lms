@@ -10,8 +10,10 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductStatus;
+import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
+import com.bhawana.lms.support.LoanProductVersionTestSupport;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -44,14 +46,17 @@ class LoanApplicationReadRepositoryTest {
     private LoanProductRepository loanProductRepository;
 
     @Autowired
+    private LoanProductVersionRepository loanProductVersionRepository;
+
+    @Autowired
     private LspRepository lspRepository;
 
     @Test
     void filtersApplicationsByStructuredParametersAndSearchQuery() {
         Lsp apex = lspRepository.save(new Lsp("APEX", "Apex Finance", LspStatus.ACTIVE));
         Lsp north = lspRepository.save(new Lsp("NORTH", "Northbridge Capital", LspStatus.ACTIVE));
-        LoanProduct salaryProduct = loanProductRepository.save(product("SALARY-PLUS", "Salary Plus"));
-        LoanProduct merchantProduct = loanProductRepository.save(product("MERCHANT-FLEX", "Merchant Flex"));
+        LoanProduct salaryProduct = persistProduct(product("SALARY-PLUS", "Salary Plus"));
+        LoanProduct merchantProduct = persistProduct(product("MERCHANT-FLEX", "Merchant Flex"));
 
         loanApplicationRepository.save(application(
                 borrower(apex, "Anika Sharma", "ABCDE1234F", "9999999999", "anika@example.com", "Bengaluru", "Karnataka", "SALARIED"),
@@ -97,7 +102,7 @@ class LoanApplicationReadRepositoryTest {
     @Test
     void filtersApplicationsByDisbursalDateRange() {
         Lsp lsp = lspRepository.save(new Lsp("SUPAONE", "Supa One Finance", LspStatus.ACTIVE));
-        LoanProduct product = loanProductRepository.save(product("SUPA-FLEX", "Supa Flex"));
+        LoanProduct product = persistProduct(product("SUPA-FLEX", "Supa Flex"));
 
         LoanApplication marchApplication = loanApplicationRepository.save(application(
                 borrower(lsp, "Aman Verma", "ABCDE1001F", "9000001001", "aman@example.com", "Mumbai", "Maharashtra", "SALARIED"),
@@ -145,9 +150,7 @@ class LoanApplicationReadRepositoryTest {
             String state,
             String employmentType
     ) {
-        return borrowerRepository.save(new Borrower(
-                lsp,
-                BorrowerProfile.builder()
+        return borrowerRepository.save(new Borrower(BorrowerProfile.builder()
                         .fullName(fullName)
                         .panNumber(pan)
                         .mobileNumber(mobile)
@@ -169,16 +172,26 @@ class LoanApplicationReadRepositoryTest {
             String sourceChannel,
             LoanApplicationStatus status
     ) {
+        LoanProductVersion version = loanProductVersionRepository
+                .findTopByLoanProduct_IdOrderByVersionNumberDesc(product.getId())
+                .orElseThrow();
         return new LoanApplication(
                 borrower,
                 lsp,
                 product,
+                version,
                 externalLoanId,
                 sourceChannel,
                 new BigDecimal("45000.00"),
                 12,
                 status
         );
+    }
+
+    private LoanProduct persistProduct(LoanProduct product) {
+        LoanProduct saved = loanProductRepository.save(product);
+        loanProductVersionRepository.save(LoanProductVersionTestSupport.versionOne(saved));
+        return saved;
     }
 
     private LoanProduct product(String code, String name) {
@@ -206,6 +219,7 @@ class LoanApplicationReadRepositoryTest {
                 application.getBorrower(),
                 application.getLsp(),
                 application.getLoanProduct(),
+                application.getLoanProductVersion(),
                 accountNumber,
                 principalAmount,
                 application.getTenureMonths(),

@@ -35,6 +35,10 @@ public class LoanApplication {
     @JoinColumn(name = "loan_product_id", nullable = false)
     private LoanProduct loanProduct;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "loan_product_version_id", nullable = false)
+    private LoanProductVersion loanProductVersion;
+
     @Column(name = "external_loan_id", nullable = false, length = 128)
     private String externalLoanId;
 
@@ -96,6 +100,7 @@ public class LoanApplication {
             Borrower borrower,
             Lsp lsp,
             LoanProduct loanProduct,
+            LoanProductVersion loanProductVersion,
             String externalLoanId,
             String sourceChannel,
             BigDecimal requestedAmount,
@@ -106,6 +111,7 @@ public class LoanApplication {
         this.borrower = borrower;
         this.lsp = lsp;
         this.loanProduct = loanProduct;
+        this.loanProductVersion = loanProductVersion;
         this.externalLoanId = externalLoanId.trim();
         this.sourceChannel = sourceChannel.trim().toUpperCase();
         this.requestedAmount = requestedAmount;
@@ -139,6 +145,10 @@ public class LoanApplication {
 
     public LoanProduct getLoanProduct() {
         return loanProduct;
+    }
+
+    public LoanProductVersion getLoanProductVersion() {
+        return loanProductVersion;
     }
 
     public String getExternalLoanId() {

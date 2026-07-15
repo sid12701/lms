@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/utils";
 import { ApiClientCreateDialog } from "./ApiClientCreateDialog";
@@ -17,6 +17,7 @@ const createdClient: ApiClientRow = {
   status: "ACTIVE",
   createdAt: "2026-05-26T07:15:00.000Z",
   lastUsedAt: null,
+  lastRotatedAt: null,
   ipAllowList: [],
   ipAllowlistCount: 0,
 };
@@ -39,7 +40,7 @@ describe("ApiClientCreateDialog", () => {
     const onOpenChange = vi.fn();
     const onSecretAcknowledge = vi.fn();
 
-    renderWithProviders(
+    const { unmount } = renderWithProviders(
       <ApiClientCreateDialog
         open
         onOpenChange={onOpenChange}
@@ -50,8 +51,11 @@ describe("ApiClientCreateDialog", () => {
     );
 
     await user.type(screen.getByRole("textbox", { name: "Name" }), createdClient.name);
-    await user.click(screen.getByRole("combobox", { name: "LSP" }));
-    await user.click(await screen.findByRole("option", { name: "E2E Fresh Flow" }));
+    // Radix mirrors Select into a native form control. Drive that supported bridge here so this
+    // unit test covers the RHF binding without depending on JSDOM's asynchronous portal timing.
+    const nativeSelect = document.querySelector("select");
+    expect(nativeSelect).not.toBeNull();
+    fireEvent.change(nativeSelect!, { target: { value: LSP_ID } });
     await user.click(screen.getByRole("button", { name: "Create API client" }));
 
     expect(await screen.findByText(CLIENT_SECRET)).toBeInTheDocument();
@@ -66,6 +70,7 @@ describe("ApiClientCreateDialog", () => {
 
     expect(onSecretAcknowledge).toHaveBeenCalledTimes(1);
     expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(screen.queryByText(CLIENT_SECRET)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(CLIENT_SECRET)).not.toBeInTheDocument());
+    unmount();
   }, 15_000);
 });

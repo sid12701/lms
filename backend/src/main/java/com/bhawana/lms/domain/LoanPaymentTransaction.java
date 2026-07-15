@@ -23,11 +23,11 @@ public class LoanPaymentTransaction {
     @Id
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "loan_account_id", nullable = false)
     private LoanAccount loanAccount;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "repayment_installment_id")
     private LoanRepaymentScheduleInstallment repaymentInstallment;
 

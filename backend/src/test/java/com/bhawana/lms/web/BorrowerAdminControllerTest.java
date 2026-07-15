@@ -10,12 +10,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.domain.Borrower;
+import com.bhawana.lms.domain.BorrowerLspRelationship;
 import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
+import com.bhawana.lms.repo.BorrowerLspRelationshipRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.service.BorrowerLspRelationshipService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -43,13 +46,20 @@ class BorrowerAdminControllerTest {
     private BorrowerRepository borrowerRepository;
 
     @Autowired
+    private BorrowerLspRelationshipRepository borrowerLspRelationshipRepository;
+
+    @Autowired
     private LspRepository lspRepository;
 
     @Autowired
     private LspAuditEventRepository lspAuditEventRepository;
 
+    @Autowired
+    private BorrowerLspRelationshipService borrowerLspRelationshipService;
+
     @BeforeEach
     void setUp() {
+        borrowerLspRelationshipRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
         lspAuditEventRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
@@ -163,6 +173,15 @@ class BorrowerAdminControllerTest {
     }
 
     @Test
+    void listBorrowersRejectsLimitAboveTwoHundred() throws Exception {
+        mockMvc.perform(get("/api/v1/internal/admin/borrowers")
+                        .with(opsUser())
+                        .queryParam("limit", "201")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void listBorrowersRejectsUnauthorizedSessions() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/borrowers").with(lspUiRead()))
                 .andExpect(status().isForbidden());
@@ -176,15 +195,16 @@ class BorrowerAdminControllerTest {
         Borrower anika = seedBorrower(
                 "Anika Sharma", "ABCDE1234F", "9999999991", "anika@example.com",
                 "Bengaluru", "Karnataka");
-        anika.grantVisibilityTo(apex);
-        anika.grantVisibilityTo(north);
-        borrowerRepository.save(anika);
+        anika = borrowerLspRelationshipService.grantVisibility(
+                anika, apex, BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING);
+        anika = borrowerLspRelationshipService.grantVisibility(
+                anika, north, BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING);
 
         Borrower rahul = seedBorrower(
                 "Rahul Shah", "ZXCVB1234N", "9876543210", "rahul@example.com",
                 "Delhi", "Delhi");
-        rahul.grantVisibilityTo(apex);
-        borrowerRepository.save(rahul);
+        rahul = borrowerLspRelationshipService.grantVisibility(
+                rahul, apex, BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING);
 
         mockMvc.perform(get("/api/v1/internal/admin/borrowers").with(opsUser()))
                 .andExpect(status().isOk())
@@ -210,9 +230,10 @@ class BorrowerAdminControllerTest {
         Borrower borrower = seedBorrower(
                 "Anika Sharma", "ABCDE1234F", "9999999991", "anika@example.com",
                 "Bengaluru", "Karnataka");
-        borrower.grantVisibilityTo(apex);
-        borrower.grantVisibilityTo(north);
-        borrower = borrowerRepository.save(borrower);
+        borrower = borrowerLspRelationshipService.grantVisibility(
+                borrower, apex, BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING);
+        borrower = borrowerLspRelationshipService.grantVisibility(
+                borrower, north, BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING);
 
         mockMvc.perform(get("/api/v1/internal/admin/borrowers/" + borrower.getId()).with(opsUser()))
                 .andExpect(status().isOk())
@@ -222,7 +243,9 @@ class BorrowerAdminControllerTest {
                 .andExpect(jsonPath("$.visibleLspIds[?(@ == '" + north.getId() + "')]").isNotEmpty())
                 .andExpect(jsonPath("$.visibleLsps.length()").value(2))
                 .andExpect(jsonPath("$.visibleLsps[?(@.name == 'Apex Visibility Detail')]").isNotEmpty())
-                .andExpect(jsonPath("$.visibleLsps[?(@.name == 'Northbridge Visibility Detail')]").isNotEmpty());
+                .andExpect(jsonPath("$.visibleLsps[?(@.name == 'Northbridge Visibility Detail')]").isNotEmpty())
+                .andExpect(jsonPath("$.visibleLsps[0].firstSourcedAt").isNotEmpty())
+                .andExpect(jsonPath("$.visibleLsps[0].sourceChannel").value("LOAN_ONBOARDING"));
     }
 
     private Borrower seedBorrower(

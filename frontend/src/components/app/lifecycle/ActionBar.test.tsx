@@ -79,9 +79,9 @@ describe("<ActionBar />", () => {
     expect(headings.length).toBeGreaterThan(0);
   });
 
-  it("submits the full flow (click → fill → confirm)", async () => {
+  it("submits the full flow (click → pick reason code → fill → confirm)", async () => {
     const onConfirm = vi.fn().mockResolvedValue(undefined);
-    const { getByRole, findByLabelText, getAllByRole } = renderWithProviders(
+    const { getByRole, findByRole, findByLabelText, getAllByRole } = renderWithProviders(
       <ActionBar
         currentStatus="AWAITING_APPROVAL"
         role="SYSTEM_ADMIN"
@@ -90,8 +90,11 @@ describe("<ActionBar />", () => {
       />,
     );
     await userEvent.click(getByRole("button", { name: "Reject" }));
-    const reasonInput = await findByLabelText(/Reason/i);
-    await userEvent.type(reasonInput, "Application withdrawn by borrower.");
+    // REJECTED requires a structured reason code (backend REASON_CODE_REQUIRED).
+    await userEvent.click(await findByLabelText("Reason code"));
+    await userEvent.click(await findByRole("option", { name: /Duplicate application/i }));
+    const detailsInput = await findByLabelText(/Details/i);
+    await userEvent.type(detailsInput, "Application withdrawn by borrower.");
     const submit = getAllByRole("button", { name: /Reject/i }).find(
       (b) => (b as HTMLButtonElement).type === "submit",
     )!;
@@ -101,6 +104,7 @@ describe("<ActionBar />", () => {
     const [args] = onConfirm.mock.calls[0]!;
     expect(args.action.toStatus).toBe("REJECTED");
     expect(args.reason).toBe("Application withdrawn by borrower.");
+    expect(args.reasonCode).toBe("DUPLICATE_APPLICATION");
     expect(typeof args.idempotencyKey).toBe("string");
   }, 15_000);
 

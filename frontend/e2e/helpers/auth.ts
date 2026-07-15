@@ -1,52 +1,48 @@
 import { expect, type Page } from "@playwright/test";
 
-const DEFAULT_ADMIN = {
-  email: process.env["E2E_ADMIN_EMAIL"] ?? "siddhant@bhawanafinance.com",
-  password: process.env["E2E_ADMIN_PASSWORD"] ?? "ChangeMe123!",
-};
+function requiredEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(
+      `Missing required E2E env var ${name}. Set E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD (and LSP vars when needed).`,
+    );
+  }
+  return value;
+}
 
-const DEFAULT_LSP_READ = {
-  email: process.env["E2E_LSP_UI_READ_EMAIL"] ?? "lsp.read1@bhawana.local",
-  password: process.env["E2E_LSP_PASSWORD"] ?? "DemoPass123!",
-};
-
-async function signInViaLoginPage(
+/** Sign in via the shipped Email/Password form (no DEV role picker). */
+export async function signInWithCredentials(
   page: Page,
-  presetLabel: RegExp,
-  fallback: { email: string; password: string },
+  email: string,
+  password: string,
   landingUrl: RegExp,
 ): Promise<void> {
   await page.goto("/login");
-  const preset = page.getByLabel(presetLabel);
-  if (await preset.isVisible().catch(() => false)) {
-    await preset.click();
-  } else {
-    await page.getByLabel(/^Email$/i).fill(fallback.email);
-    await page.getByLabel(/^Password$/i).fill(fallback.password);
-  }
-  await page.getByRole("button", { name: /^sign in$/i }).click();
-  await page.waitForURL(landingUrl);
+  await page.getByLabel(/^Email$/i).fill(email);
+  await page.getByLabel(/^Password$/i).fill(password);
+  await page.getByRole("button", { name: /^Sign in$/i }).click();
+  await page.waitForURL(landingUrl, { timeout: 30_000 });
   await expect(page.getByRole("complementary", { name: /Primary navigation/i })).toBeVisible({
     timeout: 15_000,
   });
 }
 
-/** Sign in as the bootstrap system administrator via the login role picker. */
+/** Sign in as the bootstrap system administrator. Requires E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD. */
 export async function signInAsSystemAdmin(page: Page): Promise<void> {
-  await signInViaLoginPage(
+  await signInWithCredentials(
     page,
-    /Fill credentials for System administrator/i,
-    DEFAULT_ADMIN,
+    requiredEnv("E2E_ADMIN_EMAIL"),
+    requiredEnv("E2E_ADMIN_PASSWORD"),
     /\/home$/,
   );
 }
 
 /** Sign in as an LSP read-only user — lands on `/my-loans`. */
 export async function signInAsLspUser(page: Page): Promise<void> {
-  await signInViaLoginPage(
+  await signInWithCredentials(
     page,
-    /Fill credentials for LSP user \(read-only\)/i,
-    DEFAULT_LSP_READ,
+    requiredEnv("E2E_LSP_UI_READ_EMAIL"),
+    requiredEnv("E2E_LSP_PASSWORD"),
     /\/my-loans$/,
   );
 }

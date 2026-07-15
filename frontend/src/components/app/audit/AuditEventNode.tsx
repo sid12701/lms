@@ -226,7 +226,9 @@ export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
               </span>
               <span data-slot="audit-event-relative">{relative}</span>
             </time>
-            <CorrelationReveal correlationId={common.correlationId} compact={compact} />
+            {common.correlationId ? (
+              <CorrelationReveal correlationId={common.correlationId} compact={compact} />
+            ) : null}
           </div>
 
           {detail ? (

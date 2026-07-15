@@ -1,8 +1,5 @@
 package com.bhawana.lms.security;
 
-import com.bhawana.lms.domain.AppUser;
-import com.bhawana.lms.repo.AppUserRepository;
-import com.bhawana.lms.tenant.TenantScopedExecution;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -17,9 +14,7 @@ import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -51,7 +46,7 @@ public class JwtSecurityBeans {
     @Bean
     JwtDecoder jwtDecoder(
             SecretKey jwtSigningKey,
-            AppUserRepository appUserRepository,
+            ManagedUserJwtPrincipalResolver managedUserJwtPrincipalResolver,
             ApiClientJwtSessionValidator apiClientJwtSessionValidator,
             SecurityProperties securityProperties
     ) {
@@ -60,62 +55,30 @@ public class JwtSecurityBeans {
                 .build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                 JwtValidators.createDefaultWithIssuer(securityProperties.getJwt().getIssuer()),
-                managedUserSessionValidator(appUserRepository),
+                managedUserSessionValidator(managedUserJwtPrincipalResolver),
                 apiClientJwtSessionValidator
         ));
         return decoder;
     }
 
     @Bean
-    Converter<Jwt, ? extends AbstractAuthenticationToken> jwtAuthenticationConverter(AppUserRepository appUserRepository) {
+    Converter<Jwt, ? extends AbstractAuthenticationToken> jwtAuthenticationConverter(
+            ManagedUserJwtPrincipalResolver managedUserJwtPrincipalResolver
+    ) {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter(appUserRepository));
+        converter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter(managedUserJwtPrincipalResolver));
         return converter;
     }
 
-    private OAuth2TokenValidator<Jwt> managedUserSessionValidator(AppUserRepository appUserRepository) {
-        return jwt -> {
-            if (ApiClientJwtSessionValidator.AUTH_TYPE_API_CLIENT.equals(
-                    jwt.getClaimAsString(ApiClientJwtSessionValidator.AUTH_TYPE_CLAIM)
-            )) {
-                return OAuth2TokenValidatorResult.success();
-            }
-
-            String username = jwt.getSubject();
-            if (username == null || username.isBlank()) {
-                return OAuth2TokenValidatorResult.success();
-            }
-
-            return TenantScopedExecution.callAsAdmin(() -> appUserRepository.findByUsername(username)
-                    .map(appUser -> {
-                        Long tokenPasswordVersion = jwt.getClaim("pwdv");
-                        long currentPasswordVersion = appUser.getPasswordChangedAt().toEpochMilli();
-                        if (tokenPasswordVersion == null || tokenPasswordVersion.longValue() != currentPasswordVersion) {
-                            return OAuth2TokenValidatorResult.failure(new OAuth2Error(
-                                    "invalid_token",
-                                    "Password has changed",
-                                    null
-                            ));
-                        }
-
-                        Long tokenSessionVersion = jwt.getClaim("tv");
-                        long currentSessionVersion = appUser.getTokenVersion();
-                        long effectiveTokenSessionVersion = tokenSessionVersion == null ? 0L : tokenSessionVersion.longValue();
-                        if (effectiveTokenSessionVersion != currentSessionVersion) {
-                            return OAuth2TokenValidatorResult.failure(new OAuth2Error(
-                                    "invalid_token",
-                                    "Session is no longer valid",
-                                    null
-                            ));
-                        }
-
-                        return OAuth2TokenValidatorResult.success();
-                    })
-                    .orElseGet(OAuth2TokenValidatorResult::success));
-        };
+    private OAuth2TokenValidator<Jwt> managedUserSessionValidator(
+            ManagedUserJwtPrincipalResolver managedUserJwtPrincipalResolver
+    ) {
+        return managedUserJwtPrincipalResolver::validateSession;
     }
 
-    private Converter<Jwt, Collection<GrantedAuthority>> grantedAuthoritiesConverter(AppUserRepository appUserRepository) {
+    private Converter<Jwt, Collection<GrantedAuthority>> grantedAuthoritiesConverter(
+            ManagedUserJwtPrincipalResolver managedUserJwtPrincipalResolver
+    ) {
         return jwt -> {
             List<GrantedAuthority> authorities = new ArrayList<>();
             List<String> roles = jwt.getClaimAsStringList("roles");
@@ -127,9 +90,9 @@ public class JwtSecurityBeans {
                         .toList());
             }
 
-            TenantScopedExecution.runAsAdmin(() -> appUserRepository.findByUsername(jwt.getSubject())
-                    .filter(AppUser::isPasswordChangeRequired)
-                    .ifPresent(appUser -> authorities.add(new SimpleGrantedAuthority("ROLE_PASSWORD_CHANGE_REQUIRED"))));
+            if (managedUserJwtPrincipalResolver.passwordChangeRequired(jwt)) {
+                authorities.add(new SimpleGrantedAuthority("ROLE_PASSWORD_CHANGE_REQUIRED"));
+            }
 
             return authorities;
         };

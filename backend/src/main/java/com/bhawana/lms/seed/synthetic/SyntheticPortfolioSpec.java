@@ -86,8 +86,30 @@ public final class SyntheticPortfolioSpec {
 
     public static SyntheticPortfolioSpec from(SyntheticPortfolioSeedProperties properties) {
         double scale = resolveScale(properties);
+        int totalApplications = scaleCount(BASE_TOTAL_APPLICATIONS, scale, properties.getApplicationCountOverride());
+        if (properties.isAccountOnly()) {
+            return new SyntheticPortfolioSpec(
+                    totalApplications,
+                    totalApplications,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    totalApplications,
+                    totalApplications * 12,
+                    Math.max(1, properties.getLspCount()),
+                    properties.getWhaleLspIndex(),
+                    properties.getWhaleVolumeShare(),
+                    properties.getTenureMonths(),
+                    Math.max(500, properties.getBatchSize())
+            );
+        }
         return new SyntheticPortfolioSpec(
-                scaleCount(BASE_TOTAL_APPLICATIONS, scale, properties.getApplicationCountOverride()),
+                totalApplications,
                 scaleCount(BASE_ACTIVE_UNDER_REPAYMENT, scale, null),
                 scaleCount(BASE_CLOSED, scale, null),
                 scaleCount(BASE_FORECLOSED, scale, null),

@@ -1,6 +1,9 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.money.Money;
+import com.bhawana.lms.common.pii.AadhaarMasking;
+import com.bhawana.lms.common.pii.BankAccountMasking;
+import com.bhawana.lms.common.pii.PanMasking;
 import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.Borrower;
@@ -38,6 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AdminReportingService {
 
+    static final int EXPORT_BATCH_SIZE = PortfolioMisReadRepository.EXPORT_BATCH_SIZE;
+
     private static final Logger log = LoggerFactory.getLogger(AdminReportingService.class);
 
     private final PortfolioMisReadRepository portfolioMisReadRepository;
@@ -68,20 +73,22 @@ public class AdminReportingService {
     ) {
         validateFilters(lspId, disbursalDateFrom, disbursalDateTo);
         long startedAt = System.nanoTime();
-        List<LoanAccount> accounts = portfolioMisReadRepository.findAccountsForExport(
+        List<PortfolioMisRow> rows = new ArrayList<>();
+        forEachExportBatch(
                 lspId,
                 toStartOfDayInclusive(disbursalDateFrom),
-                toEndOfDayExclusive(disbursalDateTo)
+                toEndOfDayExclusive(disbursalDateTo),
+                batch -> rows.addAll(buildRowsForAccounts(batch))
         );
         log.debug(
                 "portfolio_mis_export_query completed lspId={} disbursalDateFrom={} disbursalDateTo={} resultCount={} durationMs={}",
                 lspId,
                 disbursalDateFrom,
                 disbursalDateTo,
-                accounts.size(),
+                rows.size(),
                 elapsedMillis(startedAt)
         );
-        return buildRowsForAccounts(accounts);
+        return rows;
     }
 
     @Transactional(readOnly = true)
@@ -223,13 +230,72 @@ public class AdminReportingService {
             LocalDate disbursalDateFrom,
             LocalDate disbursalDateTo
     ) {
-        List<PortfolioMisRow> rows = buildPortfolioMisReport(lspId, disbursalDateFrom, disbursalDateTo);
-        String csv = PortfolioMisCsvWriter.toCsv(rows);
+        validateFilters(lspId, disbursalDateFrom, disbursalDateTo);
+        long startedAt = System.nanoTime();
+        java.time.Instant disbursalFrom = toStartOfDayInclusive(disbursalDateFrom);
+        java.time.Instant disbursalTo = toEndOfDayExclusive(disbursalDateTo);
+
+        int maxInstallments = portfolioMisReadRepository.findMaxInstallmentCountForExport(
+                lspId,
+                disbursalFrom,
+                disbursalTo
+        );
+        StringBuilder csv = new StringBuilder();
+        PortfolioMisCsvWriter.writeHeader(csv, maxInstallments);
+
+        int[] rowCount = {0};
+        forEachExportBatch(lspId, disbursalFrom, disbursalTo, batch -> {
+            List<PortfolioMisRow> rows = buildRowsForAccounts(batch);
+            rowCount[0] += rows.size();
+            PortfolioMisCsvWriter.appendRows(csv, rows, maxInstallments);
+        });
+
+        log.debug(
+                "portfolio_mis_export_stream completed lspId={} disbursalDateFrom={} disbursalDateTo={} resultCount={} durationMs={}",
+                lspId,
+                disbursalDateFrom,
+                disbursalDateTo,
+                rowCount[0],
+                elapsedMillis(startedAt)
+        );
+
+        String csvText = csv.toString();
         return new GeneratedReport(
                 "portfolio-mis-" + businessCalendar.today() + ".csv",
                 "text/csv;charset=UTF-8",
-                csv.getBytes(StandardCharsets.UTF_8)
+                csvText.getBytes(StandardCharsets.UTF_8)
         );
+    }
+
+    @FunctionalInterface
+    private interface ExportBatchConsumer {
+        void accept(List<LoanAccount> batch);
+    }
+
+    private void forEachExportBatch(
+            UUID lspId,
+            java.time.Instant disbursalFrom,
+            java.time.Instant disbursalTo,
+            ExportBatchConsumer consumer
+    ) {
+        UUID lastExclusiveId = null;
+        while (true) {
+            List<UUID> batchIds = portfolioMisReadRepository.findAccountIdsForExportBatch(
+                    lspId,
+                    disbursalFrom,
+                    disbursalTo,
+                    lastExclusiveId,
+                    EXPORT_BATCH_SIZE
+            );
+            if (batchIds.isEmpty()) {
+                return;
+            }
+            consumer.accept(portfolioMisReadRepository.findAccountsByIds(batchIds));
+            lastExclusiveId = batchIds.getLast();
+            if (batchIds.size() < EXPORT_BATCH_SIZE) {
+                return;
+            }
+        }
     }
 
     @Transactional(readOnly = true)
@@ -368,7 +434,7 @@ public class AdminReportingService {
                 processingFeeAmount,
                 loanAccount.getPrincipalAmount(),
                 netDisbursedAmount,
-                product.getInterestRate(),
+                loanAccount.getLoanProductVersion().getInterestRate(),
                 loanAccount.getTenureMonths(),
                 borrower.getId().toString(),
                 perEmiAmount,
@@ -383,29 +449,14 @@ public class AdminReportingService {
                 borrower.getAddressZipCode(),
                 borrower.getState(),
                 borrower.getIfscCode(),
-                borrower.getBankAccountNumber(),
+                BankAccountMasking.mask(borrower.getBankAccountNumber()),
                 borrower.getGender(),
-                maskAadhaar(borrower.getAadharNumber()),
-                borrower.getPan(),
+                // Gap #1 + Gap #10 — every leaving surface must mask aadhaar (and bank/PAN in MIS).
+                AadhaarMasking.mask(borrower.getAadharNumber()),
+                PanMasking.mask(borrower.getPan()),
                 borrower.getEmploymentType(),
                 borrower.getMonthlyIncome()
         );
-    }
-
-    /**
-     * Gap #1 + Gap #10 — every leaving surface must mask aadhaar. Format:
-     * {@code XXXXXXXX<last4>}. Matches {@code BorrowerAdminController.maskAadhar}
-     * so the MIS preview/CSV emit the same shape as the borrower-admin API.
-     */
-    private static String maskAadhaar(String aadhaar) {
-        if (aadhaar == null) {
-            return null;
-        }
-        String digits = aadhaar.replaceAll("\\s", "");
-        if (digits.length() < 4) {
-            return "XXXXXXXX";
-        }
-        return "XXXXXXXX" + digits.substring(digits.length() - 4);
     }
 
     private static String buildAddress(Borrower borrower) {

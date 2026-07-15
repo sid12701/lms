@@ -113,6 +113,7 @@ public class LoanApplicationStatusWriter {
                         application.getBorrower(),
                         application.getLsp(),
                         application.getLoanProduct(),
+                        application.getLoanProductVersion(),
                         generateAccountNumber(application),
                         application.getRequestedAmount(),
                         application.getTenureMonths(),

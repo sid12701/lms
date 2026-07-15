@@ -174,6 +174,8 @@ export interface LoanApplicationWebhooksResponse {
 export interface TransitionStatusInput {
   to: LoanApplication["status"];
   reason: string | null;
+  /** Structured reason code — required by the backend for REJECTED / DISBURSEMENT_RETRY. */
+  reasonCode?: string | null;
   idempotencyKey: string;
 }
 

@@ -41,7 +41,7 @@ export function BorrowersTable({
 
   const rows = data?.items ?? [];
   const total = data?.total ?? 0;
-  const pageSize = filters.pageSize ?? 25;
+  const pageSize = filters.pageSize ?? 50;
   const page = filters.page ?? 0;
 
   const columns = useMemo<ColumnDef<BorrowerSummary>[]>(

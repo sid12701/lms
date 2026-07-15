@@ -29,6 +29,7 @@ class SchemaJsonColumnsPostgresTest extends PostgresDataJpaTestSupport {
     private UUID lspId;
     private UUID borrowerId;
     private UUID loanProductId;
+    private UUID loanProductVersionId;
     private UUID loanApplicationId;
     private UUID loanAccountId;
     private UUID appUserId;
@@ -40,6 +41,7 @@ class SchemaJsonColumnsPostgresTest extends PostgresDataJpaTestSupport {
         lspId = insertLsp("JSON-" + suffix);
         borrowerId = insertBorrower("PAN" + suffix.substring(0, 7).toUpperCase(), "98888" + suffix.substring(0, 5));
         loanProductId = insertLoanProduct("JSON-PROD-" + suffix);
+        loanProductVersionId = insertLoanProductVersion(loanProductId);
         loanApplicationId = insertLoanApplication("JSON-EXT-" + suffix);
         loanAccountId = insertLoanAccount("JSON-ACC-" + suffix);
         appUserId = insertAppUser("json-user-" + suffix);
@@ -379,16 +381,29 @@ class SchemaJsonColumnsPostgresTest extends PostgresDataJpaTestSupport {
         return id;
     }
 
+    private UUID insertLoanProductVersion(UUID productId) {
+        UUID id = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO loan_product_version (id, loan_product_id, version_number, min_principal, max_principal, "
+                        + "interest_rate, processing_fee_rate, min_tenure_months, max_tenure_months, effective_from) "
+                        + "VALUES (?, ?, 1, 100.00, 100000.00, 10.00, 1.00, 6, 60, NOW())",
+                id,
+                productId
+        );
+        return id;
+    }
+
     private UUID insertLoanApplication(String externalId) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
-                "INSERT INTO loan_application (id, borrower_id, lsp_id, loan_product_id, external_loan_id, "
-                        + "source_channel, requested_amount, tenure_months, status) "
-                        + "VALUES (?, ?, ?, ?, ?, 'API', 5000.00, 12, 'INITIALIZED')",
+                "INSERT INTO loan_application (id, borrower_id, lsp_id, loan_product_id, loan_product_version_id, "
+                        + "external_loan_id, source_channel, requested_amount, tenure_months, status) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, 'API', 5000.00, 12, 'INITIALIZED')",
                 id,
                 borrowerId,
                 lspId,
                 loanProductId,
+                loanProductVersionId,
                 externalId
         );
         return id;
@@ -398,13 +413,14 @@ class SchemaJsonColumnsPostgresTest extends PostgresDataJpaTestSupport {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
                 "INSERT INTO loan_account (id, loan_application_id, borrower_id, lsp_id, loan_product_id, "
-                        + "account_number, principal_amount, tenure_months, status, approved_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, 5000.00, 12, 'PENDING_DISBURSEMENT', NOW())",
+                        + "loan_product_version_id, account_number, principal_amount, tenure_months, status, approved_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, 5000.00, 12, 'PENDING_DISBURSEMENT', NOW())",
                 id,
                 loanApplicationId,
                 borrowerId,
                 lspId,
                 loanProductId,
+                loanProductVersionId,
                 accountNumber
         );
         return id;
@@ -434,8 +450,42 @@ class SchemaJsonColumnsPostgresTest extends PostgresDataJpaTestSupport {
         return id;
     }
 
+    @ParameterizedTest
+    @MethodSource("timestamptzAuditColumns")
+    void auditCreatedAtColumnsUseTimestamptz(TimestampColumn column) {
+        String dataType = jdbcTemplate.queryForObject(
+                """
+                        SELECT data_type
+                        FROM information_schema.columns
+                        WHERE table_name = ?
+                          AND column_name = ?
+                        """,
+                String.class,
+                column.table(),
+                column.column()
+        );
+
+        assertThat(dataType).isEqualTo("timestamp with time zone");
+    }
+
+    private static Stream<Arguments> timestamptzAuditColumns() {
+        return Stream.of(
+                Arguments.of(new TimestampColumn("borrower_bank_details_update_audit", "created_at")),
+                Arguments.of(new TimestampColumn("loan_disbursement_bank_mismatch_log", "created_at")),
+                Arguments.of(new TimestampColumn("disbursement_outcome_audit", "created_at")),
+                Arguments.of(new TimestampColumn("webhook_outbox_redrive_audit", "created_at"))
+        );
+    }
+
     private static String objectJson(String key, String value) {
         return "{\"" + key + "\":\"" + value + "\",\"nested\":{\"ok\":true}}";
+    }
+
+    private record TimestampColumn(String table, String column) {
+        @Override
+        public String toString() {
+            return table + "." + column;
+        }
     }
 
     private record JsonColumn(String table, String column) {

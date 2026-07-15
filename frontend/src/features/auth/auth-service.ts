@@ -86,7 +86,21 @@ export async function login(input: LoginInput): Promise<SessionType> {
     throw new ApiError("Email and password are required.", 400, "", "VALIDATION");
   }
   const token = await backendLogin(input.email.trim(), input.password);
-  const session = await buildSessionFromToken(token);
+  let session: SessionType;
+  try {
+    session = await buildSessionFromToken(token);
+  } catch (error) {
+    // Credentials were accepted; the workspace-context fetch failed. The raw
+    // backend message ("An unexpected error occurred") reads like a bad
+    // password — tell the user what actually happened.
+    const status = error instanceof ApiError ? error.status : 0;
+    throw new ApiError(
+      "Signed in, but your workspace couldn't be loaded. Try again in a moment or contact an administrator.",
+      status,
+      "",
+      "SESSION_CONTEXT_FAILED",
+    );
+  }
   saveStoredSession(session);
   return session;
 }

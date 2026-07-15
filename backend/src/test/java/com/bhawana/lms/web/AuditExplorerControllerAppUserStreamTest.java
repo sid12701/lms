@@ -87,10 +87,9 @@ class AuditExplorerControllerAppUserStreamTest {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
                         .queryParam("streams", "APP_USER")
-                        .queryParam("actorUsername", "ops.admin")
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("actorUsername", "ops.admin"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].stream").value("APP_USER"))
                 .andExpect(jsonPath("$.items[0].action").value("PASSWORD_RESET_BY_ADMIN"))
                 .andExpect(jsonPath("$.items[0].detail.userId").value(managedUser.getId().toString()))
@@ -129,8 +128,7 @@ class AuditExplorerControllerAppUserStreamTest {
 
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
-                        .queryParam("streams", "APP_USER,API_CLIENT")
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("streams", "APP_USER,API_CLIENT"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[*].stream", hasItem("APP_USER")))
                 .andExpect(jsonPath("$.items[*].stream").exists());

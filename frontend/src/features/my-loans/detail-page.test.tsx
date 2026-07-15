@@ -4,18 +4,22 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { SessionProvider } from "@/features/auth/session-context";
 import type { Session } from "@/features/auth/session-types";
 import { MyLoanDetailPage } from "./detail-page";
-import type { MyLoanDetail } from "./api";
+import { makeMyLoanDetail } from "./test-utils";
 
 const fetchMyLoanDetailMock = vi.fn();
 const fetchInvalidReasonsMock = vi.fn();
 const listLspSubmittedDocumentsMock = vi.fn();
 const uploadLspDocumentMock = vi.fn();
+const fetchLspDocumentRequirementsMock = vi.fn();
 
 vi.mock("./api", () => ({
   fetchMyLoanDetail: (...args: unknown[]) => fetchMyLoanDetailMock(...args),
   fetchInvalidReasons: (...args: unknown[]) => fetchInvalidReasonsMock(...args),
   listLspSubmittedDocuments: (...args: unknown[]) => listLspSubmittedDocumentsMock(...args),
   uploadLspDocument: (...args: unknown[]) => uploadLspDocumentMock(...args),
+  fetchLspDocumentRequirements: (...args: unknown[]) => fetchLspDocumentRequirementsMock(...args),
+  fetchMyLoanRepaymentSchedule: vi.fn().mockResolvedValue([]),
+  fetchMyLoanPayments: vi.fn().mockResolvedValue([]),
 }));
 
 function sessionFor(role: Session["user"]["role"]): Session {
@@ -32,36 +36,7 @@ function sessionFor(role: Session["user"]["role"]): Session {
   };
 }
 
-const detail: MyLoanDetail = {
-  id: "cccccccc-3333-4ccc-8ccc-cccccccccccc",
-  borrowerId: "dddddddd-4444-4ddd-8ddd-dddddddddddd",
-  borrowerFullName: "Aarav Singh",
-  borrowerPanMasked: "ABCDE1234F",
-  borrowerAadhaarMasked: "XXXXXXXX1234",
-  borrowerMobile: "9000000000",
-  borrowerEmail: "aarav@example.test",
-  borrowerDob: "1990-01-01",
-  borrowerCity: "Mumbai",
-  borrowerState: "Maharashtra",
-  productId: "eeeeeeee-5555-4eee-8eee-eeeeeeeeeeee",
-  productCode: "DOC-PROD",
-  productName: "Doc Product",
-  lspId: "bbbbbbbb-2222-4bbb-8bbb-bbbbbbbbbbbb",
-  lspCode: "DOC-UP",
-  lspName: "Doc Upload Test",
-  externalLoanId: "SEED-10-RI05XN",
-  requestedAmount: 255000,
-  interestRate: 14.5,
-  tenureMonths: 12,
-  status: "UNDER_REPAYMENT",
-  rawStatus: "UNDER_REPAYMENT",
-  invalidReasonCode: null,
-  invalidReasonText: null,
-  invalidatedAt: null,
-  createdAt: "2026-06-21T13:15:00.000Z",
-  updatedAt: "2026-06-21T13:15:00.000Z",
-  loanAccount: null,
-};
+const detail = makeMyLoanDetail();
 
 function renderPage(role: Session["user"]["role"]) {
   return render(
@@ -78,6 +53,56 @@ function renderPage(role: Session["user"]["role"]) {
 beforeEach(() => {
   fetchMyLoanDetailMock.mockReset().mockResolvedValue(detail);
   fetchInvalidReasonsMock.mockReset().mockResolvedValue([]);
+  fetchLspDocumentRequirementsMock.mockReset().mockResolvedValue([
+    {
+      code: "PAN_CARD",
+      displayName: "PAN",
+      requiredForApproval: true,
+      requiredForDisbursement: true,
+    },
+    {
+      code: "AADHAAR_FILE",
+      displayName: "Aadhaar",
+      requiredForApproval: true,
+      requiredForDisbursement: true,
+    },
+    {
+      code: "ADDRESS_PROOF",
+      displayName: "Address proof",
+      requiredForApproval: true,
+      requiredForDisbursement: true,
+    },
+    {
+      code: "INCOME_PROOF",
+      displayName: "Income proof",
+      requiredForApproval: true,
+      requiredForDisbursement: true,
+    },
+    {
+      code: "BANK_STATEMENT",
+      displayName: "Bank statement",
+      requiredForApproval: true,
+      requiredForDisbursement: true,
+    },
+    {
+      code: "SELFIE_PHOTOGRAPH",
+      displayName: "Photograph",
+      requiredForApproval: true,
+      requiredForDisbursement: true,
+    },
+    {
+      code: "KFS",
+      displayName: "Key Facts Statement",
+      requiredForApproval: false,
+      requiredForDisbursement: true,
+    },
+    {
+      code: "LOAN_AGREEMENT",
+      displayName: "Loan agreement",
+      requiredForApproval: false,
+      requiredForDisbursement: true,
+    },
+  ]);
   listLspSubmittedDocumentsMock.mockReset().mockResolvedValue([
     {
       documentType: "BANK_STATEMENT",
@@ -100,7 +125,7 @@ describe("MyLoanDetailPage role actions", () => {
     expect(screen.queryByRole("button", { name: /mark invalid/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^upload$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^replace$/i })).not.toBeInTheDocument();
-    expect(screen.getByText("Documents are read-only for your account.")).toBeInTheDocument();
+    expect(screen.getByText("Documents are read-only for your access level.")).toBeInTheDocument();
   });
 
   it("shows mutation controls to LSP write users", async () => {

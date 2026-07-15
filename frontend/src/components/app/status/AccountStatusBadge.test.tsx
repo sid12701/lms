@@ -5,8 +5,8 @@ import { AccountStatusBadge } from "./AccountStatusBadge";
 
 describe("AccountStatusBadge", () => {
   it("renders the account-status label", () => {
-    const { getByText } = renderWithProviders(<AccountStatusBadge status="ACTIVE" />);
-    expect(getByText("Active")).toBeInTheDocument();
+    const { getByText } = renderWithProviders(<AccountStatusBadge status="DISBURSED" />);
+    expect(getByText("Disbursed")).toBeInTheDocument();
   });
 
   it("forwards variant and emits data-status", () => {

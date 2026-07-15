@@ -133,10 +133,9 @@ describe("LoanApplicationsTable", () => {
     const user = userEvent.setup();
     const onFiltersChange = vi.fn();
     renderTable({ data: RESPONSE, onFiltersChange });
-    // Find the Amount sort button specifically by text content + label.
-    const sortButtons = screen
-      .getAllByRole("button")
-      .filter((b) => /Activate to sort/i.test(b.getAttribute("aria-label") ?? ""));
+    // Sort state lives in sr-only text inside the button (not aria-label,
+    // which would replace the column name — audit F12).
+    const sortButtons = screen.getAllByRole("button", { name: /Activate to sort/i });
     const amountBtn = sortButtons.find((b) => /Amount/.test(b.textContent ?? ""));
     expect(amountBtn).toBeDefined();
     await user.click(amountBtn!);
@@ -155,9 +154,7 @@ describe("LoanApplicationsTable", () => {
       filters: { sortBy: "requestedAmount", sortDir: "asc" },
       onFiltersChange,
     });
-    const sortButtons = screen
-      .getAllByRole("button")
-      .filter((b) => /Sorted ascending/i.test(b.getAttribute("aria-label") ?? ""));
+    const sortButtons = screen.getAllByRole("button", { name: /Sorted ascending/i });
     expect(sortButtons.length).toBeGreaterThan(0);
     const amountBtn = sortButtons.find((b) => /Amount/.test(b.textContent ?? ""));
     expect(amountBtn).toBeDefined();

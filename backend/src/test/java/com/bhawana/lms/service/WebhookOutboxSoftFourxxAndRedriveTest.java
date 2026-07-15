@@ -224,6 +224,104 @@ class WebhookOutboxSoftFourxxAndRedriveTest {
         assertThat(delivered.getStatus()).isEqualTo(WebhookEventOutboxStatus.DELIVERED);
     }
 
+    @Test
+    void retryableFailureAtCapBecomesPermanentWithDeadLetter() {
+        Lsp lsp = saveWebhookLsp("CAP503");
+        WebhookEventOutbox event = savePendingEvent(lsp, "evt-cap-503");
+        seedAttemptCount(event.getId(), 7);
+
+        given(webhookDeliveryClient.deliver(any()))
+                .willReturn(new WebhookDeliveryClient.WebhookDeliveryResponse(503, "unavailable"));
+
+        WebhookOutboxService.DispatchSummary summary = webhookOutboxService.dispatchPending(1);
+
+        assertThat(summary.permanentFailures()).isEqualTo(1);
+        assertThat(summary.retryableFailures()).isZero();
+
+        WebhookEventOutbox updated = webhookEventOutboxRepository.findById(event.getId()).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(WebhookEventOutboxStatus.PERMANENT_FAILURE);
+        assertThat(updated.getAttemptCount()).isEqualTo(8);
+        assertThat(updated.getNextAttemptAt()).isNull();
+        assertThat(updated.getLastError()).contains("retries exhausted after 8 attempts");
+        assertThat(opsAlertRepository.existsByTypeAndSubjectIdAndStatus(
+                OpsAlertType.WEBHOOK_DEAD_LETTER,
+                event.getId(),
+                OpsAlertStatus.NEW
+        )).isTrue();
+    }
+
+    @Test
+    void transportFailureAtCapBecomesPermanentWithDeadLetter() {
+        Lsp lsp = saveWebhookLsp("CAP-TRANSPORT");
+        WebhookEventOutbox event = savePendingEvent(lsp, "evt-cap-transport");
+        seedAttemptCount(event.getId(), 7);
+
+        given(webhookDeliveryClient.deliver(any()))
+                .willThrow(new RuntimeException("connection reset"));
+
+        WebhookOutboxService.DispatchSummary summary = webhookOutboxService.dispatchPending(1);
+
+        assertThat(summary.permanentFailures()).isEqualTo(1);
+        assertThat(summary.retryableFailures()).isZero();
+
+        WebhookEventOutbox updated = webhookEventOutboxRepository.findById(event.getId()).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(WebhookEventOutboxStatus.PERMANENT_FAILURE);
+        assertThat(updated.getAttemptCount()).isEqualTo(8);
+        assertThat(updated.getNextAttemptAt()).isNull();
+        assertThat(updated.getLastError()).contains("connection reset");
+        assertThat(opsAlertRepository.existsByTypeAndSubjectIdAndStatus(
+                OpsAlertType.WEBHOOK_DEAD_LETTER,
+                event.getId(),
+                OpsAlertStatus.NEW
+        )).isTrue();
+    }
+
+    @Test
+    void redriveExhaustedRetryableEventResetsBudgetAndDelivers() throws Exception {
+        Lsp lsp = saveWebhookLsp("REDRIVE-EXHAUST");
+        WebhookEventOutbox event = savePendingEvent(lsp, "evt-redrive-exhaust");
+        seedAttemptCount(event.getId(), 7);
+
+        given(webhookDeliveryClient.deliver(any()))
+                .willReturn(new WebhookDeliveryClient.WebhookDeliveryResponse(503, "unavailable"));
+        webhookOutboxService.dispatchPending(1);
+
+        WebhookEventOutbox exhausted = webhookEventOutboxRepository.findById(event.getId()).orElseThrow();
+        assertThat(exhausted.getStatus()).isEqualTo(WebhookEventOutboxStatus.PERMANENT_FAILURE);
+        assertThat(exhausted.getAttemptCount()).isEqualTo(8);
+
+        mockMvc.perform(post("/api/v1/internal/admin/webhook-outbox/{id}/redrive", event.getId())
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.attemptCount").value(0));
+
+        given(webhookDeliveryClient.deliver(any()))
+                .willReturn(new WebhookDeliveryClient.WebhookDeliveryResponse(202, "accepted"));
+
+        WebhookOutboxService.DispatchSummary summary = webhookOutboxService.dispatchPending(1);
+        assertThat(summary.delivered()).isEqualTo(1);
+
+        WebhookEventOutbox delivered = webhookEventOutboxRepository.findById(event.getId()).orElseThrow();
+        assertThat(delivered.getStatus()).isEqualTo(WebhookEventOutboxStatus.DELIVERED);
+        assertThat(delivered.getAttemptCount()).isEqualTo(1);
+    }
+
+    private void seedAttemptCount(UUID eventId, int attemptCount) {
+        jdbcTemplate.update(
+                """
+                        UPDATE webhook_event_outbox
+                        SET attempt_count = ?,
+                            status = 'PENDING',
+                            next_attempt_at = NULL,
+                            claim_expires_at = NULL
+                        WHERE id = ?
+                        """,
+                attemptCount,
+                eventId
+        );
+    }
+
     private WebhookEventOutbox driveToPermanentFailure(Lsp lsp, String aggregateId, int statusCode) {
         WebhookEventOutbox event = savePendingEvent(lsp, aggregateId);
         given(webhookDeliveryClient.deliver(any()))

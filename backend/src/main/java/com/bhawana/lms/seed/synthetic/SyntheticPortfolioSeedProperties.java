@@ -15,6 +15,14 @@ public class SyntheticPortfolioSeedProperties {
      */
     private boolean enabled = false;
 
+    private boolean resetExistingData = true;
+
+    /** Creates only account-backed UNDER_REPAYMENT loans. */
+    private boolean accountOnly = false;
+
+    /** Optional suffix used to make additive seed dimension codes unique. */
+    private String seedRunId;
+
     /**
      * Multiplier applied to the baseline month-9 portfolio sizes (1.0 = full #197 spec).
      */
@@ -49,6 +57,30 @@ public class SyntheticPortfolioSeedProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public boolean isResetExistingData() {
+        return resetExistingData;
+    }
+
+    public void setResetExistingData(boolean resetExistingData) {
+        this.resetExistingData = resetExistingData;
+    }
+
+    public boolean isAccountOnly() {
+        return accountOnly;
+    }
+
+    public void setAccountOnly(boolean accountOnly) {
+        this.accountOnly = accountOnly;
+    }
+
+    public String getSeedRunId() {
+        return seedRunId;
+    }
+
+    public void setSeedRunId(String seedRunId) {
+        this.seedRunId = seedRunId;
     }
 
     public double getScaleFactor() {

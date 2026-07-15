@@ -1,14 +1,19 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.pii.AadhaarMasking;
+import com.bhawana.lms.common.pii.BankAccountMasking;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
+import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.service.LoanApplicationDetailAssembler.LoanApplicationDetailView;
 import com.bhawana.lms.service.LoanApplicationLastActivity;
 import com.bhawana.lms.service.LoanDelinquencySummary;
 import com.bhawana.lms.service.LoanDelinquencySupport;
 import com.bhawana.lms.service.LoanRepaymentScheduleSummary;
+import com.bhawana.lms.service.LspDisbursementSummary;
+import com.bhawana.lms.service.LspDisbursementSummarySupport;
 import java.time.LocalDate;
 
 public final class LspLoanApplicationResponses {
@@ -21,8 +26,8 @@ public final class LspLoanApplicationResponses {
     ) {
         LoanApplication application = detail.application();
         return new LspLoanApplicationApiController.LspLoanApplicationDetailResponse(
-                application.getId().toString(),
-                application.getBorrower().getId().toString(),
+                application.getId(),
+                application.getBorrower().getId(),
                 application.getBorrower().getFullName(),
                 application.getBorrower().getEmail(),
                 application.getBorrower().getMobile(),
@@ -30,16 +35,16 @@ public final class LspLoanApplicationResponses {
                 application.getBorrower().getGender(),
                 application.getBorrower().getMaritalStatus(),
                 application.getBorrower().getFatherName(),
-                maskAadharNumber(application.getBorrower().getAadharNumber()),
+                AadhaarMasking.mask(application.getBorrower().getAadharNumber()),
                 application.getBorrower().getPan(),
-                application.getLoanProduct().getId().toString(),
+                application.getLoanProduct().getId(),
                 application.getLoanProduct().getCode(),
                 application.getLoanProduct().getName(),
                 application.getRequestedAmount(),
-                application.getLoanProduct().getInterestRate(),
+                application.getLoanProductVersion().getInterestRate(),
                 application.getRequestedTenureMonths(),
                 application.getExternalLoanId(),
-                application.getLsp().getId().toString(),
+                application.getLsp().getId(),
                 application.getLsp().getCode(),
                 application.getLsp().getName(),
                 application.getBorrower().getAddressLine1(),
@@ -56,7 +61,7 @@ public final class LspLoanApplicationResponses {
                 application.getBorrower().getEmploymentZip(),
                 application.getBorrower().getMonthlyIncome(),
                 application.getBorrower().getAnnualIncome(),
-                application.getBorrower().getBankAccountNumber(),
+                BankAccountMasking.mask(application.getBorrower().getBankAccountNumber()),
                 application.getBorrower().getBankName(),
                 application.getBorrower().getIfscCode(),
                 application.getBorrower().getAccountHolderName(),
@@ -67,13 +72,14 @@ public final class LspLoanApplicationResponses {
                 application.getInvalidReasonCode() == null ? null : application.getInvalidReasonCode().name(),
                 application.getInvalidReasonText(),
                 application.getInvalidatedByUsername(),
-                application.getInvalidatedAt() == null ? null : application.getInvalidatedAt().toString(),
-                application.getCreatedAt().toString(),
-                application.getUpdatedAt().toString(),
+                application.getInvalidatedAt(),
+                application.getCreatedAt(),
+                application.getUpdatedAt(),
                 toLoanAccountSummary(
                         detail.loanAccount().orElse(null),
                         detail.repaymentScheduleSummary().orElse(null),
-                        detail.delinquencySummary().orElse(null)
+                        detail.delinquencySummary().orElse(null),
+                        detail.latestDisbursementRequest().orElse(null)
                 ),
                 detail.lastActivity()
                         .map(LspLoanApplicationResponses::toLastActivityResponse)
@@ -83,8 +89,8 @@ public final class LspLoanApplicationResponses {
 
     public static LspLoanApplicationApiController.LspLoanApplicationResponse toResponse(LoanApplication application) {
         return new LspLoanApplicationApiController.LspLoanApplicationResponse(
-                application.getId().toString(),
-                application.getBorrower().getId().toString(),
+                application.getId(),
+                application.getBorrower().getId(),
                 application.getBorrower().getFullName(),
                 application.getBorrower().getEmail(),
                 application.getBorrower().getMobile(),
@@ -92,16 +98,16 @@ public final class LspLoanApplicationResponses {
                 application.getBorrower().getGender(),
                 application.getBorrower().getMaritalStatus(),
                 application.getBorrower().getFatherName(),
-                maskAadharNumber(application.getBorrower().getAadharNumber()),
+                AadhaarMasking.mask(application.getBorrower().getAadharNumber()),
                 application.getBorrower().getPan(),
-                application.getLoanProduct().getId().toString(),
+                application.getLoanProduct().getId(),
                 application.getLoanProduct().getCode(),
                 application.getLoanProduct().getName(),
                 application.getRequestedAmount(),
-                application.getLoanProduct().getInterestRate(),
+                application.getLoanProductVersion().getInterestRate(),
                 application.getRequestedTenureMonths(),
                 application.getExternalLoanId(),
-                application.getLsp().getId().toString(),
+                application.getLsp().getId(),
                 application.getLsp().getCode(),
                 application.getLsp().getName(),
                 application.getBorrower().getAddressLine1(),
@@ -118,7 +124,7 @@ public final class LspLoanApplicationResponses {
                 application.getBorrower().getEmploymentZip(),
                 application.getBorrower().getMonthlyIncome(),
                 application.getBorrower().getAnnualIncome(),
-                application.getBorrower().getBankAccountNumber(),
+                BankAccountMasking.mask(application.getBorrower().getBankAccountNumber()),
                 application.getBorrower().getBankName(),
                 application.getBorrower().getIfscCode(),
                 application.getBorrower().getAccountHolderName(),
@@ -126,28 +132,29 @@ public final class LspLoanApplicationResponses {
                 application.getBorrower().getReferencePersonNumber(),
                 application.getSourceChannel(),
                 application.getStatus().name(),
-                application.getCreatedAt().toString()
+                application.getCreatedAt()
         );
     }
 
     private static LspLoanApplicationApiController.LspLoanAccountSummaryResponse toLoanAccountSummary(
             LoanAccount loanAccount,
             LoanRepaymentScheduleSummary repaymentScheduleSummary,
-            LoanDelinquencySummary delinquencySummary
+            LoanDelinquencySummary delinquencySummary,
+            LoanDisbursementRequestLog latestDisbursementRequest
     ) {
         if (loanAccount == null) {
             return null;
         }
         return new LspLoanApplicationApiController.LspLoanAccountSummaryResponse(
-                loanAccount.getId().toString(),
+                loanAccount.getId(),
                 loanAccount.getAccountNumber(),
-                loanAccount.getStatus().name(),
+                loanAccount.getStatus(),
                 loanAccount.getPrincipalAmount(),
                 loanAccount.getTenureMonths(),
-                loanAccount.getApprovedAt().toString(),
-                loanAccount.getCreatedAt().toString(),
+                loanAccount.getApprovedAt(),
+                loanAccount.getCreatedAt(),
                 loanAccount.getClosureReason() == null ? null : loanAccount.getClosureReason().name(),
-                loanAccount.getClosedAt() == null ? null : loanAccount.getClosedAt().toString(),
+                loanAccount.getClosedAt(),
                 loanAccount.getClosedByUsername(),
                 delinquencySummary == null ? null : new LspLoanApplicationApiController.LspLoanDelinquencySummaryResponse(
                         delinquencySummary.maxDaysPastDue(),
@@ -160,7 +167,26 @@ public final class LspLoanApplicationResponses {
                         repaymentScheduleSummary.installmentAmount(),
                         repaymentScheduleSummary.firstDueDate(),
                         repaymentScheduleSummary.finalDueDate()
+                ),
+                toDisbursementSummaryResponse(
+                        LspDisbursementSummarySupport.toSummary(loanAccount, latestDisbursementRequest)
                 )
+        );
+    }
+
+    private static LspLoanApplicationApiController.LspDisbursementSummaryResponse toDisbursementSummaryResponse(
+            LspDisbursementSummary summary
+    ) {
+        if (summary == null) {
+            return null;
+        }
+        return new LspLoanApplicationApiController.LspDisbursementSummaryResponse(
+                summary.status(),
+                summary.failureReasonCode(),
+                summary.failureReason(),
+                summary.disbursedAt(),
+                summary.grossAmount(),
+                summary.netDisbursedAmount()
         );
     }
 
@@ -173,7 +199,7 @@ public final class LspLoanApplicationResponses {
                 activity.summary(),
                 activity.detail(),
                 activity.correlationId(),
-                activity.occurredAt().toString()
+                activity.occurredAt()
         );
     }
 
@@ -181,8 +207,8 @@ public final class LspLoanApplicationResponses {
             LoanApplicationDocumentChecklist checklistItem
     ) {
         return new LspLoanApplicationApiController.LspDocumentChecklistDetailResponse(
-                checklistItem.getId().toString(),
-                checklistItem.getLoanApplication().getId().toString(),
+                checklistItem.getId(),
+                checklistItem.getLoanApplication().getId(),
                 checklistItem.getDocumentType().name(),
                 checklistItem.getDocumentType().getDisplayName(),
                 checklistItem.isRequired(),
@@ -197,8 +223,8 @@ public final class LspLoanApplicationResponses {
                 checklistItem.getUploadedAt(),
                 checklistItem.getUploadedByUsername(),
                 checklistItem.getUpdatedByUsername(),
-                checklistItem.getCreatedAt().toString(),
-                checklistItem.getUpdatedAt().toString()
+                checklistItem.getCreatedAt(),
+                checklistItem.getUpdatedAt()
         );
     }
 
@@ -211,8 +237,8 @@ public final class LspLoanApplicationResponses {
                 businessDate
         );
         return new LspLoanApplicationApiController.LspRepaymentScheduleInstallmentResponse(
-                installment.getId().toString(),
-                installment.getLoanAccount().getId().toString(),
+                installment.getId(),
+                installment.getLoanAccount().getId(),
                 installment.getInstallmentNumber(),
                 installment.getDueDate(),
                 installment.getOpeningPrincipal(),
@@ -227,15 +253,8 @@ public final class LspLoanApplicationResponses {
                 installment.getOutstandingAmount(),
                 daysPastDue,
                 LoanDelinquencySupport.resolveDelinquencyBucket(daysPastDue).name(),
-                installment.getCreatedAt().toString()
+                installment.getCreatedAt()
         );
-    }
-
-    private static String maskAadharNumber(String value) {
-        if (value == null || value.length() < 4) {
-            return value;
-        }
-        return "XXXXXXXX" + value.substring(value.length() - 4);
     }
 
 }

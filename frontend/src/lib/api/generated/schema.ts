@@ -276,6 +276,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/internal/system/bootstrap-sync": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["bootstrapSync"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/internal/reports/requests/process": {
     parameters: {
       query?: never;
@@ -884,6 +900,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/lsp/loan-applications/document-requirements": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["listDocumentRequirements"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/internal/system/context": {
     parameters: {
       query?: never;
@@ -1100,6 +1132,38 @@ export interface paths {
       cookie?: never;
     };
     get: operations["listDocumentAccessAudits"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-reference": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["getDisbursementReference"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["getDisbursementPreview"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1417,7 +1481,9 @@ export interface components {
       installments?: components["schemas"]["LspRepaymentScheduleInstallmentRequest"][];
     };
     LspRepaymentScheduleInstallmentResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanAccountId?: string;
       /** Format: int32 */
       installmentNumber?: number;
@@ -1436,6 +1502,7 @@ export interface components {
       /** Format: int32 */
       daysPastDue?: number;
       delinquencyBucket?: string;
+      /** Format: date-time */
       createdAt?: string;
     };
     UpdateUserRequest: {
@@ -1463,6 +1530,7 @@ export interface components {
       roles?: string[];
       lockedAt?: string;
       lockReason?: string;
+      passwordChangeRequired?: boolean;
       createdAt?: string;
     };
     ProductRequest: {
@@ -1537,10 +1605,12 @@ export interface components {
       )[];
     };
     LspResponse: {
+      /** Format: uuid */
       id?: string;
       code?: string;
       name?: string;
       status?: string;
+      /** Format: date-time */
       createdAt?: string;
       webhookSubscription?: components["schemas"]["WebhookSubscriptionResponse"];
       /** Format: int32 */
@@ -1562,6 +1632,7 @@ export interface components {
       enabled?: boolean;
       endpointUrl?: string;
       signingSecret?: string;
+      secretSet?: boolean;
       eventTypes?: string[];
     };
     UpdateLspStatusRequest: {
@@ -1617,8 +1688,11 @@ export interface components {
       reference?: string;
     };
     LspPaymentTransactionResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanAccountId?: string;
+      /** Format: uuid */
       targetInstallmentId?: string;
       actorUsername?: string;
       amount?: number;
@@ -1631,7 +1705,9 @@ export interface components {
       unallocatedAmount?: number;
       note?: string;
       correlationId?: string;
+      /** Format: date-time */
       createdAt?: string;
+      /** Format: date-time */
       updatedAt?: string;
     };
     LspForeclosureExecutionRequest: {
@@ -1641,7 +1717,9 @@ export interface components {
       note?: string;
     };
     LspForeclosureQuoteResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanAccountId?: string;
       /** Format: int32 */
       version?: number;
@@ -1653,8 +1731,11 @@ export interface components {
       outstandingInterest?: number;
       settlementAmount?: number;
       status?: string;
+      /** Format: date-time */
       executedAt?: string;
+      /** Format: date-time */
       createdAt?: string;
+      /** Format: date-time */
       updatedAt?: string;
     };
     LspLoanForeclosureQuoteRequest: {
@@ -1704,84 +1785,58 @@ export interface components {
       referencePersonName?: string;
       referencePersonNumber?: string;
     };
-    LspLoanApplicationResponse: {
-      id?: string;
-      borrowerId?: string;
-      fullName?: string;
-      emailAddress?: string;
-      mobileNumber?: string;
-      /** Format: date */
-      dob?: string;
-      gender?: string;
-      maritalStatus?: string;
-      fatherName?: string;
-      aadharNumber?: string;
-      panNumber?: string;
-      loanProductId?: string;
-      loanProductCode?: string;
-      loanProductName?: string;
-      loanAmount?: number;
-      interestRate?: number;
-      /** Format: int32 */
-      loanTenure?: number;
-      lspLoanId?: string;
-      lspId?: string;
-      lspCode?: string;
-      lspName?: string;
-      addressLine1?: string;
-      addressLine2?: string;
-      addressCity?: string;
-      addressState?: string;
-      addressZipcode?: string;
-      spouseName?: string;
-      employmentStatus?: string;
-      organizationName?: string;
-      empId?: string;
-      employmentCity?: string;
-      employmentState?: string;
-      employmentZip?: string;
-      monthlyIncome?: number;
-      annualIncome?: number;
-      bankAccountNumber?: string;
-      bankName?: string;
-      ifscCode?: string;
-      accountHolderName?: string;
-      referencePersonName?: string;
-      referencePersonNumber?: string;
-      sourceChannel?: string;
-      status?: string;
-      createdAt?: string;
-    };
-    LspInvalidLoanRequest: {
-      /** @enum {string} */
-      reasonCode: "REASON_A" | "REASON_B" | "REASON_C" | "OTHERS";
-      reasonText?: string;
-    };
+    /** @enum {string} */
+    LoanAccountStatus:
+      | "PENDING_DISBURSEMENT"
+      | "DISBURSEMENT_REQUESTED"
+      | "DISBURSED"
+      | "INVALID"
+      | "CLOSED"
+      | "FORECLOSED"
+      | "DISBURSEMENT_FAILED"
+      | "DISBURSEMENT_PENDING_RECONCILIATION";
     LoanApplicationLastActivityResponse: {
       activityType?: string;
       actorUsername?: string;
       summary?: string;
       detail?: string;
       correlationId?: string;
+      /** Format: date-time */
       occurredAt?: string;
     };
+    LspDisbursementSummaryResponse: {
+      status?: string;
+      failureReasonCode?: string;
+      failureReason?: string;
+      /** Format: date-time */
+      disbursedAt?: string;
+      grossAmount?: number;
+      netDisbursedAmount?: number;
+    };
     LspLoanAccountSummaryResponse: {
+      /** Format: uuid */
       id?: string;
       accountNumber?: string;
-      status?: string;
+      status?: components["schemas"]["LoanAccountStatus"];
       principalAmount?: number;
       /** Format: int32 */
       tenureMonths?: number;
+      /** Format: date-time */
       approvedAt?: string;
+      /** Format: date-time */
       createdAt?: string;
       closureReason?: string;
+      /** Format: date-time */
       closedAt?: string;
       closedByUsername?: string;
       delinquency?: components["schemas"]["LspLoanDelinquencySummaryResponse"];
       repaymentSchedule?: components["schemas"]["LspLoanRepaymentScheduleSummaryResponse"];
+      disbursement?: components["schemas"]["LspDisbursementSummaryResponse"];
     };
     LspLoanApplicationDetailResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       borrowerId?: string;
       fullName?: string;
       emailAddress?: string;
@@ -1793,6 +1848,7 @@ export interface components {
       fatherName?: string;
       aadharNumber?: string;
       panNumber?: string;
+      /** Format: uuid */
       loanProductId?: string;
       loanProductCode?: string;
       loanProductName?: string;
@@ -1801,6 +1857,7 @@ export interface components {
       /** Format: int32 */
       loanTenure?: number;
       lspLoanId?: string;
+      /** Format: uuid */
       lspId?: string;
       lspCode?: string;
       lspName?: string;
@@ -1829,8 +1886,11 @@ export interface components {
       invalidReasonCode?: string;
       invalidReasonText?: string;
       invalidatedByUsername?: string;
+      /** Format: date-time */
       invalidatedAt?: string;
+      /** Format: date-time */
       createdAt?: string;
+      /** Format: date-time */
       updatedAt?: string;
       loanAccount?: components["schemas"]["LspLoanAccountSummaryResponse"];
       lastActivity?: components["schemas"]["LoanApplicationLastActivityResponse"];
@@ -1852,8 +1912,21 @@ export interface components {
       /** Format: date */
       finalDueDate?: string;
     };
+    LspInvalidLoanRequest: {
+      /** @enum {string} */
+      reasonCode:
+        | "DUPLICATE_APPLICATION"
+        | "KYC_MISMATCH"
+        | "BORROWER_WITHDREW"
+        | "FRAUD_SUSPECTED"
+        | "DATA_ENTRY_ERROR"
+        | "OTHERS";
+      reasonText?: string;
+    };
     LspDocumentChecklistDetailResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanApplicationId?: string;
       documentType?: string;
       documentDisplayName?: string;
@@ -1871,7 +1944,9 @@ export interface components {
       uploadedAt?: string;
       uploadedByUsername?: string;
       updatedByUsername?: string;
+      /** Format: date-time */
       createdAt?: string;
+      /** Format: date-time */
       updatedAt?: string;
     };
     LspLoanApplicationDocumentRequest: {
@@ -1983,7 +2058,9 @@ export interface components {
       tenureMonths: number;
     };
     LoanApplicationResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       borrowerId?: string;
       borrowerFullName?: string;
       borrowerPan?: string;
@@ -1995,9 +2072,11 @@ export interface components {
       borrowerState?: string;
       borrowerEmploymentType?: string;
       borrowerMonthlyIncome?: number;
+      /** Format: uuid */
       lspId?: string;
       lspCode?: string;
       lspName?: string;
+      /** Format: uuid */
       productId?: string;
       productCode?: string;
       productName?: string;
@@ -2008,6 +2087,7 @@ export interface components {
       /** Format: int32 */
       tenureMonths?: number;
       status?: string;
+      /** Format: date-time */
       createdAt?: string;
     };
     LoanApplicationStatusTransitionRequest: {
@@ -2034,23 +2114,30 @@ export interface components {
         | "MANUAL_ADMIN_OVERRIDE";
     };
     LoanAccountSummaryResponse: {
+      /** Format: uuid */
       id?: string;
       accountNumber?: string;
-      status?: string;
+      status?: components["schemas"]["LoanAccountStatus"];
       principalAmount?: number;
       /** Format: int32 */
       tenureMonths?: number;
+      /** Format: date-time */
       approvedAt?: string;
+      /** Format: date-time */
       createdAt?: string;
       closureReason?: string;
+      /** Format: date-time */
       closedAt?: string;
       closedByUsername?: string;
       delinquency?: components["schemas"]["LoanDelinquencySummaryResponse"];
       repaymentSchedule?: components["schemas"]["LoanRepaymentScheduleSummaryResponse"];
     };
     LoanApplicationDetailResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanAccountId?: string;
+      /** Format: uuid */
       borrowerId?: string;
       borrowerFullName?: string;
       borrowerPan?: string;
@@ -2062,9 +2149,11 @@ export interface components {
       borrowerState?: string;
       borrowerEmploymentType?: string;
       borrowerMonthlyIncome?: number;
+      /** Format: uuid */
       lspId?: string;
       lspCode?: string;
       lspName?: string;
+      /** Format: uuid */
       productId?: string;
       productCode?: string;
       productName?: string;
@@ -2077,8 +2166,11 @@ export interface components {
       invalidReasonCode?: string;
       invalidReasonText?: string;
       invalidatedByUsername?: string;
+      /** Format: date-time */
       invalidatedAt?: string;
+      /** Format: date-time */
       createdAt?: string;
+      /** Format: date-time */
       updatedAt?: string;
       loanAccount?: components["schemas"]["LoanAccountSummaryResponse"];
       lastActivity?: components["schemas"]["LoanApplicationLastActivityResponse"];
@@ -2120,8 +2212,11 @@ export interface components {
       reference?: string;
     };
     LoanPaymentTransactionResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanAccountId?: string;
+      /** Format: uuid */
       targetInstallmentId?: string;
       actorUsername?: string;
       amount?: number;
@@ -2134,7 +2229,9 @@ export interface components {
       unallocatedAmount?: number;
       note?: string;
       correlationId?: string;
+      /** Format: date-time */
       createdAt?: string;
+      /** Format: date-time */
       updatedAt?: string;
     };
     ManualStatusUpdateRequest: {
@@ -2165,7 +2262,9 @@ export interface components {
       effectiveDate: string;
     };
     LoanForeclosureQuoteResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanAccountId?: string;
       /** Format: int32 */
       version?: number;
@@ -2177,8 +2276,11 @@ export interface components {
       outstandingInterest?: number;
       settlementAmount?: number;
       status?: string;
+      /** Format: date-time */
       executedAt?: string;
+      /** Format: date-time */
       createdAt?: string;
+      /** Format: date-time */
       updatedAt?: string;
     };
     LoanForeclosureExecutionRequest: {
@@ -2378,6 +2480,7 @@ export interface components {
       accountHolderName?: string;
     };
     BorrowerBankDetailsResponse: {
+      /** Format: uuid */
       borrowerId?: string;
       bankAccountNumber?: string;
       bankName?: string;
@@ -2398,12 +2501,66 @@ export interface components {
       maxTenureMonths?: number;
       status?: string;
     };
+    LspLoanApplicationResponse: {
+      /** Format: uuid */
+      id?: string;
+      /** Format: uuid */
+      borrowerId?: string;
+      fullName?: string;
+      emailAddress?: string;
+      mobileNumber?: string;
+      /** Format: date */
+      dob?: string;
+      gender?: string;
+      maritalStatus?: string;
+      fatherName?: string;
+      aadharNumber?: string;
+      panNumber?: string;
+      /** Format: uuid */
+      loanProductId?: string;
+      loanProductCode?: string;
+      loanProductName?: string;
+      loanAmount?: number;
+      interestRate?: number;
+      /** Format: int32 */
+      loanTenure?: number;
+      lspLoanId?: string;
+      /** Format: uuid */
+      lspId?: string;
+      lspCode?: string;
+      lspName?: string;
+      addressLine1?: string;
+      addressLine2?: string;
+      addressCity?: string;
+      addressState?: string;
+      addressZipcode?: string;
+      spouseName?: string;
+      employmentStatus?: string;
+      organizationName?: string;
+      empId?: string;
+      employmentCity?: string;
+      employmentState?: string;
+      employmentZip?: string;
+      monthlyIncome?: number;
+      annualIncome?: number;
+      bankAccountNumber?: string;
+      bankName?: string;
+      ifscCode?: string;
+      accountHolderName?: string;
+      referencePersonName?: string;
+      referencePersonNumber?: string;
+      sourceChannel?: string;
+      status?: string;
+      /** Format: date-time */
+      createdAt?: string;
+    };
     LspDocumentChecklistResponse: {
       documentType?: string;
       status?: string;
       fileName?: string;
       contentType?: string;
       note?: string;
+      /** Format: date-time */
       uploadedAt?: string;
       uploadedByUsername?: string;
     };
@@ -2411,6 +2568,12 @@ export interface components {
       code?: string;
       label?: string;
       requiresText?: boolean;
+    };
+    LspDocumentRequirementResponse: {
+      code?: string;
+      displayName?: string;
+      requiredForApproval?: boolean;
+      requiredForDisbursement?: boolean;
     };
     SystemContextResponse: {
       application?: string;
@@ -2508,14 +2671,18 @@ export interface components {
       status?: string;
       /** Format: int32 */
       attempts?: number;
+      /** Format: date-time */
       lastAttemptAt?: string;
       /** Format: int32 */
       lastResponseCode?: number;
       lastError?: string;
+      /** Format: date-time */
       createdAt?: string;
     };
     LoanApplicationStatusTransitionResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanApplicationId?: string;
       actorUsername?: string;
       fromStatus?: string;
@@ -2523,6 +2690,7 @@ export interface components {
       note?: string;
       reasonCode?: string;
       correlationId?: string;
+      /** Format: date-time */
       createdAt?: string;
       rejectionReason?: components["schemas"]["RejectionReason"];
     };
@@ -2530,7 +2698,9 @@ export interface components {
       failedRules?: string[];
     };
     LoanRepaymentScheduleInstallmentResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanAccountId?: string;
       /** Format: int32 */
       installmentNumber?: number;
@@ -2549,10 +2719,13 @@ export interface components {
       /** Format: int32 */
       daysPastDue?: number;
       delinquencyBucket?: string;
+      /** Format: date-time */
       createdAt?: string;
     };
     LoanApplicationDocumentChecklistResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanApplicationId?: string;
       documentType?: string;
       documentDisplayName?: string;
@@ -2572,11 +2745,15 @@ export interface components {
       uploadedAt?: string;
       uploadedByUsername?: string;
       updatedByUsername?: string;
+      /** Format: date-time */
       createdAt?: string;
+      /** Format: date-time */
       updatedAt?: string;
     };
     LoanApplicationIntakeAuditResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanApplicationId?: string;
       actorUsername?: string;
       correlationId?: string;
@@ -2585,7 +2762,9 @@ export interface components {
       createdAt?: string;
     };
     LoanApplicationDocumentAccessAuditResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanApplicationId?: string;
       action?: string;
       actorUsername?: string;
@@ -2595,10 +2774,13 @@ export interface components {
       actorIp?: string;
       /** Format: int64 */
       byteCount?: number;
+      /** Format: date-time */
       createdAt?: string;
     };
     LoanDisbursementRequestResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanAccountId?: string;
       actorUsername?: string;
       amount?: number;
@@ -2608,11 +2790,43 @@ export interface components {
       requestPayloadJson?: string;
       responsePayloadJson?: string;
       correlationId?: string;
+      /** Format: date-time */
       createdAt?: string;
+      /** Format: date-time */
       updatedAt?: string;
     };
+    DisbursementReferenceResponse: {
+      tranRefNo?: string;
+      source?: string;
+      /** Format: uuid */
+      intentId?: string;
+      intentState?: string;
+    };
+    DisbursementPreviewResponse: {
+      /** Format: uuid */
+      applicationId?: string;
+      /** Format: uuid */
+      loanAccountId?: string;
+      loanAccountNumber?: string;
+      externalLoanId?: string;
+      principal?: number;
+      processingFee?: number;
+      netDisbursalAmount?: number;
+      paymentMode?: string;
+      beneficiaryAccountHolderName?: string;
+      beneficiaryBankName?: string;
+      beneficiaryIfsc?: string;
+      maskedBeneficiaryAccountNumber?: string;
+      beneficiarySource?: string;
+      /** Format: uuid */
+      pendingIntentId?: string;
+      pendingIntentTranRefNo?: string;
+      pendingIntentState?: string;
+    };
     LoanApplicationAuditEventResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       loanApplicationId?: string;
       action?: string;
       actorUsername?: string;
@@ -2621,6 +2835,7 @@ export interface components {
       note?: string;
       reasonCode?: string;
       correlationId?: string;
+      /** Format: date-time */
       createdAt?: string;
     };
     AuthAuditEventResponse: {
@@ -2674,6 +2889,8 @@ export interface components {
       lspBreakdown?: components["schemas"]["LspBreakdown"][];
       priorityAccounts?: components["schemas"]["PriorityAccount"][];
       recentApplications?: components["schemas"]["RecentApplication"][];
+      /** Format: date-time */
+      dataAsOf?: string;
     };
     LspBreakdown: {
       lspId?: string;
@@ -2758,10 +2975,12 @@ export interface components {
       loanProductStatuses?: string[];
     };
     LspDetailResponse: {
+      /** Format: uuid */
       id?: string;
       code?: string;
       name?: string;
       status?: string;
+      /** Format: date-time */
       createdAt?: string;
       webhookSubscription?: components["schemas"]["WebhookSubscriptionResponse"];
       /** Format: int32 */
@@ -2770,6 +2989,7 @@ export interface components {
       users?: components["schemas"]["LspUserResponse"][];
     };
     LspUserResponse: {
+      /** Format: uuid */
       id?: string;
       username?: string;
       email?: string;
@@ -2777,7 +2997,9 @@ export interface components {
       roles?: string[];
     };
     LspAuditEventResponse: {
+      /** Format: uuid */
       id?: string;
+      /** Format: uuid */
       lspId?: string;
       action?: string;
       actorUsername?: string;
@@ -2788,6 +3010,7 @@ export interface components {
       cascadedClientCount?: number;
       detailsJson?: string;
       correlationId?: string;
+      /** Format: date-time */
       createdAt?: string;
     };
     LspOptionResponse: {
@@ -2879,6 +3102,11 @@ export interface components {
       id?: string;
       code?: string;
       name?: string;
+      /** Format: date-time */
+      firstSourcedAt?: string;
+      /** Format: date-time */
+      lastTouchedAt?: string;
+      sourceChannel?: string;
     };
     AuditExplorerEvent: {
       id?: string;
@@ -2897,12 +3125,9 @@ export interface components {
       };
       correlationId?: string;
     };
-    PagedResultAuditExplorerEvent: {
+    CursorPagedResultAuditExplorerEvent: {
       items?: components["schemas"]["AuditExplorerEvent"][];
-      /** Format: int64 */
-      totalCount?: number;
-      /** Format: int32 */
-      offset?: number;
+      nextCursor?: string;
       /** Format: int32 */
       limit?: number;
     };
@@ -2949,7 +3174,9 @@ export interface operations {
   updateUser: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         userId: string;
       };
@@ -2997,7 +3224,9 @@ export interface operations {
   updateProduct: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         productId: string;
       };
@@ -3097,7 +3326,9 @@ export interface operations {
   updateWebhookSubscription: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         lspId: string;
       };
@@ -3123,7 +3354,9 @@ export interface operations {
   updateStatus: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         lspId: string;
       };
@@ -3374,7 +3607,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "*/*": components["schemas"]["LspLoanApplicationResponse"];
+          "*/*": components["schemas"]["LspLoanApplicationDetailResponse"];
         };
       };
     };
@@ -3444,7 +3677,9 @@ export interface operations {
         note?: string;
         sourceReference?: string;
       };
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         applicationId: string;
       };
@@ -3474,7 +3709,9 @@ export interface operations {
   uploadDocumentsBatch: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         applicationId: string;
       };
@@ -3526,6 +3763,24 @@ export interface operations {
       };
     };
   };
+  bootstrapSync: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No Content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   processReportRequests: {
     parameters: {
       query?: {
@@ -3551,7 +3806,9 @@ export interface operations {
   createPortfolioMisRequest: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -3654,7 +3911,9 @@ export interface operations {
   transitionStatus: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         applicationId: string;
       };
@@ -3730,7 +3989,9 @@ export interface operations {
   manuallyOverrideStatus: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         applicationId: string;
       };
@@ -3804,7 +4065,9 @@ export interface operations {
   executeForeclosureQuote_1: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         applicationId: string;
         quoteId: string;
@@ -3853,7 +4116,9 @@ export interface operations {
   initiateDisbursement: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         applicationId: string;
       };
@@ -3875,7 +4140,9 @@ export interface operations {
   runDisbursementStatusCheck: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         applicationId: string;
       };
@@ -3897,7 +4164,9 @@ export interface operations {
   applyMockDisbursementOutcome: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         applicationId: string;
       };
@@ -3923,7 +4192,9 @@ export interface operations {
   acknowledge: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         alertId: string;
       };
@@ -3949,7 +4220,9 @@ export interface operations {
   escalate: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -4037,7 +4310,9 @@ export interface operations {
   createUser: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -4087,7 +4362,9 @@ export interface operations {
   resetPassword: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         userId: string;
       };
@@ -4129,7 +4406,9 @@ export interface operations {
   createProduct: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -4217,7 +4496,9 @@ export interface operations {
   createLsp: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -4263,7 +4544,9 @@ export interface operations {
   create: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         lspId: string;
       };
@@ -4311,7 +4594,9 @@ export interface operations {
   create_1: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         lspId: string;
       };
@@ -4357,7 +4642,9 @@ export interface operations {
   createApiClient: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path?: never;
       cookie?: never;
     };
@@ -4381,7 +4668,9 @@ export interface operations {
   rotateSecret: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
       path: {
         id: string;
       };
@@ -4720,6 +5009,26 @@ export interface operations {
       };
     };
   };
+  listDocumentRequirements: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["LspDocumentRequirementResponse"][];
+        };
+      };
+    };
+  };
   context: {
     parameters: {
       query?: never;
@@ -5039,6 +5348,50 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LoanApplicationDocumentAccessAuditResponse"][];
+        };
+      };
+    };
+  };
+  getDisbursementReference: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        applicationId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["DisbursementReferenceResponse"];
+        };
+      };
+    };
+  };
+  getDisbursementPreview: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        applicationId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["DisbursementPreviewResponse"];
         };
       };
     };
@@ -5363,9 +5716,8 @@ export interface operations {
         since?: string;
         until?: string;
         correlationId?: string;
-        offset?: number;
+        cursor?: string;
         limit?: number;
-        paginationDetails?: boolean;
       };
       header?: never;
       path?: never;
@@ -5379,7 +5731,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "*/*": components["schemas"]["PagedResultAuditExplorerEvent"];
+          "*/*": components["schemas"]["CursorPagedResultAuditExplorerEvent"];
         };
       };
     };

@@ -68,7 +68,14 @@ interface BackendBorrowerDetail {
   referencePersonName: string | null;
   referencePersonNumber: string | null;
   visibleLspIds: string[];
-  visibleLsps?: ReadonlyArray<{ id: string; code: string; name: string }>;
+  visibleLsps?: ReadonlyArray<{
+    id: string;
+    code: string;
+    name: string;
+    firstSourcedAt?: string | null;
+    lastTouchedAt?: string | null;
+    sourceChannel?: string | null;
+  }>;
   loans: BackendBorrowerLoanRow[];
   delinquency: BackendBorrowerDelinquency | null;
 }
@@ -107,7 +114,13 @@ function backendToDetail(
 ): BorrowerDetail {
   const visibleLsps = (() => {
     if (payload.visibleLsps && payload.visibleLsps.length > 0) {
-      return payload.visibleLsps.map((lsp) => ({ id: lsp.id, name: lsp.name }));
+      return payload.visibleLsps.map((lsp) => ({
+        id: lsp.id,
+        name: lsp.name,
+        firstSourcedAt: lsp.firstSourcedAt ?? null,
+        lastTouchedAt: lsp.lastTouchedAt ?? null,
+        sourceChannel: lsp.sourceChannel ?? null,
+      }));
     }
     const map = new Map<string, string>();
     for (const loan of payload.loans) {

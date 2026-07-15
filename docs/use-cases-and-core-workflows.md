@@ -785,8 +785,8 @@ Partner submits repayment schedule for an approved application.
 Application is in a state that accepts schedule upload (typically approved pending disbursal).
 
 **Core Flow:**
-1. Partner sends installment schedule (due dates and amounts).
-2. System validates and stores schedule lines.
+1. Partner sends installment schedule (`mode: GENERATED` or `LSP_PROVIDED` with due dates and amounts).
+2. System validates principal integrity and Spec S20 date/interest rules (see `docs/partner-schedule-validation.md`); rejects with `422 REPAYMENT_SCHEDULE_INVALID` when invalid.
 3. Schedule becomes available for disbursement validation and future payment allocation.
 
 **Success Outcome:**  

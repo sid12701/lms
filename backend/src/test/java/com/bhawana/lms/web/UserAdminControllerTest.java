@@ -230,6 +230,50 @@ class UserAdminControllerTest {
     }
 
     @Test
+    void newlyCreatedUserMustChangePasswordOnFirstLogin() throws Exception {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("username", "new.ops.user");
+        body.put("email", "new.ops.user@bhawana.local");
+        body.put("password", "TempPassword123!");
+        body.set("roles", objectMapper.createArrayNode().add("OPS_USER"));
+
+        mockMvc.perform(post("/api/v1/internal/admin/users")
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passwordChangeRequired").value(true));
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new AuthApiResponses.LoginRequest("new.ops.user@bhawana.local", "TempPassword123!"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passwordChangeRequired").value(true))
+                .andReturn();
+
+        String accessToken = objectMapper.readTree(loginResult.getResponse().getContentAsString())
+                .get("accessToken")
+                .asText();
+
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isPreconditionRequired())
+                .andExpect(jsonPath("$.code").value("PASSWORD_CHANGE_REQUIRED"));
+
+        mockMvc.perform(post("/api/v1/auth/password")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new AuthApiResponses.ChangePasswordRequest("NewPassword456!"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passwordChangeRequired").value(false));
+
+        entityManager.clear();
+        assertFalse(appUserRepository.findByUsername("new.ops.user").orElseThrow().isPasswordChangeRequired());
+    }
+
+    @Test
     void createUserCanonicalisesMixedCaseUsernameAndEmailToLowercase() throws Exception {
         ObjectNode body = objectMapper.createObjectNode();
         body.put("username", "Mixed.Case.User");

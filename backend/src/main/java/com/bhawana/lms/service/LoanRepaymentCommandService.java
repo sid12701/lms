@@ -19,8 +19,14 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class LoanRepaymentCommandService {
@@ -32,6 +38,8 @@ public class LoanRepaymentCommandService {
     private final WebhookOutboxService webhookOutboxService;
     private final ObjectMapper objectMapper;
     private final IdempotencyClaimService idempotencyClaimService;
+    private final TransactionTemplate transactionTemplate;
+    private final TransactionTemplate readOnlyRequiresNewTemplate;
 
     public LoanRepaymentCommandService(
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
@@ -40,7 +48,8 @@ public class LoanRepaymentCommandService {
             LoanApplicationStatusWriter loanApplicationStatusWriter,
             WebhookOutboxService webhookOutboxService,
             ObjectMapper objectMapper,
-            IdempotencyClaimService idempotencyClaimService
+            IdempotencyClaimService idempotencyClaimService,
+            PlatformTransactionManager transactionManager
     ) {
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
@@ -49,9 +58,13 @@ public class LoanRepaymentCommandService {
         this.webhookOutboxService = webhookOutboxService;
         this.objectMapper = objectMapper;
         this.idempotencyClaimService = idempotencyClaimService;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.readOnlyRequiresNewTemplate = new TransactionTemplate(transactionManager);
+        this.readOnlyRequiresNewTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.readOnlyRequiresNewTemplate.setReadOnly(true);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public LoanPaymentTransaction recordPaymentTransactionWithRecovery(
             UUID applicationId,
             String actorUsername,
@@ -73,7 +86,7 @@ public class LoanRepaymentCommandService {
                     reference,
                     channel
             );
-        } catch (org.springframework.orm.ObjectOptimisticLockingFailureException exception) {
+        } catch (ObjectOptimisticLockingFailureException exception) {
             return recoverPaymentAfterConcurrentWrite(
                     applicationId,
                     idempotencyKey,
@@ -83,10 +96,22 @@ public class LoanRepaymentCommandService {
                     reference,
                     channel
             );
+        } catch (DataIntegrityViolationException exception) {
+            if (isPaymentIdempotencyKeyViolation(exception)) {
+                return recoverPaymentAfterConcurrentWrite(
+                        applicationId,
+                        idempotencyKey,
+                        targetInstallmentId,
+                        amount,
+                        postedAt,
+                        reference,
+                        channel
+                );
+            }
+            throw exception;
         }
     }
 
-    @Transactional
     public LoanPaymentTransaction recordPaymentTransaction(
             UUID applicationId,
             String actorUsername,
@@ -113,20 +138,18 @@ public class LoanRepaymentCommandService {
                 channel
         );
 
-        return loanPaymentTransactionRepository.findFirstByIdempotencyKeyOrderByCreatedAtAsc(normalizedIdempotencyKey)
-                .map(existing -> resolveExistingPayment(existing, applicationId, requestFingerprint))
-                .orElseGet(() -> createInstallmentPaymentWithClaim(
-                        application,
-                        loanAccount,
-                        actorUsername,
-                        normalizedIdempotencyKey,
-                        requestFingerprint,
-                        targetInstallmentId,
-                        amount,
-                        postedAt,
-                        reference,
-                        channel
-                ));
+        return createInstallmentPaymentWithClaim(
+                application,
+                loanAccount,
+                actorUsername,
+                normalizedIdempotencyKey,
+                requestFingerprint,
+                targetInstallmentId,
+                amount,
+                postedAt,
+                reference,
+                channel
+        );
     }
 
     private LoanPaymentTransaction createInstallmentPaymentWithClaim(
@@ -142,25 +165,28 @@ public class LoanRepaymentCommandService {
             LoanPaymentChannel channel
     ) {
         synchronized (idempotencyKey.intern()) {
-            return loanPaymentTransactionRepository.findFirstByIdempotencyKeyOrderByCreatedAtAsc(idempotencyKey)
-                    .map(existing -> resolveExistingPayment(existing, application.getId(), requestFingerprint))
-                    .orElseGet(() -> createInstallmentPayment(
-                            application,
-                            loanAccount,
-                            actorUsername,
-                            idempotencyKey,
-                            requestFingerprint,
-                            targetInstallmentId,
-                            amount,
-                            postedAt,
-                            reference,
-                            channel
-                    ));
+            Optional<LoanPaymentTransaction> existingPayment = readOnlyRequiresNewTemplate.execute(
+                    status -> loanPaymentTransactionRepository.findFirstByIdempotencyKeyOrderByCreatedAtAsc(idempotencyKey)
+            );
+            if (existingPayment.isPresent()) {
+                return resolveExistingPayment(existingPayment.get(), application.getId(), requestFingerprint);
+            }
+            return transactionTemplate.execute(status -> createInstallmentPayment(
+                    application,
+                    loanAccount,
+                    actorUsername,
+                    idempotencyKey,
+                    requestFingerprint,
+                    targetInstallmentId,
+                    amount,
+                    postedAt,
+                    reference,
+                    channel
+            ));
         }
     }
 
-    @Transactional(readOnly = true)
-    public LoanPaymentTransaction recoverPaymentAfterConcurrentWrite(
+    private LoanPaymentTransaction recoverPaymentAfterConcurrentWrite(
             UUID applicationId,
             String idempotencyKey,
             UUID targetInstallmentId,
@@ -169,20 +195,22 @@ public class LoanRepaymentCommandService {
             String reference,
             LoanPaymentChannel channel
     ) {
-        String normalizedIdempotencyKey = loanServicingSupportService.requireIdempotencyKey(idempotencyKey);
-        String requestFingerprint = fingerprintPaymentRequest(
-                applicationId,
-                targetInstallmentId,
-                amount,
-                postedAt,
-                reference,
-                channel
-        );
-        return loanPaymentTransactionRepository.findFirstByIdempotencyKeyOrderByCreatedAtAsc(normalizedIdempotencyKey)
-                .map(existing -> resolveExistingPayment(existing, applicationId, requestFingerprint))
-                .orElseThrow(() -> new IllegalStateException(
-                        "Payment row missing after concurrent write for key " + normalizedIdempotencyKey
-                ));
+        return transactionTemplate.execute(status -> {
+            String normalizedIdempotencyKey = loanServicingSupportService.requireIdempotencyKey(idempotencyKey);
+            String requestFingerprint = fingerprintPaymentRequest(
+                    applicationId,
+                    targetInstallmentId,
+                    amount,
+                    postedAt,
+                    reference,
+                    channel
+            );
+            return loanPaymentTransactionRepository.findFirstByIdempotencyKeyOrderByCreatedAtAsc(normalizedIdempotencyKey)
+                    .map(existing -> resolveExistingPayment(existing, applicationId, requestFingerprint))
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Payment row missing after concurrent write for key " + normalizedIdempotencyKey
+                    ));
+        });
     }
 
     private LoanPaymentTransaction createInstallmentPayment(
@@ -197,14 +225,14 @@ public class LoanRepaymentCommandService {
             String reference,
             LoanPaymentChannel channel
     ) {
-        LoanRepaymentScheduleInstallment installment = loanServicingSupportService.resolveTargetInstallment(
+        LoanRepaymentScheduleInstallment installment = loanServicingSupportService.resolveTargetInstallmentForUpdate(
                 loanAccount,
                 targetInstallmentId
         );
         BigDecimal normalizedAmount = loanServicingSupportService.validateExactInstallmentAmount(installment, amount);
 
         String normalizedActorUsername = loanServicingSupportService.normalizeActorUsername(actorUsername);
-        Optional<LoanPaymentTransaction> claimedPayment = idempotencyClaimService.claimLoanPaymentRow(new LoanPaymentTransaction(
+        LoanPaymentTransaction paymentTransaction = idempotencyClaimService.claimLoanPaymentRow(new LoanPaymentTransaction(
                 loanAccount,
                 installment,
                 normalizedActorUsername,
@@ -218,18 +246,6 @@ public class LoanRepaymentCommandService {
                 idempotencyKey,
                 requestFingerprint
         ));
-        if (claimedPayment.isEmpty()) {
-            return loanPaymentTransactionRepository.findFirstByIdempotencyKeyOrderByCreatedAtAsc(idempotencyKey)
-                    .map(existing -> resolveExistingPayment(existing, application.getId(), requestFingerprint))
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Idempotency row missing after unique violation for key " + idempotencyKey
-                    ));
-        }
-
-        LoanPaymentTransaction paymentTransaction = loanPaymentTransactionRepository.findById(claimedPayment.get().getId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Claimed payment row missing for key " + idempotencyKey
-                ));
 
         LoanApplication applicationForUpdate = loanServicingSupportService.getApplication(application.getId());
         LoanAccount loanAccountForUpdate = loanServicingSupportService.getRequiredLoanAccount(application.getId());
@@ -376,5 +392,18 @@ public class LoanRepaymentCommandService {
                 application.getId(),
                 LoanWebhookPayloads.loanFullyRepaid(application, loanAccount)
         );
+    }
+
+    private static boolean isPaymentIdempotencyKeyViolation(DataIntegrityViolationException exception) {
+        Throwable cause = exception.getMostSpecificCause();
+        if (!(cause instanceof org.hibernate.exception.ConstraintViolationException constraintViolation)) {
+            return false;
+        }
+        String constraintName = constraintViolation.getConstraintName();
+        if (constraintName == null) {
+            return false;
+        }
+        return constraintName.toLowerCase().replace("\"", "")
+                .contains("uk_loan_payment_transaction_idempotency_key");
     }
 }

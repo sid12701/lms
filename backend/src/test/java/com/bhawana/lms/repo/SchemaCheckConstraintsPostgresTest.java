@@ -25,6 +25,7 @@ class SchemaCheckConstraintsPostgresTest extends PostgresDataJpaTestSupport {
     private UUID lspId;
     private UUID borrowerId;
     private UUID loanProductId;
+    private UUID loanProductVersionId;
     private UUID loanApplicationId;
     private UUID loanAccountId;
 
@@ -34,8 +35,9 @@ class SchemaCheckConstraintsPostgresTest extends PostgresDataJpaTestSupport {
         lspId = insertLsp("LSP-" + suffix);
         borrowerId = insertBorrower("PAN" + suffix.substring(0, 7));
         loanProductId = insertLoanProductValid("PROD-" + suffix);
-        loanApplicationId = insertLoanApplicationValid(borrowerId, lspId, loanProductId, "EXT-" + suffix);
-        loanAccountId = insertLoanAccountValid(loanApplicationId, borrowerId, lspId, loanProductId, "ACC-" + suffix);
+        loanProductVersionId = resolveProductVersionId(loanProductId);
+        loanApplicationId = insertLoanApplicationValid(borrowerId, lspId, loanProductId, loanProductVersionId, "EXT-" + suffix);
+        loanAccountId = insertLoanAccountValid(loanApplicationId, borrowerId, lspId, loanProductId, loanProductVersionId, "ACC-" + suffix);
     }
 
     // ---------------------------------------------------------------------
@@ -112,15 +114,15 @@ class SchemaCheckConstraintsPostgresTest extends PostgresDataJpaTestSupport {
 
     @Test
     void loanAccountRejectsNegativePrincipalAmount() {
-        UUID freshApplication = insertLoanApplicationValid(borrowerId, lspId, loanProductId, "EXT-LA-NEG-PRIN-" + UUID.randomUUID().toString().substring(0, 8));
-        assertThatThrownBy(() -> insertLoanAccount(freshApplication, borrowerId, lspId, loanProductId, "ACC-NEG-PRIN", "-1.00", 12))
+        UUID freshApplication = insertLoanApplicationValid(borrowerId, lspId, loanProductId, loanProductVersionId, "EXT-LA-NEG-PRIN-" + UUID.randomUUID().toString().substring(0, 8));
+        assertThatThrownBy(() -> insertLoanAccount(freshApplication, borrowerId, lspId, loanProductId, loanProductVersionId, "ACC-NEG-PRIN", "-1.00", 12))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
     void loanAccountRejectsNonPositiveTenureMonths() {
-        UUID freshApplication = insertLoanApplicationValid(borrowerId, lspId, loanProductId, "EXT-LA-ZERO-TEN-" + UUID.randomUUID().toString().substring(0, 8));
-        assertThatThrownBy(() -> insertLoanAccount(freshApplication, borrowerId, lspId, loanProductId, "ACC-ZERO-TEN", "1000.00", 0))
+        UUID freshApplication = insertLoanApplicationValid(borrowerId, lspId, loanProductId, loanProductVersionId, "EXT-LA-ZERO-TEN-" + UUID.randomUUID().toString().substring(0, 8));
+        assertThatThrownBy(() -> insertLoanAccount(freshApplication, borrowerId, lspId, loanProductId, loanProductVersionId, "ACC-ZERO-TEN", "1000.00", 0))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -285,27 +287,59 @@ class SchemaCheckConstraintsPostgresTest extends PostgresDataJpaTestSupport {
                         + "VALUES (?, ?, ?, 100.00, 100000.00, 10.00, 1.00, 6, 60)",
                 id, code, "Product " + code
         );
+        insertLoanProductVersion(id);
         return id;
     }
 
-    private UUID insertLoanApplicationValid(UUID borrowerId, UUID lspId, UUID productId, String externalId) {
+    private void insertLoanProductVersion(UUID productId) {
+        jdbcTemplate.update(
+                "INSERT INTO loan_product_version (id, loan_product_id, version_number, min_principal, max_principal, "
+                        + "interest_rate, processing_fee_rate, min_tenure_months, max_tenure_months, effective_from) "
+                        + "VALUES (?, ?, 1, 100.00, 100000.00, 10.00, 1.00, 6, 60, NOW())",
+                UUID.randomUUID(),
+                productId
+        );
+    }
+
+    private UUID resolveProductVersionId(UUID productId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT id FROM loan_product_version WHERE loan_product_id = ? AND version_number = 1",
+                UUID.class,
+                productId
+        );
+    }
+
+    private UUID insertLoanApplicationValid(
+            UUID borrowerId,
+            UUID lspId,
+            UUID productId,
+            UUID productVersionId,
+            String externalId
+    ) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
-                "INSERT INTO loan_application (id, borrower_id, lsp_id, loan_product_id, "
+                "INSERT INTO loan_application (id, borrower_id, lsp_id, loan_product_id, loan_product_version_id, "
                         + "external_loan_id, source_channel, requested_amount, tenure_months, status) "
-                        + "VALUES (?, ?, ?, ?, ?, 'API', 5000.00, 12, 'INITIALIZED')",
-                id, borrowerId, lspId, productId, externalId
+                        + "VALUES (?, ?, ?, ?, ?, ?, 'API', 5000.00, 12, 'INITIALIZED')",
+                id, borrowerId, lspId, productId, productVersionId, externalId
         );
         return id;
     }
 
-    private UUID insertLoanAccountValid(UUID applicationId, UUID borrowerId, UUID lspId, UUID productId, String accountNumber) {
+    private UUID insertLoanAccountValid(
+            UUID applicationId,
+            UUID borrowerId,
+            UUID lspId,
+            UUID productId,
+            UUID productVersionId,
+            String accountNumber
+    ) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
                 "INSERT INTO loan_account (id, loan_application_id, borrower_id, lsp_id, loan_product_id, "
-                        + "account_number, principal_amount, tenure_months, status, approved_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, 5000.00, 12, 'PENDING_DISBURSEMENT', NOW())",
-                id, applicationId, borrowerId, lspId, productId, accountNumber
+                        + "loan_product_version_id, account_number, principal_amount, tenure_months, status, approved_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, 5000.00, 12, 'PENDING_DISBURSEMENT', NOW())",
+                id, applicationId, borrowerId, lspId, productId, productVersionId, accountNumber
         );
         return id;
     }
@@ -343,10 +377,10 @@ class SchemaCheckConstraintsPostgresTest extends PostgresDataJpaTestSupport {
             int tenureMonths
     ) {
         jdbcTemplate.update(
-                "INSERT INTO loan_application (borrower_id, lsp_id, loan_product_id, "
+                "INSERT INTO loan_application (borrower_id, lsp_id, loan_product_id, loan_product_version_id, "
                         + "external_loan_id, source_channel, requested_amount, tenure_months, status) "
-                        + "VALUES (?, ?, ?, ?, 'API', ?::numeric, ?, 'INITIALIZED')",
-                borrowerId, lspId, productId, externalId, requestedAmount, tenureMonths
+                        + "VALUES (?, ?, ?, ?, ?, 'API', ?::numeric, ?, 'INITIALIZED')",
+                borrowerId, lspId, productId, resolveProductVersionId(productId), externalId, requestedAmount, tenureMonths
         );
     }
 
@@ -355,15 +389,16 @@ class SchemaCheckConstraintsPostgresTest extends PostgresDataJpaTestSupport {
             UUID borrowerId,
             UUID lspId,
             UUID productId,
+            UUID productVersionId,
             String accountNumber,
             String principalAmount,
             int tenureMonths
     ) {
         jdbcTemplate.update(
                 "INSERT INTO loan_account (id, loan_application_id, borrower_id, lsp_id, loan_product_id, "
-                        + "account_number, principal_amount, tenure_months, status, approved_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?::numeric, ?, 'PENDING_DISBURSEMENT', NOW())",
-                UUID.randomUUID(), applicationId, borrowerId, lspId, productId, accountNumber, principalAmount, tenureMonths
+                        + "loan_product_version_id, account_number, principal_amount, tenure_months, status, approved_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?::numeric, ?, 'PENDING_DISBURSEMENT', NOW())",
+                UUID.randomUUID(), applicationId, borrowerId, lspId, productId, productVersionId, accountNumber, principalAmount, tenureMonths
         );
     }
 

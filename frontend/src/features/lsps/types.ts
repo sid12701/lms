@@ -3,8 +3,8 @@
  *
  * `Lsp` and `LspWebhookSubscription` are the canonical wire shapes from
  * `src/schemas/lsp.ts`. The list page consumes a `LspRow` projection that
- * adds the operator-facing aggregate `apiClientCount` so the table can show
- * "credentials" at a glance without a second round-trip.
+ * adds the operator-facing aggregate `userCount` so the table can show
+ * tenant-user reach at a glance without a second round-trip.
  *
  * All mutations carry an idempotency key (BR-5). Webhook subscription writes
  * are upsert-style — there's one subscription per LSP per blueprint §11.
@@ -32,8 +32,8 @@ export type LspsListFilters = z.infer<typeof LspsListFilters>;
 
 /** Row projection used by the list table. */
 export interface LspRow extends Lsp {
-  /** Number of API clients registered to this LSP. */
-  apiClientCount: number;
+  /** Number of app users scoped to this LSP (served by the directory endpoint). */
+  userCount: number;
   /** Whether a webhook subscription exists + is enabled. */
   webhookEnabled: boolean;
 }
@@ -96,6 +96,7 @@ export interface LspMutationResponse {
 export interface UpsertWebhookSubscriptionInput {
   enabled: boolean;
   endpointUrl: string;
+  /** Empty string keeps the currently stored secret (write-only on reads). */
   signingSecret: string;
   eventTypes: z.infer<typeof WebhookEventType>[];
   idempotencyKey: string;

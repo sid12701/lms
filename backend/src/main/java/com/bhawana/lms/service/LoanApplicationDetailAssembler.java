@@ -4,6 +4,7 @@ import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanApplication;
+import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
@@ -54,13 +55,16 @@ public class LoanApplicationDetailAssembler {
                 LoanDelinquencySupport.summarize(installments, businessCalendar.today());
         Optional<LoanApplicationLastActivity> lastActivity =
                 loanApplicationServicingReadService.getLatestActivity(applicationId);
+        Optional<LoanDisbursementRequestLog> latestDisbursementRequest = loanAccount
+                .flatMap(account -> loanApplicationServicingReadService.getLatestDisbursementRequest(account.getId()));
 
         return new LoanApplicationDetailView(
                 application,
                 loanAccount,
                 lastActivity,
                 repaymentScheduleSummary,
-                delinquencySummary
+                delinquencySummary,
+                latestDisbursementRequest
         );
     }
 
@@ -69,7 +73,8 @@ public class LoanApplicationDetailAssembler {
             Optional<LoanAccount> loanAccount,
             Optional<LoanApplicationLastActivity> lastActivity,
             Optional<LoanRepaymentScheduleSummary> repaymentScheduleSummary,
-            Optional<LoanDelinquencySummary> delinquencySummary
+            Optional<LoanDelinquencySummary> delinquencySummary,
+            Optional<LoanDisbursementRequestLog> latestDisbursementRequest
     ) {
     }
 }

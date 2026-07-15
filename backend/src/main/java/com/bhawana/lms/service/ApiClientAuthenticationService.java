@@ -17,31 +17,42 @@ public class ApiClientAuthenticationService {
 
     private final ApiClientRepository apiClientRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ApiClientLockoutService apiClientLockoutService;
 
     public ApiClientAuthenticationService(
             ApiClientRepository apiClientRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            ApiClientLockoutService apiClientLockoutService
     ) {
         this.apiClientRepository = apiClientRepository;
         this.passwordEncoder = passwordEncoder;
+        this.apiClientLockoutService = apiClientLockoutService;
     }
 
     @Transactional
     public AuthenticatedApiClient authenticate(String clientId, String clientSecret) {
         String normalizedClientId = requireField(clientId, "clientId");
         String normalizedClientSecret = requireField(clientSecret, "clientSecret");
+        Instant now = Instant.now();
 
         ApiClient apiClient = apiClientRepository.findByClientId(normalizedClientId)
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
 
-        validateActive(apiClient);
-
-        Instant now = Instant.now();
-        apiClient.clearExpiredPreviousSecret(now);
-        if (!matchesAnyActiveSecret(apiClient, normalizedClientSecret)) {
+        // Reject while throttled without consulting the secret, so repeated guesses cannot advance
+        // the attempt window. The throttle auto-expires, so a legitimate client recovers on its own.
+        if (apiClient.isAuthThrottled(now)) {
             throw new BadCredentialsException("Invalid credentials");
         }
 
+        validateActive(apiClient);
+
+        apiClient.clearExpiredPreviousSecret(now);
+        if (!matchesAnyActiveSecret(apiClient, normalizedClientSecret)) {
+            apiClientLockoutService.registerFailedAttempt(apiClient.getId(), now);
+            throw new BadCredentialsException("Invalid credentials");
+        }
+
+        apiClient.registerSuccessfulAuth();
         apiClient.markUsed();
         ApiClient savedClient = apiClientRepository.save(apiClient);
         return new AuthenticatedApiClient(

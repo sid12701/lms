@@ -1,6 +1,6 @@
 package com.bhawana.lms.web;
 
-import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.CursorPagedResult;
 import com.bhawana.lms.service.AuditExplorerQuery;
 import com.bhawana.lms.service.AuditExplorerQuery.AuditStream;
 import com.bhawana.lms.service.AuditExplorerService;
@@ -19,13 +19,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Gap #3 — {@code GET /api/v1/internal/admin/audit-events}.
- *
- * <p>SYSTEM_ADMIN-only unified search across the eight audit streams
- * (APPLICATION, INTAKE, DOCUMENT_ACCESS, PRODUCT, APP_USER, API_CLIENT,
- * DISBURSEMENT, REPORT_ACCESS). All filters are optional
- * and AND'd together. Pagination is offset/limit (cap 500); totalCount is
- * opt-in via {@code paginationDetails=true} to keep the default path off the
- * expensive COUNT(*) wrap.
  */
 @RestController
 @RequestMapping("/api/v1/internal/admin/audit-events")
@@ -42,7 +35,7 @@ public class AuditExplorerController {
     }
 
     @GetMapping
-    public PagedResult<AuditExplorerEvent> search(
+    public CursorPagedResult<AuditExplorerEvent> search(
             @RequestParam(required = false) String streams,
             @RequestParam(required = false) String actorUsername,
             @RequestParam(required = false) UUID lspId,
@@ -52,13 +45,11 @@ public class AuditExplorerController {
             @RequestParam(required = false) String since,
             @RequestParam(required = false) String until,
             @RequestParam(required = false) String correlationId,
-            @RequestParam(required = false, defaultValue = "0") int offset,
-            @RequestParam(required = false, defaultValue = "100") int limit,
-            @RequestParam(required = false, defaultValue = "false") boolean paginationDetails
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false, defaultValue = "100") int limit
     ) {
         Set<AuditStream> requestedStreams = parseStreams(streams);
         int effectiveLimit = clamp(limit, 1, MAX_LIMIT, DEFAULT_LIMIT);
-        int effectiveOffset = Math.max(offset, 0);
 
         AuditExplorerQuery query = new AuditExplorerQuery(
                 requestedStreams,
@@ -70,9 +61,8 @@ public class AuditExplorerController {
                 parseInstant(since, "since"),
                 parseInstant(until, "until"),
                 normalizeBlank(correlationId),
-                effectiveOffset,
-                effectiveLimit,
-                paginationDetails
+                normalizeBlank(cursor),
+                effectiveLimit
         );
         return service.search(query);
     }
@@ -82,51 +72,52 @@ public class AuditExplorerController {
             @RequestParam(required = false) String since,
             @RequestParam(required = false) String until
     ) {
-        return service.countDocumentAccessByDocumentType(
-                parseInstant(since, "since"),
-                parseInstant(until, "until")
-        );
+        Instant effectiveUntil = parseInstant(until, "until");
+        if (effectiveUntil == null) {
+            effectiveUntil = Instant.now();
+        }
+        Instant effectiveSince = parseInstant(since, "since");
+        if (effectiveSince == null) {
+            effectiveSince = effectiveUntil.minus(AuditExplorerQuery.DEFAULT_WINDOW);
+        }
+        return service.countDocumentAccessByDocumentType(effectiveSince, effectiveUntil);
     }
 
-    private static Set<AuditStream> parseStreams(String raw) {
-        if (raw == null || raw.isBlank()) {
+    private static Set<AuditStream> parseStreams(String streams) {
+        if (streams == null || streams.isBlank()) {
             return AuditExplorerQuery.ALL_STREAMS;
         }
-        Set<AuditStream> result = new LinkedHashSet<>();
-        for (String token : raw.split(",")) {
+        Set<AuditStream> parsed = new LinkedHashSet<>();
+        for (String token : streams.split(",")) {
             String trimmed = token.trim();
-            if (trimmed.isEmpty()) {
-                continue;
-            }
-            try {
-                result.add(AuditStream.valueOf(trimmed.toUpperCase()));
-            } catch (IllegalArgumentException ex) {
-                throw new IllegalArgumentException(
-                        "Unknown audit stream '" + trimmed
-                                + "'. Expected one of: " + List.of(AuditStream.values()));
+            if (!trimmed.isEmpty()) {
+                parsed.add(AuditStream.valueOf(trimmed));
             }
         }
-        return result.isEmpty() ? AuditExplorerQuery.ALL_STREAMS : result;
+        return parsed.isEmpty() ? AuditExplorerQuery.ALL_STREAMS : parsed;
     }
 
-    private static Instant parseInstant(String raw, String fieldName) {
-        if (raw == null || raw.isBlank()) {
+    private static Instant parseInstant(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
             return null;
         }
         try {
-            return Instant.parse(raw);
-        } catch (DateTimeParseException ex) {
-            throw new IllegalArgumentException(fieldName + " must be an ISO-8601 instant (e.g. 2026-01-01T00:00:00Z)");
+            return Instant.parse(value);
+        } catch (DateTimeParseException exception) {
+            throw new IllegalArgumentException("Invalid " + fieldName + " timestamp: " + value);
         }
     }
 
     private static String normalizeBlank(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
-    private static int clamp(int value, int min, int max, int fallback) {
+    private static int clamp(int value, int min, int max, int defaultValue) {
         if (value < min) {
-            return fallback;
+            return defaultValue;
         }
         return Math.min(value, max);
     }

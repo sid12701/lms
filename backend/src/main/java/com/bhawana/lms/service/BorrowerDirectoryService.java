@@ -2,23 +2,28 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.Borrower;
+import com.bhawana.lms.domain.BorrowerLspRelationship;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
+import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
-import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.common.api.PagedResult;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -40,6 +45,7 @@ public class BorrowerDirectoryService {
     private final LoanAccountRepository loanAccountRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LspRepository lspRepository;
+    private final BorrowerLspRelationshipService borrowerLspRelationshipService;
     private final BusinessCalendar businessCalendar;
 
     public BorrowerDirectoryService(
@@ -47,12 +53,14 @@ public class BorrowerDirectoryService {
             LoanAccountRepository loanAccountRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LspRepository lspRepository,
+            BorrowerLspRelationshipService borrowerLspRelationshipService,
             BusinessCalendar businessCalendar
     ) {
         this.borrowerRepository = borrowerRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.lspRepository = lspRepository;
+        this.borrowerLspRelationshipService = borrowerLspRelationshipService;
         this.businessCalendar = businessCalendar;
     }
 
@@ -76,14 +84,6 @@ public class BorrowerDirectoryService {
         int resolvedLimit = PaginationResponseBuilder.resolveLimit(limit, paginationRequested);
 
         Sort sort = Sort.by(Sort.Direction.ASC, "fullName").and(Sort.by(Sort.Direction.ASC, "id"));
-
-        if (!paginationRequested) {
-            List<Borrower> all = listBorrowerPage(
-                    normalizedQuery,
-                    PageRequest.of(0, Integer.MAX_VALUE, sort)
-            ).getContent();
-            return new PagedResult<>(all, all.size(), 0, all.size());
-        }
 
         int pageNumber = resolvedOffset / Math.max(resolvedLimit, 1);
         Page<Borrower> page = listBorrowerPage(
@@ -140,11 +140,35 @@ public class BorrowerDirectoryService {
                 .toList();
 
         BorrowerDelinquencyAggregate delinquency = computeDelinquencyAggregate(loans);
-        List<VisibleLspView> visibleLsps = lspRepository.findAllById(borrower.getVisibleLspIds()).stream()
-                .sorted(Comparator.comparing(Lsp::getName, String.CASE_INSENSITIVE_ORDER))
-                .map(lsp -> new VisibleLspView(lsp.getId(), lsp.getCode(), lsp.getName()))
-                .toList();
+        borrowerLspRelationshipService.assertVisibilityParity(borrower);
+        List<VisibleLspView> visibleLsps = resolveVisibleLsps(borrower);
         return new BorrowerDetailView(borrower, loanViews, delinquency, visibleLsps);
+    }
+
+    private List<VisibleLspView> resolveVisibleLsps(Borrower borrower) {
+        List<BorrowerLspRelationship> relationships = borrowerLspRelationshipService.listForBorrower(borrower.getId());
+        Map<UUID, BorrowerLspRelationship> byLspId = relationships.stream()
+                .collect(Collectors.toMap(
+                        rel -> rel.getLsp().getId(),
+                        Function.identity(),
+                        (left, right) -> left,
+                        java.util.LinkedHashMap::new
+                ));
+
+        return lspRepository.findAllById(borrower.getVisibleLspIds()).stream()
+                .sorted(Comparator.comparing(Lsp::getName, String.CASE_INSENSITIVE_ORDER))
+                .map(lsp -> {
+                    BorrowerLspRelationship relationship = byLspId.get(lsp.getId());
+                    return new VisibleLspView(
+                            lsp.getId(),
+                            lsp.getCode(),
+                            lsp.getName(),
+                            relationship == null ? null : relationship.getFirstSourcedAt(),
+                            relationship == null ? null : relationship.getLastTouchedAt(),
+                            relationship == null ? null : relationship.getSourceChannel()
+                    );
+                })
+                .toList();
     }
 
     /**
@@ -215,7 +239,10 @@ public class BorrowerDirectoryService {
     public record VisibleLspView(
             UUID id,
             String code,
-            String name
+            String name,
+            Instant firstSourcedAt,
+            Instant lastTouchedAt,
+            String sourceChannel
     ) {
     }
 

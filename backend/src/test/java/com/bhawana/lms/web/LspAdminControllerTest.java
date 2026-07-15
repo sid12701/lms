@@ -79,7 +79,9 @@ class LspAdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.webhookSubscription.enabled").value(true))
                 .andExpect(jsonPath("$.webhookSubscription.endpointUrl").value("https://partner.example.com/webhooks/lms"))
-                .andExpect(jsonPath("$.webhookSubscription.signingSecret").value("whsec_test_123"))
+                // Write-only: the secret is never echoed back; secretSet says one exists.
+                .andExpect(jsonPath("$.webhookSubscription.signingSecret").isEmpty())
+                .andExpect(jsonPath("$.webhookSubscription.secretSet").value(true))
                 .andExpect(jsonPath("$.webhookSubscription.eventTypes.length()").value(2));
 
         mockMvc.perform(get("/api/v1/internal/admin/lsps")
@@ -88,6 +90,40 @@ class LspAdminControllerTest {
                 .andExpect(jsonPath("$[0].id").value(lspId))
                 .andExpect(jsonPath("$[0].webhookSubscription.enabled").value(true))
                 .andExpect(jsonPath("$[0].webhookSubscription.eventTypes[0]").value("LOAN_CREATED"));
+    }
+
+    @Test
+    void blankSigningSecretOnUpdateKeepsTheExistingSecret() throws Exception {
+        String lspId = createLsp();
+
+        mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "enabled", true,
+                                "endpointUrl", "https://partner.example.com/webhooks/lms",
+                                "signingSecret", "whsec_initial_secret",
+                                "eventTypes", List.of("LOAN_CREATED")
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.webhookSubscription.secretSet").value(true));
+
+        // The UI cannot re-read the secret, so edits send it blank; the stored
+        // secret must survive and the subscription must stay enabled.
+        mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "enabled", true,
+                                "endpointUrl", "https://partner.example.com/webhooks/lms-v2",
+                                "signingSecret", "",
+                                "eventTypes", List.of("LOAN_CREATED", "LOAN_STATUS_CHANGED")
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.webhookSubscription.enabled").value(true))
+                .andExpect(jsonPath("$.webhookSubscription.endpointUrl").value("https://partner.example.com/webhooks/lms-v2"))
+                .andExpect(jsonPath("$.webhookSubscription.signingSecret").isEmpty())
+                .andExpect(jsonPath("$.webhookSubscription.secretSet").value(true));
     }
 
     @Test

@@ -1,0 +1,3 @@
+ALTER TABLE api_client
+    ADD COLUMN IF NOT EXISTS failed_auth_attempts INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS auth_locked_until TIMESTAMPTZ;

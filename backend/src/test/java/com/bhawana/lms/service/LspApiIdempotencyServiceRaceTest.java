@@ -1,6 +1,7 @@
 package com.bhawana.lms.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
@@ -16,6 +17,7 @@ import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestExecutionListeners;
 
@@ -32,6 +34,9 @@ class LspApiIdempotencyServiceRaceTest {
 
     @Autowired
     private LspApiIdempotencyRecordRepository lspApiIdempotencyRecordRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void concurrentExecuteWithSameKeyPersistsSingleRecord() throws Exception {
@@ -99,5 +104,46 @@ class LspApiIdempotencyServiceRaceTest {
             return;
         }
         throw new AssertionError("expected IDEMPOTENCY_CONFLICT");
+    }
+
+    @Test
+    void serializationFailureRollsBackBusinessStateWithIdempotencyCompletion() {
+        UUID lspId = UUID.randomUUID();
+        String code = "ATOMIC-" + lspId.toString().substring(0, 8).toUpperCase();
+
+        assertThrows(IllegalStateException.class, () -> lspApiIdempotencyService.execute(
+                lspId,
+                "atomicity-test",
+                UUID.randomUUID().toString(),
+                new RequestBody("same-body"),
+                CyclicResponse.class,
+                () -> {
+                    jdbcTemplate.update(
+                            "insert into lsp (id, code, name, status, webhook_enabled, token_version, "
+                                    + "enforce_ui_allowlist, enforce_api_allowlist, created_at, updated_at) "
+                                    + "values (?, ?, ?, ?, false, 0, false, false, current_timestamp, current_timestamp)",
+                            lspId,
+                            code,
+                            "Atomicity Test",
+                            "ACTIVE"
+                    );
+                    return new CyclicResponse();
+                }
+        ));
+
+        assertEquals(0L, jdbcTemplate.queryForObject(
+                "select count(*) from lsp where id = ?",
+                Long.class,
+                lspId
+        ));
+    }
+
+    private record RequestBody(String value) {
+    }
+
+    private static final class CyclicResponse {
+        public CyclicResponse getSelf() {
+            return this;
+        }
     }
 }

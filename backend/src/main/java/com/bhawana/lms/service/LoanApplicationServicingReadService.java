@@ -231,6 +231,11 @@ public class LoanApplicationServicingReadService {
     }
 
     @Transactional(readOnly = true)
+    public Optional<LoanDisbursementRequestLog> getLatestDisbursementRequest(UUID loanAccountId) {
+        return loanDisbursementRequestLogRepository.findTopByLoanAccount_IdOrderByCreatedAtDesc(loanAccountId);
+    }
+
+    @Transactional(readOnly = true)
     public List<LoanPaymentTransaction> listPaymentTransactions(UUID applicationId) {
         LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
         return loanPaymentTransactionRepository.findTop50ByLoanAccount_IdOrderByPaymentDateDescCreatedAtDesc(

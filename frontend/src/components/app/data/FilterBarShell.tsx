@@ -64,6 +64,8 @@ export function FilterBarSearchField({
       />
       <input
         type="search"
+        id={dataSlot}
+        name={dataSlot}
         data-slot={dataSlot}
         value={value}
         onChange={(e) => onChange(e.target.value)}

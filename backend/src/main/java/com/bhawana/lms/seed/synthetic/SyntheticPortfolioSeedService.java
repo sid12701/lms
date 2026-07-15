@@ -78,10 +78,18 @@ public class SyntheticPortfolioSeedService {
                 spec.auditRows()
         );
 
-        resetBusinessData();
+        Map<String, Long> baselineCounts = properties.isResetExistingData()
+                ? Map.of()
+                : readVerificationCounts();
+        if (properties.isResetExistingData()) {
+            resetBusinessData();
+        } else {
+            LOG.info("Additive synthetic seed enabled; preserving existing business data");
+            borrowerSequence.set(1_001_000L + count("borrower"));
+        }
         List<LspSeedContext> lspContexts = seedDimensions(spec);
         PortfolioCounters counters = seedPortfolio(spec, lspContexts);
-        verifyCounts(spec, counters);
+        verifyCounts(spec, counters, baselineCounts);
 
         long elapsedMs = System.currentTimeMillis() - startedAt;
         LOG.info("Synthetic portfolio seed completed in {} ms", elapsedMs);
@@ -123,10 +131,14 @@ public class SyntheticPortfolioSeedService {
     private List<LspSeedContext> seedDimensions(SyntheticPortfolioSpec spec) {
         List<LspSeedContext> contexts = new ArrayList<>(spec.lspCount());
         Instant now = Instant.now();
+        String runId = properties.getSeedRunId() == null || properties.getSeedRunId().isBlank()
+                ? ""
+                : "-" + properties.getSeedRunId().trim().toUpperCase().replaceAll("[^A-Z0-9]", "");
         for (int index = 0; index < spec.lspCount(); index++) {
             UUID lspId = UUID.randomUUID();
             UUID productId = UUID.randomUUID();
-            String code = "SYN-LSP-" + String.format("%02d", index + 1);
+            UUID productVersionId = UUID.randomUUID();
+            String code = "SYN" + runId + "-LSP-" + String.format("%02d", index + 1);
             jdbcTemplate.update(
                     """
                     INSERT INTO lsp (id, code, name, status, created_at, updated_at)
@@ -161,6 +173,24 @@ public class SyntheticPortfolioSeedService {
             );
             jdbcTemplate.update(
                     """
+                    INSERT INTO loan_product_version (
+                        id, loan_product_id, version_number, min_principal, max_principal, interest_rate,
+                        processing_fee_rate, min_tenure_months, max_tenure_months, effective_from, created_at
+                    ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    productVersionId,
+                    productId,
+                    new BigDecimal("10000.00"),
+                    new BigDecimal("600000.00"),
+                    SyntheticPortfolioSpec.DEFAULT_INTEREST_RATE,
+                    SyntheticPortfolioSpec.DEFAULT_PROCESSING_FEE_RATE,
+                    6,
+                    36,
+                    Timestamp.from(now),
+                    Timestamp.from(now)
+            );
+            jdbcTemplate.update(
+                    """
                     INSERT INTO loan_product_lsp_mapping (id, loan_product_id, lsp_id, enabled, created_at, updated_at)
                     VALUES (?, ?, ?, TRUE, ?, ?)
                     """,
@@ -186,6 +216,7 @@ public class SyntheticPortfolioSeedService {
                     index,
                     lspId,
                     productId,
+                    productVersionId,
                     code,
                     apiClient.client().getClientId(),
                     apiClient.rawSecret()
@@ -375,6 +406,30 @@ public class SyntheticPortfolioSeedService {
                     }
                 }
         );
+        jdbcTemplate.batchUpdate(
+                """
+                INSERT INTO borrower_lsp_relationship (
+                    id, borrower_id, lsp_id, first_sourced_at, last_touched_at, source_channel
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                new BatchPreparedStatementSetter() {
+                    @Override
+                    public void setValues(PreparedStatement ps, int index) throws SQLException {
+                        Instant createdAt = createdAts.get(index);
+                        ps.setObject(1, UUID.randomUUID());
+                        ps.setObject(2, borrowerIds.get(index));
+                        ps.setObject(3, lspId);
+                        ps.setTimestamp(4, Timestamp.from(createdAt));
+                        ps.setTimestamp(5, Timestamp.from(createdAt));
+                        ps.setString(6, "SEED");
+                    }
+
+                    @Override
+                    public int getBatchSize() {
+                        return count;
+                    }
+                }
+        );
     }
 
     private void insertApplications(
@@ -390,9 +445,9 @@ public class SyntheticPortfolioSeedService {
         jdbcTemplate.batchUpdate(
                 """
                 INSERT INTO loan_application (
-                    id, borrower_id, lsp_id, loan_product_id, external_loan_id, source_channel,
+                    id, borrower_id, lsp_id, loan_product_id, loan_product_version_id, external_loan_id, source_channel,
                     requested_amount, tenure_months, status, created_at, updated_at, entity_version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
                 """,
                 new BatchPreparedStatementSetter() {
                     @Override
@@ -401,14 +456,15 @@ public class SyntheticPortfolioSeedService {
                         ps.setObject(2, borrowerIds.get(index));
                         ps.setObject(3, lsp.lspId());
                         ps.setObject(4, lsp.productId());
-                        ps.setString(5, lsp.code() + "-APP-" + (lspLocalStart + index + 1));
-                        ps.setString(6, "API");
-                        ps.setBigDecimal(7, SyntheticPortfolioSpec.DEFAULT_PRINCIPAL);
-                        ps.setInt(8, spec.tenureMonths());
-                        ps.setString(9, status.name());
+                        ps.setObject(5, lsp.productVersionId());
+                        ps.setString(6, lsp.code() + "-APP-" + (lspLocalStart + index + 1));
+                        ps.setString(7, "API");
+                        ps.setBigDecimal(8, SyntheticPortfolioSpec.DEFAULT_PRINCIPAL);
+                        ps.setInt(9, spec.tenureMonths());
+                        ps.setString(10, status.name());
                         Instant createdAt = createdAts.get(index);
-                        ps.setTimestamp(10, Timestamp.from(createdAt));
                         ps.setTimestamp(11, Timestamp.from(createdAt));
+                        ps.setTimestamp(12, Timestamp.from(createdAt));
                     }
 
                     @Override
@@ -432,10 +488,10 @@ public class SyntheticPortfolioSeedService {
         jdbcTemplate.batchUpdate(
                 """
                 INSERT INTO loan_account (
-                    id, loan_application_id, borrower_id, lsp_id, loan_product_id, account_number,
+                    id, loan_application_id, borrower_id, lsp_id, loan_product_id, loan_product_version_id, account_number,
                     principal_amount, tenure_months, status, approved_at, disbursed_at, processing_fee_amount,
                     created_at, updated_at, entity_version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
                 """,
                 new BatchPreparedStatementSetter() {
                     @Override
@@ -449,18 +505,19 @@ public class SyntheticPortfolioSeedService {
                         ps.setObject(3, borrowerIds.get(index));
                         ps.setObject(4, lsp.lspId());
                         ps.setObject(5, lsp.productId());
-                        ps.setString(6, lsp.code() + "-ACCT-" + accountIds.get(index));
-                        ps.setBigDecimal(7, SyntheticPortfolioSpec.DEFAULT_PRINCIPAL);
-                        ps.setInt(8, spec.tenureMonths());
-                        ps.setString(9, bucket.accountStatus().name());
-                        ps.setTimestamp(10, Timestamp.from(approvedAt));
+                        ps.setObject(6, lsp.productVersionId());
+                        ps.setString(7, lsp.code() + "-ACCT-" + accountIds.get(index));
+                        ps.setBigDecimal(8, SyntheticPortfolioSpec.DEFAULT_PRINCIPAL);
+                        ps.setInt(9, spec.tenureMonths());
+                        ps.setString(10, bucket.accountStatus().name());
+                        ps.setTimestamp(11, Timestamp.from(approvedAt));
                         if (disbursedAt == null) {
-                            ps.setTimestamp(11, null);
+                            ps.setTimestamp(12, null);
                         } else {
-                            ps.setTimestamp(11, Timestamp.from(disbursedAt));
+                            ps.setTimestamp(12, Timestamp.from(disbursedAt));
                         }
                         ps.setBigDecimal(
-                                12,
+                                13,
                                 disbursedAt == null
                                         ? null
                                         : LoanFeeCalculator.computeProcessingFee(
@@ -468,8 +525,8 @@ public class SyntheticPortfolioSeedService {
                                                 SyntheticPortfolioSpec.DEFAULT_PROCESSING_FEE_RATE
                                         )
                         );
-                        ps.setTimestamp(13, Timestamp.from(approvedAt));
                         ps.setTimestamp(14, Timestamp.from(approvedAt));
+                        ps.setTimestamp(15, Timestamp.from(approvedAt));
                     }
 
                     @Override
@@ -746,37 +803,49 @@ public class SyntheticPortfolioSeedService {
         }
     }
 
-    private void verifyCounts(SyntheticPortfolioSpec spec, PortfolioCounters counters) {
+    private void verifyCounts(
+            SyntheticPortfolioSpec spec,
+            PortfolioCounters counters,
+            Map<String, Long> baselineCounts
+    ) {
+        Map<String, Long> absolute = readVerificationCounts();
         Map<String, Long> actual = new LinkedHashMap<>();
-        actual.put("borrower", count("borrower"));
-        actual.put("loan_application", count("loan_application"));
-        actual.put("loan_account", count("loan_account"));
-        actual.put("loan_payment_transaction", count("loan_payment_transaction"));
-        actual.put("loan_application_intake_audit", count("loan_application_intake_audit"));
-        actual.put("loan_application_status_transition", count("loan_application_status_transition"));
-        actual.put("loan_application_audit_event", count("loan_application_audit_event"));
+        absolute.forEach((table, count) -> actual.put(table, count - baselineCounts.getOrDefault(table, 0L)));
         long auditTotal = actual.get("loan_application_intake_audit")
                 + actual.get("loan_application_status_transition")
                 + actual.get("loan_application_audit_event");
         actual.put("audit_total", auditTotal);
 
-        LOG.info("Synthetic seed verification: {}", actual);
+        LOG.info("Synthetic seed verification (inserted delta): {}", actual);
 
         long tolerance = Math.max(5, Math.round(spec.totalApplications() * 0.02));
         assertWithin("loan_application", spec.totalApplications(), actual.get("loan_application"), tolerance);
         assertWithin("borrower", spec.totalApplications(), actual.get("borrower"), tolerance);
-        assertWithin("loan_account", spec.accountsWithSchedules(), actual.get("loan_account"), tolerance);
-        if (spec.paymentTransactions() > 0) {
+        assertWithin("loan_account", counters.accounts, actual.get("loan_account"), tolerance);
+        if (counters.payments > 0) {
             assertWithin(
                     "loan_payment_transaction",
-                    spec.paymentTransactions(),
+                    counters.payments,
                     actual.get("loan_payment_transaction"),
-                    Math.max(tolerance, spec.paymentTransactions() / 10)
+                    Math.max(tolerance, counters.payments / 10)
             );
         }
-        if (spec.auditRows() > 0) {
-            assertWithin("audit_total", spec.auditRows(), auditTotal, Math.max(tolerance, spec.auditRows() / 10));
+        long expectedAuditTotal = counters.intakeAudit + counters.transitionAudit + counters.applicationAudit;
+        if (expectedAuditTotal > 0) {
+            assertWithin("audit_total", expectedAuditTotal, auditTotal, Math.max(tolerance, expectedAuditTotal / 10));
         }
+    }
+
+    private Map<String, Long> readVerificationCounts() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        counts.put("borrower", count("borrower"));
+        counts.put("loan_application", count("loan_application"));
+        counts.put("loan_account", count("loan_account"));
+        counts.put("loan_payment_transaction", count("loan_payment_transaction"));
+        counts.put("loan_application_intake_audit", count("loan_application_intake_audit"));
+        counts.put("loan_application_status_transition", count("loan_application_status_transition"));
+        counts.put("loan_application_audit_event", count("loan_application_audit_event"));
+        return counts;
     }
 
     private long count(String table) {
@@ -804,7 +873,15 @@ public class SyntheticPortfolioSeedService {
         return "9" + String.format("%09d", sequence % 1_000_000_000L);
     }
 
-    record LspSeedContext(int index, UUID lspId, UUID productId, String code, String apiClientId, String apiClientSecret) {
+    record LspSeedContext(
+            int index,
+            UUID lspId,
+            UUID productId,
+            UUID productVersionId,
+            String code,
+            String apiClientId,
+            String apiClientSecret
+    ) {
     }
 
     record SeedResult(long elapsedMs, PortfolioCounters counters) {

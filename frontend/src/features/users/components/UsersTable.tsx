@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { AdminEntityDataTable } from "@/components/app/data/AdminEntityDataTable";
 import { EntityRowActions } from "@/components/app/data/EntityRowActions";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
+import { useSession } from "@/features/auth/session-context";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import type { Role } from "@/schemas/role";
 import type { UserStatus } from "@/schemas/user";
@@ -69,6 +70,8 @@ export function UsersTable({
   onToggleStatus,
   className,
 }: UsersTableProps) {
+  const { session } = useSession();
+  const currentUsername = session?.user.username ?? null;
   const rows = data?.items ?? [];
   const total = data?.total ?? 0;
   const pageSize = filters.pageSize ?? 25;
@@ -175,6 +178,7 @@ export function UsersTable({
         cell: ({ row }) => {
           const u = row.original;
           const isDisabled = u.status === "DISABLED";
+          const isSelf = currentUsername !== null && u.username === currentUsername;
           return (
             <EntityRowActions
               mode="inline"
@@ -182,18 +186,21 @@ export function UsersTable({
                 {
                   id: "edit",
                   label: "Edit",
+                  ariaLabel: `Edit ${u.username}`,
                   dataSlot: "users-edit-button",
                   onSelect: () => onEdit(u),
                 },
                 {
                   id: "reset",
                   label: "Reset password",
+                  ariaLabel: `Reset password for ${u.username}`,
                   dataSlot: "users-reset-button",
                   onSelect: () => onResetPassword(u),
                 },
                 {
                   id: "revoke-sessions",
                   label: "Revoke sessions",
+                  ariaLabel: `Revoke sessions for ${u.username}`,
                   dataSlot: "users-revoke-sessions-button",
                   onSelect: () => onRevokeSessions(u),
                 },
@@ -202,6 +209,10 @@ export function UsersTable({
                   label: isDisabled ? "Enable" : "Disable",
                   ariaLabel: isDisabled ? `Enable ${u.username}` : `Disable ${u.username}`,
                   dataSlot: "users-toggle-status-button",
+                  // Self-lockout guard: an admin disabling their own account
+                  // (possibly the only SYSTEM_ADMIN) has no recovery path in-app.
+                  disabled: isSelf && !isDisabled,
+                  disabledTitle: "You can't disable your own account.",
                   onSelect: () => onToggleStatus(u),
                 },
               ]}
@@ -210,7 +221,7 @@ export function UsersTable({
         },
       },
     ],
-    [onEdit, onResetPassword, onRevokeSessions, onToggleStatus],
+    [onEdit, onResetPassword, onRevokeSessions, onToggleStatus, currentUsername],
   );
 
   const handlePaginationChange = useCallback(

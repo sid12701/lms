@@ -2,6 +2,7 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.ClientIpAddresses;
+import com.bhawana.lms.service.AdminApiIdempotencyService;
 import com.bhawana.lms.service.LspIpAllowlistAdminService;
 import com.bhawana.lms.service.LspIpAllowlistAdminService.AllowlistAuditContext;
 import com.bhawana.lms.service.LspIpAllowlistAdminService.AllowlistEntryView;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,10 +29,17 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasRole('SYSTEM_ADMIN')")
 public class LspUiIpAllowlistAdminController {
 
-    private final LspIpAllowlistAdminService allowlistAdminService;
+    private static final String LSP_UI_IP_ALLOWLIST_CREATE = "LSP_UI_IP_ALLOWLIST_CREATE";
 
-    public LspUiIpAllowlistAdminController(LspIpAllowlistAdminService allowlistAdminService) {
+    private final LspIpAllowlistAdminService allowlistAdminService;
+    private final AdminApiIdempotencyService adminApiIdempotencyService;
+
+    public LspUiIpAllowlistAdminController(
+            LspIpAllowlistAdminService allowlistAdminService,
+            AdminApiIdempotencyService adminApiIdempotencyService
+    ) {
         this.allowlistAdminService = allowlistAdminService;
+        this.adminApiIdempotencyService = adminApiIdempotencyService;
     }
 
     @GetMapping
@@ -43,8 +52,28 @@ public class LspUiIpAllowlistAdminController {
     @PostMapping
     public ResponseEntity<LspIpAllowlistAdminController.LspIpAllowlistEntryResponse> create(
             @PathVariable UUID lspId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody LspIpAllowlistAdminController.LspIpAllowlistCreateRequest request,
             @AuthenticationPrincipal Jwt principal,
+            HttpServletRequest httpRequest
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return ResponseEntity.status(HttpStatus.CREATED).body(doCreateUiEntry(lspId, request, principal, httpRequest));
+        }
+        LspIpAllowlistAdminController.LspIpAllowlistEntryResponse body = adminApiIdempotencyService.execute(
+                LSP_UI_IP_ALLOWLIST_CREATE,
+                idempotencyKey,
+                new UiIpAllowlistCreateFingerprint(lspId.toString(), request),
+                LspIpAllowlistAdminController.LspIpAllowlistEntryResponse.class,
+                () -> doCreateUiEntry(lspId, request, principal, httpRequest)
+        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(body);
+    }
+
+    private LspIpAllowlistAdminController.LspIpAllowlistEntryResponse doCreateUiEntry(
+            UUID lspId,
+            LspIpAllowlistAdminController.LspIpAllowlistCreateRequest request,
+            Jwt principal,
             HttpServletRequest httpRequest
     ) {
         AllowlistEntryView saved = allowlistAdminService.createUiEntry(
@@ -53,7 +82,7 @@ public class LspUiIpAllowlistAdminController {
                 request.description(),
                 auditContext(principal, httpRequest)
         );
-        return ResponseEntity.status(HttpStatus.CREATED).body(LspIpAllowlistAdminController.toResponse(saved));
+        return LspIpAllowlistAdminController.toResponse(saved);
     }
 
     @DeleteMapping("/{entryId}")
@@ -73,5 +102,11 @@ public class LspUiIpAllowlistAdminController {
                 ClientIpAddresses.resolve(httpRequest),
                 CorrelationIdHolder.get()
         );
+    }
+
+    private record UiIpAllowlistCreateFingerprint(
+            String lspId,
+            LspIpAllowlistAdminController.LspIpAllowlistCreateRequest request
+    ) {
     }
 }

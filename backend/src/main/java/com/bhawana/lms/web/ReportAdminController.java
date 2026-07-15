@@ -4,6 +4,7 @@ import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.ReportRequest;
 import com.bhawana.lms.service.AdminReportingService;
+import com.bhawana.lms.service.AdminApiIdempotencyService;
 import com.bhawana.lms.service.ReportAccessAuditService;
 import com.bhawana.lms.service.ReportRequestService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,6 +26,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -34,18 +36,23 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasRole('SYSTEM_ADMIN')")
 public class ReportAdminController {
 
+    private static final String REPORT_REQUEST_CREATE = "REPORT_REQUEST_CREATE";
+
     private final AdminReportingService adminReportingService;
     private final ReportRequestService reportRequestService;
     private final ReportAccessAuditService reportAccessAuditService;
+    private final AdminApiIdempotencyService adminApiIdempotencyService;
 
     public ReportAdminController(
             AdminReportingService adminReportingService,
             ReportRequestService reportRequestService,
-            ReportAccessAuditService reportAccessAuditService
+            ReportAccessAuditService reportAccessAuditService,
+            AdminApiIdempotencyService adminApiIdempotencyService
     ) {
         this.adminReportingService = adminReportingService;
         this.reportRequestService = reportRequestService;
         this.reportAccessAuditService = reportAccessAuditService;
+        this.adminApiIdempotencyService = adminApiIdempotencyService;
     }
 
     @GetMapping("/portfolio-mis/preview")
@@ -103,7 +110,24 @@ public class ReportAdminController {
     @PostMapping("/portfolio-mis/requests")
     public ReportRequestResponse createPortfolioMisRequest(
             Authentication authentication,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody PortfolioMisReportRequest request
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doCreatePortfolioMisRequest(authentication, request);
+        }
+        return adminApiIdempotencyService.execute(
+                REPORT_REQUEST_CREATE,
+                idempotencyKey,
+                request,
+                ReportRequestResponse.class,
+                () -> doCreatePortfolioMisRequest(authentication, request)
+        );
+    }
+
+    private ReportRequestResponse doCreatePortfolioMisRequest(
+            Authentication authentication,
+            PortfolioMisReportRequest request
     ) {
         return toResponse(reportRequestService.createPortfolioMisRequest(
                 request.lspId(),

@@ -7,6 +7,7 @@ import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanProduct;
+import com.bhawana.lms.domain.LoanProductVersion;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.UUID;
@@ -21,6 +22,7 @@ class LoanWebhookPayloadsDisbursementTest {
     @Mock private LoanApplication application;
     @Mock private LoanAccount loanAccount;
     @Mock private LoanProduct loanProduct;
+    @Mock private LoanProductVersion loanProductVersion;
 
     @Test
     void disbursementPayloadCarriesPersistedFeeAndNetCash() {
@@ -46,8 +48,8 @@ class LoanWebhookPayloadsDisbursementTest {
         when(loanAccount.getStatus()).thenReturn(LoanAccountStatus.DISBURSEMENT_REQUESTED);
         when(loanAccount.getPrincipalAmount()).thenReturn(new BigDecimal("150000"));
         when(loanAccount.getProcessingFeeAmount()).thenReturn(null);
-        when(loanAccount.getLoanProduct()).thenReturn(loanProduct);
-        when(loanProduct.getProcessingFeeRate()).thenReturn(new BigDecimal("1.5"));
+        when(loanAccount.getLoanProductVersion()).thenReturn(loanProductVersion);
+        when(loanProductVersion.getProcessingFeeRate()).thenReturn(new BigDecimal("1.5"));
 
         Map<String, Object> payload = LoanWebhookPayloads.disbursement(application, loanAccount);
 

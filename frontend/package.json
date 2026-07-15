@@ -19,10 +19,11 @@
     "test:cov": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "e2e": "playwright test",
-    "generate:api-types": "openapi-typescript ../openapi/openapi.json -o src/lib/api/generated/schema.ts",
+    "e2e:canary": "playwright test --grep @canary",
+    "generate:api-types": "openapi-typescript ../openapi/openapi.json -o src/lib/api/generated/schema.ts && node scripts/generate-loan-account-status.mjs && prettier --write src/lib/api/generated/schema.ts src/lib/api/generated/loan-account-status.ts",
     "check:encoding": "node scripts/check-encoding.mjs",
-    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run check:encoding && npm run test && npm run build",
-    "prepare": "husky || true"
+    "verify": "node scripts/verify.mjs",
+    "prepare": "cd .. && husky frontend/.husky"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
@@ -48,9 +49,8 @@
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.6",
     "react-hook-form": "^7.75.0",
-    "react-router-dom": "^6.30.3",
+    "react-router-dom": "^6.30.4",
     "recharts": "^2.15.4",
-    "shadcn": "^4.8.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "tw-animate-css": "^1.4.0",
@@ -68,8 +68,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
-    "@vitest/coverage-v8": "^2.1.9",
-    "@vitest/ui": "^2.1.9",
+    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/ui": "^4.1.10",
     "axe-core": "^4.11.4",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
@@ -84,11 +84,12 @@
     "openapi-typescript": "^7.6.1",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
+    "shadcn": "^4.13.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.59.2",
-    "vite": "^5.4.21",
-    "vitest": "^2.1.9",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10",
     "vitest-axe": "^0.1.0"
   }
 }

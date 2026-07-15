@@ -183,7 +183,7 @@ export function ApiClientCreateDialog({
                 <FormItem>
                   <FormLabel>LSP</FormLabel>
                   <FormControl>
-                    <Select value={field.value || undefined} onValueChange={field.onChange}>
+                    <Select value={field.value} onValueChange={field.onChange}>
                       <SelectTrigger size="sm" aria-label="LSP" data-slot="api-client-create-lsp">
                         <SelectValue placeholder="Select an LSP" />
                       </SelectTrigger>

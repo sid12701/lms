@@ -9,6 +9,7 @@ import com.bhawana.lms.service.LoanForeclosureCommandService;
 import com.bhawana.lms.service.LoanRepaymentCommandService;
 import com.bhawana.lms.service.LoanServicingSupportService;
 import com.bhawana.lms.service.LspApiIdempotencyService;
+import com.bhawana.lms.common.api.StrictJson;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -16,6 +17,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -183,6 +185,7 @@ public class LspLoanApiController {
         );
     }
 
+    @StrictJson
     public record LspPaymentTransactionRequest(
             @NotNull UUID targetInstallmentId,
             @NotNull @DecimalMin("0.01") BigDecimal amount,
@@ -193,9 +196,9 @@ public class LspLoanApiController {
     }
 
     public record LspPaymentTransactionResponse(
-            String id,
-            String loanAccountId,
-            String targetInstallmentId,
+            UUID id,
+            UUID loanAccountId,
+            UUID targetInstallmentId,
             String actorUsername,
             BigDecimal amount,
             LocalDate paymentDate,
@@ -206,11 +209,12 @@ public class LspLoanApiController {
             BigDecimal unallocatedAmount,
             String note,
             String correlationId,
-            String createdAt,
-            String updatedAt
+            Instant createdAt,
+            Instant updatedAt
     ) {
     }
 
+    @StrictJson
     public record LspForeclosureExecutionRequest(
             @NotNull @PastOrPresent LocalDate settlementDate,
             @NotBlank @Size(max = 128) String reference,
@@ -219,8 +223,8 @@ public class LspLoanApiController {
     }
 
     public record LspForeclosureQuoteResponse(
-            String id,
-            String loanAccountId,
+            UUID id,
+            UUID loanAccountId,
             Integer version,
             String requestedByUsername,
             String executedByUsername,
@@ -229,12 +233,13 @@ public class LspLoanApiController {
             BigDecimal outstandingInterest,
             BigDecimal settlementAmount,
             String status,
-            String executedAt,
-            String createdAt,
-            String updatedAt
+            Instant executedAt,
+            Instant createdAt,
+            Instant updatedAt
     ) {
     }
 
+    @StrictJson
     public record LspLoanForeclosureQuoteRequest(@NotNull LocalDate effectiveDate) {
     }
 

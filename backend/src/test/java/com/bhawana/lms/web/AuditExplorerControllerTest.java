@@ -6,6 +6,7 @@ import org.springframework.test.context.TestExecutionListeners;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -26,8 +27,10 @@ import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductAuditAction;
 import com.bhawana.lms.domain.LoanProductAuditEvent;
 import com.bhawana.lms.domain.LoanProductStatus;
+import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
+import com.bhawana.lms.repo.BorrowerLspRelationshipRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
@@ -43,8 +46,10 @@ import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
+import com.bhawana.lms.repo.LoanProductVersionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.support.LoanProductVersionTestSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.List;
@@ -93,7 +98,13 @@ class AuditExplorerControllerTest {
     private BorrowerRepository borrowerRepository;
 
     @Autowired
+    private BorrowerLspRelationshipRepository borrowerLspRelationshipRepository;
+
+    @Autowired
     private LoanProductRepository loanProductRepository;
+
+    @Autowired
+    private LoanProductVersionRepository loanProductVersionRepository;
 
     @Autowired
     private LspRepository lspRepository;
@@ -132,6 +143,9 @@ class AuditExplorerControllerTest {
     private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
 
     @Autowired
+    private com.bhawana.lms.repo.LoanDelinquencyStateRepository loanDelinquencyStateRepository;
+
+    @Autowired
     private com.bhawana.lms.repo.DisbursementOutcomeAuditRepository disbursementOutcomeAuditRepository;
 
     private Lsp lspA;
@@ -168,6 +182,7 @@ class AuditExplorerControllerTest {
         loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanAccountRepository.deleteAllInBatch();
+        loanDelinquencyStateRepository.deleteAllInBatch();
         applicationAuditRepo.deleteAllInBatch();
         intakeAuditRepo.deleteAllInBatch();
         documentAccessRepo.deleteAllInBatch();
@@ -175,9 +190,11 @@ class AuditExplorerControllerTest {
         loanApplicationDocumentChecklistRepository.deleteAllInBatch();
         loanApplicationStatusTransitionRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
+        borrowerLspRelationshipRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
         productAuditRepo.deleteAllInBatch();
         loanProductLspMappingRepository.deleteAllInBatch();
+        loanProductVersionRepository.deleteAllInBatch();
         loanProductRepository.deleteAllInBatch();
     }
 
@@ -196,6 +213,9 @@ class AuditExplorerControllerTest {
                 24,
                 LoanProductStatus.ACTIVE
         ));
+        LoanProductVersion productVersion = loanProductVersionRepository.save(
+                LoanProductVersionTestSupport.versionOne(product)
+        );
 
         borrowerA = borrowerRepository.save(new Borrower("Audit Alpha", randomPan(), "9000000001", "alpha-" + suffix() + "@example.com"));
         borrowerB = borrowerRepository.save(new Borrower("Audit Beta", randomPan(), "9000000002", "beta-" + suffix() + "@example.com"));
@@ -204,6 +224,7 @@ class AuditExplorerControllerTest {
                 borrowerA,
                 lspA,
                 product,
+                productVersion,
                 "EXT-AUDIT-A-" + suffix(),
                 "API",
                 new BigDecimal("50000.00"),
@@ -214,6 +235,7 @@ class AuditExplorerControllerTest {
                 borrowerB,
                 lspB,
                 product,
+                productVersion,
                 "EXT-AUDIT-B-" + suffix(),
                 "API",
                 new BigDecimal("75000.00"),
@@ -275,11 +297,10 @@ class AuditExplorerControllerTest {
     void searchReturnsAllFourStreamsForSystemAdmin() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
-                        .queryParam("streams", "APPLICATION,INTAKE,DOCUMENT_ACCESS,PRODUCT")
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("streams", "APPLICATION,INTAKE,DOCUMENT_ACCESS,PRODUCT"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(5))
-                .andExpect(jsonPath("$.totalCount").value(5))
+                .andExpect(jsonPath("$.items.length()").value(5))
                 .andExpect(jsonPath("$.items[*].stream", hasItem("APPLICATION")))
                 .andExpect(jsonPath("$.items[*].stream", hasItem("INTAKE")))
                 .andExpect(jsonPath("$.items[*].stream", hasItem("DOCUMENT_ACCESS")))
@@ -311,11 +332,10 @@ class AuditExplorerControllerTest {
     void streamsFilterScopesResponseToSelectedStreams() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
-                        .queryParam("streams", "INTAKE,PRODUCT")
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("streams", "INTAKE,PRODUCT"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(2))
-                .andExpect(jsonPath("$.totalCount").value(2))
+                .andExpect(jsonPath("$.items.length()").value(2))
                 .andExpect(jsonPath("$.items[*].stream", hasItem("INTAKE")))
                 .andExpect(jsonPath("$.items[*].stream", hasItem("PRODUCT")))
                 .andExpect(jsonPath("$.items[*].stream", not(hasItem("APPLICATION"))))
@@ -326,10 +346,9 @@ class AuditExplorerControllerTest {
     void actorUsernameFilterReturnsOnlyMatchingRows() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
-                        .queryParam("actorUsername", "alice.ops")
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("actorUsername", "alice.ops"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalCount").value(2))
+                .andExpect(jsonPath("$.items.length()").value(2))
                 .andExpect(jsonPath("$.items[*].actorUsername", hasItem("alice.ops")))
                 .andExpect(jsonPath("$.items[*].actorUsername", not(hasItem("bob.ops"))))
                 .andExpect(jsonPath("$.items[*].actorUsername", not(hasItem("intake.bot"))));
@@ -339,11 +358,10 @@ class AuditExplorerControllerTest {
     void lspIdFilterExcludesProductStreamAndOtherLsp() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
-                        .queryParam("lspId", lspA.getId().toString())
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("lspId", lspA.getId().toString()))
                 .andExpect(status().isOk())
                 // applicationA's APPLICATION/INTAKE/DOCUMENT_ACCESS rows only.
-                .andExpect(jsonPath("$.totalCount").value(3))
+                .andExpect(jsonPath("$.items.length()").value(3))
                 .andExpect(jsonPath("$.items[*].stream", not(hasItem("PRODUCT"))))
                 .andExpect(jsonPath("$.items[*].lspId",
                         hasItem(lspA.getId().toString())))
@@ -380,10 +398,9 @@ class AuditExplorerControllerTest {
                         .with(systemAdmin())
                         .queryParam("streams", "APPLICATION")
                         .queryParam("correlationId", "corr-deep")
-                        .queryParam("limit", "25")
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("limit", "25"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].correlationId").value("corr-deep"));
     }
@@ -417,10 +434,9 @@ class AuditExplorerControllerTest {
 
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
-                        .queryParam("correlationId", "corr-multi")
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("correlationId", "corr-multi"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalCount").value(3))
+                .andExpect(jsonPath("$.items.length()").value(3))
                 .andExpect(jsonPath("$.items[*].stream", hasItem("APPLICATION")))
                 .andExpect(jsonPath("$.items[*].stream", hasItem("INTAKE")))
                 .andExpect(jsonPath("$.items[*].stream", hasItem("DOCUMENT_ACCESS")));
@@ -430,10 +446,9 @@ class AuditExplorerControllerTest {
     void correlationIdFilterReturnsEmptyWhenNoMatch() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
-                        .queryParam("correlationId", "corr-doesnt-exist")
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("correlationId", "corr-doesnt-exist"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalCount").value(0))
+                .andExpect(jsonPath("$.items.length()").value(0))
                 .andExpect(jsonPath("$.items.length()").value(0));
     }
 
@@ -459,10 +474,9 @@ class AuditExplorerControllerTest {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
                         .queryParam("correlationId", "corr-multi")
-                        .queryParam("streams", "APPLICATION")
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("streams", "APPLICATION"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].stream").value("APPLICATION"));
     }
 
@@ -471,20 +485,18 @@ class AuditExplorerControllerTest {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
                         .queryParam("correlationId", "")
-                        .queryParam("streams", "APPLICATION,INTAKE,DOCUMENT_ACCESS,PRODUCT")
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("streams", "APPLICATION,INTAKE,DOCUMENT_ACCESS,PRODUCT"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalCount").value(5));
+                .andExpect(jsonPath("$.items.length()").value(5));
     }
 
     @Test
     void loanApplicationIdFilterPushesDownToEveryBranch() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
-                        .queryParam("loanApplicationId", applicationA.getId().toString())
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("loanApplicationId", applicationA.getId().toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalCount").value(3))
+                .andExpect(jsonPath("$.items.length()").value(3))
                 .andExpect(jsonPath("$.items[*].loanApplicationId",
                         hasItem(applicationA.getId().toString())))
                 .andExpect(jsonPath("$.items[*].loanApplicationId",
@@ -495,10 +507,9 @@ class AuditExplorerControllerTest {
     void productIdFilterReturnsOnlyProductStream() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
-                        .queryParam("productId", product.getId().toString())
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("productId", product.getId().toString()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].stream").value("PRODUCT"))
                 .andExpect(jsonPath("$.items[0].productId").value(product.getId().toString()));
     }
@@ -528,25 +539,21 @@ class AuditExplorerControllerTest {
     }
 
     @Test
-    void paginationDetailsOffByDefaultReturnsSentinel() throws Exception {
+    void responseIncludesCursorPaginationFields() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events").with(systemAdmin()))
                 .andExpect(status().isOk())
-                // totalCount is the -1 sentinel when paginationDetails=false.
-                .andExpect(jsonPath("$.totalCount").value(-1));
+                .andExpect(jsonPath("$.limit").value(100));
     }
 
     @Test
-    void offsetLimitClampsToBoundsAndPaginates() throws Exception {
+    void limitClampsToBounds() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
-                        .queryParam("limit", "2")
-                        .queryParam("offset", "0"))
+                        .queryParam("limit", "2"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.items.length()").value(2))
-                .andExpect(jsonPath("$.limit").value(2))
-                .andExpect(jsonPath("$.offset").value(0));
+                .andExpect(jsonPath("$.items.length()").value(lessThanOrEqualTo(2)))
+                .andExpect(jsonPath("$.limit").value(2));
 
-        // limit above the 500 cap is clamped, not rejected.
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
                         .queryParam("limit", "10000"))
@@ -560,6 +567,16 @@ class AuditExplorerControllerTest {
                         .with(systemAdmin())
                         .queryParam("since", "not-an-instant"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void auditWindowWiderThanNinetyDaysReturns400() throws Exception {
+        mockMvc.perform(get("/api/v1/internal/admin/audit-events")
+                        .with(systemAdmin())
+                        .queryParam("since", "2020-01-01T00:00:00Z")
+                        .queryParam("until", "2020-06-01T00:00:00Z"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test

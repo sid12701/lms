@@ -119,6 +119,7 @@ public class LoanApplicationReadRepository {
                 join fetch application.borrower borrower
                 join fetch application.lsp lsp
                 join fetch application.loanProduct product
+                join fetch application.loanProductVersion productVersion
                 """ + accountJoin + """
                 where 1 = 1
                 """ + filters + """

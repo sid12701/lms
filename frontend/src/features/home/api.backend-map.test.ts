@@ -52,6 +52,7 @@ const OVERVIEW: BackendHomeOverview = {
       createdAt: "2026-06-18T18:47:44.810085Z",
     },
   ],
+  dataAsOf: "2026-07-06T04:30:00.000Z",
 };
 
 describe("mapBackendHomeOverviewToInternalKpis (Gap #7)", () => {

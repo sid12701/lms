@@ -14,6 +14,7 @@ import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.security.AuthPrincipalCache;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
@@ -29,19 +30,22 @@ public class LspStatusService {
     private final LspAuditEventRepository lspAuditEventRepository;
     private final OpsAlertService opsAlertService;
     private final ObjectMapper objectMapper;
+    private final AuthPrincipalCache authPrincipalCache;
 
     public LspStatusService(
             LspRepository lspRepository,
             ApiClientRepository apiClientRepository,
             LspAuditEventRepository lspAuditEventRepository,
             OpsAlertService opsAlertService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            AuthPrincipalCache authPrincipalCache
     ) {
         this.lspRepository = lspRepository;
         this.apiClientRepository = apiClientRepository;
         this.lspAuditEventRepository = lspAuditEventRepository;
         this.opsAlertService = opsAlertService;
         this.objectMapper = objectMapper;
+        this.authPrincipalCache = authPrincipalCache;
     }
 
     @Transactional
@@ -97,6 +101,13 @@ public class LspStatusService {
         }
         apiClientRepository.saveAll(clients);
         Lsp saved = lspRepository.save(lsp);
+
+        // Kill chain (#63): bumping the LSP/client token versions is only effective if the cached
+        // auth snapshots are dropped too — otherwise a token used within the cache TTL just before
+        // the disable keeps validating against a stale ACTIVE snapshot.
+        for (ApiClient client : clients) {
+            authPrincipalCache.evictApiClient(client.getClientId());
+        }
 
         writeAudit(saved, actorUsername, "LSP_DISABLED", reason, note, clients.size());
         emitDisabledAlert(saved, reason, note, clients.size());

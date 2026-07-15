@@ -1,0 +1,40 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "scripts/schema-diff/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "scripts/schema-diff/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      APP_TENANT_DATASOURCE_PASSWORD: lms_tenant_app_password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+      - name: Run backend tests
+        working-directory: backend
+        run: ./mvnw -q test
+
+  flyway-reference-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify reference schema artifact matches migrations
+        run: |
+          chmod +x scripts/schema-diff/*.sh
+          ./scripts/schema-diff/check-reference.sh

@@ -13,7 +13,6 @@
 import { useMemo } from "react";
 import { useDebouncedControlledText } from "@/lib/hooks/use-debounced-controlled-text";
 import { DatePickerField } from "@/components/app/data/DatePickerField";
-import { MultiSelectChip } from "@/components/app/data/MultiSelectChip";
 import {
   FilterBarClearButton,
   FilterBarSearchField,
@@ -155,6 +154,8 @@ export function LoanApplicationsFilterBar({
         <span className="sr-only">LSP loan ID</span>
         <input
           type="search"
+          id="loan-applications-lsp-loan-id-filter"
+          name="lspLoanId"
           data-slot="loan-applications-lsp-loan-id-filter"
           value={filters.lspLoanId ?? ""}
           onChange={(event) =>
@@ -173,6 +174,8 @@ export function LoanApplicationsFilterBar({
         <span className="sr-only">Bhawana loan ID</span>
         <input
           type="search"
+          id="loan-applications-bhaw-loan-id-filter"
+          name="bhawLoanId"
           data-slot="loan-applications-bhaw-loan-id-filter"
           value={filters.bhawLoanId ?? ""}
           onChange={(event) =>
@@ -187,13 +190,18 @@ export function LoanApplicationsFilterBar({
         />
       </label>
 
-      <MultiSelectChip<LoanStatus>
-        label="All statuses"
-        listboxLabel="Status"
-        dataSlot="loan-applications-status-filter"
+      {/* Single-select on purpose: the ops list endpoint accepts one `status`
+          param, and a multi-select that silently applies only the first
+          choice misleads (audit F5). */}
+      <SingleSelect
+        value={filters.status?.[0]}
+        onChange={(next) =>
+          setFilters({ status: next ? [next as LoanStatus] : undefined, page: 0 })
+        }
+        placeholder="All statuses"
+        ariaLabel="Status filter"
         options={STATUS_OPTIONS}
-        selected={filters.status ?? []}
-        onToggle={(next) => setFilters({ status: next.length > 0 ? next : undefined, page: 0 })}
+        testId="loan-applications-status-filter"
       />
 
       <SingleSelect

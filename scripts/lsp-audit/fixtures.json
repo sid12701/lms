@@ -1,0 +1,63 @@
+{
+  "A": {
+    "lspId": "458cf0dd-b87b-4f58-b47c-929676d0adfa",
+    "lspCode": "AUDIT-A-ED5DEC",
+    "productId": "baae56dd-852b-4ff1-9b8f-74bf5d8d8172",
+    "productCode": "AUDP-A-E36BE",
+    "clientId": "cli_0ad3ac33b49a48cdbcfec4c113ac14b6",
+    "clientSecret": "fdXQf8HLiJ18mlNaiWKzHgRU-ffufep9AbShiSoYegk"
+  },
+  "B": {
+    "lspId": "834f13a2-81b2-4ab8-bc11-61b15ceb54ea",
+    "lspCode": "AUDIT-B-1BC64D",
+    "productId": "c7fdb03d-886c-44b7-b427-a7de0d624e44",
+    "productCode": "AUDP-B-F2058",
+    "clientId": "cli_314962e2e50d4f659a97ff129aa7e9d6",
+    "clientSecret": "Ab5lOV6meiLkodc3bXRrW1FGzAwnQ7DgkWch9CwYQLo"
+  },
+  "user_LSP_UI_READ": {
+    "username": "audit.read.e10000",
+    "email": "audit.read.e10000@audit.local",
+    "password": "AuditPass#2026!",
+    "resp": {
+      "id": "3fbe5c42-859e-4e4c-a063-3ca42d0d946f",
+      "username": "audit.read.e10000",
+      "email": "audit.read.e10000@audit.local",
+      "status": "ACTIVE",
+      "lspId": "458cf0dd-b87b-4f58-b47c-929676d0adfa",
+      "lspName": "Audit LSP A",
+      "roles": [
+        "LSP_UI_READ"
+      ],
+      "lockedAt": null,
+      "lockReason": null,
+      "passwordChangeRequired": true,
+      "createdAt": "2026-07-07T21:44:27.467488600Z"
+    },
+    "http": 200
+  },
+  "user_LSP_UI_WRITE": {
+    "username": "audit.write.9aebe5",
+    "email": "audit.write.9aebe5@audit.local",
+    "password": "AuditPass#2026!",
+    "resp": {
+      "id": "b64a3dae-2f68-4aac-b1e1-667e36299a2b",
+      "username": "audit.write.9aebe5",
+      "email": "audit.write.9aebe5@audit.local",
+      "status": "ACTIVE",
+      "lspId": "458cf0dd-b87b-4f58-b47c-929676d0adfa",
+      "lspName": "Audit LSP A",
+      "roles": [
+        "LSP_UI_WRITE"
+      ],
+      "lockedAt": null,
+      "lockReason": null,
+      "passwordChangeRequired": true,
+      "createdAt": "2026-07-07T21:44:28.786436200Z"
+    },
+    "http": 200
+  },
+  "disbursedLoanId": "431bd5df-7a0c-4484-8230-f304a9939136",
+  "disbursedAppId": "958231e0-5003-48e3-af7e-9c7bed33a867",
+  "disbursedBorrowerId": "975ef7fa-cbcd-475c-bf05-36bc0e4c4e2a"
+}

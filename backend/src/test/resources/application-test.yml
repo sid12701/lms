@@ -47,11 +47,23 @@ app:
   disbursement:
     worker:
       enabled: false
+    intent-workflow:
+      enabled: false
     mock:
       imps-max-amount: 500000
       status-check:
         min-polls: 1
         max-polls: 2
+  schedule:
+    validation:
+      first-due-min-days: 1
+      first-due-max-days: 60
+      cadence-tolerance-days: 7
+      horizon-grace-days: 75
+      interest-row-tolerance-abs: 10.00
+      interest-row-tolerance-pct: 0.02
+      interest-total-tolerance-abs: 100.00
+      interest-total-tolerance-pct: 0.01
   borrower:
     bank-details:
       velocity-max-updates: 2
@@ -60,6 +72,10 @@ app:
       mismatch-window-minutes: 15
   alert-rules:
     scheduler-enabled: false
+  portfolio-kpi:
+    scheduler-enabled: false
+  idempotency:
+    purge-enabled: false
   storage:
     documents:
       provider: LOCAL

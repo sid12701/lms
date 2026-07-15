@@ -74,7 +74,7 @@ describe("LoanApplicationsFilterBar", () => {
     expect(screen.getByLabelText(/Bhawana loan ID/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Disbursed from/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Disbursed to/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /All statuses/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Status filter")).toBeInTheDocument();
     expect(screen.getByLabelText("LSP filter")).toBeInTheDocument();
     expect(screen.getByLabelText("Product filter")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Clear all filters/i })).toBeInTheDocument();
@@ -114,17 +114,13 @@ describe("LoanApplicationsFilterBar", () => {
     expect(input.value).toBe("hello");
   });
 
-  // NOTE: writing the multi-select status value into the URL triggers the
-  // current types.ts bug — `import { LoanStatus } from "@/types"` is a
-  // type-only re-export, so `z.array(LoanStatus)` is `z.array(undefined)`
-  // and `parseFilters` crashes on the round-trip. The status popover opens
-  // and the click callback fires; we just don't assert the URL round-trip.
-  // Track in `gaps` section of the resume report.
-  it("opens the status popover and exposes options", async () => {
+  // Single-select on purpose: the ops list endpoint accepts one `status`
+  // param (audit F5) — the dropdown mirrors that contract.
+  it("opens the status dropdown and exposes options", async () => {
     vi.useRealTimers();
     const user = userEvent.setup();
     renderBar();
-    const statusTrigger = screen.getByRole("button", { name: /All statuses/i });
+    const statusTrigger = screen.getByLabelText("Status filter");
     await user.click(statusTrigger);
     const opt = await screen.findByRole("option", { name: /Initialized/i });
     expect(opt).toBeInTheDocument();

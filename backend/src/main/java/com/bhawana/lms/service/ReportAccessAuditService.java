@@ -1,9 +1,11 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.ReportAccessAudit;
 import com.bhawana.lms.domain.ReportAccessAuditAction;
 import com.bhawana.lms.domain.ReportAccessAuditReportType;
 import com.bhawana.lms.domain.ReportRequest;
+import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.ReportAccessAuditRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,13 +20,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class ReportAccessAuditService {
 
     private final ReportAccessAuditRepository reportAccessAuditRepository;
+    private final LspRepository lspRepository;
     private final ObjectMapper objectMapper;
 
     public ReportAccessAuditService(
             ReportAccessAuditRepository reportAccessAuditRepository,
+            LspRepository lspRepository,
             ObjectMapper objectMapper
     ) {
         this.reportAccessAuditRepository = reportAccessAuditRepository;
+        this.lspRepository = lspRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -46,7 +51,8 @@ public class ReportAccessAuditService {
                 ReportAccessAuditReportType.PORTFOLIO_MIS,
                 serializeFilterPayload(lspId, disbursalDateFrom, disbursalDateTo),
                 byteCount,
-                null
+                null,
+                resolveLsp(lspId)
         ));
     }
 
@@ -67,8 +73,16 @@ public class ReportAccessAuditService {
                 ReportAccessAuditReportType.PORTFOLIO_MIS,
                 serializeFilterPayload(lspId, reportRequest.getDisbursalDateFrom(), reportRequest.getDisbursalDateTo()),
                 byteCount,
-                reportRequest
+                reportRequest,
+                reportRequest.getLsp()
         ));
+    }
+
+    private Lsp resolveLsp(UUID lspId) {
+        if (lspId == null) {
+            return null;
+        }
+        return lspRepository.getReferenceById(lspId);
     }
 
     private String serializeFilterPayload(UUID lspId, LocalDate disbursalDateFrom, LocalDate disbursalDateTo) {

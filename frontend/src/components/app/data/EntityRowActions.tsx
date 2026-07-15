@@ -13,6 +13,10 @@ export interface EntityRowActionItem {
   variant?: "default" | "outline" | "ghost";
   /** Overrides the visible label for assistive tech (inline mode). */
   ariaLabel?: string;
+  /** Renders the action disabled (inline mode). */
+  disabled?: boolean;
+  /** Tooltip explaining why the action is disabled. */
+  disabledTitle?: string;
 }
 
 export interface EntityRowActionsProps {
@@ -45,6 +49,8 @@ export function EntityRowActions({
             variant={item.variant ?? "outline"}
             size="sm"
             data-slot={item.dataSlot}
+            disabled={item.disabled}
+            title={item.disabled ? item.disabledTitle : undefined}
             onClick={(e) => {
               e.stopPropagation();
               item.onSelect();

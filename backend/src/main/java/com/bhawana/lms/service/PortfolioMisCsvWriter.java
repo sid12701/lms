@@ -2,6 +2,8 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.service.AdminReportingService.InstallmentSnapshot;
 import com.bhawana.lms.service.AdminReportingService.PortfolioMisRow;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,15 +20,21 @@ final class PortfolioMisCsvWriter {
     }
 
     static String toCsv(List<PortfolioMisRow> rows) {
-        // First pass: determine max installments across all rows
-        int maxInstallments = rows.stream()
+        int maxInstallments = resolveMaxInstallments(rows);
+        StringBuilder csv = new StringBuilder();
+        writeHeader(csv, maxInstallments);
+        appendRows(csv, rows, maxInstallments);
+        return csv.toString();
+    }
+
+    static int resolveMaxInstallments(List<PortfolioMisRow> rows) {
+        return rows.stream()
                 .mapToInt(row -> row.installments() == null ? 0 : row.installments().size())
                 .max()
                 .orElse(0);
+    }
 
-        StringBuilder csv = new StringBuilder();
-
-        // Fixed header columns
+    static void writeHeader(Appendable out, int maxInstallments) {
         List<String> headerColumns = new ArrayList<>(List.of(
                 "LSP Code",
                 "LSP Name",
@@ -78,11 +86,13 @@ final class PortfolioMisCsvWriter {
             headerColumns.add("EMI " + i + " Received");
         }
 
-        csv.append(String.join(",", headerColumns)).append('\n');
+        appendLine(out, String.join(",", headerColumns));
+    }
 
+    static void appendRows(Appendable out, List<PortfolioMisRow> rows, int maxInstallments) {
         for (PortfolioMisRow row : rows) {
-            // Fixed columns
-            csv.append(toCsvCell(row.lspCode())).append(',')
+            StringBuilder line = new StringBuilder();
+            line.append(toCsvCell(row.lspCode())).append(',')
                     .append(toCsvCell(row.lspName())).append(',')
                     .append(toCsvCell(row.applicationId())).append(',')
                     .append(toCsvCell(row.externalLoanId())).append(',')
@@ -123,26 +133,31 @@ final class PortfolioMisCsvWriter {
                     .append(toCsvCell(row.profession())).append(',')
                     .append(toCsvCell(row.income()));
 
-            // Dynamic EMI columns
             List<InstallmentSnapshot> installmentList = row.installments() != null
                     ? row.installments()
                     : Collections.emptyList();
             for (int i = 0; i < maxInstallments; i++) {
                 if (i < installmentList.size()) {
                     InstallmentSnapshot snap = installmentList.get(i);
-                    csv.append(',').append(toCsvCell(snap.dueDate()))
+                    line.append(',').append(toCsvCell(snap.dueDate()))
                             .append(',').append(toCsvCell(snap.installmentAmount()))
                             .append(',').append(toCsvCell(snap.paidAmount()))
                             .append(',').append(toCsvCell(snap.received() ? "Yes" : "No"));
                 } else {
-                    csv.append(",,,," );
+                    line.append(",,,,");
                 }
             }
 
-            csv.append('\n');
+            appendLine(out, line);
         }
+    }
 
-        return csv.toString();
+    private static void appendLine(Appendable out, CharSequence line) {
+        try {
+            out.append(line).append('\n');
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
     }
 
     private static String toCsvCell(Object value) {

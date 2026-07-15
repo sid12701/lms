@@ -2,6 +2,7 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.common.api.PagedResult;
 import com.bhawana.lms.common.api.PaginationResponseBuilder;
+import com.bhawana.lms.common.pii.BankAccountMasking;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.service.BorrowerDirectoryService;
 import com.bhawana.lms.service.BorrowerDirectoryService.BorrowerDelinquencyAggregate;
@@ -54,7 +55,7 @@ public class BorrowerAdminController {
     public ResponseEntity<List<BorrowerSummaryResponse>> listBorrowers(
             @RequestParam(required = false, name = "q") String query,
             @RequestParam(required = false) @Min(0) Integer offset,
-            @RequestParam(required = false) @Min(1) @Max(1000) Integer limit,
+            @RequestParam(required = false) @Min(1) @Max(200) Integer limit,
             @RequestParam(required = false) String paginationDetails
     ) {
         boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
@@ -136,7 +137,7 @@ public class BorrowerAdminController {
                 borrower.getEmploymentZip(),
                 borrower.getMonthlyIncome(),
                 borrower.getAnnualIncome(),
-                borrower.getBankAccountNumber(),
+                BankAccountMasking.mask(borrower.getBankAccountNumber()),
                 borrower.getBankName(),
                 borrower.getIfscCode(),
                 borrower.getAccountHolderName(),
@@ -149,7 +150,10 @@ public class BorrowerAdminController {
                         .map(lsp -> new VisibleLspResponse(
                                 lsp.id().toString(),
                                 lsp.code(),
-                                lsp.name()
+                                lsp.name(),
+                                lsp.firstSourcedAt(),
+                                lsp.lastTouchedAt(),
+                                lsp.sourceChannel()
                         ))
                         .toList(),
                 view.loans().stream()
@@ -242,7 +246,10 @@ public class BorrowerAdminController {
     public record VisibleLspResponse(
             String id,
             String code,
-            String name
+            String name,
+            Instant firstSourcedAt,
+            Instant lastTouchedAt,
+            String sourceChannel
     ) {
     }
 

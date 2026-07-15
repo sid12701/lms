@@ -12,6 +12,9 @@ import com.bhawana.lms.service.LoanApplicationLifecycleService;
 import com.bhawana.lms.service.LoanApplicationOnboardingCommand;
 import com.bhawana.lms.service.LoanApplicationQueryService;
 import com.bhawana.lms.service.LoanApplicationServicingReadService;
+import com.bhawana.lms.service.AdminApiIdempotencyService;
+import com.bhawana.lms.service.DisbursementPreviewService;
+import com.bhawana.lms.service.DisbursementReferenceService;
 import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.service.LoanRepaymentCommandService;
 import com.bhawana.lms.service.LoanDocumentService;
@@ -26,6 +29,8 @@ import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanApplicationResponse;
 import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanApplicationStatusTransitionRequest;
 import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanApplicationStatusTransitionResponse;
 import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanDisbursementRequestResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.DisbursementPreviewResponse;
+import com.bhawana.lms.web.LoanApplicationOpsApiTypes.DisbursementReferenceResponse;
 import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanForeclosureExecutionRequest;
 import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanForeclosureQuoteRequest;
 import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanForeclosureQuoteResponse;
@@ -54,6 +59,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -62,14 +68,25 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/internal/ops/loan-applications")
 @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','OPS_USER')")
 public class LoanApplicationOpsController {
+
+    private static final String OPS_STATUS_TRANSITION = "OPS_STATUS_TRANSITION";
+    private static final String OPS_MANUAL_STATUS_OVERRIDE = "OPS_MANUAL_STATUS_OVERRIDE";
+    private static final String OPS_DISBURSEMENT_INITIATE = "OPS_DISBURSEMENT_INITIATE";
+    private static final String OPS_DISBURSEMENT_MOCK_OUTCOME = "OPS_DISBURSEMENT_MOCK_OUTCOME";
+    private static final String OPS_DISBURSEMENT_STATUS_CHECK = "OPS_DISBURSEMENT_STATUS_CHECK";
+    private static final String OPS_FORECLOSURE_EXECUTE = "OPS_FORECLOSURE_EXECUTE";
+
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
     private final LoanForeclosureCommandService loanForeclosureCommandService;
     private final LoanApplicationServicingReadService loanApplicationServicingReadService;
     private final LoanDisbursementCommandService loanDisbursementCommandService;
+    private final DisbursementPreviewService disbursementPreviewService;
+    private final DisbursementReferenceService disbursementReferenceService;
     private final LoanRepaymentCommandService loanRepaymentCommandService;
     private final LoanApplicationDetailAssembler loanApplicationDetailAssembler;
     private final BusinessCalendar businessCalendar;
+    private final AdminApiIdempotencyService adminApiIdempotencyService;
 
     public LoanApplicationOpsController(
             LoanApplicationQueryService loanApplicationQueryService,
@@ -77,18 +94,24 @@ public class LoanApplicationOpsController {
             LoanForeclosureCommandService loanForeclosureCommandService,
             LoanApplicationServicingReadService loanApplicationServicingReadService,
             LoanDisbursementCommandService loanDisbursementCommandService,
+            DisbursementPreviewService disbursementPreviewService,
+            DisbursementReferenceService disbursementReferenceService,
             LoanRepaymentCommandService loanRepaymentCommandService,
             LoanApplicationDetailAssembler loanApplicationDetailAssembler,
-            BusinessCalendar businessCalendar
+            BusinessCalendar businessCalendar,
+            AdminApiIdempotencyService adminApiIdempotencyService
     ) {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanApplicationLifecycleService = loanApplicationLifecycleService;
         this.loanForeclosureCommandService = loanForeclosureCommandService;
         this.loanApplicationServicingReadService = loanApplicationServicingReadService;
         this.loanDisbursementCommandService = loanDisbursementCommandService;
+        this.disbursementPreviewService = disbursementPreviewService;
+        this.disbursementReferenceService = disbursementReferenceService;
         this.loanRepaymentCommandService = loanRepaymentCommandService;
         this.loanApplicationDetailAssembler = loanApplicationDetailAssembler;
         this.businessCalendar = businessCalendar;
+        this.adminApiIdempotencyService = adminApiIdempotencyService;
     }
 
     @GetMapping
@@ -103,7 +126,7 @@ public class LoanApplicationOpsController {
             @RequestParam(required = false) LocalDate disbursalDateFrom,
             @RequestParam(required = false) LocalDate disbursalDateTo,
             @RequestParam(required = false) @Min(0) Integer offset,
-            @RequestParam(required = false) @Min(1) @Max(1000) Integer limit,
+            @RequestParam(required = false) @Min(1) @Max(200) Integer limit,
             @RequestParam(required = false) String paginationDetails
     ) {
         boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
@@ -171,6 +194,29 @@ public class LoanApplicationOpsController {
         return loanApplicationServicingReadService.listDocumentAccessAudits(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toDocumentAccessAuditResponse)
                 .toList();
+    }
+
+    @GetMapping("/{applicationId}/disbursement-preview")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public DisbursementPreviewResponse getDisbursementPreview(@PathVariable UUID applicationId) {
+        return LoanApplicationOpsResponses.toDisbursementPreviewResponse(
+                disbursementPreviewService.buildPreview(applicationId)
+        );
+    }
+
+    /**
+     * Resolves the durable provider reference after intent create (Tx-A) or from the
+     * request log — available even when the provider call has not yet run.
+     */
+    @GetMapping("/{applicationId}/disbursement-reference")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public ResponseEntity<DisbursementReferenceResponse> getDisbursementReference(
+            @PathVariable UUID applicationId
+    ) {
+        return disbursementReferenceService.resolve(applicationId)
+                .map(LoanApplicationOpsResponses::toDisbursementReferenceResponse)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     @GetMapping("/{applicationId}/disbursement-requests")
@@ -329,7 +375,25 @@ public class LoanApplicationOpsController {
     public LoanApplicationDetailResponse transitionStatus(
             Authentication authentication,
             @PathVariable UUID applicationId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody LoanApplicationStatusTransitionRequest request
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doTransitionStatus(authentication, applicationId, request);
+        }
+        return adminApiIdempotencyService.execute(
+                OPS_STATUS_TRANSITION,
+                idempotencyKey,
+                new StatusTransitionFingerprint(applicationId.toString(), request),
+                LoanApplicationDetailResponse.class,
+                () -> doTransitionStatus(authentication, applicationId, request)
+        );
+    }
+
+    private LoanApplicationDetailResponse doTransitionStatus(
+            Authentication authentication,
+            UUID applicationId,
+            LoanApplicationStatusTransitionRequest request
     ) {
         loanApplicationLifecycleService.transitionStatus(
                 applicationId,
@@ -346,7 +410,25 @@ public class LoanApplicationOpsController {
     public LoanApplicationDetailResponse manuallyOverrideStatus(
             Authentication authentication,
             @PathVariable UUID applicationId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody ManualStatusUpdateRequest request
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doManualStatusOverride(authentication, applicationId, request);
+        }
+        return adminApiIdempotencyService.execute(
+                OPS_MANUAL_STATUS_OVERRIDE,
+                idempotencyKey,
+                new ManualStatusOverrideFingerprint(applicationId.toString(), request),
+                LoanApplicationDetailResponse.class,
+                () -> doManualStatusOverride(authentication, applicationId, request)
+        );
+    }
+
+    private LoanApplicationDetailResponse doManualStatusOverride(
+            Authentication authentication,
+            UUID applicationId,
+            ManualStatusUpdateRequest request
     ) {
         loanApplicationLifecycleService.manuallyOverrideStatus(
                 applicationId,
@@ -362,7 +444,24 @@ public class LoanApplicationOpsController {
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public LoanApplicationDetailResponse initiateDisbursement(
             Authentication authentication,
-            @PathVariable UUID applicationId
+            @PathVariable UUID applicationId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doInitiateDisbursement(authentication, applicationId);
+        }
+        return adminApiIdempotencyService.execute(
+                OPS_DISBURSEMENT_INITIATE,
+                idempotencyKey,
+                Map.of("applicationId", applicationId.toString()),
+                LoanApplicationDetailResponse.class,
+                () -> doInitiateDisbursement(authentication, applicationId)
+        );
+    }
+
+    private LoanApplicationDetailResponse doInitiateDisbursement(
+            Authentication authentication,
+            UUID applicationId
     ) {
         loanDisbursementCommandService.initiateDisbursement(
                 applicationId,
@@ -377,7 +476,26 @@ public class LoanApplicationOpsController {
             Authentication authentication,
             HttpServletRequest httpRequest,
             @PathVariable UUID applicationId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody MockDisbursementOutcomeRequest request
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doApplyMockDisbursementOutcome(authentication, httpRequest, applicationId, request);
+        }
+        return adminApiIdempotencyService.execute(
+                OPS_DISBURSEMENT_MOCK_OUTCOME,
+                idempotencyKey,
+                new MockDisbursementOutcomeFingerprint(applicationId.toString(), request),
+                LoanApplicationDetailResponse.class,
+                () -> doApplyMockDisbursementOutcome(authentication, httpRequest, applicationId, request)
+        );
+    }
+
+    private LoanApplicationDetailResponse doApplyMockDisbursementOutcome(
+            Authentication authentication,
+            HttpServletRequest httpRequest,
+            UUID applicationId,
+            MockDisbursementOutcomeRequest request
     ) {
         loanDisbursementCommandService.resolveMockDisbursementOutcome(
                 applicationId,
@@ -394,7 +512,25 @@ public class LoanApplicationOpsController {
     public LoanApplicationDetailResponse runDisbursementStatusCheck(
             Authentication authentication,
             HttpServletRequest httpRequest,
-            @PathVariable UUID applicationId
+            @PathVariable UUID applicationId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doRunDisbursementStatusCheck(authentication, httpRequest, applicationId);
+        }
+        return adminApiIdempotencyService.execute(
+                OPS_DISBURSEMENT_STATUS_CHECK,
+                idempotencyKey,
+                Map.of("applicationId", applicationId.toString()),
+                LoanApplicationDetailResponse.class,
+                () -> doRunDisbursementStatusCheck(authentication, httpRequest, applicationId)
+        );
+    }
+
+    private LoanApplicationDetailResponse doRunDisbursementStatusCheck(
+            Authentication authentication,
+            HttpServletRequest httpRequest,
+            UUID applicationId
     ) {
         loanDisbursementCommandService.pollPendingDisbursement(
                 applicationId,
@@ -445,7 +581,26 @@ public class LoanApplicationOpsController {
             Authentication authentication,
             @PathVariable UUID applicationId,
             @PathVariable UUID quoteId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody LoanForeclosureExecutionRequest request
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doExecuteForeclosureQuote(authentication, applicationId, quoteId, request);
+        }
+        return adminApiIdempotencyService.execute(
+                OPS_FORECLOSURE_EXECUTE,
+                idempotencyKey,
+                new ForeclosureExecuteFingerprint(applicationId.toString(), quoteId.toString(), request),
+                LoanForeclosureQuoteResponse.class,
+                () -> doExecuteForeclosureQuote(authentication, applicationId, quoteId, request)
+        );
+    }
+
+    private LoanForeclosureQuoteResponse doExecuteForeclosureQuote(
+            Authentication authentication,
+            UUID applicationId,
+            UUID quoteId,
+            LoanForeclosureExecutionRequest request
     ) {
         return LoanApplicationOpsResponses.toForeclosureQuoteResponse(loanForeclosureCommandService.executeForeclosureQuote(
                 applicationId,
@@ -455,5 +610,21 @@ public class LoanApplicationOpsController {
                 request.reference(),
                 request.note()
         ));
+    }
+
+    private record StatusTransitionFingerprint(String applicationId, LoanApplicationStatusTransitionRequest request) {
+    }
+
+    private record ManualStatusOverrideFingerprint(String applicationId, ManualStatusUpdateRequest request) {
+    }
+
+    private record MockDisbursementOutcomeFingerprint(String applicationId, MockDisbursementOutcomeRequest request) {
+    }
+
+    private record ForeclosureExecuteFingerprint(
+            String applicationId,
+            String quoteId,
+            LoanForeclosureExecutionRequest request
+    ) {
     }
 }

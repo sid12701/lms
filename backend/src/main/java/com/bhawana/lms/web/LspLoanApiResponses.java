@@ -12,11 +12,11 @@ public final class LspLoanApiResponses {
             LoanPaymentTransaction paymentTransaction
     ) {
         return new LspLoanApiController.LspPaymentTransactionResponse(
-                paymentTransaction.getId().toString(),
-                paymentTransaction.getLoanAccount().getId().toString(),
+                paymentTransaction.getId(),
+                paymentTransaction.getLoanAccount().getId(),
                 paymentTransaction.getRepaymentInstallment() == null
                         ? null
-                        : paymentTransaction.getRepaymentInstallment().getId().toString(),
+                        : paymentTransaction.getRepaymentInstallment().getId(),
                 paymentTransaction.getActorUsername(),
                 paymentTransaction.getAmount(),
                 paymentTransaction.getPaymentDate(),
@@ -27,8 +27,8 @@ public final class LspLoanApiResponses {
                 paymentTransaction.getUnallocatedAmount(),
                 paymentTransaction.getNote(),
                 paymentTransaction.getCorrelationId(),
-                paymentTransaction.getCreatedAt().toString(),
-                paymentTransaction.getUpdatedAt().toString()
+                paymentTransaction.getCreatedAt(),
+                paymentTransaction.getUpdatedAt()
         );
     }
 
@@ -36,8 +36,8 @@ public final class LspLoanApiResponses {
             LoanForeclosureQuote quote
     ) {
         return new LspLoanApiController.LspForeclosureQuoteResponse(
-                quote.getId().toString(),
-                quote.getLoanAccount().getId().toString(),
+                quote.getId(),
+                quote.getLoanAccount().getId(),
                 quote.getVersion(),
                 quote.getRequestedByUsername(),
                 quote.getExecutedByUsername(),
@@ -46,9 +46,9 @@ public final class LspLoanApiResponses {
                 quote.getOutstandingInterest(),
                 quote.getSettlementAmount(),
                 quote.getStatus().name(),
-                quote.getExecutedAt() == null ? null : quote.getExecutedAt().toString(),
-                quote.getCreatedAt().toString(),
-                quote.getUpdatedAt().toString()
+                quote.getExecutedAt(),
+                quote.getCreatedAt(),
+                quote.getUpdatedAt()
         );
     }
 }

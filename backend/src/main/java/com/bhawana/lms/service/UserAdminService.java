@@ -12,6 +12,7 @@ import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserAuditEventRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.security.AuthPrincipalCache;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -53,6 +54,7 @@ public class UserAdminService {
     private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
     private final SessionRevocationService sessionRevocationService;
+    private final AuthPrincipalCache authPrincipalCache;
 
     public UserAdminService(
             LspRepository lspRepository,
@@ -61,7 +63,8 @@ public class UserAdminService {
             AppUserAuditEventRepository appUserAuditEventRepository,
             PasswordEncoder passwordEncoder,
             ObjectMapper objectMapper,
-            SessionRevocationService sessionRevocationService
+            SessionRevocationService sessionRevocationService,
+            AuthPrincipalCache authPrincipalCache
     ) {
         this.lspRepository = lspRepository;
         this.appRoleRepository = appRoleRepository;
@@ -70,6 +73,7 @@ public class UserAdminService {
         this.passwordEncoder = passwordEncoder;
         this.objectMapper = objectMapper;
         this.sessionRevocationService = sessionRevocationService;
+        this.authPrincipalCache = authPrincipalCache;
     }
 
     @Transactional
@@ -106,14 +110,16 @@ public class UserAdminService {
 
         // F-11: canonicalise username + email to lowercase so the unique indexes
         // can satisfy the new raw-equality lookups in AppUserRepository.
+        String encodedPassword = passwordEncoder.encode(rawPassword);
         AppUser user = new AppUser(
                 username.trim().toLowerCase(),
                 email.trim().toLowerCase(),
-                passwordEncoder.encode(rawPassword),
+                encodedPassword,
                 status,
                 lsp,
                 new LinkedHashSet<>(roles)
         );
+        user.requirePasswordChange(encodedPassword);
 
         return appUserRepository.save(user);
     }
@@ -227,7 +233,11 @@ public class UserAdminService {
         }
 
         user.changePassword(passwordEncoder.encode(newPassword));
-        return appUserRepository.save(user);
+        AppUser saved = appUserRepository.save(user);
+        // changePassword bumps the token version / passwordChangedAt; drop the cached snapshot so the
+        // freshly minted token validates against current state instead of the pre-change snapshot.
+        authPrincipalCache.evictAppUser(saved.getUsername());
+        return saved;
     }
 
     @Transactional

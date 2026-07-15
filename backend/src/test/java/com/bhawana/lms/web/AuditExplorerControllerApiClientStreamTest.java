@@ -56,8 +56,7 @@ class AuditExplorerControllerApiClientStreamTest {
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
                         .queryParam("streams", "API_CLIENT")
-                        .queryParam("actorUsername", "ops.admin")
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("actorUsername", "ops.admin"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].stream").value("API_CLIENT"))
                 .andExpect(jsonPath("$.items[0].action").value("CLIENT_DISABLED"))
@@ -79,8 +78,7 @@ class AuditExplorerControllerApiClientStreamTest {
 
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
                         .with(systemAdmin())
-                        .queryParam("streams", "API_CLIENT")
-                        .queryParam("paginationDetails", "true"))
+                        .queryParam("streams", "API_CLIENT"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[*].stream", hasItem("API_CLIENT")));
     }

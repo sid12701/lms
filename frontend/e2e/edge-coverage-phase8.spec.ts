@@ -6,20 +6,36 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { test, expect, type Page } from "@playwright/test";
+import {
+  DEFAULT_API_BASE,
+  E2E_ADMIN_STORAGE_PATH,
+  readFixturesFile,
+  resolveApplicationId,
+  resolveEc111ApplicationId,
+} from "./helpers/e2e-fixtures";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const AUTH_FILE =
-  process.env["E2E_STORAGE_STATE"] ?? path.join(__dirname, ".auth", "phase8-admin.json");
+const AUTH_FILE = process.env["E2E_STORAGE_STATE"] ?? E2E_ADMIN_STORAGE_PATH;
 
-const APPLICATION_ID = process.env["E2E_APPLICATION_ID"] ?? "";
-const EC111_APPLICATION_ID = process.env["E2E_EC111_APPLICATION_ID"] ?? APPLICATION_ID;
-const API_BASE = process.env["E2E_API_BASE"] ?? "http://localhost:8080";
+const APPLICATION_ID = resolveApplicationId();
+const EC111_APPLICATION_ID = resolveEc111ApplicationId(APPLICATION_ID);
+const API_BASE = process.env["E2E_API_BASE"] ?? readFixturesFile()?.apiBase ?? DEFAULT_API_BASE;
+
+const fixtureSkipReason = readFixturesFile()?.skipReason;
+test.skip(
+  !APPLICATION_ID,
+  fixtureSkipReason ??
+    "E2E_APPLICATION_ID is unset — run Playwright globalSetup (see docs/e2e.md) or export an application id",
+);
 
 async function adminToken(request: import("@playwright/test").APIRequestContext): Promise<string> {
+  const email = process.env["E2E_ADMIN_EMAIL"];
+  const password = process.env["E2E_ADMIN_PASSWORD"];
+  if (!email || !password) {
+    throw new Error("E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD are required for Phase 8 API helpers");
+  }
   const res = await request.post(`${API_BASE}/api/v1/auth/login`, {
-    data: { username: "ops.admin", password: "ChangeMe123!" },
+    data: { email, password },
   });
   expect(res.ok()).toBeTruthy();
   const body = (await res.json()) as { accessToken: string };
@@ -57,9 +73,6 @@ async function openLoanDetail(page: Page): Promise<void> {
 }
 
 test.beforeAll(() => {
-  if (!APPLICATION_ID) {
-    throw new Error("E2E_APPLICATION_ID is required for Phase 8 UI tests");
-  }
   if (process.env["E2E_STORAGE_STATE"] && fs.existsSync(process.env["E2E_STORAGE_STATE"])) {
     fs.copyFileSync(process.env["E2E_STORAGE_STATE"], AUTH_FILE);
   }

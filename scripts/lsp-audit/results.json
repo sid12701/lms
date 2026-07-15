@@ -1,0 +1,402 @@
+[
+  {
+    "id": "AUTH-01",
+    "scenario": "Valid client credentials",
+    "expected": "200 + lspId claim + LSP_API_CLIENT role",
+    "http": 200,
+    "pass": true,
+    "actual": "lspId=458cf0dd-b87b-4f58-b47c-929676d0adfa roles=['LSP_API_CLIENT']"
+  },
+  {
+    "id": "AUTH-02",
+    "scenario": "Invalid client secret",
+    "expected": "401",
+    "http": 401,
+    "pass": true,
+    "actual": "{'timestamp': '2026-07-07T21:47:36.935864400Z', 'status': 401, 'code': 'INVALID_CREDENTIALS', 'error': 'INVALID_CREDENTI"
+  },
+  {
+    "id": "AUTH-03",
+    "scenario": "Unknown client id",
+    "expected": "401",
+    "http": 401,
+    "pass": true,
+    "actual": "{'timestamp': '2026-07-07T21:47:37.785877400Z', 'status': 401, 'code': 'INVALID_CREDENTIALS', 'error': 'INVALID_CREDENTI"
+  },
+  {
+    "id": "AUTH-04",
+    "scenario": "Missing clientSecret",
+    "expected": "400",
+    "http": 429,
+    "pass": false,
+    "actual": "{'timestamp': '2026-07-07T21:47:37.801589300Z', 'status': 429, 'code': 'RATE_LIMIT_EXCEEDED', 'error': 'RATE_LIMIT_EXCEE"
+  },
+  {
+    "id": "AUTH-05",
+    "scenario": "LSP endpoint without token",
+    "expected": "401",
+    "http": 401,
+    "pass": true,
+    "actual": "{'timestamp': '2026-07-07T21:48:12.639659900Z', 'status': 401, 'code': 'UNAUTHORIZED', 'error': 'UNAUTHORIZED', 'message"
+  },
+  {
+    "id": "AUTH-06",
+    "scenario": "Malformed bearer token",
+    "expected": "401",
+    "http": 401,
+    "pass": true,
+    "actual": "{'timestamp': '2026-07-07T21:48:12.650275600Z', 'status': 401, 'code': 'UNAUTHORIZED', 'error': 'UNAUTHORIZED', 'message"
+  },
+  {
+    "id": "PROD-01",
+    "scenario": "List provisioned products (A)",
+    "expected": "200, contains A's product only",
+    "http": 200,
+    "pass": true,
+    "actual": "count=1 hasA=True hasB=False"
+  },
+  {
+    "id": "CREATE-01",
+    "scenario": "Create application happy path",
+    "expected": "200 + id + PENDING-ish status",
+    "http": 200,
+    "pass": true,
+    "actual": "id=7f368986-dc80-4ceb-ab61-468613802cec status=INITIALIZED"
+  },
+  {
+    "id": "CREATE-02",
+    "scenario": "Body lspId != authenticated LSP",
+    "expected": "403 access denied",
+    "http": 403,
+    "pass": true,
+    "actual": "{'timestamp': '2026-07-07T21:48:22.978579800Z', 'status': 403, 'code': 'ACCESS_DENIED', 'error': 'ACCESS_DENIED', 'message': 'Request lspId "
+  },
+  {
+    "id": "CREATE-03",
+    "scenario": "Use another LSP's productId",
+    "expected": "4xx (not provisioned)",
+    "http": 422,
+    "pass": true,
+    "actual": "422 {'timestamp': '2026-07-07T21:48:23.846625400Z', 'status': 422, 'code': 'PRODUCT_NOT_MAPPED', 'error': 'PRODUCT_NOT_MAPPE"
+  },
+  {
+    "id": "CREATE-04",
+    "scenario": "Missing required panNumber",
+    "expected": "400 validation",
+    "http": 400,
+    "pass": true,
+    "actual": "{'timestamp': '2026-07-07T21:48:23.865617Z', 'status': 400, 'code': 'VALIDATION_FAILED', 'error': 'VALIDATION_FAILED', 'message': 'Request v"
+  },
+  {
+    "id": "CREATE-05",
+    "scenario": "Invalid PAN format",
+    "expected": "400 with clear message",
+    "http": 400,
+    "pass": true,
+    "actual": "{'timestamp': '2026-07-07T21:48:23.884312100Z', 'status': 400, 'code': 'VALIDATION_FAILED', 'error': 'VALIDATION_FAILED', 'message': 'Request validation failed', 'path': '/api/v1/l"
+  },
+  {
+    "id": "CREATE-06",
+    "scenario": "No productId or loanProduct",
+    "expected": "400 AssertTrue",
+    "http": 400,
+    "pass": true,
+    "actual": "{'timestamp': '2026-07-07T21:48:23.912654800Z', 'status': 400, 'code': 'VALIDATION_FAILED', 'error': 'VALIDATION_FAILED', 'message': 'Request validation failed', 'path': '/api/v1/l"
+  },
+  {
+    "id": "CREATE-07",
+    "scenario": "No monthly/annual income",
+    "expected": "400 AssertTrue",
+    "http": 400,
+    "pass": true,
+    "actual": "{'timestamp': '2026-07-07T21:48:23.948031200Z', 'status': 400, 'code': 'VALIDATION_FAILED', 'error': 'VALIDATION_FAILED', 'message': 'Request validation failed', 'path': '/api/v1/l"
+  },
+  {
+    "id": "CREATE-08",
+    "scenario": "Unknown JSON field (StrictJson)",
+    "expected": "400 rejected",
+    "http": 400,
+    "pass": true,
+    "actual": "{'timestamp': '2026-07-07T21:48:23.979981300Z', 'status': 400, 'code': 'INVALID_REQUEST', 'error': 'INVALID_REQUEST', 'message': \"Unknown field 'unexpectedField' is not permitted.\""
+  },
+  {
+    "id": "CREATE-09",
+    "scenario": "Negative loanAmount",
+    "expected": "400",
+    "http": 400,
+    "pass": true,
+    "actual": "{'timestamp': '2026-07-07T21:48:24.072736400Z', 'status': 400, 'code': 'VALIDATION_FAILED', 'error': 'VALIDATION_FAILED'"
+  },
+  {
+    "id": "CREATE-10",
+    "scenario": "loanAmount above product max (500000)",
+    "expected": "expect 4xx business rule",
+    "http": 422,
+    "pass": true,
+    "actual": "422 {'timestamp': '2026-07-07T21:48:24.972353Z', 'status': 422, 'code': 'AMOUNT_OUT_OF_RANGE', 'error': 'AMOUNT_OUT_OF_RANGE', 'message': 'Reque"
+  },
+  {
+    "id": "CREATE-11",
+    "scenario": "Duplicate lspLoanId (same as CREATE-01)",
+    "expected": "expect 409/422 dedupe",
+    "http": 409,
+    "pass": true,
+    "actual": "409 {'timestamp': '2026-07-07T21:48:25.847026Z', 'status': 409, 'code': 'DUPLICATE_EXTERNAL_LOAN_ID', 'error': 'DUPLICATE_EXTERNAL_LOAN_ID', 'message': 'External lo"
+  },
+  {
+    "id": "IDEM-01",
+    "scenario": "Replay same key + same body",
+    "expected": "same id returned",
+    "http": 429,
+    "pass": false,
+    "actual": "id1=None id2=None"
+  },
+  {
+    "id": "IDEM-02",
+    "scenario": "Reuse key with different body",
+    "expected": "409 fingerprint conflict",
+    "http": 429,
+    "pass": false,
+    "actual": "429 {'timestamp': '2026-07-07T21:48:27.749383700Z', 'status': 429, 'code': 'RATE_LIMIT_EXCEEDED', 'error': 'RATE_LIMIT_EXCEEDED', 'message': 'To"
+  },
+  {
+    "id": "GET-01",
+    "scenario": "Get own application by id",
+    "expected": "200",
+    "http": 200,
+    "pass": true,
+    "actual": "status=INITIALIZED"
+  },
+  {
+    "id": "GET-02",
+    "scenario": "Get own application by external id",
+    "expected": "200",
+    "http": 200,
+    "pass": true,
+    "actual": "7f368986-dc80-4ceb-ab61-468613802cec"
+  },
+  {
+    "id": "ISO-01",
+    "scenario": "LSP B reads LSP A's application by id",
+    "expected": "404/403 (isolation)",
+    "http": 404,
+    "pass": true,
+    "actual": "404 {'timestamp': '2026-07-07T21:48:33.165623600Z', 'status': 404, 'code': 'NOT_FOUND', 'error': 'NOT_FOUND', 'message': 'Un"
+  },
+  {
+    "id": "ISO-02",
+    "scenario": "LSP B reads A's app by external id",
+    "expected": "404/403",
+    "http": 404,
+    "pass": true,
+    "actual": "404 {'timestamp': '2026-07-07T21:48:33.747675300Z', 'status': 404, 'code': 'NOT_FOUND', 'error': 'NOT_FOUND', 'message': 'Un"
+  },
+  {
+    "id": "LIST-01",
+    "scenario": "List apps w/ pagination headers (A)",
+    "expected": "200 + X-Total-Count header",
+    "http": 200,
+    "pass": true,
+    "actual": "X-Total-Count=1 items=1"
+  },
+  {
+    "id": "ISO-03",
+    "scenario": "LSP B list excludes A's app",
+    "expected": "A's app id absent from B list",
+    "http": 200,
+    "pass": true,
+    "actual": "B-count=0 containsA=False"
+  },
+  {
+    "id": "LIST-02",
+    "scenario": "Invalid status filter value",
+    "expected": "graceful (200 empty or 400)",
+    "http": 200,
+    "pass": true,
+    "actual": "200 n=0"
+  },
+  {
+    "id": "LIST-03",
+    "scenario": "limit above max 200",
+    "expected": "400 constraint",
+    "http": 400,
+    "pass": true,
+    "actual": "{'timestamp': '2026-07-07T21:48:35.785817400Z', 'status': 400, 'code': 'VALIDATION_FAILED', 'error': 'VALIDATION_FAILED'"
+  },
+  {
+    "id": "INV-01",
+    "scenario": "List invalid reasons",
+    "expected": "200 list",
+    "http": 200,
+    "pass": true,
+    "actual": "n=4"
+  },
+  {
+    "id": "INV-02",
+    "scenario": "Invalidate own application",
+    "expected": "200 status INVALID",
+    "http": 400,
+    "pass": false,
+    "actual": "status={'timestamp': '2026-07-07T21:48:44.916697200Z', 'status': 400, 'code': 'INVALID_REQUEST', 'error': 'INVALID_REQUEST', 'message': 'Other invalid loan reason text is only allowed when reason is OTHERS.', 'path': '/api/v1/lsp/loan-applications/94a75e3f-3f56-4f60-b60e-fb259b160423/invalid', 'correlationId': 'ac2d27d8-5aa4-426f-9521-a48d04d50155', 'errorCode': 'INVALID_REQUEST', 'errorReason': 'INVALID_REQUEST', 'errorSource': 'Other invalid loan reason text is only allowed when reason is OTHERS.', 'violations': [], 'errors': [{'errorCode': 'INVALID_REQUEST', 'errorReason': 'INVALID_REQUEST', 'errorSource': 'Other invalid loan reason text is only allowed when reason is OTHERS.', 'field': None, 'message': 'Other invalid loan reason text is only allowed when reason is OTHERS.'}]}"
+  },
+  {
+    "id": "ISO-04",
+    "scenario": "LSP B invalidates A's app",
+    "expected": "403/404",
+    "http": 404,
+    "pass": true,
+    "actual": "404 {'timestamp': '2026-07-07T21:48:47.339668100Z', 'status': 404, 'code': 'NOT_FOUND', 'error': 'NOT_FOUND', 'message': 'Un"
+  },
+  {
+    "id": "DOC-01",
+    "scenario": "Submit document metadata (JSON)",
+    "expected": "200",
+    "http": 200,
+    "pass": true,
+    "actual": "200 status=SUBMITTED"
+  },
+  {
+    "id": "DOC-02",
+    "scenario": "Upload document (multipart)",
+    "expected": "200",
+    "http": 200,
+    "pass": true,
+    "actual": "200 aadhaar.pdf"
+  },
+  {
+    "id": "ISO-05",
+    "scenario": "LSP B uploads doc to A's app",
+    "expected": "403/404",
+    "http": 404,
+    "pass": true,
+    "actual": "404 {'timestamp': '2026-07-07T21:48:55.559515700Z', 'status': 404, 'code': 'NOT_FOUND', 'error': 'NOT_FOUND', 'message': 'Un"
+  },
+  {
+    "id": "DOC-03",
+    "scenario": "List submitted documents",
+    "expected": "200 list",
+    "http": 200,
+    "pass": true,
+    "actual": "n=2"
+  },
+  {
+    "id": "DOC-04",
+    "scenario": "Batch upload all KYC docs",
+    "expected": "200 list of docs",
+    "http": 200,
+    "pass": true,
+    "actual": "200 n=8"
+  },
+  {
+    "id": "DOC-05",
+    "scenario": "Batch metadata/file count mismatch",
+    "expected": "400",
+    "http": 400,
+    "pass": true,
+    "actual": "400 {'timestamp': '2026-07-07T21:49:27.445101900Z', 'status': 400, 'code': 'INVALID_REQUEST', 'error': 'INVALID_REQUEST', 'm"
+  },
+  {
+    "id": "SCHED-01",
+    "scenario": "Upsert GENERATED schedule",
+    "expected": "expect 200 or business-state 4xx",
+    "http": 422,
+    "pass": true,
+    "actual": "422 n={'timestamp': '2026-07-07T21:49:28.352617Z', 'status': 422, 'code': 'LOAN_NOT_APPROVED', 'error': 'LOAN_NOT_APPROVED', '"
+  },
+  {
+    "id": "BANK-01",
+    "scenario": "Disbursement bank check",
+    "expected": "200 with status/warnings",
+    "http": 422,
+    "pass": false,
+    "actual": "422 {'timestamp': '2026-07-07T21:49:29.818062800Z', 'status': 422, 'code': 'DISBURSEMENT_VALIDATION_FAILED', 'error': 'DISBURSEMENT_VALIDATION_F"
+  },
+  {
+    "id": "BANK-02",
+    "scenario": "Get borrower bank details (unmasked, audited)",
+    "expected": "200 full account",
+    "http": 200,
+    "pass": true,
+    "actual": "acct=916674958006"
+  },
+  {
+    "id": "ISO-06",
+    "scenario": "LSP B reads A's borrower bank details",
+    "expected": "403/404",
+    "http": 404,
+    "pass": true,
+    "actual": "404 {'timestamp': '2026-07-07T21:49:31.259400500Z', 'status': 404, 'code': 'NOT_FOUND', 'error': 'NOT_FOUND', 'message': 'Un"
+  },
+  {
+    "id": "BANK-03",
+    "scenario": "Update borrower bank details",
+    "expected": "200",
+    "http": 200,
+    "pass": true,
+    "actual": "200 {'borrowerId': '7eda5aaa-eaef-470f-8893-222aa47f89c8', 'bankAccountNumber': '945748363571', 'bankName': 'ICICI', 'ifscCo"
+  },
+  {
+    "id": "STP-01",
+    "scenario": "Status after full KYC batch upload",
+    "expected": "observed=INITIALIZED",
+    "http": 200,
+    "pass": true,
+    "actual": "status=INITIALIZED"
+  },
+  {
+    "id": "DISB-00",
+    "scenario": "Loan not auto-approved for disbursement",
+    "expected": "admin_status=INITIALIZED",
+    "http": 200,
+    "pass": true,
+    "actual": "admin_status=INITIALIZED (manual approval likely required)"
+  },
+  {
+    "id": "LOAN-00",
+    "scenario": "No disbursed loan reached",
+    "expected": "servicing endpoints not exercised live",
+    "http": 0,
+    "pass": true,
+    "actual": "STP did not auto-disburse in window; documented separately"
+  },
+  {
+    "id": "EDGE-01",
+    "scenario": "Get non-existent application",
+    "expected": "404",
+    "http": 404,
+    "pass": true,
+    "actual": "404 {'timestamp': '2026-07-07T21:49:37.073721500Z', 'status': 404, 'code': 'NOT_FOUND', 'error': 'NOT_FO"
+  },
+  {
+    "id": "EDGE-02",
+    "scenario": "Malformed UUID path",
+    "expected": "400",
+    "http": 400,
+    "pass": true,
+    "actual": "400 {'timestamp': '2026-07-07T21:49:37.085809800Z', 'status': 400, 'code': 'INVALID_REQUEST', 'error': '"
+  },
+  {
+    "id": "EDGE-03",
+    "scenario": "Get non-existent loan",
+    "expected": "404",
+    "http": 404,
+    "pass": true,
+    "actual": "404 {'timestamp': '2026-07-07T21:49:37.695046900Z', 'status': 404, 'code': 'NOT_FOUND', 'error': 'NOT_FO"
+  },
+  {
+    "id": "ROLE-01",
+    "scenario": "LSP API client hits admin endpoint",
+    "expected": "403",
+    "http": 403,
+    "pass": true,
+    "actual": "403"
+  },
+  {
+    "id": "ROLE-02",
+    "scenario": "LSP API client initiates disbursement (ops)",
+    "expected": "403",
+    "http": 403,
+    "pass": true,
+    "actual": "403"
+  }
+]

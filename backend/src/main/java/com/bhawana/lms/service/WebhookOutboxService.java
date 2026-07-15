@@ -75,8 +75,12 @@ public class WebhookOutboxService {
             return;
         }
 
+        // schemaVersion lets partners branch on future payload changes; occurredAt is
+        // the business-event time (enqueue time — delivery may lag through retries).
         LinkedHashMap<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("schemaVersion", 1);
         envelope.put("eventType", eventType.name());
+        envelope.put("occurredAt", Instant.now());
         envelope.put("aggregateType", aggregateType);
         envelope.put("aggregateId", aggregateId);
         envelope.put("lspId", lsp.getId());

@@ -1,0 +1,106 @@
+[
+  {
+    "id": "LC-01",
+    "scenario": "Create complete application",
+    "expected": "200 INITIALIZED",
+    "http": 200,
+    "pass": true,
+    "actual": "status=INITIALIZED id=958231e0-5003-48e3-af7e-9c7bed33a867"
+  },
+  {
+    "id": "LC-02",
+    "scenario": "Batch upload all KYC docs (STP trigger)",
+    "expected": "200",
+    "http": 200,
+    "pass": true,
+    "actual": "n=8"
+  },
+  {
+    "id": "LC-03",
+    "scenario": "Auto-approval after full KYC + complete borrower",
+    "expected": "APPROVED_PENDING_DISBURSAL",
+    "http": 200,
+    "pass": true,
+    "actual": "status=APPROVED_PENDING_DISBURSAL"
+  },
+  {
+    "id": "LC-04",
+    "scenario": "Admin initiate disbursement",
+    "expected": "2xx",
+    "http": 200,
+    "pass": true,
+    "actual": "200 {'id': '958231e0-5003-48e3-af7e-9c7bed33a867', 'loanAccountId': '431bd5df-7a0c-4"
+  },
+  {
+    "id": "LC-05",
+    "scenario": "Apply mock outcome DISBURSED",
+    "expected": "200 DISBURSED",
+    "http": 200,
+    "pass": true,
+    "actual": "status=DISBURSED"
+  },
+  {
+    "id": "LC-06",
+    "scenario": "Get loan account",
+    "expected": "200",
+    "http": 200,
+    "pass": true,
+    "actual": "acct-status=DISBURSED"
+  },
+  {
+    "id": "LC-07",
+    "scenario": "Get repayment schedule",
+    "expected": "200 non-empty",
+    "http": 200,
+    "pass": true,
+    "actual": "n=12"
+  },
+  {
+    "id": "LC-08",
+    "scenario": "Record full installment payment",
+    "expected": "2xx",
+    "http": 200,
+    "pass": true,
+    "actual": "200 status=RECEIVED"
+  },
+  {
+    "id": "LC-09",
+    "scenario": "Payment idempotency replay",
+    "expected": "same txn id",
+    "http": 422,
+    "pass": false,
+    "actual": "id1=422 id2=422"
+  },
+  {
+    "id": "LC-10",
+    "scenario": "List payments",
+    "expected": "200",
+    "http": 200,
+    "pass": true,
+    "actual": "n=1"
+  },
+  {
+    "id": "LC-11",
+    "scenario": "Request foreclosure quote",
+    "expected": "200",
+    "http": 200,
+    "pass": true,
+    "actual": "settle=99803.94"
+  },
+  {
+    "id": "LC-12",
+    "scenario": "Execute foreclosure quote",
+    "expected": "2xx -> loan closed",
+    "http": 200,
+    "pass": true,
+    "actual": "200 status=EXECUTED"
+  },
+  {
+    "id": "LC-13",
+    "scenario": "Invalidate a disbursed/serviced loan",
+    "expected": "4xx business rule",
+    "http": 422,
+    "pass": true,
+    "actual": "422 {'timestamp': '2026-07-07T21:53:05.172222200Z', 'status': 422, 'code': 'INVALIDATION_NOT_ALLOWED', '"
+  }
+]

@@ -130,18 +130,9 @@ public class Borrower {
         this(BorrowerProfile.minimal(fullName, pan, mobile, email));
     }
 
-    public Borrower(Lsp lsp, String fullName, String pan, String mobile, String email) {
-        this(lsp, BorrowerProfile.minimal(fullName, pan, mobile, email));
-    }
-
     public Borrower(BorrowerProfile profile) {
         this.id = UUID.randomUUID();
         applyProfile(profile);
-    }
-
-    public Borrower(Lsp lsp, BorrowerProfile profile) {
-        this(profile);
-        grantVisibilityTo(lsp);
     }
 
     @PrePersist
@@ -168,13 +159,12 @@ public class Borrower {
         return lspId != null && visibleLspIds.contains(lspId);
     }
 
-    public void grantVisibilityTo(Lsp lsp) {
-        if (lsp != null) {
-            grantVisibilityTo(lsp.getId());
-        }
-    }
-
-    public void grantVisibilityTo(UUID lspId) {
+    /**
+     * Mutates only the legacy {@code borrower_lsp_access} collection. Callers outside
+     * this package must use {@link com.bhawana.lms.service.BorrowerLspRelationshipService#grantVisibility}
+     * so the Spec S19 relationship row is dual-written.
+     */
+    void addVisibleLspId(UUID lspId) {
         if (lspId != null) {
             visibleLspIds.add(lspId);
         }

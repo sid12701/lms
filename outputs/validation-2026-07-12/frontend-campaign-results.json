@@ -1,0 +1,56 @@
+﻿[
+    {
+        "name":  "typecheck",
+        "command":  "npm run typecheck",
+        "exitCode":  0,
+        "startedAt":  "2026-07-12T12:39:24.0963607+05:30",
+        "durationSeconds":  1.346,
+        "stdout":  "D:\\Desktop-New\\Folders\\LMS\\outputs\\validation-2026-07-12\\frontend-typecheck.stdout.log",
+        "stderr":  "D:\\Desktop-New\\Folders\\LMS\\outputs\\validation-2026-07-12\\frontend-typecheck.stderr.log"
+    },
+    {
+        "name":  "lint",
+        "command":  "npm run lint",
+        "exitCode":  1,
+        "startedAt":  "2026-07-12T12:39:25.5160474+05:30",
+        "durationSeconds":  30.449,
+        "stdout":  "D:\\Desktop-New\\Folders\\LMS\\outputs\\validation-2026-07-12\\frontend-lint.stdout.log",
+        "stderr":  "D:\\Desktop-New\\Folders\\LMS\\outputs\\validation-2026-07-12\\frontend-lint.stderr.log"
+    },
+    {
+        "name":  "format-check",
+        "command":  "npm run format:check",
+        "exitCode":  1,
+        "startedAt":  "2026-07-12T12:39:55.9688910+05:30",
+        "durationSeconds":  13.937,
+        "stdout":  "D:\\Desktop-New\\Folders\\LMS\\outputs\\validation-2026-07-12\\frontend-format-check.stdout.log",
+        "stderr":  "D:\\Desktop-New\\Folders\\LMS\\outputs\\validation-2026-07-12\\frontend-format-check.stderr.log"
+    },
+    {
+        "name":  "encoding",
+        "command":  "npm run check:encoding",
+        "exitCode":  0,
+        "startedAt":  "2026-07-12T12:40:09.9094743+05:30",
+        "durationSeconds":  1.402,
+        "stdout":  "D:\\Desktop-New\\Folders\\LMS\\outputs\\validation-2026-07-12\\frontend-encoding.stdout.log",
+        "stderr":  "D:\\Desktop-New\\Folders\\LMS\\outputs\\validation-2026-07-12\\frontend-encoding.stderr.log"
+    },
+    {
+        "name":  "vitest-coverage",
+        "command":  "npm run test:cov",
+        "exitCode":  0,
+        "startedAt":  "2026-07-12T12:40:11.3140507+05:30",
+        "durationSeconds":  714.029,
+        "stdout":  "D:\\Desktop-New\\Folders\\LMS\\outputs\\validation-2026-07-12\\frontend-vitest-coverage.stdout.log",
+        "stderr":  "D:\\Desktop-New\\Folders\\LMS\\outputs\\validation-2026-07-12\\frontend-vitest-coverage.stderr.log"
+    },
+    {
+        "name":  "build",
+        "command":  "npm run build",
+        "exitCode":  2,
+        "startedAt":  "2026-07-12T12:52:05.3453403+05:30",
+        "durationSeconds":  8.512,
+        "stdout":  "D:\\Desktop-New\\Folders\\LMS\\outputs\\validation-2026-07-12\\frontend-build.stdout.log",
+        "stderr":  "D:\\Desktop-New\\Folders\\LMS\\outputs\\validation-2026-07-12\\frontend-build.stderr.log"
+    }
+]

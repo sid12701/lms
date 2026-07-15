@@ -11,7 +11,9 @@ import type { Role } from "@/types";
 export function RequireAuth({ children }: { children: ReactNode }): ReactElement {
   const { session, isLoading } = useSession();
   const location = useLocation();
-  if (isLoading) return <RouteFallback />;
+  // RequireAuth renders before AppShell mounts, so this fallback is the
+  // whole document — standalone gives it a main landmark for axe.
+  if (isLoading) return <RouteFallback standalone />;
   if (!session) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }

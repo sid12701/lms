@@ -7,6 +7,7 @@ import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
+import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanInvalidationReason;
 import com.bhawana.lms.service.BankDetailsCheckResult;
 import com.bhawana.lms.service.DisbursementBankDetailsValidation.BankDetailWarning;
@@ -17,7 +18,9 @@ import com.bhawana.lms.service.LoanApplicationQueryService;
 import com.bhawana.lms.service.DisbursementPreflightValidator;
 import com.bhawana.lms.service.LoanDocumentService;
 import com.bhawana.lms.service.LspApiIdempotencyService;
+import com.bhawana.lms.service.IdempotencyFingerprinter;
 import com.bhawana.lms.service.LoanRepaymentScheduleService;
+import com.bhawana.lms.common.api.StrictJson;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
@@ -59,6 +62,9 @@ public class LspLoanApplicationApiController {
     private static final String DEFAULT_SOURCE_CHANNEL = "ONBOARDING_API";
     private static final String INVALID_LOAN_OPERATION_KEY = "LOAN_APPLICATION_INVALIDATION";
     private static final String CREATE_LOAN_OPERATION_KEY = "LOAN_APPLICATION_CREATE";
+    private static final String LOAN_DOCUMENT_METADATA_SUBMIT = "LOAN_DOCUMENT_METADATA_SUBMIT";
+    private static final String LOAN_DOCUMENT_UPLOAD = "LOAN_DOCUMENT_UPLOAD";
+    private static final String LOAN_DOCUMENT_BATCH_UPLOAD = "LOAN_DOCUMENT_BATCH_UPLOAD";
 
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
@@ -98,7 +104,7 @@ public class LspLoanApplicationApiController {
             @RequestParam(required = false) String sourceChannel,
             @RequestParam(required = false, name = "q") String query,
             @RequestParam(required = false) @Min(0) Integer offset,
-            @RequestParam(required = false) @Min(1) @Max(1000) Integer limit,
+            @RequestParam(required = false) @Min(1) @Max(200) Integer limit,
             @RequestParam(required = false) String paginationDetails
     ) {
         UUID lspId = LspAuthenticationSupport.authenticatedLspId(authentication);
@@ -132,6 +138,19 @@ public class LspLoanApplicationApiController {
                         reason.name(),
                         reason.getLabel(),
                         reason.requiresDetail()
+                ))
+                .toList();
+    }
+
+    @GetMapping("/document-requirements")
+    @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_READ','LSP_UI_WRITE')")
+    public List<LspDocumentRequirementResponse> listDocumentRequirements() {
+        return java.util.Arrays.stream(LoanApplicationDocumentType.values())
+                .map(type -> new LspDocumentRequirementResponse(
+                        type.name(),
+                        type.getDisplayName(),
+                        type.isRequiredForApproval(),
+                        type.isRequiredForDisbursement()
                 ))
                 .toList();
     }
@@ -200,7 +219,7 @@ public class LspLoanApplicationApiController {
 
     @PostMapping
     @PreAuthorize("hasRole('LSP_API_CLIENT')")
-    public LspLoanApplicationResponse createApplication(
+    public LspLoanApplicationDetailResponse createApplication(
             Authentication authentication,
             @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody LspLoanApplicationRequest request
@@ -217,12 +236,12 @@ public class LspLoanApplicationApiController {
                 CREATE_LOAN_OPERATION_KEY,
                 idempotencyKey,
                 request,
-                LspLoanApplicationResponse.class,
+                LspLoanApplicationDetailResponse.class,
                 () -> doCreateApplication(authentication, authenticatedLspId, request)
         );
     }
 
-    private LspLoanApplicationResponse doCreateApplication(
+    private LspLoanApplicationDetailResponse doCreateApplication(
             Authentication authentication,
             UUID authenticatedLspId,
             LspLoanApplicationRequest request
@@ -242,7 +261,9 @@ public class LspLoanApplicationApiController {
                 ),
                 authenticatedLspId
         );
-        return LspLoanApplicationResponses.toResponse(application);
+        return LspLoanApplicationResponses.toDetailResponse(
+                loanApplicationDetailAssembler.getDetail(application.getId())
+        );
     }
 
     /**
@@ -272,7 +293,7 @@ public class LspLoanApplicationApiController {
                 item.getFileName(),
                 item.getContentType(),
                 item.getNote(),
-                item.getUpdatedAt() == null ? null : item.getUpdatedAt().toString(),
+                item.getUpdatedAt(),
                 item.getUpdatedByUsername()
         );
     }
@@ -282,10 +303,31 @@ public class LspLoanApplicationApiController {
     public LspDocumentChecklistDetailResponse submitDocumentMetadata(
             Authentication authentication,
             @PathVariable UUID applicationId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody LspLoanApplicationDocumentRequest request
     ) {
+        UUID lspId = LspAuthenticationSupport.authenticatedLspId(authentication);
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doSubmitDocumentMetadata(lspId, authentication, applicationId, request);
+        }
+        return lspApiIdempotencyService.execute(
+                lspId,
+                LOAN_DOCUMENT_METADATA_SUBMIT,
+                idempotencyKey,
+                new DocumentMetadataFingerprint(applicationId.toString(), request),
+                LspDocumentChecklistDetailResponse.class,
+                () -> doSubmitDocumentMetadata(lspId, authentication, applicationId, request)
+        );
+    }
+
+    private LspDocumentChecklistDetailResponse doSubmitDocumentMetadata(
+            UUID lspId,
+            Authentication authentication,
+            UUID applicationId,
+            LspLoanApplicationDocumentRequest request
+    ) {
         LoanApplicationDocumentChecklist checklistItem = loanDocumentService.submitDocumentMetadataForLsp(
-                LspAuthenticationSupport.authenticatedLspId(authentication),
+                lspId,
                 applicationId,
                 request.documentType(),
                 authentication.getName(),
@@ -303,13 +345,37 @@ public class LspLoanApplicationApiController {
     public LspDocumentChecklistDetailResponse uploadDocument(
             Authentication authentication,
             @PathVariable UUID applicationId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestParam LoanApplicationDocumentType documentType,
             @RequestParam(required = false) String note,
             @RequestParam(required = false) String sourceReference,
             @RequestPart("file") MultipartFile file
     ) {
+        UUID lspId = LspAuthenticationSupport.authenticatedLspId(authentication);
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doUploadDocument(lspId, authentication, applicationId, documentType, note, sourceReference, file);
+        }
+        return lspApiIdempotencyService.execute(
+                lspId,
+                LOAN_DOCUMENT_UPLOAD,
+                idempotencyKey,
+                buildDocumentUploadFingerprint(applicationId, documentType, note, sourceReference, file),
+                LspDocumentChecklistDetailResponse.class,
+                () -> doUploadDocument(lspId, authentication, applicationId, documentType, note, sourceReference, file)
+        );
+    }
+
+    private LspDocumentChecklistDetailResponse doUploadDocument(
+            UUID lspId,
+            Authentication authentication,
+            UUID applicationId,
+            LoanApplicationDocumentType documentType,
+            String note,
+            String sourceReference,
+            MultipartFile file
+    ) {
         LoanApplicationDocumentChecklist checklistItem = loanDocumentService.submitStoredDocumentForLsp(
-                LspAuthenticationSupport.authenticatedLspId(authentication),
+                lspId,
                 applicationId,
                 documentType,
                 authentication.getName(),
@@ -325,6 +391,7 @@ public class LspLoanApplicationApiController {
     public List<LspDocumentChecklistDetailResponse> uploadDocumentsBatch(
             Authentication authentication,
             @PathVariable UUID applicationId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestPart("documents") List<LspBatchDocumentUploadRequest> documents,
             @RequestPart("files") List<MultipartFile> files
     ) {
@@ -338,6 +405,30 @@ public class LspLoanApplicationApiController {
             throw new IllegalArgumentException("Document metadata and file counts must match.");
         }
 
+        UUID lspId = LspAuthenticationSupport.authenticatedLspId(authentication);
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doUploadDocumentsBatch(lspId, authentication, applicationId, documents, files);
+        }
+        BatchDocumentUploadIdempotencyResponse stored = lspApiIdempotencyService.execute(
+                lspId,
+                LOAN_DOCUMENT_BATCH_UPLOAD,
+                idempotencyKey,
+                buildBatchDocumentUploadFingerprint(applicationId, documents, files),
+                BatchDocumentUploadIdempotencyResponse.class,
+                () -> new BatchDocumentUploadIdempotencyResponse(
+                        doUploadDocumentsBatch(lspId, authentication, applicationId, documents, files)
+                )
+        );
+        return stored.documents();
+    }
+
+    private List<LspDocumentChecklistDetailResponse> doUploadDocumentsBatch(
+            UUID lspId,
+            Authentication authentication,
+            UUID applicationId,
+            List<LspBatchDocumentUploadRequest> documents,
+            List<MultipartFile> files
+    ) {
         List<LoanDocumentService.BatchDocumentUpload> uploads = new ArrayList<>(documents.size());
         for (int index = 0; index < documents.size(); index++) {
             LspBatchDocumentUploadRequest metadata = documents.get(index);
@@ -350,13 +441,63 @@ public class LspLoanApplicationApiController {
         }
 
         return loanDocumentService.submitStoredDocumentsForLsp(
-                        LspAuthenticationSupport.authenticatedLspId(authentication),
+                        lspId,
                         applicationId,
                         authentication.getName(),
                         uploads
                 ).stream()
                 .map(LspLoanApplicationResponses::toDocumentChecklistDetailResponse)
                 .toList();
+    }
+
+    private static DocumentUploadFingerprint buildDocumentUploadFingerprint(
+            UUID applicationId,
+            LoanApplicationDocumentType documentType,
+            String note,
+            String sourceReference,
+            MultipartFile file
+    ) {
+        byte[] content = readFileBytes(file);
+        return new DocumentUploadFingerprint(
+                applicationId.toString(),
+                documentType.name(),
+                file.getOriginalFilename(),
+                file.getSize(),
+                IdempotencyFingerprinter.sha256Hex(content),
+                note,
+                sourceReference
+        );
+    }
+
+    private static BatchDocumentUploadFingerprint buildBatchDocumentUploadFingerprint(
+            UUID applicationId,
+            List<LspBatchDocumentUploadRequest> documents,
+            List<MultipartFile> files
+    ) {
+        List<DocumentUploadFingerprint> parts = new ArrayList<>(documents.size());
+        for (int index = 0; index < documents.size(); index++) {
+            LspBatchDocumentUploadRequest metadata = documents.get(index);
+            MultipartFile file = files.get(index);
+            byte[] content = readFileBytes(file);
+            parts.add(new DocumentUploadFingerprint(
+                    applicationId.toString(),
+                    metadata.documentType().name(),
+                    file.getOriginalFilename(),
+                    file.getSize(),
+                    IdempotencyFingerprinter.sha256Hex(content),
+                    metadata.note(),
+                    metadata.sourceReference()
+            ));
+        }
+        return new BatchDocumentUploadFingerprint(applicationId.toString(), parts);
+    }
+
+    private static byte[] readFileBytes(MultipartFile file) {
+        try {
+            return file.getBytes();
+        } catch (java.io.IOException exception) {
+            throw new IllegalStateException("Unable to read uploaded document bytes.", exception);
+        }
     }
 
     @PutMapping("/{applicationId}/repayment-schedule")
@@ -411,13 +552,13 @@ public class LspLoanApplicationApiController {
         return LspBankDetailsCheckResponse.from(result);
     }
 
-    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = false)
+    @StrictJson
     public record LspLoanApplicationRequest(
             @NotNull UUID lspId,
             UUID productId,
             @Size(max = 128) String loanProduct,
-            @NotBlank String lspLoanId,
-            @NotBlank String fullName,
+            @NotBlank @Size(max = 128) String lspLoanId,
+            @NotBlank @Size(max = 255) String fullName,
             @Email String emailAddress,
             @NotBlank @Pattern(regexp = "^[0-9]{10,15}$", message = "Mobile must contain 10 to 15 digits") String mobileNumber,
             @Past LocalDate dob,
@@ -461,6 +602,7 @@ public class LspLoanApplicationApiController {
         }
     }
 
+    @StrictJson
     public record LspLoanApplicationDocumentRequest(
             @NotNull LoanApplicationDocumentType documentType,
             @Size(max = 500) String note,
@@ -471,6 +613,7 @@ public class LspLoanApplicationApiController {
     ) {
     }
 
+    @StrictJson
     public record LspBatchDocumentUploadRequest(
             @NotNull LoanApplicationDocumentType documentType,
             @Size(max = 500) String note,
@@ -478,6 +621,7 @@ public class LspLoanApplicationApiController {
     ) {
     }
 
+    @StrictJson
     public record LspRepaymentScheduleUpsertRequest(
             @NotNull LspRepaymentScheduleMode mode,
             List<LspRepaymentScheduleInstallmentRequest> installments
@@ -489,6 +633,7 @@ public class LspLoanApplicationApiController {
         }
     }
 
+    @StrictJson
     public record LspRepaymentScheduleInstallmentRequest(
             @NotNull @Min(1) Integer installmentNumber,
             @NotNull LocalDate dueDate,
@@ -500,6 +645,7 @@ public class LspLoanApplicationApiController {
     ) {
     }
 
+    @StrictJson
     public record LspLoanDisbursementRequest(
             @NotNull @DecimalMin("0.01") BigDecimal disbursalAmount,
             @NotBlank @Size(max = 64) String bankAccountNumber,
@@ -526,6 +672,7 @@ public class LspLoanApplicationApiController {
         }
     }
 
+    @StrictJson
     public record LspInvalidLoanRequest(
             @NotNull LoanInvalidationReason reasonCode,
             @Size(max = 500) String reasonText
@@ -545,8 +692,8 @@ public class LspLoanApplicationApiController {
     }
 
     public record LspLoanApplicationResponse(
-            String id,
-            String borrowerId,
+            UUID id,
+            UUID borrowerId,
             String fullName,
             String emailAddress,
             String mobileNumber,
@@ -556,14 +703,14 @@ public class LspLoanApplicationApiController {
             String fatherName,
             String aadharNumber,
             String panNumber,
-            String loanProductId,
+            UUID loanProductId,
             String loanProductCode,
             String loanProductName,
             BigDecimal loanAmount,
             BigDecimal interestRate,
             Integer loanTenure,
             String lspLoanId,
-            String lspId,
+            UUID lspId,
             String lspCode,
             String lspName,
             String addressLine1,
@@ -588,13 +735,13 @@ public class LspLoanApplicationApiController {
             String referencePersonNumber,
             String sourceChannel,
             String status,
-            String createdAt
+            Instant createdAt
     ) {
     }
 
     public record LspLoanApplicationDetailResponse(
-            String id,
-            String borrowerId,
+            UUID id,
+            UUID borrowerId,
             String fullName,
             String emailAddress,
             String mobileNumber,
@@ -604,14 +751,14 @@ public class LspLoanApplicationApiController {
             String fatherName,
             String aadharNumber,
             String panNumber,
-            String loanProductId,
+            UUID loanProductId,
             String loanProductCode,
             String loanProductName,
             BigDecimal loanAmount,
             BigDecimal interestRate,
             Integer loanTenure,
             String lspLoanId,
-            String lspId,
+            UUID lspId,
             String lspCode,
             String lspName,
             String addressLine1,
@@ -639,27 +786,46 @@ public class LspLoanApplicationApiController {
             String invalidReasonCode,
             String invalidReasonText,
             String invalidatedByUsername,
-            String invalidatedAt,
-            String createdAt,
-            String updatedAt,
+            Instant invalidatedAt,
+            Instant createdAt,
+            Instant updatedAt,
             LspLoanAccountSummaryResponse loanAccount,
             LoanApplicationLastActivityResponse lastActivity
     ) {
     }
 
     public record LspLoanAccountSummaryResponse(
-            String id,
+            UUID id,
             String accountNumber,
-            String status,
+            LoanAccountStatus status,
             BigDecimal principalAmount,
             Integer tenureMonths,
-            String approvedAt,
-            String createdAt,
+            Instant approvedAt,
+            Instant createdAt,
             String closureReason,
-            String closedAt,
+            Instant closedAt,
             String closedByUsername,
             LspLoanDelinquencySummaryResponse delinquency,
-            LspLoanRepaymentScheduleSummaryResponse repaymentSchedule
+            LspLoanRepaymentScheduleSummaryResponse repaymentSchedule,
+            LspDisbursementSummaryResponse disbursement
+    ) {
+    }
+
+    public record LspDisbursementSummaryResponse(
+            String status,
+            String failureReasonCode,
+            String failureReason,
+            Instant disbursedAt,
+            BigDecimal grossAmount,
+            BigDecimal netDisbursedAmount
+    ) {
+    }
+
+    public record LspDocumentRequirementResponse(
+            String code,
+            String displayName,
+            boolean requiredForApproval,
+            boolean requiredForDisbursement
     ) {
     }
 
@@ -687,8 +853,8 @@ public class LspLoanApplicationApiController {
      */
     /** Partner-facing document checklist detail (excludes internal storage metadata). */
     public record LspDocumentChecklistDetailResponse(
-            String id,
-            String loanApplicationId,
+            UUID id,
+            UUID loanApplicationId,
             String documentType,
             String documentDisplayName,
             boolean required,
@@ -703,14 +869,14 @@ public class LspLoanApplicationApiController {
             Instant uploadedAt,
             String uploadedByUsername,
             String updatedByUsername,
-            String createdAt,
-            String updatedAt
+            Instant createdAt,
+            Instant updatedAt
     ) {
     }
 
     public record LspRepaymentScheduleInstallmentResponse(
-            String id,
-            String loanAccountId,
+            UUID id,
+            UUID loanAccountId,
             Integer installmentNumber,
             LocalDate dueDate,
             BigDecimal openingPrincipal,
@@ -725,7 +891,7 @@ public class LspLoanApplicationApiController {
             BigDecimal outstandingAmount,
             Integer daysPastDue,
             String delinquencyBucket,
-            String createdAt
+            Instant createdAt
     ) {
     }
 
@@ -735,7 +901,7 @@ public class LspLoanApplicationApiController {
             String fileName,
             String contentType,
             String note,
-            String uploadedAt,
+            Instant uploadedAt,
             String uploadedByUsername
     ) {
     }
@@ -746,7 +912,7 @@ public class LspLoanApplicationApiController {
             String summary,
             String detail,
             String correlationId,
-            String occurredAt
+            Instant occurredAt
     ) {
     }
 
@@ -755,6 +921,26 @@ public class LspLoanApplicationApiController {
             String reasonCode,
             String reasonText
     ) {
+    }
+
+    private record DocumentMetadataFingerprint(String applicationId, LspLoanApplicationDocumentRequest request) {
+    }
+
+    private record DocumentUploadFingerprint(
+            String applicationId,
+            String documentType,
+            String originalFilename,
+            long size,
+            String contentSha256,
+            String note,
+            String sourceReference
+    ) {
+    }
+
+    private record BatchDocumentUploadFingerprint(String applicationId, List<DocumentUploadFingerprint> parts) {
+    }
+
+    private record BatchDocumentUploadIdempotencyResponse(List<LspDocumentChecklistDetailResponse> documents) {
     }
 
 }

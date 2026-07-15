@@ -1,13 +1,17 @@
 package com.bhawana.lms.support;
 
+import com.bhawana.lms.repo.AdminApiIdempotencyRecordRepository;
 import com.bhawana.lms.repo.AuthEventAuditRepository;
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppUserAuditEventRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository;
+import com.bhawana.lms.repo.BorrowerPiiRevealAuditRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.DisbursementIntentRepository;
 import com.bhawana.lms.repo.DisbursementOutcomeAuditRepository;
+import com.bhawana.lms.repo.LoanDelinquencyStateRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
@@ -24,19 +28,23 @@ import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanProductAuditEventRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
+import com.bhawana.lms.repo.LoanProductVersionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
 import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspIpAllowlistRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.LspUiIpAllowlistRepository;
+import com.bhawana.lms.repo.PortfolioKpiSnapshotRepository;
 import com.bhawana.lms.repo.ReportAccessAuditRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
 import com.bhawana.lms.repo.WebhookEventOutboxRepository;
 import com.bhawana.lms.repo.WebhookOutboxRedriveAuditRepository;
 import com.bhawana.lms.tenant.TenantScopedExecution;
+import javax.sql.DataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
@@ -48,17 +56,22 @@ import org.springframework.stereotype.Component;
 @Component
 public class IntegrationTestDatabaseCleaner {
 
+    private final DataSource dataSource;
     private final JdbcTemplate jdbcTemplate;
     private final OpsAlertRepository opsAlertRepository;
     private final DisbursementOutcomeAuditRepository disbursementOutcomeAuditRepository;
     private final LoanDisbursementBankMismatchLogRepository loanDisbursementBankMismatchLogRepository;
     private final BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
+    private final BorrowerPiiRevealAuditRepository borrowerPiiRevealAuditRepository;
+    private final LoanDelinquencyStateRepository loanDelinquencyStateRepository;
+    private final AdminApiIdempotencyRecordRepository adminApiIdempotencyRecordRepository;
     private final WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
     private final WebhookEventOutboxRepository webhookEventOutboxRepository;
     private final WebhookOutboxRedriveAuditRepository webhookOutboxRedriveAuditRepository;
     private final LoanForeclosureQuoteRepository loanForeclosureQuoteRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
+    private final DisbursementIntentRepository disbursementIntentRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanAccountRepository loanAccountRepository;
     private final LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
@@ -79,24 +92,32 @@ public class IntegrationTestDatabaseCleaner {
     private final LoanProductAuditEventRepository loanProductAuditEventRepository;
     private final LoanProductLspMappingRepository loanProductLspMappingRepository;
     private final LoanProductRepository loanProductRepository;
+    private final LoanProductVersionRepository loanProductVersionRepository;
     private final LspAuditEventRepository lspAuditEventRepository;
     private final LspIpAllowlistRepository lspIpAllowlistRepository;
     private final LspUiIpAllowlistRepository lspUiIpAllowlistRepository;
     private final LspRepository lspRepository;
     private final ReportAccessAuditRepository reportAccessAuditRepository;
+    private final PortfolioKpiSnapshotRepository portfolioKpiSnapshotRepository;
+    private final boolean explicitlyEphemeralDatabase;
 
     public IntegrationTestDatabaseCleaner(
+            DataSource dataSource,
             JdbcTemplate jdbcTemplate,
             OpsAlertRepository opsAlertRepository,
             DisbursementOutcomeAuditRepository disbursementOutcomeAuditRepository,
             LoanDisbursementBankMismatchLogRepository loanDisbursementBankMismatchLogRepository,
             BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository,
+            BorrowerPiiRevealAuditRepository borrowerPiiRevealAuditRepository,
+            LoanDelinquencyStateRepository loanDelinquencyStateRepository,
+            AdminApiIdempotencyRecordRepository adminApiIdempotencyRecordRepository,
             WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
             WebhookEventOutboxRepository webhookEventOutboxRepository,
             WebhookOutboxRedriveAuditRepository webhookOutboxRedriveAuditRepository,
             LoanForeclosureQuoteRepository loanForeclosureQuoteRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
             LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
+            DisbursementIntentRepository disbursementIntentRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanAccountRepository loanAccountRepository,
             LoanApplicationAuditEventRepository loanApplicationAuditEventRepository,
@@ -117,22 +138,31 @@ public class IntegrationTestDatabaseCleaner {
             LoanProductAuditEventRepository loanProductAuditEventRepository,
             LoanProductLspMappingRepository loanProductLspMappingRepository,
             LoanProductRepository loanProductRepository,
+            LoanProductVersionRepository loanProductVersionRepository,
             LspAuditEventRepository lspAuditEventRepository,
             LspIpAllowlistRepository lspIpAllowlistRepository,
             LspUiIpAllowlistRepository lspUiIpAllowlistRepository,
             LspRepository lspRepository,
-            ReportAccessAuditRepository reportAccessAuditRepository) {
+            ReportAccessAuditRepository reportAccessAuditRepository,
+            PortfolioKpiSnapshotRepository portfolioKpiSnapshotRepository,
+            @Value("${" + IntegrationTestDatabaseTargetGuard.EPHEMERAL_DB_PROPERTY + ":false}")
+            boolean explicitlyEphemeralDatabase) {
+        this.dataSource = dataSource;
         this.jdbcTemplate = jdbcTemplate;
         this.opsAlertRepository = opsAlertRepository;
         this.disbursementOutcomeAuditRepository = disbursementOutcomeAuditRepository;
         this.loanDisbursementBankMismatchLogRepository = loanDisbursementBankMismatchLogRepository;
         this.borrowerBankDetailsUpdateAuditRepository = borrowerBankDetailsUpdateAuditRepository;
+        this.borrowerPiiRevealAuditRepository = borrowerPiiRevealAuditRepository;
+        this.loanDelinquencyStateRepository = loanDelinquencyStateRepository;
+        this.adminApiIdempotencyRecordRepository = adminApiIdempotencyRecordRepository;
         this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
         this.webhookEventOutboxRepository = webhookEventOutboxRepository;
         this.webhookOutboxRedriveAuditRepository = webhookOutboxRedriveAuditRepository;
         this.loanForeclosureQuoteRepository = loanForeclosureQuoteRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
+        this.disbursementIntentRepository = disbursementIntentRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationAuditEventRepository = loanApplicationAuditEventRepository;
@@ -153,14 +183,18 @@ public class IntegrationTestDatabaseCleaner {
         this.loanProductAuditEventRepository = loanProductAuditEventRepository;
         this.loanProductLspMappingRepository = loanProductLspMappingRepository;
         this.loanProductRepository = loanProductRepository;
+        this.loanProductVersionRepository = loanProductVersionRepository;
         this.lspAuditEventRepository = lspAuditEventRepository;
         this.lspIpAllowlistRepository = lspIpAllowlistRepository;
         this.lspUiIpAllowlistRepository = lspUiIpAllowlistRepository;
         this.lspRepository = lspRepository;
         this.reportAccessAuditRepository = reportAccessAuditRepository;
+        this.portfolioKpiSnapshotRepository = portfolioKpiSnapshotRepository;
+        this.explicitlyEphemeralDatabase = explicitlyEphemeralDatabase;
     }
 
     public void cleanIntegrationTestData() {
+        IntegrationTestDatabaseTargetGuard.assertEphemeralTarget(dataSource, explicitlyEphemeralDatabase);
         TenantScopedExecution.runAsAdmin(this::cleanIntegrationTestDataAsAdmin);
     }
 
@@ -177,6 +211,7 @@ public class IntegrationTestDatabaseCleaner {
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
+        disbursementIntentRepository.deleteAllInBatch();
         loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
         loanAccountRepository.deleteAllInBatch();
         jdbcTemplate.execute("DELETE FROM loan_application_document_access_audit_type");
@@ -189,8 +224,12 @@ public class IntegrationTestDatabaseCleaner {
         loanApplicationStatusTransitionRepository.deleteAllInBatch();
         loanApplicationPiiRevealAuditRepository.deleteAllInBatch();
         lspApiIdempotencyRecordRepository.deleteAllInBatch();
+        adminApiIdempotencyRecordRepository.deleteAllInBatch();
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
+        loanDelinquencyStateRepository.deleteAllInBatch();
         loanApplicationRepository.deleteAllInBatch();
+        borrowerPiiRevealAuditRepository.deleteAllInBatch();
+        jdbcTemplate.execute("DELETE FROM borrower_lsp_relationship");
         borrowerRepository.deleteAllInBatch();
         authEventAuditRepository.deleteAllInBatch();
         apiClientAuditEventRepository.deleteAllInBatch();
@@ -199,10 +238,14 @@ public class IntegrationTestDatabaseCleaner {
         appUserRepository.deleteAllInBatch();
         loanProductAuditEventRepository.deleteAllInBatch();
         loanProductLspMappingRepository.deleteAllInBatch();
+        loanProductVersionRepository.deleteAllInBatch();
         loanProductRepository.deleteAllInBatch();
         lspAuditEventRepository.deleteAllInBatch();
         lspIpAllowlistRepository.deleteAllInBatch();
         lspUiIpAllowlistRepository.deleteAllInBatch();
+        // portfolio_kpi_snapshot.lsp_id -> lsp(id): lazily persisted by the home dashboard
+        // (HomeDashboardService.resolveGlobalSnapshot) so it must be cleared before the LSPs.
+        portfolioKpiSnapshotRepository.deleteAllInBatch();
         lspRepository.deleteAllInBatch();
     }
 }

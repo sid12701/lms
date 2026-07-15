@@ -11,7 +11,16 @@ import { LspWebhookSubscription, WebhookEventType } from "@/schemas/lsp";
 export const WebhookSubscriptionFormSchema = z.object({
   enabled: LspWebhookSubscription.shape.enabled,
   endpointUrl: LspWebhookSubscription.shape.endpointUrl,
-  signingSecret: LspWebhookSubscription.shape.signingSecret,
+  /**
+   * The backend never returns the stored secret (write-only), so the form
+   * accepts blank ("keep the current secret") or a full 32-256 char value.
+   */
+  signingSecret: z
+    .string()
+    .max(256)
+    .refine((value) => value === "" || value.length >= 32, {
+      message: "Secret must be 32-256 characters, or blank to keep the current one.",
+    }),
   eventTypes: z.array(WebhookEventType).min(1, "Select at least one event type."),
 });
 

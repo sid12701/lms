@@ -71,14 +71,14 @@ public class SecurityFilterChainConfig {
                                 "/actuator/health/**",
                                 "/actuator/info",
                                 "/error",
-                                "/swagger-ui.html",
-                                "/swagger-ui/**",
-                                "/v3/api-docs/**",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/token",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/logout"
                         ).permitAll()
+                        // The OpenAPI document describes the full internal + LSP surface;
+                        // serve it to authenticated principals only.
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").authenticated()
                         .requestMatchers("/api/v1/auth/password").authenticated()
                         .requestMatchers("/api/v1/internal/system/context").authenticated()
                         .requestMatchers("/api/v1/**").access((authentication, context) -> {

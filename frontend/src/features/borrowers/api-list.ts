@@ -2,12 +2,13 @@
  * Borrowers directory list client — live backend only.
  */
 import { z } from "zod";
-import { requestJson } from "@/lib/api/http-client";
+import { requestJsonWithHeaders } from "@/lib/api/http-client";
+import { readPaginationHeaders } from "@/lib/api/pagination-headers";
 import type { BorrowerListFilters, BorrowerListResponse, BorrowerSummary } from "./list-types";
 
 const BACKEND_BASE = "/api/v1/internal/admin/borrowers";
 
-const DEFAULT_PAGE_SIZE = 25;
+const DEFAULT_PAGE_SIZE = 50;
 
 const BorrowerSummarySchema: z.ZodType<BorrowerSummary> = z.object({
   id: z.string().min(1),
@@ -28,29 +29,12 @@ export function buildBorrowersListQuery(filters: BorrowerListFilters): string {
   const trimmedQ = filters.q?.trim();
   if (trimmedQ && trimmedQ.length > 0) params.set("q", trimmedQ);
 
-  const paginate = typeof filters.page === "number" || typeof filters.pageSize === "number";
-  if (paginate) {
-    const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-    const page = filters.page ?? 0;
-    params.set("offset", String(page * pageSize));
-    params.set("limit", String(pageSize));
-    params.set("paginationDetails", "ON");
-  }
-  return params.toString();
-}
-
-function toResponse(
-  items: readonly BorrowerSummary[],
-  filters: BorrowerListFilters,
-): BorrowerListResponse {
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
   const page = filters.page ?? 0;
-  return {
-    items,
-    total: items.length,
-    page,
-    pageSize,
-  };
+  params.set("offset", String(page * pageSize));
+  params.set("limit", String(pageSize));
+  params.set("paginationDetails", "ON");
+  return params.toString();
 }
 
 export async function fetchBorrowersList(
@@ -58,7 +42,15 @@ export async function fetchBorrowersList(
 ): Promise<BorrowerListResponse> {
   const query = buildBorrowersListQuery(filters);
   const path = `${BACKEND_BASE}${query ? `?${query}` : ""}`;
-  const body = await requestJson<BorrowerSummary[]>(path);
-  const items = BorrowerSummaryArraySchema.parse(body);
-  return toResponse(items, filters);
+  const { data, headers } = await requestJsonWithHeaders<BorrowerSummary[]>(path);
+  const items = BorrowerSummaryArraySchema.parse(data);
+  const pagination = readPaginationHeaders(headers);
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+  const page = filters.page ?? 0;
+  return {
+    items,
+    total: pagination.totalCount ?? items.length,
+    page,
+    pageSize,
+  };
 }

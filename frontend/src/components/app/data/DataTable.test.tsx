@@ -110,7 +110,7 @@ describe("DataTable", () => {
 
   it("fires getRowAction on Enter when row is interactive", async () => {
     const onAction = vi.fn();
-    const { getAllByRole } = renderWithProviders(
+    const { container } = renderWithProviders(
       withDensity(
         <DataTable
           columns={columns}
@@ -122,9 +122,12 @@ describe("DataTable", () => {
         />,
       ),
     );
-    // first interactive row (rows are role="button")
-    const firstRow = getAllByRole("button").find((el) => el.tagName === "TR");
-    expect(firstRow).toBeDefined();
+    // Interactive rows keep role=row (a `button` override breaks table
+    // semantics and nests in-row action buttons — audit F13); they stay
+    // focusable and Enter/Space still fires the action.
+    const firstRow = container.querySelector<HTMLTableRowElement>("tr[data-interactive]");
+    expect(firstRow).toBeTruthy();
+    expect(firstRow!.getAttribute("role")).toBeNull();
     firstRow!.focus();
     await userEvent.keyboard("{Enter}");
     expect(onAction).toHaveBeenCalledWith("a");

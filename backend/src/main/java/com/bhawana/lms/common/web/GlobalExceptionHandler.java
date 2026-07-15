@@ -21,12 +21,14 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -34,10 +36,13 @@ import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.validation.FieldError;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.context.MessageSourceResolvable;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -79,6 +84,25 @@ public class GlobalExceptionHandler {
             int dot = path.lastIndexOf('.');
             String field = dot >= 0 ? path.substring(dot + 1) : path;
             fieldErrors.put(field, friendlyValidationMessage(violation.getMessage()));
+        }
+
+        return build(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed", request, fieldErrors);
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiError> handleHandlerMethodValidation(
+            HandlerMethodValidationException exception,
+            HttpServletRequest request
+    ) {
+        Map<String, String> fieldErrors = new LinkedHashMap<>();
+        for (ParameterValidationResult result : exception.getParameterValidationResults()) {
+            String field = result.getMethodParameter().getParameterName();
+            if (field == null) {
+                field = "parameter";
+            }
+            for (MessageSourceResolvable error : result.getResolvableErrors()) {
+                fieldErrors.put(field, friendlyValidationMessage(error.getDefaultMessage()));
+            }
         }
 
         return build(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed", request, fieldErrors);
@@ -147,7 +171,48 @@ public class GlobalExceptionHandler {
             ApiConflictException exception,
             HttpServletRequest request
     ) {
-        return build(HttpStatus.CONFLICT, exception.getErrorCode(), exception.getMessage(), request, Map.of());
+        ResponseEntity<ApiError> response = build(
+                HttpStatus.CONFLICT,
+                exception.getErrorCode(),
+                exception.getMessage(),
+                request,
+                Map.of()
+        );
+        exception.getRetryAfterSeconds().ifPresent(seconds ->
+                response.getHeaders().set("Retry-After", Long.toString(seconds))
+        );
+        return response;
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleDataIntegrityViolation(
+            DataIntegrityViolationException exception,
+            HttpServletRequest request
+    ) {
+        ConstraintViolationResolution resolution = resolveConstraintViolation(exception);
+        if (resolution.status() == HttpStatus.INTERNAL_SERVER_ERROR) {
+            log.error(
+                    "Data integrity violation on {} {}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    exception
+            );
+        } else {
+            log.warn(
+                    "Data integrity violation on {} {} (constraint={}, sqlState={})",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    resolution.constraintName(),
+                    resolution.sqlState()
+            );
+        }
+        return build(
+                resolution.status(),
+                resolution.errorCode(),
+                resolution.message(),
+                request,
+                resolution.fieldErrors()
+        );
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -363,7 +428,11 @@ public class GlobalExceptionHandler {
         Throwable cause = exception.getMostSpecificCause();
         String message;
         Map<String, String> fieldErrors = new LinkedHashMap<>();
-        if (cause instanceof com.fasterxml.jackson.databind.exc.InvalidFormatException invalidFormat) {
+        if (cause instanceof com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException unrecognizedProperty) {
+            String field = unrecognizedProperty.getPropertyName();
+            message = "Unknown field '" + field + "' is not permitted.";
+            fieldErrors.put(field, message);
+        } else if (cause instanceof com.fasterxml.jackson.databind.exc.InvalidFormatException invalidFormat) {
             Class<?> targetType = invalidFormat.getTargetType();
             String field = invalidFormat.getPath().isEmpty()
                     ? "body"
@@ -539,5 +608,103 @@ public class GlobalExceptionHandler {
             return "The selected LSP was not found.";
         }
         return raw;
+    }
+
+    private static ConstraintViolationResolution resolveConstraintViolation(DataIntegrityViolationException exception) {
+        String constraintName = null;
+        String sqlState = null;
+        org.hibernate.exception.ConstraintViolationException constraintViolation =
+                findConstraintViolation(exception);
+        if (constraintViolation != null) {
+            constraintName = normalizeConstraintName(constraintViolation.getConstraintName());
+            if (constraintViolation.getSQLException() != null) {
+                sqlState = constraintViolation.getSQLException().getSQLState();
+            }
+        }
+        if (sqlState == null) {
+            Throwable cause = exception.getMostSpecificCause();
+            if (cause instanceof SQLException sqlException) {
+                sqlState = sqlException.getSQLState();
+            }
+        }
+
+        if ("23505".equals(sqlState)) {
+            String errorCode = mapUniqueConstraintErrorCode(constraintName);
+            String message = switch (errorCode) {
+                case "BORROWER_PAN_CONFLICT" -> "A borrower with this PAN already exists.";
+                case "DUPLICATE_EXTERNAL_LOAN_ID" -> "An application with this external loan id already exists for the LSP.";
+                case "IDEMPOTENCY_CONFLICT" -> "Idempotency-Key has already been used.";
+                case "CONFLICT" -> "The request conflicts with existing data.";
+                default -> "The request conflicts with existing data.";
+            };
+            return new ConstraintViolationResolution(
+                    HttpStatus.CONFLICT,
+                    errorCode,
+                    message,
+                    constraintName,
+                    sqlState,
+                    Map.of()
+            );
+        }
+
+        if ("23514".equals(sqlState) || "22001".equals(sqlState)) {
+            return new ConstraintViolationResolution(
+                    HttpStatus.BAD_REQUEST,
+                    "VALIDATION_FAILED",
+                    "Request validation failed",
+                    constraintName,
+                    sqlState,
+                    Map.of()
+            );
+        }
+
+        return new ConstraintViolationResolution(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "INTERNAL_SERVER_ERROR",
+                "An unexpected error occurred",
+                constraintName,
+                sqlState,
+                Map.of()
+        );
+    }
+
+    private static org.hibernate.exception.ConstraintViolationException findConstraintViolation(
+            DataIntegrityViolationException exception
+    ) {
+        for (Throwable current = exception; current != null; current = current.getCause()) {
+            if (current instanceof org.hibernate.exception.ConstraintViolationException constraintViolation) {
+                return constraintViolation;
+            }
+        }
+        return null;
+    }
+
+    private static String mapUniqueConstraintErrorCode(String constraintName) {
+        if (constraintName == null) {
+            return "CONFLICT";
+        }
+        return switch (constraintName) {
+            case "uk_loan_payment_transaction_idempotency_key" -> "IDEMPOTENCY_CONFLICT";
+            case "uk_borrower_pan" -> "BORROWER_PAN_CONFLICT";
+            case "uk_loan_application_lsp_external" -> "DUPLICATE_EXTERNAL_LOAN_ID";
+            default -> constraintName.contains("idempotency") ? "IDEMPOTENCY_CONFLICT" : "CONFLICT";
+        };
+    }
+
+    private static String normalizeConstraintName(String constraintName) {
+        if (constraintName == null) {
+            return null;
+        }
+        return constraintName.toLowerCase().replace("\"", "");
+    }
+
+    private record ConstraintViolationResolution(
+            HttpStatus status,
+            String errorCode,
+            String message,
+            String constraintName,
+            String sqlState,
+            Map<String, String> fieldErrors
+    ) {
     }
 }

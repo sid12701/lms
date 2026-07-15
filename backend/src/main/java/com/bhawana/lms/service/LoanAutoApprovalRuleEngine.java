@@ -93,22 +93,7 @@ public class LoanAutoApprovalRuleEngine {
     }
 
     private void evaluateBorrowerFields(Borrower borrower, List<RuleCode> failures) {
-        if (borrower == null) {
-            failures.add(RuleCode.BORROWER_REQUIRED_FIELDS_MISSING);
-            return;
-        }
-        if (isBlank(borrower.getFullName())
-                || isBlank(borrower.getPan())
-                || isBlank(borrower.getMobile())
-                || isBlank(borrower.getAadharNumber())
-                || isBlank(borrower.getAddressLine1())
-                || isBlank(borrower.getCity())
-                || isBlank(borrower.getState())
-                || isBlank(borrower.getAddressZipCode())
-                || borrower.getMonthlyIncome() == null
-                || borrower.getMonthlyIncome().compareTo(BigDecimal.ZERO) <= 0
-                || isBlank(borrower.getReferencePersonName())
-                || isBlank(borrower.getReferencePersonNumber())) {
+        if (!BorrowerOnboardingRequirements.missingRequiredFields(borrower).isEmpty()) {
             failures.add(RuleCode.BORROWER_REQUIRED_FIELDS_MISSING);
         }
     }
@@ -143,10 +128,6 @@ public class LoanAutoApprovalRuleEngine {
                 && account != null
                 && account.getLoanApplication() != null
                 && currentApplicationId.equals(account.getLoanApplication().getId());
-    }
-
-    private static boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
     }
 
     public enum RuleCode {

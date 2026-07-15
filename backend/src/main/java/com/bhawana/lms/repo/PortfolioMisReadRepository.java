@@ -21,28 +21,66 @@ public class PortfolioMisReadRepository {
         this.entityManager = entityManager;
     }
 
-    public List<LoanAccount> findAccountsForExport(UUID lspId, Instant disbursalDateFrom, Instant disbursalDateTo) {
+    public static final int EXPORT_BATCH_SIZE = 1_000;
+
+    /**
+     * Keyset page of loan account ids for MIS export. Ordered by {@code account.id} ascending so
+     * callers can loop {@code lastExclusiveId = batch.getLast()} until an empty or short page.
+     */
+    public List<UUID> findAccountIdsForExportBatch(
+            UUID lspId,
+            Instant disbursalDateFrom,
+            Instant disbursalDateTo,
+            UUID lastExclusiveId,
+            int limit
+    ) {
         QuerySpec querySpec = buildQuerySpec(lspId, disbursalDateFrom, disbursalDateTo);
-        TypedQuery<LoanAccount> query = entityManager.createQuery(
+        String lastIdClause = lastExclusiveId == null ? "" : " and account.id > :lastExclusiveId";
+        TypedQuery<UUID> query = entityManager.createQuery(
                 """
-                        select account
+                        select account.id
                         from LoanAccount account
-                        join fetch account.loanApplication application
-                        join fetch account.borrower borrower
-                        join fetch account.lsp lsp
-                        join fetch account.loanProduct product
+                        join account.loanApplication application
+                        join account.lsp lsp
                         """
                         + querySpec.whereClause()
+                        + lastIdClause
                         + """
-                         order by lower(lsp.name) asc,
-                                  case when account.disbursedAt is null then 1 else 0 end asc,
-                                  account.disbursedAt desc,
-                                  application.createdAt desc
+                         order by account.id asc
                         """,
-                LoanAccount.class
+                UUID.class
         );
         applyParameters(query, querySpec.parameters());
+        if (lastExclusiveId != null) {
+            query.setParameter("lastExclusiveId", lastExclusiveId);
+        }
+        query.setMaxResults(limit);
         return query.getResultList();
+    }
+
+    public int findMaxInstallmentCountForExport(UUID lspId, Instant disbursalDateFrom, Instant disbursalDateTo) {
+        QuerySpec querySpec = buildQuerySpec(lspId, disbursalDateFrom, disbursalDateTo);
+        TypedQuery<Long> query = entityManager.createQuery(
+                """
+                        select coalesce(max(
+                            (select count(inst)
+                             from LoanRepaymentScheduleInstallment inst
+                             where inst.loanAccount = account)
+                        ), 0)
+                        from LoanAccount account
+                        join account.loanApplication application
+                        join account.lsp lsp
+                        """
+                        + querySpec.whereClause(),
+                Long.class
+        );
+        applyParameters(query, querySpec.parameters());
+        Long result = query.getSingleResult();
+        return result == null ? 0 : Math.toIntExact(result);
+    }
+
+    public List<LoanAccount> findAccountsByIds(List<UUID> accountIds) {
+        return findDetailedAccounts(accountIds);
     }
 
     public PortfolioMisAccountPage findAccountsPage(
@@ -106,6 +144,7 @@ public class PortfolioMisReadRepository {
                         join fetch account.borrower borrower
                         join fetch account.lsp lsp
                         join fetch account.loanProduct product
+                        join fetch account.loanProductVersion productVersion
                         where account.id in :accountIds
                         """,
                 LoanAccount.class

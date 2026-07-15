@@ -24,7 +24,7 @@ public class LoanAccount {
     @Id
     private UUID id;
 
-    @OneToOne(fetch = FetchType.EAGER, optional = false)
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "loan_application_id", nullable = false, unique = true)
     private LoanApplication loanApplication;
 
@@ -39,6 +39,10 @@ public class LoanAccount {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "loan_product_id", nullable = false)
     private LoanProduct loanProduct;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "loan_product_version_id", nullable = false)
+    private LoanProductVersion loanProductVersion;
 
     @Column(name = "account_number", nullable = false, unique = true, length = 64)
     private String accountNumber;
@@ -90,6 +94,7 @@ public class LoanAccount {
             Borrower borrower,
             Lsp lsp,
             LoanProduct loanProduct,
+            LoanProductVersion loanProductVersion,
             String accountNumber,
             BigDecimal principalAmount,
             int tenureMonths,
@@ -101,6 +106,7 @@ public class LoanAccount {
         this.borrower = borrower;
         this.lsp = lsp;
         this.loanProduct = loanProduct;
+        this.loanProductVersion = loanProductVersion;
         this.accountNumber = accountNumber;
         this.principalAmount = principalAmount;
         this.tenureMonths = tenureMonths;
@@ -138,6 +144,10 @@ public class LoanAccount {
 
     public LoanProduct getLoanProduct() {
         return loanProduct;
+    }
+
+    public LoanProductVersion getLoanProductVersion() {
+        return loanProductVersion;
     }
 
     public String getAccountNumber() {

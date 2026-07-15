@@ -6,6 +6,21 @@ import { renderWithProviders } from "@/test/utils";
 import type { UsersListResponse } from "../types";
 import { UsersTable } from "./UsersTable";
 
+// UsersTable reads the session for the self-disable guard (audit F18);
+// these tests don't exercise it, so a null session suffices.
+vi.mock("@/features/auth/session-context", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/auth/session-context")>();
+  return {
+    ...actual,
+    useSession: () => ({
+      session: null,
+      isLoading: false,
+      signIn: vi.fn(),
+      signOut: vi.fn(),
+    }),
+  };
+});
+
 const baseRow = {
   id: "11111111-1111-1111-1111-111111111111",
   username: "locked.user",

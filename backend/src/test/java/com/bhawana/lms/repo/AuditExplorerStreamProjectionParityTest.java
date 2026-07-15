@@ -41,10 +41,9 @@ class AuditExplorerStreamProjectionParityTest {
                 null,
                 null,
                 null,
-                0,
-                1,
-                false
-        ));
+                null,
+                1
+        ), null);
         assertNotNull(result.items());
         if (!result.items().isEmpty()) {
             var row = result.items().getFirst();

@@ -51,6 +51,10 @@ public class ReportAccessAudit {
     @JoinColumn(name = "report_request_id")
     private ReportRequest reportRequest;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lsp_id")
+    private Lsp lsp;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -65,7 +69,8 @@ public class ReportAccessAudit {
             ReportAccessAuditReportType reportType,
             String filterPayloadJson,
             long byteCount,
-            ReportRequest reportRequest
+            ReportRequest reportRequest,
+            Lsp lsp
     ) {
         this.id = UUID.randomUUID();
         this.actorUsername = actorUsername;
@@ -76,6 +81,20 @@ public class ReportAccessAudit {
         this.filterPayload = JsonPayloads.requiredObject(filterPayloadJson, "filterPayload");
         this.byteCount = byteCount;
         this.reportRequest = reportRequest;
+        this.lsp = lsp;
+    }
+
+    public ReportAccessAudit(
+            String actorUsername,
+            String actorIp,
+            String correlationId,
+            ReportAccessAuditAction action,
+            ReportAccessAuditReportType reportType,
+            String filterPayloadJson,
+            long byteCount,
+            ReportRequest reportRequest
+    ) {
+        this(actorUsername, actorIp, correlationId, action, reportType, filterPayloadJson, byteCount, reportRequest, null);
     }
 
     @PrePersist

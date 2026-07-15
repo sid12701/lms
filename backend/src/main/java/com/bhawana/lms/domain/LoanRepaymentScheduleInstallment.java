@@ -11,6 +11,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -23,7 +24,7 @@ public class LoanRepaymentScheduleInstallment {
     @Id
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "loan_account_id", nullable = false)
     private LoanAccount loanAccount;
 
@@ -69,6 +70,10 @@ public class LoanRepaymentScheduleInstallment {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    @Version
+    @Column(name = "entity_version", nullable = false)
+    private long entityVersion;
 
     protected LoanRepaymentScheduleInstallment() {
     }
@@ -173,6 +178,10 @@ public class LoanRepaymentScheduleInstallment {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public long getEntityVersion() {
+        return entityVersion;
     }
 
     public void resetAllocation() {

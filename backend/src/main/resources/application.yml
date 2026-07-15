@@ -19,7 +19,7 @@ spring:
   flyway:
     placeholders:
       tenant_app_role: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
-      tenant_app_password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
+      tenant_app_password: ${APP_TENANT_DATASOURCE_PASSWORD}
   jackson:
     serialization:
       write-dates-as-timestamps: false
@@ -45,8 +45,10 @@ management:
           include: livenessState
 
 springdoc:
+  # Machine-readable contract at /v3/api-docs (auth required — see
+  # SecurityFilterChainConfig). Swagger UI stays off outside local dev.
   api-docs:
-    enabled: false
+    enabled: true
   swagger-ui:
     enabled: false
     path: /swagger-ui.html
@@ -85,6 +87,7 @@ app:
       fixed-delay-ms: 60000
       batch-size: 20
       thread-pool-size: 10
+      max-attempts: 8
   reports:
     processing:
       enabled: true
@@ -114,7 +117,7 @@ app:
   datasource:
     tenant:
       username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
-      password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
+      password: ${APP_TENANT_DATASOURCE_PASSWORD}
   rate-limit:
     enabled: ${APP_RATE_LIMIT_ENABLED:true}
     rules:
@@ -181,11 +184,27 @@ app:
       status-check-delay-ms: ${APP_DISBURSEMENT_WORKER_STATUS_CHECK_DELAY_MS:60000}
       max-attempts: ${APP_DISBURSEMENT_WORKER_MAX_ATTEMPTS:5}
       auto-resolve-mock-outcome: ${APP_DISBURSEMENT_WORKER_AUTO_RESOLVE_MOCK:true}
+    intent-workflow:
+      enabled: ${APP_DISBURSEMENT_INTENT_WORKFLOW_ENABLED:true}
+      lease-duration-seconds: ${APP_DISBURSEMENT_INTENT_LEASE_SECONDS:120}
+      claim-batch-size: ${APP_DISBURSEMENT_INTENT_CLAIM_BATCH_SIZE:10}
+      lease-owner: ${APP_DISBURSEMENT_INTENT_LEASE_OWNER:disbursement-worker}
     mock:
       imps-max-amount: ${APP_DISBURSEMENT_MOCK_IMPS_MAX_AMOUNT:500000}
       status-check:
         min-polls: ${APP_DISBURSEMENT_MOCK_STATUS_CHECK_MIN_POLLS:1}
         max-polls: ${APP_DISBURSEMENT_MOCK_STATUS_CHECK_MAX_POLLS:6}
+  schedule:
+    validation:
+      # Spec S20 — accepted product defaults (2026-07-15). Date + interest checks always on.
+      first-due-min-days: ${APP_SCHEDULE_VALIDATION_FIRST_DUE_MIN_DAYS:1}
+      first-due-max-days: ${APP_SCHEDULE_VALIDATION_FIRST_DUE_MAX_DAYS:60}
+      cadence-tolerance-days: ${APP_SCHEDULE_VALIDATION_CADENCE_TOLERANCE_DAYS:7}
+      horizon-grace-days: ${APP_SCHEDULE_VALIDATION_HORIZON_GRACE_DAYS:75}
+      interest-row-tolerance-abs: ${APP_SCHEDULE_VALIDATION_INTEREST_ROW_TOLERANCE_ABS:10.00}
+      interest-row-tolerance-pct: ${APP_SCHEDULE_VALIDATION_INTEREST_ROW_TOLERANCE_PCT:0.02}
+      interest-total-tolerance-abs: ${APP_SCHEDULE_VALIDATION_INTEREST_TOTAL_TOLERANCE_ABS:100.00}
+      interest-total-tolerance-pct: ${APP_SCHEDULE_VALIDATION_INTEREST_TOTAL_TOLERANCE_PCT:0.01}
   borrower:
     bank-details:
       velocity-max-updates: ${APP_BORROWER_BANK_DETAILS_VELOCITY_MAX_UPDATES:3}
@@ -205,3 +224,15 @@ app:
     auth-brute-force-distributed-threshold: ${APP_ALERT_RULES_AUTH_BRUTE_FORCE_DISTRIBUTED_THRESHOLD:20}
     auth-brute-force-distributed-distinct-ip-min: ${APP_ALERT_RULES_AUTH_BRUTE_FORCE_DISTRIBUTED_DISTINCT_IP_MIN:5}
     auth-brute-force-distributed-window-hours: ${APP_ALERT_RULES_AUTH_BRUTE_FORCE_DISTRIBUTED_WINDOW_HOURS:24}
+    evaluation-batch-limit: ${APP_ALERT_RULES_EVALUATION_BATCH_LIMIT:500}
+  idempotency:
+    retention-days: ${APP_IDEMPOTENCY_RETENTION_DAYS:90}
+    purge-enabled: ${APP_IDEMPOTENCY_PURGE_ENABLED:true}
+    purge-fixed-delay-ms: ${APP_IDEMPOTENCY_PURGE_FIXED_DELAY_MS:3600000}
+    lease-duration-seconds: ${APP_IDEMPOTENCY_LEASE_DURATION_SECONDS:60}
+    lease-owner: ${APP_IDEMPOTENCY_LEASE_OWNER:${HOSTNAME:lms-api}}
+    completion-wait-seconds: ${APP_IDEMPOTENCY_COMPLETION_WAIT_SECONDS:30}
+  portfolio-kpi:
+    scheduler-enabled: ${APP_PORTFOLIO_KPI_SCHEDULER_ENABLED:true}
+    scheduler-fixed-delay-ms: ${APP_PORTFOLIO_KPI_SCHEDULER_FIXED_DELAY_MS:900000}
+    advisory-lock-id: ${APP_PORTFOLIO_KPI_ADVISORY_LOCK_ID:42109}

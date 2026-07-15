@@ -72,9 +72,15 @@ export interface LspWebhookSubscriptionDialogProps {
 const EVENT_LABELS: Record<WebhookEventType, string> = {
   "loan.created": "Loan created",
   "loan.status.changed": "Status changed",
+  "loan.documents.uploaded": "Documents uploaded",
+  "loan.disbursement.requested": "Disbursement requested",
   "loan.disbursement.completed": "Disbursement completed",
+  "loan.disbursement.failed": "Disbursement failed",
   "loan.repayment.posted": "Repayment posted",
+  "loan.repaid": "Loan fully repaid",
+  "loan.foreclosure.quote.requested": "Foreclosure quote requested",
   "loan.foreclosed": "Loan foreclosed",
+  "borrower.bank.details.updated": "Bank details updated",
 };
 
 const DEFAULT_VALUES: WebhookSubscriptionFormValues = {
@@ -102,12 +108,16 @@ export function LspWebhookSubscriptionDialog({
 
   const urlRef = useRef<HTMLInputElement | null>(null);
 
+  // The backend never returns the stored secret (write-only), so the field
+  // always starts blank; blank on submit keeps the current secret.
+  const hasStoredSecret = initialSubscription?.secretSet ?? false;
+
   const initialValues = useMemo<WebhookSubscriptionFormValues>(() => {
     if (!initialSubscription) return DEFAULT_VALUES;
     return {
       enabled: initialSubscription.enabled,
       endpointUrl: initialSubscription.endpointUrl,
-      signingSecret: initialSubscription.signingSecret,
+      signingSecret: "",
       eventTypes: [...initialSubscription.eventTypes],
     };
   }, [initialSubscription]);
@@ -204,12 +214,18 @@ export function LspWebhookSubscriptionDialog({
                   <Textarea
                     rows={3}
                     maxLength={256}
-                    placeholder="At least 32 characters"
+                    placeholder={
+                      hasStoredSecret
+                        ? "Leave blank to keep the current secret"
+                        : "At least 32 characters"
+                    }
                     {...field}
                   />
                 </FormControl>
                 <FormDescription>
-                  32-256 characters. Used to HMAC-sign every outbound payload.
+                  {hasStoredSecret
+                    ? "A secret is configured. Leave blank to keep it, or paste a new 32-256 character value to rotate."
+                    : "32-256 characters. Used to HMAC-sign every outbound payload."}
                 </FormDescription>
                 <FormMessage />
               </FormItem>

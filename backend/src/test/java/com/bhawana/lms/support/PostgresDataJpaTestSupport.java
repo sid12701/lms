@@ -38,7 +38,10 @@ public abstract class PostgresDataJpaTestSupport {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("spring.datasource.driver-class-name", POSTGRES::getDriverClassName);
         registry.add("spring.flyway.enabled", () -> true);
+        registry.add("spring.flyway.placeholders.tenant_app_role", () -> "lms_tenant_app");
+        registry.add("spring.flyway.placeholders.tenant_app_password", () -> "lms_tenant_app_password");
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
         registry.add("spring.jpa.database-platform", () -> "org.hibernate.dialect.PostgreSQLDialect");
+        registry.add(IntegrationTestDatabaseTargetGuard.EPHEMERAL_DB_PROPERTY, () -> true);
     }
 }

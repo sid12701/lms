@@ -4,6 +4,7 @@ import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -26,7 +27,9 @@ import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.service.ApiClientManagementService;
+import com.bhawana.lms.service.SystemContextService;
 import com.bhawana.lms.service.UserAdminService;
+import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
@@ -74,6 +77,9 @@ class AuthControllerTest {
 
     @Autowired
     private UserAdminService userAdminService;
+
+    @Autowired
+    private SystemContextService systemContextService;
 
     @Autowired
     private ApiClientManagementService apiClientManagementService;
@@ -459,6 +465,36 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.roles[0]").value("LSP_UI_READ"))
                 .andExpect(jsonPath("$.lspId").value(lsp.getId().toString()))
                 .andExpect(jsonPath("$.lspName").value("Apex UI Tenant"));
+    }
+
+    /**
+     * Regression guard for the LSP sign-in 500: {@code /internal/system/context} runs while the
+     * request thread is tenant-scoped ({@code AuthenticationTenantScopeFilter}), so the app_user
+     * lookup must switch to admin scope before its transaction acquires a connection
+     * (AdminScopedTransactionExecutor), not inside an already-open tenant transaction.
+     */
+    @Test
+    void resolveUserIdSucceedsWhileThreadIsTenantScoped() {
+        Lsp lsp = lspRepository.save(new Lsp("APEX-SCOPE", "Apex Scope Tenant", LspStatus.ACTIVE));
+        AppRole lspUiReadRole = appRoleRepository.findByCodeIn(List.of(RoleCode.LSP_UI_READ)).stream()
+                .findFirst()
+                .orElseThrow();
+        AppUser user = appUserRepository.save(new AppUser(
+                "tenant.scoped",
+                "tenant.scoped@bhawana.local",
+                passwordEncoder.encode("TestPassword123!"),
+                UserStatus.ACTIVE,
+                lsp,
+                Set.of(lspUiReadRole)
+        ));
+
+        TenantDataAccessContextHolder.useTenant(lsp.getId());
+        try {
+            assertNotNull(systemContextService.resolveUserId("tenant.scoped"));
+            assertNotEquals(null, user.getId());
+        } finally {
+            TenantDataAccessContextHolder.useAdmin();
+        }
     }
 
     @Test

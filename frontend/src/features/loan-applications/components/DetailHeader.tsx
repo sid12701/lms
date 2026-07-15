@@ -9,6 +9,7 @@ import { EscalateToAdminDialog } from "@/components/app/lifecycle/EscalateToAdmi
 import { useSession } from "@/features/auth/session-context";
 import { escalateAlert } from "@/features/alerts/api";
 import { useInitiateDisbursement, useTransitionStatus } from "../hooks/useLoanApplicationMutations";
+import { fetchLatestDisbursementReference } from "../api-detail";
 import type { LoanApplicationDetail, TransitionStatusInput } from "../types";
 import { mapApiErrorMessage, formatLoanStatusLabel } from "@/lib/api/user-messages";
 import { shortId } from "@/lib/short-id";
@@ -65,10 +66,12 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
   const handleConfirm = async ({
     action,
     reason,
+    reasonCode,
     idempotencyKey,
   }: {
     action: { toStatus: TransitionStatusInput["to"]; label: string };
     reason: string | null;
+    reasonCode: string | null;
     idempotencyKey: string;
   }) => {
     try {
@@ -80,14 +83,23 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
           detail.application.status === "DISBURSEMENT_RETRY")
       ) {
         await disbursementMutation.mutateAsync({ note: reason, idempotencyKey });
+        const reference = await fetchLatestDisbursementReference(detail.application.id);
+        toast.success(
+          reference
+            ? `Disbursement requested. Reference: ${reference}.`
+            : `Application moved to ${formatLoanStatusLabel(action.toStatus)}.`,
+        );
       } else {
         await mutation.mutateAsync({
           to: action.toStatus,
           reason,
+          reasonCode,
           idempotencyKey,
         });
       }
-      toast.success(`Application moved to ${formatLoanStatusLabel(action.toStatus)}.`);
+      if (action.toStatus !== "DISBURSED") {
+        toast.success(`Application moved to ${formatLoanStatusLabel(action.toStatus)}.`);
+      }
       onTransitionSuccess?.();
     } catch (err) {
       const detailMsg = mapApiErrorMessage(err);
@@ -146,6 +158,7 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
         <ActionBar
           currentStatus={detail.application.status}
           role={role}
+          applicationId={detail.application.id}
           gates={{
             docsComplete: detail.docsComplete,
             scheduleValid: detail.scheduleValid,

@@ -86,7 +86,6 @@ backend/
 | `backend/src/main/java/com/bhawana/lms/common/correlation/CorrelationIdFilter.java` | Middleware | Propagates `X-Correlation-Id` and MDC logging context | `CorrelationIdFilter` | Controllers, services, error responses |
 | `backend/src/main/java/com/bhawana/lms/common/web/GlobalExceptionHandler.java` | Error handling | Converts exceptions into `ApiError` responses | `GlobalExceptionHandler` | All controllers |
 | `backend/src/main/java/com/bhawana/lms/common/api/ApiError.java` | API shape | Standard error body | `ApiError`, `Violation` | `GlobalExceptionHandler`, auth entry points |
-| `backend/src/main/java/com/bhawana/lms/common/api/ApiEnvelope.java` | API shape | Standard success envelope for selected responses | `ApiEnvelope` | Controllers |
 | `backend/src/main/java/com/bhawana/lms/common/api/PaginationResponseBuilder.java` | API shape | Builds paginated or non-paginated list envelopes | `PaginationResponseBuilder` | List endpoints |
 | `backend/src/main/java/com/bhawana/lms/tenant/TenantAwareDataSource.java` | Tenant isolation | Sets PostgreSQL session context for current LSP before tenant queries | `TenantAwareDataSource` | RLS migrations, repositories |
 | `backend/src/main/java/com/bhawana/lms/tenant/TenantRoutingDataSource.java` | Tenant isolation | Routes between admin and tenant-aware datasource modes | `TenantRoutingDataSource` | `TenantIsolationDataSourceConfig` |
@@ -118,7 +117,7 @@ backend/
 | `backend/src/main/java/com/bhawana/lms/service/LoanApprovalService.java` | Service | Approval-specific rules and account creation support | `LoanApprovalService` | Loan application/account repos |
 | `backend/src/main/java/com/bhawana/lms/service/LoanDisbursementService.java` | Service | Disbursement requests and mock outcome handling | `LoanDisbursementService` | `loan_disbursement_request_log`, webhooks |
 | `backend/src/main/java/com/bhawana/lms/service/LoanDocumentService.java` | Service | Document metadata, storage, access audit, ZIP/content retrieval | `LoanDocumentService` | Storage services, document checklist |
-| `backend/src/main/java/com/bhawana/lms/service/LoanRepaymentScheduleService.java` | Service | Generate/upsert repayment schedules | `LoanRepaymentScheduleService` | Repayment schedule repository |
+| `backend/src/main/java/com/bhawana/lms/service/LoanRepaymentScheduleService.java` | Service | Generate/upsert repayment schedules; validate partner schedules (principal + Spec S20 date/interest) | `LoanRepaymentScheduleService` | Repayment schedule repository; `ScheduleValidationProperties` |
 | `backend/src/main/java/com/bhawana/lms/service/LoanRepaymentCommandService.java` | Service | Payment recording and allocation | `LoanRepaymentCommandService` | Payment transactions, installments |
 | `backend/src/main/java/com/bhawana/lms/service/LoanForeclosureCommandService.java` | Service | Foreclosure quote and execution flow | `LoanForeclosureCommandService` | Foreclosure quotes, loan accounts |
 | `backend/src/main/java/com/bhawana/lms/service/LspApiIdempotencyService.java` | Service | Idempotency record lookup and replay for LSP mutations | `LspApiIdempotencyService` | `lsp_api_idempotency_record` |
@@ -283,7 +282,7 @@ These endpoints require an authenticated principal with an LSP claim. `LspTenant
 | Method | Full path | Purpose | Access level/role | Middleware/guard/decorator | Handler/controller | Request params/body | Response shape | Database/models used | External services used | Notes/security concerns |
 |---|---|---|---|---|---|---|---|---|---|---|
 | POST | `/api/v1/lsp/loan-applications` | Create loan application from LSP API | `LSP_API_CLIENT` | `@PreAuthorize`, tenant interceptor, IP allowlist, LSP write rate limit | `LspLoanApplicationApiController.create` | LSP loan application body | Application response | Borrower, borrower access, LSP, product, application, audit, docs | Webhook outbox | Body `lspId` must match authenticated LSP |
-| PUT | `/api/v1/lsp/loan-applications/{applicationId}/repayment-schedule` | Upsert repayment schedule | `LSP_API_CLIENT` | `@PreAuthorize`, tenant interceptor, IP allowlist, LSP write rate limit | `LspLoanApplicationApiController.upsertRepaymentSchedule` | `mode`, installments | Schedule/application response | `loan_repayment_schedule_installment`, `loan_account` | None | Requires application/account belongs to LSP |
+| PUT | `/api/v1/lsp/loan-applications/{applicationId}/repayment-schedule` | Upsert repayment schedule | `LSP_API_CLIENT` | `@PreAuthorize`, tenant interceptor, IP allowlist, LSP write rate limit | `LspLoanApplicationApiController.upsertRepaymentSchedule` | `mode`, installments | Schedule/application response | `loan_repayment_schedule_installment`, `loan_account` | None | `LSP_PROVIDED` must pass principal + S20 date/interest checks; else `422 REPAYMENT_SCHEDULE_INVALID` — see `docs/partner-schedule-validation.md` |
 | POST | `/api/v1/lsp/loan-applications/{applicationId}/disbursement` | Trigger LSP disbursement flow | `LSP_API_CLIENT` | `@PreAuthorize`, tenant interceptor, IP allowlist, LSP write rate limit | `LspLoanApplicationApiController.disburse` | `disbursalAmount`, bank details | Disbursement/account response | Loan application/account, schedule, disbursement log | Mock/provider adapter, webhook outbox | Money movement integration point |
 
 ## 5. Endpoint Deep Dive
@@ -1321,8 +1320,8 @@ Tenant isolation
 | Response type | Observed standard |
 |---|---|
 | Auth success | `TokenResponse` with `accessToken`, `tokenType`, `expiresInSeconds`, and `passwordChangeRequired` where relevant; refresh token set as HttpOnly cookie |
-| Standard JSON success | Many endpoints return DTO records directly or inside `ApiEnvelope`/pagination helper structures |
-| List/pagination | List endpoints commonly support offset/limit and `paginationDetails`; helper can include or omit pagination details |
+| Standard JSON success | Endpoints return the DTO record directly as the response body (no envelope); every response carries `X-Correlation-Id` |
+| List/pagination | List endpoints commonly support offset/limit; `X-Offset`/`X-Limit` headers are always emitted, `X-Total-Count` only with `paginationDetails=ON` |
 | CSV/report download | Report export returns `text/csv` |
 | Binary document download | Document endpoints return binary/ZIP content with content headers when found |
 | Validation error | `ApiError` with `violations` |

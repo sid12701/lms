@@ -1,18 +1,24 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.service.LocalBootstrapAdminSyncService;
 import com.bhawana.lms.service.SystemContextService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.env.Environment;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -20,12 +26,20 @@ import org.springframework.web.bind.annotation.RestController;
 @SecurityRequirement(name = "bearerAuth")
 public class SystemController {
 
+    private static final Logger log = LoggerFactory.getLogger(SystemController.class);
+
     private final Environment environment;
     private final SystemContextService systemContextService;
+    private final LocalBootstrapAdminSyncService localBootstrapAdminSyncService;
 
-    public SystemController(Environment environment, SystemContextService systemContextService) {
+    public SystemController(
+            Environment environment,
+            SystemContextService systemContextService,
+            LocalBootstrapAdminSyncService localBootstrapAdminSyncService
+    ) {
         this.environment = environment;
         this.systemContextService = systemContextService;
+        this.localBootstrapAdminSyncService = localBootstrapAdminSyncService;
     }
 
     @GetMapping("/context")
@@ -54,6 +68,25 @@ public class SystemController {
                 CorrelationIdHolder.get(),
                 lspId,
                 lspName
+        );
+    }
+
+    /**
+     * Spec S10 — re-sync the configured bootstrap admin without a process restart.
+     * Idempotent; audited durably and in the structured application log.
+     */
+    @PostMapping("/bootstrap-sync")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public void bootstrapSync(Authentication authentication) {
+        log.info(
+                "event=bootstrap_sync actor={} correlationId={}",
+                authentication.getName(),
+                CorrelationIdHolder.get()
+        );
+        localBootstrapAdminSyncService.syncBootstrapAdmin(
+                authentication.getName(),
+                CorrelationIdHolder.get()
         );
     }
 

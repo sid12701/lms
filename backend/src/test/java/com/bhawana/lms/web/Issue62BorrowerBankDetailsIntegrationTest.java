@@ -4,6 +4,7 @@ import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -14,11 +15,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
+import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.domain.WebhookEventOutbox;
 import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository;
+import com.bhawana.lms.repo.BorrowerPiiRevealAuditRepository;
+import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
@@ -60,10 +64,16 @@ class Issue62BorrowerBankDetailsIntegrationTest {
     private BorrowerBankDetailsUpdateAuditRepository bankDetailsUpdateAuditRepository;
 
     @Autowired
+    private BorrowerPiiRevealAuditRepository borrowerPiiRevealAuditRepository;
+
+    @Autowired
     private LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
 
     @Autowired
     private LoanApplicationRepository loanApplicationRepository;
+
+    @Autowired
+    private LoanAccountRepository loanAccountRepository;
 
     @Autowired
     private OpsAlertRepository opsAlertRepository;
@@ -113,6 +123,36 @@ class Issue62BorrowerBankDetailsIntegrationTest {
                 UUID.fromString(lspId)
         );
         assertTrue(events.stream().anyMatch(event -> event.getEventType() == WebhookEventType.BORROWER_BANK_DETAILS_UPDATED));
+    }
+
+    @Test
+    void bankDetailsGetRecordsPiiRevealAuditWithoutStoringAccountNumber() throws Exception {
+        borrowerPiiRevealAuditRepository.deleteAllInBatch();
+        String lspId = createLspViaAdmin("REVEAL-LSP");
+        String productId = createProductViaAdmin();
+        mapProductToLsp(productId, lspId);
+        JsonNode apiClient = createApiClient(lspId);
+        String accessToken = issueToken(apiClient);
+        String expectedActor = apiClient.get("clientId").asText();
+
+        JsonNode application = createApplicationViaLsp(accessToken, lspId, productId, "REVEAL-EXT-001");
+        String borrowerId = application.get("borrowerId").asText();
+
+        mockMvc.perform(get("/api/v1/lsp/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bankAccountNumber").value("123456789012"));
+
+        assertEquals(1, borrowerPiiRevealAuditRepository.countByBorrower_Id(UUID.fromString(borrowerId)));
+        var audit = borrowerPiiRevealAuditRepository.findAll().stream()
+                .filter(row -> row.getBorrower().getId().equals(UUID.fromString(borrowerId)))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(expectedActor, audit.getActorUsername());
+        assertEquals("LSP_API_CLIENT", audit.getActorType());
+        assertEquals(UUID.fromString(lspId), audit.getLsp().getId());
+        assertEquals("bankAccountNumber,ifscCode,accountHolderName,bankName", audit.getRevealedFields());
+        assertFalse(audit.getRevealedFields().contains("123456789012"));
     }
 
     @Test
@@ -204,6 +244,126 @@ class Issue62BorrowerBankDetailsIntegrationTest {
     }
 
     @Test
+    void lspPatchBlockedAfterDisbursementWhenNoPreDisbursalApplication() throws Exception {
+        String lspId = createLspViaAdmin("POST-DISB-LSP");
+        String productId = createProductViaAdmin();
+        mapProductToLsp(productId, lspId);
+        JsonNode apiClient = createApiClient(lspId);
+        String accessToken = issueToken(apiClient);
+
+        String applicationId = seedApprovedApplication(lspId, productId);
+        String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
+                .getBorrower().getId().toString();
+
+        loanDisbursementWorkerService.processApplication(UUID.fromString(applicationId));
+        assertEquals(
+                LoanApplicationStatus.DISBURSED,
+                loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow().getStatus()
+        );
+
+        mockMvc.perform(patch("/api/v1/lsp/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "556677889900",
+                                "bankName", "Post Disbursal Bank",
+                                "ifscCode", "HDFC0001234",
+                                "accountHolderName", "Worker Borrower"
+                        ))))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("BANK_DETAILS_UPDATE_NOT_ALLOWED"));
+    }
+
+    @Test
+    void lspPatchBlockedWhileDisbursementInFlight() throws Exception {
+        String lspId = createLspViaAdmin("INFLIGHT-LSP");
+        String productId = createProductViaAdmin();
+        mapProductToLsp(productId, lspId);
+        JsonNode apiClient = createApiClient(lspId);
+        String accessToken = issueToken(apiClient);
+
+        String applicationId = seedApprovedApplication(lspId, productId, "MOCK0PENDOK");
+        String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
+                .getBorrower().getId().toString();
+
+        loanDisbursementWorkerService.processApplication(UUID.fromString(applicationId));
+        assertEquals(
+                LoanAccountStatus.DISBURSEMENT_REQUESTED,
+                loanAccountRepository.findByLoanApplication_Id(UUID.fromString(applicationId)).orElseThrow().getStatus()
+        );
+
+        mockMvc.perform(patch("/api/v1/lsp/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "667788990011",
+                                "bankName", "In Flight Bank",
+                                "ifscCode", "MOCK0PENDOK",
+                                "accountHolderName", "Worker Borrower"
+                        ))))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("BANK_DETAILS_LOCKED_DISBURSEMENT_IN_FLIGHT"));
+    }
+
+    @Test
+    void adminPatchSucceedsAfterDisbursement() throws Exception {
+        String lspId = createLspViaAdmin("ADMIN-POST-DISB-LSP");
+        String productId = createProductViaAdmin();
+        mapProductToLsp(productId, lspId);
+
+        String applicationId = seedApprovedApplication(lspId, productId);
+        String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
+                .getBorrower().getId().toString();
+
+        loanDisbursementWorkerService.processApplication(UUID.fromString(applicationId));
+        assertEquals(
+                LoanApplicationStatus.DISBURSED,
+                loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow().getStatus()
+        );
+
+        mockMvc.perform(patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "999988887777",
+                                "bankName", "Admin Corrected Bank",
+                                "ifscCode", "HDFC0001234",
+                                "accountHolderName", "Worker Borrower"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bankAccountNumber").value("999988887777"));
+    }
+
+    @Test
+    void adminPatchBlockedWhileDisbursementInFlight() throws Exception {
+        String lspId = createLspViaAdmin("ADMIN-INFLIGHT-LSP");
+        String productId = createProductViaAdmin();
+        mapProductToLsp(productId, lspId);
+
+        String applicationId = seedApprovedApplication(lspId, productId, "MOCK0PENDOK");
+        String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
+                .getBorrower().getId().toString();
+
+        loanDisbursementWorkerService.processApplication(UUID.fromString(applicationId));
+        assertEquals(
+                LoanAccountStatus.DISBURSEMENT_REQUESTED,
+                loanAccountRepository.findByLoanApplication_Id(UUID.fromString(applicationId)).orElseThrow().getStatus()
+        );
+
+        mockMvc.perform(patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "888877776666",
+                                "bankName", "Admin In Flight Bank",
+                                "ifscCode", "MOCK0PENDOK",
+                                "accountHolderName", "Worker Borrower"
+                        ))))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("BANK_DETAILS_LOCKED_DISBURSEMENT_IN_FLIGHT"));
+    }
+
+    @Test
     void repeatedBorrowerBankDetailUpdatesFireVelocityAlertButStillSucceed() throws Exception {
         opsAlertRepository.deleteAllInBatch();
         String lspId = createLspViaAdmin("VELOCITY-LSP");
@@ -230,19 +390,32 @@ class Issue62BorrowerBankDetailsIntegrationTest {
     }
 
     private void patchBankDetails(String accessToken, String borrowerId, String accountNumber) throws Exception {
+        patchBankDetails(accessToken, borrowerId, accountNumber, "HDFC0001234");
+    }
+
+    private void patchBankDetails(
+            String accessToken,
+            String borrowerId,
+            String accountNumber,
+            String ifscCode
+    ) throws Exception {
         mockMvc.perform(patch("/api/v1/lsp/borrowers/{borrowerId}/bank-details", borrowerId)
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", accountNumber,
                                 "bankName", "Velocity Bank",
-                                "ifscCode", "HDFC0001234",
+                                "ifscCode", ifscCode,
                                 "accountHolderName", "Worker Borrower"
                         ))))
                 .andExpect(status().isOk());
     }
 
     private String seedApprovedApplication(String lspId, String productId) throws Exception {
+        return seedApprovedApplication(lspId, productId, "HDFC0001234");
+    }
+
+    private String seedApprovedApplication(String lspId, String productId, String ifscCode) throws Exception {
         String applicationId = createApplicationViaOps(lspId, productId);
         transitionToAwaitingApproval(applicationId);
         markKycComplete(applicationId);
@@ -252,7 +425,7 @@ class Issue62BorrowerBankDetailsIntegrationTest {
         String accessToken = issueToken(apiClient);
         String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
                 .getBorrower().getId().toString();
-        patchBankDetails(accessToken, borrowerId, "123456789012");
+        patchBankDetails(accessToken, borrowerId, "123456789012", ifscCode);
         return applicationId;
     }
 

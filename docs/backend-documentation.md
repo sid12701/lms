@@ -86,7 +86,6 @@ backend/
 | `backend/src/main/java/com/bhawana/lms/common/correlation/CorrelationIdFilter.java` | Middleware | Propagates `X-Correlation-Id` and MDC logging context | `CorrelationIdFilter` | Controllers, services, error responses |
 | `backend/src/main/java/com/bhawana/lms/common/web/GlobalExceptionHandler.java` | Error handling | Converts exceptions into `ApiError` responses | `GlobalExceptionHandler` | All controllers |
 | `backend/src/main/java/com/bhawana/lms/common/api/ApiError.java` | API shape | Standard error body | `ApiError`, `Violation` | `GlobalExceptionHandler`, auth entry points |
-| `backend/src/main/java/com/bhawana/lms/common/api/ApiEnvelope.java` | API shape | Standard success envelope for selected responses | `ApiEnvelope` | Controllers |
 | `backend/src/main/java/com/bhawana/lms/common/api/PaginationResponseBuilder.java` | API shape | Builds paginated or non-paginated list envelopes | `PaginationResponseBuilder` | List endpoints |
 | `backend/src/main/java/com/bhawana/lms/tenant/TenantAwareDataSource.java` | Tenant isolation | Sets PostgreSQL session context for current LSP before tenant queries | `TenantAwareDataSource` | RLS migrations, repositories |
 | `backend/src/main/java/com/bhawana/lms/tenant/TenantRoutingDataSource.java` | Tenant isolation | Routes between admin and tenant-aware datasource modes | `TenantRoutingDataSource` | `TenantIsolationDataSourceConfig` |
@@ -118,7 +117,7 @@ backend/
 | `backend/src/main/java/com/bhawana/lms/service/LoanApprovalService.java` | Service | Approval-specific rules and account creation support | `LoanApprovalService` | Loan application/account repos |
 | `backend/src/main/java/com/bhawana/lms/service/LoanDisbursementService.java` | Service | Disbursement requests and mock outcome handling | `LoanDisbursementService` | `loan_disbursement_request_log`, webhooks |
 | `backend/src/main/java/com/bhawana/lms/service/LoanDocumentService.java` | Service | Document metadata, storage, access audit, ZIP/content retrieval | `LoanDocumentService` | Storage services, document checklist |
-| `backend/src/main/java/com/bhawana/lms/service/LoanRepaymentScheduleService.java` | Service | Generate/upsert repayment schedules | `LoanRepaymentScheduleService` | Repayment schedule repository |
+| `backend/src/main/java/com/bhawana/lms/service/LoanRepaymentScheduleService.java` | Service | Generate/upsert repayment schedules; validate partner schedules (principal + Spec S20 date/interest) | `LoanRepaymentScheduleService` | Repayment schedule repository; `ScheduleValidationProperties` |
 | `backend/src/main/java/com/bhawana/lms/service/LoanRepaymentCommandService.java` | Service | Payment recording and allocation | `LoanRepaymentCommandService` | Payment transactions, installments |
 | `backend/src/main/java/com/bhawana/lms/service/LoanForeclosureCommandService.java` | Service | Foreclosure quote and execution flow | `LoanForeclosureCommandService` | Foreclosure quotes, loan accounts |
 | `backend/src/main/java/com/bhawana/lms/service/LspApiIdempotencyService.java` | Service | Idempotency record lookup and replay for LSP mutations | `LspApiIdempotencyService` | `lsp_api_idempotency_record` |
@@ -285,7 +284,7 @@ These endpoints require an authenticated principal with an LSP claim. `LspTenant
 | Method | Full path | Purpose | Access level/role | Middleware/guard/decorator | Handler/controller | Request params/body | Response shape | Database/models used | External services used | Notes/security concerns |
 |---|---|---|---|---|---|---|---|---|---|---|
 | POST | `/api/v1/lsp/loan-applications` | Create loan application from LSP API | `LSP_API_CLIENT` | `@PreAuthorize`, tenant interceptor, IP allowlist, LSP write rate limit | `LspLoanApplicationApiController.create` | LSP loan application body | Application response | Borrower, borrower access, LSP, product, application, audit, docs | Webhook outbox | Body `lspId` must match authenticated LSP |
-| PUT | `/api/v1/lsp/loan-applications/{applicationId}/repayment-schedule` | Upsert repayment schedule | `LSP_API_CLIENT` | `@PreAuthorize`, tenant interceptor, IP allowlist, LSP write rate limit | `LspLoanApplicationApiController.upsertRepaymentSchedule` | `mode`, installments | Schedule/application response | `loan_repayment_schedule_installment`, `loan_account` | None | Requires application/account belongs to LSP |
+| PUT | `/api/v1/lsp/loan-applications/{applicationId}/repayment-schedule` | Upsert repayment schedule | `LSP_API_CLIENT` | `@PreAuthorize`, tenant interceptor, IP allowlist, LSP write rate limit | `LspLoanApplicationApiController.upsertRepaymentSchedule` | `mode`, installments | Schedule/application response | `loan_repayment_schedule_installment`, `loan_account` | None | `LSP_PROVIDED` must pass principal + S20 date/interest checks; else `422 REPAYMENT_SCHEDULE_INVALID` — see `docs/partner-schedule-validation.md` |
 | POST | `/api/v1/lsp/loan-applications/{applicationId}/disbursement` | Trigger LSP disbursement flow | `LSP_API_CLIENT` | `@PreAuthorize`, tenant interceptor, IP allowlist, LSP write rate limit | `LspLoanApplicationApiController.disburse` | `disbursalAmount`, bank details | Disbursement/account response | Loan application/account, schedule, disbursement log | Mock/provider adapter, webhook outbox | Money movement integration point |
 
 ## 5. Endpoint Deep Dive
@@ -809,6 +808,27 @@ Connected endpoints/services: repayment schedule, payments, foreclosure.
 
 Connected endpoints/services: disbursement endpoints and logs.
 
+### `disbursement_intent`
+
+Durable **disbursement attempt** (domain term in `CONTEXT.md`). Created in Tx-A before any provider side effect; worker claims and executes the bank call outside a transaction; outcome persisted in Tx-B. Migration `V111__disbursement_intent.sql`.
+
+| Field | Type/status | Notes |
+|---|---|---|
+| `id` | UUID, PK | Intent id |
+| `loan_account_id` | UUID, FK -> `loan_account.id` | One live non-terminal intent per account (partial unique index) |
+| `tran_ref_no` | varchar(64), unique | Deterministic bank idempotency key (`ICI` + 13 hex from intent id) |
+| `amount` | numeric | Disbursement amount |
+| `payment_mode` | varchar | e.g. IMPS |
+| `beneficiary_name`, `beneficiary_account_number`, `beneficiary_ifsc` | varchar | Snapshot at intent creation (live borrower row today; S5 will freeze) |
+| `state` | enum | `CREATED`, `REQUESTED`, `SUCCEEDED`, `FAILED`, `UNKNOWN`, `CANCELLED` |
+| `lease_owner`, `lease_expires_at` | varchar / timestamptz | Worker claim lease |
+| `attempt_count` | integer | Execution attempts |
+| `provider_request_id`, `provider_act_code`, `bank_rrn`, `decline_kind` | varchar nullable | Provider outcome fields |
+| `created_by`, `correlation_id` | varchar | Actor and correlation |
+| `created_at`, `updated_at` | timestamptz | Audit timestamps |
+
+Connected endpoints/services: `DisbursementIntentWorkflowService`, `LoanDisbursementWorkerService`, `LoanDisbursementCommandService`.
+
 ### `loan_payment_transaction`
 
 | Field | Type/status | Notes |
@@ -1074,14 +1094,21 @@ Internal authenticated user
 
 ### Disbursement Flow
 
+When `app.disbursement.intent-workflow.enabled=true` (default in non-test profiles):
+
 ```txt
 LSP API or system admin request
   -> application/account/product/document/bank/schedule validation
-  -> disbursement request log created
-  -> provider/mock adapter invoked
-  -> account/application state updated
-  -> webhook event queued
+  -> Tx-A: disbursement_intent row (CREATED) + account DISBURSEMENT_REQUESTED + deterministic tran_ref_no (committed)
+  -> worker claims intent (SKIP LOCKED + lease) on next tick
+  -> provider/mock adapter invoked outside any DB transaction
+  -> Tx-B: loan_disbursement_request_log + intent state + account/application update + webhook
+  -> auto-resolve terminal outcomes (mock path) or reconciliation sweeps for UNKNOWN
 ```
+
+Legacy path when the intent workflow flag is `false`: provider call still runs inside the command-service transaction (pre-S3 behavior; not for real rails).
+
+See `docs/implementation-log.md` (S3) and `DisbursementIntentWorkflowService`.
 
 ### Repayment and Foreclosure Flow
 
@@ -1169,6 +1196,10 @@ Do not expose secret values. The table lists variable names and observed usage.
 | `APP_WEBHOOKS_DELIVERY_ENABLED` | Webhook worker config | Enables scheduled webhook delivery | Optional/defaulted | Worker gate |
 | `APP_WEBHOOKS_DELIVERY_FIXED_DELAY_MS` | Webhook worker config | Delivery schedule delay | Optional/defaulted | Retry/throughput tuning |
 | `APP_WEBHOOKS_DELIVERY_BATCH_SIZE` | Webhook worker config | Dispatch batch size | Optional/defaulted | Throughput tuning |
+| `APP_DISBURSEMENT_INTENT_WORKFLOW_ENABLED` | `DisbursementIntentWorkflowProperties` | Enables durable intent workflow (S3) | Default `true` in prod; `false` in test profile | Set `false` only to roll back to legacy inline provider path |
+| `APP_DISBURSEMENT_INTENT_LEASE_SECONDS` | Intent worker claim lease | Seconds before claim expires | Default `120` | Tune for slow provider responses |
+| `APP_DISBURSEMENT_INTENT_CLAIM_BATCH_SIZE` | Intent worker batch | Max intents claimed per tick | Default `10` | Throughput tuning |
+| `APP_DISBURSEMENT_INTENT_LEASE_OWNER` | Intent worker identity | Lease owner label | Default `disbursement-worker` | Distinct per worker fleet if needed |
 | `APP_STORAGE_DOCUMENTS_PROVIDER` | Document storage config | Selects local or R2/S3-compatible storage | Required when storing content | Choose deployment-safe provider |
 | `APP_STORAGE_DOCUMENTS_ROOT_PATH` | Local document storage | Local root directory | Required for local provider | Protect filesystem path |
 | `APP_STORAGE_DOCUMENTS_R2_ENDPOINT` | R2/S3 storage | Object storage endpoint | Required for R2 provider | Trusted endpoint only |
@@ -1325,8 +1356,8 @@ Tenant isolation
 | Response type | Observed standard |
 |---|---|
 | Auth success | `TokenResponse` with `accessToken`, `tokenType`, `expiresInSeconds`, and `passwordChangeRequired` where relevant; refresh token set as HttpOnly cookie |
-| Standard JSON success | Many endpoints return DTO records directly or inside `ApiEnvelope`/pagination helper structures |
-| List/pagination | List endpoints commonly support offset/limit and `paginationDetails`; helper can include or omit pagination details |
+| Standard JSON success | Endpoints return the DTO record directly as the response body (no envelope); every response carries `X-Correlation-Id` |
+| List/pagination | List endpoints commonly support offset/limit; `X-Offset`/`X-Limit` headers are always emitted, `X-Total-Count` only with `paginationDetails=ON` |
 | CSV/report download | Report export returns `text/csv` |
 | Binary document download | Document endpoints return binary/ZIP content with content headers when found |
 | Validation error | `ApiError` with `violations` |

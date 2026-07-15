@@ -11,7 +11,7 @@ export interface ApiClientSecretMetaProps {
   createdAt: string;
   /** ISO timestamp of last rotation, or null when never rotated. */
   lastRotatedAt: string | null;
-  /** Number of CIDR ranges in the per-client IP allow-list (BR-8). */
+  /** Legacy per-client CIDR count. Always 0 now that allow-lists are per LSP. */
   ipAllowlistCount: number;
   /** Optional rotate handler — when omitted, the rotate button is hidden. */
   onRotate?: () => void;

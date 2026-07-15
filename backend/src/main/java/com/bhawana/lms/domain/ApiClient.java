@@ -11,6 +11,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -60,6 +61,12 @@ public class ApiClient {
 
     @Column(name = "token_version", nullable = false)
     private long tokenVersion;
+
+    @Column(name = "failed_auth_attempts", nullable = false)
+    private int failedAuthAttempts;
+
+    @Column(name = "auth_locked_until")
+    private Instant authLockedUntil;
 
     protected ApiClient() {
     }
@@ -186,6 +193,43 @@ public class ApiClient {
         if (previousSecretValidUntil != null && !now.isBefore(previousSecretValidUntil)) {
             this.previousSecretHash = null;
             this.previousSecretValidUntil = null;
+        }
+    }
+
+    public int getFailedAuthAttempts() {
+        return failedAuthAttempts;
+    }
+
+    public Instant getAuthLockedUntil() {
+        return authLockedUntil;
+    }
+
+    /** True while a brute-force throttle window is active and has not yet elapsed. */
+    public boolean isAuthThrottled(Instant now) {
+        return authLockedUntil != null && now.isBefore(authLockedUntil);
+    }
+
+    /** Clears the failed-attempt counter and any active throttle after a successful credential check. */
+    public void registerSuccessfulAuth() {
+        this.failedAuthAttempts = 0;
+        this.authLockedUntil = null;
+    }
+
+    /**
+     * Records a failed credential check. Once {@code maxAttempts} consecutive failures accrue, the
+     * client is throttled for {@code lockDuration}. An already-elapsed throttle window resets the
+     * count first, so every lockout requires a fresh run of failures rather than accumulating
+     * indefinitely across expired windows.
+     */
+    public void registerFailedAuth(Instant now, int maxAttempts, Duration lockDuration) {
+        if (authLockedUntil != null && !now.isBefore(authLockedUntil)) {
+            this.failedAuthAttempts = 0;
+            this.authLockedUntil = null;
+        }
+        this.failedAuthAttempts++;
+        if (this.failedAuthAttempts >= maxAttempts) {
+            this.authLockedUntil = now.plus(lockDuration);
+            this.failedAuthAttempts = 0;
         }
     }
 }

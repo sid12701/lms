@@ -1,0 +1,16 @@
+{
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.import.maven.enabled": true,
+  "java.import.gradle.enabled": false,
+  "java.import.exclusions": [
+    "**/frontend/**",
+    "**/node_modules/**",
+    "**/graphify-out/**",
+    "**/outputs/**"
+  ],
+  "java.project.importOnFirstTimeStartup": "automatic",
+  "java.compile.nullAnalysis.mode": "disabled",
+  "java.eclipse.downloadSources": true,
+  "java.maven.downloadSources": true,
+  "maven.view": "flat"
+}

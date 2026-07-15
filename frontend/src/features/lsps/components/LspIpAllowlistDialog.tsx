@@ -42,6 +42,7 @@ function SurfaceSection({
   onPendingChange,
   loading,
   canEnforce,
+  emptyHint,
 }: {
   title: string;
   description: string;
@@ -54,6 +55,7 @@ function SurfaceSection({
   onPendingChange: (next: string[]) => void;
   loading: boolean;
   canEnforce: boolean;
+  emptyHint: string;
 }) {
   return (
     <section className="border-border flex flex-col gap-3 rounded-md border p-3">
@@ -61,18 +63,25 @@ function SurfaceSection({
         <h3 className="text-sm font-medium">{title}</h3>
         <p className="text-muted-foreground text-xs">{description}</p>
       </div>
-      <div className="flex items-center gap-2">
-        <input
-          id={enforceId}
-          type="checkbox"
-          className="h-4 w-4"
-          checked={enforced}
-          disabled={loading || !canEnforce}
-          onChange={(event) => onEnforcedChange(event.target.checked)}
-        />
-        <Label htmlFor={enforceId} className="text-sm font-normal">
-          Enforce allowlist (deny when IP does not match)
-        </Label>
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <input
+            id={enforceId}
+            type="checkbox"
+            className="h-4 w-4"
+            checked={enforced}
+            disabled={loading || !canEnforce}
+            onChange={(event) => onEnforcedChange(event.target.checked)}
+          />
+          <Label htmlFor={enforceId} className="text-sm font-normal">
+            Enforce allowlist (deny when IP does not match)
+          </Label>
+        </div>
+        {!canEnforce && !loading ? (
+          <p className="text-muted-foreground pl-6 text-xs">
+            Add at least one CIDR entry before turning enforcement on.
+          </p>
+        ) : null}
       </div>
       {entries.length > 0 ? (
         <ul className="flex flex-col gap-1">
@@ -101,7 +110,12 @@ function SurfaceSection({
       )}
       <div className="flex flex-col gap-1">
         <Label className="text-xs">Add CIDR entries</Label>
-        <IpAllowListEditor value={pending} onChange={onPendingChange} disabled={loading} />
+        <IpAllowListEditor
+          value={pending}
+          onChange={onPendingChange}
+          disabled={loading}
+          emptyHint={emptyHint}
+        />
       </div>
     </section>
   );
@@ -232,6 +246,7 @@ export function LspIpAllowlistDialog({ open, onOpenChange, lsp }: LspIpAllowlist
               onPendingChange={setPendingUi}
               loading={loading}
               canEnforce={uiEntries.length > 0 || pendingUi.length > 0}
+              emptyHint="No IP restrictions. Portal users can sign in from any source IP until you add an entry."
             />
             <SurfaceSection
               title="API (machine clients)"
@@ -245,6 +260,7 @@ export function LspIpAllowlistDialog({ open, onOpenChange, lsp }: LspIpAllowlist
               onPendingChange={setPendingApi}
               loading={loading}
               canEnforce={apiEntries.length > 0 || pendingApi.length > 0}
+              emptyHint="No IP restrictions. API clients can obtain tokens from any source IP until you add an entry."
             />
           </div>
         ) : null}

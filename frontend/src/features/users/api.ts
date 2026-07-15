@@ -10,9 +10,7 @@
  *     DISABLED. We translate INACTIVE <-> DISABLED on both directions.
  *   - `PUT /{id}` persists email, role(s), status, and lspId. Role changes
  *     invalidate existing sessions server-side via `token_version`.
- *   - The backend response carries no `mustChangePassword` flag on the
- *     listing; we default to `false`. The reset-password flow does mint
- *     a temporary password and forces password change on next login.
+ *   - `passwordChangeRequired` on the backend maps to `mustChangePassword`.
  *   - The frontend's single `role` field is filled from the backend's
  *     `roles[]` by picking the highest-priority role (SYSTEM_ADMIN >
  *     OPS_USER > PRODUCT_ADMIN > LSP_UI_WRITE > LSP_UI_READ > LSP_API_CLIENT).
@@ -72,6 +70,7 @@ interface BackendUserResponse {
   roles: string[];
   lockedAt?: string | null;
   lockReason?: string | null;
+  passwordChangeRequired?: boolean;
   createdAt: string;
 }
 
@@ -83,7 +82,7 @@ function toUserRow(payload: BackendUserResponse): UserRow {
     status: backendToFrontendStatus(payload.status),
     role: pickPrimaryRole(payload.roles),
     lspId: payload.lspId,
-    mustChangePassword: false,
+    mustChangePassword: payload.passwordChangeRequired ?? false,
     createdAt: payload.createdAt,
     lockedAt: payload.lockedAt ?? null,
     lockReason: payload.lockReason ?? null,
@@ -138,7 +137,7 @@ export async function createUser(input: CreateUserInput): Promise<CreateUserResp
     { method: "POST", body: JSON.stringify(body) },
     { idempotencyKey: input.idempotencyKey },
   );
-  return { user: toUserRow(payload), temporaryPassword };
+  return { user: { ...toUserRow(payload), mustChangePassword: true }, temporaryPassword };
 }
 
 export async function updateUser(

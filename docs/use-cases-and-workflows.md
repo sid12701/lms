@@ -1,1294 +1,1224 @@
-# LMS — Use Case & Happy Path Workflow Documentation
+# Bhawana Loan Management System
 
-**Document version:** 1.0  
-**Prepared:** 2026-06-06  
-**Validation method:** Code analysis of `backend/`, `frontend/`, Flyway migrations (`V1`–`V88`), and integration configuration  
-**Audience:** Product Managers, Business Teams, QA, Developers, New Team Members, Auditors, Stakeholders
+## Vendor-Shareable Use Cases and Workflow Document
 
----
+| Field | Detail |
+|:--|:--|
+| Organisation | Bhawana Capital |
+| Document type | Functional use cases and business workflows |
+| Intended audience | Technology vendors, implementation partners, product teams, operations stakeholders |
+| Version | June 2026 |
 
-## Table of Contents
-
-1. [Deliverable 1 — Application Overview](#deliverable-1--application-overview)
-2. [Deliverable 2 — Use Case Document](#deliverable-2--use-case-document)
-3. [Deliverable 3 — Happy Path Workflow Document](#deliverable-3--happy-path-workflow-document)
-4. [Deliverable 4 — End-to-End Business Process Map](#deliverable-4--end-to-end-business-process-map)
-5. [Deliverable 5 — Module-Level Workflow Breakdown](#deliverable-5--module-level-workflow-breakdown)
-6. [Deliverable 6 — Gap Analysis](#deliverable-6--gap-analysis)
-7. [Deliverable 7 — Test Scenarios](#deliverable-7--test-scenarios-derived-from-use-cases)
-8. [Assumptions](#assumptions)
+This document describes the required business capabilities, user roles, use cases, workflow rules, and expected outcomes for the Bhawana Loan Management System (LMS).
 
 ---
 
-# Deliverable 1 — Application Overview
+## Contents
 
-## System Overview
-
-### Purpose of Application
-
-The **Bhawana Loan Management System (LMS)** is a multi-tenant institutional lending platform that digitizes the full loan lifecycle: origination, underwriting, disbursement, servicing, foreclosure, reporting, and partner integration. Each **Lending Service Provider (LSP)** operates as an isolated tenant while Bhawana internal staff manage the portfolio across all tenants.
-
-### Business Problem Solved
-
-| Problem | LMS Solution |
-|---------|--------------|
-| Fragmented loan operations across partners | Single control plane with tenant isolation |
-| Manual credit policy enforcement | Auto-approval rule engine + governed state machine |
-| Partner integration complexity | Versioned LSP API with OAuth2, idempotency, webhooks |
-| Regulatory/audit exposure | Append-only audit tables, document access logging, PII masking |
-| Operational blind spots | Scheduled alert rules, ops dashboard, MIS reporting |
-
-### Key Modules
-
-| Module | Description |
-|--------|-------------|
-| **Authentication & Session** | JWT access tokens, refresh cookies, password lifecycle, API client credentials |
-| **Tenant / LSP Administration** | LSP registry, status kill chain, webhook config, IP allowlists |
-| **User & API Client Admin** | Internal users, LSP UI users, machine credentials |
-| **Product Catalog** | Loan products, tenure/rate bounds, LSP mappings |
-| **Loan Origination** | Application intake (API + ops), document checklist, auto-approval |
-| **Loan Servicing** | Repayment schedule, payments, delinquency, foreclosure |
-| **Disbursement** | Worker-driven disbursement via pluggable adapter (mock in dev) |
-| **Borrower Management** | Global borrower identity (PAN-deduped), bank details, cross-LSP visibility |
-| **Operations Console** | Loan queue, lifecycle actions, escalation, document access |
-| **LSP Self-Service UI** | Tenant-scoped loan list, invalidation, document upload |
-| **Reporting** | Portfolio MIS preview, sync download, async CSV generation (R2) |
-| **Alerting** | Scheduled + event-driven ops alerts |
-| **Webhooks** | Transactional outbox with retry, redrive, delivery audit |
-| **Audit Explorer** | Unified cross-domain audit search |
-
-### Primary User Types
-
-| Actor | Type | Interface |
-|-------|------|-----------|
-| System Administrator | Internal human | React SPA (`/home`, admin routes) |
-| Operations User | Internal human | React SPA (`/loan-applications`, `/alerts`) |
-| Product Administrator | Internal human | React SPA (`/products`) |
-| LSP UI User (Read) | Partner human | React SPA (`/my-loans`) |
-| LSP UI User (Write) | Partner human | React SPA (`/my-loans` + write actions) |
-| LSP API Client | Machine | REST API (`/api/v1/lsp/**`) |
-| Background Workers | System | Scheduled jobs (disbursement, webhooks, reports, alerts) |
-| External LSP Webhook Consumer | External system | HTTPS POST from LMS |
-
-### External Integrations
-
-| Integration | Technology | Purpose |
-|-------------|------------|---------|
-| PostgreSQL | Primary datastore + RLS | Tenant isolation, transactional integrity |
-| Cloudflare R2 / S3-compatible | Object storage | KYC documents, MIS report files |
-| Local filesystem (dev) | File storage | Alternative document provider |
-| LSP Webhook Endpoints | HTTPS POST + HMAC | Real-time event notification to partners |
-| Email (SMTP) | Report notifications | Async report completion alerts |
-| Mock Disbursement Adapter | In-process | Simulated bank disbursement (production swappable) |
-| Redis / RabbitMQ / MinIO / MailHog | Infra (`infra/`) | Local development scaffolding |
-
-### High-Level Architecture
-
-```mermaid
-flowchart TB
-    subgraph clients [Clients]
-        SPA[React SPA<br/>Internal + LSP UI]
-        LSPAPI[LSP Partner Systems<br/>REST API]
-        WHConsumer[LSP Webhook Consumers]
-    end
-
-    subgraph backend [Spring Boot Modular Monolith]
-        Auth[Auth + JWT + Rate Limit]
-        Internal[Internal APIs<br/>/api/v1/internal/**]
-        LspSurf[LSP APIs<br/>/api/v1/lsp/**]
-        Workers[Scheduled Workers]
-        Outbox[Webhook Outbox]
-    end
-
-    subgraph data [Data Layer]
-        AdminDS[(Admin Datasource<br/>RLS bypass)]
-        TenantDS[(Tenant Datasource<br/>RLS enforced)]
-        R2[(R2 / Object Storage)]
-    end
-
-    SPA --> Auth
-    LSPAPI --> Auth
-    Auth --> Internal
-    Auth --> LspSurf
-    Internal --> AdminDS
-    LspSurf --> TenantDS
-    Workers --> AdminDS
-    Workers --> TenantDS
-    Outbox --> WHConsumer
-    Internal --> R2
-    LspSurf --> R2
-```
-
-**Tenant routing:** `/api/v1/internal/**` and `/api/v1/auth/**` use the admin datasource; `/api/v1/lsp/**` uses the tenant datasource with JWT `lspId` and PostgreSQL RLS via `app.current_lsp_id`.
+1. Document Scope
+2. Business Context
+3. Roles and Responsibilities
+4. Role Access Matrix
+5. Loan Product Configuration
+6. Business Rules
+7. Loan Lifecycle and Status Definitions
+8. Use Case Catalogue
+9. Detailed Use Cases
+10. End-to-End Workflows
+11. Reporting, Alerts, Audit, and Notifications
+12. Out of Scope
+13. Vendor Clarification Points
 
 ---
 
-## User Roles
+# 1. Document Scope
 
-### Role Summary Table
+## 1.1 Scope
 
-| Role | Responsibilities | Key Permissions | Accessible Modules | Restricted Modules |
-|------|------------------|-----------------|--------------------|--------------------|
-| **SYSTEM_ADMIN** | Full platform control, approvals, disbursement, reporting, audit | All internal + admin APIs; lifecycle write; manual override | Home, Loans, Borrowers, Alerts, Reports, Audit, LSPs, Products, Users, API Clients | LSP tenant API (uses internal routes instead) |
-| **OPS_USER** | Loan triage, borrower research, alert handling, repayment posting | Read/write loans (no admin-only mutations); escalate | Loans, Borrowers, Alerts | Home, Reports, Audit, LSP/User/API admin, disbursement trigger, status override, foreclosure trigger |
-| **PRODUCT_ADMIN** | Product catalog and LSP mapping | Product CRUD, product audit | Products, Loan list (read), Borrowers (read) | Lifecycle mutations, admin config, reports |
-| **LSP_UI_READ** | View tenant loans | LSP API read endpoints | My Loans (read) | All internal routes, write actions |
-| **LSP_UI_WRITE** | Manage tenant loans (invalidate, upload docs) | LSP read + invalidate + document upload | My Loans (read/write) | Internal ops, API-only endpoints (payments, schedule) |
-| **LSP_API_CLIENT** | Machine integration | Full LSP API (create loans, payments, schedule, bank check) | None (API only) | All UI routes |
+This document covers:
 
-### Role Details
-
-#### SYSTEM_ADMIN
-- **Responsibilities:** Tenant onboarding, user/API client management, credit decisions (approve/reject), disbursement initiation, foreclosure, MIS reporting, webhook redrive, audit investigation
-- **Permissions (backend):** `@PreAuthorize("hasRole('SYSTEM_ADMIN')")` on admin controllers; exclusive access to reports, audit explorer, webhook admin, manual status override
-- **Landing route:** `/home`
-
-#### OPS_USER
-- **Responsibilities:** Monitor loan queue, research borrowers, acknowledge alerts, escalate stuck loans, post repayments
-- **Permissions:** `hasAnyRole('SYSTEM_ADMIN','OPS_USER')` on ops controllers; **no** lifecycle ActionBar in UI (escalate only)
-- **Landing route:** `/loan-applications`
-
-#### PRODUCT_ADMIN
-- **Responsibilities:** Configure loan products and LSP availability
-- **Permissions:** Product admin APIs; read-only loan/borrower visibility
-- **Landing route:** `/products`
-
-#### LSP_UI_READ / LSP_UI_WRITE
-- **Responsibilities:** View (and optionally manage) own-tenant loan applications
-- **Permissions:** `/api/v1/lsp/loan-applications` read; write role adds invalidate + document upload
-- **Landing route:** `/my-loans`
-
-#### LSP_API_CLIENT
-- **Responsibilities:** Automated loan origination, document submission, schedule upload, payments, bank verification
-- **Authentication:** `POST /api/v1/auth/token` (client credentials); IP allowlist when enforced
-- **No UI access**
+- Functional roles required in the LMS.
+- Partner onboarding and access management.
+- Loan product setup and partner-product mapping.
+- Partner-led loan origination.
+- Borrower identity, deduplication, and open-loan checks.
+- Required document collection.
+- Automated credit decisioning.
+- Disbursement readiness, initiation, retries, and exception handling.
+- Repayment schedule handling.
+- Repayment posting and loan closure.
+- Foreclosure quote and execution.
+- Partner cancellation before disbursement.
+- Operational dashboards, alerts, audit trails, and MIS reporting.
+- Partner-facing self-service and system-to-system integration expectations.
 
 ---
 
-# Deliverable 2 — Use Case Document
+# 2. Business Context
 
-## Use Case Index
+Bhawana Capital works with Lending Service Providers (LSPs), referred to in this document as partners. Partners source borrowers and submit loan applications to Bhawana. Bhawana manages credit policy, disbursement control, servicing oversight, reporting, and compliance visibility.
 
-| ID | Name | Primary Actor |
-|----|------|---------------|
-| UC-001 | User Login | All human users |
-| UC-002 | Mandatory Password Change | Authenticated user |
-| UC-003 | Session Refresh & Logout | All human users |
-| UC-004 | API Client Token Issuance | LSP_API_CLIENT |
-| UC-005 | View Session Context | Authenticated user |
-| UC-006 | Create LSP Tenant | SYSTEM_ADMIN |
-| UC-007 | Activate/Deactivate LSP | SYSTEM_ADMIN |
-| UC-008 | Configure LSP Webhook Subscription | SYSTEM_ADMIN |
-| UC-009 | Manage LSP IP Allowlists | SYSTEM_ADMIN |
-| UC-010 | Create Internal/LSP User | SYSTEM_ADMIN |
-| UC-011 | Update User / Reset Password | SYSTEM_ADMIN |
-| UC-012 | Create API Client | SYSTEM_ADMIN |
-| UC-013 | Rotate API Client Secret | SYSTEM_ADMIN |
-| UC-014 | Create/Update Loan Product | SYSTEM_ADMIN, PRODUCT_ADMIN |
-| UC-015 | Configure Product-LSP Mappings | SYSTEM_ADMIN, PRODUCT_ADMIN |
-| UC-016 | LSP API — Create Loan Application | LSP_API_CLIENT |
-| UC-017 | Ops — Create Loan Application | SYSTEM_ADMIN, OPS_USER |
-| UC-018 | Auto-Approval Rule Evaluation | System |
-| UC-019 | Upload KYC Documents (LSP) | LSP_API_CLIENT, LSP_UI_WRITE |
-| UC-020 | Download KYC Documents (Ops) | SYSTEM_ADMIN, OPS_USER |
-| UC-021 | Manual Status Transition | SYSTEM_ADMIN |
-| UC-022 | Manual Status Override | SYSTEM_ADMIN |
-| UC-023 | Invalidate Loan (Pre-Disbursal) | LSP_API_CLIENT, LSP_UI_WRITE |
-| UC-024 | Submit Repayment Schedule | LSP_API_CLIENT |
-| UC-025 | Disbursement Bank Check | LSP_API_CLIENT |
-| UC-026 | Initiate Disbursement | SYSTEM_ADMIN |
-| UC-027 | Automated Disbursement Processing | System (Worker) |
-| UC-028 | Simulate Disbursement Outcome | SYSTEM_ADMIN |
-| UC-029 | Record Payment (Internal Ops) | SYSTEM_ADMIN, OPS_USER |
-| UC-030 | Record Payment (LSP API) | LSP_API_CLIENT |
-| UC-031 | Request Foreclosure Quote | SYSTEM_ADMIN, LSP_API_CLIENT |
-| UC-032 | Execute Foreclosure | SYSTEM_ADMIN |
-| UC-033 | Update Borrower Bank Details | LSP_API_CLIENT, SYSTEM_ADMIN |
-| UC-034 | Search & View Borrowers | SYSTEM_ADMIN, OPS_USER |
-| UC-035 | View Portfolio Dashboard | SYSTEM_ADMIN |
-| UC-036 | Search Loan Applications | Internal roles |
-| UC-037 | Portfolio MIS — Preview & Sync Download | SYSTEM_ADMIN |
-| UC-038 | Async MIS Report Generation | SYSTEM_ADMIN |
-| UC-039 | Acknowledge Ops Alert | SYSTEM_ADMIN, OPS_USER |
-| UC-040 | Escalate Loan to Admin | OPS_USER |
-| UC-041 | Scheduled Alert Rule Evaluation | System (Worker) |
-| UC-042 | Webhook Outbox Dispatch | System (Worker) |
-| UC-043 | Manual Webhook Redrive | SYSTEM_ADMIN |
-| UC-044 | Audit Explorer Search | SYSTEM_ADMIN |
-| UC-045 | Auth Audit Search | SYSTEM_ADMIN |
-| UC-046 | LSP View Own Loans | LSP_UI_READ, LSP_UI_WRITE |
-| UC-047 | View LSP Product Catalog | LSP_API_CLIENT, LSP_UI_* |
+The LMS is the central operating platform for this lifecycle:
+
+| Phase | Business outcome |
+|:--|:--|
+| Setup | Partners, users, products, and integration access are configured. |
+| Origination | Partner systems submit applications with borrower, product, and document information. |
+| Credit decision | Applications are automatically approved or rejected against policy rules. |
+| Disbursement | Approved loans are funded after all disbursement gates pass. |
+| Servicing | Repayment schedules, payments, overdue tracking, closure, and foreclosure are managed. |
+| Oversight | Bhawana monitors portfolio health through dashboards, reports, alerts, and audit trails. |
+
+End borrowers do not directly use the LMS. Borrowers interact with the partner. The partner interacts with Bhawana through partner staff screens and/or system-to-system integration.
+
+Each partner must see only its own loans and borrowers. Bhawana internal users must be able to view and operate across the full portfolio.
 
 ---
 
-## UC-001 — User Login
+# 3. Roles and Responsibilities
 
-### Use Case ID
-UC-001
+## 3.1 System Administrator
 
-### Use Case Name
-User Login (Password Authentication)
+**Who:** Bhawana platform owner, operations leadership, or designated admin team.
 
-### Description
-A human user authenticates with username and password to obtain a JWT access token and httpOnly refresh cookie.
+**Purpose:** Full control over platform setup, users, partners, products, loan exceptions, disbursement controls, reporting, audit, and partner notifications.
 
-### Business Objective
-Secure access to role-appropriate LMS surfaces.
+**Can do:**
 
-### Actors
-- **Primary Actor:** App User (any role)
-- **Secondary Actors:** Auth service, Audit service
+- Register, activate, and deactivate partners.
+- Configure partner access restrictions and partner notification settings.
+- Create and manage internal users, partner users, and partner integration credentials.
+- Create and maintain loan products.
+- Map loan products to eligible partners.
+- View full portfolio dashboard across all partners.
+- Search all loan applications and borrowers.
+- Review documents and loan details.
+- Manually approve eligible exceptions when allowed by policy.
+- Override or reset permitted loan statuses with mandatory reason capture.
+- Initiate or retry disbursement.
+- Execute foreclosure.
+- Run MIS reports and download outputs.
+- Review audit history.
+- Redrive failed partner notifications.
+- Acknowledge alerts.
 
-### Preconditions
-- User exists in `app_user` with status `ACTIVE`
-- User is not blocked by LSP UI IP allowlist (if enforced for LSP users)
+**Cannot do:**
 
-### Trigger
-User submits credentials on `/login`.
+- Create loans as if they were a partner system.
+- Use borrower-facing flows, because no borrower portal is in scope.
 
-### Main Flow
-1. User enters username and password on Login page.
-2. Frontend sends `POST /api/v1/auth/login`.
-3. Backend validates credentials and user status.
-4. Backend issues JWT (roles, `lspId` if applicable, `pwdv`, `tv` claims).
-5. Backend sets refresh token cookie and records `auth_event_audit`.
-6. Frontend stores access token; redirects to role default landing or `/change-password` if required.
+## 3.2 Operations User
 
-### Alternate Flows
-- **AF-1:** Password change required → HTTP 200 with flag → redirect to UC-002.
-- **AF-2:** Invalid credentials → 401 with generic error.
+**Who:** Bhawana day-to-day operations team.
 
-### Exception Flows
-- **EF-1:** Rate limit exceeded on login endpoint → 429.
-- **EF-2:** LSP UI IP not in allowlist → 403.
+**Purpose:** Loan queue monitoring, borrower research, document review, repayment posting, alert handling, and escalation.
 
-### Post Conditions
-- Valid session established; correlation ID propagated.
+**Can do:**
 
-### Data Created
-- `auth_event_audit` (LOGIN_SUCCESS or LOGIN_FAILURE)
+- View and search all loan applications.
+- View borrower profiles across partners.
+- Download submitted KYC and loan documents for review.
+- Record installment payments.
+- Acknowledge operational alerts.
+- Escalate stuck or exceptional loans to administrators.
+- View product information in read-only mode.
 
-### Data Updated
-- `refresh_token` row
+**Cannot do:**
 
-### APIs Involved
-- `POST /api/v1/auth/login`
+- Configure partners, users, API credentials, or products.
+- Trigger disbursement.
+- Execute foreclosure.
+- Run MIS reports unless explicitly granted by business policy.
+- Perform admin-level status overrides.
+- Access partner-only screens.
 
-### Database Tables Involved
-- `app_user`, `app_user_role`, `app_role`, `refresh_token`, `auth_event_audit`
+## 3.3 Partner Staff - View Only
 
-### Notifications Triggered
-- None
+**Who:** LSP staff who need visibility into their own pipeline.
 
-### Audit Logs Generated
-- `auth_event_audit`
+**Purpose:** Read-only view of that partner's loans.
 
-### Security Considerations
-- Rate limiting per IP; bcrypt password hash; refresh token rotation
+**Can do:**
 
-### Business Rules
-- Inactive users cannot login
-- `ROLE_PASSWORD_CHANGE_REQUIRED` blocks `/api/v1/**` until password changed
+- View own partner's loan applications.
+- View loan status, document checklist, repayment schedule, and selected borrower details.
 
-### Dependencies
-- JWT signing key configuration
+**Cannot do:**
 
----
+- See another partner's data.
+- Create applications.
+- Upload documents.
+- Cancel loans.
+- Post repayments.
+- Access Bhawana internal screens.
 
-## UC-016 — LSP API Create Loan Application
+## 3.4 Partner Staff - Manage
 
-### Use Case ID
-UC-016
+**Who:** LSP operations staff supporting active loan processing.
 
-### Use Case Name
-LSP API — Create Loan Application (Partner Intake)
+**Purpose:** Monitor in-flight applications for their own partner.
 
-### Description
-An LSP partner system submits a new loan application with full borrower payload via machine credentials.
+**Can do:**
 
-### Business Objective
-Enable partner-led loan origination at scale without manual ops entry.
+- Everything Partner Staff - View Only can do.
 
-### Actors
-- **Primary Actor:** LSP_API_CLIENT
-- **Secondary Actors:** Loan lifecycle service, Auto-approval engine, Webhook dispatcher, Borrower service
+**Cannot do:**
 
-### Preconditions
-- API client is `ACTIVE`; LSP is `ACTIVE`
-- Product is `ACTIVE` and mapped to LSP
-- API IP allowlist satisfied (if `enforceApi` enabled)
-- Valid OAuth2 bearer token
+- Create new loan applications manually through the web UI.
+- Post repayments through the web UI.
+- Submit repayment schedules through the web UI.
+- Access Bhawana internal screens.
 
-### Trigger
-`POST /api/v1/lsp/loan-applications` with borrower + loan payload and optional `Idempotency-Key`.
+## 3.5 Partner System
 
-### Main Flow
-1. LSP system authenticates (UC-004) and POSTs application.
-2. API validates payload, product mapping, and idempotency.
-3. System resolves/creates global `borrower` (PAN dedup) and `borrower_lsp_access`.
-4. System creates `loan_application` in `INITIALIZED`.
-5. System records `loan_application_intake_audit` (full payload snapshot).
-6. System initializes document checklist rows.
-7. System transitions to `AWAITING_APPROVAL` and runs UC-018 (auto-approval).
-8. Outcome: `APPROVED_PENDING_DISBURSAL` or `REJECTED`; creates `loan_account` on approval.
-9. System enqueues `LOAN_CREATED` and `LOAN_STATUS_CHANGED` webhooks.
-10. API returns application detail with status and rejection codes if applicable.
+**Who:** The partner's own loan origination, onboarding, or servicing system.
 
-### Alternate Flows
-- **AF-1:** Idempotent replay → return cached response from `lsp_api_idempotency_record`.
-- **AF-2:** Auto-approval rejects → terminal `REJECTED` with rule failure codes.
-- **AF-3:** Existing borrower linked via PAN match.
+**Purpose:** Automated partner integration at scale.
 
-### Exception Flows
-- **EF-1:** Inactive product/LSP → 400/422.
-- **EF-2:** Duplicate `(lsp_id, external_loan_id)` → 409.
-- **EF-3:** Borrower has open loan (BR-1) → rejection during auto-approval.
+**Can do through approved system-to-system channels:**
 
-### Post Conditions
-- Application exists in terminal or in-flight pre-disbursal state.
+- Authenticate using partner integration credentials.
+- Create loan applications.
+- Upload documents.
+- Submit or replace repayment schedules before disbursement.
+- Run disbursement bank checks.
+- Record repayments.
+- Request foreclosure quotes.
+- Execute foreclosure where permitted by policy.
+- Update borrower bank details.
+- Retrieve product catalogue and loan status information.
+- Receive partner notifications for loan events.
 
-### Data Created
-- `borrower` (if new), `borrower_lsp_access`, `loan_application`, `loan_application_intake_audit`, `loan_application_document_checklist`, `loan_application_status_transition`, `loan_application_audit_event`, `loan_account` (if approved), `webhook_event_outbox`, `lsp_api_idempotency_record`
+**Cannot do:**
 
-### Data Updated
-- Borrower profile fields if existing borrower updated
+- Access Bhawana internal admin functions.
+- Access another partner's data.
+- Use human web screens.
 
-### APIs Involved
-- `POST /api/v1/lsp/loan-applications`
+## 3.6 Automated System Processes
 
-### Database Tables Involved
-- See Data Created
+**Purpose:** Execute rules and operational processing without manual intervention.
 
-### Notifications Triggered
-- Webhook: `LOAN_CREATED`, `LOAN_STATUS_CHANGED`
-- Ops alert possible: `BORROWER_IDENTITY_CONFLICT`, `BORROWER_ACTIVE_LOAN_DUPLICATE`, `LSP_AUTO_REJECT_SPIKE`
+**Responsibilities:**
 
-### Audit Logs Generated
-- Intake audit, status transition, application audit event
-
-### Security Considerations
-- Tenant RLS; JWT `lspId` scoping; rate limits on LSP writes
-
-### Business Rules
-- BR-1: One open loan per borrower (cross-LSP)
-- BR-2: Approval-required documents must be submitted for auto-approval pass
-- Product amount/tenure/rate bounds enforced
-- Borrower required fields validated
-
-### Dependencies
-- UC-004 (token), UC-014/UC-015 (active product mapping)
+- Evaluate auto-approval rules.
+- Generate standard repayment schedules.
+- Process disbursement attempts and retries.
+- Deliver partner notifications.
+- Generate scheduled or asynchronous reports.
+- Evaluate alert rules.
+- Move a loan into repayment after first payment.
+- Close a loan when all installments are fully paid.
 
 ---
 
-## UC-018 — Auto-Approval Rule Evaluation
+# 4. Role Access Matrix
 
-### Use Case ID
-UC-018
-
-### Use Case Name
-Automated Credit Decision (Rule Engine)
-
-### Description
-System evaluates structured rules when application enters `AWAITING_APPROVAL`.
-
-### Business Objective
-Consistent, automated credit policy enforcement without manual underwriter for straight-through processing.
-
-### Actors
-- **Primary Actor:** System (`LoanAutoApprovalRuleEngine`)
-- **Secondary Actors:** Ops alert service
-
-### Preconditions
-- Application in `AWAITING_APPROVAL`
-
-### Trigger
-Automatic on intake transition from `INITIALIZED`.
-
-### Main Flow
-1. Engine evaluates product/LSP/mapping active status.
-2. Engine validates amount, tenure, rate within product bounds.
-3. Engine validates borrower required fields.
-4. Engine checks approval-required documents are `SUBMITTED`.
-5. Engine checks no other open loan for borrower (all LSPs).
-6. If all pass → transition to `APPROVED_PENDING_DISBURSAL`, create `loan_account`.
-7. If any fail → transition to `REJECTED` with `rejection_reason_json`.
-
-### Alternate Flows
-- **AF-1:** Partial doc submission → `DOCS_INCOMPLETE` rule failure.
-
-### Exception Flows
-- **EF-1:** Missing borrower → `BORROWER_REQUIRED_FIELDS_MISSING`.
-
-### Post Conditions
-- Application in `APPROVED_PENDING_DISBURSAL` or `REJECTED`.
-
-### Data Created/Updated
-- `loan_application.status`, `loan_account`, `loan_application_status_transition`, `loan_application_audit_event`
-
-### APIs Involved
-- Internal service call (not direct API)
-
-### Business Rules
-- Rule codes: `PRODUCT_INACTIVE`, `LSP_INACTIVE`, `MAPPING_DISABLED`, `AMOUNT_OUT_OF_BOUNDS`, `TENURE_OUT_OF_BOUNDS`, `RATE_OUT_OF_BOUNDS`, `BORROWER_REQUIRED_FIELDS_MISSING`, `DOCS_INCOMPLETE`, `BORROWER_HAS_OPEN_LOAN`
+| Capability | System Admin | Ops User | Partner View | Partner Manage | Partner System |
+|:--|:--:|:--:|:--:|:--:|:--:|
+| Partner setup | Yes | No | No | No | No |
+| User and credential management | Yes | No | No | No | No |
+| Product setup | Yes | No | No | No | Read catalogue |
+| Product-partner mapping | Yes | No | No | No | Read eligible products |
+| Create loan application | Exception only | No | No | No | Yes |
+| View own partner loans | All partners | All partners | Yes | Yes | Yes |
+| View all partner loans | Yes | Yes | No | No | No |
+| Upload documents | Yes | Yes, if required | No | No | Yes |
+| Download documents | Yes | Yes | Own partner only, if allowed | Own partner only, if allowed | Own partner only |
+| Auto credit decision | Monitor | Monitor | View outcome | View outcome | Trigger through submission |
+| Manual status exception | Yes | Escalate only | No | No | No |
+| Cancel before disbursement | Yes | No | No | No | Yes |
+| Submit repayment schedule | Yes | No | No | No | Yes |
+| Initiate disbursement | Yes | No | No | No | No |
+| Record repayment | Yes | Yes | No | No | Yes |
+| Foreclosure quote | Yes | View if allowed | View if allowed | View if allowed | Yes |
+| Execute foreclosure | Yes | No | No | No | If permitted |
+| Reports | Yes | No, unless granted | No | No | No |
+| Alerts | Yes | Yes | No | No | No |
+| Audit | Yes | No, unless granted | No | No | No |
+| Partner notifications | Configure and redrive | View alert impact | No | No | Receive |
 
 ---
 
-## UC-027 — Automated Disbursement Processing
+# 5. Loan Product Configuration
 
-### Use Case ID
-UC-027
+Each loan product defines the commercial and policy boundaries for a loan. A partner may originate only products that are active and explicitly mapped to that partner.
 
-### Use Case Name
-Disbursement Worker — Automated Processing
+| Product field | Meaning |
+|:--|:--|
+| Product code | Unique short identifier for the product. |
+| Product name | Business display name. |
+| Minimum principal | Lowest allowed sanctioned loan amount. |
+| Maximum principal | Highest allowed sanctioned loan amount. |
+| Annual interest rate | Interest rate used for EMI calculation. |
+| Processing fee rate | Fee percentage applied on sanctioned principal. |
+| Minimum tenure | Shortest allowed term in months. |
+| Maximum tenure | Longest allowed term in months. |
+| Status | Whether the product can currently be originated. |
 
-### Description
-Background worker picks up approved applications and orchestrates disbursement through the adapter.
+Product validation rules:
 
-### Business Objective
-Reliable, retryable disbursement without manual polling.
-
-### Actors
-- **Primary Actor:** `LoanDisbursementWorker` (system)
-- **Secondary Actors:** Disbursement adapter, Webhook dispatcher, Alert service
-
-### Preconditions
-- `app.disbursement.worker.enabled=true`
-- Application in `APPROVED_PENDING_DISBURSAL` or `DISBURSEMENT_RETRY`
-- Disbursement prerequisites met (docs, schedule, bank details)
-
-### Trigger
-`@Scheduled` every 30s (configurable).
-
-### Main Flow
-1. Worker claims applications in admin tenant context.
-2. Worker validates disbursement prerequisites.
-3. Worker calls `initiateDisbursement` → `loan_account` → `DISBURSEMENT_REQUESTED`.
-4. Worker invokes `LoanDisbursementAdapter`.
-5. On success → `DISBURSED` → `UNDER_REPAYMENT`; webhooks `DISBURSEMENT_COMPLETED`.
-6. On retryable failure → `DISBURSEMENT_RETRY` (max attempts configurable).
-7. On validation failure / exhaustion → `REJECTED` or alert `DISBURSEMENT_RETRY_EXHAUSTED`.
-
-### Alternate Flows
-- **AF-1:** Mock auto-resolve enabled → immediate `DISBURSED` outcome.
-- **AF-2:** Bank mismatch logged in `loan_disbursement_bank_mismatch_log`.
-
-### APIs Involved
-- Internal worker only
-
-### Database Tables Involved
-- `loan_application`, `loan_account`, `loan_disbursement_request_log`, `disbursement_outcome_audit`, `webhook_event_outbox`, `ops_alert`
-
-### Notifications Triggered
-- Webhooks: `DISBURSEMENT_REQUESTED`, `DISBURSEMENT_COMPLETED`, `DISBURSEMENT_FAILED`
-- Alerts: `STUCK_DISBURSEMENT`, `DISBURSEMENT_RETRY_EXHAUSTED`
+- Minimum and maximum principal must be positive.
+- Minimum principal cannot exceed maximum principal.
+- Interest rate must be within the allowed business range.
+- Processing fee rate must be within the allowed business range.
+- Minimum and maximum tenure must be positive.
+- Minimum tenure cannot exceed maximum tenure.
+- Product must be active before it can be used for new applications.
+- Product must be enabled for the specific partner before that partner can originate against it.
 
 ---
 
-## UC-029 — Record Payment (Internal Ops)
+# 6. Business Rules
 
-### Use Case ID
-UC-029
+## 6.1 Loan Origination Channel
 
-### Use Case Name
-Post Loan Repayment (Operations Console)
+Partner-originated loans are created by the partner system through approved system-to-system integration. Partner staff screens are for visibility and pre-disbursement support, not for manually typing new loan applications.
 
-### Description
-Admin or ops user records a repayment against a disbursed loan with idempotency.
+## 6.2 Automated Credit Decision
 
-### Business Objective
-Accurate installment allocation and loan closure tracking.
+Every submitted application is evaluated through automated policy checks. There is no separate human underwriter queue in the standard process.
 
-### Actors
-- **Primary Actor:** SYSTEM_ADMIN or OPS_USER
-- **Secondary Actors:** Repayment command service, Webhook dispatcher
+An application can be approved only when all checks pass:
 
-### Preconditions
-- Loan in `DISBURSED`, `UNDER_REPAYMENT`, or servicing-eligible status
-- Schedule exists with pending installments
+| Check | Business meaning |
+|:--|:--|
+| Partner active | The originating partner is permitted to operate. |
+| Product active | The selected product is available. |
+| Product mapped to partner | The partner is allowed to sell that product. |
+| Principal in range | Loan amount is within product limits. |
+| Tenure in range | Requested term is within product limits. |
+| Required borrower fields complete | Mandatory identity, address, income, and reference details are present. |
+| Required documents submitted | All eight required document types are uploaded. |
+| One open loan rule | Borrower has no other active loan across any partner. |
 
-### Trigger
-User submits payment via Schedule tab → `POST /api/v1/internal/ops/loan-applications/{id}/payments`.
+If any check fails, the application is rejected with clear business reason codes.
 
-### Main Flow
-1. User opens loan detail → Schedule tab → Record Payment dialog.
-2. User enters amount, date, reference; frontend sends idempotency key.
-3. Service validates full installment amount (BR-13).
-4. Service creates `loan_payment_transaction`, allocates to installment.
-5. Service updates installment status (`PAID`/`PARTIALLY_PAID`).
-6. If first payment on `DISBURSED` loan → auto-advance to `UNDER_REPAYMENT` (BR-14).
-7. If all installments paid → `CLOSED` with `FULLY_REPAID`.
-8. Webhook `LOAN_REPAYMENT_RECORDED`; if fully repaid → `LOAN_FULLY_REPAID`.
+## 6.3 Required Borrower Identity Fields
 
-### Alternate Flows
-- **AF-1:** Idempotent replay → return existing transaction.
+The borrower record must include:
 
-### Exception Flows
-- **EF-1:** Partial installment amount → rejected (BR-13).
-- **EF-2:** Invalid loan status → 422.
+- Full name.
+- PAN.
+- Mobile number.
+- Aadhaar or verified Aadhaar file reference, as applicable.
+- Full address.
+- Positive monthly income.
+- Reference contact information.
+- Bank account details before disbursement.
 
-### Post Conditions
-- Payment recorded; schedule and delinquency updated.
+## 6.4 Borrower Deduplication
 
-### Data Created
-- `loan_payment_transaction`, `loan_application_audit_event`
+The platform treats each person as a single borrower across all partners.
 
-### Data Updated
-- `loan_repayment_schedule_installment`, `loan_application.status`, `loan_account`
+Identity checks must follow this business logic:
 
-### APIs Involved
-- `POST /api/v1/internal/ops/loan-applications/{id}/payments`
+| Step | Check | Outcome |
+|:--|:--|:--|
+| 1 | Match by PAN | Reuse borrower if identity is consistent; continue checks. |
+| 2 | Compare mobile against existing identity | Block if mobile belongs to a different borrower. |
+| 3 | Compare Aadhaar where available | Block if Aadhaar conflicts with the existing borrower. |
+| 4 | Check active loans across all partners | Block if borrower already has an open loan. |
+| 5 | No existing match | Create a new borrower profile. |
 
-### Security Considerations
-- Role-gated; audited; idempotency prevents duplicate posting
+When the same borrower is validly identified by PAN, the latest submitted profile details may update the borrower record, and the originating partner gains visibility to that borrower for its own loan relationship.
 
-### Business Rules
-- BR-13: Full installment payment required
-- BR-14: First payment advances `DISBURSED` → `UNDER_REPAYMENT`
-- BR-15: Full repayment triggers closure
+When identity conflict is detected, the loan must not be created and Bhawana operations must be alerted for review.
 
----
+## 6.5 One Open Loan Per Borrower
 
-## UC-023 — Invalidate Loan (Pre-Disbursal)
+A borrower may have at most one active loan across all partners.
 
-### Use Case ID
-UC-023
+The rule applies during:
 
-### Use Case Name
-LSP-Initiated Loan Invalidation
+- Application creation.
+- Automated credit decision.
 
-### Description
-Partner cancels an in-flight application before disbursement.
+Loans counted as open include loans awaiting disbursement, in disbursement processing, disbursed, or pending payout reconciliation.
 
-### Business Objective
-Allow partners to withdraw applications per business reason codes.
+Rejected, cancelled, fully repaid, and foreclosed loans are not counted as open.
 
-### Actors
-- **Primary Actor:** LSP_API_CLIENT or LSP_UI_WRITE
-- **Secondary Actors:** Lifecycle service, Webhook dispatcher
+## 6.6 Required Documents
 
-### Preconditions
-- Application in pre-disbursal status (`INITIALIZED`, `AWAITING_APPROVAL`, `APPROVED_PENDING_DISBURSAL`, `DISBURSEMENT_RETRY`)
+All eight document types are required before automated approval can pass:
 
-### Trigger
-`POST /api/v1/lsp/loan-applications/{id}/invalid` or UI Mark Invalid dialog.
+| Document | Required for approval | Required for disbursement |
+|:--|:--:|:--:|
+| PAN Card | Yes | Yes |
+| Verified Aadhaar file | Yes | Yes |
+| Address proof | Yes | Yes |
+| Income proof | Yes | Yes |
+| Bank statement | Yes | Yes |
+| Selfie photograph | Yes | Yes |
+| Key Fact Statement | Yes | Yes |
+| Loan agreement | Yes | Yes |
 
-### Main Flow
-1. Actor selects invalidation reason (`REASON_A`, `REASON_B`, `REASON_C`, `OTHERS` + text).
-2. System validates pre-disbursal status.
-3. System transitions to `INVALID` (terminal).
-4. Mirrors `loan_account` to `INVALID` if exists.
-5. Records audit events; enqueues `LOAN_STATUS_CHANGED` webhook.
+There is no separate document verification status in the standard workflow. Upload means submitted. Bhawana users may download and review documents, but the workflow does not require a separate "verified" gate unless added as a future enhancement.
 
-### Exception Flows
-- **EF-1:** Post-disbursal invalidation → 422.
-- **EF-2:** `OTHERS` without detail text → 400.
+## 6.7 EMI and Interest
 
-### APIs Involved
-- `POST /api/v1/lsp/loan-applications/{id}/invalid`
-- `GET /api/v1/lsp/loan-applications/invalid-reasons`
+Interest is quoted as an annual percentage rate. Repayments follow a monthly EMI model.
 
----
+Business rules:
 
-## Remaining Use Cases — Summary Reference
+- Monthly rate is derived from annual rate.
+- EMI is based on sanctioned principal, monthly rate, and tenure.
+- Currency is rounded to two decimal places.
+- Zero-interest products divide principal evenly across tenure.
+- The last installment may be adjusted slightly to ensure the closing principal becomes zero.
+- The first due date is one calendar month after approval unless a partner-provided valid schedule replaces the standard schedule before disbursement.
 
-The following use cases follow the same structural pattern. Full field-level detail is available in code references cited in [Assumptions](#assumptions).
+## 6.8 Processing Fee
 
-| ID | Trigger API / Entry | Key Tables | Key Audit |
-|----|---------------------|------------|-----------|
-| UC-002 | `POST /api/v1/auth/password` | `app_user`, `auth_event_audit` | Auth audit |
-| UC-003 | `POST /auth/refresh`, `POST /auth/logout` | `refresh_token` | Auth audit |
-| UC-004 | `POST /api/v1/auth/token` | `api_client`, `refresh_token` | Auth audit |
-| UC-005 | `GET /api/v1/internal/system/context` | — | — |
-| UC-006–009 | `/api/v1/internal/admin/lsps/**` | `lsp`, `lsp_audit_event`, allowlist tables | LSP audit |
-| UC-010–011 | `/api/v1/internal/admin/users/**` | `app_user`, `app_user_audit_event` | User audit |
-| UC-012–013 | `/api/v1/internal/admin/api-clients/**` | `api_client`, `api_client_audit_event` | API client audit |
-| UC-014–015 | `/api/v1/internal/admin/products/**` | `loan_product`, `loan_product_lsp_mapping` | Product audit |
-| UC-017 | `POST /internal/ops/loan-applications` | Same as UC-016 | Intake audit |
-| UC-019 | `POST /lsp/loan-applications/{id}/documents` | `loan_application_document_checklist` | — |
-| UC-020 | `GET .../kyc-documents/**` | — | `loan_application_document_access_audit` |
-| UC-021 | `POST .../status-transitions` | `loan_application_status_transition` | Application audit |
-| UC-022 | `POST .../manual-status` | Same | Application audit + reason code |
-| UC-024 | `PUT /lsp/loan-applications/{id}/repayment-schedule` | `loan_repayment_schedule_installment` | — |
-| UC-025 | `POST .../disbursement-bank-check` | `loan_disbursement_bank_mismatch_log` | — |
-| UC-026 | `POST .../disbursement-requests` | `loan_disbursement_request_log` | Disbursement audit |
-| UC-028 | `POST .../mock-outcome` | `disbursement_outcome_audit` | Disbursement audit |
-| UC-030 | `POST /lsp/loans/{id}/payments` | `loan_payment_transaction` | Application audit |
-| UC-031–032 | Foreclosure endpoints | `loan_foreclosure_quote` | Application audit |
-| UC-033 | `PATCH /lsp/borrowers/{id}/bank-details` | `borrower`, `borrower_bank_details_update_audit` | Bank audit + webhook |
-| UC-034 | `/internal/admin/borrowers/**` | `borrower`, `borrower_lsp_access` | — |
-| UC-035 | `GET /internal/home/overview` | Aggregations | — |
-| UC-036 | `GET /internal/ops/loan-applications` | `loan_application` | — |
-| UC-037–038 | `/internal/reports/**` | `report_request`, R2 | `report_access_audit` |
-| UC-039–040 | `/internal/alerts/**` | `ops_alert` | — |
-| UC-041 | AlertRuleSchedulerWorker | `ops_alert`, `alert_rule` | — |
-| UC-042–043 | Webhook worker + admin | `webhook_event_outbox` | Redrive audit |
-| UC-044 | `GET /internal/admin/audit-events` | 8 audit streams | — |
-| UC-045 | `GET /internal/ops/auth-audit` | `auth_event_audit` | — |
-| UC-046–047 | `/api/v1/lsp/**` read | Tenant-scoped | — |
+The expected business model is:
 
----
+| Aspect | Rule |
+|:--|:--|
+| Fee basis | Sanctioned principal multiplied by processing fee rate. |
+| Borrower cash received | Sanctioned principal minus processing fee. |
+| Repayment basis | Borrower repays the full sanctioned principal. |
+| Fee timing | Deducted at disbursement. |
+| GST on fee | Out of scope unless separately approved. |
+| Fee waivers | Out of scope unless separately approved. |
 
-# Deliverable 3 — Happy Path Workflow Document
+## 6.9 Repayment Schedule
 
-## WF-01 — Partner API Loan Origination (Straight-Through)
+A repayment schedule can be created in two ways:
 
-### Objective
-Partner submits loan via API and receives auto-decision without manual ops intervention.
+| Schedule source | When used |
+|:--|:--|
+| System-generated schedule | Created automatically after approval. |
+| Partner-provided schedule | Submitted by partner system before disbursement and replaces the generated schedule if valid. |
 
-### Trigger
-LSP system calls `POST /api/v1/lsp/loan-applications` after UC-004 authentication.
+Schedule validation rules:
 
-### Actors
-LSP_API_CLIENT, Auto-Approval Engine, Webhook Dispatcher
+- Number of installments must match approved tenure.
+- Installments must be numbered consecutively.
+- Due dates must be strictly increasing **and** satisfy Spec S20 date discipline (first due within the approval window, monthly cadence within tolerance, final due within tenure + horizon grace).
+- Amounts cannot be negative.
+- Principal plus interest must equal installment amount for each row.
+- Opening and closing principal balances must chain correctly.
+- First opening principal must equal sanctioned principal.
+- Total principal due must equal sanctioned principal.
+- Final closing principal must be zero.
+- Per-row and total interest must reconcile to the frozen product interest rate / platform generator within configured tolerance (`docs/partner-schedule-validation.md`).
 
-### Happy Path Journey
+Invalid partner schedules are rejected with `422 REPAYMENT_SCHEDULE_INVALID` (typed `violationType` codes). Prefer `mode: GENERATED` when the platform EMI schedule is acceptable.
 
-| Step | Actor | Action |
-|------|-------|--------|
-| 1 | LSP System | Obtain bearer token via client credentials |
-| 2 | LSP System | POST loan application with borrower, product, amount, tenure, documents metadata |
-| 3 | API Gateway | Validate JWT, IP allowlist, rate limit |
-| 4 | LoanApplicationLifecycleService | Create borrower + application + checklist |
-| 5 | Service | Record intake audit snapshot |
-| 6 | Service | Transition INITIALIZED → AWAITING_APPROVAL |
-| 7 | LoanAutoApprovalRuleEngine | Evaluate all rules → PASS |
-| 8 | Service | Transition → APPROVED_PENDING_DISBURSAL; create loan_account |
-| 9 | WebhookOutboxService | Enqueue LOAN_CREATED, LOAN_STATUS_CHANGED |
-| 10 | API | Return 201 with application ID and status |
-| 11 | WebhookOutboxDispatchWorker | Deliver events to LSP endpoint |
+A schedule cannot be changed after disbursement or after repayments begin.
 
-### Success Outcome
-Application in `APPROVED_PENDING_DISBURSAL`; partner notified via webhooks; ready for disbursement worker.
+## 6.10 Disbursement Gates
 
-### Data Flow
-```
-LSP System → API (/lsp/loan-applications) → LoanApplicationLifecycleService
-  → BorrowerRepository + LoanApplicationRepository → PostgreSQL (tenant RLS)
-  → WebhookOutboxService → webhook_event_outbox
-  → Response → LSP System
-  → Worker → HttpWebhookDeliveryClient → LSP Webhook URL
-```
+Disbursement cannot proceed until:
 
-### Sequence Diagram
+- Application is approved or in an eligible retry state.
+- Partner is active.
+- Product is active.
+- All required documents are available.
+- A valid repayment schedule exists.
+- Borrower bank details are present.
+- Any required bank confirmation is complete.
 
-```mermaid
-sequenceDiagram
-    participant LSP as LSP Partner System
-    participant API as LSP API Controller
-    participant Life as Lifecycle Service
-    participant Rules as Auto-Approval Engine
-    participant DB as PostgreSQL (Tenant)
-    participant Outbox as Webhook Outbox
-    participant Worker as Webhook Worker
-    participant WH as LSP Webhook Endpoint
+Temporary payout failures move the loan to a retry state. Retry failures that remain unresolved beyond the agreed threshold must raise an operations alert.
 
-    LSP->>API: POST /lsp/loan-applications (+ Idempotency-Key)
-    API->>Life: createApplication(payload)
-    Life->>DB: INSERT borrower, loan_application, checklist, intake_audit
-    Life->>Life: transition INITIALIZED → AWAITING_APPROVAL
-    Life->>Rules: evaluate(application)
-    Rules-->>Life: PASS
-    Life->>DB: UPDATE status APPROVED_PENDING_DISBURSAL, INSERT loan_account
-    Life->>Outbox: enqueue LOAN_CREATED, LOAN_STATUS_CHANGED
-    Life-->>API: ApplicationResponse
-    API-->>LSP: 201 Created
+## 6.11 Payment Rules
 
-    Worker->>Outbox: claim PENDING events
-    Worker->>WH: POST signed webhook payload
-    WH-->>Worker: 200 OK
-    Worker->>Outbox: mark DELIVERED
-```
+- Payments are allowed only after disbursement.
+- Payments must match the exact outstanding amount for the target installment.
+- Partial installment payments are not supported in the standard workflow.
+- Supported payment channels include NEFT, RTGS, IMPS, UPI, bank transfer, NACH, cash, and cheque.
+- Duplicate payment posting must be prevented by a unique payment reference or equivalent business control.
+- The first payment moves the loan into repayment status.
+- The final installment payment closes the loan as fully repaid.
+
+## 6.12 Delinquency
+
+Delinquency is calculated from overdue installments. It is not a separate loan status.
+
+| Bucket | Meaning |
+|:--|:--|
+| Current | No overdue amount. |
+| DPD 1 to 30 | 1 to 30 days past due. |
+| DPD 31 to 60 | 31 to 60 days past due. |
+| DPD 61 to 90 | 61 to 90 days past due. |
+| DPD 90+ | More than 90 days past due. |
+
+The loan's delinquency bucket is based on the worst overdue installment.
+
+## 6.13 Foreclosure
+
+Foreclosure is early closure after disbursement.
+
+Foreclosure quote rules:
+
+- Quote can be requested only after disbursement.
+- Payoff equals unpaid principal plus unpaid interest across all installments.
+- Quote has an effective settlement date.
+- A new quote supersedes any prior active quote.
+
+Foreclosure execution rules:
+
+- Settlement amount must match the active quote.
+- Settlement date must match the quote effective date.
+- Payment reference is mandatory.
+- Loan becomes foreclosed and terminal.
+- Partner is notified where notification is configured.
+
+## 6.14 Partner Cancellation
+
+Partners may cancel or invalidate a loan only before disbursement.
+
+Allowed states for partner cancellation:
+
+- Submitted.
+- Awaiting decision.
+- Approved pending disbursement.
+- Disbursement retry.
+
+Cancellation requires a reason. If "Other" is selected, explanation text is mandatory.
 
 ---
 
-## WF-02 — Disbursement to Active Loan
+# 7. Loan Lifecycle and Status Definitions
 
-### Objective
-Funds disbursed and loan enters repayment phase.
+## 7.1 Lifecycle Overview
 
-### Trigger
-Application reaches `APPROVED_PENDING_DISBURSAL` with schedule and disbursement docs complete.
+| Status | Plain-language meaning |
+|:--|:--|
+| Submitted | Application created; required data and documents are being checked. |
+| Awaiting decision | Application is ready for automated credit decision. |
+| Approved pending disbursement | Credit checks passed; disbursement gates must be satisfied. |
+| Disbursement retry | Payout attempt failed or needs reconciliation; retry or admin action required. |
+| Disbursed | Funds released; no repayment may have been posted yet. |
+| Under repayment | At least one installment payment has been recorded. |
+| Closed | All installments fully paid; terminal status. |
+| Foreclosed | Loan settled early through foreclosure; terminal status. |
+| Rejected | Application failed policy or validation checks; terminal status. |
+| Cancelled | Partner or admin invalidated the application before disbursement; terminal status. |
 
-### Actors
-LoanDisbursementWorker, SYSTEM_ADMIN (optional manual trigger), Mock Adapter
+## 7.2 Normal Lifecycle Flow
 
-### Happy Path Journey
+1. Partner system submits loan application.
+2. Required documents are collected.
+3. Automated policy checks run.
+4. Application is either rejected or approved pending disbursement.
+5. Repayment schedule is generated or partner-provided schedule is accepted.
+6. Disbursement gates are checked.
+7. Loan is disbursed.
+8. Repayments are recorded.
+9. Loan is closed by full repayment or foreclosed by settlement.
 
-| Step | Action |
-|------|--------|
-| 1 | LSP submits repayment schedule (`PUT .../repayment-schedule`) |
-| 2 | LSP uploads disbursement-required docs (KFS, loan agreement) |
-| 3 | LSP runs disbursement bank check (optional pre-validation) |
-| 4 | Worker claims application every 30s |
-| 5 | Worker validates docs + schedule + bank details |
-| 6 | Worker initiates disbursement → loan_account DISBURSEMENT_REQUESTED |
-| 7 | Adapter processes disbursement → DISBURSED outcome |
-| 8 | Application → DISBURSED → UNDER_REPAYMENT |
-| 9 | Webhooks DISBURSEMENT_COMPLETED fired |
+## 7.3 Exception Flow
 
-### Success Outcome
-Loan actively serviced; installments trackable; partner notified.
-
-### Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant LSP as LSP API
-    participant API as LSP Controller
-    participant Worker as Disbursement Worker
-    participant Svc as Disbursement Service
-    participant Adapter as Disbursement Adapter
-    participant DB as PostgreSQL
-    participant Outbox as Webhook Outbox
-
-    LSP->>API: PUT repayment-schedule
-    API->>DB: INSERT installments
-    LSP->>API: POST documents (KFS, agreement)
-    API->>DB: UPDATE checklist SUBMITTED
-
-    Worker->>DB: find APPROVED_PENDING_DISBURSAL
-    Worker->>Svc: validateAndDisburse(application)
-    Svc->>DB: loan_account DISBURSEMENT_REQUESTED
-    Svc->>Adapter: initiateDisbursement()
-    Adapter-->>Svc: DISBURSED
-    Svc->>DB: application DISBURSED → UNDER_REPAYMENT
-    Svc->>Outbox: DISBURSEMENT_COMPLETED
-```
+| Scenario | Expected handling |
+|:--|:--|
+| Identity conflict | Block application and alert Bhawana operations. |
+| Borrower already has open loan | Block or reject, depending on point of detection. |
+| Required documents missing | Keep application from approval until documents are provided, or reject if decision rules require. |
+| Product not active | Reject or block application. |
+| Partner not active | Block new partner activity. |
+| Disbursement failure | Move to retry; alert if unresolved. |
+| Duplicate partner loan reference | Reject duplicate submission. |
+| Payment duplicate | Prevent duplicate posting. |
 
 ---
 
-## WF-03 — Internal Ops Repayment & Closure
+# 8. Use Case Catalogue
 
-### Objective
-Record installment payment and close fully repaid loan.
-
-### Trigger
-SYSTEM_ADMIN or OPS_USER posts payment on Schedule tab.
-
-### Actors
-Ops User, Repayment Command Service
-
-### Happy Path Journey
-
-| Step | Action |
-|------|--------|
-| 1 | User opens `/loan-applications/{id}` → Schedule tab |
-| 2 | User clicks Record Payment; enters full installment amount |
-| 3 | Frontend POST with Idempotency-Key |
-| 4 | Service allocates payment to next pending installment |
-| 5 | If first payment: DISBURSED → UNDER_REPAYMENT |
-| 6 | If last installment paid: → CLOSED |
-| 7 | Webhook LOAN_REPAYMENT_RECORDED (+ LOAN_FULLY_REPAID if closed) |
-
-### Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant User as Ops User
-    participant UI as React SPA
-    participant API as Ops Controller
-    participant Pay as Repayment Service
-    participant DB as PostgreSQL
-    participant Outbox as Webhook Outbox
-
-    User->>UI: Record Payment (full installment)
-    UI->>API: POST /payments + Idempotency-Key
-    API->>Pay: recordPayment()
-    Pay->>DB: INSERT loan_payment_transaction
-    Pay->>DB: UPDATE installment PAID
-    Pay->>DB: UPDATE application status (if closure)
-    Pay->>Outbox: LOAN_REPAYMENT_RECORDED
-    API-->>UI: PaymentResponse
-    UI-->>User: Success toast
-```
-
----
-
-## WF-04 — Async MIS Report Generation
-
-### Objective
-System admin generates portfolio MIS CSV for date range.
-
-### Trigger
-User submits Create Report dialog on `/reports`.
-
-### Actors
-SYSTEM_ADMIN, ReportRequestProcessingWorker, R2 Storage, Email Notification
-
-### Happy Path Journey
-
-| Step | Action |
-|------|--------|
-| 1 | Admin sets LSP filter + disbursal date range |
-| 2 | POST `/portfolio-mis/requests` |
-| 3 | `report_request` created PENDING |
-| 4 | Worker claims → PROCESSING |
-| 5 | Worker generates CSV, uploads to R2 |
-| 6 | Status → COMPLETED; optional email sent |
-| 7 | Admin downloads via GET `/requests/{id}/download` |
-| 8 | `report_access_audit` recorded |
-
-### Sequence Diagram
-
-```mermaid
-sequenceDiagram
-    participant Admin as System Admin
-    participant UI as Reports Page
-    participant API as Report Controller
-    participant Worker as Report Worker
-    participant R2 as Object Storage
-    participant DB as PostgreSQL
-
-    Admin->>UI: Create async report
-    UI->>API: POST /portfolio-mis/requests
-    API->>DB: INSERT report_request PENDING
-    API-->>UI: requestId
-
-    Worker->>DB: claim PENDING request
-    Worker->>Worker: generate MIS CSV
-    Worker->>R2: upload file
-    Worker->>DB: COMPLETED + storage_key
-    Worker->>Admin: email notification (optional)
-
-    Admin->>API: GET /requests/{id}/download
-    API->>R2: fetch object
-    API->>DB: INSERT report_access_audit
-    API-->>Admin: CSV blob
-```
+| ID | Use case | Primary actor |
+|:--|:--|:--|
+| UC-001 | Sign in | Human user |
+| UC-002 | Mandatory password change | Human user |
+| UC-003 | End user session | Human user |
+| UC-004 | Create partner | System Administrator |
+| UC-005 | Activate or deactivate partner | System Administrator |
+| UC-006 | Configure partner notification settings | System Administrator |
+| UC-007 | Manage partner access restrictions | System Administrator |
+| UC-008 | Create internal or partner user | System Administrator |
+| UC-009 | Reset password or disable user | System Administrator |
+| UC-010 | Create partner integration credential | System Administrator |
+| UC-011 | Rotate or disable partner integration credential | System Administrator |
+| UC-012 | Create or update loan product | System Administrator |
+| UC-013 | Map product to partner | System Administrator |
+| UC-014 | Retrieve product catalogue | Partner System |
+| UC-015 | Submit loan application | Partner System |
+| UC-016 | Run borrower identity and open-loan checks | Automated System |
+| UC-017 | Upload required documents | Partner System |
+| UC-018 | Review or download documents | Bhawana Admin, Operations User |
+| UC-019 | Run automated credit decision | Automated System |
+| UC-020 | Cancel pre-disbursement application | Partner System |
+| UC-021 | Manually resolve loan exception | System Administrator |
+| UC-022 | Submit repayment schedule | Partner System |
+| UC-023 | Confirm disbursement readiness | Partner System, System Administrator |
+| UC-024 | Initiate disbursement | System Administrator or automated process |
+| UC-025 | Process disbursement retry | Automated System, System Administrator |
+| UC-026 | Record repayment | Operations User, Partner System |
+| UC-027 | Close loan after final repayment | Automated System |
+| UC-028 | Request foreclosure quote | System Administrator, Partner System |
+| UC-029 | Execute foreclosure | System Administrator, Partner System if permitted |
+| UC-030 | Update borrower bank details | Partner System, System Administrator |
+| UC-031 | Search loan applications | Bhawana internal users |
+| UC-032 | Search and view borrowers | Bhawana internal users |
+| UC-033 | View portfolio dashboard | System Administrator |
+| UC-034 | Generate MIS report | System Administrator |
+| UC-035 | Acknowledge alert | System Administrator, Operations User |
+| UC-036 | Escalate loan exception | Operations User |
+| UC-037 | Deliver partner notification | Automated System |
+| UC-038 | Redrive failed partner notification | System Administrator |
+| UC-039 | Search audit history | System Administrator |
+| UC-040 | Partner views own loans | Partner Staff |
 
 ---
 
-## WF-05 — LSP UI Document Upload & Invalidation
+# 9. Detailed Use Cases
 
-### Objective
-LSP operator manages own-tenant loan from My Loans workspace.
+## UC-001: Sign In
 
-### Trigger
-LSP_UI_WRITE user opens `/my-loans/{id}`.
+**Goal:** Allow a human user to access the LMS according to their role.
 
-### Actors
-LSP_UI_WRITE user
+**Primary actor:** Human user.
 
-### Happy Path Journey
+**Preconditions:**
 
-| Step | Action |
-|------|--------|
-| 1 | User views loan status and document checklist |
-| 2 | User uploads missing KYC via multipart POST |
-| 3 | Checklist status → SUBMITTED |
-| 4 | If cancelling: user opens Mark Invalid dialog |
-| 5 | Selects reason, confirms |
-| 6 | Application → INVALID; webhook fired |
+- User account exists.
+- User account is active.
+- Partner user satisfies partner access restrictions where enforced.
 
-### Sequence Diagram
+**Main flow:**
 
-```mermaid
-sequenceDiagram
-    participant User as LSP Operator
-    participant UI as My Loans Page
-    participant API as LSP Controller
-    participant Doc as Document Service
-    participant Life as Lifecycle Service
-    participant DB as PostgreSQL
+1. User enters credentials.
+2. System verifies credentials and account status.
+3. System determines user's role and partner association, if any.
+4. User is directed to the correct landing area for their role.
 
-    User->>UI: Upload PAN document
-    UI->>API: POST /documents (multipart)
-    API->>Doc: store + update checklist
-    Doc->>DB: UPDATE checklist SUBMITTED
-    API-->>UI: DocumentResponse
+**Exceptions:**
 
-    User->>UI: Mark Invalid (REASON_A)
-    UI->>API: POST /invalid
-    API->>Life: invalidate(application, reason)
-    Life->>DB: status INVALID
-    API-->>UI: Updated application
-```
+- Invalid credentials: access is denied.
+- Inactive user: access is denied.
+- Password change required: user is sent to password change flow.
+- Partner access restriction failed: access is denied.
+
+**Success outcome:** User enters the LMS with role-appropriate permissions.
+
+## UC-004: Create Partner
+
+**Goal:** Register a new LSP partner for operations.
+
+**Primary actor:** System Administrator.
+
+**Preconditions:**
+
+- Administrator has platform setup rights.
+- Required partner business details are available.
+
+**Main flow:**
+
+1. Administrator enters partner name, identifiers, status, contact, and operating details.
+2. System creates the partner.
+3. Administrator configures products, users, credentials, notifications, and access restrictions as required.
+
+**Success outcome:** Partner is ready for controlled onboarding.
+
+## UC-005: Activate or Deactivate Partner
+
+**Goal:** Control whether a partner may operate.
+
+**Primary actor:** System Administrator.
+
+**Main flow:**
+
+1. Administrator selects partner.
+2. Administrator changes status and provides reason where required.
+3. If deactivated, new partner activity is blocked and integration access is disabled or restricted according to policy.
+4. If reactivated, administrator completes any required credential or configuration steps.
+
+**Success outcome:** Partner operating status matches Bhawana's business decision.
+
+## UC-012: Create or Update Loan Product
+
+**Goal:** Define the loan types partners may offer.
+
+**Primary actor:** System Administrator.
+
+**Main flow:**
+
+1. User enters product code, name, principal range, tenure range, interest rate, processing fee rate, and status.
+2. System validates product rules.
+3. User saves product.
+4. Product becomes available for partner mapping if active.
+
+**Success outcome:** Product can be governed and offered to eligible partners.
+
+## UC-013: Map Product to Partner
+
+**Goal:** Allow a specific partner to originate a specific product.
+
+**Primary actor:** System Administrator.
+
+**Main flow:**
+
+1. User selects partner.
+2. User selects product.
+3. User enables or disables mapping.
+4. System applies mapping during future loan submissions.
+
+**Success outcome:** Partner can originate only approved products.
+
+## UC-015: Submit Loan Application
+
+**Goal:** Allow partner system to originate a loan application.
+
+**Primary actor:** Partner System.
+
+**Preconditions:**
+
+- Partner is active.
+- Partner integration access is active.
+- Product is active and mapped to partner.
+- Application carries a unique partner loan reference.
+
+**Main flow:**
+
+1. Partner system submits borrower details, product selection, requested amount, tenure, bank details if available, and partner loan reference.
+2. System validates partner, product, and request completeness.
+3. System runs borrower identity and open-loan checks.
+4. System creates the application if checks pass.
+5. System initializes required document checklist.
+6. System evaluates auto-approval once required data and documents are complete.
+7. System returns the application status and any rejection reasons.
+
+**Exceptions:**
+
+- Duplicate partner loan reference: submission is rejected.
+- Identity conflict: application is blocked and operations alert is raised.
+- Borrower has open loan: application is blocked or rejected.
+- Product or partner inactive: submission is blocked.
+
+**Success outcome:** Application exists with a clear lifecycle status.
+
+## UC-017: Upload Required Documents
+
+**Goal:** Collect documents required for approval and disbursement.
+
+**Primary actor:** Partner System.
+
+**Main flow:**
+
+1. Actor selects the application.
+2. Actor uploads one or more required documents.
+3. System marks those document types as submitted.
+4. Once all required documents are submitted, system re-evaluates approval readiness.
+
+**Success outcome:** Document checklist is complete and application can proceed to decisioning.
+
+## UC-019: Run Automated Credit Decision
+
+**Goal:** Approve or reject an application based on fixed policy checks.
+
+**Primary actor:** Automated System.
+
+**Preconditions:**
+
+- Application has required borrower data.
+- Required documents are submitted.
+- Partner and product configuration are valid.
+
+**Main flow:**
+
+1. System checks partner and product eligibility.
+2. System checks amount, tenure, borrower details, documents, and open-loan rule.
+3. If all checks pass, application becomes approved pending disbursement.
+4. If any check fails, application is rejected with reason codes.
+5. Partner notification is generated where configured.
+
+**Success outcome:** Application has a final credit decision or a clear reason for rejection.
+
+## UC-020: Cancel Pre-Disbursement Application
+
+**Goal:** Allow partner to withdraw an application before funds are released.
+
+**Primary actor:** Partner System.
+
+**Preconditions:**
+
+- Application has not been disbursed.
+- Application is in an allowed pre-disbursement state.
+
+**Main flow:**
+
+1. Actor selects cancellation action.
+2. Actor provides reason.
+3. System marks application as cancelled.
+4. Partner and Bhawana views reflect terminal cancelled status.
+
+**Success outcome:** Application is cancelled and cannot proceed to disbursement.
+
+## UC-021: Manually Resolve Loan Exception
+
+**Goal:** Let administrators handle approved exception scenarios.
+
+**Primary actor:** System Administrator.
+
+**Main flow:**
+
+1. Administrator reviews loan details, documents, history, and alert context.
+2. Administrator selects a permitted status action or override.
+3. Administrator enters mandatory reason.
+4. System records the action and updates the loan if policy permits.
+
+**Success outcome:** Exception is resolved with reason and audit trail.
+
+## UC-022: Submit Repayment Schedule
+
+**Goal:** Let partner provide a custom repayment schedule before disbursement.
+
+**Primary actor:** Partner System.
+
+**Preconditions:**
+
+- Loan is approved but not disbursed.
+- No repayment has been posted.
+
+**Main flow:**
+
+1. Partner system submits installment plan.
+2. System validates installment count, dates (including S20 window/cadence/horizon), amounts, principal chain, interest vs frozen product rate, and final balance.
+3. If valid, schedule replaces the generated schedule.
+4. If invalid, schedule is rejected with `422 REPAYMENT_SCHEDULE_INVALID` and clear field violations (see `docs/partner-schedule-validation.md`).
+
+**Success outcome:** Valid repayment schedule is available for disbursement.
+
+## UC-024: Initiate Disbursement
+
+**Goal:** Release funds for an approved loan after all gates pass.
+
+**Primary actors:** System Administrator, Automated System.
+
+**Preconditions:**
+
+- Loan is approved pending disbursement or eligible for retry.
+- Required documents are complete.
+- Valid repayment schedule exists.
+- Borrower bank details are present.
+- Partner and product remain active.
+
+**Main flow:**
+
+1. System or administrator starts disbursement processing.
+2. System validates all gates.
+3. If validation passes, payout is attempted.
+4. If payout succeeds, loan becomes disbursed.
+5. If payout fails temporarily, loan moves to retry.
+6. If validation fails, loan is blocked or rejected according to policy.
+
+**Success outcome:** Loan is funded or placed into a controlled exception state.
+
+## UC-026: Record Repayment
+
+**Goal:** Record full installment payment against a disbursed loan.
+
+**Primary actors:** Operations User, Partner System.
+
+**Preconditions:**
+
+- Loan is disbursed or under repayment.
+- Target installment exists and is unpaid.
+- Payment amount equals outstanding installment amount.
+
+**Main flow:**
+
+1. Actor submits payment details: installment, amount, date, channel, and reference.
+2. System validates eligibility and duplicate controls.
+3. System marks installment as paid.
+4. If this is the first payment, loan moves to under repayment.
+5. If all installments are paid, loan closes automatically.
+6. Partner notification is generated where configured.
+
+**Success outcome:** Payment is recorded and loan status reflects servicing progress.
+
+## UC-028: Request Foreclosure Quote
+
+**Goal:** Calculate payoff for early loan closure.
+
+**Primary actors:** System Administrator, Partner System.
+
+**Preconditions:**
+
+- Loan has been disbursed.
+- Loan is not already closed or foreclosed.
+
+**Main flow:**
+
+1. Actor requests quote for a specific settlement date.
+2. System calculates unpaid principal plus unpaid interest.
+3. System returns payoff amount and effective date.
+4. Any previous active quote is superseded.
+
+**Success outcome:** Valid foreclosure quote exists.
+
+## UC-029: Execute Foreclosure
+
+**Goal:** Close a loan early using an active foreclosure quote.
+
+**Primary actors:** System Administrator, Partner System if permitted.
+
+**Preconditions:**
+
+- Active quote exists.
+- Settlement amount and date match the quote.
+- Payment reference is available.
+
+**Main flow:**
+
+1. Actor submits settlement amount, date, and payment reference.
+2. System validates against active quote.
+3. System marks loan as foreclosed.
+4. Partner notification is generated where configured.
+
+**Success outcome:** Loan is terminally foreclosed.
+
+## UC-034: Generate MIS Report
+
+**Goal:** Provide portfolio reporting for management and operations.
+
+**Primary actor:** System Administrator.
+
+**Main flow:**
+
+1. Administrator selects report parameters such as date range, partner, product, and status.
+2. System prepares report preview or full export.
+3. Administrator downloads report when ready.
+4. Report access is recorded for audit purposes.
+
+**Success outcome:** Administrator receives the required MIS output.
+
+## UC-035: Acknowledge Alert
+
+**Goal:** Let operations confirm that an alert has been reviewed.
+
+**Primary actors:** System Administrator, Operations User.
+
+**Main flow:**
+
+1. User opens alert queue.
+2. User reviews alert details and related loan or partner context.
+3. User acknowledges the alert or escalates as needed.
+4. System records the acknowledgement.
+
+**Success outcome:** Alert has a clear operational owner and disposition.
+
+## UC-037: Deliver Partner Notification
+
+**Goal:** Keep partner systems informed about lifecycle events.
+
+**Primary actor:** Automated System.
+
+**Events may include:**
+
+- Loan created.
+- Loan status changed.
+- Disbursement succeeded or failed.
+- Repayment recorded.
+- Loan fully repaid.
+- Loan foreclosed.
+- Cancellation recorded.
+
+**Main flow:**
+
+1. Business event occurs.
+2. System prepares partner-specific notification.
+3. System sends notification to configured partner destination.
+4. If delivery fails temporarily, system retries.
+5. If delivery remains failed, administrator can review and redrive.
+
+**Success outcome:** Partner system receives reliable event updates.
+
+## UC-039: Search Audit History
+
+**Goal:** Allow administrators to investigate important actions and changes.
+
+**Primary actor:** System Administrator.
+
+**Main flow:**
+
+1. Administrator selects filters such as user, partner, loan, action type, date range, or status.
+2. System returns matching audit entries.
+3. Administrator reviews history for compliance, investigation, or reconciliation.
+
+**Success outcome:** Bhawana can reconstruct who did what, when, and why.
 
 ---
 
-# Deliverable 4 — End-to-End Business Process Map
+# 10. End-to-End Workflows
 
-## Master Lifecycle Diagram
+## WF-01: Partner Onboarding
 
-```mermaid
-stateDiagram-v2
-    [*] --> INITIALIZED: Intake (API/Ops)
+**Objective:** Make a new partner operational.
 
-    INITIALIZED --> AWAITING_APPROVAL: Auto-transition
-    AWAITING_APPROVAL --> APPROVED_PENDING_DISBURSAL: Auto-approval PASS
-    AWAITING_APPROVAL --> REJECTED: Auto-approval FAIL
+| Step | Owner | Action |
+|:--|:--|:--|
+| 1 | System Administrator | Register partner. |
+| 2 | System Administrator | Configure partner status and operating details. |
+| 3 | System Administrator | Create partner users. |
+| 4 | System Administrator | Create partner integration credentials. |
+| 5 | System Administrator | Map eligible products to partner. |
+| 6 | System Administrator | Configure notifications and access restrictions. |
+| 7 | Partner | Validate integration and operational readiness. |
+| 8 | System Administrator | Activate partner for production use. |
 
-    INITIALIZED --> INVALID: LSP invalidate
-    AWAITING_APPROVAL --> INVALID: LSP invalidate
-    APPROVED_PENDING_DISBURSAL --> INVALID: LSP invalidate
-    DISBURSEMENT_RETRY --> INVALID: LSP invalidate
+**Exit criteria:** Partner can originate eligible products and receive event updates.
 
-    APPROVED_PENDING_DISBURSAL --> DISBURSED: Disbursement success
-    APPROVED_PENDING_DISBURSAL --> DISBURSEMENT_RETRY: Disbursement failure
-    DISBURSEMENT_RETRY --> DISBURSED: Retry success
+## WF-02: Product Setup and Partner Mapping
 
-    DISBURSED --> UNDER_REPAYMENT: First payment / auto
-    UNDER_REPAYMENT --> CLOSED: Full repayment
-    UNDER_REPAYMENT --> FORECLOSED: Foreclosure executed
-    DISBURSED --> CLOSED: Early closure path
-    DISBURSED --> FORECLOSED: Foreclosure path
+**Objective:** Make a product available for controlled origination.
 
-    REJECTED --> [*]
-    INVALID --> [*]
-    CLOSED --> [*]
-    FORECLOSED --> [*]
-```
+| Step | Owner | Action |
+|:--|:--|:--|
+| 1 | System Administrator | Define product code and name. |
+| 2 | System Administrator | Configure principal, tenure, interest, and processing fee. |
+| 3 | System Administrator | Activate product when approved. |
+| 4 | System Administrator | Map product to approved partners. |
+| 5 | System | Enforce product and mapping during application submission. |
 
-## Process Swimlane Overview
+**Exit criteria:** Only mapped active partners can originate the product.
 
-```mermaid
-flowchart LR
-    subgraph onboarding [Onboarding & Auth]
-        A1[User/API Client Created] --> A2[Login / Token]
-        A2 --> A3[Session Context]
-    end
+## WF-03: Loan Origination and Auto-Approval
 
-    subgraph origination [Origination]
-        B1[Create Application] --> B2[Document Upload]
-        B2 --> B3[Auto-Approval]
-    end
+**Objective:** Originate a partner loan and produce an automated decision.
 
-    subgraph disbursement [Disbursement]
-        C1[Schedule Upload] --> C2[Bank Check]
-        C2 --> C3[Worker Disburse]
-    end
+| Step | Owner | Action |
+|:--|:--|:--|
+| 1 | Partner System | Submit application with borrower, product, amount, tenure, and partner reference. |
+| 2 | System | Validate partner, product, and uniqueness. |
+| 3 | System | Run borrower identity and open-loan checks. |
+| 4 | Partner System | Upload all required documents. |
+| 5 | System | Run automated credit decision. |
+| 6A | System | Approve application pending disbursement if all rules pass. |
+| 6B | System | Reject application with reason codes if any rule fails. |
+| 7 | System | Notify partner of outcome where configured. |
 
-    subgraph servicing [Servicing]
-        D1[Payments] --> D2[Delinquency Tracking]
-        D2 --> D3[Foreclosure or Closure]
-    end
+**Exit criteria:** Application is approved pending disbursement, rejected, or blocked with clear reason.
 
-    subgraph platform [Platform Services]
-        E1[Webhooks]
-        E2[Alerts]
-        E3[Reports]
-        E4[Audit]
-    end
+## WF-04: Document Completion
 
-    onboarding --> origination --> disbursement --> servicing
-    origination --> E1
-    disbursement --> E1
-    servicing --> E1
-    origination --> E2
-    servicing --> E3
-    onboarding --> E4
-```
+**Objective:** Ensure application has all required documents.
 
-## Status Transition Reference
+| Step | Owner | Action |
+|:--|:--|:--|
+| 1 | System | Presents required document checklist. |
+| 2 | Partner System | Uploads documents. |
+| 3 | System | Marks each document type submitted. |
+| 4 | System | Checks whether all eight required documents are present. |
+| 5 | System | Re-evaluates credit decision when the checklist is complete. |
+| 6 | Bhawana Ops | May download and review documents for operational purposes. |
 
-### Loan Application Status
+**Exit criteria:** Document checklist complete and loan can proceed according to policy.
 
-| From | To | Actor/Mechanism |
-|------|-----|-----------------|
-| INITIALIZED | AWAITING_APPROVAL | System (on intake) |
-| AWAITING_APPROVAL | APPROVED_PENDING_DISBURSAL | Auto-approval engine |
-| AWAITING_APPROVAL | REJECTED | Auto-approval engine |
-| APPROVED_PENDING_DISBURSAL | DISBURSED | Disbursement worker/adapter |
-| APPROVED_PENDING_DISBURSAL | DISBURSEMENT_RETRY | Failed disbursement |
-| DISBURSEMENT_RETRY | DISBURSED | Retry success |
-| DISBURSED | UNDER_REPAYMENT | First payment / system |
-| UNDER_REPAYMENT | CLOSED | Full repayment |
-| UNDER_REPAYMENT | FORECLOSED | Foreclosure execution |
-| Pre-disbursal states | INVALID | LSP invalidate |
-| Any (admin) | Any | SYSTEM_ADMIN manual override |
+## WF-05: Disbursement
 
-### Loan Account Status
+**Objective:** Fund approved loans only after all required gates pass.
 
-`PENDING_DISBURSEMENT` → `DISBURSEMENT_REQUESTED` → `DISBURSED` → `CLOSED` / `FORECLOSED`
+| Step | Owner | Action |
+|:--|:--|:--|
+| 1 | System | Confirms loan is approved pending disbursement. |
+| 2 | System | Verifies documents, schedule, bank details, partner status, and product status. |
+| 3 | System Administrator or System | Initiates disbursement. |
+| 4A | System | Marks loan disbursed on successful payout. |
+| 4B | System | Moves loan to retry if payout temporarily fails. |
+| 5 | System | Generates partner notification where configured. |
+| 6 | Operations | Reviews alerts for stuck or repeated failures. |
 
-### Webhook Outbox Status
+**Exit criteria:** Loan is disbursed or in a controlled retry/exception state.
 
-`PENDING` → `IN_FLIGHT` → `DELIVERED` | `RETRYABLE_FAILURE` → retry | `PERMANENT_FAILURE` → admin redrive
+## WF-06: Repayment Servicing and Closure
 
----
+**Objective:** Track installment payments until the loan is closed.
 
-# Deliverable 5 — Module-Level Workflow Breakdown
+| Step | Owner | Action |
+|:--|:--|:--|
+| 1 | System | Maintains repayment schedule. |
+| 2 | Operations User or Partner System | Posts full installment payment. |
+| 3 | System | Validates amount, installment, status, and duplicate controls. |
+| 4 | System | Marks installment paid. |
+| 5 | System | Moves loan to under repayment on first payment. |
+| 6 | System | Closes loan automatically when final installment is paid. |
+| 7 | System | Notifies partner where configured. |
 
-## Module: Authentication
+**Exit criteria:** Loan remains current, overdue, or closes after full repayment.
 
-| Aspect | Detail |
-|--------|--------|
-| **Purpose** | Identity verification for humans and API clients |
-| **Entry points** | `/login`, `/api/v1/auth/token`, refresh cookie |
-| **User actions** | Login, change password, logout |
-| **Backend actions** | Credential validation, JWT issuance, session invalidation via `pwdv`/`tv` |
-| **Database** | `app_user`, `api_client`, `refresh_token`, `auth_event_audit` |
-| **Integrations** | None external |
-| **Outputs** | JWT access token, refresh cookie |
-| **Risks** | Brute force (mitigated: rate limits); token theft (mitigated: short TTL, httpOnly refresh) |
-| **Edge cases** | Password change required (428); secret rotation grace window for API clients |
+## WF-07: Foreclosure
 
-## Module: LSP Administration
+**Objective:** Close a loan early with a calculated settlement amount.
 
-| Aspect | Detail |
-|--------|--------|
-| **Purpose** | Tenant lifecycle and integration configuration |
-| **Entry points** | `/lsps` (SYSTEM_ADMIN) |
-| **User actions** | Create LSP, activate/deactivate, configure webhooks, IP allowlists |
-| **Backend** | `LspStatusService` kill chain cascades API client deactivation |
-| **Database** | `lsp`, `lsp_audit_event`, `lsp_api_ip_allowlist`, `lsp_ui_ip_allowlist` |
-| **Integrations** | Webhook endpoint validation (SSRF-safe) |
-| **Outputs** | Tenant ready for users, API clients, products |
-| **Risks** | Deactivating LSP blocks all partner operations |
-| **Edge cases** | Cannot enable allowlist enforcement without entries |
+| Step | Owner | Action |
+|:--|:--|:--|
+| 1 | System Administrator or Partner System | Requests quote for settlement date. |
+| 2 | System | Calculates payoff amount. |
+| 3 | Actor | Confirms payment amount, date, and reference. |
+| 4 | System | Validates against active quote. |
+| 5 | System | Marks loan foreclosed. |
+| 6 | System | Notifies partner where configured. |
 
-## Module: Loan Origination
+**Exit criteria:** Loan is foreclosed and terminal.
 
-| Aspect | Detail |
-|--------|--------|
-| **Purpose** | Create and decide loan applications |
-| **Entry points** | LSP API POST, Ops POST, `/my-loans` uploads |
-| **User actions** | Submit application, upload docs, invalidate |
-| **Backend** | Intake audit, checklist init, auto-approval, idempotency |
-| **Database** | `loan_application`, `borrower`, `borrower_lsp_access`, checklist, intake audit |
-| **Integrations** | R2 document storage; webhooks |
-| **Outputs** | Approved or rejected application |
-| **Risks** | Cross-LSP borrower identity conflicts |
-| **Edge cases** | PAN dedup links existing borrower; duplicate external_loan_id rejected |
+## WF-08: Partner Cancellation Before Disbursement
 
-## Module: Disbursement
+**Objective:** Allow partner to withdraw an application before funds are released.
 
-| Aspect | Detail |
-|--------|--------|
-| **Purpose** | Move funds and activate loan account |
-| **Entry points** | Worker (auto), admin disbursement POST, mock outcome POST |
-| **Backend** | Validation gates (BR-3, BR-10), adapter invocation |
-| **Database** | `loan_account`, `loan_disbursement_request_log`, `disbursement_outcome_audit` |
-| **Integrations** | Disbursement adapter (mock); bank mismatch logging |
-| **Outputs** | DISBURSED loan |
-| **Risks** | Stuck disbursement triggers alerts after 2h |
-| **Edge cases** | DISBURSEMENT_RETRY loop; worker rejection on validation failure |
+| Step | Owner | Action |
+|:--|:--|:--|
+| 1 | Partner System | Selects eligible application. |
+| 2 | Partner System | Provides cancellation reason. |
+| 3 | System | Confirms application has not been disbursed. |
+| 4 | System | Marks application cancelled. |
+| 5 | System | Notifies partner and updates Bhawana view. |
 
-## Module: Servicing & Repayment
+**Exit criteria:** Application is terminally cancelled.
 
-| Aspect | Detail |
-|--------|--------|
-| **Purpose** | Track installments, payments, delinquency, foreclosure |
-| **Entry points** | Ops Schedule tab, LSP payment API, foreclosure endpoints |
-| **Database** | `loan_repayment_schedule_installment`, `loan_payment_transaction`, `loan_foreclosure_quote` |
-| **Integrations** | Webhooks on payment and foreclosure |
-| **Outputs** | Updated schedule, CLOSED or FORECLOSED loan |
-| **Risks** | Partial payment rejected (by design) |
-| **Edge cases** | Idempotent payment replay; quote expiry (BR-9) |
+## WF-09: Alert Handling and Escalation
 
-## Module: Reporting
+**Objective:** Ensure operational exceptions are visible and acted upon.
 
-| Aspect | Detail |
-|--------|--------|
-| **Purpose** | Portfolio MIS for management |
-| **Entry points** | `/reports` |
-| **Backend** | Sync preview/download + async worker |
-| **Database** | `report_request`, `report_access_audit` |
-| **Integrations** | R2 storage, email notification |
-| **Outputs** | CSV file |
-| **Risks** | Large date ranges may be slow (async mitigates) |
+| Step | Owner | Action |
+|:--|:--|:--|
+| 1 | System | Creates alert for configured exception. |
+| 2 | Operations User | Reviews alert details. |
+| 3 | Operations User | Resolves directly if within permission. |
+| 4 | Operations User | Escalates to administrator if admin action is required. |
+| 5 | System Administrator | Takes exception action where needed. |
+| 6 | User | Acknowledges alert. |
 
-## Module: Alerting
+**Exit criteria:** Alert is acknowledged, escalated, or resolved.
 
-| Aspect | Detail |
-|--------|--------|
-| **Purpose** | Proactive operational monitoring |
-| **Entry points** | `/alerts`, scheduled worker, event hooks |
-| **Alert types** | STALE_INTAKE, STUCK_DISBURSEMENT, DPD_BUCKET_TRANSITION, WEBHOOK_DEAD_LETTER, LSP_AUTO_REJECT_SPIKE, OPS_USER_ESCALATION, etc. |
-| **Database** | `ops_alert`, `alert_rule` |
-| **Outputs** | Actionable alerts for ops/admin |
+## WF-10: MIS Reporting
 
-## Module: Webhooks
+**Objective:** Generate portfolio reports for management, operations, and reconciliation.
 
-| Aspect | Detail |
-|--------|--------|
-| **Purpose** | Reliable partner event delivery |
-| **Entry points** | Domain events, admin dispatch/redrive |
-| **Database** | `webhook_event_outbox`, `webhook_event_delivery_attempt`, `webhook_outbox_redrive_audit` |
-| **Integrations** | LSP HTTPS endpoints, HMAC signing |
-| **Outputs** | DELIVERED or failure with retry/redrive |
-| **Risks** | Dead letter after max attempts |
+| Step | Owner | Action |
+|:--|:--|:--|
+| 1 | System Administrator | Selects report filters. |
+| 2 | System | Shows preview or accepts full export request. |
+| 3 | System | Generates report. |
+| 4 | System Administrator | Downloads report when ready. |
+| 5 | System | Records report access. |
 
-## Module: Audit Explorer
-
-| Aspect | Detail |
-|--------|--------|
-| **Purpose** | Forensic investigation across domains |
-| **Entry points** | `/audit` |
-| **Streams** | APPLICATION, INTAKE, DOCUMENT_ACCESS, PRODUCT, APP_USER, API_CLIENT, DISBURSEMENT, REPORT_ACCESS |
-| **Database** | UNION across 8 audit tables |
-| **Outputs** | Filterable audit timeline with correlation ID linking |
+**Exit criteria:** Report is available and access is auditable.
 
 ---
 
-# Deliverable 6 — Gap Analysis
+# 11. Reporting, Alerts, Audit, and Notifications
 
-## Critical Gaps (Code-Validated)
+## 11.1 Portfolio Dashboard
 
-| # | Category | Finding | Evidence |
-|---|----------|---------|----------|
-| G-01 | Frontend/Backend drift | Frontend `lifecycle.ts` defines statuses (INITIATED, KYC_PENDING, DOCS_PENDING, UNDER_REVIEW, etc.) **not present** in backend `LoanApplicationStatus` enum | `frontend/src/lib/lifecycle.ts` vs `LoanApplicationStatus.java` |
-| G-02 | Orphaned API | `GET /api/v1/internal/ops/auth-audit` has **no frontend UI** | Backend `AuthAuditController`; no frontend references |
-| G-03 | Orphaned API | Ops `POST /internal/ops/loan-applications` (manual intake) has **no UI create flow** | Controller exists; frontend has no create dialog |
-| G-04 | Partial UI coverage | LSP API endpoints for repayment schedule, payments, foreclosure, bank check have **no LSP UI** — API-only | `LspLoanApiController`, `LspLoanApplicationApiController` |
-| G-05 | Permission model | `app_permission` / `app_role_permission` tables exist but authorization uses **role-based `@PreAuthorize`**, not permission table | DB schema vs SecurityConfig |
-| G-06 | OPS lifecycle | OPS_USER has `LOAN_STATUS_UPDATE` in frontend permissions but UI **hides ActionBar** — only escalate | `ActionBar` role gating in loan detail |
-| G-07 | Incomplete UI | Command palette (⌘K) is **placeholder** — no global search | `AppShell` component |
-| G-08 | Documentation drift | `frontend/docs/Frontend/UI pages.md` partially outdated vs actual nav | Agent exploration confirmed |
-| G-09 | Foreclosure UI | `ForeclosureRequestDialog` exists but foreclosure primarily via **lifecycle ActionBar/API** — dialog may be unwired | Frontend components |
-| G-10 | Status simplification | Backend uses **auto-approval straight-through** (INITIALIZED → AWAITING_APPROVAL → decision) without manual underwriting steps in UI state machine | `LoanApplicationLifecycleService` |
+System Administrator should be able to view portfolio metrics such as:
 
-## Missing Validations / Clarifications Needed
+- Applications by status.
+- Disbursed amount.
+- Outstanding exposure.
+- Overdue buckets.
+- Partner-level performance.
+- Recent applications.
+- Open operational alerts.
 
-| Area | Question for Business |
-|------|----------------------|
-| Document verification | No VERIFY step — upload = submitted (Gap #18 in lifecycle.ts). Is manual doc review required? |
-| OPS write scope | Should OPS_USER perform status transitions, or escalate-only (current UI)? |
-| Manual underwriting | Is auto-approval-only acceptable, or should AWAITING_APPROVAL queue for human review? |
-| Delinquency transitions | `DELINQUENT` status in frontend lifecycle not in backend enum — DPD is computed, not a status |
-| Production disbursement | Which real adapter replaces `MockLoanDisbursementAdapter`? |
+## 11.2 MIS Reports
 
-## Missing Audit Trails (Minor)
+MIS reporting should support:
 
-| Item | Notes |
-|------|-------|
-| Webhook config changes | May be in `lsp_audit_event` — verify completeness for all webhook field changes |
-| IP allowlist changes | Logged via LSP audit — confirmed in tests |
-| Rate limit breaches | Alert emitted; no dedicated audit table |
+- Date filters.
+- Partner filters.
+- Product filters.
+- Status filters.
+- Preview before download where practical.
+- Export for offline analysis.
+- Access history for compliance.
 
-## Security Observations
+## 11.3 Alerts
 
-| Item | Status |
-|------|--------|
-| Tenant RLS | Implemented (V41+) |
-| IP allowlists | Implemented (API + UI surfaces) |
-| Rate limiting | Configured per path in `application.yml` |
-| PII reveal audit | Table exists; verify all PII fields covered in UI |
-| Idempotency | LSP writes + payments |
+The system should generate alerts for important operational conditions, including:
 
----
+- Borrower identity conflict.
+- Borrower already has an active loan.
+- Stuck disbursement retry.
+- Disbursement failure.
+- Partner auto-rejection spike.
+- Overdue bucket worsening.
+- Failed partner notification.
+- Operations escalation.
+- Partner disabled.
 
-# Deliverable 7 — Test Scenarios Derived from Use Cases
+## 11.4 Audit Requirements
 
-## UC-016 — LSP API Create Loan Application
+The system must retain audit history for sensitive and important actions:
 
-| Category | Scenario |
-|----------|----------|
-| **Positive** | Valid payload with all required docs → APPROVED_PENDING_DISBURSAL |
-| **Positive** | Idempotency key replay returns same response |
-| **Negative** | Inactive product → rejection/error |
-| **Negative** | Amount above product max → auto-reject |
-| **Negative** | Missing approval documents → auto-reject DOCS_INCOMPLETE |
-| **Boundary** | Amount at exact min/max bounds |
-| **Boundary** | Tenure at exact min/max bounds |
-| **Permission** | Call without LSP_API_CLIENT role → 403 |
-| **Permission** | IP not in allowlist when enforced → 403 |
-| **Integration** | Webhook LOAN_CREATED delivered with valid HMAC signature |
-| **Recovery** | Webhook failure → RETRYABLE_FAILURE → eventual DELIVERED |
+- Sign in and security events.
+- User and credential changes.
+- Partner status changes.
+- Product changes.
+- Loan application lifecycle changes.
+- Document access.
+- Disbursement attempts and outcomes.
+- Repayment postings.
+- Foreclosure execution.
+- Report downloads.
+- Partner notification retries and redrives.
 
-## UC-027 — Disbursement Worker
+Each audit entry should capture who acted, what changed, when it happened, business reason where applicable, and the related partner or loan context.
 
-| Category | Scenario |
-|----------|----------|
-| **Positive** | Complete prerequisites → DISBURSED → UNDER_REPAYMENT |
-| **Negative** | Missing schedule → validation failure, no disbursement |
-| **Negative** | Missing disbursement docs → blocked |
-| **Negative** | Bank mismatch → logged, may block |
-| **Boundary** | Max retry attempts → DISBURSEMENT_RETRY_EXHAUSTED alert |
-| **Integration** | Mock adapter auto-resolve enabled |
-| **Recovery** | DISBURSEMENT_RETRY → success on subsequent worker run |
+## 11.5 Partner Notifications
 
-## UC-029 — Record Payment
+Partners should receive notifications for relevant loan events. Notifications must be partner-scoped and retryable.
 
-| Category | Scenario |
-|----------|----------|
-| **Positive** | Full installment → installment PAID |
-| **Positive** | Last installment → CLOSED + LOAN_FULLY_REPAID webhook |
-| **Positive** | Idempotent replay → same transaction returned |
-| **Negative** | Partial amount → BR-13 rejection |
-| **Negative** | Payment on REJECTED loan → 422 |
-| **Permission** | OPS_USER can post; LSP_UI_READ cannot |
-| **Integration** | LOAN_REPAYMENT_RECORDED webhook payload correct |
+Expected notification events:
 
-## UC-001 — Login
+- Loan created.
+- Loan status changed.
+- Loan approved.
+- Loan rejected.
+- Loan cancelled.
+- Disbursement succeeded.
+- Disbursement failed or retried.
+- Repayment recorded.
+- Loan fully repaid.
+- Foreclosure quote generated.
+- Loan foreclosed.
 
-| Category | Scenario |
-|----------|----------|
-| **Positive** | Valid credentials → JWT + redirect to role landing |
-| **Positive** | Password change required → redirect /change-password |
-| **Negative** | Wrong password → 401 |
-| **Negative** | Inactive user → 401/403 |
-| **Boundary** | Rate limit threshold → 429 |
-| **Permission** | LSP user from non-allowlisted IP → 403 |
-| **Recovery** | Token refresh after access expiry |
-
-## UC-007 — LSP Deactivation Kill Chain
-
-| Category | Scenario |
-|----------|----------|
-| **Positive** | Deactivate LSP → API clients inactive, alert LSP_DISABLED |
-| **Negative** | New loan on inactive LSP → blocked |
-| **Integration** | Existing in-flight loans behavior — verify business rule |
-| **Audit** | lsp_audit_event records status change with reason |
-
-## UC-043 — Webhook Redrive
-
-| Category | Scenario |
-|----------|----------|
-| **Positive** | Admin redrives PERMANENT_FAILURE event → PENDING → DELIVERED |
-| **Negative** | Fourth redrive attempt → rejected (max 3) |
-| **Audit** | webhook_outbox_redrive_audit row created |
-| **Permission** | OPS_USER cannot redrive → 403 |
-
-## UC-038 — Async Report
-
-| Category | Scenario |
-|----------|----------|
-| **Positive** | Request → worker completes → download succeeds |
-| **Negative** | Worker failure → FAILED status |
-| **Audit** | report_access_audit on download |
-| **Permission** | OPS_USER cannot access /reports → 403 |
-
-## Cross-Cutting Tenant Isolation Tests
-
-| Scenario | Expected |
-|----------|----------|
-| LSP A token queries LSP B application | 404 or empty (RLS) |
-| Tenant connection without `app.current_lsp_id` | MissingTenantContextException |
-| Admin datasource cross-tenant ops search | Returns all tenants |
+Administrators must be able to review failed notifications and retry them when appropriate.
 
 ---
 
-# Assumptions
+# 12. Out of Scope
 
-1. **Authoritative state machine** is the backend `LoanApplicationStatus` enum (10 values), not the expanded frontend `lifecycle.ts` status catalog.
-2. **Production disbursement** will replace `MockLoanDisbursementAdapter` via the `LoanDisbursementAdapter` interface without changing the documented workflow.
-3. **Email notifications** for reports depend on SMTP configuration in deployment environment.
-4. **R2 storage** is the default production document/report store; filesystem storage is development-only.
-5. **Auto-approval** is the primary credit decision path; manual approve/reject via ops UI maps to SYSTEM_ADMIN `status-transitions` and `manual-status` override, not a separate underwriting queue status.
-6. **Borrower self-service** is out of scope per BRD — no borrower-facing portal exists.
-7. **Redis/RabbitMQ** in `infra/` are local dev dependencies; core loan flows operate on PostgreSQL + scheduled workers without mandatory message broker.
-8. **PRODUCT_ADMIN** loan application list access is read-only for visibility; product configuration is the primary duty.
-9. **Correlation IDs** flow through all audited operations for cross-stream investigation in Audit Explorer.
-10. **Sample seed data** (`SampleCatalogSeedService`) is optional and enabled only when `app.seed.sample-data.enabled=true`.
+The following are not part of the standard LMS workflow unless separately approved:
 
----
-
-## Document Maintenance
-
-| When to update | Trigger |
-|----------------|---------|
-| New API controller | Add use case + workflow |
-| Status enum change | Update Deliverable 4 state diagram |
-| New role | Update Deliverable 1 role table |
-| Frontend route added | Update module breakdown + gap analysis |
-
-**Code references for validation:**
-- Backend controllers: `backend/src/main/java/com/bhawana/lms/web/`
-- Domain statuses: `backend/src/main/java/com/bhawana/lms/domain/`
-- Frontend routes: `frontend/src/routes/router.tsx`
-- Migrations: `backend/src/main/resources/db/migration/`
+| Out-of-scope item | Implication |
+|:--|:--|
+| Borrower self-service portal | Borrowers interact through partners. |
+| Manual partner web form for loan creation | Partner systems originate loans. |
+| Human underwriter queue | Credit decisioning is automated, with admin exceptions only. |
+| Automated credit bureau pull | Partner-submitted data is used for decisioning unless future scope changes. |
+| Collection agent field workflow | No field-visit or collection-agent task management. |
+| Partial EMI payments | Full installment payment only. |
+| GST on processing fee | Requires separate policy and product decision. |
+| Fee waivers or promotional fee rules | Requires separate product decision. |
+| Post-disbursement schedule edits | Schedule is frozen after disbursement. |
 
 ---
 
-*End of document*
+# 13. Vendor Clarification Points
+
+The vendor should explicitly confirm these points during discovery:
+
+1. Final list of required borrower fields and document metadata.
+2. Exact processing fee treatment at disbursement, including tax treatment if any.
+3. Whether partner foreclosure execution is allowed for all partners or only selected partners.
+4. Whether operations users should remain escalation-only for lifecycle exceptions.
+5. Whether document upload should remain "submitted only" or needs a future verified/rejected review stage.
+6. Notification event list and payload fields expected by partners.
+7. Report formats, filters, and delivery expectations.
+8. Alert thresholds for rejection spikes, stuck disbursement, and overdue movement.
+9. Partner access restriction policy by environment and partner type.
+10. Data retention and audit retention requirements.
+
+---
+
+End of document.

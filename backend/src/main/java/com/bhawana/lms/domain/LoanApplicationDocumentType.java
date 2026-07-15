@@ -7,7 +7,7 @@ public enum LoanApplicationDocumentType {
     INCOME_PROOF("Income Proof", true, true),
     BANK_STATEMENT("Bank Statement", true, true),
     SELFIE_PHOTOGRAPH("Selfie Photograph", true, true),
-    KFS("KFS", false, true),
+    KFS("Key Facts Statement", false, true),
     LOAN_AGREEMENT("Loan Agreement", false, true);
 
     private final String displayName;

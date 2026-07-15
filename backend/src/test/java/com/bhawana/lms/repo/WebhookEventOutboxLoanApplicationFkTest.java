@@ -31,7 +31,8 @@ class WebhookEventOutboxLoanApplicationFkTest extends PostgresDataJpaTestSupport
         lspId = insertLsp("LSP-FK-" + suffix);
         UUID borrowerId = insertBorrower("PFK" + suffix.substring(0, 7));
         UUID productId = insertLoanProduct("PROD-FK-" + suffix);
-        loanApplicationId = insertLoanApplication(borrowerId, lspId, productId, "EXT-FK-" + suffix);
+        UUID productVersionId = insertLoanProductVersion(productId);
+        loanApplicationId = insertLoanApplication(borrowerId, lspId, productId, productVersionId, "EXT-FK-" + suffix);
     }
 
     @Test
@@ -86,13 +87,25 @@ class WebhookEventOutboxLoanApplicationFkTest extends PostgresDataJpaTestSupport
         return id;
     }
 
-    private UUID insertLoanApplication(UUID borrowerId, UUID lspId, UUID productId, String externalId) {
+    private UUID insertLoanProductVersion(UUID productId) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update(
-                "INSERT INTO loan_application (id, borrower_id, lsp_id, loan_product_id, "
+                "INSERT INTO loan_product_version (id, loan_product_id, version_number, min_principal, max_principal, "
+                        + "interest_rate, processing_fee_rate, min_tenure_months, max_tenure_months, effective_from) "
+                        + "VALUES (?, ?, 1, 100.00, 100000.00, 10.00, 1.00, 6, 60, NOW())",
+                id,
+                productId
+        );
+        return id;
+    }
+
+    private UUID insertLoanApplication(UUID borrowerId, UUID lspId, UUID productId, UUID productVersionId, String externalId) {
+        UUID id = UUID.randomUUID();
+        jdbcTemplate.update(
+                "INSERT INTO loan_application (id, borrower_id, lsp_id, loan_product_id, loan_product_version_id, "
                         + "external_loan_id, source_channel, requested_amount, tenure_months, status) "
-                        + "VALUES (?, ?, ?, ?, ?, 'API', 5000.00, 12, 'INITIALIZED')",
-                id, borrowerId, lspId, productId, externalId
+                        + "VALUES (?, ?, ?, ?, ?, ?, 'API', 5000.00, 12, 'INITIALIZED')",
+                id, borrowerId, lspId, productId, productVersionId, externalId
         );
         return id;
     }

@@ -6,6 +6,12 @@ Backend: localhost:8080 (Supabase-backed). Frontend: localhost:5173 (Vite).
 ## BUGS / DEFECTS
 
 ### B1 [HIGH] Bank account number is NOT masked (aadhaar is) — multiple surfaces
+> **Resolved 2026-07-02** (API consistency pass): `BankAccountMasking` (`XXXXXXXX<last4>`) now applied to
+> borrower-360 `bankAccountNumberMasked`, LSP loan-application responses, bank-mismatch ops alerts, and the
+> `BORROWER_BANK_DETAILS_UPDATED` webhook payload. Full value remains only on the dedicated bank-details
+> endpoints and the payment rail. MIS CSV "Bank Account Number" column stays raw **pending a compliance
+> decision** (see `docs/api-consistency-backlog.md`); intake-audit payload still masks aadhaar only.
+> EC-112/EC-113 in `gap_tests.py` updated to verify the fix dynamically. Original finding kept below.
 - **Borrower 360** `GET /api/v1/internal/admin/borrowers/{id}`: response field is literally named
   `bankAccountNumberMasked` but returns the **raw 12-digit account number** (e.g. `952370303908`).
   Aadhaar in the same response IS masked (`XXXXXXXX7735`).

@@ -114,6 +114,7 @@ export interface AuditEventsResponse {
   total: number;
   page: number;
   pageSize: number;
+  nextCursor?: string | null;
 }
 
 export const AuditEventsResponseSchema: z.ZodType<AuditEventsResponse> = z.object({
@@ -138,6 +139,7 @@ const AuditEventsFilters = z.object({
   dateTo: IsoDate.optional(),
   page: z.coerce.number().int().min(0).optional(),
   pageSize: z.coerce.number().int().min(5).max(200).optional(),
+  cursor: z.string().min(1).max(512).optional(),
   /** Set by the table when a row is opened — surfaces the detail sheet. */
   eventId: z.string().min(1).max(80).optional(),
 });

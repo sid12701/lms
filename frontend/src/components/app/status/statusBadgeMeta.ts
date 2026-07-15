@@ -5,6 +5,7 @@ import {
   type LoanStatusOrUnknown,
 } from "@/lib/loan-application-status";
 import type { LoanAccountStatus } from "@/types";
+import { isLoanAccountStatus } from "@/schemas/loan-account";
 
 export type AnyStatus = LoanStatusOrUnknown | LoanAccountStatus;
 
@@ -21,9 +22,16 @@ export interface ResolvedStatusMeta {
 
 const ACCOUNT_STATUS_META: Record<LoanAccountStatus, ResolvedStatusMeta> = {
   PENDING_DISBURSEMENT: { label: "Pending disbursement", intent: "progress" },
-  ACTIVE: { label: "Active", intent: "success" },
+  DISBURSEMENT_REQUESTED: { label: "Disbursement requested", intent: "progress" },
+  DISBURSED: { label: "Disbursed", intent: "success" },
+  INVALID: { label: "Invalid", intent: "danger" },
   CLOSED: { label: "Closed", intent: "neutral" },
   FORECLOSED: { label: "Foreclosed", intent: "neutral" },
+  DISBURSEMENT_FAILED: { label: "Disbursement failed", intent: "danger" },
+  DISBURSEMENT_PENDING_RECONCILIATION: {
+    label: "Pending reconciliation",
+    intent: "warning",
+  },
 };
 
 /**
@@ -78,8 +86,8 @@ export function resolveStatusMeta(
     }
     return { label: m.label, intent: m.intent };
   }
-  if (status in ACCOUNT_STATUS_META) {
-    return ACCOUNT_STATUS_META[status as LoanAccountStatus];
+  if (isLoanAccountStatus(status)) {
+    return ACCOUNT_STATUS_META[status];
   }
   return { label: String(status), intent: "neutral" };
 }

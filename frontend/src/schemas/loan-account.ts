@@ -3,12 +3,26 @@
  *
  * Per blueprint §13 + UI pages.md "Repayment installment".
  * BR-12: schedule frozen flips to true at disbursement.
+ *
+ * LoanAccountStatus must match backend `com.bhawana.lms.domain.LoanAccountStatus`
+ * (OpenAPI currently emits `accountStatus` as a bare string — Spec S8).
  */
 import { z } from "zod";
+import {
+  LOAN_ACCOUNT_STATUSES,
+  type LoanAccountStatus as GeneratedLoanAccountStatus,
+} from "@/lib/api/generated/loan-account-status";
 import { Iso8601, IsoDate, MoneyINR, MoneyINRPositive, Uuid } from "./common";
 
-export const LoanAccountStatus = z.enum(["PENDING_DISBURSEMENT", "ACTIVE", "CLOSED", "FORECLOSED"]);
-export type LoanAccountStatus = z.infer<typeof LoanAccountStatus>;
+/** Canonical loan-account statuses — keep in lockstep with the Java enum. */
+export { LOAN_ACCOUNT_STATUSES };
+
+export const LoanAccountStatus = z.enum(LOAN_ACCOUNT_STATUSES);
+export type LoanAccountStatus = GeneratedLoanAccountStatus;
+
+export function isLoanAccountStatus(value: string): value is LoanAccountStatus {
+  return LoanAccountStatus.safeParse(value).success;
+}
 
 export const ClosureReason = z.enum(["FULLY_REPAID", "FORECLOSED", "CANCELLED"]);
 export type ClosureReason = z.infer<typeof ClosureReason>;

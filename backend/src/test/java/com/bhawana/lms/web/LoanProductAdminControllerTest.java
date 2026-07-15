@@ -10,14 +10,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.bhawana.lms.repo.LoanProductAuditEventRepository;
-import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
-import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
-import com.bhawana.lms.repo.LoanApplicationRepository;
-import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
-import com.bhawana.lms.repo.LoanProductLspMappingRepository;
-import com.bhawana.lms.repo.LoanProductRepository;
-import com.bhawana.lms.repo.BorrowerRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -50,47 +42,11 @@ class LoanProductAdminControllerTest {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private LoanProductRepository loanProductRepository;
-
-    @Autowired
-    private LoanApplicationAssignmentEventRepository loanApplicationAssignmentEventRepository;
-
-    @Autowired
-    private LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
-
-    @Autowired
-    private LoanApplicationIntakeAuditRepository loanApplicationIntakeAuditRepository;
-
-    @Autowired
-    private LoanApplicationRepository loanApplicationRepository;
-
-    @Autowired
-    private BorrowerRepository borrowerRepository;
-
-    @Autowired
-    private LoanProductAuditEventRepository loanProductAuditEventRepository;
-
-    @Autowired
-    private LoanProductLspMappingRepository loanProductLspMappingRepository;
-
-    @Autowired
-    private com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository loanDisbursementBankMismatchLogRepository;
-
-    @Autowired
-    private com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository borrowerBankDetailsUpdateAuditRepository;
+    private com.bhawana.lms.support.IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
 
     @BeforeEach
     void setUp() {
-        loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
-        borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
-        loanApplicationAssignmentEventRepository.deleteAll();
-        loanApplicationStatusTransitionRepository.deleteAll();
-        loanApplicationIntakeAuditRepository.deleteAll();
-        loanApplicationRepository.deleteAll();
-        borrowerRepository.deleteAll();
-        loanProductAuditEventRepository.deleteAll();
-        loanProductLspMappingRepository.deleteAll();
-        loanProductRepository.deleteAll();
+        integrationTestDatabaseCleaner.cleanIntegrationTestData();
     }
 
     @Test

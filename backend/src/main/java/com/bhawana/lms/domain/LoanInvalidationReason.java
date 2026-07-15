@@ -1,9 +1,11 @@
 package com.bhawana.lms.domain;
 
 public enum LoanInvalidationReason {
-    REASON_A("Reason A", false),
-    REASON_B("Reason B", false),
-    REASON_C("Reason C", false),
+    DUPLICATE_APPLICATION("Duplicate application", false),
+    KYC_MISMATCH("KYC / document mismatch", false),
+    BORROWER_WITHDREW("Borrower withdrew", false),
+    FRAUD_SUSPECTED("Suspected fraud", true),
+    DATA_ENTRY_ERROR("Data-entry error", false),
     OTHERS("Others", true);
 
     private final String label;

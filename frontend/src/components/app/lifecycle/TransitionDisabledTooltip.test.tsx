@@ -11,6 +11,7 @@ const APPROVE_ACTION: LifecycleAction = {
   toStatus: "APPROVED_PENDING_DISBURSAL",
   tone: "approve",
   requiresReason: false,
+  requiresReasonCode: false,
   permission: "LOAN_STATUS_UPDATE",
 };
 
@@ -20,6 +21,7 @@ const DISBURSE_ACTION: LifecycleAction = {
   toStatus: "DISBURSED",
   tone: "approve",
   requiresReason: false,
+  requiresReasonCode: false,
   permission: "DISBURSEMENT_TRIGGER",
 };
 

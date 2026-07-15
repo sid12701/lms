@@ -11,13 +11,17 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductStatus;
+import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
+import com.bhawana.lms.support.LoanProductVersionTestSupport;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -48,13 +52,69 @@ class PortfolioMisReadRepositoryTest {
     private LoanProductRepository loanProductRepository;
 
     @Autowired
+    private LoanProductVersionRepository loanProductVersionRepository;
+
+    @Autowired
     private LspRepository lspRepository;
+
+    @Test
+    void exportBatchPagesAccountsByIdAscending() {
+        Lsp lsp = lspRepository.save(new Lsp("SUPAONE", "Supa One Finance", LspStatus.ACTIVE));
+        LoanProduct product = persistProduct(product("SUPA-FLEX", new BigDecimal("10.00")));
+
+        loanAccountRepository.save(disbursedAccount(
+                application(borrower(lsp, "Aman Verma", "ABCDE1001F"), lsp, product, "SUPA-1001", LoanApplicationStatus.DISBURSED),
+                "ACCT-1001",
+                new BigDecimal("1000.00"),
+                LocalDate.of(2026, 3, 10)
+        ));
+        loanAccountRepository.save(disbursedAccount(
+                application(borrower(lsp, "Bhavna Rao", "ABCDE1002F"), lsp, product, "SUPA-1002", LoanApplicationStatus.DISBURSED),
+                "ACCT-1002",
+                new BigDecimal("3000.00"),
+                LocalDate.of(2026, 4, 5)
+        ));
+
+        List<UUID> allIds = portfolioMisReadRepository.findAccountIdsForExportBatch(
+                lsp.getId(),
+                null,
+                null,
+                null,
+                10
+        );
+        assertThat(allIds).hasSize(2);
+
+        List<UUID> firstBatch = portfolioMisReadRepository.findAccountIdsForExportBatch(
+                lsp.getId(),
+                null,
+                null,
+                null,
+                1
+        );
+        List<UUID> secondBatch = portfolioMisReadRepository.findAccountIdsForExportBatch(
+                lsp.getId(),
+                null,
+                null,
+                firstBatch.getFirst(),
+                1
+        );
+
+        assertThat(firstBatch).isEqualTo(allIds.subList(0, 1));
+        assertThat(secondBatch).isEqualTo(allIds.subList(1, 2));
+        assertThat(portfolioMisReadRepository.findAccountIdsForExportBatch(
+                lsp.getId(),
+                null,
+                null,
+                allIds.get(1),
+                1
+        )).isEmpty();
+    }
 
     @Test
     void pagesAccountsUsingDatabaseOrderingAndCounting() {
         Lsp apex = lspRepository.save(new Lsp("APEX", "Apex Finance", LspStatus.ACTIVE));
         Lsp north = lspRepository.save(new Lsp("NORTH", "Northbridge Capital", LspStatus.ACTIVE));
-        LoanProduct product = loanProductRepository.save(product("PORTFOLIO-1", new BigDecimal("18.50")));
+        LoanProduct product = persistProduct(product("PORTFOLIO-1", new BigDecimal("18.50")));
 
         LoanAccount apexAccount = loanAccountRepository.save(disbursedAccount(
                 application(borrower(apex, "Anika Sharma", "ABCDE1234F"), apex, product, "APEX-LOAN-001", LoanApplicationStatus.DISBURSED),
@@ -85,8 +145,8 @@ class PortfolioMisReadRepositoryTest {
     @Test
     void summarizesPortfolioMetricsWithTypedAggregateResults() {
         Lsp lsp = lspRepository.save(new Lsp("SUPAONE", "Supa One Finance", LspStatus.ACTIVE));
-        LoanProduct productTen = loanProductRepository.save(product("SUPA-FLEX", new BigDecimal("10.00")));
-        LoanProduct productTwenty = loanProductRepository.save(product("SUPA-MAX", new BigDecimal("20.00")));
+        LoanProduct productTen = persistProduct(product("SUPA-FLEX", new BigDecimal("10.00")));
+        LoanProduct productTwenty = persistProduct(product("SUPA-MAX", new BigDecimal("20.00")));
 
         LoanAccount activeAccount = loanAccountRepository.save(disbursedAccount(
                 application(borrower(lsp, "Aman Verma", "ABCDE1001F"), lsp, productTen, "SUPA-1001", LoanApplicationStatus.DISBURSED),
@@ -130,9 +190,7 @@ class PortfolioMisReadRepositoryTest {
     }
 
     private Borrower borrower(Lsp lsp, String fullName, String pan) {
-        return borrowerRepository.save(new Borrower(
-                lsp,
-                BorrowerProfile.builder()
+        return borrowerRepository.save(new Borrower(BorrowerProfile.builder()
                         .fullName(fullName)
                         .panNumber(pan)
                         .mobileNumber("9000000000")
@@ -153,16 +211,26 @@ class PortfolioMisReadRepositoryTest {
             String externalLoanId,
             LoanApplicationStatus status
     ) {
+        LoanProductVersion version = loanProductVersionRepository
+                .findTopByLoanProduct_IdOrderByVersionNumberDesc(product.getId())
+                .orElseThrow();
         return loanApplicationRepository.save(new LoanApplication(
                 borrower,
                 lsp,
                 product,
+                version,
                 externalLoanId,
                 "API",
                 new BigDecimal("50000.00"),
                 12,
                 status
         ));
+    }
+
+    private LoanProduct persistProduct(LoanProduct product) {
+        LoanProduct saved = loanProductRepository.save(product);
+        loanProductVersionRepository.save(LoanProductVersionTestSupport.versionOne(saved));
+        return saved;
     }
 
     private LoanProduct product(String code, BigDecimal interestRate) {
@@ -190,6 +258,7 @@ class PortfolioMisReadRepositoryTest {
                 application.getBorrower(),
                 application.getLsp(),
                 application.getLoanProduct(),
+                application.getLoanProductVersion(),
                 accountNumber,
                 principalAmount,
                 application.getTenureMonths(),

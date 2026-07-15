@@ -1872,7 +1872,7 @@ class LoanApplicationOpsControllerTest {
         com.bhawana.lms.domain.WebhookEventOutbox permanentFailureEvent = webhookEventOutboxRepository.save(
                 new com.bhawana.lms.domain.WebhookEventOutbox(
                         lspEntity,
-                        com.bhawana.lms.domain.WebhookEventType.LOAN_DISBURSEMENT_UPDATED,
+                        com.bhawana.lms.domain.WebhookEventType.DISBURSEMENT_FAILED,
                         "LOAN_ACCOUNT",
                         UUID.randomUUID().toString(),
                         UUID.fromString(applicationId),
@@ -1947,7 +1947,7 @@ class LoanApplicationOpsControllerTest {
         assertThat(failedRow.get("lastResponseCode").asInt()).isEqualTo(503);
         assertThat(failedRow.get("lastError").asText()).contains("503");
 
-        JsonNode deadLetteredRow = byEventType.get("LOAN_DISBURSEMENT_UPDATED:DEAD_LETTERED");
+        JsonNode deadLetteredRow = byEventType.get("DISBURSEMENT_FAILED:DEAD_LETTERED");
         assertThat(deadLetteredRow).as("dead-lettered row (permanent failure)").isNotNull();
         assertThat(deadLetteredRow.get("lastResponseCode").asInt()).isEqualTo(400);
 

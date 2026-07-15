@@ -5,6 +5,7 @@ import com.bhawana.lms.common.util.AlertContextJson;
 import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.domain.Borrower;
+import com.bhawana.lms.domain.BorrowerLspRelationship;
 import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.Lsp;
@@ -30,17 +31,20 @@ public class BorrowerOnboardingService {
     private final BorrowerRepository borrowerRepository;
     private final OpsAlertService opsAlertService;
     private final BorrowerActiveLoanChecker borrowerActiveLoanChecker;
+    private final BorrowerLspRelationshipService borrowerLspRelationshipService;
     private final ObjectMapper objectMapper;
 
     public BorrowerOnboardingService(
             BorrowerRepository borrowerRepository,
             OpsAlertService opsAlertService,
             BorrowerActiveLoanChecker borrowerActiveLoanChecker,
+            BorrowerLspRelationshipService borrowerLspRelationshipService,
             ObjectMapper objectMapper
     ) {
         this.borrowerRepository = borrowerRepository;
         this.opsAlertService = opsAlertService;
         this.borrowerActiveLoanChecker = borrowerActiveLoanChecker;
+        this.borrowerLspRelationshipService = borrowerLspRelationshipService;
         this.objectMapper = objectMapper;
     }
 
@@ -81,8 +85,11 @@ public class BorrowerOnboardingService {
             validateImmutableBorrowerIdentity(lsp, borrowerByPan, profile, actorUsername);
             raiseActiveLoanDuplicateIfPresent(lsp, borrowerByPan, profile, actorUsername);
             borrowerByPan.mergeLatestProfile(profile);
-            borrowerByPan.grantVisibilityTo(lsp);
-            return borrowerRepository.save(borrowerByPan);
+            return borrowerLspRelationshipService.grantVisibility(
+                    borrowerByPan,
+                    lsp,
+                    BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING
+            );
         }
 
         if (borrowerByMobile != null) {
@@ -96,8 +103,11 @@ public class BorrowerOnboardingService {
         }
 
         Borrower borrower = new Borrower(profile);
-        borrower.grantVisibilityTo(lsp);
-        return borrowerRepository.save(borrower);
+        return borrowerLspRelationshipService.grantVisibility(
+                borrower,
+                lsp,
+                BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING
+        );
     }
 
     private BorrowerProfile normalizedProfile(

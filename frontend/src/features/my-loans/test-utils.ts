@@ -1,0 +1,36 @@
+import type { MyLoanDetail } from "./api";
+
+export function makeMyLoanDetail(overrides: Partial<MyLoanDetail> = {}): MyLoanDetail {
+  return {
+    id: "cccccccc-3333-4ccc-8ccc-cccccccccccc",
+    borrowerId: "dddddddd-4444-4ddd-8ddd-dddddddddddd",
+    borrowerFullName: "Aarav Singh",
+    borrowerPanMasked: "ABCDE1234F",
+    borrowerAadhaarMasked: "XXXXXXXX1234",
+    borrowerMobile: "9000000000",
+    borrowerEmail: "aarav@example.test",
+    borrowerDob: "1990-01-01",
+    borrowerCity: "Mumbai",
+    borrowerState: "Maharashtra",
+    productId: "eeeeeeee-5555-4eee-8eee-eeeeeeeeeeee",
+    productCode: "DOC-PROD",
+    productName: "Doc Product",
+    lspId: "bbbbbbbb-2222-4bbb-8bbb-bbbbbbbbbbbb",
+    lspCode: "DOC-UP",
+    lspName: "Doc Upload Test",
+    externalLoanId: "SEED-10-RI05XN",
+    requestedAmount: 255000,
+    interestRate: 14.5,
+    tenureMonths: 12,
+    status: "UNDER_REPAYMENT",
+    rawStatus: "UNDER_REPAYMENT",
+    invalidReasonCode: null,
+    invalidReasonText: null,
+    invalidatedAt: null,
+    createdAt: "2026-06-21T13:15:00.000Z",
+    updatedAt: "2026-06-21T13:15:00.000Z",
+    lastActivity: null,
+    loanAccount: null,
+    ...overrides,
+  };
+}

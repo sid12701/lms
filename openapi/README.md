@@ -22,3 +22,7 @@ npm run generate:api-types
 ## CI
 
 `OpenApiContractExportTest` boots the app on the `test` profile and asserts `/v3/api-docs` includes the ops loan-application detail path. Commit `openapi/openapi.json` and `frontend/src/lib/api/generated/schema.ts` together when backend DTOs change.
+
+## Partner schedule contract (S20)
+
+`PUT /api/v1/lsp/loan-applications/{id}/repayment-schedule` with `LSP_PROVIDED` enforces principal + date/interest discipline. Human-readable bounds and `violationType` codes: [`docs/partner-schedule-validation.md`](../docs/partner-schedule-validation.md).

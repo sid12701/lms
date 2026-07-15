@@ -13,6 +13,7 @@ import static org.hamcrest.Matchers.nullValue;
 
 import com.bhawana.lms.repo.ApiClientAuditEventRepository;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -149,6 +150,111 @@ class ApiClientAdminControllerTest {
     }
 
     @Test
+    void createWithSameIdempotencyKeyReplaysAndDoesNotDuplicate() throws Exception {
+        String lspId = createIdempotencyLsp();
+        String key = UUID.randomUUID().toString();
+        String body = objectMapper.writeValueAsString(Map.of(
+                "name", "Idempotent Client",
+                "description", "First call",
+                "lspId", lspId,
+                "status", "ACTIVE"
+        ));
+
+        MvcResult first = mockMvc.perform(post("/api/v1/internal/admin/api-clients")
+                        .with(systemAdmin())
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clientSecret").isString())
+                .andReturn();
+        JsonNode firstJson = objectMapper.readTree(first.getResponse().getContentAsString());
+        String clientId = firstJson.get("clientId").asText();
+
+        MvcResult replay = mockMvc.perform(post("/api/v1/internal/admin/api-clients")
+                        .with(systemAdmin())
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clientId").value(clientId))
+                .andReturn();
+
+        // The one-time secret is never replayed: the stored idempotency record holds metadata only.
+        JsonNode replayJson = objectMapper.readTree(replay.getResponse().getContentAsString());
+        assertTrue(replayJson.get("clientSecret") == null || replayJson.get("clientSecret").isNull());
+        assertEquals(1, countClientsForLsp(lspId));
+    }
+
+    @Test
+    void createWithReusedKeyButDifferentBodyConflicts() throws Exception {
+        String lspId = createIdempotencyLsp();
+        String key = UUID.randomUUID().toString();
+
+        mockMvc.perform(post("/api/v1/internal/admin/api-clients")
+                        .with(systemAdmin())
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", "Original Name",
+                                "lspId", lspId,
+                                "status", "ACTIVE"
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/internal/admin/api-clients")
+                        .with(systemAdmin())
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", "Different Name",
+                                "lspId", lspId,
+                                "status", "ACTIVE"
+                        ))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_CONFLICT"));
+
+        assertEquals(1, countClientsForLsp(lspId));
+    }
+
+    @Test
+    void rotateWithSameIdempotencyKeyRotatesOnce() throws Exception {
+        CreatedClientFixture fixture = createActiveClient();
+        String originalSecret = fixture.clientSecret();
+        String key = UUID.randomUUID().toString();
+        String rotateBody = objectMapper.writeValueAsString(Map.of("graceSeconds", 300));
+
+        MvcResult firstRotate = mockMvc.perform(post("/api/v1/internal/admin/api-clients/{id}/rotate-secret", fixture.id())
+                        .with(systemAdmin())
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(rotateBody))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clientSecret").isString())
+                .andExpect(jsonPath("$.oldSecretValidUntil").isString())
+                .andReturn();
+        JsonNode firstJson = objectMapper.readTree(firstRotate.getResponse().getContentAsString());
+        String newSecret = firstJson.get("clientSecret").asText();
+        String firstValidUntil = firstJson.get("oldSecretValidUntil").asText();
+
+        MvcResult replayRotate = mockMvc.perform(post("/api/v1/internal/admin/api-clients/{id}/rotate-secret", fixture.id())
+                        .with(systemAdmin())
+                        .header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(rotateBody))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode replayJson = objectMapper.readTree(replayRotate.getResponse().getContentAsString());
+        assertTrue(replayJson.get("clientSecret") == null || replayJson.get("clientSecret").isNull());
+        assertEquals(firstValidUntil, replayJson.get("oldSecretValidUntil").asText());
+
+        // Exactly one rotation ran: the original secret is still valid within its grace window and
+        // the new secret works. A second rotation would have invalidated the original secret.
+        issueClientCredentialsToken(fixture.clientId(), originalSecret);
+        issueClientCredentialsToken(fixture.clientId(), newSecret);
+    }
+
+    @Test
     void nonSystemAdminCannotAccessApiClientEndpoints() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/api-clients").with(opsUser()))
                 .andExpect(status().isForbidden());
@@ -198,6 +304,35 @@ class ApiClientAdminControllerTest {
                 createdJson.get("clientId").asText(),
                 createdJson.get("clientSecret").asText()
         );
+    }
+
+    private String createIdempotencyLsp() throws Exception {
+        String lspCode = "IDK" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        MvcResult lspResult = mockMvc.perform(post("/api/v1/internal/admin/lsps")
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "code", lspCode,
+                                "name", "Idempotency LSP",
+                                "status", "ACTIVE"
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(lspResult.getResponse().getContentAsString()).get("id").asText();
+    }
+
+    private long countClientsForLsp(String lspId) throws Exception {
+        MvcResult listResult = mockMvc.perform(get("/api/v1/internal/admin/api-clients").with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode list = objectMapper.readTree(listResult.getResponse().getContentAsString());
+        long count = 0;
+        for (JsonNode row : list) {
+            if (lspId.equals(row.get("lspId").asText())) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private void issueClientCredentialsToken(String clientId, String clientSecret) throws Exception {

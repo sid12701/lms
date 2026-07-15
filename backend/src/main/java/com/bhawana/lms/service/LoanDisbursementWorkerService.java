@@ -27,24 +27,57 @@ public class LoanDisbursementWorkerService {
     private final LoanAccountRepository loanAccountRepository;
     private final LoanDisbursementCommandService loanDisbursementCommandService;
     private final LoanDisbursementWorkerProcessor workerProcessor;
+    private final DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+    private final DisbursementIntentWorkflowProperties intentWorkflowProperties;
+    private final LoanDisbursementWorkerProperties properties;
 
     public LoanDisbursementWorkerService(
             LoanApplicationRepository loanApplicationRepository,
             LoanAccountRepository loanAccountRepository,
             LoanDisbursementCommandService loanDisbursementCommandService,
-            LoanDisbursementWorkerProcessor workerProcessor
+            LoanDisbursementWorkerProcessor workerProcessor,
+            DisbursementIntentWorkflowService disbursementIntentWorkflowService,
+            DisbursementIntentWorkflowProperties intentWorkflowProperties,
+            LoanDisbursementWorkerProperties properties
     ) {
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanDisbursementCommandService = loanDisbursementCommandService;
         this.workerProcessor = workerProcessor;
+        this.disbursementIntentWorkflowService = disbursementIntentWorkflowService;
+        this.intentWorkflowProperties = intentWorkflowProperties;
+        this.properties = properties;
     }
 
     /**
-     * Processes a single application in its own transaction. Delegates to {@link LoanDisbursementWorkerProcessor}.
+     * Processes a single application: {@link LoanDisbursementWorkerProcessor} runs the validation
+     * and initiation in its own transaction, then — with the intent workflow on — the committed
+     * intent is executed here, outside any transaction (S3: the provider call must never share the
+     * initiating transaction).
      */
     public boolean processApplication(UUID applicationId) {
-        return workerProcessor.processApplication(applicationId);
+        boolean actioned = workerProcessor.processApplication(applicationId);
+        if (actioned) {
+            executeCommittedIntent(applicationId);
+        }
+        return actioned;
+    }
+
+    private void executeCommittedIntent(UUID applicationId) {
+        if (!intentWorkflowProperties.isEnabled()) {
+            return;
+        }
+        TenantScopedExecution.runAsAdmin(() ->
+                disbursementIntentWorkflowService.executeForApplication(applicationId).ifPresent(executedApplicationId -> {
+                    if (properties.isAutoResolveMockOutcome()) {
+                        loanDisbursementCommandService.autoResolveAfterInitiate(
+                                executedApplicationId,
+                                WORKER_ACTOR,
+                                null,
+                                CorrelationIdHolder.get()
+                        );
+                    }
+                }));
     }
 
     public int processPendingDisbursements() {
@@ -52,7 +85,25 @@ public class LoanDisbursementWorkerService {
             int processed = 0;
             processed += processStatus(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL);
             processed += processStatus(LoanApplicationStatus.DISBURSEMENT_RETRY);
+            processed += processClaimableIntents();
             return processed;
+        });
+    }
+
+    public int processClaimableIntents() {
+        return TenantScopedExecution.callAsAdmin(() -> {
+            List<UUID> applicationIds = disbursementIntentWorkflowService.executeClaimableIntents();
+            if (properties.isAutoResolveMockOutcome()) {
+                for (UUID applicationId : applicationIds) {
+                    loanDisbursementCommandService.autoResolveAfterInitiate(
+                            applicationId,
+                            WORKER_ACTOR,
+                            null,
+                            CorrelationIdHolder.get()
+                    );
+                }
+            }
+            return applicationIds.size();
         });
     }
 
@@ -60,7 +111,7 @@ public class LoanDisbursementWorkerService {
         List<LoanApplication> applications = loanApplicationRepository.findByStatus(status);
         int processed = 0;
         for (LoanApplication application : applications) {
-            if (workerProcessor.processApplication(application.getId())) {
+            if (processApplication(application.getId())) {
                 processed++;
             }
         }

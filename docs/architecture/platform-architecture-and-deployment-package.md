@@ -203,12 +203,12 @@ All workers are Spring `@Scheduled` `fixedDelay` jobs in-process today. DB-table
 
 | Worker | Interval (default) | Batch | Multi-instance safe | Notes |
 |---|---|---|---|---|
-| `LoanDisbursementWorker` | 30s | unbounded (all pending) | **No** — no claim; mega-transaction | Calls bank adapter; auto-resolves mock outcome |
+| `LoanDisbursementWorker` | 30s | intent: 10 (configurable) | **Yes** (intent workflow) — `SKIP LOCKED` + lease on `disbursement_intent` | When `app.disbursement.intent-workflow.enabled=true` (default): provider call **outside** DB tx; legacy inline path when flag off |
 | `WebhookOutboxDispatchWorker` | 60s | 20 | **Yes** — `SKIP LOCKED` + lease TTL | Thread pool 10; HMAC-signed; backoff retry; redrive cap |
 | `ReportRequestProcessingWorker` | 15s | 10 | **Yes** — PG claim | Single tx per batch (gap); CSV in memory |
 | `AlertRuleSchedulerWorker` / `EvaluationWorker` | 300s | full portfolio scan | Partial (dedupe on insert) | Stale-intake, stuck-disbursement, LSP reject-rate, auth brute-force rules |
 
-> **Finding (P0/P1, from audit):** disbursement worker is the weakest link — provider call inside the DB transaction, no `SKIP LOCKED` claim, one mega-transaction for the whole backlog. Safe only because the adapter is currently a mock. See §6 / audit F-MNY-01..03.
+> **Finding (P0/P1, from audit):** disbursement worker was the weakest link — provider call inside the DB transaction, no `SKIP LOCKED` claim, one mega-transaction for the whole backlog. **Remediated 2026-07-13 (Spec S3 / MNY-01):** `disbursement_intent` + out-of-transaction provider calls + leased claims when intent workflow is enabled. Legacy inline path remains behind `app.disbursement.intent-workflow.enabled=false`. Residual: intent metrics/alarms, full crash-matrix tests; beneficiary snapshot (**S5 deferred 2026-07-15** — see `docs/deferred-implementation.md`). See `docs/implementation-log.md`.
 
 ## 1.7 Integrations & external dependencies
 
@@ -248,17 +248,20 @@ sequenceDiagram
 sequenceDiagram
     participant Ops as Ops UI
     participant CMD as LoanDisbursementCommandService
+    participant INT as DisbursementIntentWorkflowService
     participant DB as PostgreSQL
     participant WK as LoanDisbursementWorker
     participant BANK as LoanDisbursementAdapter (mock→ICICI)
 
     Ops->>CMD: POST .../disbursement-requests
-    CMD->>DB: lock application (findByIdForUpdate), create request log
-    WK->>DB: poll pending (findByStatus — no SKIP LOCKED today)
-    WK->>BANK: requestDisbursement (currently inside tx — gap)
-    BANK-->>WK: success/failure
-    WK->>DB: update account + status; enqueue webhook
-    Note over WK,BANK: Roadmap: intent row + call outside tx + sweeper (F-MNY-01/02)
+    CMD->>INT: createIntent (Tx-A)
+    INT->>DB: disbursement_intent CREATED + account DISBURSEMENT_REQUESTED (commit)
+    WK->>DB: claim batch (FOR UPDATE SKIP LOCKED, lease TTL)
+    WK->>BANK: requestDisbursement (outside DB transaction)
+    BANK-->>WK: success/failure/unknown
+    WK->>INT: persist outcome (Tx-B)
+    INT->>DB: request log + intent state + webhook
+    Note over WK,BANK: Spec S3 / MNY-01 — see docs/implementation-log.md
 ```
 
 ### Webhook delivery (outbox pattern)
@@ -336,7 +339,7 @@ The **Audit Explorer** (`/admin/audit-events`) unions ~8 streams. Growth is proj
 
 - **Single SPA** (`frontend/`): React 19, Vite 5, TypeScript 5.9, Tailwind 4, shadcn/Radix component library, TanStack Query (server cache) + TanStack Table, react-hook-form + Zod, react-router-dom 6, Recharts.
 - **Backend contract is authoritative:** API types generated from OpenAPI via `openapi-typescript`; contract drift surfaces as a TS compile error.
-- **Auth:** Bearer access token + silent refresh via httpOnly `lms-refresh` cookie; one automatic retry on 401 after refresh. Session bootstrap via `/system/context`.
+- **Auth:** Bearer access token held in SPA memory only (not `localStorage`); silent refresh via httpOnly `lms-refresh` cookie; one automatic retry on 401 after refresh. Session metadata may persist for shell continuity. HTTP client refuses credential-bearing cross-origin absolute URLs. Session bootstrap via `/system/context`.
 - **Route guards** enforce role/permission; internal users get the "All LSPs" scope; LSP UI users are scoped to their LSP and are read-mostly.
 - **Quality gates:** Vitest (unit/component), Playwright (e2e), axe (a11y), ESLint + Prettier + lint-staged/Husky.
 

@@ -50,6 +50,10 @@ export function UserMenu() {
             </div>
           </DropdownMenu.Group>
           <DropdownMenu.Separator className="my-1 h-px bg-(--color-border)" />
+          {/* No self-service "Change password" yet: the backend /auth/password
+              endpoint only accepts the forced (mustChangePassword) flow — a
+              voluntary change needs current-password verification server-side
+              first (audit F9, deferred). */}
           <DropdownMenu.Item
             className={cn(itemClass, "text-danger data-highlighted:text-danger")}
             onSelect={async () => {

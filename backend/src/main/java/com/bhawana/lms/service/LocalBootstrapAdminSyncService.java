@@ -2,12 +2,16 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
+import com.bhawana.lms.domain.AppUserAuditEvent;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
+import com.bhawana.lms.repo.AppUserAuditEventRepository;
 import com.bhawana.lms.security.SecurityProperties;
-import com.bhawana.lms.tenant.TenantScopedExecution;
+import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -37,32 +41,65 @@ public class LocalBootstrapAdminSyncService implements ApplicationRunner {
     private final SecurityProperties securityProperties;
     private final AppUserRepository appUserRepository;
     private final AppRoleRepository appRoleRepository;
+    private final AppUserAuditEventRepository appUserAuditEventRepository;
     private final PasswordEncoder passwordEncoder;
     private final Environment environment;
     private final ObjectProvider<LocalDemoPortfolioSeedService> localDemoPortfolioSeedServiceProvider;
+    private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
+    private final ObjectMapper objectMapper;
 
     public LocalBootstrapAdminSyncService(
             SecurityProperties securityProperties,
             AppUserRepository appUserRepository,
             AppRoleRepository appRoleRepository,
+            AppUserAuditEventRepository appUserAuditEventRepository,
             PasswordEncoder passwordEncoder,
             Environment environment,
-            ObjectProvider<LocalDemoPortfolioSeedService> localDemoPortfolioSeedServiceProvider
+            ObjectProvider<LocalDemoPortfolioSeedService> localDemoPortfolioSeedServiceProvider,
+            AdminScopedTransactionExecutor adminScopedTransactionExecutor,
+            ObjectMapper objectMapper
     ) {
         this.securityProperties = securityProperties;
         this.appUserRepository = appUserRepository;
         this.appRoleRepository = appRoleRepository;
+        this.appUserAuditEventRepository = appUserAuditEventRepository;
         this.passwordEncoder = passwordEncoder;
         this.environment = environment;
         this.localDemoPortfolioSeedServiceProvider = localDemoPortfolioSeedServiceProvider;
+        this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
+        this.objectMapper = objectMapper;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        TenantScopedExecution.runAsAdmin(() -> bootstrapAdmin(args));
+        adminScopedTransactionExecutor.run(this::bootstrapAdmin);
     }
 
-    private void bootstrapAdmin(ApplicationArguments args) {
+    /**
+     * On-demand bootstrap heal (Spec S10): re-upserts the configured bootstrap
+     * admin without requiring a process restart. Idempotent.
+     */
+    public void syncBootstrapAdmin(String actorUsername, String correlationId) {
+        adminScopedTransactionExecutor.run(() -> {
+            BootstrapSyncResult result = bootstrapAdmin();
+            appUserAuditEventRepository.save(new AppUserAuditEvent(
+                    result.user(),
+                    actorUsername,
+                    serializeAudit(Map.of(
+                            "eventType", "BOOTSTRAP_SYNC",
+                            "userExisted", result.userExisted()
+                    )),
+                    serializeAudit(Map.of(
+                            "eventType", "BOOTSTRAP_SYNC",
+                            "result", result.userExisted() ? "SYNCHRONIZED" : "RESTORED",
+                            "username", result.user().getUsername()
+                    )),
+                    correlationId
+            ));
+        });
+    }
+
+    private BootstrapSyncResult bootstrapAdmin() {
         // F-11: bootstrap username and derived email canonicalised to lowercase
         // so the unique indexes can satisfy the new raw-equality lookups.
         String username = securityProperties.getBootstrapUser().getUsername().trim().toLowerCase();
@@ -80,13 +117,19 @@ public class LocalBootstrapAdminSyncService implements ApplicationRunner {
             throw new IllegalStateException("Bootstrap user roles are not fully available.");
         }
 
-        appUserRepository.findByUsername(username)
-                .ifPresentOrElse(existingUser -> {
+        var existingBootstrapUser = appUserRepository.findByUsername(username);
+        boolean userExisted = existingBootstrapUser.isPresent();
+        AppUser user = existingBootstrapUser
+                .map(existingUser -> {
                     boolean passwordChanged = !passwordEncoder.matches(rawPassword, existingUser.getPasswordHash());
                     String newPasswordHash = passwordChanged ? passwordEncoder.encode(rawPassword) : null;
                     existingUser.synchronizeBootstrapAccount(email, newPasswordHash, roles);
-                    appUserRepository.save(existingUser);
-                }, () -> appUserRepository.save(new AppUser(
+                    if (isLocalProfile() && existingUser.isLocked()) {
+                        existingUser.unlockForReset();
+                    }
+                    return appUserRepository.save(existingUser);
+                })
+                .orElseGet(() -> appUserRepository.save(new AppUser(
                         username,
                         email,
                         passwordEncoder.encode(rawPassword),
@@ -98,6 +141,12 @@ public class LocalBootstrapAdminSyncService implements ApplicationRunner {
         if (environment.getProperty("app.seed.demo-portfolio.enabled", Boolean.class, false)) {
             localDemoPortfolioSeedServiceProvider.ifAvailable(LocalDemoPortfolioSeedService::seedDemoPortfolio);
         }
+        return new BootstrapSyncResult(user, userExisted);
+    }
+
+    private boolean isLocalProfile() {
+        return java.util.Arrays.stream(environment.getActiveProfiles())
+                .anyMatch("local"::equalsIgnoreCase);
     }
 
     private RoleCode toRoleCode(String roleName) {
@@ -114,5 +163,16 @@ public class LocalBootstrapAdminSyncService implements ApplicationRunner {
                 appRoleRepository.save(new AppRole(roleCode, description));
             }
         }
+    }
+
+    private String serializeAudit(Map<String, Object> payload) {
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize bootstrap sync audit event.", exception);
+        }
+    }
+
+    private record BootstrapSyncResult(AppUser user, boolean userExisted) {
     }
 }

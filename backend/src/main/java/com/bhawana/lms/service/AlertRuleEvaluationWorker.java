@@ -7,25 +7,32 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.bhawana.lms.domain.AlertRule;
 import com.bhawana.lms.domain.AppUser;
-import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
-import com.bhawana.lms.domain.LoanApplicationStatus;
-import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
+import com.bhawana.lms.domain.LoanDelinquencyState;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.OpsAlert;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.domain.RevocationSource;
+import com.bhawana.lms.config.BusinessCalendar;
+import com.bhawana.lms.repo.AlertRuleSetQueryRepository;
+import com.bhawana.lms.repo.AlertRuleSetQueryRepository.DelinquencyEvaluationRow;
+import com.bhawana.lms.repo.AlertRuleSetQueryRepository.StaleIntakeCandidate;
+import com.bhawana.lms.repo.AlertRuleSetQueryRepository.StuckDisbursementCandidate;
 import com.bhawana.lms.repo.AlertRuleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.AuthEventAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
+import com.bhawana.lms.repo.LoanDelinquencyStateRepository;
 import com.bhawana.lms.repo.LspRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -45,47 +52,58 @@ public class AlertRuleEvaluationWorker {
     private static final String AUTO_LOCKOUT_ACTOR = "SYSTEM_AUTO_LOCKOUT";
 
     private final AlertRuleRepository alertRuleRepository;
+    private final AlertRuleSetQueryRepository alertRuleSetQueryRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanApplicationDocumentChecklistRepository checklistRepository;
     private final LoanApplicationStatusTransitionRepository statusTransitionRepository;
-    private final LoanApplicationServicingReadService loanApplicationServicingReadService;
     private final LspRepository lspRepository;
     private final AppUserRepository appUserRepository;
     private final AuthEventAuditRepository authEventAuditRepository;
     private final SessionRevocationService sessionRevocationService;
     private final OpsAlertService opsAlertService;
+    private final LoanDelinquencyStateRepository loanDelinquencyStateRepository;
+    private final BusinessCalendar businessCalendar;
     private final AlertRuleProperties properties;
     private final Clock clock;
     private final ObjectMapper objectMapper;
+    private final Counter dpdBucketTransitionCounter;
 
     public AlertRuleEvaluationWorker(
             AlertRuleRepository alertRuleRepository,
+            AlertRuleSetQueryRepository alertRuleSetQueryRepository,
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationDocumentChecklistRepository checklistRepository,
             LoanApplicationStatusTransitionRepository statusTransitionRepository,
-            LoanApplicationServicingReadService loanApplicationServicingReadService,
             LspRepository lspRepository,
             AppUserRepository appUserRepository,
             AuthEventAuditRepository authEventAuditRepository,
             SessionRevocationService sessionRevocationService,
             OpsAlertService opsAlertService,
+            LoanDelinquencyStateRepository loanDelinquencyStateRepository,
+            BusinessCalendar businessCalendar,
             AlertRuleProperties properties,
             Clock clock,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            MeterRegistry meterRegistry
     ) {
         this.alertRuleRepository = alertRuleRepository;
+        this.alertRuleSetQueryRepository = alertRuleSetQueryRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.checklistRepository = checklistRepository;
         this.statusTransitionRepository = statusTransitionRepository;
-        this.loanApplicationServicingReadService = loanApplicationServicingReadService;
         this.lspRepository = lspRepository;
         this.appUserRepository = appUserRepository;
         this.authEventAuditRepository = authEventAuditRepository;
         this.sessionRevocationService = sessionRevocationService;
         this.opsAlertService = opsAlertService;
+        this.loanDelinquencyStateRepository = loanDelinquencyStateRepository;
+        this.businessCalendar = businessCalendar;
         this.properties = properties;
         this.clock = clock;
         this.objectMapper = objectMapper;
+        this.dpdBucketTransitionCounter = Counter.builder("lms.dpd.bucket_transition")
+                .description("DPD bucket worsening transitions detected during scheduled evaluation")
+                .register(meterRegistry);
     }
 
     @Transactional
@@ -117,13 +135,13 @@ public class AlertRuleEvaluationWorker {
             return 0;
         }
         Instant cutoff = evaluatedAt.minus(Duration.ofHours(properties.getStaleIntakeHours()));
-        List<LoanApplication> stale = loanApplicationRepository.findByStatusAndCreatedAtBefore(
-                LoanApplicationStatus.INITIALIZED,
-                cutoff
+        List<StaleIntakeCandidate> stale = alertRuleSetQueryRepository.findStaleIntakeCandidates(
+                cutoff,
+                properties.getEvaluationBatchLimit()
         );
         int emitted = 0;
-        for (LoanApplication application : stale) {
-            if (isRequiredDocumentChecklistComplete(application.getId())) {
+        for (StaleIntakeCandidate candidate : stale) {
+            if (isRequiredDocumentChecklistComplete(candidate.applicationId())) {
                 continue;
             }
             OpsAlert created = opsAlertService.createAlertIfAbsent(
@@ -131,14 +149,14 @@ public class AlertRuleEvaluationWorker {
                     OpsAlertSeverity.HIGH,
                     "Stale loan intake",
                     "Application "
-                            + application.getExternalLoanId()
+                            + candidate.externalLoanId()
                             + " has been INITIALIZED for more than "
                             + properties.getStaleIntakeHours()
                             + " hours with incomplete required documents.",
                     "LOAN_APPLICATION",
-                    application.getId(),
+                    candidate.applicationId(),
                     CorrelationIdHolder.get(),
-                    alertContext(Map.of("applicationId", application.getId().toString()))
+                    alertContext(Map.of("applicationId", candidate.applicationId().toString()))
             );
             if (created != null) {
                 emitted++;
@@ -152,33 +170,25 @@ public class AlertRuleEvaluationWorker {
             return 0;
         }
         Instant cutoff = evaluatedAt.minus(Duration.ofHours(properties.getStuckDisbursementHours()));
-        List<LoanApplication> retrying = loanApplicationRepository.findByStatus(
-                LoanApplicationStatus.DISBURSEMENT_RETRY
+        List<StuckDisbursementCandidate> retrying = alertRuleSetQueryRepository.findStuckDisbursementCandidates(
+                cutoff,
+                properties.getEvaluationBatchLimit()
         );
         int emitted = 0;
-        for (LoanApplication application : retrying) {
-            LoanApplicationStatusTransition lastRetry = statusTransitionRepository
-                    .findTopByLoanApplication_IdAndToStatusOrderByCreatedAtDesc(
-                            application.getId(),
-                            LoanApplicationStatus.DISBURSEMENT_RETRY
-                    )
-                    .orElse(null);
-            if (lastRetry == null || !lastRetry.getCreatedAt().isBefore(cutoff)) {
-                continue;
-            }
+        for (StuckDisbursementCandidate candidate : retrying) {
             OpsAlert created = opsAlertService.createAlertIfAbsent(
                     OpsAlertType.STUCK_DISBURSEMENT,
                     OpsAlertSeverity.HIGH,
                     "Disbursement retry stuck",
                     "Application "
-                            + application.getExternalLoanId()
+                            + candidate.externalLoanId()
                             + " has been in DISBURSEMENT_RETRY since "
-                            + lastRetry.getCreatedAt()
+                            + candidate.lastRetryAt()
                             + ". Payout adapter may need ops intervention.",
                     "LOAN_APPLICATION",
-                    application.getId(),
+                    candidate.applicationId(),
                     CorrelationIdHolder.get(),
-                    alertContext(Map.of("applicationId", application.getId().toString()))
+                    alertContext(Map.of("applicationId", candidate.applicationId().toString()))
             );
             if (created != null) {
                 emitted++;
@@ -191,45 +201,81 @@ public class AlertRuleEvaluationWorker {
         if (!isRuleEnabled("DPD_BUCKET_TRANSITION")) {
             return 0;
         }
-        List<LoanApplication> servicing = loanApplicationRepository.findByStatus(
-                LoanApplicationStatus.UNDER_REPAYMENT
-        );
+        LocalDate today = businessCalendar.today();
+        List<DelinquencyEvaluationRow> rows = alertRuleSetQueryRepository.findServicingDelinquencyRows(today);
         int emitted = 0;
-        for (LoanApplication application : servicing) {
-            LoanDelinquencySummary summary = loanApplicationServicingReadService
-                    .getLoanDelinquencySummary(application.getId())
-                    .orElse(null);
-            if (summary == null || summary.bucket() == LoanDelinquencyBucket.CURRENT) {
-                continue;
+        for (DelinquencyEvaluationRow row : rows) {
+            LoanDelinquencyBucket previousBucket = row.previousBucket();
+            LoanDelinquencyBucket currentBucket = row.currentBucket();
+            int currentMaxDaysPastDue = row.maxDaysPastDue();
+
+            if (currentBucket.ordinal() > previousBucket.ordinal()) {
+                String bucketLabel = currentBucket.name();
+                log.info(
+                        "dpd_bucket_transition applicationId={} previousBucket={} currentBucket={} maxDaysPastDue={}",
+                        row.applicationId(),
+                        previousBucket.name(),
+                        bucketLabel,
+                        currentMaxDaysPastDue
+                );
+                OpsAlert created = opsAlertService.createAlertIfAbsent(
+                        OpsAlertType.DPD_BUCKET_TRANSITION,
+                        severityForBucket(currentBucket),
+                        "Delinquency bucket " + bucketLabel,
+                        "Loan "
+                                + row.externalLoanId()
+                                + " is "
+                                + currentMaxDaysPastDue
+                                + " days past due (bucket "
+                                + bucketLabel
+                                + ", overdue ₹"
+                                + row.overdueAmount()
+                                + ").",
+                        "LOAN_APPLICATION",
+                        row.applicationId(),
+                        CorrelationIdHolder.get(),
+                        alertContext(Map.of(
+                                "applicationId", row.applicationId().toString(),
+                                "bucket", bucketLabel,
+                                "previousBucket", previousBucket.name(),
+                                "maxDaysPastDue", currentMaxDaysPastDue
+                        ))
+                );
+                dpdBucketTransitionCounter.increment();
+                if (created != null) {
+                    emitted++;
+                }
             }
-            String bucketLabel = summary.bucket().name();
-            OpsAlert created = opsAlertService.createAlertIfAbsent(
-                    OpsAlertType.DPD_BUCKET_TRANSITION,
-                    severityForBucket(summary.bucket()),
-                    "Delinquency bucket " + bucketLabel,
-                    "Loan "
-                            + application.getExternalLoanId()
-                            + " is "
-                            + summary.maxDaysPastDue()
-                            + " days past due (bucket "
-                            + bucketLabel
-                            + ", overdue ₹"
-                            + summary.overdueAmount()
-                            + ").",
-                    "LOAN_APPLICATION",
-                    application.getId(),
-                    CorrelationIdHolder.get(),
-                    alertContext(Map.of(
-                            "applicationId", application.getId().toString(),
-                            "bucket", bucketLabel,
-                            "maxDaysPastDue", summary.maxDaysPastDue()
-                    ))
-            );
-            if (created != null) {
-                emitted++;
+
+            if (shouldPersistDelinquencyState(
+                    row.existingStateId(),
+                    row.previousBucket(),
+                    row.previousMaxDaysPastDue(),
+                    row.currentBucket(),
+                    row.maxDaysPastDue()
+            )) {
+                LoanDelinquencyState state = row.existingStateId() == null
+                        ? new LoanDelinquencyState(loanApplicationRepository.getReferenceById(row.applicationId()))
+                        : loanDelinquencyStateRepository.findById(row.existingStateId()).orElseThrow();
+                state.refresh(currentBucket, currentMaxDaysPastDue, evaluatedAt);
+                loanDelinquencyStateRepository.save(state);
             }
         }
         return emitted;
+    }
+
+    private static boolean shouldPersistDelinquencyState(
+            UUID existingStateId,
+            LoanDelinquencyBucket previousBucket,
+            int previousMaxDaysPastDue,
+            LoanDelinquencyBucket currentBucket,
+            int currentMaxDaysPastDue
+    ) {
+        if (existingStateId != null) {
+            return previousBucket != currentBucket
+                    || previousMaxDaysPastDue != currentMaxDaysPastDue;
+        }
+        return currentBucket != LoanDelinquencyBucket.CURRENT || currentMaxDaysPastDue != 0;
     }
 
     private int evaluateAuthBruteForce(Instant evaluatedAt) {

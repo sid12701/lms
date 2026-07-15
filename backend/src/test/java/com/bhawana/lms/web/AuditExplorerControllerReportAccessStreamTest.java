@@ -83,10 +83,9 @@ class AuditExplorerControllerReportAccessStreamTest {
             get("/api/v1/internal/admin/audit-events")
                 .with(systemAdmin())
                 .queryParam("streams", "REPORT_ACCESS")
-                .queryParam("lspId", lspId)
-                .queryParam("paginationDetails", "true"))
+                .queryParam("lspId", lspId))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.totalCount").value(1))
+        .andExpect(jsonPath("$.items.length()").value(1))
         .andExpect(jsonPath("$.items[0].stream").value("REPORT_ACCESS"))
         .andExpect(jsonPath("$.items[0].action").value("MIS_CSV_DOWNLOADED"))
         .andExpect(jsonPath("$.items[0].actorUsername").value(ADMIN_SUBJECT))
@@ -121,10 +120,9 @@ class AuditExplorerControllerReportAccessStreamTest {
             get("/api/v1/internal/admin/audit-events")
                 .with(systemAdmin())
                 .queryParam("streams", "REPORT_ACCESS,APPLICATION")
-                .queryParam("loanApplicationId", applicationId)
-                .queryParam("paginationDetails", "true"))
+                .queryParam("loanApplicationId", applicationId))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.totalCount").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+        .andExpect(jsonPath("$.items.length()").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
         .andExpect(jsonPath("$.items[?(@.stream == 'REPORT_ACCESS')]").isEmpty());
   }
 

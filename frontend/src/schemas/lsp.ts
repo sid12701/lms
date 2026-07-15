@@ -35,19 +35,24 @@ export const Lsp = z.object({
 export type Lsp = z.infer<typeof Lsp>;
 
 /**
- * Webhook event types the backend actually emits.
+ * Webhook event types the backend actually emits, in loan-lifecycle order.
  *
- * Per `docs/gap-fixes.md` § Gap #12, two FE-only values
- * (`loan.disbursement.failed`, `loan.foreclosure.quote.generated`) were
- * removed because the backend does not currently dispatch them. Re-add
- * the moment those backend dispatches ship.
+ * Each value maps to a WebhookEventType enum constant with a live producer
+ * (see FRONTEND_TO_BACKEND_EVENT in features/lsps/api.ts). The backend enum's
+ * LOAN_DISBURSEMENT_UPDATED is intentionally omitted: no producer emits it.
  */
 export const WebhookEventType = z.enum([
   "loan.created",
   "loan.status.changed",
+  "loan.documents.uploaded",
+  "loan.disbursement.requested",
   "loan.disbursement.completed",
+  "loan.disbursement.failed",
   "loan.repayment.posted",
+  "loan.repaid",
+  "loan.foreclosure.quote.requested",
   "loan.foreclosed",
+  "borrower.bank.details.updated",
 ]);
 export type WebhookEventType = z.infer<typeof WebhookEventType>;
 
@@ -58,8 +63,13 @@ export const LspWebhookSubscription = z.object({
     .string()
     .url("endpoint must be a valid URL")
     .startsWith("https://", "endpoint must use https"),
-  /** Min 32 chars to enforce secure HMAC signing per blueprint §11. */
-  signingSecret: z.string().min(32).max(256),
+  /**
+   * Write-only on the backend: reads always return `null` plus `secretSet`.
+   * Min 32 chars (when supplied) to enforce secure HMAC signing per blueprint §11.
+   */
+  signingSecret: z.string().min(32).max(256).nullable(),
+  /** Whether a signing secret is configured server-side. */
+  secretSet: z.boolean(),
   eventTypes: z.array(WebhookEventType).min(1, "at least one event"),
 });
 export type LspWebhookSubscription = z.infer<typeof LspWebhookSubscription>;

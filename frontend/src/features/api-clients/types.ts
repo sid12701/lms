@@ -8,11 +8,12 @@
  * surfaced exactly once via `ApiSecretReveal`. Subsequent reads return only
  * the non-secret metadata (handled by `ApiClientSecretMeta`).
  *
- * IP allow-list is per-client (BR-8). The editor accepts a list of IPv4 / CIDR
- * entries; the server-side handler validates each against `IpCidr` from
- * `src/schemas/common.ts`.
+ * IP allow-lists are managed per LSP (UI vs API surfaces) on the LSPs admin
+ * page — not per client. The per-client `ipAllowList` fields below are retained
+ * only for backward compatibility and are not sent by the current UI.
  *
- * All mutations are SYSTEM_ADMIN-only and carry an idempotency key (BR-5).
+ * All mutations are SYSTEM_ADMIN-only and carry an idempotency key (BR-5);
+ * create and rotate are idempotent server-side on that key.
  */
 import { z } from "zod";
 import { ApiClient, ApiClientStatus } from "@/schemas/user";
@@ -32,7 +33,10 @@ export type ApiClientsListFilters = z.infer<typeof ApiClientsListFilters>;
 export interface ApiClientRow extends ApiClient {
   /** Resolved from `db.lsps`. */
   lspName: string;
-  /** Number of CIDR ranges in `ipAllowList`. */
+  /**
+   * Retained for the create/reveal cards. Always 0 today: IP allow-lists moved
+   * to the per-LSP surfaces, so clients no longer carry their own CIDR list.
+   */
   ipAllowlistCount: number;
 }
 
@@ -83,18 +87,4 @@ export interface RotateApiClientSecretInput {
 export interface RotateApiClientSecretResponse {
   client: ApiClientRow;
   clientSecret: string;
-}
-
-/**
- * Non-secret metadata required by `ApiClientSecretMeta` — the wire shape
- * doesn't carry `lastRotatedAt` today (the schema only has `lastUsedAt`).
- * For Phase 9 we add `lastRotatedAt` as a server-side derived field; until
- * the real backend exposes it, it is sourced from the most recent product
- * audit-style entry or stays null when the client has never been rotated.
- */
-export interface ApiClientSecretMetadata {
-  keyIdPrefix: string;
-  createdAt: string;
-  lastRotatedAt: string | null;
-  ipAllowlistCount: number;
 }

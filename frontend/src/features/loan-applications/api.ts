@@ -10,7 +10,8 @@
  * Pagination is translated from the frontend's page/pageSize to the
  * backend's offset/limit.
  */
-import { buildQueryPath, requestJson } from "@/lib/api/http-client";
+import { buildQueryPath, requestJsonWithHeaders } from "@/lib/api/http-client";
+import { readPaginationHeaders } from "@/lib/api/pagination-headers";
 import { apiLoanStatus } from "@/lib/loan-application-status";
 import type {
   LoanApplicationListFilters,
@@ -37,13 +38,6 @@ interface BackendApplicationResponse {
   tenureMonths: number | null;
   status: string;
   createdAt: string | null;
-}
-
-interface BackendListEnvelope {
-  items?: BackendApplicationResponse[];
-  totalCount?: number;
-  offset?: number;
-  limit?: number;
 }
 
 function toListItem(payload: BackendApplicationResponse): LoanApplicationListItem {
@@ -90,12 +84,10 @@ export async function fetchLoanApplications(
   filters: LoanApplicationListFilters,
 ): Promise<LoanApplicationListResponse> {
   const path = buildQueryPath(BACKEND_BASE, backendQueryFromFilters(filters));
-  const payload = await requestJson<BackendApplicationResponse[] | BackendListEnvelope>(path);
-  const items = Array.isArray(payload)
-    ? payload.map(toListItem)
-    : (payload.items ?? []).map(toListItem);
-  const total = Array.isArray(payload) ? items.length : (payload.totalCount ?? items.length);
+  const { data, headers } = await requestJsonWithHeaders<BackendApplicationResponse[]>(path);
+  const pagination = readPaginationHeaders(headers);
+  const items = data.map(toListItem);
   const pageSize = filters.pageSize ?? 25;
   const page = filters.page ?? 0;
-  return { items, total, page, pageSize };
+  return { items, total: pagination.totalCount ?? items.length, page, pageSize };
 }
