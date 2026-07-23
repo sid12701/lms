@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { FileText, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
@@ -26,7 +26,9 @@ import {
   WebhooksTab,
 } from "./components/detail-tabs";
 import { useLoanApplicationDetail } from "./hooks/useLoanApplicationDetail";
-import { LoanApplicationDetailTab } from "./types";
+import { LoanApplicationDetailTab, type LoanApplicationDetail } from "./types";
+import type { BorrowerDetail } from "@/features/borrowers/types";
+import type { Role } from "@/schemas/role";
 
 const REPAYABLE_STATUSES = new Set(["DISBURSED", "UNDER_REPAYMENT"]);
 
@@ -81,6 +83,48 @@ function DetailSkeleton() {
   );
 }
 
+function ApplicationTabBody({
+  activeTab,
+  applicationId,
+  detail,
+  borrowerDetail,
+  role,
+}: {
+  activeTab: LoanApplicationDetailTab;
+  applicationId: string;
+  detail: LoanApplicationDetail;
+  borrowerDetail: BorrowerDetail | null;
+  role: Role | undefined;
+}) {
+  const canPost =
+    role !== undefined &&
+    canPostRepayment(role) &&
+    REPAYABLE_STATUSES.has(detail.application.status);
+
+  switch (activeTab) {
+    case "overview":
+      return <OverviewTab detail={detail} borrowerDetail={borrowerDetail} />;
+    case "schedule":
+      return (
+        <ScheduleTab
+          applicationId={applicationId}
+          status={detail.application.status}
+          canPost={canPost}
+          docsComplete={detail.docsComplete}
+          scheduleValid={detail.scheduleValid}
+        />
+      );
+    case "documents":
+      return <DocumentsTab applicationId={applicationId} canManage={false} />;
+    case "repayments":
+      return <RepaymentsTab applicationId={applicationId} />;
+    case "activity":
+      return <ActivityTab applicationId={applicationId} />;
+    case "webhooks":
+      return <WebhooksTab applicationId={applicationId} />;
+  }
+}
+
 /**
  * Phase-5 loan-application detail page.
  *
@@ -111,39 +155,6 @@ export function LoanApplicationDetailPage() {
   const borrowerDetailQuery = useBorrowerDetail(borrowerId);
   const borrowerDetail =
     borrowerDetailQuery.data && borrowerId.length > 0 ? borrowerDetailQuery.data : null;
-
-  const tabBody = useMemo(() => {
-    if (!detailQuery.data) return null;
-    const detail = detailQuery.data;
-    const canPost =
-      role !== undefined &&
-      canPostRepayment(role) &&
-      REPAYABLE_STATUSES.has(detail.application.status);
-    switch (activeTab) {
-      case "overview":
-        return <OverviewTab detail={detail} borrowerDetail={borrowerDetail} />;
-      case "schedule":
-        return (
-          <ScheduleTab
-            applicationId={applicationId}
-            status={detail.application.status}
-            canPost={canPost}
-            docsComplete={detail.docsComplete}
-            scheduleValid={detail.scheduleValid}
-          />
-        );
-      case "documents":
-        return <DocumentsTab applicationId={applicationId} canManage={false} />;
-      case "repayments":
-        return <RepaymentsTab applicationId={applicationId} />;
-      case "activity":
-        return <ActivityTab applicationId={applicationId} />;
-      case "webhooks":
-        return <WebhooksTab applicationId={applicationId} />;
-      default:
-        return null;
-    }
-  }, [activeTab, applicationId, detailQuery.data, role, borrowerDetail]);
 
   if (!applicationId) {
     return (
@@ -236,7 +247,13 @@ export function LoanApplicationDetailPage() {
       <div className="min-w-0 flex-1 space-y-6">
         <DetailHeader detail={detail} />
         <DetailTabsShell activeTab={activeTab} onTabChange={setActiveTab}>
-          {tabBody}
+          <ApplicationTabBody
+            activeTab={activeTab}
+            applicationId={applicationId}
+            detail={detail}
+            borrowerDetail={borrowerDetail}
+            role={role}
+          />
         </DetailTabsShell>
       </div>
 

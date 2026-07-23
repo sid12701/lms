@@ -37,50 +37,35 @@ import { useRotateApiClientSecret } from "./hooks/useRotateApiClientSecret";
 import { useLsps } from "@/features/lsps/hooks/useLsps";
 import type { ApiClientRow, ApiClientsListFilters } from "./types";
 import type { ApiClientStatus } from "@/schemas/user";
-import { z } from "zod";
+import {
+  readAdminListParams,
+  readAllowedParam,
+  readUuidParam,
+  writeAdminListParams,
+} from "@/lib/admin-list-url-state";
 
 const VALID_STATUSES: readonly ApiClientStatus[] = ["ACTIVE", "DISABLED"];
 
-const UuidSchema = z.string().uuid();
-
 function parseFiltersFromUrl(params: URLSearchParams): ApiClientsListFilters {
-  const filters: ApiClientsListFilters = {};
-  const status = params.get("status");
-  if (status && (VALID_STATUSES as readonly string[]).includes(status)) {
-    filters.status = status as ApiClientStatus;
-  }
-  const lspId = params.get("lspId");
-  if (lspId && UuidSchema.safeParse(lspId).success) {
-    filters.lspId = lspId;
-  }
-  const q = params.get("q");
-  if (q && q.trim() !== "") filters.q = q.trim();
-  const page = params.get("page");
-  if (page !== null) {
-    const n = Number(page);
-    if (Number.isInteger(n) && n >= 0) filters.page = n;
-  }
-  const pageSize = params.get("pageSize");
-  if (pageSize !== null) {
-    const n = Number(pageSize);
-    if (Number.isInteger(n) && n >= 5 && n <= 100) filters.pageSize = n;
-  }
-  return filters;
+  return {
+    ...readAdminListParams(params),
+    status: readAllowedParam(params, "status", VALID_STATUSES),
+    lspId: readUuidParam(params, "lspId"),
+  };
 }
 
 function filtersToParams(filters: ApiClientsListFilters): URLSearchParams {
-  const params = new URLSearchParams();
+  const params = writeAdminListParams(filters);
   if (filters.status) params.set("status", filters.status);
   if (filters.lspId) params.set("lspId", filters.lspId);
-  if (filters.q) params.set("q", filters.q);
-  if (typeof filters.page === "number" && filters.page > 0) {
-    params.set("page", String(filters.page));
-  }
-  if (typeof filters.pageSize === "number") {
-    params.set("pageSize", String(filters.pageSize));
-  }
   return params;
 }
+
+type ApiClientDialogState =
+  | { kind: "none" }
+  | { kind: "create" }
+  | { kind: "edit"; client: ApiClientRow }
+  | { kind: "rotate-secret"; client: ApiClientRow };
 
 export function ApiClientsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -90,9 +75,7 @@ export function ApiClientsPage() {
     setSearchParams(filtersToParams(next), { replace: false });
   };
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<ApiClientRow | null>(null);
-  const [rotateTarget, setRotateTarget] = useState<ApiClientRow | null>(null);
+  const [dialog, setDialog] = useState<ApiClientDialogState>({ kind: "none" });
   const [revealedSecret, setRevealedSecret] = useState<{
     clientName: string;
     secret: string;
@@ -116,15 +99,18 @@ export function ApiClientsPage() {
       })),
     [lspsQuery.data],
   );
+  const createOpen = dialog.kind === "create";
+  const editTarget = dialog.kind === "edit" ? dialog.client : null;
+  const rotateTarget = dialog.kind === "rotate-secret" ? dialog.client : null;
 
   // ── Create dialog handlers ─────────────────────────────────────────────────
   const handleCreateOpenChange = (open: boolean) => {
     if (!open) {
       if (create.isPending) return;
-      setCreateOpen(false);
+      setDialog({ kind: "none" });
       create.reset();
     } else {
-      setCreateOpen(true);
+      setDialog({ kind: "create" });
     }
   };
   const handleCreate = async (input: { name: string; lspId: string; idempotencyKey: string }) => {
@@ -145,7 +131,7 @@ export function ApiClientsPage() {
   const handleEditOpenChange = (open: boolean) => {
     if (!open) {
       if (update.isPending) return;
-      setEditTarget(null);
+      setDialog({ kind: "none" });
       update.reset();
     }
   };
@@ -161,7 +147,7 @@ export function ApiClientsPage() {
     if (!editTarget) return;
     try {
       await update.mutateAsync({ id: editTarget.id, name, status, idempotencyKey });
-      setEditTarget(null);
+      setDialog({ kind: "none" });
       update.reset();
     } catch {
       // Surfaced via `update.error` — kept inside the dialog while the operator
@@ -173,7 +159,7 @@ export function ApiClientsPage() {
   const handleRotateOpenChange = (open: boolean) => {
     if (!open) {
       if (rotate.isPending) return;
-      setRotateTarget(null);
+      setDialog({ kind: "none" });
       rotate.reset();
     }
   };
@@ -185,6 +171,7 @@ export function ApiClientsPage() {
     idempotencyKey: string;
   }) => {
     if (!rotateTarget) return;
+    const clientName = rotateTarget.name;
     try {
       const res = await rotate.mutateAsync({
         id: rotateTarget.id,
@@ -192,10 +179,10 @@ export function ApiClientsPage() {
         idempotencyKey,
       });
       setRevealedSecret({
-        clientName: res.client.name,
+        clientName,
         secret: res.clientSecret,
       });
-      setRotateTarget(null);
+      setDialog({ kind: "none" });
       rotate.reset();
     } catch {
       // Surfaced via `rotate.error` — kept inside the dialog while the
@@ -218,7 +205,7 @@ export function ApiClientsPage() {
       primaryAction={{
         label: "New API client",
         dataSlot: "api-clients-new-button",
-        onClick: () => setCreateOpen(true),
+        onClick: () => setDialog({ kind: "create" }),
       }}
       banner={
         revealedSecret && !createOpen ? (
@@ -253,8 +240,8 @@ export function ApiClientsPage() {
           isLoading={listLoading}
           filters={filters}
           onFiltersChange={setFilters}
-          onEdit={(row) => setEditTarget(row)}
-          onRotate={(row) => setRotateTarget(row)}
+          onEdit={(client) => setDialog({ kind: "edit", client })}
+          onRotate={(client) => setDialog({ kind: "rotate-secret", client })}
         />
       }
       dialogs={

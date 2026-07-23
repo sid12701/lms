@@ -2,7 +2,7 @@ import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { PageEyebrow } from "./PageEyebrow";
 
-export interface PageHeaderProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
+interface PageHeaderProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
   /** Small uppercase label rendered above the title (11px / 16 line-height). */
   eyebrow?: string;
   /** Page title (h1). */

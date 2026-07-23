@@ -18,7 +18,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Users } from "lucide-react";
-import { z } from "zod";
 import { AdminEntityListPage } from "@/components/app/layout/AdminEntityListPage";
 import { extractAdminErrorMessage } from "@/lib/admin-page-utils";
 import { newIdempotencyKey } from "@/lib/idempotency";
@@ -40,54 +39,38 @@ import { useLsps } from "@/features/lsps/hooks/useLsps";
 import type { UserRow, UsersListFilters } from "./types";
 import type { Role as RoleT } from "@/schemas/role";
 import type { UserStatus as UserStatusT } from "@/schemas/user";
+import {
+  readAdminListParams,
+  readAllowedParam,
+  readUuidParam,
+  writeAdminListParams,
+} from "@/lib/admin-list-url-state";
 
 const VALID_ROLES: readonly RoleT[] = Role.options;
 const VALID_STATUSES: readonly UserStatusT[] = UserStatus.options;
-const UuidSchema = z.string().uuid();
-
 function parseFiltersFromUrl(params: URLSearchParams): UsersListFilters {
-  const filters: UsersListFilters = {};
-  const role = params.get("role");
-  if (role && (VALID_ROLES as readonly string[]).includes(role)) {
-    filters.role = role as RoleT;
-  }
-  const status = params.get("status");
-  if (status && (VALID_STATUSES as readonly string[]).includes(status)) {
-    filters.status = status as UserStatusT;
-  }
-  const lspId = params.get("lspId");
-  if (lspId && UuidSchema.safeParse(lspId).success) {
-    filters.lspId = lspId;
-  }
-  const q = params.get("q");
-  if (q && q.trim() !== "") filters.q = q.trim();
-  const page = params.get("page");
-  if (page !== null) {
-    const n = Number(page);
-    if (Number.isInteger(n) && n >= 0) filters.page = n;
-  }
-  const pageSize = params.get("pageSize");
-  if (pageSize !== null) {
-    const n = Number(pageSize);
-    if (Number.isInteger(n) && n >= 5 && n <= 100) filters.pageSize = n;
-  }
-  return filters;
+  return {
+    ...readAdminListParams(params),
+    role: readAllowedParam(params, "role", VALID_ROLES),
+    status: readAllowedParam(params, "status", VALID_STATUSES),
+    lspId: readUuidParam(params, "lspId"),
+  };
 }
 
 function filtersToParams(filters: UsersListFilters): URLSearchParams {
-  const params = new URLSearchParams();
+  const params = writeAdminListParams(filters);
   if (filters.role) params.set("role", filters.role);
   if (filters.status) params.set("status", filters.status);
   if (filters.lspId) params.set("lspId", filters.lspId);
-  if (filters.q) params.set("q", filters.q);
-  if (typeof filters.page === "number" && filters.page > 0) {
-    params.set("page", String(filters.page));
-  }
-  if (typeof filters.pageSize === "number") {
-    params.set("pageSize", String(filters.pageSize));
-  }
   return params;
 }
+
+type UserDialogState =
+  | { kind: "none" }
+  | { kind: "create" }
+  | { kind: "edit"; user: UserRow }
+  | { kind: "reset-password"; user: UserRow }
+  | { kind: "revoke-sessions"; user: UserRow };
 
 export function UsersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -97,10 +80,7 @@ export function UsersPage() {
     setSearchParams(filtersToParams(next), { replace: false });
   };
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<UserRow | null>(null);
-  const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
-  const [revokeTarget, setRevokeTarget] = useState<UserRow | null>(null);
+  const [dialog, setDialog] = useState<UserDialogState>({ kind: "none" });
   const [revealedTempPassword, setRevealedTempPassword] = useState<{
     username: string;
     password: string;
@@ -122,16 +102,20 @@ export function UsersPage() {
   );
 
   const clearRevealed = () => setRevealedTempPassword(null);
+  const createOpen = dialog.kind === "create";
+  const editTarget = dialog.kind === "edit" ? dialog.user : null;
+  const resetTarget = dialog.kind === "reset-password" ? dialog.user : null;
+  const revokeTarget = dialog.kind === "revoke-sessions" ? dialog.user : null;
 
   // ── Create dialog handlers ──────────────────────────────────────────────────
   const handleCreateOpenChange = (open: boolean) => {
     if (!open) {
       if (create.isPending) return;
-      setCreateOpen(false);
+      setDialog({ kind: "none" });
       create.reset();
       clearRevealed();
     } else {
-      setCreateOpen(true);
+      setDialog({ kind: "create" });
     }
   };
   const handleCreateConfirm = async ({
@@ -164,7 +148,7 @@ export function UsersPage() {
     }
   };
   const handleCreateAcknowledge = () => {
-    setCreateOpen(false);
+    setDialog({ kind: "none" });
     create.reset();
     clearRevealed();
   };
@@ -173,7 +157,7 @@ export function UsersPage() {
   const handleEditOpenChange = (open: boolean) => {
     if (!open) {
       if (update.isPending) return;
-      setEditTarget(null);
+      setDialog({ kind: "none" });
       update.reset();
     }
   };
@@ -200,7 +184,7 @@ export function UsersPage() {
         status,
         idempotencyKey,
       });
-      setEditTarget(null);
+      setDialog({ kind: "none" });
       update.reset();
     } catch {
       // Surfaced via update.error.
@@ -211,20 +195,21 @@ export function UsersPage() {
   const handleResetOpenChange = (open: boolean) => {
     if (!open) {
       if (reset.isPending) return;
-      setResetTarget(null);
+      setDialog({ kind: "none" });
       reset.reset();
       clearRevealed();
     }
   };
   const handleResetConfirm = async ({ idempotencyKey }: { idempotencyKey: string }) => {
     if (!resetTarget) return;
+    const username = resetTarget.username;
     try {
       const result = await reset.mutateAsync({
         id: resetTarget.id,
         idempotencyKey,
       });
       setRevealedTempPassword({
-        username: result.user.username,
+        username,
         password: result.temporaryPassword,
       });
     } catch {
@@ -232,7 +217,7 @@ export function UsersPage() {
     }
   };
   const handleResetAcknowledge = () => {
-    setResetTarget(null);
+    setDialog({ kind: "none" });
     reset.reset();
     clearRevealed();
   };
@@ -240,7 +225,7 @@ export function UsersPage() {
   const handleRevokeOpenChange = (open: boolean) => {
     if (!open) {
       if (revokeSessions.isPending) return;
-      setRevokeTarget(null);
+      setDialog({ kind: "none" });
       revokeSessions.reset();
     }
   };
@@ -259,7 +244,7 @@ export function UsersPage() {
         reason,
         idempotencyKey,
       });
-      setRevokeTarget(null);
+      setDialog({ kind: "none" });
       revokeSessions.reset();
     } catch {
       // Surfaced via revokeSessions.error.
@@ -292,7 +277,7 @@ export function UsersPage() {
       primaryAction={{
         label: "New user",
         dataSlot: "users-new-button",
-        onClick: () => setCreateOpen(true),
+        onClick: () => setDialog({ kind: "create" }),
       }}
       banner={
         revealedTempPassword !== null ? (
@@ -325,9 +310,9 @@ export function UsersPage() {
           isLoading={list.isPending}
           filters={filters}
           onFiltersChange={setFilters}
-          onEdit={(row) => setEditTarget(row)}
-          onResetPassword={(row) => setResetTarget(row)}
-          onRevokeSessions={(row) => setRevokeTarget(row)}
+          onEdit={(user) => setDialog({ kind: "edit", user })}
+          onResetPassword={(user) => setDialog({ kind: "reset-password", user })}
+          onRevokeSessions={(user) => setDialog({ kind: "revoke-sessions", user })}
           onToggleStatus={handleToggleStatus}
         />
       }

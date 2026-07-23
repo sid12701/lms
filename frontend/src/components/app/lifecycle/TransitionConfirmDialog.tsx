@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
-import { useSyncOnOpen } from "@/lib/hooks/use-sync-on-open";
 import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -76,6 +75,184 @@ const TONE_ICON_CLASSES: Record<LifecycleActionTone, string> = {
   default: "text-foreground-muted",
 };
 
+interface PreviewState {
+  data: DisbursementPreviewData | null;
+  loading: boolean;
+  error: string | null;
+}
+
+const EMPTY_PREVIEW: PreviewState = { data: null, loading: false, error: null };
+
+interface PreviewRequest {
+  applicationId: string;
+  load: (applicationId: string) => Promise<DisbursementPreviewData>;
+}
+
+interface SettledPreview {
+  request: PreviewRequest;
+  data: DisbursementPreviewData | null;
+  error: string | null;
+}
+
+function useDisbursementPreview({
+  enabled,
+  applicationId,
+  load,
+}: {
+  enabled: boolean;
+  applicationId?: string;
+  load?: (applicationId: string) => Promise<DisbursementPreviewData>;
+}): PreviewState {
+  const request = useMemo<PreviewRequest | null>(
+    () => (enabled && applicationId && load ? { applicationId, load } : null),
+    [enabled, applicationId, load],
+  );
+  const [settled, setSettled] = useState<SettledPreview | null>(null);
+
+  useEffect(() => {
+    if (!request) return;
+
+    let cancelled = false;
+    void request
+      .load(request.applicationId)
+      .then((data) => {
+        if (!cancelled) setSettled({ request, data, error: null });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const message =
+          error instanceof Error ? error.message : "Could not load disbursement preview.";
+        setSettled({ request, data: null, error: message });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [request]);
+
+  if (!request) return EMPTY_PREVIEW;
+  if (settled?.request !== request) {
+    return { data: null, loading: true, error: null };
+  }
+  return { data: settled.data, loading: false, error: settled.error };
+}
+
+function DisbursementPreview({ state }: { state: PreviewState }) {
+  return (
+    <div className="flex flex-col gap-2">
+      {state.loading ? (
+        <p
+          data-slot="disbursement-preview-loading"
+          className="text-foreground-muted text-sm"
+          aria-live="polite"
+        >
+          Loading disbursement summary…
+        </p>
+      ) : null}
+      {state.error ? (
+        <p
+          role="alert"
+          data-slot="disbursement-preview-error"
+          className="text-danger text-xs/relaxed"
+        >
+          {state.error}
+        </p>
+      ) : null}
+      {state.data ? <DisbursementPreviewSummary preview={state.data} /> : null}
+    </div>
+  );
+}
+
+function ReasonCodeField({ form }: { form: ReturnType<typeof useLifecycleDialogForm> }) {
+  return (
+    <FormField
+      control={form.control}
+      name="reasonCode"
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel>Reason</FormLabel>
+          <Select value={field.value ?? ""} onValueChange={field.onChange}>
+            <FormControl>
+              <SelectTrigger
+                aria-label="Reason code"
+                data-slot="transition-reason-code"
+                className="w-full"
+              >
+                <SelectValue placeholder="Select a reason" />
+              </SelectTrigger>
+            </FormControl>
+            <SelectContent>
+              {LIFECYCLE_REASON_CODES.map((code) => (
+                <SelectItem key={code.value} value={code.value}>
+                  {code.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FormDescription>Recorded with the transition and shared with the LSP.</FormDescription>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
+}
+
+function useLifecycleDialogForm(requiresReason: boolean, requiresReasonCode: boolean) {
+  const schema = useMemo(
+    () => lifecycleDialogSchema({ requiresReason, requiresReasonCode }),
+    [requiresReason, requiresReasonCode],
+  );
+  return useForm<LifecycleDialogValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { reason: "", reasonCode: "" },
+    mode: "onSubmit",
+  });
+}
+
+function ReasonDetailsField({
+  form,
+  requiresReason,
+  requiresReasonCode,
+  textareaRef,
+}: {
+  form: ReturnType<typeof useLifecycleDialogForm>;
+  requiresReason: boolean;
+  requiresReasonCode: boolean;
+  textareaRef: RefObject<HTMLTextAreaElement | null>;
+}) {
+  return (
+    <FormField
+      control={form.control}
+      name="reason"
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel>
+            {requiresReasonCode ? "Details" : requiresReason ? "Reason" : "Reason (optional)"}
+          </FormLabel>
+          <FormControl>
+            <Textarea
+              rows={3}
+              maxLength={1000}
+              placeholder={
+                requiresReason
+                  ? "e.g. Borrower requested cancellation in writing."
+                  : "Optional context for the audit log."
+              }
+              {...field}
+              ref={(element) => {
+                field.ref(element);
+                textareaRef.current = element;
+              }}
+            />
+          </FormControl>
+          <FormDescription>Up to 1000 characters. Visible to auditors.</FormDescription>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
+}
+
 /**
  * Shadcn-Dialog + RHF + Zod confirm prompt for any lifecycle transition.
  *
@@ -103,76 +280,21 @@ export function TransitionConfirmDialog({
   const requiresReason = action?.requiresReason ?? false;
   const requiresReasonCode = action?.requiresReasonCode ?? false;
   const isDisbursementAction = action?.toStatus === "DISBURSED";
-  const schema = useMemo(
-    () => lifecycleDialogSchema({ requiresReason, requiresReasonCode }),
-    [requiresReason, requiresReasonCode],
-  );
-
-  const form = useForm<LifecycleDialogValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { reason: "", reasonCode: "" },
-    mode: "onSubmit",
-  });
+  const form = useLifecycleDialogForm(requiresReason, requiresReasonCode);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useFlushOnClose(open, () => form.reset({ reason: "", reasonCode: "" }));
-  useSyncOnOpen(open, () => form.reset({ reason: "", reasonCode: "" }));
-  const [prevActionId, setPrevActionId] = useState(action?.id);
-  if (open && action?.id !== prevActionId) {
-    setPrevActionId(action?.id);
-    form.reset({ reason: "", reasonCode: "" });
-  }
+  useEffect(() => {
+    if (open) form.reset({ reason: "", reasonCode: "" });
+  }, [action?.id, open, form]);
   useFocusOnOpen(open, textareaRef);
 
-  const [preview, setPreview] = useState<DisbursementPreviewData | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-
-  // Reset-during-render (same pattern as prevActionId above): whenever the preview
-  // request identity changes, clear stale preview state before the effect refetches.
-  const previewRequestKey =
-    open && isDisbursementAction && applicationId && loadDisbursementPreview
-      ? `${applicationId}:${action?.id ?? ""}`
-      : null;
-  // Starts at null so an initially-open dialog takes the reset branch and shows loading.
-  const [prevPreviewRequestKey, setPrevPreviewRequestKey] = useState<string | null>(null);
-  if (previewRequestKey !== prevPreviewRequestKey) {
-    setPrevPreviewRequestKey(previewRequestKey);
-    setPreview(null);
-    setPreviewError(null);
-    setPreviewLoading(previewRequestKey !== null);
-  }
-
-  useEffect(() => {
-    if (!previewRequestKey || !applicationId || !loadDisbursementPreview) {
-      return;
-    }
-
-    let cancelled = false;
-    void loadDisbursementPreview(applicationId)
-      .then((data) => {
-        if (!cancelled) {
-          setPreview(data);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          const detail =
-            err instanceof Error ? err.message : "Could not load disbursement preview.";
-          setPreviewError(detail);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setPreviewLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [previewRequestKey, applicationId, loadDisbursementPreview]);
+  const preview = useDisbursementPreview({
+    enabled: open && isDisbursementAction,
+    applicationId,
+    load: loadDisbursementPreview,
+  });
 
   if (!action) {
     return (
@@ -197,7 +319,7 @@ export function TransitionConfirmDialog({
   const confirmBlockedByPreview =
     isDisbursementAction &&
     Boolean(applicationId && loadDisbursementPreview) &&
-    (previewLoading || previewError !== null || preview === null);
+    (preview.loading || preview.error !== null || preview.data === null);
 
   const handleSubmit = async (values: LifecycleDialogValues) => {
     const trimmed = (values.reason ?? "").trim();
@@ -224,92 +346,16 @@ export function TransitionConfirmDialog({
         />
 
         {isDisbursementAction && applicationId && loadDisbursementPreview ? (
-          <div className="flex flex-col gap-2">
-            {previewLoading ? (
-              <p
-                data-slot="disbursement-preview-loading"
-                className="text-foreground-muted text-sm"
-                aria-live="polite"
-              >
-                Loading disbursement summary…
-              </p>
-            ) : null}
-            {previewError ? (
-              <p
-                role="alert"
-                data-slot="disbursement-preview-error"
-                className="text-danger text-xs/relaxed"
-              >
-                {previewError}
-              </p>
-            ) : null}
-            {preview ? <DisbursementPreviewSummary preview={preview} /> : null}
-          </div>
+          <DisbursementPreview state={preview} />
         ) : null}
 
         <FormShell form={form} onSubmit={handleSubmit}>
-          {requiresReasonCode ? (
-            <FormField
-              control={form.control}
-              name="reasonCode"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Reason</FormLabel>
-                  <Select value={field.value ?? ""} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger
-                        aria-label="Reason code"
-                        data-slot="transition-reason-code"
-                        className="w-full"
-                      >
-                        <SelectValue placeholder="Select a reason" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {LIFECYCLE_REASON_CODES.map((code) => (
-                        <SelectItem key={code.value} value={code.value}>
-                          {code.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    Recorded with the transition and shared with the LSP.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          ) : null}
-
-          <FormField
-            control={form.control}
-            name="reason"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  {requiresReasonCode ? "Details" : requiresReason ? "Reason" : "Reason (optional)"}
-                </FormLabel>
-                <FormControl>
-                  <Textarea
-                    rows={3}
-                    maxLength={1000}
-                    placeholder={
-                      requiresReason
-                        ? "e.g. Borrower requested cancellation in writing."
-                        : "Optional context for the audit log."
-                    }
-                    {...field}
-                    ref={(el) => {
-                      field.ref(el);
-                      textareaRef.current = el;
-                    }}
-                  />
-                </FormControl>
-                <FormDescription>Up to 1000 characters. Visible to auditors.</FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
+          {requiresReasonCode ? <ReasonCodeField form={form} /> : null}
+          <ReasonDetailsField
+            form={form}
+            requiresReason={requiresReason}
+            requiresReasonCode={requiresReasonCode}
+            textareaRef={textareaRef}
           />
 
           {errorMessage ? (

@@ -7,6 +7,7 @@
  */
 import { requestJson } from "@/lib/api/http-client";
 import { apiLoanStatus } from "@/lib/loan-application-status";
+import { finiteNumberOrZero as toNumber } from "@/lib/number";
 import type { BorrowerLoanRow, BorrowerLoansResponse } from "./types";
 
 const BACKEND_BASE = "/api/v1/internal/admin/borrowers";
@@ -32,12 +33,6 @@ interface BackendBorrowerLoanRow {
 
 interface BackendBorrowerDetailLoans {
   loans: BackendBorrowerLoanRow[];
-}
-
-function toNumber(value: number | string | null | undefined): number {
-  if (value == null) return 0;
-  const parsed = typeof value === "string" ? Number(value) : value;
-  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function toLoanRow(row: BackendBorrowerLoanRow): BorrowerLoanRow {

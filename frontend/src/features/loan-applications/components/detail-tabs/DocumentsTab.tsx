@@ -17,9 +17,10 @@ import { TableSkeleton } from "@/components/app/feedback/Skeletons";
 import { DocumentChecklistGroup, DocumentPreviewModal } from "@/components/app/documents";
 import { ApiError, requestBlob } from "@/lib/api/http-client";
 import { mapApiErrorMessage } from "@/lib/api/user-messages";
-import { DOCUMENT_KIND_LABELS, type Document, type DocumentKind } from "@/schemas/document";
+import { DOCUMENT_KIND_LABELS, type Document } from "@/schemas/document";
 import type { LoanDocument, LoanDocumentType } from "@/types";
 import { useLoanApplicationDocuments } from "../../hooks/useLoanApplicationDocuments";
+import { adaptLoanDocumentToDocument } from "./document-adapter";
 
 const FE_TO_BE_DOCUMENT_TYPE: Record<LoanDocumentType, string> = {
   PAN: "PAN_CARD",
@@ -38,18 +39,6 @@ export interface DocumentsTabProps {
   /** Reserved for future role gating; currently the tab is view-only for all internal roles. */
   canManage: boolean;
 }
-
-const KIND_BY_LOAN_TYPE: Record<LoanDocumentType, DocumentKind> = {
-  PAN: "PAN_CARD",
-  AADHAAR: "AADHAAR_CARD",
-  ADDRESS_PROOF: "ADDRESS_PROOF",
-  INCOME_PROOF: "INCOME_PROOF",
-  BANK_STATEMENT: "BANK_STATEMENT",
-  PHOTOGRAPH: "KYC_PHOTO",
-  KFS: "KFS",
-  LOAN_AGREEMENT: "LOAN_AGREEMENT",
-  OTHER: "OTHER",
-};
 
 function filenameFromPathLike(value: string | null | undefined): string | null {
   const candidate = value?.replace(/\\/g, "/").split("/").pop()?.trim();
@@ -85,21 +74,6 @@ function documentContentPath(
 ): string {
   const base = `/api/v1/internal/ops/loan-applications/${encodeURIComponent(applicationId)}/kyc-documents/${backendType}/content`;
   return opts?.inline ? `${base}?disposition=inline` : base;
-}
-
-export function adaptLoanDocumentToDocument(doc: LoanDocument): Document {
-  return {
-    id: doc.id,
-    applicationId: doc.applicationId,
-    kind: KIND_BY_LOAN_TYPE[doc.type],
-    status: doc.status,
-    requiredForDisbursement: doc.requiredForDisbursement,
-    fileName: doc.fileMeta?.fileName ?? doc.fileMeta?.storageKey ?? doc.displayName ?? null,
-    mimeType: doc.fileMeta?.mime ?? null,
-    sizeBytes: doc.fileMeta?.size ?? null,
-    uploadedAt: doc.uploadedAt,
-    uploadedBy: doc.uploadedBy,
-  };
 }
 
 export function DocumentsTab({ applicationId, canManage: _canManage }: DocumentsTabProps) {
@@ -209,5 +183,3 @@ export function DocumentsTab({ applicationId, canManage: _canManage }: Documents
     </div>
   );
 }
-
-export default DocumentsTab;

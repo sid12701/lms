@@ -1,3 +1,3 @@
-export { ApiSecretReveal, type ApiSecretRevealProps } from "./ApiSecretReveal";
-export { ApiClientSecretMeta, type ApiClientSecretMetaProps } from "./ApiClientSecretMeta";
-export { RotateSecretDialog, type RotateSecretDialogProps } from "./RotateSecretDialog";
+export { ApiSecretReveal } from "./ApiSecretReveal";
+export { ApiClientSecretMeta } from "./ApiClientSecretMeta";
+export { RotateSecretDialog } from "./RotateSecretDialog";

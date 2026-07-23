@@ -1,0 +1,4 @@
+interface:
+  display_name: "Back-End Code Quality Review"
+  short_description: "Ground backend findings in executable code paths"
+  default_prompt: "Use $backend-code-quality-review to audit this backend and ground every reported issue in its code path and runtime behavior."

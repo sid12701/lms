@@ -3,7 +3,7 @@ import { Check, Copy } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-export interface CopyableIdProps extends Omit<HTMLAttributes<HTMLButtonElement>, "value"> {
+interface CopyableIdProps extends Omit<HTMLAttributes<HTMLButtonElement>, "value"> {
   value: string;
   /** Aria label, e.g. "Correlation ID". Defaults to "Copy identifier". */
   label?: string;

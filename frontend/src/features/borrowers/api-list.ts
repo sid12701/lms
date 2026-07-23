@@ -24,7 +24,7 @@ const BorrowerSummarySchema: z.ZodType<BorrowerSummary> = z.object({
 
 const BorrowerSummaryArraySchema = z.array(BorrowerSummarySchema);
 
-export function buildBorrowersListQuery(filters: BorrowerListFilters): string {
+function buildBorrowersListQuery(filters: BorrowerListFilters): string {
   const params = new URLSearchParams();
   const trimmedQ = filters.q?.trim();
   if (trimmedQ && trimmedQ.length > 0) params.set("q", trimmedQ);

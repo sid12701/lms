@@ -14,7 +14,6 @@
  *   - BR-9  foreclosure-quote expiry  (precondition `foreclosureQuoteExpired`)
  *   - BR-10 schedule-required gate    (precondition `hasSchedule`)
  *   - BR-12 schedule-frozen gate      (precondition `scheduleFrozen` blocks replace)
- *   - BR-14 first-payment auto-advance (`postRepaymentAutoAdvance`)
  *   - Gap #11 badge tone              (`getStatusBadgeTone` in `statusBadgeMeta.ts`)
  */
 import type { Borrower, LoanApplication, LoanDocument, LoanStatus, Role } from "@/types";
@@ -77,7 +76,7 @@ export const STATUS_META: Record<LoanStatus, StatusMeta> = {
 
 export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
-export type BusinessRuleErrorCode =
+type BusinessRuleErrorCode =
   | "KYC_INCOMPLETE"
   | "DOCS_INCOMPLETE"
   | "SCHEDULE_MISSING"
@@ -89,7 +88,7 @@ export type BusinessRuleErrorCode =
   | "SCHEDULE_FROZEN"
   | "SCHEDULE_RECONCILIATION_FAILED";
 
-export class BusinessRuleError extends Error {
+class BusinessRuleError extends Error {
   public readonly code: BusinessRuleErrorCode;
 
   constructor(code: BusinessRuleErrorCode, message: string) {
@@ -309,7 +308,7 @@ const INVALIDATION_TRANSITIONS: TransitionRule[] = PRE_DISBURSAL_INVALIDATABLE.m
 export const TRANSITIONS: TransitionRule[] = [...CORE_TRANSITIONS, ...INVALIDATION_TRANSITIONS];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// canTransition + getNextActions
+// canTransition
 // ─────────────────────────────────────────────────────────────────────────────
 
 function findRule(from: LoanStatus, to: LoanStatus): TransitionRule | undefined {
@@ -334,39 +333,4 @@ export function canTransition(
     return rule.preconditions(ctx);
   }
   return ok();
-}
-
-/**
- * Returns transitions the given role can currently take from `status`,
- * filtered by satisfied preconditions. Failed-precondition rules are
- * surfaced separately by the UI as disabled-with-tooltip; the orchestrator
- * decided to expose only "currently-takeable" actions here — the UI layer
- * may call `canTransition()` per candidate to render the disabled state.
- */
-export function getNextActions(
-  status: LoanStatus,
-  role: Role,
-  ctx: TransitionCtx,
-): TransitionRule[] {
-  return TRANSITIONS.filter((rule) => {
-    if (rule.from !== status) return false;
-    if (!rule.allowedRoles.includes(role)) return false;
-    if (rule.preconditions) {
-      const r = rule.preconditions(ctx);
-      if (!r.ok) return false;
-    }
-    return true;
-  });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Backend helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * BR-14: on the FIRST posted repayment, advance DISBURSED → UNDER_REPAYMENT.
- * Returns null when no auto-advance applies.
- */
-export function postRepaymentAutoAdvance(currentStatus: LoanStatus): LoanStatus | null {
-  return currentStatus === "DISBURSED" ? "UNDER_REPAYMENT" : null;
 }

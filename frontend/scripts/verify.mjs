@@ -1,6 +1,14 @@
 import { spawnSync } from "node:child_process";
 
-const steps = ["typecheck", "lint", "format:check", "check:encoding", "test", "build"];
+const steps = [
+  "typecheck",
+  "lint",
+  "format:check",
+  "check:encoding",
+  "test",
+  "build",
+  "check:bundle",
+];
 
 const failures = [];
 

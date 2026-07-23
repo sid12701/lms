@@ -17,6 +17,7 @@
  */
 import { z } from "zod";
 import { ApiClient, ApiClientStatus } from "@/schemas/user";
+import { ADMIN_LIST_FILTER_FIELDS } from "@/lib/admin-list-url-state";
 
 export type { ApiClient };
 
@@ -24,9 +25,7 @@ export type { ApiClient };
 const ApiClientsListFilters = z.object({
   status: ApiClientStatus.optional(),
   lspId: z.string().uuid().optional(),
-  q: z.string().trim().min(1).max(120).optional(),
-  page: z.coerce.number().int().min(0).optional(),
-  pageSize: z.coerce.number().int().min(5).max(100).optional(),
+  ...ADMIN_LIST_FILTER_FIELDS,
 });
 export type ApiClientsListFilters = z.infer<typeof ApiClientsListFilters>;
 
@@ -78,13 +77,12 @@ export interface ApiClientMutationResponse {
   client: ApiClientRow;
 }
 
-/** Rotate-secret: returns a brand-new cleartext secret + updates `lastRotatedAt`. */
+/** Rotate-secret returns a brand-new cleartext secret; the list query is invalidated separately. */
 export interface RotateApiClientSecretInput {
   reason: string;
   idempotencyKey: string;
 }
 
 export interface RotateApiClientSecretResponse {
-  client: ApiClientRow;
   clientSecret: string;
 }

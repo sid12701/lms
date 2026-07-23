@@ -143,5 +143,3 @@ export function RepaymentsTab({ applicationId }: RepaymentsTabProps) {
     </div>
   );
 }
-
-export default RepaymentsTab;

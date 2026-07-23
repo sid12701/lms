@@ -14,11 +14,10 @@ import com.bhawana.lms.domain.BorrowerLspRelationship;
 import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
-import com.bhawana.lms.repo.BorrowerLspRelationshipRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
-import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.service.BorrowerLspRelationshipService;
+import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -46,23 +45,17 @@ class BorrowerAdminControllerTest {
     private BorrowerRepository borrowerRepository;
 
     @Autowired
-    private BorrowerLspRelationshipRepository borrowerLspRelationshipRepository;
-
-    @Autowired
     private LspRepository lspRepository;
 
     @Autowired
-    private LspAuditEventRepository lspAuditEventRepository;
+    private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
 
     @Autowired
     private BorrowerLspRelationshipService borrowerLspRelationshipService;
 
     @BeforeEach
     void setUp() {
-        borrowerLspRelationshipRepository.deleteAllInBatch();
-        borrowerRepository.deleteAllInBatch();
-        lspAuditEventRepository.deleteAllInBatch();
-        lspRepository.deleteAllInBatch();
+        integrationTestDatabaseCleaner.cleanIntegrationTestData();
     }
 
     @Test

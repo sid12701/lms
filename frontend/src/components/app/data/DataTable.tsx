@@ -12,11 +12,11 @@ import {
   type Row,
   type RowData,
   type SortingState,
-  type Table as ReactTable,
+  type Table as TanStackTable,
   type TableOptions,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { type KeyboardEvent, type ReactNode, useMemo } from "react";
+import { type KeyboardEvent, type ReactNode } from "react";
 import {
   Table,
   TableBody,
@@ -108,6 +108,311 @@ export interface DataTableProps<TData, TValue> {
   className?: string;
 }
 
+interface DataTableConfiguration<TData, TValue> {
+  columns: ColumnDef<TData, TValue>[];
+  data: readonly TData[];
+  state?: DataTableState;
+  onStateChange?: (next: DataTableStateChange) => void;
+  pagination?: DataTablePaginationConfig;
+  rowIdKey?: keyof TData;
+  manualSorting: boolean;
+}
+
+function controlledChange<T>(
+  current: T,
+  onStateChange: DataTableConfiguration<unknown, unknown>["onStateChange"],
+  toChange: (next: T) => DataTableStateChange,
+): OnChangeFn<T> | undefined {
+  if (!onStateChange) return undefined;
+  return (updater) => {
+    const next = typeof updater === "function" ? (updater as (previous: T) => T)(current) : updater;
+    onStateChange(toChange(next));
+  };
+}
+
+function controlledTableState(state?: DataTableState): TableOptions<unknown>["state"] {
+  if (!state) return {};
+  return {
+    ...(state.sorting ? { sorting: state.sorting } : {}),
+    ...(state.columnFilters ? { columnFilters: state.columnFilters } : {}),
+    ...(state.columnVisibility ? { columnVisibility: state.columnVisibility } : {}),
+    ...(state.pagination ? { pagination: state.pagination } : {}),
+  };
+}
+
+function rowIdGetter<TData>(rowIdKey?: keyof TData): TableOptions<TData>["getRowId"] | undefined {
+  if (!rowIdKey) return undefined;
+  return (row, index) => {
+    const value = row[rowIdKey];
+    return typeof value === "string" || typeof value === "number" ? String(value) : String(index);
+  };
+}
+
+function currentPagination(
+  state: DataTableState | undefined,
+  pagination: DataTablePaginationConfig | undefined,
+): PaginationState {
+  return (
+    state?.pagination ?? {
+      pageIndex: 0,
+      pageSize: pagination?.initialPageSize ?? 25,
+    }
+  );
+}
+
+function sortingOptions<TData>(manualSorting: boolean): Partial<TableOptions<TData>> {
+  return {
+    manualSorting,
+    getSortedRowModel: manualSorting ? undefined : getSortedRowModel(),
+  };
+}
+
+function paginationOptions<TData>(
+  pagination: DataTablePaginationConfig | undefined,
+): Partial<TableOptions<TData>> {
+  const manualPagination = pagination?.manualPagination ?? false;
+  return {
+    manualPagination,
+    getPaginationRowModel: manualPagination ? undefined : getPaginationRowModel(),
+    rowCount: pagination?.rowCount,
+  };
+}
+
+type TableChangeHandlers = Pick<
+  TableOptions<unknown>,
+  "onSortingChange" | "onColumnFiltersChange" | "onColumnVisibilityChange" | "onPaginationChange"
+>;
+
+function changeHandlers(
+  state: DataTableState | undefined,
+  paginationState: PaginationState,
+  onStateChange: DataTableConfiguration<unknown, unknown>["onStateChange"],
+): Partial<TableChangeHandlers> {
+  const handlers: Partial<TableChangeHandlers> = {};
+  const onSortingChange = controlledChange(state?.sorting ?? [], onStateChange, (next) => ({
+    sorting: next,
+  }));
+  const onColumnFiltersChange = controlledChange(
+    state?.columnFilters ?? [],
+    onStateChange,
+    (next) => ({ columnFilters: next }),
+  );
+  const onColumnVisibilityChange = controlledChange(
+    state?.columnVisibility ?? {},
+    onStateChange,
+    (next) => ({ columnVisibility: next }),
+  );
+  const onPaginationChange = controlledChange(paginationState, onStateChange, (next) => ({
+    pagination: next,
+  }));
+
+  if (onSortingChange) handlers.onSortingChange = onSortingChange;
+  if (onColumnFiltersChange) handlers.onColumnFiltersChange = onColumnFiltersChange;
+  if (onColumnVisibilityChange) handlers.onColumnVisibilityChange = onColumnVisibilityChange;
+  if (onPaginationChange) handlers.onPaginationChange = onPaginationChange;
+  return handlers;
+}
+
+function createTableOptions<TData, TValue>({
+  columns,
+  data,
+  state,
+  onStateChange,
+  pagination,
+  rowIdKey,
+  manualSorting,
+}: DataTableConfiguration<TData, TValue>): TableOptions<TData> {
+  const paginationState = currentPagination(state, pagination);
+
+  return {
+    data: [...data],
+    columns,
+    state: controlledTableState(state),
+    initialState: state?.pagination ? {} : { pagination: paginationState },
+    getRowId: rowIdGetter(rowIdKey),
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    ...sortingOptions<TData>(manualSorting),
+    ...paginationOptions<TData>(pagination),
+    ...changeHandlers(state, paginationState, onStateChange),
+  };
+}
+
+function useConfiguredTable<TData, TValue>(configuration: DataTableConfiguration<TData, TValue>) {
+  return useReactTable(createTableOptions(configuration));
+}
+
+function DataTableHeader<TData>({
+  table,
+  headPad,
+  className,
+}: {
+  table: TanStackTable<TData>;
+  headPad: string;
+  className?: string;
+}) {
+  return (
+    <TableHeader
+      data-slot="data-table-header"
+      className={cn("bg-surface-muted/60 sticky top-0 z-10 backdrop-blur", className)}
+    >
+      {table.getHeaderGroups().map((headerGroup) => (
+        <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
+          {headerGroup.headers.map((header) => {
+            const numeric = header.column.columnDef.meta?.numeric ?? false;
+            const sorted = header.column.getIsSorted();
+            const ariaSort: "ascending" | "descending" | "none" | undefined =
+              header.column.getCanSort()
+                ? sorted === "asc"
+                  ? "ascending"
+                  : sorted === "desc"
+                    ? "descending"
+                    : "none"
+                : undefined;
+            return (
+              <TableHead
+                key={header.id}
+                scope="col"
+                aria-sort={ariaSort}
+                style={{ width: header.getSize() === 150 ? undefined : header.getSize() }}
+                className={cn(
+                  headPad,
+                  numeric && "text-right",
+                  header.column.getIsPinned() && "bg-surface-muted/60 sticky",
+                )}
+              >
+                {header.isPlaceholder
+                  ? null
+                  : flexRender(header.column.columnDef.header, header.getContext())}
+              </TableHead>
+            );
+          })}
+        </TableRow>
+      ))}
+    </TableHeader>
+  );
+}
+
+interface DataTableBodyProps<TData> {
+  table: TanStackTable<TData>;
+  loading: boolean;
+  skeletonRows: number;
+  cellPad: string;
+  empty?: ReactNode;
+  getRowAction?: (row: Row<TData>) => void;
+  getRowTestId?: (row: Row<TData>) => string | undefined;
+  getRowAriaLabel?: (row: Row<TData>) => string | undefined;
+}
+
+function DataTableBody<TData>({
+  table,
+  loading,
+  skeletonRows,
+  cellPad,
+  empty,
+  getRowAction,
+  getRowTestId,
+  getRowAriaLabel,
+}: DataTableBodyProps<TData>) {
+  if (loading) {
+    return (
+      <TableBody>
+        {Array.from({ length: skeletonRows }, (_, index) => (
+          <TableRow key={`skeleton-${index}`} className="border-border">
+            {table.getVisibleLeafColumns().map((column) => (
+              <TableCell key={column.id} className={cellPad}>
+                <Skeleton className="h-4 w-3/5" />
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    );
+  }
+
+  const rows = table.getRowModel().rows;
+  if (rows.length === 0) {
+    return (
+      <TableBody>
+        <TableRow className="border-border hover:bg-transparent">
+          <TableCell colSpan={table.getVisibleLeafColumns().length} className="p-0">
+            {empty ?? (
+              <div className="text-foreground-muted py-12 text-center text-sm">No results</div>
+            )}
+          </TableCell>
+        </TableRow>
+      </TableBody>
+    );
+  }
+
+  return (
+    <TableBody>
+      {rows.map((row) => (
+        <DataTableRow
+          key={row.id}
+          row={row}
+          cellPad={cellPad}
+          getRowAction={getRowAction}
+          getRowTestId={getRowTestId}
+          getRowAriaLabel={getRowAriaLabel}
+        />
+      ))}
+    </TableBody>
+  );
+}
+
+function DataTableRow<TData>({
+  row,
+  cellPad,
+  getRowAction,
+  getRowTestId,
+  getRowAriaLabel,
+}: {
+  row: Row<TData>;
+  cellPad: string;
+  getRowAction?: (row: Row<TData>) => void;
+  getRowTestId?: (row: Row<TData>) => string | undefined;
+  getRowAriaLabel?: (row: Row<TData>) => string | undefined;
+}) {
+  const interactive = getRowAction !== undefined;
+  const activate = () => getRowAction?.(row);
+  const onKeyDown = (event: KeyboardEvent<HTMLTableRowElement>) => {
+    if (!interactive || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    activate();
+  };
+
+  return (
+    <TableRow
+      data-state={row.getIsSelected() ? "selected" : undefined}
+      data-interactive={interactive || undefined}
+      data-testid={getRowTestId?.(row)}
+      tabIndex={interactive ? 0 : undefined}
+      aria-label={interactive ? getRowAriaLabel?.(row) : undefined}
+      onClick={interactive ? activate : undefined}
+      onKeyDown={onKeyDown}
+      className={cn(
+        "border-border hover:bg-surface-muted/40 transition-colors duration-150",
+        interactive &&
+          "focus-visible:ring-ring/50 cursor-pointer outline-none focus-visible:ring-2",
+      )}
+    >
+      {row.getVisibleCells().map((cell) => {
+        const numeric = cell.column.columnDef.meta?.numeric ?? false;
+        return (
+          <TableCell
+            key={cell.id}
+            {...(numeric ? TABULAR_ATTR : {})}
+            className={cn(cellPad, "text-foreground text-sm", numeric && "text-right font-mono")}
+          >
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </TableCell>
+        );
+      })}
+    </TableRow>
+  );
+}
+
 /**
  * Generic typed wrapper around TanStack Table 8 that renders shadcn `<Table>`
  * primitives. Supports controlled or uncontrolled state, manual or
@@ -138,78 +443,17 @@ export function DataTable<TData, TValue>({
   const density = densityProp ?? densityCtx.density;
   const isMobile = useMediaQuery("(max-width: 767px)");
   const showMobileCards = responsiveCards && isMobile;
-
-  const sorting = state?.sorting;
-  const columnFilters = state?.columnFilters;
-  const columnVisibility = state?.columnVisibility;
-  const paginationState = state?.pagination;
-
-  const onSortingChange: OnChangeFn<SortingState> | undefined = onStateChange
-    ? (updater) => {
-        const next = typeof updater === "function" ? updater(sorting ?? []) : updater;
-        onStateChange({ sorting: next });
-      }
-    : undefined;
-  const onColumnFiltersChange: OnChangeFn<ColumnFiltersState> | undefined = onStateChange
-    ? (updater) => {
-        const next = typeof updater === "function" ? updater(columnFilters ?? []) : updater;
-        onStateChange({ columnFilters: next });
-      }
-    : undefined;
-  const onColumnVisibilityChange: OnChangeFn<VisibilityState> | undefined = onStateChange
-    ? (updater) => {
-        const next = typeof updater === "function" ? updater(columnVisibility ?? {}) : updater;
-        onStateChange({ columnVisibility: next });
-      }
-    : undefined;
-  const onPaginationChange: OnChangeFn<PaginationState> | undefined = onStateChange
-    ? (updater) => {
-        const current = paginationState ?? {
-          pageIndex: 0,
-          pageSize: pagination?.initialPageSize ?? 25,
-        };
-        const next = typeof updater === "function" ? updater(current) : updater;
-        onStateChange({ pagination: next });
-      }
-    : undefined;
-
-  const tableOptions: TableOptions<TData> = {
-    data: [...data],
+  const table = useConfiguredTable({
     columns,
-    state: {
-      ...(sorting ? { sorting } : {}),
-      ...(columnFilters ? { columnFilters } : {}),
-      ...(columnVisibility ? { columnVisibility } : {}),
-      ...(paginationState ? { pagination: paginationState } : {}),
-    },
-    initialState: paginationState
-      ? {}
-      : { pagination: { pageIndex: 0, pageSize: pagination?.initialPageSize ?? 25 } },
-    getRowId: rowIdKey
-      ? (row, index) => {
-          const v = row[rowIdKey];
-          return typeof v === "string" || typeof v === "number" ? String(v) : String(index);
-        }
-      : undefined,
-    getCoreRowModel: getCoreRowModel(),
-    ...(manualSorting ? {} : { getSortedRowModel: getSortedRowModel() }),
-    getFilteredRowModel: getFilteredRowModel(),
+    data,
+    state,
+    onStateChange,
+    pagination,
+    rowIdKey,
     manualSorting,
-    getPaginationRowModel: pagination?.manualPagination ? undefined : getPaginationRowModel(),
-    manualPagination: pagination?.manualPagination ?? false,
-    rowCount: pagination?.rowCount,
-    ...(onSortingChange ? { onSortingChange } : {}),
-    ...(onColumnFiltersChange ? { onColumnFiltersChange } : {}),
-    ...(onColumnVisibilityChange ? { onColumnVisibilityChange } : {}),
-    ...(onPaginationChange ? { onPaginationChange } : {}),
-  };
-
-  const table = useReactTable(tableOptions);
-  const rows = table.getRowModel().rows;
-
+  });
   const cellPad = density === "compact" ? "px-2.5 py-1.5" : "px-3 py-3";
   const headPad = density === "compact" ? "h-8 px-2.5" : "h-10 px-3";
-  const visibleColumnCount = useMemo(() => table.getVisibleLeafColumns().length, [table]);
 
   if (showMobileCards) {
     return (
@@ -237,122 +481,18 @@ export function DataTable<TData, TValue>({
       )}
     >
       <Table aria-label={ariaLabel}>
-        <TableHeader
-          data-slot="data-table-header"
-          className={cn("bg-surface-muted/60 sticky top-0 z-10 backdrop-blur", headerClassName)}
-        >
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
-              {headerGroup.headers.map((header) => {
-                const meta = header.column.columnDef.meta;
-                const numeric = meta?.numeric ?? false;
-                const sorted = header.column.getIsSorted();
-                const ariaSort: "ascending" | "descending" | "none" | undefined =
-                  header.column.getCanSort()
-                    ? sorted === "asc"
-                      ? "ascending"
-                      : sorted === "desc"
-                        ? "descending"
-                        : "none"
-                    : undefined;
-                return (
-                  <TableHead
-                    key={header.id}
-                    scope="col"
-                    aria-sort={ariaSort}
-                    style={{ width: header.getSize() === 150 ? undefined : header.getSize() }}
-                    className={cn(
-                      headPad,
-                      numeric && "text-right",
-                      header.column.getIsPinned() && "bg-surface-muted/60 sticky",
-                    )}
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                );
-              })}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {loading ? (
-            Array.from({ length: skeletonRows }).map((_, i) => (
-              <TableRow key={`skeleton-${i}`} className="border-border">
-                {table.getVisibleLeafColumns().map((c) => (
-                  <TableCell key={c.id} className={cellPad}>
-                    <Skeleton className="h-4 w-3/5" />
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
-          ) : rows.length === 0 ? (
-            <TableRow className="border-border hover:bg-transparent">
-              <TableCell colSpan={visibleColumnCount} className="p-0">
-                {empty ?? (
-                  <div className="text-foreground-muted py-12 text-center text-sm">No results</div>
-                )}
-              </TableCell>
-            </TableRow>
-          ) : (
-            rows.map((row) => {
-              const isInteractive = Boolean(getRowAction);
-              const onKeyDown = (event: KeyboardEvent<HTMLTableRowElement>) => {
-                if (!isInteractive) return;
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  getRowAction?.(row);
-                }
-              };
-              const rowTestId = getRowTestId?.(row);
-              const rowAriaLabel = isInteractive ? getRowAriaLabel?.(row) : undefined;
-              return (
-                // Interactive rows stay `role=row`: overriding to `button`
-                // breaks table semantics for AT and nests any in-row action
-                // buttons inside a button (invalid). Keyboard access comes
-                // from tabIndex + Enter/Space; the aria-label names the row
-                // action for focus announcements.
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() ? "selected" : undefined}
-                  data-interactive={isInteractive || undefined}
-                  data-testid={rowTestId}
-                  tabIndex={isInteractive ? 0 : undefined}
-                  aria-label={rowAriaLabel}
-                  onClick={isInteractive ? () => getRowAction?.(row) : undefined}
-                  onKeyDown={onKeyDown}
-                  className={cn(
-                    "border-border hover:bg-surface-muted/40 transition-colors duration-150",
-                    isInteractive &&
-                      "focus-visible:ring-ring/50 cursor-pointer outline-none focus-visible:ring-2",
-                  )}
-                >
-                  {row.getVisibleCells().map((cell) => {
-                    const meta = cell.column.columnDef.meta;
-                    const numeric = meta?.numeric ?? false;
-                    return (
-                      <TableCell
-                        key={cell.id}
-                        {...(numeric ? TABULAR_ATTR : {})}
-                        className={cn(
-                          cellPad,
-                          "text-foreground text-sm",
-                          numeric && "text-right font-mono",
-                        )}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              );
-            })
-          )}
-        </TableBody>
+        <DataTableHeader table={table} headPad={headPad} className={headerClassName} />
+        <DataTableBody
+          table={table}
+          loading={loading}
+          skeletonRows={skeletonRows}
+          cellPad={cellPad}
+          empty={empty}
+          getRowAction={getRowAction}
+          getRowTestId={getRowTestId}
+          getRowAriaLabel={getRowAriaLabel}
+        />
       </Table>
     </div>
   );
 }
-
-export type { ReactTable };

@@ -8,7 +8,7 @@ import { formatINR, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { RepaymentInstallment, InstallmentStatus } from "@/schemas/loan-account";
 
-export interface InstallmentRowProps {
+interface InstallmentRowProps {
   /** The installment row payload — Zod-inferred shape from `loan-account.ts`. */
   installment: RepaymentInstallment;
   /** Outstanding amount still owed against this installment. */

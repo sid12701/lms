@@ -146,8 +146,8 @@ Purpose: public entry into the internal operations console.
 
 Presented data and UI:
 
-- Username field, defaulted in local UI to `ops.admin`.
-- Password field, defaulted in local UI to `ChangeMe123!`.
+- Email field, optionally prefilled from a local, role-specific `VITE_LOGIN_*_EMAIL` value.
+- Password field that is always entered by the user; passwords are never exposed through Vite environment variables.
 - Submit button labelled `Enter console`.
 - Error area for login failure or forced password-change requirement.
 - Helper copy explaining JWT-backed internal access.

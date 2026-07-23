@@ -2,9 +2,9 @@ import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 import { formatINR } from "@/lib/format";
 
-export type TabularVariant = "number" | "currency" | "percent" | "raw";
+type TabularVariant = "number" | "currency" | "percent" | "raw";
 
-export interface TabularNumberProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+interface TabularNumberProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
   value: number;
   variant?: TabularVariant;
   /** Decimal precision; defaults to `2` for percent/currency, `0` otherwise. */

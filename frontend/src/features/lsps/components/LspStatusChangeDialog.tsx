@@ -12,7 +12,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -31,8 +30,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialogFooter } from "@/components/app/forms/ConfirmDialogFooter";
+import { FormDialogErrorAlert } from "@/components/app/forms/FormDialogErrorAlert";
 import { FormShell } from "@/components/app/forms/FormShell";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import type { LspOperationalStatus, LspStatusChangeReason } from "@/schemas/lsp";
@@ -245,33 +245,17 @@ export function LspStatusChangeDialog({
             )}
           />
 
-          {errorMessage ? (
-            <div
-              role="alert"
-              className="border-danger/30 bg-danger/5 text-danger rounded-md border p-3 text-sm"
-            >
-              {errorMessage}
-            </div>
-          ) : null}
+          <FormDialogErrorAlert message={errorMessage} />
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant={isDisable ? "destructive" : "default"}
-              disabled={loading || !lsp || unchanged}
-              data-slot="lsp-status-change-submit"
-            >
-              {loading ? "Saving…" : lspStatusChangeActionLabel(currentOperational, targetStatus)}
-            </Button>
-          </DialogFooter>
+          <ConfirmDialogFooter
+            loading={loading}
+            submitDisabled={!lsp || unchanged}
+            onCancel={() => onOpenChange(false)}
+            submitLabel={lspStatusChangeActionLabel(currentOperational, targetStatus)}
+            loadingLabel="Saving…"
+            submitVariant={isDisable ? "destructive" : "default"}
+            submitDataSlot="lsp-status-change-submit"
+          />
         </FormShell>
       </DialogContent>
     </Dialog>

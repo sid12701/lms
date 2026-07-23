@@ -102,45 +102,34 @@ function safeChannel(value: string | null | undefined): "UI" | "API" | "WEBHOOK"
   return "UI";
 }
 
-/**
- * Synthesise the rich `LoanApplicationDetail` from the flat backend
- * payload + the document-checklist tab. The frontend `Borrower`, `Lsp`,
- * `LoanProduct` shapes are deeper than what the backend exposes inline;
- * we fill what's available and leave PII fields empty (`MaskedField`
- * renders an empty cell rather than crashing).
- */
-function backendToDetail(
+function toApplication(
   payload: OpsLoanApplicationDetailResponse,
-  checklist: readonly OpsLoanApplicationDocumentChecklistResponse[],
-): LoanApplicationDetail {
-  const applicationId = payload.id ?? "";
-  const requestedAmount = toAmount(payload.requestedAmount);
-  const tenureMonths = payload.tenureMonths ?? 0;
-  const created = payload.createdAt ?? nowIso();
-  const updated = payload.updatedAt ?? created;
-
-  const application: LoanApplication = {
-    id: applicationId,
+  createdAt: string,
+): LoanApplication {
+  return {
+    id: payload.id ?? "",
     externalLoanId: payload.externalLoanId ?? null,
     borrowerId: payload.borrowerId ?? "",
     lspId: payload.lspId ?? "",
     productId: payload.productId ?? "",
-    requestedAmount,
-    tenureMonths,
+    requestedAmount: toAmount(payload.requestedAmount),
+    tenureMonths: payload.tenureMonths ?? 0,
     status: parseLoanApplicationStatus(payload.status ?? "") ?? "INITIALIZED",
     sourceChannel: safeChannel(payload.sourceChannel),
-    createdAt: created,
-    updatedAt: updated,
+    createdAt,
+    updatedAt: payload.updatedAt ?? createdAt,
     invalidatedAt: payload.invalidatedAt ?? null,
     invalidReason: payload.invalidReasonText ?? payload.invalidReasonCode ?? null,
   };
+}
 
+function toBorrower(payload: OpsLoanApplicationDetailResponse): LoanApplicationDetail["borrower"] {
   // Borrower: the backend embeds a thin projection inline. Full Borrower
   // master data (Aadhaar, banking, references, address parts) requires
   // a separate `/internal/admin/borrowers/{id}` call (wired in #7) — for
   // the detail surface we project what's in the payload and leave the
   // rest empty so the OverviewTab and DetailHeader can render.
-  const borrower = {
+  return {
     id: payload.borrowerId ?? "",
     fullName: payload.borrowerFullName ?? "",
     pan: payload.borrowerPan ?? "",
@@ -175,69 +164,97 @@ function backendToDetail(
     references: [],
     kycComplete: false,
     visibleLspIds: [payload.lspId ?? ""],
-  };
+  } as LoanApplicationDetail["borrower"];
+}
 
-  const lsp = {
+function toLsp(payload: OpsLoanApplicationDetailResponse): LoanApplicationDetail["lsp"] {
+  return {
     id: payload.lspId ?? "",
     code: payload.lspCode ?? "",
     name: payload.lspName ?? "",
     status: "ACTIVE" as const,
-  };
+  } as LoanApplicationDetail["lsp"];
+}
 
-  const product = {
+function toProduct(payload: OpsLoanApplicationDetailResponse): LoanApplicationDetail["product"] {
+  return {
     id: payload.productId ?? "",
     code: payload.productCode ?? "",
     name: payload.productName ?? "",
     status: "ACTIVE" as const,
-  };
+  } as LoanApplicationDetail["product"];
+}
 
-  const account = payload.loanAccount
-    ? {
-        id: payload.loanAccount.id ?? "",
-        applicationId,
-        accountNumber: payload.loanAccount.accountNumber ?? "",
-        accountStatus: LoanAccountStatus.parse(
-          payload.loanAccount.status ?? "PENDING_DISBURSEMENT",
-        ),
-        principal: toAmount(payload.loanAccount.principalAmount),
-        tenureMonths: payload.loanAccount.tenureMonths ?? tenureMonths,
-        approvedAt: payload.loanAccount.approvedAt ?? created,
-        createdAt: payload.loanAccount.createdAt ?? created,
-        closedAt: payload.loanAccount.closedAt,
-        closureReason: (payload.loanAccount.closureReason ?? null) as
-          | "FULLY_REPAID"
-          | "FORECLOSED"
-          | "CANCELLED"
-          | null,
-      }
-    : null;
+function toAccount(
+  payload: OpsLoanApplicationDetailResponse,
+  application: LoanApplication,
+): LoanApplicationDetail["account"] {
+  const account = payload.loanAccount;
+  if (!account) return null;
+  return {
+    id: account.id ?? "",
+    applicationId: application.id,
+    accountNumber: account.accountNumber ?? "",
+    accountStatus: LoanAccountStatus.parse(account.status ?? "PENDING_DISBURSEMENT"),
+    principal: toAmount(account.principalAmount),
+    tenureMonths: account.tenureMonths ?? application.tenureMonths,
+    approvedAt: account.approvedAt ?? application.createdAt,
+    createdAt: account.createdAt ?? application.createdAt,
+    closedAt: account.closedAt,
+    closureReason: (account.closureReason ?? null) as
+      | "FULLY_REPAID"
+      | "FORECLOSED"
+      | "CANCELLED"
+      | null,
+  } as LoanApplicationDetail["account"];
+}
 
+function areRequiredDocumentsComplete(
+  checklist: readonly OpsLoanApplicationDocumentChecklistResponse[],
+): boolean {
   const requiredChecklistRows = checklist.filter((row) => row.required);
-  const docsComplete =
+  return (
     requiredChecklistRows.length === 0 ||
-    requiredChecklistRows.every((row) => isUploadedBackendChecklistStatus(row.status ?? ""));
+    requiredChecklistRows.every((row) => isUploadedBackendChecklistStatus(row.status ?? ""))
+  );
+}
 
-  const scheduleValid =
-    payload.loanAccount?.repaymentSchedule != null &&
-    (payload.loanAccount.repaymentSchedule.installmentCount ?? 0) > 0;
+function hasValidRepaymentSchedule(payload: OpsLoanApplicationDetailResponse): boolean {
+  const schedule = payload.loanAccount?.repaymentSchedule;
+  return schedule != null && (schedule.installmentCount ?? 0) > 0;
+}
 
+function toAccountDelinquency(
+  payload: OpsLoanApplicationDetailResponse,
+): LoanApplicationDetail["accountDelinquency"] {
   const delinquency = payload.loanAccount?.delinquency;
-  const accountDelinquency = delinquency
-    ? {
-        maxDaysPastDue: delinquency.maxDaysPastDue ?? null,
-        overdueInstallmentCount: delinquency.overdueInstallmentCount ?? null,
-      }
-    : null;
+  if (!delinquency) return null;
+  return {
+    maxDaysPastDue: delinquency.maxDaysPastDue ?? null,
+    overdueInstallmentCount: delinquency.overdueInstallmentCount ?? null,
+  };
+}
+
+/**
+ * Synthesise the rich `LoanApplicationDetail` from the flat backend
+ * payload + document checklist while keeping each projection independently
+ * testable and aligned with one domain object.
+ */
+function backendToDetail(
+  payload: OpsLoanApplicationDetailResponse,
+  checklist: readonly OpsLoanApplicationDocumentChecklistResponse[],
+): LoanApplicationDetail {
+  const application = toApplication(payload, payload.createdAt ?? nowIso());
 
   return {
     application,
-    borrower: borrower as unknown as LoanApplicationDetail["borrower"],
-    lsp: lsp as unknown as LoanApplicationDetail["lsp"],
-    product: product as unknown as LoanApplicationDetail["product"],
-    account: account as unknown as LoanApplicationDetail["account"],
-    docsComplete,
-    scheduleValid,
-    accountDelinquency,
+    borrower: toBorrower(payload),
+    lsp: toLsp(payload),
+    product: toProduct(payload),
+    account: toAccount(payload, application),
+    docsComplete: areRequiredDocumentsComplete(checklist),
+    scheduleValid: hasValidRepaymentSchedule(payload),
+    accountDelinquency: toAccountDelinquency(payload),
   };
 }
 
@@ -592,12 +609,14 @@ export async function postDisbursement(
     );
   }
 
-  const payload = await requestJson<OpsLoanApplicationDetailResponse>(
-    `${BACKEND_BASE}/${encodeURIComponent(id)}/disbursement-requests`,
-    { method: "POST", body: JSON.stringify({}) },
-    { idempotencyKey },
-  );
-  const checklist = await fetchChecklist(id);
+  const [payload, checklist] = await Promise.all([
+    requestJson<OpsLoanApplicationDetailResponse>(
+      `${BACKEND_BASE}/${encodeURIComponent(id)}/disbursement-requests`,
+      { method: "POST", body: JSON.stringify({}) },
+      { idempotencyKey },
+    ),
+    fetchChecklist(id),
+  ]);
   const detail = backendToDetail(payload, checklist);
   return {
     application: detail.application,

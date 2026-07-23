@@ -7,7 +7,7 @@ import { TABULAR_ATTR } from "@/lib/tabular-nums";
 import { cn } from "@/lib/utils";
 import type { InternalHomeKpis } from "../types";
 
-export interface InternalKpiSummaryProps {
+interface InternalKpiSummaryProps {
   kpis: InternalHomeKpis;
   className?: string;
 }

@@ -4,7 +4,5 @@ import type { components } from "@/lib/api/generated/schema";
 export type OpsLoanApplicationDetailResponse =
   components["schemas"]["LoanApplicationDetailResponse"];
 
-export type OpsLoanAccountSummaryResponse = components["schemas"]["LoanAccountSummaryResponse"];
-
 export type OpsLoanApplicationDocumentChecklistResponse =
   components["schemas"]["LoanApplicationDocumentChecklistResponse"];

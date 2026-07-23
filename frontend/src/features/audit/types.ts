@@ -12,7 +12,7 @@
  * arrays / undefined scalars mean "no filter".
  */
 import { z } from "zod";
-import { Iso8601, IsoDate, Uuid } from "@/schemas/common";
+import { IsoDate, Uuid } from "@/schemas/common";
 
 // ─── Stream discriminator ────────────────────────────────────────────────────
 
@@ -58,17 +58,13 @@ export const AUDIT_STREAM_BADGE_TONE: Record<AuditStream, string> = {
 
 // ─── Subject discriminator (drives the deep-link button) ─────────────────────
 
-const AUDIT_SUBJECT_TYPES = [
-  "LOAN_APPLICATION",
-  "BORROWER",
-  "LOAN_DOCUMENT",
-  "LOAN_PRODUCT",
-  "APP_USER",
-  "API_CLIENT",
-] as const;
-
-const AuditSubjectTypeSchema = z.enum(AUDIT_SUBJECT_TYPES);
-export type AuditSubjectType = z.infer<typeof AuditSubjectTypeSchema>;
+export type AuditSubjectType =
+  | "LOAN_APPLICATION"
+  | "BORROWER"
+  | "LOAN_DOCUMENT"
+  | "LOAN_PRODUCT"
+  | "APP_USER"
+  | "API_CLIENT";
 
 // ─── Row + response shapes ───────────────────────────────────────────────────
 
@@ -95,20 +91,6 @@ export interface AuditRow {
   raw?: unknown;
 }
 
-const AuditRowSchema: z.ZodType<AuditRow> = z.object({
-  id: z.string().min(1),
-  stream: AuditStreamSchema,
-  createdAt: Iso8601,
-  actorId: z.string().min(1),
-  actorName: z.string().min(1),
-  actorRole: z.string().nullable(),
-  correlationId: z.string().min(1),
-  subjectType: AuditSubjectTypeSchema.nullable(),
-  subjectId: z.string().nullable(),
-  headline: z.string().min(1),
-  raw: z.unknown(),
-});
-
 export interface AuditEventsResponse {
   items: readonly AuditRow[];
   total: number;
@@ -116,13 +98,6 @@ export interface AuditEventsResponse {
   pageSize: number;
   nextCursor?: string | null;
 }
-
-export const AuditEventsResponseSchema: z.ZodType<AuditEventsResponse> = z.object({
-  items: z.array(AuditRowSchema).readonly(),
-  total: z.number().int().nonnegative(),
-  page: z.number().int().nonnegative(),
-  pageSize: z.number().int().positive(),
-});
 
 // ─── URL-bound filters ───────────────────────────────────────────────────────
 

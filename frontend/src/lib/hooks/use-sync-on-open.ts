@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 
-/** Run `sync` when `open` transitions from false → true (render phase, not an effect). */
+/** Run `sync` after `open` transitions from false → true. */
 export function useSyncOnOpen(open: boolean, sync: () => void): void {
-  const [wasOpen, setWasOpen] = useState(open);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) sync();
-  }
+  const wasOpenRef = useRef(open);
+  const onSync = useEffectEvent(sync);
+
+  useEffect(() => {
+    if (!wasOpenRef.current && open) {
+      onSync();
+    }
+    wasOpenRef.current = open;
+  }, [open]);
 }

@@ -1,11 +1,9 @@
 /**
- * Home API client — calls the live backend dashboard endpoints and validates
- * responses against runtime Zod parsers that mirror `./types.ts`.
+ * Home API client — calls the live backend dashboard endpoints and maps their
+ * response contracts into the view model declared in `./types.ts`.
  */
-import { z } from "zod";
 import { AlertSeverity, AlertSubjectType } from "@/schemas/alert";
-import { LoanStatus } from "@/schemas/loan-application";
-import { DelinquencyBucket } from "@/schemas/loan-account";
+import type { DelinquencyBucket } from "@/schemas/loan-account";
 import { ApiError, requestJson } from "@/lib/api/http-client";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import { apiLoanStatus } from "@/lib/loan-application-status";
@@ -17,59 +15,6 @@ import type {
   InternalHomeKpis,
 } from "./types";
 import type { LoanStatus as LoanStatusType } from "@/types";
-
-// ─── Runtime parsers (mirror `types.ts` exactly) ────────────────────────────
-
-const ApplicationsByStatusBucketSchema = z.object({
-  status: LoanStatus,
-  count: z.number().int().nonnegative(),
-});
-
-const DpdBucketSummarySchema = z.object({
-  bucket: DelinquencyBucket,
-  count: z.number().int().nonnegative(),
-});
-
-const HomeRecentApplicationSchema = z.object({
-  id: z.string().min(1),
-  externalLoanId: z.string().nullable(),
-  borrowerNameMasked: z.string().min(1),
-  lspName: z.string().min(1),
-  productName: z.string().min(1),
-  status: LoanStatus,
-  requestedAmount: z.number().nonnegative(),
-  createdAt: z.string().min(1),
-});
-
-const HomeAlertSummarySchema = z.object({
-  id: z.string().min(1),
-  severity: AlertSeverity,
-  title: z.string().min(1),
-  subjectType: AlertSubjectType,
-  subjectId: z.string().min(1),
-  createdAt: z.string().min(1),
-});
-
-const InternalHomeKpisSchema = z.object({
-  applicationsAwaitingApproval: z.number().int().nonnegative(),
-  applicationsInDisbursement: z.number().int().nonnegative(),
-  mtdDisbursedAmount: z.number().nonnegative(),
-  overdueLoansCount: z.number().int().nonnegative(),
-  overdueAmount: z.number().nonnegative(),
-  avgApprovalTatHours: z.number().nullable(),
-  applicationsByStatus: z.array(ApplicationsByStatusBucketSchema).readonly(),
-  dpdBuckets: z.array(DpdBucketSummarySchema).readonly(),
-  recentApplications: z.array(HomeRecentApplicationSchema).readonly(),
-  openAlerts: z.array(HomeAlertSummarySchema).readonly(),
-});
-
-/**
- * Discriminated union — must match the `HomeKpis` exported type in
- * `./types.ts`. Keep these two in sync.
- */
-export const HomeKpisSchema: z.ZodType<HomeKpis> = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("internal"), data: InternalHomeKpisSchema }),
-]);
 
 // ─── Public surface ─────────────────────────────────────────────────────────
 

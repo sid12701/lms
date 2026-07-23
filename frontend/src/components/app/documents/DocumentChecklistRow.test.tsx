@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { renderWithProviders } from "@/test/utils";
 import type { Document } from "@/schemas/document";
-import { DocumentChecklistRow, formatBytes } from "./DocumentChecklistRow";
+import { DocumentChecklistRow } from "./DocumentChecklistRow";
+import { formatBytes } from "./document-format";
 
 function makeDoc(overrides: Partial<Document> = {}): Document {
   return {

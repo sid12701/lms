@@ -11,10 +11,10 @@
 import { z } from "zod";
 import { IdempotencyKey, Iso8601, MoneyINR, MoneyINRPositive, Uuid } from "./common";
 
-export const PaymentChannel = z.enum(["BANK_TRANSFER", "UPI", "CASH", "ADJUSTMENT"]);
-export type PaymentChannel = z.infer<typeof PaymentChannel>;
+const PaymentChannel = z.enum(["BANK_TRANSFER", "UPI", "CASH", "ADJUSTMENT"]);
+type PaymentChannel = z.infer<typeof PaymentChannel>;
 
-export const PaymentAllocation = z.object({
+const PaymentAllocation = z.object({
   installmentId: Uuid,
   /** Order matches blueprint §13 waterfall. */
   penalty: MoneyINR,
@@ -22,7 +22,7 @@ export const PaymentAllocation = z.object({
   interest: MoneyINR,
   principal: MoneyINR,
 });
-export type PaymentAllocation = z.infer<typeof PaymentAllocation>;
+type PaymentAllocation = z.infer<typeof PaymentAllocation>;
 
 export const PaymentTransaction = z.object({
   id: Uuid,

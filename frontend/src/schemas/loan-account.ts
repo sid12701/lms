@@ -25,7 +25,7 @@ export function isLoanAccountStatus(value: string): value is LoanAccountStatus {
 }
 
 export const ClosureReason = z.enum(["FULLY_REPAID", "FORECLOSED", "CANCELLED"]);
-export type ClosureReason = z.infer<typeof ClosureReason>;
+type ClosureReason = z.infer<typeof ClosureReason>;
 
 export const LoanAccount = z.object({
   id: Uuid,
@@ -43,7 +43,7 @@ export const LoanAccount = z.object({
 export type LoanAccount = z.infer<typeof LoanAccount>;
 
 export const ScheduleGenerator = z.enum(["PLATFORM", "LSP"]);
-export type ScheduleGenerator = z.infer<typeof ScheduleGenerator>;
+type ScheduleGenerator = z.infer<typeof ScheduleGenerator>;
 
 export const RepaymentSchedule = z.object({
   id: Uuid,

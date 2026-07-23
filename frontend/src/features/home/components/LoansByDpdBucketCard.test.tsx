@@ -61,9 +61,9 @@ describe("<LoansByDpdBucketCard />", () => {
     expect(summary!.textContent).toMatch(/400 loans across 5 DPD buckets/);
   });
 
-  it("renders the chart wrapper with aria-label and role=img", () => {
-    const { getByTestId } = renderWithProviders(<LoansByDpdBucketCard buckets={BUCKETS} />);
-    const chart = getByTestId("loans-by-dpd-chart");
+  it("renders the chart wrapper with aria-label and role=img", async () => {
+    const { findByTestId } = renderWithProviders(<LoansByDpdBucketCard buckets={BUCKETS} />);
+    const chart = await findByTestId("loans-by-dpd-chart");
     expect(chart.getAttribute("aria-label")).toBe("Loans by DPD bucket");
     expect(chart.getAttribute("role")).toBe("img");
   });
@@ -97,10 +97,10 @@ describe("<LoansByDpdBucketCard />", () => {
     expect(queryByTestId("loans-by-dpd-chart")).toBeNull();
   });
 
-  it("suppresses animation under prefers-reduced-motion", () => {
+  it("suppresses animation under prefers-reduced-motion", async () => {
     stubMotionPreference(true);
-    const { getByTestId } = renderWithProviders(<LoansByDpdBucketCard buckets={BUCKETS} />);
-    const chart = getByTestId("loans-by-dpd-chart");
+    const { findByTestId } = renderWithProviders(<LoansByDpdBucketCard buckets={BUCKETS} />);
+    const chart = await findByTestId("loans-by-dpd-chart");
     expect(chart.getAttribute("data-reduced-motion")).toBe("true");
   });
 

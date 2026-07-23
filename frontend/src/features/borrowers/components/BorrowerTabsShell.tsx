@@ -70,5 +70,3 @@ export function BorrowerTabsShell({
     </TabsPrimitive.Root>
   );
 }
-
-export default BorrowerTabsShell;

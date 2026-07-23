@@ -57,9 +57,10 @@ Compile test sources only: `mvnw.cmd test-compile`.
 
 Routine `mvn test` is safe when a repo-root `.env` points at a shared database:
 
-1. **`IntegrationTestDatabaseTargetGuard`** — `IntegrationTestDatabaseCleaner` refuses non-ephemeral JDBC URLs unless `LMS_IT_EXTERNAL_DB=true` (with a logged warning).
+1. **`IntegrationTestDatabaseTargetGuard`** — `IntegrationTestDatabaseCleaner` refuses to bulk-delete against any JDBC URL that is not in-memory H2 or a datasource explicitly marked `lms.it.ephemeral-database=true` (Testcontainers). There is **no** environment-variable opt-in: no test run can be pointed at a real database.
 2. **Testcontainers by default** — upload regression runs on ephemeral PostgreSQL (`DocumentUploadPostgresIntegrationTest`), not `@ActiveProfiles("local")`.
-3. **Opt-in external DB** — `DocumentUploadExternalDbIntegrationTest` is tagged `external-db`, excluded from the default Surefire run. Run explicitly: `mvnw test -Pexternal-it` with `LMS_IT_EXTERNAL_DB=true`.
+
+If you need to reproduce a bug against a real database, do it by hand against a **copy** — never by pointing the integration-test cleaner at it.
 
 ### Integration-test tenant scope
 

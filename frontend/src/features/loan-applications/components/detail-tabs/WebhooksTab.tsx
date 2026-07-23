@@ -121,5 +121,3 @@ export function WebhooksTab({ applicationId }: WebhooksTabProps) {
     </div>
   );
 }
-
-export default WebhooksTab;

@@ -17,7 +17,7 @@ export const LoanStatus = z.enum(LOAN_APPLICATION_STATUSES);
 export type LoanStatus = z.infer<typeof LoanStatus>;
 
 export const SourceChannel = z.enum(["UI", "API", "WEBHOOK"]);
-export type SourceChannel = z.infer<typeof SourceChannel>;
+type SourceChannel = z.infer<typeof SourceChannel>;
 
 export const LoanApplication = z.object({
   id: Uuid,
@@ -54,7 +54,7 @@ export type LoanDocumentType = z.infer<typeof LoanDocumentType>;
 // Gap #18 — the verify/reject document model was removed; statuses collapse
 // to PENDING (no upload) or UPLOADED (file attached, maps to BE `SUBMITTED`).
 export const LoanDocumentStatus = z.enum(["PENDING", "UPLOADED"]);
-export type LoanDocumentStatus = z.infer<typeof LoanDocumentStatus>;
+type LoanDocumentStatus = z.infer<typeof LoanDocumentStatus>;
 
 export const LoanDocumentFileMeta = z.object({
   storageKey: z.string().min(1).max(240),
@@ -68,7 +68,7 @@ export const LoanDocumentFileMeta = z.object({
     .max(100 * 1024 * 1024),
   checksum: z.string().min(1).max(128),
 });
-export type LoanDocumentFileMeta = z.infer<typeof LoanDocumentFileMeta>;
+type LoanDocumentFileMeta = z.infer<typeof LoanDocumentFileMeta>;
 
 export const LoanDocument = z.object({
   id: Uuid,

@@ -24,7 +24,7 @@ const avatarVariants = cva(
   },
 );
 
-export interface AvatarInitialsProps
+interface AvatarInitialsProps
   extends Omit<HTMLAttributes<HTMLSpanElement>, "children">, VariantProps<typeof avatarVariants> {
   /** Full display name. Initials are derived from the first letter of the
    *  first and last whitespace-separated words (max 2 chars). */

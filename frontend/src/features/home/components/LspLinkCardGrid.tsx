@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { ChevronRight, Files, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export interface LspLinkCardGridProps {
+interface LspLinkCardGridProps {
   className?: string;
 }
 

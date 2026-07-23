@@ -53,11 +53,17 @@ export function logoutSession(): Promise<void> {
   return requestJson<void>("/api/v1/auth/logout", { method: "POST" }, { authenticated: false });
 }
 
-export function fetchSystemContext(accessToken?: string): Promise<BackendSystemContext> {
+export function fetchSystemContext(
+  accessToken?: string,
+  options: { refreshOnUnauthorized?: boolean } = {},
+): Promise<BackendSystemContext> {
   return requestJson<BackendSystemContext>(
     "/api/v1/internal/system/context",
     {},
-    accessToken ? { accessToken } : {},
+    {
+      ...(accessToken ? { accessToken } : {}),
+      refreshOnUnauthorized: options.refreshOnUnauthorized,
+    },
   );
 }
 

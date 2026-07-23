@@ -47,9 +47,9 @@ public class LoanProductAdminController {
     }
 
     @GetMapping
-    public List<ProductResponse> listProducts() {
-        return productConfigurationService.listProducts().stream()
-                .map(LoanProductAdminController::toResponse)
+    public List<ProductListItemResponse> listProducts() {
+        return productConfigurationService.listProductViews().stream()
+                .map(view -> toListItemResponse(view.product(), view.mappedLsps()))
                 .toList();
     }
 
@@ -126,11 +126,7 @@ public class LoanProductAdminController {
 
     @GetMapping("/{productId}/mappings")
     public ProductMappingResponse getProductMappings(@PathVariable UUID productId) {
-        LoanProduct product = productConfigurationService.getProduct(productId);
-        List<LspMappingItem> mappedLsps = productConfigurationService.listProductMappings(productId).stream()
-                .map(LoanProductAdminController::toLspMappingItem)
-                .toList();
-        return new ProductMappingResponse(product.getId().toString(), product.getCode(), product.getName(), mappedLsps);
+        return toProductMappingResponse(productConfigurationService.getProductMappings(productId));
     }
 
     @PutMapping("/{productId}/mappings")
@@ -138,11 +134,9 @@ public class LoanProductAdminController {
             @PathVariable UUID productId,
             @Valid @RequestBody ProductMappingRequest request
     ) {
-        LoanProduct product = productConfigurationService.getProduct(productId);
-        List<LspMappingItem> mappedLsps = productConfigurationService.replaceProductMappings(productId, request.lspIds()).stream()
-                .map(LoanProductAdminController::toLspMappingItem)
-                .toList();
-        return new ProductMappingResponse(product.getId().toString(), product.getCode(), product.getName(), mappedLsps);
+        return toProductMappingResponse(
+                productConfigurationService.replaceProductMappings(productId, request.lspIds())
+        );
     }
 
     @GetMapping("/{productId}/audit-events")
@@ -165,6 +159,36 @@ public class LoanProductAdminController {
                 product.getMaxTenureMonths(),
                 product.getStatus().name(),
                 product.getCreatedAt()
+        );
+    }
+
+    private static ProductListItemResponse toListItemResponse(LoanProduct product, List<Lsp> mappedLsps) {
+        ProductResponse response = toResponse(product);
+        return new ProductListItemResponse(
+                response.id(),
+                response.code(),
+                response.name(),
+                response.minPrincipal(),
+                response.maxPrincipal(),
+                response.interestRate(),
+                response.processingFeeRate(),
+                response.minTenureMonths(),
+                response.maxTenureMonths(),
+                response.status(),
+                response.createdAt(),
+                mappedLsps.stream().map(LoanProductAdminController::toLspMappingItem).toList()
+        );
+    }
+
+    private static ProductMappingResponse toProductMappingResponse(
+            ProductConfigurationService.ProductMappingDetails details
+    ) {
+        LoanProduct product = details.product();
+        return new ProductMappingResponse(
+                product.getId().toString(),
+                product.getCode(),
+                product.getName(),
+                details.mappedLsps().stream().map(LoanProductAdminController::toLspMappingItem).toList()
         );
     }
 
@@ -219,6 +243,22 @@ public class LoanProductAdminController {
             Integer maxTenureMonths,
             String status,
             Instant createdAt
+    ) {
+    }
+
+    public record ProductListItemResponse(
+            String id,
+            String code,
+            String name,
+            BigDecimal minPrincipal,
+            BigDecimal maxPrincipal,
+            BigDecimal interestRate,
+            BigDecimal processingFeeRate,
+            Integer minTenureMonths,
+            Integer maxTenureMonths,
+            String status,
+            Instant createdAt,
+            List<LspMappingItem> mappedLsps
     ) {
     }
 

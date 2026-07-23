@@ -22,7 +22,7 @@ export const LspProvidedInstallment = z.object({
   interestDue: MoneyINR,
   installmentAmount: MoneyINR,
 });
-export type LspProvidedInstallment = z.infer<typeof LspProvidedInstallment>;
+type LspProvidedInstallment = z.infer<typeof LspProvidedInstallment>;
 
 /** ±0.01 INR reconciliation tolerance. */
 export const RECONCILE_TOLERANCE = 0.01;
@@ -44,11 +44,12 @@ export const LspProvidedSchedule = z
   })
   .superRefine((schedule, ctx) => {
     const { installments, approvedTenureMonths, approvedPrincipal } = schedule;
+    const customIssueCode = z.ZodIssueCode.custom;
 
     // BR-11(1) — count
     if (installments.length !== approvedTenureMonths) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: customIssueCode,
         path: ["installments"],
         message: `expected ${approvedTenureMonths} installments, got ${installments.length}`,
       });
@@ -65,7 +66,7 @@ export const LspProvidedSchedule = z
 
       if (row.number !== i + 1) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: customIssueCode,
           path: ["installments", i, "number"],
           message: `expected installment #${i + 1}, got #${row.number}`,
         });
@@ -74,7 +75,7 @@ export const LspProvidedSchedule = z
       // BR-11(3) — strictly increasing due dates
       if (prevDate !== null && row.dueDate <= prevDate) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: customIssueCode,
           path: ["installments", i, "dueDate"],
           message: `due date ${row.dueDate} must be strictly after ${prevDate}`,
         });
@@ -85,7 +86,7 @@ export const LspProvidedSchedule = z
       const rowSum = row.principalDue + row.interestDue;
       if (Math.abs(rowSum - row.installmentAmount) > RECONCILE_TOLERANCE + FLOAT_NOISE) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: customIssueCode,
           path: ["installments", i, "installmentAmount"],
           message: `principalDue + interestDue (${rowSum}) ≠ installmentAmount (${row.installmentAmount})`,
         });
@@ -97,10 +98,10 @@ export const LspProvidedSchedule = z
     // BR-11(5) — total principal reconciliation
     if (Math.abs(principalSum - approvedPrincipal) > RECONCILE_TOLERANCE + FLOAT_NOISE) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: customIssueCode,
         path: ["installments"],
         message: `sum(principalDue)=${principalSum} ≠ approvedPrincipal=${approvedPrincipal}`,
       });
     }
   });
-export type LspProvidedSchedule = z.infer<typeof LspProvidedSchedule>;
+type LspProvidedSchedule = z.infer<typeof LspProvidedSchedule>;

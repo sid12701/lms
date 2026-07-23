@@ -174,5 +174,3 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
     </div>
   );
 }
-
-export default DetailHeader;

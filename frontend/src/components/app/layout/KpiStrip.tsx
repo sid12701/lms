@@ -1,7 +1,7 @@
 import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-export interface KpiStripProps extends HTMLAttributes<HTMLDivElement> {
+interface KpiStripProps extends HTMLAttributes<HTMLDivElement> {
   /** Slot for KPI/metric cards. The cards themselves live in a later batch. */
   children: ReactNode;
   className?: string;

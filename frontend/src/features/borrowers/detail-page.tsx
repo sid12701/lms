@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ShieldAlert, Users } from "lucide-react";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
@@ -14,7 +14,7 @@ import { BorrowerHeader } from "./components/BorrowerHeader";
 import { BorrowerTabsShell } from "./components/BorrowerTabsShell";
 import { ProfileTab, LoansTab } from "./components/tabs";
 import { useBorrowerDetail } from "./hooks/useBorrowerDetail";
-import { BorrowerDetailTab } from "./types";
+import { BorrowerDetailTab, type BorrowerDetail } from "./types";
 
 /**
  * `?tab=` URL state. Mirrors the Phase 5 helper exactly — invalid or
@@ -65,6 +65,23 @@ function DetailSkeleton() {
   );
 }
 
+function BorrowerTabBody({
+  activeTab,
+  detail,
+  borrowerId,
+}: {
+  activeTab: BorrowerDetailTab;
+  detail: BorrowerDetail;
+  borrowerId: string;
+}) {
+  switch (activeTab) {
+    case "profile":
+      return <ProfileTab detail={detail} />;
+    case "loans":
+      return <LoansTab borrowerId={borrowerId} />;
+  }
+}
+
 /**
  * Phase-6 borrower-detail page.
  *
@@ -80,19 +97,6 @@ export function BorrowerDetailPage() {
   const borrowerId = id ?? "";
   const detailQuery = useBorrowerDetail(borrowerId);
   const [activeTab, setActiveTab] = useBorrowerTabParam();
-
-  const tabBody = useMemo(() => {
-    if (!detailQuery.data) return null;
-    const detail = detailQuery.data;
-    switch (activeTab) {
-      case "profile":
-        return <ProfileTab detail={detail} />;
-      case "loans":
-        return <LoansTab borrowerId={borrowerId} />;
-      default:
-        return null;
-    }
-  }, [activeTab, borrowerId, detailQuery.data]);
 
   if (!borrowerId) {
     return (
@@ -171,7 +175,7 @@ export function BorrowerDetailPage() {
       <div className="min-w-0 flex-1 space-y-6">
         <BorrowerHeader detail={detail} />
         <BorrowerTabsShell activeTab={activeTab} onTabChange={setActiveTab}>
-          {tabBody}
+          <BorrowerTabBody activeTab={activeTab} detail={detail} borrowerId={borrowerId} />
         </BorrowerTabsShell>
       </div>
 

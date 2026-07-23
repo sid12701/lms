@@ -130,9 +130,7 @@ function makeId(from: LoanStatus, to: LoanStatus): string {
  * SYSTEM-only transitions (allowedRoles is empty) are dropped because no
  * role would ever see a button for them.
  */
-export const LIFECYCLE_ACTIONS: LifecycleAction[] = TRANSITIONS.filter(
-  (rule) => rule.allowedRoles.length > 0,
-).map((rule) => {
+function actionFromRule(rule: (typeof TRANSITIONS)[number]): LifecycleAction {
   const ov = ACTION_OVERRIDES[rule.to] ?? DEFAULT_OVERRIDE;
   // Destructive rule.intent should always end up tone="destructive" so the
   // table's destructive marker (e.g. "Cancel foreclosure") wins over the
@@ -149,7 +147,11 @@ export const LIFECYCLE_ACTIONS: LifecycleAction[] = TRANSITIONS.filter(
     requiresReasonCode: REASON_CODE_TARGETS.has(rule.to),
     permission: ov.permission,
   };
-});
+}
+
+export const LIFECYCLE_ACTIONS: LifecycleAction[] = TRANSITIONS.flatMap((rule) =>
+  rule.allowedRoles.length > 0 ? [actionFromRule(rule)] : [],
+);
 
 /**
  * Returns every UI-actionable transition leaving `from`, regardless of
@@ -157,17 +159,7 @@ export const LIFECYCLE_ACTIONS: LifecycleAction[] = TRANSITIONS.filter(
  * by feeding each action through `canTransition()`.
  */
 export function actionsFor(from: LoanStatus): LifecycleAction[] {
-  return TRANSITIONS.filter((r) => r.from === from && r.allowedRoles.length > 0).map((rule) => {
-    const ov = ACTION_OVERRIDES[rule.to] ?? DEFAULT_OVERRIDE;
-    const tone: LifecycleActionTone = rule.intent === "destructive" ? "destructive" : ov.tone;
-    return {
-      id: makeId(rule.from, rule.to),
-      label: ov.labelOverride ?? rule.label,
-      toStatus: rule.to,
-      tone,
-      requiresReason: tone === "destructive" ? true : ov.requiresReason,
-      requiresReasonCode: REASON_CODE_TARGETS.has(rule.to),
-      permission: ov.permission,
-    };
-  });
+  return TRANSITIONS.flatMap((rule) =>
+    rule.from === from && rule.allowedRoles.length > 0 ? [actionFromRule(rule)] : [],
+  );
 }

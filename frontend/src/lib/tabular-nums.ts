@@ -6,4 +6,3 @@
  * Spread `TABULAR_ATTR` onto any element that should opt in.
  */
 export const TABULAR_ATTR = { "data-tabular": "true" } as const;
-export type TabularAttr = typeof TABULAR_ATTR;

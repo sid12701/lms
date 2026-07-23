@@ -42,7 +42,7 @@ export const LoanProduct = z
   });
 export type LoanProduct = z.infer<typeof LoanProduct>;
 
-export const ProductLspMapping = z.object({
+const ProductLspMapping = z.object({
   productId: Uuid,
   lspIds: z.array(Uuid),
 });

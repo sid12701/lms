@@ -13,16 +13,16 @@
  * Mutations require role SYSTEM_ADMIN or PRODUCT_ADMIN (per IA §4).
  */
 import { z } from "zod";
-import { LoanProduct, ProductLspMapping, ProductStatus } from "@/schemas/product";
+import { ProductStatus } from "@/schemas/product";
+import type { LoanProduct, ProductLspMapping } from "@/schemas/product";
+import { ADMIN_LIST_FILTER_FIELDS } from "@/lib/admin-list-url-state";
 
 export type { LoanProduct, ProductLspMapping };
 
 /** Server-side filter shape for the list page. */
 const ProductsListFilters = z.object({
   status: ProductStatus.optional(),
-  q: z.string().trim().min(1).max(120).optional(),
-  page: z.coerce.number().int().min(0).optional(),
-  pageSize: z.coerce.number().int().min(5).max(100).optional(),
+  ...ADMIN_LIST_FILTER_FIELDS,
 });
 export type ProductsListFilters = z.infer<typeof ProductsListFilters>;
 

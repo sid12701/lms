@@ -12,6 +12,34 @@ import { format, formatDistanceStrict, formatDistanceToNowStrict, parseISO } fro
 
 const BULLET = "•"; // •
 const MIN_PLAUSIBLE_YEAR = 2000;
+const INR_STANDARD_FORMATTERS: Record<0 | 2, Intl.NumberFormat> = {
+  0: new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }),
+  2: new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }),
+};
+const INR_COMPACT_FORMATTERS: Record<0 | 2, Intl.NumberFormat> = {
+  0: new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }),
+  2: new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }),
+};
 
 function isPlausibleInstant(date: Date): boolean {
   return !Number.isNaN(date.getTime()) && date.getFullYear() >= MIN_PLAUSIBLE_YEAR;
@@ -24,19 +52,9 @@ export function formatINR(amount: number, opts?: { compact?: boolean; decimals?:
     // Indian compact: lakh / crore — Intl supports `notation: "compact"` with en-IN.
     // Keep one fraction digit unless the caller asks for more: with 0 digits,
     // ₹1,50,000 rounds to "₹2L" — a materially wrong figure on finance surfaces.
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      notation: "compact",
-      maximumFractionDigits: Math.max(opts?.decimals ?? 1, 1),
-    }).format(amount);
+    return INR_COMPACT_FORMATTERS[decimals].format(amount);
   }
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(amount);
+  return INR_STANDARD_FORMATTERS[decimals].format(amount);
 }
 
 /** "09/05/2026" — dd/MM/yyyy for date picker display. */

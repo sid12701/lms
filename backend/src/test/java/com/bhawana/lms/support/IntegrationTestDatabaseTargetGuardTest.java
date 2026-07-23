@@ -9,18 +9,12 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.SQLException;
 import javax.sql.DataSource;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 class IntegrationTestDatabaseTargetGuardTest {
 
-    @AfterEach
-    void clearExternalOptIn() {
-        System.clearProperty(IntegrationTestDatabaseTargetGuard.EXTERNAL_DB_PROPERTY);
-    }
-
     @Test
-    void rejectsSupabaseUrlWithoutExplicitOptIn() throws SQLException {
+    void rejectsSupabaseUrl() throws SQLException {
         DataSource dataSource = dataSourceWithUrl(
                 "jdbc:postgresql://db.abcdefghijklmnop.supabase.co:5432/postgres");
 
@@ -57,13 +51,18 @@ class IntegrationTestDatabaseTargetGuardTest {
     }
 
     @Test
-    void allowsRemoteUrlWhenExplicitExternalOptInIsSet() throws SQLException {
-        System.setProperty(IntegrationTestDatabaseTargetGuard.EXTERNAL_DB_PROPERTY, "true");
-        DataSource dataSource = dataSourceWithUrl(
-                "jdbc:postgresql://db.abcdefghijklmnop.supabase.co:5432/postgres");
+    void rejectsRemoteUrlEvenWhenLegacyExternalOptInIsSet() throws SQLException {
+        System.setProperty("LMS_IT_EXTERNAL_DB", "true");
+        try {
+            DataSource dataSource = dataSourceWithUrl(
+                    "jdbc:postgresql://db.abcdefghijklmnop.supabase.co:5432/postgres");
 
-        assertThatCode(() -> IntegrationTestDatabaseTargetGuard.assertEphemeralTarget(dataSource))
-                .doesNotThrowAnyException();
+            assertThatThrownBy(() -> IntegrationTestDatabaseTargetGuard.assertEphemeralTarget(dataSource))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("refused");
+        } finally {
+            System.clearProperty("LMS_IT_EXTERNAL_DB");
+        }
     }
 
     private static DataSource dataSourceWithUrl(String jdbcUrl) throws SQLException {

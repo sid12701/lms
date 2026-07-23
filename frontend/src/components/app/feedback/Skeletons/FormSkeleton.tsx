@@ -2,7 +2,7 @@ import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export interface FormSkeletonProps extends HTMLAttributes<HTMLDivElement> {
+interface FormSkeletonProps extends HTMLAttributes<HTMLDivElement> {
   fields?: number;
   className?: string;
 }

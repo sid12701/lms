@@ -73,12 +73,12 @@ beforeEach(() => {
       sessionFor("SYSTEM_ADMIN", "aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa", "ops.admin"),
     );
   loginPresetForRoleMock.mockReset().mockImplementation((role: string) => {
-    const presets: Record<string, { email: string; password: string } | null> = {
-      SYSTEM_ADMIN: { email: "siddhant@bhawanafinance.com", password: "ChangeMe123!" },
-      OPS_USER: { email: "ops.reviewer1@bhawana.local", password: "DemoPass123!" },
-      PRODUCT_ADMIN: { email: "product.owner@bhawana.local", password: "DemoPass123!" },
-      LSP_UI_READ: { email: "lsp.read1@bhawana.local", password: "DemoPass123!" },
-      LSP_UI_WRITE: { email: "lsp.write1@bhawana.local", password: "DemoPass123!" },
+    const presets: Record<string, { email: string } | null> = {
+      SYSTEM_ADMIN: { email: "siddhant@bhawanafinance.com" },
+      OPS_USER: { email: "ops.reviewer1@bhawana.local" },
+      PRODUCT_ADMIN: { email: "product.owner@bhawana.local" },
+      LSP_UI_READ: { email: "lsp.read1@bhawana.local" },
+      LSP_UI_WRITE: { email: "lsp.write1@bhawana.local" },
     };
     return presets[role] ?? null;
   });
@@ -91,37 +91,29 @@ afterEach(() => {
 describe("LoginPage", () => {
   it("lists five role quick-fill cards", () => {
     renderLogin();
-    expect(screen.getByLabelText(/Fill credentials for System administrator/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Fill credentials for Operations user/i)).toBeInTheDocument();
-    expect(
-      screen.getByLabelText(/Fill credentials for Product administrator/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText(/Fill credentials for LSP user \(read-only\)/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText(/Fill credentials for LSP user \(read\/write\)/i),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Fill email for System administrator/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Fill email for Operations user/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Fill email for Product administrator/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Fill email for LSP user \(read-only\)/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Fill email for LSP user \(read\/write\)/i)).toBeInTheDocument();
   });
 
-  it("fills email and password when a role with a configured user is selected", async () => {
+  it("fills only the email when a configured role is selected", async () => {
     const user = userEvent.setup();
     renderLogin();
-    await user.click(screen.getByLabelText(/Fill credentials for System administrator/i));
+    await user.click(screen.getByLabelText(/Fill email for System administrator/i));
     expect(screen.getByLabelText(/^Email$/i)).toHaveValue("siddhant@bhawanafinance.com");
-    expect(screen.getByLabelText(/^Password$/i)).toHaveValue("ChangeMe123!");
+    expect(screen.getByLabelText(/^Password$/i)).toHaveValue("");
   });
 
   it("hides role quick-fill cards without configured credentials", () => {
     loginPresetForRoleMock.mockImplementation((role: string) => {
       if (role === "OPS_USER") return null;
-      return { email: `${role.toLowerCase()}@bhawana.local`, password: "DemoPass123!" };
+      return { email: `${role.toLowerCase()}@bhawana.local` };
     });
     renderLogin();
-    expect(
-      screen.queryByLabelText(/Fill credentials for Operations user/i),
-    ).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/Fill credentials for System administrator/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Fill email for Operations user/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Fill email for System administrator/i)).toBeInTheDocument();
   });
 
   it("hides the role quick-fill section when no presets are configured", () => {
@@ -133,12 +125,13 @@ describe("LoginPage", () => {
   it("routes SYSTEM_ADMIN to /home after sign-in", async () => {
     const user = userEvent.setup();
     renderLogin();
-    await user.click(screen.getByLabelText(/Fill credentials for System administrator/i));
+    await user.click(screen.getByLabelText(/Fill email for System administrator/i));
+    await user.type(screen.getByLabelText(/^Password$/i), "test-password");
     await user.click(screen.getByRole("button", { name: /^sign in$/i }));
     await waitFor(() =>
       expect(loginMock).toHaveBeenCalledWith({
         email: "siddhant@bhawanafinance.com",
-        password: "ChangeMe123!",
+        password: "test-password",
       }),
     );
     expect(await screen.findByTestId("home")).toBeInTheDocument();
@@ -150,7 +143,8 @@ describe("LoginPage", () => {
     );
     const user = userEvent.setup();
     renderLogin();
-    await user.click(screen.getByLabelText(/Fill credentials for Operations user/i));
+    await user.click(screen.getByLabelText(/Fill email for Operations user/i));
+    await user.type(screen.getByLabelText(/^Password$/i), "test-password");
     await user.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByTestId("loan-applications")).toBeInTheDocument();
   });
@@ -161,7 +155,8 @@ describe("LoginPage", () => {
     );
     const user = userEvent.setup();
     renderLogin();
-    await user.click(screen.getByLabelText(/Fill credentials for Product administrator/i));
+    await user.click(screen.getByLabelText(/Fill email for Product administrator/i));
+    await user.type(screen.getByLabelText(/^Password$/i), "test-password");
     await user.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByTestId("products")).toBeInTheDocument();
   });
@@ -172,7 +167,8 @@ describe("LoginPage", () => {
     );
     const user = userEvent.setup();
     renderLogin();
-    await user.click(screen.getByLabelText(/Fill credentials for LSP user \(read-only\)/i));
+    await user.click(screen.getByLabelText(/Fill email for LSP user \(read-only\)/i));
+    await user.type(screen.getByLabelText(/^Password$/i), "test-password");
     await user.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByTestId("my-loans")).toBeInTheDocument();
   });
@@ -181,8 +177,7 @@ describe("LoginPage", () => {
     loginMock.mockRejectedValueOnce(new Error("invalid credentials"));
     const user = userEvent.setup();
     renderLogin();
-    await user.click(screen.getByLabelText(/Fill credentials for System administrator/i));
-    await user.clear(screen.getByLabelText(/^Password$/i));
+    await user.click(screen.getByLabelText(/Fill email for System administrator/i));
     await user.type(screen.getByLabelText(/^Password$/i), "wrong");
     await user.click(screen.getByRole("button", { name: /^sign in$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/invalid credentials/i);

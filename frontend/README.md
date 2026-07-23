@@ -12,7 +12,7 @@ React SPA for internal operations and LSP-scoped surfaces. Talks to the Spring B
 ```bash
 cd frontend
 npm ci
-cp .env.example .env.local   # set VITE_LOGIN_* credentials for your environment
+cp .env.example .env.local   # optionally set role-specific login email prefills
 ```
 
 ## Scripts

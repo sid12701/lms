@@ -170,5 +170,3 @@ export function ScheduleTab({
     </div>
   );
 }
-
-export default ScheduleTab;

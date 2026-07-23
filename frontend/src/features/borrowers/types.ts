@@ -7,13 +7,8 @@
  * from `@/types` (type-only re-exports crash at runtime).
  */
 import { z } from "zod";
-import type { LoanApplication, Lsp, LoanProduct } from "@/types";
-import type {
-  Borrower,
-  BorrowerBanking,
-  BorrowerEmployment,
-  BorrowerReference,
-} from "@/schemas/borrower";
+import type { LoanApplication } from "@/types";
+import type { Borrower } from "@/schemas/borrower";
 
 // ─── Tabs ────────────────────────────────────────────────────────────────────
 
@@ -71,22 +66,6 @@ export interface BorrowerLoansResponse {
   loans: readonly BorrowerLoanRow[];
 }
 
-// ─── Mutation contracts ──────────────────────────────────────────────────────
-
-/**
- * Recorded when an operator opens / previews / downloads a document.
- * `action` mirrors `DocumentAccessAction` from `src/schemas/audit.ts`.
- */
-export interface RecordDocumentAccessInput {
-  documentId: string;
-  action: "VIEW" | "PREVIEW" | "DOWNLOAD";
-  idempotencyKey: string;
-}
-
-export interface RecordDocumentAccessResponse {
-  auditId: string;
-}
-
 // ─── Re-exports — convenience for tab components ─────────────────────────────
 
-export type { Borrower, BorrowerBanking, BorrowerEmployment, BorrowerReference, Lsp, LoanProduct };
+export type { Borrower };

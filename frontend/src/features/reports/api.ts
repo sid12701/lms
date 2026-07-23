@@ -126,7 +126,7 @@ function normaliseStatus(value: string): ReportStatus {
 }
 
 /** Backend `LoanDelinquencyBucket` → frontend chart / table bucket ids. */
-export const BACKEND_DPD_TO_FE: Record<string, DelinquencyBucket> = {
+const BACKEND_DPD_TO_FE: Record<string, DelinquencyBucket> = {
   CURRENT: "B0",
   DPD_1_30: "B1_30",
   DPD_31_60: "B31_60",

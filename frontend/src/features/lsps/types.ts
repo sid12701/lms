@@ -18,15 +18,14 @@ import {
   LspWebhookSubscription,
   WebhookEventType,
 } from "@/schemas/lsp";
+import { ADMIN_LIST_FILTER_FIELDS } from "@/lib/admin-list-url-state";
 
 export type { Lsp, LspWebhookSubscription };
 
 /** Server-side filter shape for the list page. URL-bound via `useSearchParams`. */
 const LspsListFilters = z.object({
   status: LspStatus.optional(),
-  q: z.string().trim().min(1).max(120).optional(),
-  page: z.coerce.number().int().min(0).optional(),
-  pageSize: z.coerce.number().int().min(5).max(100).optional(),
+  ...ADMIN_LIST_FILTER_FIELDS,
 });
 export type LspsListFilters = z.infer<typeof LspsListFilters>;
 

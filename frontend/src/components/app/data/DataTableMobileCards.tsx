@@ -1,10 +1,10 @@
 import { flexRender, type Column, type Row, type Table as ReactTable } from "@tanstack/react-table";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TABULAR_ATTR } from "@/lib/tabular-nums";
 import { cn } from "@/lib/utils";
 
-export type MobileCardSlot = "primary" | "secondary" | "actions";
+type MobileCardSlot = "primary" | "secondary" | "actions";
 
 function columnLabel<TData>(column: Column<TData, unknown>): string {
   const meta = column.columnDef.meta;
@@ -122,12 +122,6 @@ export function DataTableMobileCards<TData>({
         const cellByColumnId = new Map(row.getVisibleCells().map((cell) => [cell.column.id, cell]));
 
         const onRowActivate = () => getRowAction?.(row);
-        const onRowKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onRowActivate();
-          }
-        };
 
         const primaryBlock =
           primaryCols.length > 0 ? (
@@ -190,20 +184,18 @@ export function DataTableMobileCards<TData>({
             className={cn("border-border bg-surface shadow-e1 rounded-md border", pad)}
           >
             {isInteractive ? (
-              <div
-                role="button"
-                tabIndex={0}
+              <button
+                type="button"
                 aria-label={rowAriaLabel}
                 onClick={onRowActivate}
-                onKeyDown={onRowKeyDown}
                 className={cn(
-                  "focus-visible:ring-ring/50 -m-px cursor-pointer rounded-[inherit] p-px outline-none focus-visible:ring-2",
+                  "focus-visible:ring-ring/50 -m-px block w-[calc(100%+2px)] cursor-pointer rounded-[inherit] border-0 bg-transparent p-px text-left outline-none focus-visible:ring-2",
                   actionBlock ? "pb-0" : undefined,
                 )}
               >
                 {primaryBlock}
                 {secondaryBlock}
-              </div>
+              </button>
             ) : (
               <>
                 {primaryBlock}

@@ -16,6 +16,7 @@
  *     OPS_USER > PRODUCT_ADMIN > LSP_UI_WRITE > LSP_UI_READ > LSP_API_CLIENT).
  */
 import { requestJson } from "@/lib/api/http-client";
+import { paginate } from "@/lib/pagination";
 import type { Role } from "@/schemas/role";
 import type { User, UserStatus } from "@/schemas/user";
 import type {
@@ -116,10 +117,8 @@ export async function listUsers(filters: UsersListFilters = {}): Promise<UsersLi
     }
     return true;
   });
-  const page = filters.page ?? 0;
-  const pageSize = filters.pageSize ?? 20;
-  const items = filtered.slice(page * pageSize, page * pageSize + pageSize).map(toUserRow);
-  return { items, total: filtered.length, page, pageSize };
+  const result = paginate(filtered, filters);
+  return { ...result, items: result.items.map(toUserRow) };
 }
 
 export async function createUser(input: CreateUserInput): Promise<CreateUserResponse> {
@@ -182,11 +181,7 @@ export async function resetUserPassword(
     { method: "POST" },
     { idempotencyKey: _input.idempotencyKey },
   );
-  const list = await requestJson<BackendUserResponse[]>(BASE);
-  const found = list.find((row) => row.id === id);
-  if (!found) throw new Error(`User ${id} not found`);
   return {
-    user: { ...toUserRow(found), mustChangePassword: true },
     temporaryPassword: payload.temporaryPassword,
   };
 }

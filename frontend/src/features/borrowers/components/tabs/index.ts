@@ -1,5 +1,5 @@
 /**
  * Barrel for the borrower-detail tabs.
  */
-export { LoansTab, type LoansTabProps } from "./LoansTab";
-export { ProfileTab, type ProfileTabProps } from "./ProfileTab";
+export { LoansTab } from "./LoansTab";
+export { ProfileTab } from "./ProfileTab";

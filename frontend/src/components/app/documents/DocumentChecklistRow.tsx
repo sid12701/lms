@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { DOCUMENT_KIND_LABELS, type Document } from "@/schemas/document";
 import { DocumentStatusPill } from "./DocumentStatusPill";
+import { formatBytes } from "./document-format";
 
 // Gap #18 — verify/reject affordances removed. Internal users render a
 // view-only row; uploads are the only mutating action and live on the
@@ -21,16 +22,6 @@ export interface DocumentChecklistRowProps {
   onDownload?: () => void;
   permissions?: DocumentChecklistRowPermissions;
   className?: string;
-}
-
-const KB = 1024;
-const MB = KB * 1024;
-
-export function formatBytes(bytes: number | null | undefined): string {
-  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return "—";
-  if (bytes < KB) return `${bytes} B`;
-  if (bytes < MB) return `${(bytes / KB).toFixed(1)} KB`;
-  return `${(bytes / MB).toFixed(1)} MB`;
 }
 
 export function DocumentChecklistRow({

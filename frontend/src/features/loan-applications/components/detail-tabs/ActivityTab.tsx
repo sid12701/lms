@@ -56,5 +56,3 @@ export function ActivityTab({ applicationId }: ActivityTabProps) {
     </div>
   );
 }
-
-export default ActivityTab;

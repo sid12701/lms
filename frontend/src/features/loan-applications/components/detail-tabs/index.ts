@@ -8,11 +8,11 @@
  * Keep exports alphabetised within each agent's block to make merges
  * deterministic.
  */
-export { ScheduleTab, type ScheduleTabProps } from "./ScheduleTab";
-export { DocumentsTab, type DocumentsTabProps } from "./DocumentsTab";
-export { RepaymentsTab, type RepaymentsTabProps } from "./RepaymentsTab";
+export { ScheduleTab } from "./ScheduleTab";
+export { DocumentsTab } from "./DocumentsTab";
+export { RepaymentsTab } from "./RepaymentsTab";
 
 // ─── Agent C exports ────────────────────────────────────────────────────────
-export { OverviewTab, type OverviewTabProps } from "./OverviewTab";
-export { ActivityTab, type ActivityTabProps } from "./ActivityTab";
-export { WebhooksTab, type WebhooksTabProps } from "./WebhooksTab";
+export { OverviewTab } from "./OverviewTab";
+export { ActivityTab } from "./ActivityTab";
+export { WebhooksTab } from "./WebhooksTab";

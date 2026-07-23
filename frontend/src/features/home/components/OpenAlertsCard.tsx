@@ -9,7 +9,7 @@ import type { AlertSeverity } from "@/schemas/alert";
 import type { HomeAlertSummary } from "../types";
 import type { OpenAlertsSeverityToken } from "./openAlertsSeverity";
 
-export interface OpenAlertsCardProps {
+interface OpenAlertsCardProps {
   alerts: readonly HomeAlertSummary[];
   className?: string;
 }

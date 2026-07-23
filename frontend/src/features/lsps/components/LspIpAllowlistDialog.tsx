@@ -16,11 +16,6 @@ import { Label } from "@/components/ui/label";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { IpAllowListEditor } from "@/features/api-clients/components/IpAllowListEditor";
-import {
-  addLspIpAllowlistEntry,
-  removeLspIpAllowlistEntry,
-  updateLspAllowlistEnforcement,
-} from "../api";
 import { useLspIpAllowlistAdmin } from "../hooks/useLspIpAllowlistAdmin";
 import type { LspIpAllowlistEntry, LspIpAllowlistSurface, LspRow } from "../types";
 
@@ -123,80 +118,74 @@ function SurfaceSection({
 
 export function LspIpAllowlistDialog({ open, onOpenChange, lsp }: LspIpAllowlistDialogProps) {
   const lspId = lsp?.id ?? null;
-  const { ui, api, enforcement, invalidate } = useLspIpAllowlistAdmin(lspId, open);
+  const { ui, api, enforcement, saveEntries, removeEntry, updateEnforcement } =
+    useLspIpAllowlistAdmin(lspId, open);
 
-  const [mutating, setMutating] = useState(false);
-  const [mutationError, setMutationError] = useState<string | null>(null);
   const [pendingUi, setPendingUi] = useState<string[]>([]);
   const [pendingApi, setPendingApi] = useState<string[]>([]);
 
   const queryLoading = ui.isPending || api.isPending || enforcement.isPending;
   const queryError = ui.error ?? api.error ?? enforcement.error;
-  const loading = queryLoading || mutating;
+  const loading =
+    queryLoading || saveEntries.isPending || removeEntry.isPending || updateEnforcement.isPending;
 
   const uiEntries = ui.data ?? [];
   const apiEntries = api.data ?? [];
   const enforcementFlags = enforcement.data ?? { enforceUi: false, enforceApi: false };
 
-  const persistPending = async (surface: LspIpAllowlistSurface, cidrs: string[]) => {
-    if (!lspId) return;
-    for (const cidr of cidrs) {
-      await addLspIpAllowlistEntry(lspId, surface, { cidr });
-    }
+  const resetMutationErrors = () => {
+    saveEntries.reset();
+    removeEntry.reset();
+    updateEnforcement.reset();
   };
 
   const handleSavePending = async () => {
     if (!lspId) return;
-    setMutating(true);
-    setMutationError(null);
+    resetMutationErrors();
     try {
-      await persistPending("ui", pendingUi);
-      await persistPending("api", pendingApi);
+      await saveEntries.mutateAsync({ ui: pendingUi, api: pendingApi });
       setPendingUi([]);
       setPendingApi([]);
-      await invalidate();
-    } catch (err) {
-      setMutationError(mapApiErrorMessage(err, "Failed to save allowlist entries."));
-    } finally {
-      setMutating(false);
+    } catch {
+      // The mutation retains its error so the operator can retry without
+      // losing either pending CIDR list.
     }
   };
 
   const handleEnforcementChange = async (patch: { enforceUi?: boolean; enforceApi?: boolean }) => {
     if (!lspId) return;
-    setMutating(true);
-    setMutationError(null);
+    resetMutationErrors();
     try {
-      await updateLspAllowlistEnforcement(lspId, patch);
-      await invalidate();
-    } catch (err) {
-      setMutationError(mapApiErrorMessage(err, "Failed to update enforcement."));
-    } finally {
-      setMutating(false);
+      await updateEnforcement.mutateAsync(patch);
+    } catch {
+      // Surfaced below via updateEnforcement.error.
     }
   };
 
   const handleRemoveEntry = async (surface: LspIpAllowlistSurface, entryId: string) => {
     if (!lspId) return;
-    setMutating(true);
-    setMutationError(null);
+    resetMutationErrors();
     try {
-      await removeLspIpAllowlistEntry(lspId, surface, entryId);
-      await invalidate();
-    } catch (err) {
-      setMutationError(mapApiErrorMessage(err, "Failed to remove entry."));
-    } finally {
-      setMutating(false);
+      await removeEntry.mutateAsync({ surface, entryId });
+    } catch {
+      // Surfaced below via removeEntry.error.
     }
   };
 
-  const errorMessage =
-    mutationError ??
-    (queryError instanceof Error
+  const mutationError = saveEntries.error ?? removeEntry.error ?? updateEnforcement.error;
+  const mutationErrorMessage = saveEntries.error
+    ? mapApiErrorMessage(saveEntries.error, "Failed to save allowlist entries.")
+    : removeEntry.error
+      ? mapApiErrorMessage(removeEntry.error, "Failed to remove entry.")
+      : updateEnforcement.error
+        ? mapApiErrorMessage(updateEnforcement.error, "Failed to update enforcement.")
+        : null;
+  const queryErrorMessage =
+    queryError instanceof Error
       ? queryError.message
       : queryError
         ? "Failed to load IP allowlists."
-        : null);
+        : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -216,7 +205,7 @@ export function LspIpAllowlistDialog({ open, onOpenChange, lsp }: LspIpAllowlist
         {queryError && !queryLoading ? (
           <ErrorState
             title="Couldn't load IP allowlists"
-            description={errorMessage ?? "Try again in a moment."}
+            description={queryErrorMessage ?? "Try again in a moment."}
             retry={{
               label: "Retry",
               onClick: () => {
@@ -228,7 +217,7 @@ export function LspIpAllowlistDialog({ open, onOpenChange, lsp }: LspIpAllowlist
 
         {mutationError ? (
           <p className="text-destructive text-sm" role="alert">
-            {mutationError}
+            {mutationErrorMessage}
           </p>
         ) : null}
 

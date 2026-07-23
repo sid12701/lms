@@ -1,10 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { SessionProvider } from "@/features/auth/session-context";
 import type { Session } from "@/features/auth/session-types";
 import { MyLoanDetailPage } from "./detail-page";
 import { makeMyLoanDetail } from "./test-utils";
+import { renderWithProviders } from "@/test/utils";
 
 const fetchMyLoanDetailMock = vi.fn();
 const fetchInvalidReasonsMock = vi.fn();
@@ -39,7 +41,7 @@ function sessionFor(role: Session["user"]["role"]): Session {
 const detail = makeMyLoanDetail();
 
 function renderPage(role: Session["user"]["role"]) {
-  return render(
+  return renderWithProviders(
     <MemoryRouter initialEntries={[`/my-loans/${detail.id}`]}>
       <SessionProvider skipBootstrap initialSession={sessionFor(role)}>
         <Routes>
@@ -135,5 +137,60 @@ describe("MyLoanDetailPage role actions", () => {
     expect(screen.getByRole("button", { name: /mark invalid/i })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^upload$/i }).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /^replace$/i })).toBeInTheDocument();
+  });
+
+  it("renders a stable loading state while the detail request is pending", () => {
+    fetchMyLoanDetailMock.mockReturnValue(new Promise(() => undefined));
+    renderPage("LSP_UI_READ");
+
+    expect(screen.getByRole("status")).toHaveTextContent("Loading loan details");
+  });
+
+  it("retries a failed detail query without reloading the browser", async () => {
+    const operator = userEvent.setup();
+    fetchMyLoanDetailMock
+      .mockRejectedValueOnce(new Error("service unavailable"))
+      .mockResolvedValueOnce(detail);
+    renderPage("LSP_UI_READ");
+
+    expect(await screen.findByText("Couldn't load this loan")).toBeInTheDocument();
+    await operator.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("heading", { name: "Aarav Singh" })).toBeInTheDocument();
+    expect(fetchMyLoanDetailMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("distinguishes a missing loan from a transient load failure", async () => {
+    fetchMyLoanDetailMock.mockRejectedValue(new Error("Loan not found"));
+    renderPage("LSP_UI_READ");
+
+    expect(await screen.findByText("Loan not found")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
+  it("loads invalid reasons only when the write workflow opens", async () => {
+    const operator = userEvent.setup();
+    fetchInvalidReasonsMock.mockResolvedValue([
+      { code: "DUPLICATE", label: "Duplicate application", requiresText: false },
+    ]);
+    renderPage("LSP_UI_WRITE");
+
+    await screen.findByRole("heading", { name: "Aarav Singh" });
+    expect(fetchInvalidReasonsMock).not.toHaveBeenCalled();
+    await operator.click(screen.getByRole("button", { name: /mark invalid/i }));
+
+    expect(await screen.findByText("Mark loan invalid")).toBeInTheDocument();
+    expect(fetchInvalidReasonsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the invalidation dialog usable when reason loading fails", async () => {
+    const operator = userEvent.setup();
+    fetchInvalidReasonsMock.mockRejectedValue(new Error("reason catalogue unavailable"));
+    renderPage("LSP_UI_WRITE");
+
+    await screen.findByRole("heading", { name: "Aarav Singh" });
+    await operator.click(screen.getByRole("button", { name: /mark invalid/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("reason catalogue unavailable");
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
   });
 });

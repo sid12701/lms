@@ -40,11 +40,11 @@ export const IntakeAuditEvent = z.object({
 });
 export type IntakeAuditEvent = z.infer<typeof IntakeAuditEvent>;
 
-export const PiiSubjectType = z.enum(["BORROWER"]);
-export type PiiSubjectType = z.infer<typeof PiiSubjectType>;
+const PiiSubjectType = z.enum(["BORROWER"]);
+type PiiSubjectType = z.infer<typeof PiiSubjectType>;
 
-export const PiiFieldName = z.enum(["PAN", "AADHAAR", "MOBILE", "ACCOUNT_NUMBER", "EMAIL"]);
-export type PiiFieldName = z.infer<typeof PiiFieldName>;
+const PiiFieldName = z.enum(["PAN", "AADHAAR", "MOBILE", "ACCOUNT_NUMBER", "EMAIL"]);
+type PiiFieldName = z.infer<typeof PiiFieldName>;
 
 export const PiiRevealEvent = z.object({
   id: Uuid,
@@ -60,8 +60,8 @@ export const PiiRevealEvent = z.object({
 });
 export type PiiRevealEvent = z.infer<typeof PiiRevealEvent>;
 
-export const DocumentAccessAction = z.enum(["VIEWED", "DOWNLOADED", "VERIFIED", "REJECTED"]);
-export type DocumentAccessAction = z.infer<typeof DocumentAccessAction>;
+const DocumentAccessAction = z.enum(["VIEWED", "DOWNLOADED", "VERIFIED", "REJECTED"]);
+type DocumentAccessAction = z.infer<typeof DocumentAccessAction>;
 
 export const DocumentAccessEvent = z.object({
   id: Uuid,
@@ -75,13 +75,8 @@ export const DocumentAccessEvent = z.object({
 });
 export type DocumentAccessEvent = z.infer<typeof DocumentAccessEvent>;
 
-export const ProductAuditAction = z.enum([
-  "CREATED",
-  "UPDATED",
-  "MAPPING_CHANGED",
-  "STATUS_CHANGED",
-]);
-export type ProductAuditAction = z.infer<typeof ProductAuditAction>;
+const ProductAuditAction = z.enum(["CREATED", "UPDATED", "MAPPING_CHANGED", "STATUS_CHANGED"]);
+type ProductAuditAction = z.infer<typeof ProductAuditAction>;
 
 export const ProductAuditEvent = z.object({
   id: Uuid,

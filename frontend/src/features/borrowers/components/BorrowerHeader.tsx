@@ -59,5 +59,3 @@ export function BorrowerHeader({ detail }: BorrowerHeaderProps) {
     </div>
   );
 }
-
-export default BorrowerHeader;

@@ -167,5 +167,3 @@ export function EscalateToAdminDialog({
     </Dialog>
   );
 }
-
-export default EscalateToAdminDialog;

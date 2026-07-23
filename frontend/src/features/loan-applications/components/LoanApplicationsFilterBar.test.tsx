@@ -8,14 +8,17 @@ import { axe } from "vitest-axe";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useSearchParams } from "react-router-dom";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { renderWithProviders } from "@/test/utils";
 import { pickDateInField } from "@/test/date-picker";
 import { LoanApplicationsFilterBar } from "./LoanApplicationsFilterBar";
 
 function SearchSpy({ onChange }: { onChange: (search: string) => void }) {
   const [searchParams] = useSearchParams();
-  onChange(searchParams.toString());
+  const search = searchParams.toString();
+  useEffect(() => {
+    onChange(search);
+  }, [onChange, search]);
   return null;
 }
 

@@ -5,7 +5,7 @@ import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { AuditEventNode } from "./AuditEventNode";
 import { type AuditEvent, getAuditTimestamp } from "./types";
 
-export interface AuditTimelineProps extends HTMLAttributes<HTMLOListElement> {
+interface AuditTimelineProps extends HTMLAttributes<HTMLOListElement> {
   events: AuditEvent[];
   /** Compact density per D7 — `/audit` ships compact by default. */
   compact?: boolean;

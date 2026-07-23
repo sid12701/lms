@@ -20,7 +20,7 @@ export const AlertSubjectType = z.enum([
 ]);
 export type AlertSubjectType = z.infer<typeof AlertSubjectType>;
 
-export const OperationalAlert = z.object({
+const OperationalAlert = z.object({
   id: Uuid,
   type: z.string().min(1).max(80),
   severity: AlertSeverity,

@@ -39,42 +39,26 @@ import type {
 } from "./types";
 import type { z } from "zod";
 import { ProductStatus } from "@/schemas/product";
+import {
+  readAdminListParams,
+  readAllowedParam,
+  writeAdminListParams,
+} from "@/lib/admin-list-url-state";
 
 type ProductStatusValue = z.infer<typeof ProductStatus>;
 
 const VALID_STATUSES: readonly ProductStatusValue[] = ["ACTIVE", "INACTIVE"];
 
 function parseFiltersFromUrl(params: URLSearchParams): ProductsListFilters {
-  const filters: ProductsListFilters = {};
-  const status = params.get("status");
-  if (status && (VALID_STATUSES as readonly string[]).includes(status)) {
-    filters.status = status as ProductStatusValue;
-  }
-  const q = params.get("q");
-  if (q && q.trim() !== "") filters.q = q.trim();
-  const page = params.get("page");
-  if (page !== null) {
-    const n = Number(page);
-    if (Number.isInteger(n) && n >= 0) filters.page = n;
-  }
-  const pageSize = params.get("pageSize");
-  if (pageSize !== null) {
-    const n = Number(pageSize);
-    if (Number.isInteger(n) && n >= 5 && n <= 100) filters.pageSize = n;
-  }
-  return filters;
+  return {
+    ...readAdminListParams(params),
+    status: readAllowedParam(params, "status", VALID_STATUSES),
+  };
 }
 
 function filtersToParams(filters: ProductsListFilters): URLSearchParams {
-  const params = new URLSearchParams();
+  const params = writeAdminListParams(filters);
   if (filters.status) params.set("status", filters.status);
-  if (filters.q) params.set("q", filters.q);
-  if (typeof filters.page === "number" && filters.page > 0) {
-    params.set("page", String(filters.page));
-  }
-  if (typeof filters.pageSize === "number") {
-    params.set("pageSize", String(filters.pageSize));
-  }
   return params;
 }
 

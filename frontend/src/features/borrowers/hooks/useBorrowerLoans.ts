@@ -8,7 +8,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { fetchBorrowerLoans } from "../api-tabs";
 import type { BorrowerLoansResponse } from "../types";
 
-export function borrowerLoansQueryKey(id: string): readonly unknown[] {
+function borrowerLoansQueryKey(id: string): readonly unknown[] {
   return ["borrower", id, "loans"] as const;
 }
 

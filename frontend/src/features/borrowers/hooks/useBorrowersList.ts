@@ -9,7 +9,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { fetchBorrowersList } from "../api-list";
 import type { BorrowerListFilters, BorrowerListResponse } from "../list-types";
 
-export const BORROWERS_LIST_QUERY_KEY = ["borrowers", "list"] as const;
+const BORROWERS_LIST_QUERY_KEY = ["borrowers", "list"] as const;
 
 export function useBorrowersList(
   filters: BorrowerListFilters,

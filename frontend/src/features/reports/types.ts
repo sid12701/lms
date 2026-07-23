@@ -13,7 +13,7 @@ import type {
   MisPreviewRow,
   MisSummary,
 } from "@/schemas/report";
-import type { ReportRequest, ReportStatus, ReportType } from "@/types";
+import type { ReportRequest, ReportStatus } from "@/types";
 
 export type {
   CreateReportRequestInput,
@@ -25,7 +25,6 @@ export type {
   MisSummary,
   ReportRequest,
   ReportStatus,
-  ReportType,
 };
 
 /** Filter snapshot held by the `/reports` page. */

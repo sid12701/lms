@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -56,6 +57,31 @@ public class ProductConfigurationService {
     public List<LoanProduct> listProducts() {
         return loanProductRepository.findAll().stream()
                 .sorted(java.util.Comparator.comparing(LoanProduct::getCode))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductListView> listProductViews() {
+        Map<UUID, List<Lsp>> mappingsByProduct = loanProductLspMappingRepository.findAll().stream()
+                .collect(Collectors.groupingBy(
+                        mapping -> mapping.getLoanProduct().getId(),
+                        Collectors.mapping(
+                                LoanProductLspMapping::getLsp,
+                                Collectors.collectingAndThen(
+                                        Collectors.toList(),
+                                        lsps -> lsps.stream()
+                                                .sorted(java.util.Comparator.comparing(Lsp::getCode))
+                                                .toList()
+                                )
+                        )
+                ));
+
+        return loanProductRepository.findAll().stream()
+                .sorted(java.util.Comparator.comparing(LoanProduct::getCode))
+                .map(product -> new ProductListView(
+                        product,
+                        mappingsByProduct.getOrDefault(product.getId(), List.of())
+                ))
                 .toList();
     }
 
@@ -173,12 +199,13 @@ public class ProductConfigurationService {
     }
 
     @Transactional(readOnly = true)
-    public List<Lsp> listProductMappings(UUID productId) {
-        getProduct(productId);
-        return loanProductLspMappingRepository.findAllByLoanProduct_Id(productId).stream()
+    public ProductMappingDetails getProductMappings(UUID productId) {
+        LoanProduct product = getProduct(productId);
+        List<Lsp> mappedLsps = loanProductLspMappingRepository.findAllByLoanProduct_Id(productId).stream()
                 .map(LoanProductLspMapping::getLsp)
                 .sorted(java.util.Comparator.comparing(Lsp::getCode))
                 .toList();
+        return new ProductMappingDetails(product, mappedLsps);
     }
 
     @Transactional(readOnly = true)
@@ -236,7 +263,7 @@ public class ProductConfigurationService {
     }
 
     @Transactional
-    public List<Lsp> replaceProductMappings(UUID productId, Set<UUID> lspIds) {
+    public ProductMappingDetails replaceProductMappings(UUID productId, Set<UUID> lspIds) {
         LoanProduct product = getProduct(productId);
         Set<UUID> distinctLspIds = Set.copyOf(lspIds);
         List<Lsp> lsps = lspRepository.findAllById(distinctLspIds).stream()
@@ -261,7 +288,13 @@ public class ProductConfigurationService {
                 LoanProductAuditAction.PRODUCT_MAPPINGS_REPLACED,
                 "Replaced product mappings with " + lsps.size() + " LSPs " + mappedCodes
         );
-        return lsps;
+        return new ProductMappingDetails(product, lsps);
+    }
+
+    public record ProductListView(LoanProduct product, List<Lsp> mappedLsps) {
+    }
+
+    public record ProductMappingDetails(LoanProduct product, List<Lsp> mappedLsps) {
     }
 
     public record ProductLspMappingView(UUID productId, List<UUID> lspIds) {

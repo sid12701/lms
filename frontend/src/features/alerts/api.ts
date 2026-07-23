@@ -7,6 +7,7 @@
  * round-trips it on the response.
  */
 import { requestJson, buildQueryPath } from "@/lib/api/http-client";
+import { paginate } from "@/lib/pagination";
 import type {
   AlertRow,
   AlertRuleRow,
@@ -98,9 +99,10 @@ export async function listAlerts(filters: AlertsListFilters = {}): Promise<Alert
     status: backendStatus(filters.status),
   });
   const all = await requestJson<BackendAlertResponse[]>(path);
+  const selectedSeverities = new Set(filters.severity ?? []);
   const filtered = all.filter((row) => {
-    if (filters.severity && filters.severity.length > 0) {
-      if (!filters.severity.includes(frontendSeverity(row.severity))) return false;
+    if (selectedSeverities.size > 0) {
+      if (!selectedSeverities.has(frontendSeverity(row.severity))) return false;
     }
     if (filters.subjectType && frontendSubject(row.subjectType) !== filters.subjectType) {
       return false;
@@ -116,10 +118,8 @@ export async function listAlerts(filters: AlertsListFilters = {}): Promise<Alert
     }
     return true;
   });
-  const page = filters.page ?? 0;
-  const pageSize = filters.pageSize ?? 20;
-  const items = filtered.slice(page * pageSize, page * pageSize + pageSize).map(toAlertRow);
-  return { items, total: filtered.length, page, pageSize };
+  const result = paginate(filtered, filters);
+  return { ...result, items: result.items.map(toAlertRow) };
 }
 
 export async function acknowledgeAlert(

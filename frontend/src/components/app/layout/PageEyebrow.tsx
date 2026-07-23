@@ -1,7 +1,7 @@
 import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-export interface PageEyebrowProps extends HTMLAttributes<HTMLElement> {
+interface PageEyebrowProps extends HTMLAttributes<HTMLElement> {
   /** Eyebrow label content (typically a short uppercase string). */
   children: ReactNode;
   /**

@@ -25,7 +25,8 @@ vi.mock("../../hooks/useLoanApplicationDocuments", () => ({
 }));
 
 import { ApiError } from "@/lib/api/http-client";
-import { DocumentsTab, adaptLoanDocumentToDocument } from "./DocumentsTab";
+import { DocumentsTab } from "./DocumentsTab";
+import { adaptLoanDocumentToDocument } from "./document-adapter";
 import { toast } from "sonner";
 
 vi.mock("sonner", () => ({

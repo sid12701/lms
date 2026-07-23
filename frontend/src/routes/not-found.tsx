@@ -39,5 +39,3 @@ export function NotFoundPage({ inShell = false }: NotFoundPageProps) {
     </div>
   );
 }
-
-export const Component = NotFoundPage;

@@ -2,7 +2,7 @@ import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export interface CardSkeletonProps extends HTMLAttributes<HTMLDivElement> {
+interface CardSkeletonProps extends HTMLAttributes<HTMLDivElement> {
   /** Number of body lines to render below the title. */
   lines?: number;
   className?: string;

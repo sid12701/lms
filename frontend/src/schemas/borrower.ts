@@ -17,10 +17,10 @@ import {
 } from "./common";
 
 export const Gender = z.enum(["M", "F", "O"]);
-export type Gender = z.infer<typeof Gender>;
+type Gender = z.infer<typeof Gender>;
 
 export const MaritalStatus = z.enum(["SINGLE", "MARRIED", "DIVORCED", "WIDOWED"]);
-export type MaritalStatus = z.infer<typeof MaritalStatus>;
+type MaritalStatus = z.infer<typeof MaritalStatus>;
 
 export const EmploymentType = z.enum([
   "SALARIED",
@@ -30,7 +30,7 @@ export const EmploymentType = z.enum([
   "STUDENT",
   "UNEMPLOYED",
 ]);
-export type EmploymentType = z.infer<typeof EmploymentType>;
+type EmploymentType = z.infer<typeof EmploymentType>;
 
 export const BorrowerAddress = z.object({
   residential: z.string().min(1).max(240),
@@ -38,7 +38,7 @@ export const BorrowerAddress = z.object({
   state: z.string().min(1).max(80),
   zip: PinCode,
 });
-export type BorrowerAddress = z.infer<typeof BorrowerAddress>;
+type BorrowerAddress = z.infer<typeof BorrowerAddress>;
 
 export const BorrowerEmployment = z.object({
   type: EmploymentType,
@@ -48,7 +48,7 @@ export const BorrowerEmployment = z.object({
   monthlyIncome: MoneyINR,
   annualIncome: MoneyINR,
 });
-export type BorrowerEmployment = z.infer<typeof BorrowerEmployment>;
+type BorrowerEmployment = z.infer<typeof BorrowerEmployment>;
 
 export const BorrowerBanking = z.object({
   bank: z.string().min(1).max(120),
@@ -56,13 +56,13 @@ export const BorrowerBanking = z.object({
   accountNumber: BankAccount,
   ifsc: Ifsc,
 });
-export type BorrowerBanking = z.infer<typeof BorrowerBanking>;
+type BorrowerBanking = z.infer<typeof BorrowerBanking>;
 
 export const BorrowerReference = z.object({
   name: z.string().min(1).max(120),
   contact: z.string().min(1).max(120),
 });
-export type BorrowerReference = z.infer<typeof BorrowerReference>;
+type BorrowerReference = z.infer<typeof BorrowerReference>;
 
 export const Borrower = z.object({
   id: Uuid,

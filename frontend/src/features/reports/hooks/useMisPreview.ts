@@ -9,7 +9,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { misPreview } from "../api";
 import type { MisPreviewFilters, MisPreviewResponseDto } from "../types";
 
-export const MIS_PREVIEW_QUERY_KEY = ["reports", "mis-preview"] as const;
+const MIS_PREVIEW_QUERY_KEY = ["reports", "mis-preview"] as const;
 
 export function useMisPreview(
   filters: MisPreviewFilters,

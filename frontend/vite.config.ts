@@ -7,6 +7,7 @@ import path from "node:path";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
+    manifest: true,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -19,11 +20,16 @@ export default defineConfig({
             return "vendor-ui";
           }
           if (normalizedId.includes("@tanstack")) return "vendor-data";
-          if (normalizedId.includes("recharts")) return "vendor-charts";
           if (normalizedId.includes("date-fns") || normalizedId.includes("react-day-picker")) {
             return "vendor-date";
           }
-          return "vendor";
+          // Everything else is left to Rollup, which places a module by where it
+          // is actually reachable from. A catch-all "vendor" chunk here would
+          // force route-specific dependencies into an eagerly preloaded chunk:
+          // recharts' tree alone (lodash, d3-*, react-transition-group and ~20
+          // more) is chart-only and reachable solely from the lazy dashboard
+          // route, but a catch-all shipped it to every page.
+          return undefined;
         },
       },
     },

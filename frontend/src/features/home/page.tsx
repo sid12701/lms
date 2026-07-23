@@ -5,6 +5,7 @@
  * `defaultLandingFor`. KPI cards live in `./components/*`; this file owns
  * wiring, loading, and error states.
  */
+import { lazy, Suspense } from "react";
 import { ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
@@ -16,11 +17,16 @@ import { defaultLandingFor } from "@/lib/role-gates";
 import { Navigate } from "react-router-dom";
 import {
   InternalKpiSummary,
-  LoansByDpdBucketCard,
   OpenAlertsCard,
   RecentApplicationsCard,
 } from "@/features/home/components";
 import { useHomeKpis } from "./hooks/useHomeKpis";
+
+const LoansByDpdBucketCard = lazy(() =>
+  import("./components/LoansByDpdBucketCard").then((module) => ({
+    default: module.LoansByDpdBucketCard,
+  })),
+);
 
 const CARD_ENTRANCE =
   "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-300";
@@ -82,7 +88,9 @@ export function HomePage() {
           </div>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className={CARD_ENTRANCE}>
-              <LoansByDpdBucketCard buckets={query.data.data.dpdBuckets} />
+              <Suspense fallback={<ChartSkeleton />}>
+                <LoansByDpdBucketCard buckets={query.data.data.dpdBuckets} />
+              </Suspense>
             </div>
             <div className={CARD_ENTRANCE}>
               <OpenAlertsCard alerts={query.data.data.openAlerts} />

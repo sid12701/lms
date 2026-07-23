@@ -4,6 +4,7 @@ import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import java.math.BigDecimal;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -256,18 +257,40 @@ public final class SyntheticPortfolioSpec {
     ) {
     }
 
+    /**
+     * Splits {@code total} across {@code weights}, always summing back to {@code total}.
+     *
+     * <p>Uses largest-remainder apportionment: each bucket takes its floor share, then the leftover
+     * units go one apiece to the buckets with the largest dropped fractions. Handing every leftover
+     * to the last bucket instead makes small portfolios degenerate — at 100 applications over 10
+     * LSPs each bucket floors to zero and the trailing bucket absorbs the rest, which is how a
+     * 4-application {@code INVALID} bucket once seeded as 31.
+     */
     public int[] splitProportionally(int total, int[] weights) {
         int weightSum = Arrays.stream(weights).sum();
         if (weightSum == 0) {
             return new int[weights.length];
         }
         int[] result = new int[weights.length];
+        long[] dropped = new long[weights.length];
         int assigned = 0;
         for (int i = 0; i < weights.length; i++) {
-            result[i] = (int) ((long) total * weights[i] / weightSum);
+            long share = (long) total * weights[i];
+            result[i] = (int) (share / weightSum);
+            dropped[i] = share % weightSum;
             assigned += result[i];
         }
-        result[result.length - 1] += total - assigned;
+
+        Integer[] byDroppedFraction = new Integer[weights.length];
+        Arrays.setAll(byDroppedFraction, i -> i);
+        Arrays.sort(byDroppedFraction, Comparator
+                .comparingLong((Integer i) -> dropped[i]).reversed()
+                .thenComparingInt(i -> i));
+
+        int leftover = total - assigned;
+        for (int i = 0; i < leftover; i++) {
+            result[byDroppedFraction[i % byDroppedFraction.length]]++;
+        }
         return result;
     }
 }

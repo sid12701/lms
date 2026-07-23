@@ -1,7 +1,7 @@
 import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-export interface RightRailProps extends HTMLAttributes<HTMLElement> {
+interface RightRailProps extends HTMLAttributes<HTMLElement> {
   /** Slot for status / recent-activity / quick-action blocks. */
   children: ReactNode;
   className?: string;

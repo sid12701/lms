@@ -7,7 +7,9 @@
  * table component stays pure.
  */
 import { z } from "zod";
-import { AlertSeverity, AlertStatus, AlertSubjectType, OperationalAlert } from "@/schemas/alert";
+import { AlertSeverity, AlertStatus, AlertSubjectType } from "@/schemas/alert";
+import type { OperationalAlert } from "@/schemas/alert";
+import { ADMIN_LIST_FILTER_FIELDS } from "@/lib/admin-list-url-state";
 
 export type { OperationalAlert };
 
@@ -23,9 +25,7 @@ const AlertsListFilters = z.object({
   /** Optional subject-type narrowing. */
   subjectType: AlertSubjectType.optional(),
   /** Free-text search across title + message. */
-  q: z.string().trim().min(1).max(120).optional(),
-  page: z.coerce.number().int().min(0).optional(),
-  pageSize: z.coerce.number().int().min(5).max(100).optional(),
+  ...ADMIN_LIST_FILTER_FIELDS,
 });
 export type AlertsListFilters = z.infer<typeof AlertsListFilters>;
 

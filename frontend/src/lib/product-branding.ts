@@ -4,7 +4,7 @@
  */
 export const PRODUCT_ORGANIZATION_NAME = "Bhawana Capital";
 
-export const PRODUCT_SYSTEM_NAME = "Loan Management";
+const PRODUCT_SYSTEM_NAME = "Loan Management";
 
 /** Short product name shown in the app shell (sidebar tagline). */
 export const PRODUCT_TAGLINE = "Sovereign Ledger";

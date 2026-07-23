@@ -17,7 +17,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -29,7 +28,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -40,6 +38,7 @@ import {
 } from "@/components/ui/select";
 import { FormShell } from "@/components/app/forms/FormShell";
 import { FormDialogErrorAlert } from "@/components/app/forms/FormDialogErrorAlert";
+import { ConfirmDialogFooter } from "@/components/app/forms/ConfirmDialogFooter";
 import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { formatDateTime } from "@/lib/format";
 import { newIdempotencyKey } from "@/lib/idempotency";
@@ -184,19 +183,12 @@ export function ApiClientEditDialog({
 
             <FormDialogErrorAlert message={errorMessage} />
 
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={loading}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? "Saving…" : "Save changes"}
-              </Button>
-            </DialogFooter>
+            <ConfirmDialogFooter
+              loading={loading}
+              onCancel={() => onOpenChange(false)}
+              submitLabel="Save changes"
+              loadingLabel="Saving…"
+            />
           </FormShell>
         ) : null}
       </DialogContent>

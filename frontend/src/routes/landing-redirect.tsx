@@ -16,5 +16,3 @@ export function LandingRedirect() {
   if (session.user.mustChangePassword) return <Navigate to="/change-password" replace />;
   return <Navigate to={defaultLandingFor(session.user.role)} replace />;
 }
-
-export const Component = LandingRedirect;

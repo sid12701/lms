@@ -7,14 +7,11 @@
  * (see `BorrowerAdminController.maskAadhar`).
  */
 import { z } from "zod";
+import { ADMIN_LIST_FILTER_FIELDS } from "@/lib/admin-list-url-state";
 
 export const BorrowerListFilters = z.object({
   /** Case-insensitive substring across name / PAN / mobile / email. */
-  q: z.string().trim().min(1).max(120).optional(),
-  /** Page index, zero-based. Defaults to 0. */
-  page: z.coerce.number().int().min(0).optional(),
-  /** Page size. Defaults to 50. */
-  pageSize: z.coerce.number().int().min(5).max(100).optional(),
+  ...ADMIN_LIST_FILTER_FIELDS,
 });
 export type BorrowerListFilters = z.infer<typeof BorrowerListFilters>;
 

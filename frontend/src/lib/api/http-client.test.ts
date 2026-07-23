@@ -245,4 +245,22 @@ describe("http-client", () => {
     expect(result.filename).toBe("statement.pdf");
     expect(await result.blob.text()).toBe("pdf-bytes");
   });
+
+  it("does not recursively refresh a request that validates a fresh token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 }));
+    const refreshCallback = vi.fn().mockResolvedValue("another-token");
+    vi.stubGlobal("fetch", fetchMock);
+    setRefreshCallback(refreshCallback);
+
+    await expect(
+      requestJson(
+        "/api/v1/internal/system/context",
+        {},
+        { accessToken: "fresh-token", refreshOnUnauthorized: false },
+      ),
+    ).rejects.toMatchObject({ status: 401 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(refreshCallback).not.toHaveBeenCalled();
+  });
 });

@@ -13,34 +13,30 @@ export type LoginUiRole = (typeof LOGIN_UI_ROLES)[number];
 
 export interface LoginRolePreset {
   email: string;
-  password: string;
 }
 
-function readEnv(key: string): string | undefined {
-  const value = import.meta.env[key];
+function configuredEmailForRole(role: LoginUiRole): string | undefined {
+  const valueByRole: Record<LoginUiRole, string | undefined> = {
+    SYSTEM_ADMIN: import.meta.env.VITE_LOGIN_SYSTEM_ADMIN_EMAIL,
+    OPS_USER: import.meta.env.VITE_LOGIN_OPS_USER_EMAIL,
+    PRODUCT_ADMIN: import.meta.env.VITE_LOGIN_PRODUCT_ADMIN_EMAIL,
+    LSP_UI_READ: import.meta.env.VITE_LOGIN_LSP_UI_READ_EMAIL,
+    LSP_UI_WRITE: import.meta.env.VITE_LOGIN_LSP_UI_WRITE_EMAIL,
+  };
+  const value = valueByRole[role];
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function emailEnvKey(role: LoginUiRole): string {
-  return `VITE_LOGIN_${role}_EMAIL`;
-}
-
 /**
- * Optional quick-fill credentials for local sign-in. Values must match real
- * `app_user` rows in the Spring backend — configure in `.env.local`.
+ * Optional quick-fill email for local sign-in. The value must match a real
+ * `app_user` row in the Spring backend. Passwords are deliberately excluded:
+ * every `VITE_*` value is published to the browser bundle.
  * Returns `null` when no email is configured for the role.
  */
 export function loginPresetForRole(role: LoginUiRole): LoginRolePreset | null {
-  const email = readEnv(emailEnvKey(role));
+  const email = configuredEmailForRole(role);
   if (!email) return null;
-
-  const password =
-    role === "SYSTEM_ADMIN"
-      ? readEnv("VITE_LOGIN_BOOTSTRAP_PASSWORD")
-      : readEnv("VITE_LOGIN_DEFAULT_PASSWORD");
-  if (!password) return null;
-
-  return { email, password };
+  return { email };
 }

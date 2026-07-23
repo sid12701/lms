@@ -27,16 +27,35 @@ const ROLE_PRIORITY: Role[] = [
 
 const LEGACY_USER_ID_STORAGE_KEY = "bhawana-lms-user-id";
 
-let lastRefreshFailureCode: string | null = null;
+export type SessionRestoreFailureKind =
+  | "REFRESH_UNAVAILABLE"
+  | "CONTEXT_UNAVAILABLE"
+  | "CONTEXT_INVALID";
 
-/** Most recent refresh rejection code from the backend, for downstream UX readers. */
-export function getLastRefreshFailureCode(): string | null {
-  return lastRefreshFailureCode;
+export class SessionRestoreError extends Error {
+  readonly kind: SessionRestoreFailureKind;
+
+  constructor(kind: SessionRestoreFailureKind, cause: unknown) {
+    super("The session could not be restored.", { cause });
+    this.name = "SessionRestoreError";
+    this.kind = kind;
+  }
 }
 
-export function clearLastRefreshFailureCode(): void {
-  lastRefreshFailureCode = null;
+function isContextTemporarilyUnavailable(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    return error.name === "AbortError" || error.name === "NetworkError";
+  }
+  if (!(error instanceof ApiError)) return false;
+  return error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500;
 }
+
+export type RefreshSessionResult =
+  | { status: "authenticated"; session: SessionType }
+  | { status: "signed-out"; code: string | null };
+
+let refreshInFlight: Promise<RefreshSessionResult> | null = null;
 
 function selectPrimaryRole(roles: readonly string[]): Role {
   for (const candidate of ROLE_PRIORITY) {
@@ -61,9 +80,11 @@ function expiresAtFromToken(token: BackendTokenResponse): string {
 
 async function buildSessionFromToken(
   token: BackendTokenResponse,
-  options: { accessToken?: string } = {},
+  options: { accessToken?: string; refreshOnUnauthorized?: boolean } = {},
 ): Promise<SessionType> {
-  const context = await fetchSystemContext(options.accessToken ?? token.accessToken);
+  const context = await fetchSystemContext(options.accessToken ?? token.accessToken, {
+    refreshOnUnauthorized: options.refreshOnUnauthorized,
+  });
   const role = selectPrimaryRole(context.roles);
   clearLegacyPersistedUserId();
   const user: SessionUser = SessionUser.parse({
@@ -118,22 +139,47 @@ export async function logout(): Promise<void> {
 /**
  * Refresh the active session using the httpOnly `lms-refresh` cookie.
  *
- * Returns the refreshed session, or `null` if the backend rejects the
- * refresh — in which case the caller should treat the user as signed out.
+ * Concurrent callers share one request because the backend rotates the refresh
+ * cookie on every success. A definitive 401/403 returns `signed-out`; transport,
+ * server, and response-contract failures throw `SessionRestoreError` without
+ * clearing persisted session metadata so the caller can offer a safe retry.
  */
-export async function refreshSession(): Promise<SessionType | null> {
-  lastRefreshFailureCode = null;
+export function refreshSession(): Promise<RefreshSessionResult> {
+  if (refreshInFlight) return refreshInFlight;
+
+  const request = performSessionRefresh().finally(() => {
+    if (refreshInFlight === request) refreshInFlight = null;
+  });
+  refreshInFlight = request;
+  return request;
+}
+
+async function performSessionRefresh(): Promise<RefreshSessionResult> {
+  let token: BackendTokenResponse;
   try {
-    const token = await backendRefresh();
-    const session = await buildSessionFromToken(token);
-    saveStoredSession(session);
-    return session;
+    token = await backendRefresh();
   } catch (error) {
-    if (error instanceof ApiError && error.code) {
-      lastRefreshFailureCode = error.code;
+    if (error instanceof ApiError && error.status === 401) {
+      clearStoredSession();
+      return { status: "signed-out", code: error.code };
     }
-    clearStoredSession();
-    return null;
+    throw new SessionRestoreError("REFRESH_UNAVAILABLE", error);
+  }
+
+  try {
+    // The token is already fresh. A context 401 must not invoke the global
+    // refresh callback from inside this flow and recursively rotate the cookie.
+    const session = await buildSessionFromToken(token, { refreshOnUnauthorized: false });
+    saveStoredSession(session);
+    return { status: "authenticated", session };
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      clearStoredSession();
+      return { status: "signed-out", code: error.code };
+    }
+
+    const kind = isContextTemporarilyUnavailable(error) ? "CONTEXT_UNAVAILABLE" : "CONTEXT_INVALID";
+    throw new SessionRestoreError(kind, error);
   }
 }
 

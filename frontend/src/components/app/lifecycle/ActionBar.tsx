@@ -45,6 +45,8 @@ const TONE_BUTTON_DISABLED: Record<LifecycleAction["tone"], string> = {
     "bg-surface-muted text-foreground-muted hover:bg-surface-muted border-border border opacity-70",
 };
 
+const NO_HIDDEN_TARGET_STATUSES: readonly LoanStatus[] = [];
+
 /**
  * Renders every UI-actionable transition leaving `currentStatus`.
  *
@@ -61,7 +63,7 @@ export function ActionBar({
   role,
   applicationId,
   gates,
-  hiddenTargetStatuses = [],
+  hiddenTargetStatuses = NO_HIDDEN_TARGET_STATUSES,
   onConfirm,
   className,
 }: ActionBarProps) {

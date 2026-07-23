@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { Files } from "lucide-react";
 import type { HomeRecentApplication } from "../types";
 
-export interface RecentApplicationsCardProps {
+interface RecentApplicationsCardProps {
   applications: readonly HomeRecentApplication[];
   className?: string;
 }

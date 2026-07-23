@@ -281,5 +281,3 @@ export function LoansTab({ borrowerId }: LoansTabProps) {
     </div>
   );
 }
-
-export default LoansTab;

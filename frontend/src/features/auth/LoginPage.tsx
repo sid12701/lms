@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useReducer, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,49 @@ interface ConfiguredRoleCard {
   preset: LoginRolePreset;
 }
 
+interface LoginFormState {
+  email: string;
+  password: string;
+  selectedRole: LoginUiRole | null;
+  showPassword: boolean;
+  submitting: boolean;
+  error: string | null;
+}
+
+type LoginFormAction =
+  | { type: "email-changed"; email: string }
+  | { type: "password-changed"; password: string }
+  | { type: "password-visibility-toggled" }
+  | { type: "role-selected"; role: LoginUiRole; email: string }
+  | { type: "submit-started" }
+  | { type: "submit-failed"; error: string };
+
+const INITIAL_LOGIN_FORM_STATE: LoginFormState = {
+  email: "",
+  password: "",
+  selectedRole: null,
+  showPassword: false,
+  submitting: false,
+  error: null,
+};
+
+function loginFormReducer(state: LoginFormState, action: LoginFormAction): LoginFormState {
+  switch (action.type) {
+    case "email-changed":
+      return { ...state, email: action.email, selectedRole: null };
+    case "password-changed":
+      return { ...state, password: action.password };
+    case "password-visibility-toggled":
+      return { ...state, showPassword: !state.showPassword };
+    case "role-selected":
+      return { ...state, email: action.email, selectedRole: action.role, error: null };
+    case "submit-started":
+      return { ...state, submitting: true, error: null };
+    case "submit-failed":
+      return { ...state, submitting: false, error: action.error };
+  }
+}
+
 function copyFor(role: LoginUiRole): RoleCardCopy {
   switch (role) {
     case "SYSTEM_ADMIN":
@@ -47,12 +90,8 @@ function copyFor(role: LoginUiRole): RoleCardCopy {
 export function LoginPage() {
   const { session, isLoading, signIn } = useSession();
   const navigate = useNavigate();
-  const [email, setEmail] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
-  const [selectedRole, setSelectedRole] = useState<LoginUiRole | null>(null);
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [submitting, setSubmitting] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [formState, dispatch] = useReducer(loginFormReducer, INITIAL_LOGIN_FORM_STATE);
+  const { email, password, selectedRole, showPassword, submitting, error } = formState;
   const configuredRoleCards = useMemo<ConfiguredRoleCard[]>(
     () =>
       LOGIN_UI_ROLES.flatMap((role) => {
@@ -80,8 +119,7 @@ export function LoginPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    setError(null);
-    setSubmitting(true);
+    dispatch({ type: "submit-started" });
     try {
       const next = await login({ email, password });
       signIn(next);
@@ -94,17 +132,12 @@ export function LoginPage() {
         err instanceof ApiError && err.status === 401
           ? "Invalid email or password."
           : mapApiErrorMessage(err, "Sign-in failed.");
-      setError(message);
-      setSubmitting(false);
+      dispatch({ type: "submit-failed", error: message });
     }
   }
 
   function handleRoleSelect(role: LoginUiRole, preset: LoginRolePreset): void {
-    setSelectedRole(role);
-    setEmail(preset.email);
-    setPassword(preset.password);
-    setShowPassword(false);
-    setError(null);
+    dispatch({ type: "role-selected", role, email: preset.email });
   }
 
   return (
@@ -143,10 +176,7 @@ export function LoginPage() {
               type="email"
               autoComplete="email"
               value={email}
-              onChange={(event) => {
-                setEmail(event.target.value);
-                setSelectedRole(null);
-              }}
+              onChange={(event) => dispatch({ type: "email-changed", email: event.target.value })}
               disabled={submitting}
               required
               placeholder="you@company.com"
@@ -164,7 +194,9 @@ export function LoginPage() {
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={(event) =>
+                  dispatch({ type: "password-changed", password: event.target.value })
+                }
                 disabled={submitting}
                 required
                 placeholder="Enter your password"
@@ -172,7 +204,7 @@ export function LoginPage() {
               />
               <button
                 type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
+                onClick={() => dispatch({ type: "password-visibility-toggled" })}
                 disabled={submitting || password.length === 0}
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 aria-pressed={showPassword}
@@ -230,9 +262,9 @@ export function LoginPage() {
                 Sign in by role
               </h2>
               <p className="text-foreground-muted text-xs leading-5">
-                Click a role to fill credentials for a matching backend account. Configure emails
-                and passwords in <code className="font-mono">.env.local</code> to match your
-                environment.
+                Click a role to fill the email for a matching backend account. Configure local
+                emails in <code className="font-mono">.env.local</code>; enter the password yourself
+                so it never ships in the browser bundle.
               </p>
             </header>
 
@@ -249,7 +281,7 @@ export function LoginPage() {
                       type="button"
                       onClick={() => handleRoleSelect(role, preset)}
                       disabled={submitting}
-                      aria-label={`Fill credentials for ${copy.title}`}
+                      aria-label={`Fill email for ${copy.title}`}
                       aria-pressed={isActive}
                       className={cn(
                         "group/card border-border bg-background flex h-full w-full flex-col items-start gap-1 rounded-xl border px-4 py-3 text-left text-sm transition-all duration-150",

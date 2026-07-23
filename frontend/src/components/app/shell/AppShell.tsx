@@ -19,18 +19,19 @@ export interface AppShellProps {
 const LG_PX = 1024;
 const XL_PX = 1280;
 
+function viewportTier(): "mobile" | "compact" | "wide" {
+  if (typeof window === "undefined") return "wide";
+  const width = window.innerWidth;
+  if (width >= XL_PX) return "wide";
+  if (width >= LG_PX) return "compact";
+  return "mobile";
+}
+
 function useViewportTier(): "mobile" | "compact" | "wide" {
-  const compute = (): "mobile" | "compact" | "wide" => {
-    if (typeof window === "undefined") return "wide";
-    const w = window.innerWidth;
-    if (w >= XL_PX) return "wide";
-    if (w >= LG_PX) return "compact";
-    return "mobile";
-  };
-  const [tier, setTier] = useState<"mobile" | "compact" | "wide">(compute);
+  const [tier, setTier] = useState<"mobile" | "compact" | "wide">(viewportTier);
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const onResize = () => setTier(compute());
+    const onResize = () => setTier(viewportTier());
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);

@@ -14,7 +14,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -26,9 +25,10 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormShell } from "@/components/app/forms/FormShell";
+import { FormDialogErrorAlert } from "@/components/app/forms/FormDialogErrorAlert";
+import { ConfirmDialogFooter } from "@/components/app/forms/ConfirmDialogFooter";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { CreateLspFormSchema, type CreateLspFormValues } from "./createLspSchema";
 
@@ -127,28 +127,13 @@ export function LspCreateDialog({
             )}
           />
 
-          {errorMessage ? (
-            <div
-              role="alert"
-              className="border-danger/30 bg-danger/5 text-danger rounded-md border p-3 text-sm"
-            >
-              {errorMessage}
-            </div>
-          ) : null}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? "Creating…" : "Create LSP"}
-            </Button>
-          </DialogFooter>
+          <FormDialogErrorAlert message={errorMessage} />
+          <ConfirmDialogFooter
+            loading={loading}
+            onCancel={() => onOpenChange(false)}
+            submitLabel="Create LSP"
+            loadingLabel="Creating…"
+          />
         </FormShell>
       </DialogContent>
     </Dialog>

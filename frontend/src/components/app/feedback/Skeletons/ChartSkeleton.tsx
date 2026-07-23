@@ -2,7 +2,7 @@ import { forwardRef, type HTMLAttributes } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-export interface ChartSkeletonProps extends HTMLAttributes<HTMLDivElement> {
+interface ChartSkeletonProps extends HTMLAttributes<HTMLDivElement> {
   bars?: number;
   className?: string;
 }

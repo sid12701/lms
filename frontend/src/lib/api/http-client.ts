@@ -134,6 +134,8 @@ export interface RequestOptions {
   authenticated?: boolean;
   accessToken?: string;
   idempotencyKey?: string;
+  /** Disable the global 401 refresh callback when validating a freshly minted token. */
+  refreshOnUnauthorized?: boolean;
   /** When false, concurrent GETs are not coalesced (use for frequently invalidated reads). */
   dedupe?: boolean;
   _retried?: boolean;
@@ -180,7 +182,13 @@ async function performFetch(
 
   const response = await executeFetch(url, init, headers);
 
-  if (response.status === 401 && authenticated && !options._retried && onUnauthorizedRefresh) {
+  if (
+    response.status === 401 &&
+    authenticated &&
+    options.refreshOnUnauthorized !== false &&
+    !options._retried &&
+    onUnauthorizedRefresh
+  ) {
     const newToken = await onUnauthorizedRefresh();
     if (newToken) {
       return performFetch(path, init, { ...options, accessToken: newToken, _retried: true });

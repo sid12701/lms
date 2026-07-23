@@ -15,7 +15,7 @@ const TONE_CLASSES: Record<DocumentStatusPillTone, { wrap: string; icon: string 
   },
 };
 
-export interface DocumentStatusPillProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+interface DocumentStatusPillProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
   status: DocumentStatus;
   hideIcon?: boolean;
   className?: string;

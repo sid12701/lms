@@ -4,7 +4,7 @@ import { AlertTriangle, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-export interface ErrorStateProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
+interface ErrorStateProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
   title?: string;
   description?: string;
   /** Correlation ID surfaced for support; rendered copyable. */

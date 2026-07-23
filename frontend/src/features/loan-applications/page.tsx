@@ -17,7 +17,7 @@ import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { isUnauthorizedApiError } from "@/lib/api/api-errors";
 import { useUrlFilters } from "@/lib/url-state";
-import { listProducts } from "@/features/products/api";
+import { listProductOptions } from "@/features/products/options";
 import { listLspOptions } from "@/features/lsps/options";
 import { LoanApplicationsFilterBar, LoanApplicationsTable } from "./components";
 import { useLoanApplications } from "./hooks/useLoanApplications";
@@ -54,11 +54,11 @@ export function LoanApplicationsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void listProducts({ page: 0, pageSize: 500 })
-      .then((response) => {
+    void listProductOptions()
+      .then((products) => {
         if (cancelled) return;
         setProductOptions(
-          response.items.map((product) => ({
+          products.map((product) => ({
             value: product.id,
             label: `${product.name} (${product.code})`,
           })),

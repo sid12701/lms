@@ -75,5 +75,3 @@ export function DetailTabsShell({
     </TabsPrimitive.Root>
   );
 }
-
-export default DetailTabsShell;

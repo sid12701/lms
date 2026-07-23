@@ -56,11 +56,14 @@ function readNumber(value: string | null): number | undefined {
 function readStreams(params: URLSearchParams): AuditStream[] | undefined {
   const repeated = params.getAll("streams");
   if (repeated.length === 0) return undefined;
-  const flat = repeated
-    .flatMap((v) => v.split(","))
-    .map((v) => v.trim())
-    .filter((v): v is AuditStream => VALID_STREAM_SET.has(v as AuditStream));
-  return flat.length > 0 ? flat : undefined;
+  const streams: AuditStream[] = [];
+  for (const value of repeated) {
+    for (const candidate of value.split(",")) {
+      const trimmed = candidate.trim() as AuditStream;
+      if (VALID_STREAM_SET.has(trimmed)) streams.push(trimmed);
+    }
+  }
+  return streams.length > 0 ? streams : undefined;
 }
 
 function parseFiltersFromUrl(params: URLSearchParams): AuditEventsFilters {

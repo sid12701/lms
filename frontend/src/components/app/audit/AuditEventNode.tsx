@@ -9,7 +9,7 @@ import { STATUS_META } from "@/lib/lifecycle";
 import type { LoanStatus, Role } from "@/types";
 import { AUDIT_STREAM_LABEL, type AuditEvent, type AuditStreamKind, getAuditCommon } from "./types";
 
-export interface AuditEventNodeProps extends HTMLAttributes<HTMLLIElement> {
+interface AuditEventNodeProps extends HTMLAttributes<HTMLLIElement> {
   entry: AuditEvent;
   /** Compact density per D7 — used on `/audit` and other long-list surfaces. */
   compact?: boolean;

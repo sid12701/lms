@@ -2,7 +2,7 @@ import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { PageEyebrow } from "./PageEyebrow";
 
-export interface PageSectionProps extends HTMLAttributes<HTMLElement> {
+interface PageSectionProps extends HTMLAttributes<HTMLElement> {
   eyebrow?: string;
   title?: string;
   description?: string;

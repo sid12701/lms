@@ -164,5 +164,3 @@ export function OverviewTab({ detail, borrowerDetail }: OverviewTabProps) {
     </div>
   );
 }
-
-export default OverviewTab;

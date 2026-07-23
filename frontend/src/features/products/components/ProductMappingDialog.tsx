@@ -13,7 +13,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -25,7 +24,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Button } from "@/components/ui/button";
+import { ConfirmDialogFooter } from "@/components/app/forms/ConfirmDialogFooter";
+import { FormDialogErrorAlert } from "@/components/app/forms/FormDialogErrorAlert";
 import { FormShell } from "@/components/app/forms/FormShell";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import type { LoanProduct, UpdateProductMappingInput } from "../types";
@@ -142,28 +142,14 @@ export function ProductMappingDialog({
               )}
             />
 
-            {errorMessage ? (
-              <div
-                role="alert"
-                className="border-danger/30 bg-danger/5 text-danger rounded-md border p-3 text-sm"
-              >
-                {errorMessage}
-              </div>
-            ) : null}
+            <FormDialogErrorAlert message={errorMessage} />
 
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={loading}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? "Saving…" : "Save mapping"}
-              </Button>
-            </DialogFooter>
+            <ConfirmDialogFooter
+              loading={loading}
+              onCancel={() => onOpenChange(false)}
+              submitLabel="Save mapping"
+              loadingLabel="Saving…"
+            />
           </FormShell>
         </div>
       </DialogContent>

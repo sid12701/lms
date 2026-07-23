@@ -9,7 +9,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { fetchBorrowerDetail } from "../api";
 import type { BorrowerDetail } from "../types";
 
-export const BORROWER_DETAIL_QUERY_KEY = "borrower" as const;
+const BORROWER_DETAIL_QUERY_KEY = "borrower" as const;
 
 /** Build the canonical query key — exported so mutation hooks can invalidate. */
 export function borrowerDetailQueryKey(id: string) {

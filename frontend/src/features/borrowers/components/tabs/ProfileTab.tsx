@@ -157,8 +157,8 @@ export function ProfileTab({ detail }: ProfileTabProps) {
           <p className="text-foreground-muted text-sm">No references on file</p>
         ) : (
           <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-            {borrower.references.map((ref, idx) => (
-              <Row key={`${ref.name}-${idx}`} label={ref.name}>
+            {borrower.references.map((ref) => (
+              <Row key={`${ref.name}-${ref.contact}`} label={ref.name}>
                 <span className="text-foreground-muted">{ref.contact}</span>
               </Row>
             ))}
@@ -193,5 +193,3 @@ export function ProfileTab({ detail }: ProfileTabProps) {
     </div>
   );
 }
-
-export default ProfileTab;

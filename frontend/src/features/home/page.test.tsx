@@ -24,12 +24,15 @@ vi.mock("@/features/home/components", () => ({
   InternalKpiSummary: ({ kpis }: { kpis: unknown }) => (
     <div data-testid="internal-kpi-summary">{kpis ? "ok" : "no"}</div>
   ),
-  LoansByDpdBucketCard: () => <div data-testid="loans-by-dpd-card">LoansByDpdBucketCard</div>,
   OpenAlertsCard: () => <div data-testid="open-alerts-card">OpenAlertsCard</div>,
   RecentApplicationsCard: () => (
     <div data-testid="recent-applications-card">RecentApplicationsCard</div>
   ),
   LspLinkCardGrid: () => <div data-testid="lsp-link-card-grid">LspLinkCardGrid</div>,
+}));
+
+vi.mock("./components/LoansByDpdBucketCard", () => ({
+  LoansByDpdBucketCard: () => <div data-testid="loans-by-dpd-card">LoansByDpdBucketCard</div>,
 }));
 
 // ─── Stub the query hook ────────────────────────────────────────────────────
@@ -106,6 +109,7 @@ function makeSession(role: Session["user"]["role"]): SessionContextValue {
     session,
     isLoading: false,
     lastRefreshFailureCode: null,
+    sessionRestoreError: null,
     signIn: vi.fn(),
     signOut: vi.fn().mockResolvedValue(undefined),
     refresh: vi.fn().mockResolvedValue(undefined),
@@ -153,11 +157,11 @@ describe("HomePage — internal", () => {
     });
   });
 
-  it("renders the internal cards for a SYSTEM_ADMIN session", () => {
+  it("renders the internal cards for a SYSTEM_ADMIN session", async () => {
     renderHome(makeSession("SYSTEM_ADMIN"));
     expect(screen.getByTestId("home-page-internal")).toBeInTheDocument();
     expect(screen.getByTestId("internal-kpi-summary")).toBeInTheDocument();
-    expect(screen.getByTestId("loans-by-dpd-card")).toBeInTheDocument();
+    expect(await screen.findByTestId("loans-by-dpd-card")).toBeInTheDocument();
     expect(screen.getByTestId("open-alerts-card")).toBeInTheDocument();
     expect(screen.getByTestId("recent-applications-card")).toBeInTheDocument();
     // LSP-only widgets must not appear.

@@ -8,6 +8,7 @@
  * ACTIVE / DISABLED. Translated in both directions.
  */
 import { requestJson } from "@/lib/api/http-client";
+import { paginate } from "@/lib/pagination";
 import type { ApiClient, ApiClientStatus } from "@/schemas/user";
 import type {
   ApiClientMutationResponse,
@@ -92,10 +93,8 @@ export async function listApiClients(
     }
     return true;
   });
-  const page = filters.page ?? 0;
-  const pageSize = filters.pageSize ?? 20;
-  const items = filtered.slice(page * pageSize, page * pageSize + pageSize).map(toRow);
-  return { items, total: filtered.length, page, pageSize };
+  const result = paginate(filtered, filters);
+  return { ...result, items: result.items.map(toRow) };
 }
 
 export async function createApiClient(
@@ -156,10 +155,5 @@ export async function rotateApiClientSecret(
     { idempotencyKey: _input.idempotencyKey },
   );
 
-  // Re-read the client so the returned row carries the backend's freshly updated
-  // metadata (including the authoritative `lastRotatedAt`).
-  const list = await requestJson<BackendApiClientResponse[]>(BASE);
-  const found = list.find((row) => row.id === id);
-  if (!found) throw new Error(`API client ${id} not found`);
-  return { client: toRow(found), clientSecret: payload.clientSecret };
+  return { clientSecret: payload.clientSecret };
 }

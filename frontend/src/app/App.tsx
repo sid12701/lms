@@ -1,5 +1,5 @@
 import { RouterProvider } from "react-router-dom";
-import { Providers } from "./providers";
+import { Providers } from "./AppProviders";
 import { AxeRuntime } from "./axe-runtime";
 import { ErrorBoundary } from "./error-boundary";
 import { createAppRouter } from "@/routes/router";

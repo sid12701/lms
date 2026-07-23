@@ -59,7 +59,7 @@ function toListItem(payload: BackendApplicationResponse): LoanApplicationListIte
   };
 }
 
-export function backendQueryFromFilters(
+function backendQueryFromFilters(
   filters: LoanApplicationListFilters,
 ): Record<string, string | number | undefined> {
   const pageSize = filters.pageSize ?? 25;

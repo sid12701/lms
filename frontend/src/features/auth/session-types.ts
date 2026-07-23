@@ -23,5 +23,3 @@ export const Session = z.object({
   expiresAt: z.string().datetime({ offset: true }),
 });
 export type Session = z.infer<typeof Session>;
-
-export const SessionOrNull = Session.nullable();

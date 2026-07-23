@@ -3,7 +3,6 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.common.money.Money;
 import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanApplication;
-import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.OpsAlert;
@@ -32,11 +31,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class HomeDashboardService {
-
-    private static final List<LoanApplicationStatus> IN_DISBURSEMENT_STATUSES = List.of(
-            LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
-            LoanApplicationStatus.DISBURSEMENT_RETRY
-    );
 
     private static final List<LoanDelinquencyBucket> BUCKET_ORDER = List.of(
             LoanDelinquencyBucket.CURRENT,
@@ -102,15 +96,17 @@ public class HomeDashboardService {
                 ))
                 .toList();
 
-        int applicationsAwaitingApproval = Math.toIntExact(
-                loanApplicationRepository.countByStatus(LoanApplicationStatus.AWAITING_APPROVAL));
-        int applicationsInDisbursement = Math.toIntExact(
-                loanApplicationRepository.countByStatusIn(IN_DISBURSEMENT_STATUSES));
         List<StatusCount> applicationsByStatus = readStatusCounts(globalSnapshot);
+        int applicationsAwaitingApproval = statusCount(applicationsByStatus, "AWAITING_APPROVAL");
+        int applicationsInDisbursement = Math.addExact(
+                statusCount(applicationsByStatus, "APPROVED_PENDING_DISBURSAL"),
+                statusCount(applicationsByStatus, "DISBURSEMENT_RETRY")
+        );
         List<DpdBucketCount> dpdBuckets = readDpdBucketCounts(globalSnapshot);
-        long openAlerts = opsAlertRepository.countByStatus(OpsAlertStatus.NEW);
-        List<OpenAlertSummary> openAlertSummaries = opsAlertRepository
-                .findByStatusOrderByCreatedAtDesc(OpsAlertStatus.NEW, PageRequest.of(0, 5))
+        var openAlertPage = opsAlertRepository
+                .findByStatusOrderByCreatedAtDesc(OpsAlertStatus.NEW, PageRequest.of(0, 5));
+        long openAlerts = openAlertPage.getTotalElements();
+        List<OpenAlertSummary> openAlertSummaries = openAlertPage
                 .getContent()
                 .stream()
                 .map(this::toOpenAlertSummary)
@@ -162,6 +158,15 @@ public class HomeDashboardService {
                 .map(field -> new StatusCount(field, statusCounts.get(field).asLong()))
                 .sorted(Comparator.comparing(StatusCount::status))
                 .toList();
+    }
+
+    private static int statusCount(List<StatusCount> counts, String status) {
+        return counts.stream()
+                .filter(count -> count.status().equals(status))
+                .findFirst()
+                .map(StatusCount::count)
+                .map(Math::toIntExact)
+                .orElse(0);
     }
 
     private List<DpdBucketCount> readDpdBucketCounts(PortfolioKpiSnapshot snapshot) {

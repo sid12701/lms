@@ -2,7 +2,7 @@ import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export interface KpiSkeletonProps extends HTMLAttributes<HTMLDivElement> {
+interface KpiSkeletonProps extends HTMLAttributes<HTMLDivElement> {
   /** Number of KPI placeholder cards. Defaults to 4 to match `KpiStrip`. */
   count?: number;
   className?: string;

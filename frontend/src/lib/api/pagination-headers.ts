@@ -1,6 +1,6 @@
-export const PAGINATION_TOTAL_COUNT_HEADER = "X-Total-Count";
-export const PAGINATION_LIMIT_HEADER = "X-Limit";
-export const PAGINATION_OFFSET_HEADER = "X-Offset";
+const PAGINATION_TOTAL_COUNT_HEADER = "X-Total-Count";
+const PAGINATION_LIMIT_HEADER = "X-Limit";
+const PAGINATION_OFFSET_HEADER = "X-Offset";
 
 export interface PaginationHeaders {
   totalCount: number | null;

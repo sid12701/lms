@@ -16,6 +16,7 @@
 import { z } from "zod";
 import { Role } from "@/schemas/role";
 import { User, UserStatus } from "@/schemas/user";
+import { ADMIN_LIST_FILTER_FIELDS } from "@/lib/admin-list-url-state";
 
 export type { User };
 
@@ -24,9 +25,7 @@ const UsersListFilters = z.object({
   role: Role.optional(),
   status: UserStatus.optional(),
   lspId: z.string().uuid().optional(),
-  q: z.string().trim().min(1).max(120).optional(),
-  page: z.coerce.number().int().min(0).optional(),
-  pageSize: z.coerce.number().int().min(5).max(100).optional(),
+  ...ADMIN_LIST_FILTER_FIELDS,
 });
 export type UsersListFilters = z.infer<typeof UsersListFilters>;
 
@@ -80,7 +79,6 @@ export interface ResetUserPasswordInput {
 }
 
 export interface ResetUserPasswordResponse {
-  user: UserRow;
   temporaryPassword: string;
 }
 

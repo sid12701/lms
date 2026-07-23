@@ -59,8 +59,8 @@ export function FormShell<TFieldValues extends FieldValues = FieldValues>({
             <>
               <p className="text-danger font-semibold">{errorSummaryLabel}</p>
               <ul className="text-foreground-muted mt-2 list-disc space-y-1 pl-5">
-                {messages.map((m, i) => (
-                  <li key={i}>{m}</li>
+                {messages.map(({ id, message }) => (
+                  <li key={id}>{message}</li>
                 ))}
               </ul>
             </>
@@ -74,19 +74,24 @@ export function FormShell<TFieldValues extends FieldValues = FieldValues>({
 
 type ErrorLike = { message?: unknown } | undefined | null;
 
-function collectErrorMessages(errors: Record<string, unknown>): string[] {
-  const out: string[] = [];
-  const walk = (node: unknown) => {
+interface FormErrorMessage {
+  id: string;
+  message: string;
+}
+
+function collectErrorMessages(errors: Record<string, unknown>): FormErrorMessage[] {
+  const out: FormErrorMessage[] = [];
+  const walk = (node: unknown, path: string) => {
     if (!node || typeof node !== "object") return;
     const maybe = node as ErrorLike & Record<string, unknown>;
     if (typeof maybe.message === "string" && maybe.message.length > 0) {
-      out.push(maybe.message);
+      out.push({ id: path || maybe.message, message: maybe.message });
       return;
     }
     for (const key of Object.keys(maybe)) {
-      walk(maybe[key]);
+      walk(maybe[key], path ? `${path}.${key}` : key);
     }
   };
-  walk(errors);
+  walk(errors, "");
   return out;
 }

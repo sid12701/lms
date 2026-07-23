@@ -3,7 +3,7 @@ import { Lock } from "lucide-react";
 import { EmptyState, type EmptyStateProps } from "./EmptyState";
 import { cn } from "@/lib/utils";
 
-export interface PermissionDeniedStateProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
+interface PermissionDeniedStateProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
   title?: string;
   description?: string;
   /** The role currently in session — surfaced to the user for context. */

@@ -1,7 +1,7 @@
 import { forwardRef, type HTMLAttributes, type ReactNode, type Ref } from "react";
 import { cn } from "@/lib/utils";
 
-export interface FormSectionProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
+interface FormSectionProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
   title?: string;
   description?: string;
   children: ReactNode;

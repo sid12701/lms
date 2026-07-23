@@ -76,7 +76,14 @@ class LoanProductAdminControllerTest {
         mockMvc.perform(get("/api/v1/internal/admin/products").with(productAdmin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].code").value("SALARY-PLUS"))
-                .andExpect(jsonPath("$[0].interestRate").value(18.50));
+                .andExpect(jsonPath("$[0].interestRate").value(18.50))
+                .andExpect(jsonPath("$[0].mappedLsps").isEmpty());
+
+        mockMvc.perform(get("/api/v1/internal/admin/product-options").with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(productId))
+                .andExpect(jsonPath("$[0].code").value("SALARY-PLUS"))
+                .andExpect(jsonPath("$[0].status").value("ACTIVE"));
 
         mockMvc.perform(put("/api/v1/internal/admin/products/{productId}", productId)
                         .with(productAdmin())
@@ -178,6 +185,12 @@ class LoanProductAdminControllerTest {
                 .andExpect(jsonPath("$.mappedLsps.length()").value(2))
                 .andExpect(jsonPath("$.mappedLsps[0].code").value(apex.code()))
                 .andExpect(jsonPath("$.mappedLsps[1].code").value(north.code()));
+
+        mockMvc.perform(get("/api/v1/internal/admin/products").with(productAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].mappedLsps.length()").value(2))
+                .andExpect(jsonPath("$[0].mappedLsps[0].code").value(apex.code()))
+                .andExpect(jsonPath("$[0].mappedLsps[1].code").value(north.code()));
 
         mockMvc.perform(get("/api/v1/internal/admin/products/{productId}/audit-events", product.id())
                         .with(productAdmin()))

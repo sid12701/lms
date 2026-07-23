@@ -16,6 +16,7 @@ import { readPaginationHeaders } from "@/lib/api/pagination-headers";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import { parseLoanApplicationStatus } from "@/lib/loan-application-status";
+import { finiteNumberOrZero as toNumber } from "@/lib/number";
 import type { LoanApplication } from "@/types";
 
 const LSP_BASE = "/api/v1/lsp/loan-applications";
@@ -232,12 +233,6 @@ interface BackendInvalidReasonOption {
   requiresText: boolean;
 }
 
-function toNumber(value: number | string | null | undefined): number {
-  if (value == null) return 0;
-  const parsed = typeof value === "string" ? Number(value) : value;
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 function isLspSession(): boolean {
   const role = loadStoredSession()?.user.role;
   return role === "LSP_UI_READ" || role === "LSP_UI_WRITE" || role === "LSP_API_CLIENT";
@@ -387,18 +382,16 @@ export async function markLoanInvalid(input: MarkInvalidInput): Promise<MyLoanDe
   return backendToDetail(payload);
 }
 
-export const LSP_DOCUMENT_TYPES = [
-  "PAN",
-  "AADHAAR",
-  "ADDRESS_PROOF",
-  "INCOME_PROOF",
-  "BANK_STATEMENT",
-  "PHOTOGRAPH",
-  "KFS",
-  "LOAN_AGREEMENT",
-  "OTHER",
-] as const;
-export type LspDocumentType = (typeof LSP_DOCUMENT_TYPES)[number];
+export type LspDocumentType =
+  | "PAN"
+  | "AADHAAR"
+  | "ADDRESS_PROOF"
+  | "INCOME_PROOF"
+  | "BANK_STATEMENT"
+  | "PHOTOGRAPH"
+  | "KFS"
+  | "LOAN_AGREEMENT"
+  | "OTHER";
 
 // Backend `LoanApplicationDocumentType` enum names. FE uses shorter names for
 // historical reasons; translate on the wire so uploads land on the right slot.
@@ -546,46 +539,6 @@ export async function uploadLspDocument(
     { method: "POST", body: form },
   );
   return toUploadedDocument(payload);
-}
-
-export interface BatchLspDocumentMetadata {
-  documentType: LspDocumentType;
-  note?: string | null;
-  sourceReference?: string | null;
-}
-
-export interface UploadLspDocumentsBatchInput {
-  applicationId: string;
-  documents: readonly { metadata: BatchLspDocumentMetadata; file: File }[];
-}
-
-/**
- * POST `/api/v1/lsp/loan-applications/{id}/documents/batch` (multipart)
- * — batch upload. `documents` is a JSON blob; `files` is a parallel list
- * of file parts.
- */
-export async function uploadLspDocumentsBatch(
-  input: UploadLspDocumentsBatchInput,
-): Promise<UploadedLspDocument[]> {
-  ensureLspSession();
-  if (input.documents.length === 0) {
-    return [];
-  }
-  const form = new FormData();
-  const metadata = input.documents.map((d) => ({
-    documentType: FE_TO_BE_DOCUMENT_TYPE[d.metadata.documentType],
-    note: d.metadata.note ?? null,
-    sourceReference: d.metadata.sourceReference ?? null,
-  }));
-  form.append("documents", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-  for (const d of input.documents) {
-    form.append("files", d.file);
-  }
-  const payload = await requestJson<BackendLspChecklistResponse[]>(
-    `${LSP_BASE}/${encodeURIComponent(input.applicationId)}/documents/batch`,
-    { method: "POST", body: form },
-  );
-  return payload.map(toUploadedDocument);
 }
 
 export interface LspDocumentRequirement {

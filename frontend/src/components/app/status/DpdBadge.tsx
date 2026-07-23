@@ -57,7 +57,7 @@ const BUCKET_META: Record<DpdBucketKey, BucketDef> = {
   },
 };
 
-export interface DpdBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+interface DpdBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
   bucket: DpdBucketKey;
   /** Optional concrete day count to append, e.g. "31–60 DPD · 47 days". */
   days?: number;

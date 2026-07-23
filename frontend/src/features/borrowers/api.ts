@@ -13,6 +13,7 @@
  */
 import { requestJson } from "@/lib/api/http-client";
 import { listLspOptions } from "@/features/lsps/options";
+import { finiteNumberOrZero as toNumber } from "@/lib/number";
 import type { BorrowerDetail } from "./types";
 
 const BACKEND_BASE = "/api/v1/internal/admin/borrowers";
@@ -91,12 +92,6 @@ interface BackendBorrowerDelinquency {
   bucket: string | null;
 }
 
-function toNumber(value: number | string | null | undefined): number {
-  if (value == null) return 0;
-  const parsed = typeof value === "string" ? Number(value) : value;
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 const OPEN_STATUSES = new Set([
   "INITIALIZED",
   "AWAITING_APPROVAL",
@@ -108,33 +103,32 @@ const OPEN_STATUSES = new Set([
 
 const CLOSED_STATUSES = new Set(["CLOSED", "FORECLOSED", "REJECTED", "INVALID"]);
 
-function backendToDetail(
+function toVisibleLsps(
   payload: BackendBorrowerDetail,
   lspNamesById: ReadonlyMap<string, string> = new Map(),
-): BorrowerDetail {
-  const visibleLsps = (() => {
-    if (payload.visibleLsps && payload.visibleLsps.length > 0) {
-      return payload.visibleLsps.map((lsp) => ({
-        id: lsp.id,
-        name: lsp.name,
-        firstSourcedAt: lsp.firstSourcedAt ?? null,
-        lastTouchedAt: lsp.lastTouchedAt ?? null,
-        sourceChannel: lsp.sourceChannel ?? null,
-      }));
-    }
-    const map = new Map<string, string>();
-    for (const loan of payload.loans) {
-      if (loan.lspId && loan.lspName) map.set(loan.lspId, loan.lspName);
-      else if (loan.lspId && loan.lspCode) map.set(loan.lspId, loan.lspCode);
-    }
-    for (const id of payload.visibleLspIds ?? []) {
-      if (!map.has(id)) {
-        map.set(id, lspNamesById.get(id) ?? id);
-      }
-    }
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  })();
+): BorrowerDetail["visibleLsps"] {
+  if (payload.visibleLsps && payload.visibleLsps.length > 0) {
+    return payload.visibleLsps.map((lsp) => ({
+      id: lsp.id,
+      name: lsp.name,
+      firstSourcedAt: lsp.firstSourcedAt ?? null,
+      lastTouchedAt: lsp.lastTouchedAt ?? null,
+      sourceChannel: lsp.sourceChannel ?? null,
+    }));
+  }
 
+  const namesById = new Map<string, string>();
+  for (const loan of payload.loans) {
+    const name = loan.lspName ?? loan.lspCode;
+    if (loan.lspId && name) namesById.set(loan.lspId, name);
+  }
+  for (const id of payload.visibleLspIds ?? []) {
+    if (!namesById.has(id)) namesById.set(id, lspNamesById.get(id) ?? id);
+  }
+  return Array.from(namesById, ([id, name]) => ({ id, name }));
+}
+
+function summarizeLoans(payload: BackendBorrowerDetail): BorrowerDetail["totals"] {
   let openCount = 0;
   let closedCount = 0;
   let lifetimeDisbursed = 0;
@@ -145,8 +139,60 @@ function backendToDetail(
     else if (CLOSED_STATUSES.has(status)) closedCount += 1;
     if (loan.disbursedAt) lifetimeDisbursed += toNumber(loan.principalAmount);
   }
+  return {
+    openApplicationsCount: openCount,
+    closedApplicationsCount: closedCount,
+    lifetimeDisbursedAmount: lifetimeDisbursed,
+    activeOverdueAmount: toNumber(payload.delinquency?.activeOverdueAmount ?? 0),
+  };
+}
 
-  const borrower = {
+function toBorrowerAddress(payload: BackendBorrowerDetail): BorrowerDetail["borrower"]["address"] {
+  return {
+    residential: [payload.addressLine1, payload.addressLine2].filter(Boolean).join(", ") || "",
+    city: payload.city ?? "",
+    state: payload.state ?? "",
+    zip: payload.addressZipCode ?? "",
+  };
+}
+
+function toBorrowerEmployment(
+  payload: BackendBorrowerDetail,
+): BorrowerDetail["borrower"]["employment"] {
+  return {
+    type: (payload.employmentType ?? "SALARIED") as
+      | "SALARIED"
+      | "SELF_EMPLOYED"
+      | "BUSINESS"
+      | "RETIRED"
+      | "STUDENT"
+      | "UNEMPLOYED",
+    organization: payload.organizationName,
+    employeeId: payload.employeeId,
+    location: [payload.employmentCity, payload.employmentState].filter(Boolean).join(", ") || null,
+    monthlyIncome: toNumber(payload.monthlyIncome),
+    annualIncome: toNumber(payload.annualIncome),
+  };
+}
+
+function toBorrowerBanking(payload: BackendBorrowerDetail): BorrowerDetail["borrower"]["banking"] {
+  return {
+    bank: payload.bankName ?? "",
+    accountHolder: payload.accountHolderName ?? "",
+    accountNumber: payload.bankAccountNumberMasked ?? "",
+    ifsc: payload.ifscCode ?? "",
+  };
+}
+
+function toBorrowerReferences(
+  payload: BackendBorrowerDetail,
+): BorrowerDetail["borrower"]["references"] {
+  if (!payload.referencePersonName || !payload.referencePersonNumber) return [];
+  return [{ name: payload.referencePersonName, contact: payload.referencePersonNumber }];
+}
+
+function toBorrower(payload: BackendBorrowerDetail): BorrowerDetail["borrower"] {
+  return {
     id: payload.id,
     fullName: payload.fullName,
     pan: payload.pan ?? "",
@@ -162,58 +208,23 @@ function backendToDetail(
       | "WIDOWED",
     fathersName: payload.fatherName ?? "",
     spouseName: payload.spouseName,
-    address: {
-      residential: [payload.addressLine1, payload.addressLine2].filter(Boolean).join(", ") || "",
-      city: payload.city ?? "",
-      state: payload.state ?? "",
-      zip: payload.addressZipCode ?? "",
-    },
-    employment: {
-      type: (payload.employmentType ?? "SALARIED") as
-        | "SALARIED"
-        | "SELF_EMPLOYED"
-        | "BUSINESS"
-        | "RETIRED"
-        | "STUDENT"
-        | "UNEMPLOYED",
-      organization: payload.organizationName,
-      employeeId: payload.employeeId,
-      location:
-        [payload.employmentCity, payload.employmentState].filter(Boolean).join(", ") || null,
-      monthlyIncome: toNumber(payload.monthlyIncome),
-      annualIncome: toNumber(payload.annualIncome),
-    },
-    banking: {
-      bank: payload.bankName ?? "",
-      accountHolder: payload.accountHolderName ?? "",
-      accountNumber: payload.bankAccountNumberMasked ?? "",
-      ifsc: payload.ifscCode ?? "",
-    },
-    references:
-      payload.referencePersonName && payload.referencePersonNumber
-        ? [
-            {
-              name: payload.referencePersonName,
-              contact: payload.referencePersonNumber,
-            },
-          ]
-        : [],
+    address: toBorrowerAddress(payload),
+    employment: toBorrowerEmployment(payload),
+    banking: toBorrowerBanking(payload),
+    references: toBorrowerReferences(payload),
     kycComplete: !!payload.pan && !!payload.aadharNumberMasked,
     visibleLspIds: payload.visibleLspIds ?? [],
-  };
+  } as BorrowerDetail["borrower"];
+}
 
+function backendToDetail(
+  payload: BackendBorrowerDetail,
+  lspNamesById: ReadonlyMap<string, string> = new Map(),
+): BorrowerDetail {
   return {
-    borrower: borrower as unknown as BorrowerDetail["borrower"],
-    visibleLsps,
-    totals: {
-      openApplicationsCount: openCount,
-      closedApplicationsCount: closedCount,
-      lifetimeDisbursedAmount: lifetimeDisbursed,
-      // Gap #6: server-authoritative aggregate across the borrower's
-      // active loans. Drives the Profile tab "active overdue" tile and
-      // the OverviewTab "active overdue" row.
-      activeOverdueAmount: toNumber(payload.delinquency?.activeOverdueAmount ?? 0),
-    },
+    borrower: toBorrower(payload),
+    visibleLsps: toVisibleLsps(payload, lspNamesById),
+    totals: summarizeLoans(payload),
   };
 }
 

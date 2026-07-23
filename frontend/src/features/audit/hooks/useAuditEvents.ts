@@ -13,7 +13,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { fetchAuditEvents } from "../api";
 import type { AuditEventsFilters, AuditEventsResponse } from "../types";
 
-export const AUDIT_EVENTS_QUERY_KEY = ["audit", "events"] as const;
+const AUDIT_EVENTS_QUERY_KEY = ["audit", "events"] as const;
 
 export interface UseAuditEventsOptions {
   enabled?: boolean;

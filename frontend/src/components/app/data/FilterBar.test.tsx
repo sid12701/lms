@@ -6,6 +6,7 @@ import { z } from "zod";
 import { renderWithProviders } from "@/test/utils";
 import { FilterBar } from "./FilterBar";
 import { Button } from "@/components/ui/button";
+import { useEffect } from "react";
 
 const schema = z.object({
   status: z.enum(["A", "B"]).optional(),
@@ -14,7 +15,9 @@ const schema = z.object({
 
 function LocationSpy({ onChange }: { onChange: (search: string) => void }) {
   const loc = useLocation();
-  onChange(loc.search);
+  useEffect(() => {
+    onChange(loc.search);
+  }, [loc.search, onChange]);
   return null;
 }
 

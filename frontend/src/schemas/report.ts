@@ -7,19 +7,19 @@ import { Email, Iso8601, IsoDate, MoneyINR, Uuid } from "./common";
 import { LoanStatus } from "./loan-application";
 import { DelinquencyBucket } from "./loan-account";
 
-export const ReportType = z.enum(["PORTFOLIO_MIS"]);
-export type ReportType = z.infer<typeof ReportType>;
+const ReportType = z.enum(["PORTFOLIO_MIS"]);
+type ReportType = z.infer<typeof ReportType>;
 
 export const ReportStatus = z.enum(["QUEUED", "PROCESSING", "COMPLETED", "FAILED"]);
 export type ReportStatus = z.infer<typeof ReportStatus>;
 
-export const ReportFileMeta = z.object({
+const ReportFileMeta = z.object({
   storageKey: z.string().min(1).max(240),
   size: z.number().int().nonnegative(),
   rowCount: z.number().int().nonnegative(),
   generatedAt: Iso8601,
 });
-export type ReportFileMeta = z.infer<typeof ReportFileMeta>;
+type ReportFileMeta = z.infer<typeof ReportFileMeta>;
 
 export const ReportRequest = z.object({
   id: Uuid,

@@ -44,6 +44,10 @@ interface BackendMappingResponse {
   mappedLsps: Array<{ id: string; code: string; name: string; status: string }>;
 }
 
+interface BackendProductListResponse extends BackendProductResponse {
+  mappedLsps: BackendMappingResponse["mappedLsps"];
+}
+
 function toLoanProduct(payload: BackendProductResponse): LoanProduct {
   const status: ProductStatus = payload.status === "INACTIVE" ? "INACTIVE" : "ACTIVE";
   return {
@@ -65,24 +69,32 @@ async function fetchMapping(productId: string): Promise<BackendMappingResponse> 
   return requestJson<BackendMappingResponse>(`${BASE}/${productId}/mappings`);
 }
 
-async function toProductRow(payload: BackendProductResponse): Promise<ProductRow> {
+function toProductRow(
+  payload: BackendProductResponse,
+  mappedLsps: BackendMappingResponse["mappedLsps"],
+): ProductRow {
   const product = toLoanProduct(payload);
-  let lspIds: string[] = [];
-  let lspNames: string[] = [];
+  return {
+    ...product,
+    lspIds: mappedLsps.map((entry) => entry.id),
+    lspNames: mappedLsps.map((entry) => entry.name),
+  };
+}
+
+async function hydrateProductRow(payload: BackendProductResponse): Promise<ProductRow> {
   try {
     const mapping = await fetchMapping(payload.id);
-    lspIds = mapping.mappedLsps.map((entry) => entry.id);
-    lspNames = mapping.mappedLsps.map((entry) => entry.name);
+    return toProductRow(payload, mapping.mappedLsps);
   } catch {
     // Mapping failure is non-fatal — the row still renders without chips.
+    return toProductRow(payload, []);
   }
-  return { ...product, lspIds, lspNames };
 }
 
 export async function listProducts(
   filters: ProductsListFilters = {},
 ): Promise<ProductsListResponse> {
-  const all = await requestJson<BackendProductResponse[]>(BASE);
+  const all = await requestJson<BackendProductListResponse[]>(BASE);
   const filtered = all.filter((row) => {
     if (filters.status && row.status !== filters.status) return false;
     if (filters.q) {
@@ -96,7 +108,7 @@ export async function listProducts(
   const page = filters.page ?? 0;
   const pageSize = filters.pageSize ?? 20;
   const slice = filtered.slice(page * pageSize, page * pageSize + pageSize);
-  const items = await Promise.all(slice.map(toProductRow));
+  const items = slice.map((product) => toProductRow(product, product.mappedLsps));
   return { items, total: filtered.length, page, pageSize };
 }
 
@@ -148,7 +160,7 @@ export async function createProduct(input: CreateProductInput): Promise<ProductM
       { idempotencyKey: `${input.idempotencyKey}-mapping` },
     );
   }
-  const row = await toProductRow(payload);
+  const row = await hydrateProductRow(payload);
   return { product: row };
 }
 
@@ -173,7 +185,7 @@ export async function updateProduct(
     { method: "PUT", body: JSON.stringify(body) },
     { idempotencyKey: input.idempotencyKey },
   );
-  const row = await toProductRow(payload);
+  const row = await hydrateProductRow(payload);
   return { product: row };
 }
 
@@ -187,6 +199,6 @@ export async function updateProductMapping(
     { idempotencyKey: input.idempotencyKey },
   );
   const payload = await requestJson<BackendProductResponse>(`${BASE}/${id}`);
-  const row = await toProductRow(payload);
+  const row = await hydrateProductRow(payload);
   return { product: row };
 }

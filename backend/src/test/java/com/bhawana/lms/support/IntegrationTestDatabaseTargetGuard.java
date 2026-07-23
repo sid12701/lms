@@ -3,20 +3,18 @@ package com.bhawana.lms.support;
 import java.net.URI;
 import java.sql.SQLException;
 import javax.sql.DataSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Refuses integration-test bulk deletes against databases that are not ephemeral
- * (in-memory H2 or an explicitly marked Testcontainers datasource). Other targets require an explicit
- * {@value #EXTERNAL_DB_PROPERTY}={@code true} opt-in.
+ * (in-memory H2 or an explicitly marked Testcontainers datasource).
+ *
+ * <p>There is deliberately no opt-in escape hatch: an environment variable that re-enables bulk
+ * deletes against a developer-configured database is exactly how a seeded portfolio was destroyed
+ * once already. Point integration tests at H2 or Testcontainers, never at a real database.
  */
 public final class IntegrationTestDatabaseTargetGuard {
 
-    public static final String EXTERNAL_DB_PROPERTY = "LMS_IT_EXTERNAL_DB";
     public static final String EPHEMERAL_DB_PROPERTY = "lms.it.ephemeral-database";
-
-    private static final Logger log = LoggerFactory.getLogger(IntegrationTestDatabaseTargetGuard.class);
 
     private IntegrationTestDatabaseTargetGuard() {
     }
@@ -45,26 +43,12 @@ public final class IntegrationTestDatabaseTargetGuard {
         if (normalized.startsWith("jdbc:h2:") || explicitlyEphemeral) {
             return;
         }
-        if (isExplicitExternalOptIn()) {
-            log.warn(
-                    "Integration-test cleanup targeting NON-EPHEMERAL database {} — permitted only because {}=true",
-                    describeHost(normalized),
-                    EXTERNAL_DB_PROPERTY);
-            return;
-        }
         throw new IllegalStateException(
                 "Integration-test cleanup refused for non-ephemeral database host "
                         + describeHost(normalized)
-                        + ". Use in-memory H2, mark a Testcontainers datasource with "
+                        + ". Use in-memory H2, or mark a Testcontainers datasource with "
                         + EPHEMERAL_DB_PROPERTY
-                        + "=true, or set "
-                        + EXTERNAL_DB_PROPERTY
-                        + "=true to run external-db tests consciously.");
-    }
-
-    private static boolean isExplicitExternalOptIn() {
-        return "true".equalsIgnoreCase(System.getenv(EXTERNAL_DB_PROPERTY))
-                || "true".equalsIgnoreCase(System.getProperty(EXTERNAL_DB_PROPERTY));
+                        + "=true. Integration tests must never bulk-delete a real database.");
     }
 
     private static String describeHost(String normalizedUrl) {

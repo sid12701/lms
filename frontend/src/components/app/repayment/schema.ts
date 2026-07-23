@@ -12,7 +12,7 @@
  */
 import { z } from "zod";
 
-export const RepaymentPostMode = z.enum(["NEFT", "RTGS", "IMPS", "BANK_TRANSFER", "UPI", "CASH"]);
+const RepaymentPostMode = z.enum(["NEFT", "RTGS", "IMPS", "BANK_TRANSFER", "UPI", "CASH"]);
 export type RepaymentPostMode = z.infer<typeof RepaymentPostMode>;
 
 export const REPAYMENT_POST_MODES = RepaymentPostMode.options;

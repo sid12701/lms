@@ -160,19 +160,16 @@ export function DocumentsSection({
     void fetchLspDocumentRequirements()
       .then((rows) => {
         if (cancelled) return;
-        const intakeSlots = rows
-          .filter((row) => row.requiredForDisbursement)
-          .map((row) => backendCodeToSlot(row.code))
-          .filter((slot): slot is LspDocumentType => slot != null);
-        if (intakeSlots.length > 0) {
-          setRequiredDocTypes(intakeSlots);
-        }
+        const intakeSlots: LspDocumentType[] = [];
         const labels = { ...LSP_DOC_LABELS };
         for (const row of rows) {
           const slot = backendCodeToSlot(row.code);
-          if (slot) {
-            labels[slot] = row.displayName;
-          }
+          if (!slot) continue;
+          if (row.requiredForDisbursement) intakeSlots.push(slot);
+          labels[slot] = row.displayName;
+        }
+        if (intakeSlots.length > 0) {
+          setRequiredDocTypes(intakeSlots);
         }
         setDocLabels(labels);
       })

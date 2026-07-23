@@ -18,6 +18,16 @@ export interface BlockingIssuesPanelProps {
   borrowerDetail?: BorrowerDetail | null;
 }
 
+type PanelTone = "info" | "warning" | "danger" | "success" | "neutral";
+
+const PANEL_TONE_CLASSES: Record<PanelTone, string> = {
+  info: "border-info/30 bg-info/5",
+  warning: "border-warning/30 bg-warning/5",
+  danger: "border-danger/30 bg-danger/5",
+  success: "border-success/30 bg-success/5",
+  neutral: "border-border bg-surface",
+};
+
 export function BlockingIssuesPanel({ detail, borrowerDetail }: BlockingIssuesPanelProps) {
   const { application } = detail;
   const status = application.status;
@@ -26,7 +36,7 @@ export function BlockingIssuesPanel({ detail, borrowerDetail }: BlockingIssuesPa
     return <DocsPendingCard detail={detail} />;
   }
   if (status === "APPROVED_PENDING_DISBURSAL") {
-    return <PendingDisbursementCard detail={detail} />;
+    return <PendingDisbursementCard />;
   }
   if (status === "DISBURSEMENT_RETRY") {
     return <DisbursementRetryCard detail={detail} />;
@@ -52,22 +62,15 @@ function PanelShell({
   hint,
   children,
 }: {
-  tone: "info" | "warning" | "danger" | "success" | "neutral";
+  tone: PanelTone;
   title: string;
   hint?: string;
   children: ReactNode;
 }) {
-  const toneClasses: Record<typeof tone, string> = {
-    info: "border-info/30 bg-info/5",
-    warning: "border-warning/30 bg-warning/5",
-    danger: "border-danger/30 bg-danger/5",
-    success: "border-success/30 bg-success/5",
-    neutral: "border-border bg-surface",
-  };
   return (
     <section
       data-slot="blocking-issues-panel"
-      className={`rounded-md border p-4 ${toneClasses[tone]}`}
+      className={`rounded-md border p-4 ${PANEL_TONE_CLASSES[tone]}`}
     >
       <header className="mb-2 flex items-center justify-between">
         <h2 className="text-foreground text-sm font-semibold tracking-tight">{title}</h2>
@@ -90,7 +93,7 @@ function DocsPendingCard({ detail }: { detail: LoanApplicationDetail }) {
   );
 }
 
-function PendingDisbursementCard({ detail: _detail }: { detail: LoanApplicationDetail }) {
+function PendingDisbursementCard() {
   return (
     <PanelShell tone="info" title="Awaiting disbursement">
       The loan has been auto-approved and is queued for disbursement. The payout adapter will pick

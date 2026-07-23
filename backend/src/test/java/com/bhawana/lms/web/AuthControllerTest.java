@@ -18,17 +18,13 @@ import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
-import com.bhawana.lms.repo.ApiClientAuditEventRepository;
-import com.bhawana.lms.repo.AuthEventAuditRepository;
-import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppRoleRepository;
-import com.bhawana.lms.repo.AppUserAuditEventRepository;
 import com.bhawana.lms.repo.AppUserRepository;
-import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.service.ApiClientManagementService;
 import com.bhawana.lms.service.SystemContextService;
 import com.bhawana.lms.service.UserAdminService;
+import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
@@ -67,9 +63,6 @@ class AuthControllerTest {
     private AppUserRepository appUserRepository;
 
     @Autowired
-    private AppUserAuditEventRepository appUserAuditEventRepository;
-
-    @Autowired
     private AppRoleRepository appRoleRepository;
 
     @Autowired
@@ -85,32 +78,17 @@ class AuthControllerTest {
     private ApiClientManagementService apiClientManagementService;
 
     @Autowired
-    private ApiClientAuditEventRepository apiClientAuditEventRepository;
-
-    @Autowired
-    private ApiClientRepository apiClientRepository;
-
-    @Autowired
     private LspRepository lspRepository;
 
     @Autowired
-    private LspAuditEventRepository lspAuditEventRepository;
-
-    @Autowired
-    private AuthEventAuditRepository authEventAuditRepository;
+    private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
 
     @Autowired
     private EntityManager entityManager;
 
     @BeforeEach
     void setUpManagedUser() {
-        authEventAuditRepository.deleteAllInBatch();
-        appUserAuditEventRepository.deleteAll();
-        appUserRepository.deleteAll();
-        apiClientAuditEventRepository.deleteAll();
-        apiClientRepository.deleteAll();
-        lspAuditEventRepository.deleteAllInBatch();
-        lspRepository.deleteAll();
+        integrationTestDatabaseCleaner.cleanIntegrationTestData();
 
         AppRole opsUserRole = appRoleRepository.findByCodeIn(List.of(RoleCode.OPS_USER)).stream()
                 .findFirst()
@@ -128,13 +106,7 @@ class AuthControllerTest {
 
     @AfterEach
     void tearDownSharedData() {
-        authEventAuditRepository.deleteAllInBatch();
-        appUserAuditEventRepository.deleteAll();
-        appUserRepository.deleteAll();
-        apiClientAuditEventRepository.deleteAll();
-        apiClientRepository.deleteAll();
-        lspAuditEventRepository.deleteAllInBatch();
-        lspRepository.deleteAll();
+        integrationTestDatabaseCleaner.cleanIntegrationTestData();
     }
 
     private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor systemAdmin() {

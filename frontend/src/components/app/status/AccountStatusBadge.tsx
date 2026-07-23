@@ -2,7 +2,7 @@ import { forwardRef, type HTMLAttributes } from "react";
 import type { LoanAccountStatus } from "@/types";
 import { StatusBadge, type StatusBadgeVariant } from "./StatusBadge";
 
-export interface AccountStatusBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+interface AccountStatusBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
   status: LoanAccountStatus;
   variant?: StatusBadgeVariant;
   hideIcon?: boolean;

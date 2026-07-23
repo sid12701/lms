@@ -26,42 +26,35 @@ import { useLspWebhookSubscription } from "./hooks/useLspWebhookSubscription";
 import { useUpsertLspWebhookSubscription } from "./hooks/useUpsertLspWebhookSubscription";
 import type { LspRow, LspsListFilters } from "./types";
 import type { LspStatus } from "@/schemas/lsp";
+import {
+  readAdminListParams,
+  readAllowedParam,
+  writeAdminListParams,
+} from "@/lib/admin-list-url-state";
 
 const VALID_STATUSES: readonly LspStatus[] = ["ACTIVE", "SUSPENDED", "INACTIVE"];
 
 function parseFiltersFromUrl(params: URLSearchParams): LspsListFilters {
-  const filters: LspsListFilters = {};
-  const status = params.get("status");
-  if (status && (VALID_STATUSES as readonly string[]).includes(status)) {
-    filters.status = status as LspStatus;
-  }
-  const q = params.get("q");
-  if (q && q.trim() !== "") filters.q = q.trim();
-  const page = params.get("page");
-  if (page !== null) {
-    const n = Number(page);
-    if (Number.isInteger(n) && n >= 0) filters.page = n;
-  }
-  const pageSize = params.get("pageSize");
-  if (pageSize !== null) {
-    const n = Number(pageSize);
-    if (Number.isInteger(n) && n >= 5 && n <= 100) filters.pageSize = n;
-  }
-  return filters;
+  return {
+    ...readAdminListParams(params),
+    status: readAllowedParam(params, "status", VALID_STATUSES),
+  };
 }
 
 function filtersToParams(filters: LspsListFilters): URLSearchParams {
-  const params = new URLSearchParams();
+  const params = writeAdminListParams(filters);
   if (filters.status) params.set("status", filters.status);
-  if (filters.q) params.set("q", filters.q);
-  if (typeof filters.page === "number" && filters.page > 0) {
-    params.set("page", String(filters.page));
-  }
-  if (typeof filters.pageSize === "number") {
-    params.set("pageSize", String(filters.pageSize));
-  }
   return params;
 }
+
+type LspDialogState =
+  | { kind: "none" }
+  | { kind: "create" }
+  | { kind: "details"; lsp: LspRow }
+  | { kind: "status"; lsp: LspRow }
+  | { kind: "audit"; lsp: LspRow }
+  | { kind: "webhook"; lsp: LspRow }
+  | { kind: "allowlist"; lsp: LspRow };
 
 export function LspsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -71,12 +64,14 @@ export function LspsPage() {
     setSearchParams(filtersToParams(next), { replace: false });
   };
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [detailsTarget, setDetailsTarget] = useState<LspRow | null>(null);
-  const [statusTarget, setStatusTarget] = useState<LspRow | null>(null);
-  const [auditTarget, setAuditTarget] = useState<LspRow | null>(null);
-  const [webhookTarget, setWebhookTarget] = useState<LspRow | null>(null);
-  const [allowlistTarget, setAllowlistTarget] = useState<LspRow | null>(null);
+  const [dialog, setDialog] = useState<LspDialogState>({ kind: "none" });
+
+  const createOpen = dialog.kind === "create";
+  const detailsTarget = dialog.kind === "details" ? dialog.lsp : null;
+  const statusTarget = dialog.kind === "status" ? dialog.lsp : null;
+  const auditTarget = dialog.kind === "audit" ? dialog.lsp : null;
+  const webhookTarget = dialog.kind === "webhook" ? dialog.lsp : null;
+  const allowlistTarget = dialog.kind === "allowlist" ? dialog.lsp : null;
 
   const list = useLsps(filters);
   const listLoading = list.isPending || (list.isFetching && list.data === undefined);
@@ -89,10 +84,10 @@ export function LspsPage() {
   const handleCreateOpenChange = (open: boolean) => {
     if (!open) {
       if (create.isPending) return;
-      setCreateOpen(false);
+      setDialog({ kind: "none" });
       create.reset();
     } else {
-      setCreateOpen(true);
+      setDialog({ kind: "create" });
     }
   };
   const handleCreateConfirm = async ({
@@ -106,7 +101,7 @@ export function LspsPage() {
   }) => {
     try {
       await create.mutateAsync({ code, name, idempotencyKey });
-      setCreateOpen(false);
+      setDialog({ kind: "none" });
       create.reset();
     } catch {
       // Surfaced via create.error.
@@ -114,13 +109,13 @@ export function LspsPage() {
   };
 
   const handleDetailsOpenChange = (open: boolean) => {
-    if (!open) setDetailsTarget(null);
+    if (!open) setDialog({ kind: "none" });
   };
 
   const handleStatusOpenChange = (open: boolean) => {
     if (!open) {
       if (updateStatus.isPending) return;
-      setStatusTarget(null);
+      setDialog({ kind: "none" });
       updateStatus.reset();
     }
   };
@@ -134,23 +129,21 @@ export function LspsPage() {
     const lspRow = statusTarget;
     try {
       await updateStatus.mutateAsync(args);
-      setStatusTarget(null);
-      setDetailsTarget(null);
       updateStatus.reset();
-      if (lspRow) setAuditTarget(lspRow);
+      setDialog(lspRow ? { kind: "audit", lsp: lspRow } : { kind: "none" });
     } catch {
       // Surfaced via updateStatus.error.
     }
   };
 
   const handleAuditOpenChange = (open: boolean) => {
-    if (!open) setAuditTarget(null);
+    if (!open) setDialog({ kind: "none" });
   };
 
   const handleWebhookOpenChange = (open: boolean) => {
     if (!open) {
       if (upsertWebhook.isPending) return;
-      setWebhookTarget(null);
+      setDialog({ kind: "none" });
       upsertWebhook.reset();
     }
   };
@@ -178,7 +171,7 @@ export function LspsPage() {
         eventTypes,
         idempotencyKey,
       });
-      setWebhookTarget(null);
+      setDialog({ kind: "none" });
       upsertWebhook.reset();
     } catch {
       // Surfaced via upsertWebhook.error.
@@ -187,14 +180,12 @@ export function LspsPage() {
 
   const openStatusFromDetails = () => {
     if (!detailsTarget) return;
-    setStatusTarget(detailsTarget);
-    setDetailsTarget(null);
+    setDialog({ kind: "status", lsp: detailsTarget });
   };
 
   const openAuditFromDetails = () => {
     if (!detailsTarget) return;
-    setAuditTarget(detailsTarget);
-    setDetailsTarget(null);
+    setDialog({ kind: "audit", lsp: detailsTarget });
   };
 
   const isCatalogueEmpty =
@@ -208,7 +199,7 @@ export function LspsPage() {
       primaryAction={{
         label: "New LSP",
         dataSlot: "lsps-new-button",
-        onClick: () => setCreateOpen(true),
+        onClick: () => setDialog({ kind: "create" }),
       }}
       list={list}
       unauthorized={{
@@ -232,10 +223,10 @@ export function LspsPage() {
           isLoading={listLoading}
           filters={filters}
           onFiltersChange={setFilters}
-          onDetails={(row) => setDetailsTarget(row)}
-          onChangeStatus={(row) => setStatusTarget(row)}
-          onViewAudit={(row) => setAuditTarget(row)}
-          onEditWebhook={(row) => setWebhookTarget(row)}
+          onDetails={(lsp) => setDialog({ kind: "details", lsp })}
+          onChangeStatus={(lsp) => setDialog({ kind: "status", lsp })}
+          onViewAudit={(lsp) => setDialog({ kind: "audit", lsp })}
+          onEditWebhook={(lsp) => setDialog({ kind: "webhook", lsp })}
         />
       }
       dialogs={
@@ -256,8 +247,7 @@ export function LspsPage() {
             onViewAudit={openAuditFromDetails}
             onManageIpAllowlists={() => {
               if (detailsTarget) {
-                setAllowlistTarget(detailsTarget);
-                setDetailsTarget(null);
+                setDialog({ kind: "allowlist", lsp: detailsTarget });
               }
             }}
           />
@@ -265,7 +255,7 @@ export function LspsPage() {
           <LspIpAllowlistDialog
             open={allowlistTarget !== null}
             onOpenChange={(open) => {
-              if (!open) setAllowlistTarget(null);
+              if (!open) setDialog({ kind: "none" });
             }}
             lsp={allowlistTarget}
           />

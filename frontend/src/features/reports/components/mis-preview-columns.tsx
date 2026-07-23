@@ -12,7 +12,7 @@ import {
   truncateMiddle,
 } from "./mis-preview-helpers";
 
-export function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRow>[] {
+function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRow>[] {
   return [
     {
       accessorKey: "loanId",

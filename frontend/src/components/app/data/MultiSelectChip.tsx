@@ -29,6 +29,7 @@ export function MultiSelectChip<T extends string>({
   listboxLabel,
 }: MultiSelectChipProps<T>) {
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const selectedValues = new Set(selected);
   const summary =
     selected.length === 0
       ? label
@@ -37,7 +38,7 @@ export function MultiSelectChip<T extends string>({
         : `${label}: ${selected.length} selected`;
 
   const toggle = (val: T) => {
-    if (selected.includes(val)) {
+    if (selectedValues.has(val)) {
       onToggle(selected.filter((v) => v !== val));
     } else {
       onToggle([...selected, val]);
@@ -71,7 +72,7 @@ export function MultiSelectChip<T extends string>({
           className="flex flex-col"
         >
           {options.map((opt) => {
-            const checked = selected.includes(opt.value);
+            const checked = selectedValues.has(opt.value);
             return (
               <li key={opt.value}>
                 <Button

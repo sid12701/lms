@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { listAlertRules } from "../api";
 import type { AlertRuleRow } from "../types";
 
-export const ALERT_RULES_QUERY_KEY = ["alerts", "rules"] as const;
+const ALERT_RULES_QUERY_KEY = ["alerts", "rules"] as const;
 
 export function useAlertRules(enabled: boolean) {
   return useQuery<AlertRuleRow[]>({

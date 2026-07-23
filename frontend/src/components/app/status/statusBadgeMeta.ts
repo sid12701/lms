@@ -38,27 +38,10 @@ const ACCOUNT_STATUS_META: Record<LoanAccountStatus, ResolvedStatusMeta> = {
  * Gap #11: visual tone for loan-status badges. {@code UNDER_REPAYMENT} is
  * success when on-track, danger when delinquency aggregates are present.
  */
-function getStatusBadgeTone(
-  status: LoanStatusOrUnknown,
-  delinquency?: StatusBadgeDelinquency,
-): "success" | "danger" | "neutral" {
-  if (status === "UNDER_REPAYMENT") {
-    const dpd = delinquency?.maxDaysPastDue ?? 0;
-    const overdue = delinquency?.overdueInstallmentCount ?? 0;
-    return dpd > 0 || overdue > 0 ? "danger" : "success";
-  }
-  switch (status) {
-    case "APPROVED_PENDING_DISBURSAL":
-    case "DISBURSED":
-    case "CLOSED":
-      return "success";
-    case "REJECTED":
-    case "INVALID":
-    case "DISBURSEMENT_RETRY":
-      return "danger";
-    default:
-      return "neutral";
-  }
+function getUnderRepaymentBadgeTone(delinquency?: StatusBadgeDelinquency): "success" | "danger" {
+  const dpd = delinquency?.maxDaysPastDue ?? 0;
+  const overdue = delinquency?.overdueInstallmentCount ?? 0;
+  return dpd > 0 || overdue > 0 ? "danger" : "success";
 }
 
 function toneToIntent(tone: "success" | "danger" | "neutral"): Intent {
@@ -81,7 +64,7 @@ export function resolveStatusMeta(
   if (isLoanApplicationStatus(status)) {
     const m = STATUS_META[status];
     if (status === "UNDER_REPAYMENT") {
-      const tone = getStatusBadgeTone(status, options?.delinquency);
+      const tone = getUnderRepaymentBadgeTone(options?.delinquency);
       return { label: m.label, intent: toneToIntent(tone) };
     }
     return { label: m.label, intent: m.intent };

@@ -145,6 +145,7 @@ export function DocumentPreviewModal({
               data-slot="document-preview-pdf"
               title={`Preview of ${title}`}
               src={objectUrl}
+              sandbox="allow-same-origin"
               className="h-full w-full border-0"
             />
           )}
@@ -191,5 +192,3 @@ function messageForError(err: unknown): string {
   }
   return mapApiErrorMessage(err, "Couldn't load the document preview.");
 }
-
-export default DocumentPreviewModal;

@@ -22,7 +22,7 @@ import { resolveStatusMeta, type AnyStatus, type StatusBadgeDelinquency } from "
 export type { AnyStatus } from "./statusBadgeMeta";
 export type StatusBadgeVariant = "default" | "subtle";
 
-export interface StatusBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+interface StatusBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
   status: AnyStatus;
   /** Gap #11 — when set, may override {@code UNDER_REPAYMENT} badge intent. */
   delinquency?: StatusBadgeDelinquency;

@@ -5,8 +5,5 @@
  * one line and lets agents owning the detail tabs reach for these
  * components without knowing the file layout.
  */
-export {
-  LoanApplicationsFilterBar,
-  type LoanApplicationsFilterBarProps,
-} from "./LoanApplicationsFilterBar";
-export { LoanApplicationsTable, type LoanApplicationsTableProps } from "./LoanApplicationsTable";
+export { LoanApplicationsFilterBar } from "./LoanApplicationsFilterBar";
+export { LoanApplicationsTable } from "./LoanApplicationsTable";

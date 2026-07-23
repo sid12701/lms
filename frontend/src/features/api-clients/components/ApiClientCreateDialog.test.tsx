@@ -6,7 +6,7 @@ import { ApiClientCreateDialog } from "./ApiClientCreateDialog";
 import type { ApiClientRow, CreateApiClientResponse } from "../types";
 
 const LSP_ID = "00000000-0000-4000-8000-000000000001";
-const CLIENT_SECRET = "sk_live_test_secret_1234567890";
+const CREATED_CREDENTIAL = "example-api-credential";
 
 const createdClient: ApiClientRow = {
   id: "00000000-0000-4000-8000-000000000002",
@@ -35,7 +35,7 @@ describe("ApiClientCreateDialog", () => {
       >()
       .mockResolvedValue({
         client: createdClient,
-        clientSecret: CLIENT_SECRET,
+        clientSecret: CREATED_CREDENTIAL,
       });
     const onOpenChange = vi.fn();
     const onSecretAcknowledge = vi.fn();
@@ -58,7 +58,7 @@ describe("ApiClientCreateDialog", () => {
     fireEvent.change(nativeSelect!, { target: { value: LSP_ID } });
     await user.click(screen.getByRole("button", { name: "Create API client" }));
 
-    expect(await screen.findByText(CLIENT_SECRET)).toBeInTheDocument();
+    expect(await screen.findByText(CREATED_CREDENTIAL)).toBeInTheDocument();
     await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
     expect(onCreate.mock.calls[0]?.[0]).toMatchObject({
       name: createdClient.name,
@@ -70,7 +70,7 @@ describe("ApiClientCreateDialog", () => {
 
     expect(onSecretAcknowledge).toHaveBeenCalledTimes(1);
     expect(onOpenChange).toHaveBeenCalledWith(false);
-    await waitFor(() => expect(screen.queryByText(CLIENT_SECRET)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(CREATED_CREDENTIAL)).not.toBeInTheDocument());
     unmount();
   }, 15_000);
 });

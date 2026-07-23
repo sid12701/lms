@@ -7,7 +7,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { fetchLoanApplicationDocuments } from "../api-tabs";
 import type { LoanApplicationDocumentsResponse } from "../types";
 
-export function loanApplicationDocumentsQueryKey(id: string): readonly unknown[] {
+function loanApplicationDocumentsQueryKey(id: string): readonly unknown[] {
   return ["loan-application", id, "documents"] as const;
 }
 

@@ -159,14 +159,3 @@ async function fetchFromBackend(filters: AuditEventsFilters): Promise<AuditEvent
 export async function fetchAuditEvents(filters: AuditEventsFilters): Promise<AuditEventsResponse> {
   return fetchFromBackend(filters);
 }
-
-export function buildAuditEventsQuery(filters: AuditEventsFilters): string {
-  const params = buildBackendQueryParams(filters);
-  const out = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== "") out.set(key, String(value));
-  }
-  return out.toString();
-}
-
-export type { AuditStream };

@@ -6,7 +6,7 @@ import { fetchLoanApplicationWebhooks } from "../api-detail";
 import { LOAN_APPLICATION_DETAIL_QUERY_KEY } from "./useLoanApplicationDetail";
 import type { LoanApplicationWebhooksResponse } from "../types";
 
-export function loanApplicationWebhooksQueryKey(id: string) {
+function loanApplicationWebhooksQueryKey(id: string) {
   return [LOAN_APPLICATION_DETAIL_QUERY_KEY, id, "webhooks"] as const;
 }
 

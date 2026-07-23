@@ -1284,6 +1284,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/internal/admin/product-options": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["listProductOptions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/internal/admin/product-lsp-mappings": {
     parameters: {
       query?: never;
@@ -2957,6 +2973,23 @@ export interface components {
       configJson?: string;
       lastEvaluatedAt?: string;
     };
+    ProductListItemResponse: {
+      id?: string;
+      code?: string;
+      name?: string;
+      minPrincipal?: number;
+      maxPrincipal?: number;
+      interestRate?: number;
+      processingFeeRate?: number;
+      /** Format: int32 */
+      minTenureMonths?: number;
+      /** Format: int32 */
+      maxTenureMonths?: number;
+      status?: string;
+      /** Format: date-time */
+      createdAt?: string;
+      mappedLsps?: components["schemas"]["LspMappingItem"][];
+    };
     ProductAuditEventResponse: {
       id?: string;
       productId?: string;
@@ -2966,6 +2999,12 @@ export interface components {
       correlationId?: string;
       /** Format: date-time */
       createdAt?: string;
+    };
+    ProductOptionResponse: {
+      id?: string;
+      code?: string;
+      name?: string;
+      status?: string;
     };
     AdminMetadataResponse: {
       roleCodes?: string[];
@@ -4398,7 +4437,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "*/*": components["schemas"]["ProductResponse"][];
+          "*/*": components["schemas"]["ProductListItemResponse"][];
         };
       };
     };
@@ -5549,6 +5588,26 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["ProductAuditEventResponse"][];
+        };
+      };
+    };
+  };
+  listProductOptions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["ProductOptionResponse"][];
         };
       };
     };

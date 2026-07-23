@@ -7,7 +7,7 @@
   "rules": {
     "unused-dependencies": "warn"
   },
-  "ignoreDependencies": ["axe-core"],
+  "ignoreDependencies": ["axe-core", "@axe-core/react", "shadcn", "tailwindcss"],
   "ignoreExports": [
     { "file": "src/features/alerts/page.tsx", "exports": ["*"] },
     { "file": "src/features/api-clients/page.tsx", "exports": ["*"] },

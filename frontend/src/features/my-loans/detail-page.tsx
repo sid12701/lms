@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, ChevronRight, Loader2 } from "lucide-react";
 
@@ -11,12 +12,7 @@ import { Button } from "@/components/ui/button";
 import { useSession } from "@/features/auth/session-context";
 import { formatDateTime, formatINR } from "@/lib/format";
 import { hasPermission } from "@/lib/permissions";
-import {
-  fetchInvalidReasons,
-  fetchMyLoanDetail,
-  type InvalidReasonOption,
-  type MyLoanDetail,
-} from "./api";
+import type { MyLoanDetail } from "./api";
 import type { LoanStatus } from "@/types";
 import { DocumentsSection } from "./components/DocumentsSection";
 import { LoanServicingPanel } from "./components/LoanServicingPanel";
@@ -24,60 +20,206 @@ import { DetailField } from "./components/DetailField";
 import { MarkInvalidDialog } from "./components/MarkInvalidDialog";
 import { MaskedBorrowerCard } from "./components/MaskedBorrowerCard";
 import { safeApiMessage } from "./utils";
+import { myLoanDetailQueryKey, useMyLoanDetail } from "./hooks/useMyLoanDetail";
+import { useInvalidReasons } from "./hooks/useInvalidReasons";
 
 const TERMINAL_STATUSES = new Set<LoanStatus>(["INVALID", "REJECTED", "CLOSED", "FORECLOSED"]);
+
+function LoanTermsCard({ detail }: { detail: MyLoanDetail }) {
+  return (
+    <section
+      data-slot="loan-terms-card"
+      className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
+    >
+      <h2 className="text-base font-semibold">Loan terms</h2>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
+        <DetailField label="Requested amount" value={formatINR(detail.requestedAmount)} mono />
+        <DetailField
+          label="Interest rate"
+          value={detail.interestRate != null ? `${detail.interestRate}%` : null}
+          mono
+        />
+        <DetailField
+          label="Tenure"
+          value={detail.tenureMonths ? `${detail.tenureMonths} months` : null}
+        />
+        <DetailField label="Product" value={detail.productName} />
+        <DetailField label="Product code" value={detail.productCode} mono />
+        <DetailField label="LSP" value={detail.lspName} />
+        <DetailField
+          label="Created"
+          value={detail.createdAt ? formatDateTime(detail.createdAt) : null}
+        />
+        <DetailField
+          label="Updated"
+          value={detail.updatedAt ? formatDateTime(detail.updatedAt) : null}
+        />
+        {detail.invalidatedAt ? (
+          <DetailField label="Invalidated at" value={formatDateTime(detail.invalidatedAt)} />
+        ) : null}
+      </dl>
+      {detail.invalidReasonCode ? (
+        <div className="border-warning/30 bg-warning/5 text-warning rounded-md border px-3 py-2 text-xs">
+          <span className="font-semibold">Invalid reason:</span>{" "}
+          <span className="font-mono">{detail.invalidReasonCode}</span>
+          {detail.invalidReasonText ? <> — {detail.invalidReasonText}</> : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function BorrowerContactCard({ detail }: { detail: MyLoanDetail }) {
+  const location = [detail.borrowerCity, detail.borrowerState].filter(Boolean).join(", ");
+  return (
+    <section
+      data-slot="borrower-contact-card"
+      className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
+    >
+      <h2 className="text-base font-semibold">Borrower contact</h2>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+        <DetailField label="Mobile" value={detail.borrowerMobile} mono />
+        <DetailField label="Email" value={detail.borrowerEmail} />
+        <DetailField label="Date of birth" value={detail.borrowerDob} mono />
+        <DetailField label="Location" value={location || null} />
+      </dl>
+    </section>
+  );
+}
+
+function RecentActivityCard({ detail }: { detail: MyLoanDetail }) {
+  const activity = detail.lastActivity;
+  if (!activity) return null;
+
+  return (
+    <section
+      data-slot="loan-activity-card"
+      className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
+    >
+      <h2 className="text-base font-semibold">Recent activity</h2>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+        <DetailField label="Type" value={activity.activityType} />
+        <DetailField label="Summary" value={activity.summary} />
+        <DetailField label="Actor" value={activity.actorUsername} />
+        <DetailField label="Occurred at" value={formatDateTime(activity.occurredAt)} />
+      </dl>
+      {activity.detail ? <p className="text-foreground-muted text-xs">{activity.detail}</p> : null}
+    </section>
+  );
+}
+
+function LoanAccountCard({ detail }: { detail: MyLoanDetail }) {
+  const account = detail.loanAccount;
+  if (!account) return null;
+
+  return (
+    <section
+      data-slot="loan-account-card"
+      className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
+    >
+      <h2 className="text-base font-semibold">Loan account</h2>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
+        <DetailField label="Account number" value={account.accountNumber} mono />
+        <DetailField label="Status" value={account.status} />
+        <DetailField label="Principal" value={formatINR(account.principalAmount)} mono />
+        <DetailField
+          label="Tenure"
+          value={account.tenureMonths ? `${account.tenureMonths} months` : null}
+        />
+        <DetailField
+          label="Approved at"
+          value={account.approvedAt ? formatDateTime(account.approvedAt) : null}
+        />
+        <DetailField
+          label="Closed at"
+          value={account.closedAt ? formatDateTime(account.closedAt) : null}
+        />
+        {account.closureReason ? (
+          <DetailField label="Closure reason" value={account.closureReason} />
+        ) : null}
+      </dl>
+      {account.delinquency ? (
+        <div className="border-border bg-surface-muted rounded-md border p-3 text-sm">
+          <h3 className="mb-2 font-medium">Delinquency</h3>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+            <DetailField label="Bucket" value={account.delinquency.bucket} />
+            <DetailField
+              label="Overdue amount"
+              value={formatINR(account.delinquency.overdueAmount)}
+              mono
+            />
+            <DetailField
+              label="Overdue installments"
+              value={
+                account.delinquency.overdueInstallmentCount != null
+                  ? String(account.delinquency.overdueInstallmentCount)
+                  : null
+              }
+            />
+            <DetailField
+              label="Max days past due"
+              value={
+                account.delinquency.maxDaysPastDue != null
+                  ? String(account.delinquency.maxDaysPastDue)
+                  : null
+              }
+            />
+          </dl>
+        </div>
+      ) : null}
+      {account.disbursement ? (
+        <div className="border-border bg-surface-muted rounded-md border p-3 text-sm">
+          <h3 className="mb-2 font-medium">Disbursement</h3>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+            <DetailField label="Status" value={account.disbursement.status} />
+            <DetailField
+              label="Gross amount"
+              value={formatINR(account.disbursement.grossAmount)}
+              mono
+            />
+            <DetailField
+              label="Net disbursed"
+              value={formatINR(account.disbursement.netDisbursedAmount)}
+              mono
+            />
+            <DetailField
+              label="Disbursed at"
+              value={
+                account.disbursement.disbursedAt
+                  ? formatDateTime(account.disbursement.disbursedAt)
+                  : null
+              }
+            />
+            {account.disbursement.failureReason ? (
+              <DetailField label="Failure reason" value={account.disbursement.failureReason} />
+            ) : null}
+          </dl>
+        </div>
+      ) : null}
+      {account.repaymentSchedule ? (
+        <p className="text-foreground-muted text-xs">
+          Schedule: {account.repaymentSchedule.installmentCount ?? 0} installments of{" "}
+          <span className="font-mono">
+            {formatINR(account.repaymentSchedule.installmentAmount)}
+          </span>
+          {account.repaymentSchedule.firstDueDate
+            ? `, first due ${account.repaymentSchedule.firstDueDate}`
+            : null}
+        </p>
+      ) : null}
+    </section>
+  );
+}
 
 export function MyLoanDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { session } = useSession();
-  const [detail, setDetail] = useState<MyLoanDetail | null>(null);
-  const [reasons, setReasons] = useState<readonly InvalidReasonOption[]>([]);
-  const [loadingReasons, setLoadingReasons] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [markInvalidOpen, setMarkInvalidOpen] = useState(false);
-  const [reasonsLoadError, setReasonsLoadError] = useState<string | null>(null);
-
-  const [prevId, setPrevId] = useState(id);
-  if (id !== prevId) {
-    setPrevId(id);
-    setLoading(true);
-    setError(null);
-  }
-
-  useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
-    void fetchMyLoanDetail(id)
-      .then((payload) => {
-        if (!cancelled) setDetail(payload);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(safeApiMessage(err, "Failed to load loan."));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id]);
-
-  const openMarkInvalid = useCallback(() => {
-    setMarkInvalidOpen(true);
-    if (reasons.length === 0 && !loadingReasons) {
-      setLoadingReasons(true);
-      setReasonsLoadError(null);
-      void fetchInvalidReasons()
-        .then((rows) => setReasons(rows))
-        .catch((err) => {
-          setReasonsLoadError(safeApiMessage(err, "Could not load invalid reasons."));
-        })
-        .finally(() => setLoadingReasons(false));
-    }
-  }, [reasons.length, loadingReasons]);
+  const applicationId = id ?? "";
+  const detailQuery = useMyLoanDetail(applicationId);
+  const reasonsQuery = useInvalidReasons(markInvalidOpen);
+  const queryClient = useQueryClient();
 
   if (!id) {
     return (
@@ -93,7 +235,7 @@ export function MyLoanDetailPage() {
     );
   }
 
-  if (loading) {
+  if (detailQuery.isPending && detailQuery.data === undefined) {
     return (
       <div className="flex flex-col gap-6 p-6">
         <PageHeader eyebrow="LSP workspace" title="Loan" />
@@ -105,8 +247,12 @@ export function MyLoanDetailPage() {
     );
   }
 
-  if (error || !detail) {
-    const notFound = error?.toLowerCase().includes("not found");
+  const detail = detailQuery.data;
+  if (detailQuery.isError || !detail) {
+    const errorMessage = detailQuery.isError
+      ? safeApiMessage(detailQuery.error, "Failed to load loan.")
+      : null;
+    const notFound = errorMessage?.toLowerCase().includes("not found");
     return (
       <div className="flex flex-col gap-6 p-6">
         <PageHeader eyebrow="LSP workspace" title="Loan" />
@@ -120,10 +266,10 @@ export function MyLoanDetailPage() {
         ) : (
           <ErrorState
             title="Couldn't load this loan"
-            description={error ?? "Try again in a moment."}
+            description={errorMessage ?? "Try again in a moment."}
             retry={{
               label: "Retry",
-              onClick: () => window.location.reload(),
+              onClick: () => void detailQuery.refetch(),
             }}
           />
         )}
@@ -161,7 +307,12 @@ export function MyLoanDetailPage() {
               delinquency={detail.loanAccount?.delinquency ?? null}
             />
             {canMutateLoan ? (
-              <Button type="button" variant="outline" size="sm" onClick={openMarkInvalid}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setMarkInvalidOpen(true)}
+              >
                 <AlertTriangle className="h-4 w-4" aria-hidden="true" />
                 <span>Mark invalid</span>
               </Button>
@@ -170,201 +321,19 @@ export function MyLoanDetailPage() {
         }
       />
 
-      <section
-        data-slot="loan-terms-card"
-        className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
-      >
-        <h2 className="text-base font-semibold">Loan terms</h2>
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-          <DetailField label="Requested amount" value={formatINR(detail.requestedAmount)} mono />
-          <DetailField
-            label="Interest rate"
-            value={detail.interestRate != null ? `${detail.interestRate}%` : null}
-            mono
-          />
-          <DetailField
-            label="Tenure"
-            value={detail.tenureMonths ? `${detail.tenureMonths} months` : null}
-          />
-          <DetailField label="Product" value={detail.productName} />
-          <DetailField label="Product code" value={detail.productCode} mono />
-          <DetailField label="LSP" value={detail.lspName} />
-          <DetailField
-            label="Created"
-            value={detail.createdAt ? formatDateTime(detail.createdAt) : null}
-          />
-          <DetailField
-            label="Updated"
-            value={detail.updatedAt ? formatDateTime(detail.updatedAt) : null}
-          />
-          {detail.invalidatedAt ? (
-            <DetailField label="Invalidated at" value={formatDateTime(detail.invalidatedAt)} />
-          ) : null}
-        </dl>
-        {detail.invalidReasonCode ? (
-          <div className="border-warning/30 bg-warning/5 text-warning rounded-md border px-3 py-2 text-xs">
-            <span className="font-semibold">Invalid reason:</span>{" "}
-            <span className="font-mono">{detail.invalidReasonCode}</span>
-            {detail.invalidReasonText ? <> — {detail.invalidReasonText}</> : null}
-          </div>
-        ) : null}
-      </section>
-
-      <section
-        data-slot="borrower-contact-card"
-        className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
-      >
-        <h2 className="text-base font-semibold">Borrower contact</h2>
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-          <DetailField label="Mobile" value={detail.borrowerMobile} mono />
-          <DetailField label="Email" value={detail.borrowerEmail} />
-          <DetailField label="Date of birth" value={detail.borrowerDob} mono />
-          <DetailField
-            label="Location"
-            value={[detail.borrowerCity, detail.borrowerState].filter(Boolean).join(", ") || null}
-          />
-        </dl>
-      </section>
+      <LoanTermsCard detail={detail} />
+      <BorrowerContactCard detail={detail} />
 
       <MaskedBorrowerCard detail={detail} />
 
       <DocumentsSection
-        applicationId={id}
+        applicationId={applicationId}
         canUpload={canMutateLoan}
         readOnlyReason={documentsReadOnlyReason}
       />
 
-      {detail.lastActivity ? (
-        <section
-          data-slot="loan-activity-card"
-          className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
-        >
-          <h2 className="text-base font-semibold">Recent activity</h2>
-          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-            <DetailField label="Type" value={detail.lastActivity.activityType} />
-            <DetailField label="Summary" value={detail.lastActivity.summary} />
-            <DetailField label="Actor" value={detail.lastActivity.actorUsername} />
-            <DetailField
-              label="Occurred at"
-              value={formatDateTime(detail.lastActivity.occurredAt)}
-            />
-          </dl>
-          {detail.lastActivity.detail ? (
-            <p className="text-foreground-muted text-xs">{detail.lastActivity.detail}</p>
-          ) : null}
-        </section>
-      ) : null}
-
-      {detail.loanAccount ? (
-        <section
-          data-slot="loan-account-card"
-          className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
-        >
-          <h2 className="text-base font-semibold">Loan account</h2>
-          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-            <DetailField label="Account number" value={detail.loanAccount.accountNumber} mono />
-            <DetailField label="Status" value={detail.loanAccount.status} />
-            <DetailField
-              label="Principal"
-              value={formatINR(detail.loanAccount.principalAmount)}
-              mono
-            />
-            <DetailField
-              label="Tenure"
-              value={
-                detail.loanAccount.tenureMonths ? `${detail.loanAccount.tenureMonths} months` : null
-              }
-            />
-            <DetailField
-              label="Approved at"
-              value={
-                detail.loanAccount.approvedAt ? formatDateTime(detail.loanAccount.approvedAt) : null
-              }
-            />
-            <DetailField
-              label="Closed at"
-              value={
-                detail.loanAccount.closedAt ? formatDateTime(detail.loanAccount.closedAt) : null
-              }
-            />
-            {detail.loanAccount.closureReason ? (
-              <DetailField label="Closure reason" value={detail.loanAccount.closureReason} />
-            ) : null}
-          </dl>
-          {detail.loanAccount.delinquency ? (
-            <div className="border-border bg-surface-muted rounded-md border p-3 text-sm">
-              <h3 className="mb-2 font-medium">Delinquency</h3>
-              <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
-                <DetailField label="Bucket" value={detail.loanAccount.delinquency.bucket} />
-                <DetailField
-                  label="Overdue amount"
-                  value={formatINR(detail.loanAccount.delinquency.overdueAmount)}
-                  mono
-                />
-                <DetailField
-                  label="Overdue installments"
-                  value={
-                    detail.loanAccount.delinquency.overdueInstallmentCount != null
-                      ? String(detail.loanAccount.delinquency.overdueInstallmentCount)
-                      : null
-                  }
-                />
-                <DetailField
-                  label="Max days past due"
-                  value={
-                    detail.loanAccount.delinquency.maxDaysPastDue != null
-                      ? String(detail.loanAccount.delinquency.maxDaysPastDue)
-                      : null
-                  }
-                />
-              </dl>
-            </div>
-          ) : null}
-          {detail.loanAccount.disbursement ? (
-            <div className="border-border bg-surface-muted rounded-md border p-3 text-sm">
-              <h3 className="mb-2 font-medium">Disbursement</h3>
-              <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
-                <DetailField label="Status" value={detail.loanAccount.disbursement.status} />
-                <DetailField
-                  label="Gross amount"
-                  value={formatINR(detail.loanAccount.disbursement.grossAmount)}
-                  mono
-                />
-                <DetailField
-                  label="Net disbursed"
-                  value={formatINR(detail.loanAccount.disbursement.netDisbursedAmount)}
-                  mono
-                />
-                <DetailField
-                  label="Disbursed at"
-                  value={
-                    detail.loanAccount.disbursement.disbursedAt
-                      ? formatDateTime(detail.loanAccount.disbursement.disbursedAt)
-                      : null
-                  }
-                />
-                {detail.loanAccount.disbursement.failureReason ? (
-                  <DetailField
-                    label="Failure reason"
-                    value={detail.loanAccount.disbursement.failureReason}
-                  />
-                ) : null}
-              </dl>
-            </div>
-          ) : null}
-          {detail.loanAccount.repaymentSchedule ? (
-            <p className="text-foreground-muted text-xs">
-              Schedule: {detail.loanAccount.repaymentSchedule.installmentCount ?? 0} installments of{" "}
-              <span className="font-mono">
-                {formatINR(detail.loanAccount.repaymentSchedule.installmentAmount)}
-              </span>
-              {detail.loanAccount.repaymentSchedule.firstDueDate
-                ? `, first due ${detail.loanAccount.repaymentSchedule.firstDueDate}`
-                : null}
-            </p>
-          ) : null}
-        </section>
-      ) : null}
+      <RecentActivityCard detail={detail} />
+      <LoanAccountCard detail={detail} />
 
       {detail.loanAccount ? (
         <LoanServicingPanel key={detail.loanAccount.id} loanAccountId={detail.loanAccount.id} />
@@ -373,11 +342,17 @@ export function MyLoanDetailPage() {
       <MarkInvalidDialog
         open={markInvalidOpen}
         onOpenChange={setMarkInvalidOpen}
-        applicationId={id}
-        reasons={reasons}
-        loadingReasons={loadingReasons}
-        reasonsLoadError={reasonsLoadError}
-        onSuccess={(next) => setDetail(next)}
+        applicationId={applicationId}
+        reasons={reasonsQuery.data ?? []}
+        loadingReasons={reasonsQuery.isPending}
+        reasonsLoadError={
+          reasonsQuery.isError
+            ? safeApiMessage(reasonsQuery.error, "Could not load invalid reasons.")
+            : null
+        }
+        onSuccess={(next) => {
+          queryClient.setQueryData(myLoanDetailQueryKey(applicationId), next);
+        }}
       />
     </div>
   );

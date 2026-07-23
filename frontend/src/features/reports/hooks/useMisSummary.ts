@@ -8,7 +8,7 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { misSummary } from "../api";
 import type { MisFilters, MisSummary } from "../types";
 
-export const MIS_SUMMARY_QUERY_KEY = ["reports", "mis-summary"] as const;
+const MIS_SUMMARY_QUERY_KEY = ["reports", "mis-summary"] as const;
 
 export function useMisSummary(filters: MisFilters): UseQueryResult<MisSummary, Error> {
   return useQuery({

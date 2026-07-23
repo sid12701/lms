@@ -37,10 +37,10 @@ export const Permission = z.enum([
 export type Permission = z.infer<typeof Permission>;
 
 export const ActorType = z.enum(["INTERNAL_USER", "LSP_UI_USER", "API_CLIENT", "SYSTEM"]);
-export type ActorType = z.infer<typeof ActorType>;
+type ActorType = z.infer<typeof ActorType>;
 
 export const Channel = z.enum(["UI", "API", "WEBHOOK", "SCHEDULER"]);
-export type Channel = z.infer<typeof Channel>;
+type Channel = z.infer<typeof Channel>;
 
 export const ActorContext = z.object({
   actorType: ActorType,
@@ -49,4 +49,4 @@ export const ActorContext = z.object({
   lspScope: Uuid.nullable(),
   channel: Channel,
 });
-export type ActorContext = z.infer<typeof ActorContext>;
+type ActorContext = z.infer<typeof ActorContext>;
