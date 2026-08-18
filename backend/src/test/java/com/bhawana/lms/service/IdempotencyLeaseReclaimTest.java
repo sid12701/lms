@@ -95,8 +95,8 @@ class IdempotencyLeaseReclaimTest {
     private UUID seedLsp() {
         UUID lspId = UUID.randomUUID();
         jdbcTemplate.update(
-                "insert into lsp (id, code, name, status, webhook_enabled, token_version, enforce_ui_allowlist, enforce_api_allowlist, created_at, updated_at) "
-                        + "values (?, ?, ?, ?, false, 0, false, false, current_timestamp, current_timestamp)",
+                "insert into lsp (id, code, name, status, token_version, enforce_ui_allowlist, enforce_api_allowlist, created_at, updated_at) "
+                        + "values (?, ?, ?, ?, 0, false, false, current_timestamp, current_timestamp)",
                 lspId,
                 "LEASE-" + lspId.toString().substring(0, 8).toUpperCase(),
                 "Lease Test LSP",

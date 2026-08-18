@@ -4,7 +4,7 @@ This note records where the LMS stores JSON-shaped data, where each payload come
 
 | Place | What stores it | Source | Necessary as JSON? | Reason |
 |---|---|---|---|---|
-| `webhook_event_outbox.payload_json` | Webhook event envelope and payload | `WebhookOutboxService` | Yes | This is the actual webhook body delivered to partners. JSON is the correct shape because downstream receivers consume it as structured JSON. |
+| `loan_event.payload_json` | Loan lifecycle event payload served to LSPs on the partner feed | `LoanEventLog` | Yes | This is the partner-facing event body. JSON is the correct shape because LSPs consume it as structured JSON, and one versioned schema covers every partner. Unlike the other columns here it carries no `jsonb_typeof(...) = 'object'` check constraint. |
 | `loan_application_intake_audit.payload_json` | Snapshot of loan intake/application/borrower fields | `LoanApplicationLifecycleService` | Mostly yes | Used as a forensic/audit snapshot and parsed for masking in audit views. It could be normalized, but JSON is practical because intake shape is broad and changes over time. |
 | `loan_disbursement_request_log.request_payload_json` | Disbursement request sent to provider/mock adapter | `LoanApplicationService` | Yes | Represents a structured provider request. Keeping it as JSON preserves exact request shape for debugging and audit. |
 | `loan_disbursement_request_log.response_payload_json` | Provider/mock disbursement response | `LoanDisbursementAdapter`, `MockLoanDisbursementAdapter`, `LoanApplicationService` | Yes | Provider responses are naturally structured and may vary by provider/status. JSON is appropriate for audit and troubleshooting. |

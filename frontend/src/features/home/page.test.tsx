@@ -28,7 +28,6 @@ vi.mock("@/features/home/components", () => ({
   RecentApplicationsCard: () => (
     <div data-testid="recent-applications-card">RecentApplicationsCard</div>
   ),
-  LspLinkCardGrid: () => <div data-testid="lsp-link-card-grid">LspLinkCardGrid</div>,
 }));
 
 vi.mock("./components/LoansByDpdBucketCard", () => ({
@@ -53,10 +52,9 @@ const INTERNAL_FIXTURE: HomeKpis = {
   data: {
     applicationsAwaitingApproval: 12,
     applicationsInDisbursement: 4,
-    mtdDisbursedAmount: 4_750_000,
+    totalDisbursedAmount: 4_750_000,
     overdueLoansCount: 3,
     overdueAmount: 125_000,
-    avgApprovalTatHours: 18.5,
     applicationsByStatus: [{ status: "AWAITING_APPROVAL", count: 12 }],
     dpdBuckets: [
       { bucket: "B0", count: 20 },
@@ -81,12 +79,14 @@ const INTERNAL_FIXTURE: HomeKpis = {
       {
         id: "a-1",
         severity: "HIGH",
-        title: "Webhook delivery failing",
-        subjectType: "WEBHOOK_DELIVERY",
-        subjectId: "wd-1",
+        title: "Report generation failing",
+        message: "Report rpt-1 failed after 5 attempts.",
+        subjectType: "REPORT_REQUEST",
+        subjectId: "rpt-1",
         createdAt: "2026-05-11T07:00:00.000Z",
       },
     ],
+    dataAsOf: "2026-08-01T12:00:00.000Z",
   },
 };
 
@@ -164,15 +164,14 @@ describe("HomePage — internal", () => {
     expect(await screen.findByTestId("loans-by-dpd-card")).toBeInTheDocument();
     expect(screen.getByTestId("open-alerts-card")).toBeInTheDocument();
     expect(screen.getByTestId("recent-applications-card")).toBeInTheDocument();
-    // LSP-only widgets must not appear.
-    expect(screen.queryByTestId("lsp-link-card-grid")).not.toBeInTheDocument();
   });
 
-  it("uses the Internal workspace eyebrow + heading for SYSTEM_ADMIN", () => {
+  it("uses the heading for SYSTEM_ADMIN", () => {
     // Gap #8: Home is admin-only. OPS_USER no longer sees it (redirect tested
     // below); the eyebrow assertion lives on the SYSTEM_ADMIN path now.
     renderHome(makeSession("SYSTEM_ADMIN"));
-    expect(screen.getByText(/Internal workspace/i)).toBeInTheDocument();
+    // The "Internal workspace" eyebrow was removed — it restated the sidebar
+    // group the user can already see highlighted. The h1 carries identity.
     expect(screen.getByRole("heading", { level: 1, name: /Home/ })).toBeInTheDocument();
   });
 

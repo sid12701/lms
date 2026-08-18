@@ -1,5 +1,5 @@
 /**
- * Operational alerts per UI pages.md "Operational Alerts".
+ * Operational alerts, surfaced on `/alerts` (`@/features/alerts`).
  */
 import { z } from "zod";
 import { Iso8601, Uuid } from "./common";
@@ -14,7 +14,6 @@ export const AlertSubjectType = z.enum([
   "LOAN_APPLICATION",
   "LOAN_ACCOUNT",
   "BORROWER",
-  "WEBHOOK_DELIVERY",
   "REPORT_REQUEST",
   "SYSTEM",
 ]);

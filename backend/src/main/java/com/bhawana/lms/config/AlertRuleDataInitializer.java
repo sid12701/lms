@@ -11,9 +11,12 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 /**
- * Ensures the seven Follow-up #2 alert rules exist. Flyway V60 seeds them for
- * Postgres deployments; this runner back-fills H2 test contexts where Flyway is
- * disabled and Hibernate {@code ddl-auto} creates the schema.
+ * Back-fills the nine alert rules for contexts that build the schema without Flyway.
+ *
+ * <p>Wherever Flyway runs, the migrations are the source of truth: V60 seeds seven rules,
+ * V119 retires the webhook dead-letter one of them, and V95 and V118 add three more. Both
+ * paths below are then no-ops — {@code seedIfEmpty} returns early on a non-empty table and
+ * {@code ensureRule} skips a code that already exists.
  */
 @Component
 public class AlertRuleDataInitializer implements ApplicationRunner {
@@ -45,6 +48,15 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
                     AlertRuleAudience.SYSTEM_ADMIN,
                     AlertRuleTriggerKind.SCHEDULED,
                     "{\"threshold\":20,\"distinctIpMin\":5,\"windowHours\":24}"
+            );
+            ensureRule(
+                    UUID.fromString("00000000-0000-4000-8000-000000000610"),
+                    "OLDEST_TRANSACTION_AGE",
+                    "Oldest open transaction age",
+                    "A long-running database transaction anywhere on the cluster holds back the loan event feed snapshot for every LSP until it completes.",
+                    AlertRuleAudience.SYSTEM_ADMIN,
+                    AlertRuleTriggerKind.SCHEDULED,
+                    "{\"ageSeconds\":300}"
             );
         });
     }
@@ -91,15 +103,6 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
                         "{\"windowDays\":7,\"minSamples\":10,\"rejectRatePct\":40}"
                 ),
                 AlertRule.seeded(
-                        UUID.fromString("00000000-0000-4000-8000-000000000605"),
-                        "WEBHOOK_DEAD_LETTER",
-                        "Webhook dead letter",
-                        "Webhook outbox event exhausted retries and reached permanent failure.",
-                        AlertRuleAudience.SYSTEM_ADMIN,
-                        AlertRuleTriggerKind.EVENT,
-                        "{}"
-                ),
-                AlertRule.seeded(
                         UUID.fromString("00000000-0000-4000-8000-000000000606"),
                         "BORROWER_ACTIVE_LOAN_DUPLICATE",
                         "One open loan violation",
@@ -112,7 +115,7 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
                         UUID.fromString("00000000-0000-4000-8000-000000000607"),
                         "RATE_LIMIT_BREACH",
                         "Rate limit breach",
-                        "LSP write or auth endpoint rate limit exceeded.",
+                        "An API rate limit was exceeded — LSP write, partner event feed, document read, or auth endpoint.",
                         AlertRuleAudience.SYSTEM_ADMIN,
                         AlertRuleTriggerKind.EVENT,
                         "{}"

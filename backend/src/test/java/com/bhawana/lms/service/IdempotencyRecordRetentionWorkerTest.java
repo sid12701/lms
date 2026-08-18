@@ -8,6 +8,7 @@ import com.bhawana.lms.repo.AdminApiIdempotencyRecordRepository;
 import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.bhawana.lms.tenant.TenantScopedExecution;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -87,7 +88,7 @@ class IdempotencyRecordRetentionWorkerTest {
                         "{}"
                 )));
 
-        Instant expiredAt = Instant.now().minus(120, ChronoUnit.DAYS);
+        Timestamp expiredAt = Timestamp.from(Instant.now().minus(120, ChronoUnit.DAYS));
         jdbcTemplate.update(
                 "update lsp_api_idempotency_record set created_at = ?, updated_at = ? where id = ?",
                 expiredAt, expiredAt, oldLsp.getId()
@@ -108,8 +109,8 @@ class IdempotencyRecordRetentionWorkerTest {
     private UUID seedLsp() {
         UUID lspId = UUID.randomUUID();
         jdbcTemplate.update(
-                "insert into lsp (id, code, name, status, webhook_enabled, token_version, enforce_ui_allowlist, enforce_api_allowlist, created_at, updated_at) "
-                        + "values (?, ?, ?, ?, false, 0, false, false, current_timestamp, current_timestamp)",
+                "insert into lsp (id, code, name, status, token_version, enforce_ui_allowlist, enforce_api_allowlist, created_at, updated_at) "
+                        + "values (?, ?, ?, ?, 0, false, false, current_timestamp, current_timestamp)",
                 lspId,
                 "RET-" + lspId.toString().substring(0, 8).toUpperCase(),
                 "Retention Test LSP",

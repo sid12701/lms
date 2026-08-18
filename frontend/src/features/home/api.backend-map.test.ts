@@ -8,7 +8,6 @@ const OVERVIEW: BackendHomeOverview = {
   dpd90PlusLoanCount: 2,
   applicationsAwaitingApproval: 3,
   applicationsInDisbursement: 4,
-  avgApprovalTatHours: 12.5,
   applicationsByStatus: [
     { status: "AWAITING_APPROVAL", count: 3 },
     { status: "DISBURSED", count: 10 },
@@ -22,9 +21,10 @@ const OVERVIEW: BackendHomeOverview = {
     {
       id: "alert-1",
       severity: "HIGH",
-      title: "Webhook failing",
-      subjectType: "WEBHOOK_DELIVERY",
-      subjectId: "wd-1",
+      title: "Report generation failing",
+      message: "  Report rpt-1 failed after 5 attempts.  ",
+      subjectType: "REPORT_REQUEST",
+      subjectId: "rpt-1",
       createdAt: "2026-05-11T07:00:00.000Z",
     },
   ],
@@ -60,7 +60,6 @@ describe("mapBackendHomeOverviewToInternalKpis (Gap #7)", () => {
     const kpis = mapBackendHomeOverviewToInternalKpis(OVERVIEW);
     expect(kpis.applicationsAwaitingApproval).toBe(3);
     expect(kpis.applicationsInDisbursement).toBe(4);
-    expect(kpis.avgApprovalTatHours).toBe(12.5);
     expect(kpis.applicationsByStatus).toEqual([
       { status: "AWAITING_APPROVAL", count: 3 },
       { status: "DISBURSED", count: 10 },
@@ -73,10 +72,26 @@ describe("mapBackendHomeOverviewToInternalKpis (Gap #7)", () => {
       { bucket: "B90_PLUS", count: 2 },
     ]);
     expect(kpis.openAlerts).toHaveLength(1);
-    expect(kpis.openAlerts[0]?.title).toBe("Webhook failing");
+    expect(kpis.openAlerts[0]?.title).toBe("Report generation failing");
     expect(kpis.recentApplications[0]?.status).toBe("INITIALIZED");
     expect(kpis.recentApplications[0]?.borrowerNameMasked).toBe("Anika Sharma");
   });
+
+  it("carries the alert message through, trimmed", () => {
+    const kpis = mapBackendHomeOverviewToInternalKpis(OVERVIEW);
+    expect(kpis.openAlerts[0]?.message).toBe("Report rpt-1 failed after 5 attempts.");
+  });
+
+  it.each([[undefined], [null], ["   "]])(
+    "maps a %p alert message to null so the card omits the line",
+    (message) => {
+      const kpis = mapBackendHomeOverviewToInternalKpis({
+        ...OVERVIEW,
+        openAlertSummaries: [{ ...OVERVIEW.openAlertSummaries[0]!, message }],
+      });
+      expect(kpis.openAlerts[0]?.message).toBeNull();
+    },
+  );
 
   it("tolerates older backends that omit recentApplications", () => {
     const { recentApplications: _ignored, ...legacyOverview } = OVERVIEW;

@@ -13,6 +13,7 @@ import {
   FilterBarShell,
   FilterBarStatusTabs,
 } from "@/components/app/data/FilterBarShell";
+import { filterControlClass } from "@/components/app/data/filter-control";
 import { useDebouncedControlledText } from "@/lib/hooks/use-debounced-controlled-text";
 import {
   Select,
@@ -37,7 +38,6 @@ const SUBJECT_OPTIONS: readonly { value: AlertSubjectType; label: string }[] = [
   { value: "LOAN_APPLICATION", label: "Loan application" },
   { value: "LOAN_ACCOUNT", label: "Loan account" },
   { value: "BORROWER", label: "Borrower" },
-  { value: "WEBHOOK_DELIVERY", label: "Webhook delivery" },
   { value: "REPORT_REQUEST", label: "Report request" },
   { value: "SYSTEM", label: "System" },
 ];
@@ -126,10 +126,10 @@ export function AlertsFilterBar({ filters, onChange, className }: AlertsFilterBa
         onValueChange={(next) => setSubject(next === ALL_SENTINEL ? undefined : next)}
       >
         <SelectTrigger
-          size="sm"
           aria-label="Subject filter"
           data-slot="alerts-subject-filter"
-          className="w-44"
+          data-filter-set={filters.subjectType !== undefined ? "true" : undefined}
+          className={filterControlClass(filters.subjectType !== undefined, "w-44")}
         >
           <SelectValue placeholder="All subjects" />
         </SelectTrigger>

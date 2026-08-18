@@ -29,7 +29,6 @@ const KNOWN_SUBJECT_TYPES = new Set<AlertSubjectType>([
   "LOAN_APPLICATION",
   "LOAN_ACCOUNT",
   "BORROWER",
-  "WEBHOOK_DELIVERY",
   "REPORT_REQUEST",
   "SYSTEM",
 ]);

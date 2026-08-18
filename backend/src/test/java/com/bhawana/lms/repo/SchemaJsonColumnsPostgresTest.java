@@ -147,9 +147,6 @@ class SchemaJsonColumnsPostgresTest extends PostgresDataJpaTestSupport {
     private static Stream<Arguments> productionShapePayloads() {
         // Shapes mirror what production services actually write today.
         // If V72 lands and these fail, the writing service is producing a non-object payload.
-        String webhookEnvelope = "{\"eventId\":\"" + UUID.randomUUID()
-                + "\",\"eventType\":\"LOAN_CREATED\",\"occurredAt\":\"2026-05-29T10:00:00Z\","
-                + "\"data\":{\"loanApplicationId\":\"" + UUID.randomUUID() + "\",\"status\":\"INITIALIZED\"}}";
         String disbursementRequest = "{\"loanAccountId\":\"" + UUID.randomUUID()
                 + "\",\"amount\":5000.00,\"provider\":\"MOCK\",\"providerRequestId\":\"req-1\"}";
         String disbursementResponse = "{\"providerStatus\":\"REQUESTED\",\"providerReference\":\"ref-1\",\"raw\":{\"ok\":true}}";
@@ -164,7 +161,6 @@ class SchemaJsonColumnsPostgresTest extends PostgresDataJpaTestSupport {
                 + "\"requestedAmount\":5000.00,\"tenureMonths\":12,\"sourceChannel\":\"API\"}";
 
         return Stream.of(
-                Arguments.of(new JsonColumn("webhook_event_outbox", "payload_json"), webhookEnvelope),
                 Arguments.of(new JsonColumn("loan_disbursement_request_log", "request_payload_json"), disbursementRequest),
                 Arguments.of(new JsonColumn("loan_disbursement_request_log", "response_payload_json"), disbursementResponse),
                 Arguments.of(new JsonColumn("loan_application_status_transition", "rejection_reason_json"), rejectionReason),
@@ -178,7 +174,6 @@ class SchemaJsonColumnsPostgresTest extends PostgresDataJpaTestSupport {
 
     private static Stream<JsonColumn> jsonColumns() {
         return Stream.of(
-                new JsonColumn("webhook_event_outbox", "payload_json"),
                 new JsonColumn("loan_disbursement_request_log", "request_payload_json"),
                 new JsonColumn("loan_disbursement_request_log", "response_payload_json"),
                 new JsonColumn("loan_application_status_transition", "rejection_reason_json"),
@@ -207,7 +202,6 @@ class SchemaJsonColumnsPostgresTest extends PostgresDataJpaTestSupport {
 
     private UUID insertRow(JsonColumn column, String json) {
         return switch (column.table()) {
-            case "webhook_event_outbox" -> insertWebhookOutbox(json);
             case "loan_disbursement_request_log" -> insertDisbursementLog(column.column(), json);
             case "loan_application_status_transition" -> insertStatusTransition(json);
             case "ops_alert" -> insertOpsAlert(json);
@@ -224,23 +218,6 @@ class SchemaJsonColumnsPostgresTest extends PostgresDataJpaTestSupport {
                 json,
                 rowId
         );
-    }
-
-    private UUID insertWebhookOutbox(String payloadJson) {
-        UUID id = UUID.randomUUID();
-        jdbcTemplate.update(
-                "INSERT INTO webhook_event_outbox (id, lsp_id, event_type, aggregate_type, aggregate_id, "
-                        + "loan_application_id, status, payload_json, correlation_id, attempt_count, entity_version, "
-                        + "created_at, updated_at) "
-                        + "VALUES (?, ?, 'LOAN_CREATED', 'LOAN_APPLICATION', ?, ?, 'PENDING', ?::jsonb, ?, 0, 0, NOW(), NOW())",
-                id,
-                lspId,
-                loanApplicationId.toString(),
-                loanApplicationId,
-                payloadJson,
-                "corr-" + id
-        );
-        return id;
     }
 
     private UUID insertDisbursementLog(String targetColumn, String json) {
@@ -472,8 +449,7 @@ class SchemaJsonColumnsPostgresTest extends PostgresDataJpaTestSupport {
         return Stream.of(
                 Arguments.of(new TimestampColumn("borrower_bank_details_update_audit", "created_at")),
                 Arguments.of(new TimestampColumn("loan_disbursement_bank_mismatch_log", "created_at")),
-                Arguments.of(new TimestampColumn("disbursement_outcome_audit", "created_at")),
-                Arguments.of(new TimestampColumn("webhook_outbox_redrive_audit", "created_at"))
+                Arguments.of(new TimestampColumn("disbursement_outcome_audit", "created_at"))
         );
     }
 

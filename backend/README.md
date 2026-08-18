@@ -76,7 +76,7 @@ When `app.disbursement.intent-workflow.enabled=true` (default in `application.ym
 
 1. **Request** — `POST …/disbursement-requests` commits a `disbursement_intent` row before any bank call.
 2. **Execute** — `LoanDisbursementWorker` claims intents with `SKIP LOCKED` and calls the provider outside a transaction.
-3. **Outcome** — request log, intent state, and webhooks are written in a short follow-up transaction.
+3. **Outcome** — request log, intent state, and a loan event are written in a short follow-up transaction.
 
 Ops money preview (Spec S12):
 

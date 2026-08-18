@@ -41,7 +41,6 @@ export function resolveAlertSubjectHref(
     }
     case "BORROWER":
       return `/borrowers/${subjectId}`;
-    case "WEBHOOK_DELIVERY":
     case "REPORT_REQUEST":
     case "SYSTEM":
     default:

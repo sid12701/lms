@@ -14,6 +14,7 @@ function mkAlert(overrides: Partial<HomeAlertSummary> = {}): HomeAlertSummary {
     id: "alert-1",
     severity: "HIGH",
     title: "Disbursement stuck in queue",
+    message: null,
     subjectType: "LOAN_APPLICATION",
     subjectId: "11111111-1111-4111-8111-111111111111",
     createdAt: new Date(NOW - 1000 * 60 * 30).toISOString(),
@@ -36,14 +37,55 @@ describe("<OpenAlertsCard />", () => {
       wrap(
         <OpenAlertsCard
           alerts={[
-            mkAlert({ id: "a-1", title: "Webhook retry exhausted", severity: "CRITICAL" }),
+            mkAlert({ id: "a-1", title: "Rate limit breach", severity: "CRITICAL" }),
             mkAlert({ id: "a-2", title: "KYC document expired", severity: "MEDIUM" }),
           ]}
         />,
       ),
     );
-    expect(getByText("Webhook retry exhausted")).toBeInTheDocument();
+    expect(getByText("Rate limit breach")).toBeInTheDocument();
     expect(getByText("KYC document expired")).toBeInTheDocument();
+  });
+
+  it("humanizes delinquency bucket titles", () => {
+    const { getByText } = renderWithProviders(
+      wrap(
+        <OpenAlertsCard
+          alerts={[mkAlert({ title: "Delinquency bucket DPD_1_30", severity: "HIGH" })]}
+        />,
+      ),
+    );
+    expect(getByText("Delinquency · 1–30 DPD")).toBeInTheDocument();
+  });
+
+  it("distinguishes same-titled alerts by their detail message", () => {
+    const { getByText } = renderWithProviders(
+      wrap(
+        <OpenAlertsCard
+          alerts={[
+            mkAlert({
+              id: "a-1",
+              title: "Delinquency bucket DPD_1_30",
+              message: "Loan APEX-001 is 12 days past due (bucket DPD_1_30, overdue ₹4231.00).",
+            }),
+            mkAlert({
+              id: "a-2",
+              title: "Delinquency bucket DPD_1_30",
+              message: "Loan APEX-002 is 27 days past due (bucket DPD_1_30, overdue ₹18900.50).",
+            }),
+          ]}
+        />,
+      ),
+    );
+    expect(getByText(/APEX-001 is 12 days past due/)).toBeInTheDocument();
+    expect(getByText(/APEX-002 is 27 days past due/)).toBeInTheDocument();
+  });
+
+  it("omits the detail line when the alert carries no message", () => {
+    const { container } = renderWithProviders(
+      wrap(<OpenAlertsCard alerts={[mkAlert({ message: null })]} />),
+    );
+    expect(container.querySelector('[data-slot="alert-message"]')).toBeNull();
   });
 
   it("renders an empty state when alerts is empty", () => {
@@ -67,8 +109,8 @@ describe("<OpenAlertsCard />", () => {
     expect(SEVERITY_TOKEN[severity]).toBe(token);
   });
 
-  it("links LOAN_APPLICATION subjects to the detail page", () => {
-    const { container } = renderWithProviders(
+  it("links LOAN_APPLICATION subjects with a readable label", () => {
+    const { container, getByText } = renderWithProviders(
       wrap(
         <OpenAlertsCard
           alerts={[mkAlert({ subjectType: "LOAN_APPLICATION", subjectId: "abc-123" })]}
@@ -78,6 +120,7 @@ describe("<OpenAlertsCard />", () => {
     const link = container.querySelector("a");
     expect(link).not.toBeNull();
     expect(link!.getAttribute("href")).toBe("/loan-applications/abc-123");
+    expect(getByText(/Loan application · abc-123/)).toBeInTheDocument();
   });
 
   it("renders a non-link mention for non-application subjects", () => {
@@ -86,15 +129,15 @@ describe("<OpenAlertsCard />", () => {
         <OpenAlertsCard
           alerts={[
             mkAlert({
-              subjectType: "WEBHOOK_DELIVERY",
-              subjectId: "wh-xyz-0000",
+              subjectType: "REPORT_REQUEST",
+              subjectId: "rpt-xyz-0000",
             }),
           ]}
         />,
       ),
     );
     expect(queryByRole("link")).toBeNull();
-    expect(container.textContent).toMatch(/webhook_delivery/);
+    expect(container.textContent).toMatch(/Report request · rpt-xyz-/);
   });
 
   it("forwards className to the card", () => {
