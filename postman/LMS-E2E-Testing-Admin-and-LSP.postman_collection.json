@@ -200,7 +200,7 @@
                 "metadata"
               ]
             },
-            "description": "Enum catalog (roles, statuses, webhook event types). Useful for UI dropdowns."
+            "description": "Enum catalog (roles, statuses, loan event types). Useful for UI dropdowns."
           },
           "event": [
             {
@@ -259,7 +259,7 @@
     },
     {
       "name": "03 - Admin - LSP Management",
-      "description": "Create a demo LSP (partner lender) and optionally configure webhook delivery.",
+      "description": "Create a demo LSP (partner lender).",
       "item": [
         {
           "name": "Create LSP",
@@ -362,61 +362,6 @@
                   "const list = pm.response.json();",
                   "const target = pm.environment.get('lspId');",
                   "pm.test('newly created LSP is in the list', () => pm.expect(list.some(l => l.id === target)).to.be.true);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Configure webhook subscription (optional)",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{adminToken}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/internal/admin/lsps/{{lspId}}/webhook-subscription",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "internal",
-                "admin",
-                "lsps",
-                "{{lspId}}",
-                "webhook-subscription"
-              ]
-            },
-            "description": "Optional: wire this LSP to https://webhook.site to watch webhooks arrive. Replace webhookSiteId env var with your own webhook.site UUID before running, or disable this request. Deliveries appear in Folder 9's webhook outbox view.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"enabled\": true,\n  \"endpointUrl\": \"https://webhook.site/{{webhookSiteId}}\",\n  \"signingSecret\": \"demo-hmac-secret\",\n  \"eventTypes\": [\n    \"LOAN_STATUS_CHANGED\",\n    \"DISBURSEMENT_COMPLETED\",\n    \"LOAN_REPAYMENT_RECORDED\"\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// Tolerate 200 or 400 — 400 happens if webhookSiteId is still the placeholder UUID",
-                  "if (pm.response.code >= 400) {",
-                  "    console.warn('[webhook] config skipped: ' + pm.response.code + ' ' + pm.response.text());",
-                  "}"
                 ]
               }
             }
@@ -2026,7 +1971,7 @@
     },
     {
       "name": "12 - Dashboard and Reports (KPIs)",
-      "description": "Portfolio KPIs, DPD breakdown, alerts, webhook outbox, borrower 360, lifecycle audit.",
+      "description": "Portfolio KPIs, DPD breakdown, alerts, borrower 360, lifecycle audit.",
       "item": [
         {
           "name": "Portfolio KPI overview",
@@ -2189,7 +2134,7 @@
                 "exec": [
                   "if (!pm.environment.get('firstAlertId')) {",
                   "    console.log('[alerts] no open alert — skipping acknowledge.');",
-                  "    postman.setNextRequest('Webhook outbox (per LSP)');",
+                  "    postman.setNextRequest('Borrower 360');",
                   "}"
                 ]
               }
@@ -2203,98 +2148,6 @@
                   "    const r = pm.response.json();",
                   "    console.log('[alerts] acknowledged by ' + r.acknowledgedByUsername);",
                   "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Webhook outbox (per LSP)",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{adminToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/internal/admin/webhook-outbox?lspId={{lspId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "internal",
-                "admin",
-                "webhook-outbox"
-              ],
-              "query": [
-                {
-                  "key": "lspId",
-                  "value": "{{lspId}}"
-                }
-              ]
-            },
-            "description": "Lists every webhook event queued for this LSP — status, attempt count, last error."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
-                  "const events = pm.response.json();",
-                  "const byStatus = events.reduce((a,e) => { a[e.status]=(a[e.status]||0)+1; return a; }, {});",
-                  "console.log('[webhook] outbox=' + JSON.stringify(byStatus));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Webhook dispatch batch",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{adminToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/internal/admin/webhook-outbox/dispatch?batchSize=20",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "internal",
-                "admin",
-                "webhook-outbox",
-                "dispatch"
-              ],
-              "query": [
-                {
-                  "key": "batchSize",
-                  "value": "20"
-                }
-              ]
-            },
-            "description": "Manually fires the outbox worker once. Shows delivered / retryable / permanent counts."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
-                  "const r = pm.response.json();",
-                  "console.log('[webhook] processed=' + r.processed + ' delivered=' + r.delivered + ' retryable=' + r.retryableFailures + ' permanent=' + r.permanentFailures);"
                 ]
               }
             }
@@ -2913,48 +2766,6 @@
               }
             }
           ]
-        },
-        {
-          "name": "Per-loan webhook events 404 for unknown application",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{adminToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/00000000-0000-0000-0000-000000000099/webhook-events",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "internal",
-                "ops",
-                "loan-applications",
-                "00000000-0000-0000-0000-000000000099",
-                "webhook-events"
-              ]
-            },
-            "description": "Same typed 404 contract on a sibling ops read endpoint."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 404', function () { pm.response.to.have.status(404); });",
-                  "const body = pm.response.json();",
-                  "pm.test('code NOT_FOUND', function () { pm.expect(body.code).to.eql('NOT_FOUND'); });",
-                  "pm.test('message present', function () { pm.expect(body.message).to.be.a('string').and.not.empty; });"
-                ]
-              }
-            }
-          ]
         }
       ]
     },
@@ -3014,33 +2825,6 @@
                 "internal",
                 "ops",
                 "auth-audit"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Loan webhook events",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{adminToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/internal/ops/loan-applications/{{applicationId}}/webhook-events",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "internal",
-                "ops",
-                "loan-applications",
-                "{{applicationId}}",
-                "webhook-events"
               ]
             }
           }

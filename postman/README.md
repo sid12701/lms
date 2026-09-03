@@ -71,14 +71,14 @@ Runtime behavior:
 | --- | --- |
 | 0 | `/actuator/health` fail-fast |
 | 1 | Bootstrap admin login + inline password rotation (handled inside the login request when `passwordChangeRequired=true`), metadata, whoami |
-| 2 | Create LSP, list, configure webhook subscription |
+| 2 | Create LSP, list |
 | 3 | Create loan product, map to LSP, fetch product audit trail |
 | 4 | Create LSP UI user (with inline rotation), create LSP API client, both logins — tokens saved to `{{lspUiToken}}` and `{{lspApiToken}}` |
 | 5 | Create loan application (full borrower DTO) via LSP API |
 | 6 | Upload PAN + Aadhaar + bank statement; admin verifies documents received |
 | 7 | Move to AWAITING_APPROVAL → APPROVED_PENDING_DISBURSAL, LSP requests disbursement, admin resolves mock outcome, fetch 12-row repayment schedule |
 | 8 | Loop-pay all 12 installments, verify `loanAccount.status === CLOSED`, fallback force-close if auto-close did not fire |
-| 9 | Business-management demo views: portfolio KPI, DPD breakdown, ops alerts + acknowledge, webhook outbox + manual dispatch, borrower 360, loan lifecycle audit trail (status transitions, assignment events, document access audits) |
+| 9 | Business-management demo views: portfolio KPI, DPD breakdown, ops alerts + acknowledge, borrower 360, loan lifecycle audit trail (status transitions, assignment events, document access audits) |
 | 10 | MIS reports: async request + poll + download, synchronous CSV shortcut, JSON preview |
 | 11 | Logout |
 
@@ -104,7 +104,6 @@ Backend logs tag every request with an `X-Correlation-Id` injected by the collec
 - **MIS download empty / 404** — the report generator runs on a 15-second delay (see `app.reports.processing.fixed-delay-ms`). The poll loop retries up to 10 times; increase `reportPollAttempts` cap in the test script if your machine is slow.
 - **Email notifications** — point `LMS_MAIL_HOST` / `LMS_MAIL_PORT` at MailHog (`localhost:1025`). Without it, the backend logs the email but skips SMTP.
 - **Document storage** — the default provider is `R2`. For demos without R2 credentials, set `APP_STORAGE_DOCUMENTS_PROVIDER=FILE_SYSTEM` and uploads will land under `${java.io.tmpdir}/lms-documents-local`.
-- **Webhook endpoint** — Folder 2 uses `https://webhook.site/{{webhookSiteId}}`. Replace `webhookSiteId` with a real UUID from webhook.site to watch live delivery, or leave as-is to exercise the outbox retry loop.
 
 ## Regenerating the collection
 

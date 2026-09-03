@@ -26,9 +26,9 @@ jobs:
           java-version: "21"
           cache: maven
           cache-dependency-path: backend/pom.xml
-      - name: Run backend tests
+      - name: Run backend tests with coverage gate
         working-directory: backend
-        run: ./mvnw -q test
+        run: ./mvnw -q verify
 
   flyway-reference-schema:
     runs-on: ubuntu-latest

@@ -14,7 +14,9 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 ### Domain docs
 
-Single-context layout: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context layout: one `CONTEXT.md` and `docs/adr/` at the repo root. `CONTEXT.md` is the authority on domain language — including the terms it explicitly rejects — and `docs/adr/` records accepted decisions.
+
+Product context (users, purpose, constraints, accessibility standard) lives in `PRODUCT.md` at the repo root.
 
 ## AXI tooling
 
