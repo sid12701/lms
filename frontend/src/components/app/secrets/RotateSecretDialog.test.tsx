@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { axe } from "vitest-axe";
-import { renderWithProviders } from "@/test/utils";
+import { axeBaseElement, renderWithProviders } from "@/test/utils";
 import { RotateSecretDialog } from "./RotateSecretDialog";
 
 describe("RotateSecretDialog", () => {
@@ -90,6 +89,6 @@ describe("RotateSecretDialog", () => {
     const { baseElement } = renderWithProviders(
       <RotateSecretDialog open onOpenChange={() => {}} onConfirm={() => {}} />,
     );
-    expect(await axe(baseElement)).toHaveNoViolations();
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
   });
 });

@@ -1,4 +1,6 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
 import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { AlertTriangle } from "lucide-react";
@@ -6,16 +8,29 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import {
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialogFooter } from "@/components/app/forms/ConfirmDialogFooter";
+import { FormShell } from "@/components/app/forms/FormShell";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import type { AlertSubjectType } from "@/schemas/alert";
+import {
+  ESCALATION_MESSAGE_MAX,
+  ESCALATION_TITLE_MAX,
+  EscalationFormSchema,
+  type EscalationFormValues,
+} from "./escalationSchema";
 
 export interface EscalateToAdminDialogProps {
   open: boolean;
@@ -31,14 +46,16 @@ export interface EscalateToAdminDialogProps {
   loading?: boolean;
 }
 
-const TITLE_MAX = 255;
-const MESSAGE_MAX = 1000;
-
 /**
  * OPS_USER escalation surface (Gap #16). Ops surfaces a stuck loan to
  * SYSTEM_ADMIN by emitting an `OPS_USER_ESCALATION` alert. Title + message
  * are required; both are recorded on the alert audit row and visible in
  * the admin alerts inbox.
+ *
+ * The form runs through `FormShell` rather than local `useState` because a
+ * failed submit has to both announce (the shell's live-region summary) and
+ * move focus to the first invalid control. Hand-rolling those two guarantees
+ * here would have duplicated the shell without earning anything back.
  */
 export function EscalateToAdminDialog({
   open,
@@ -50,42 +67,20 @@ export function EscalateToAdminDialog({
   onConfirm,
   loading = false,
 }: EscalateToAdminDialogProps) {
-  const [escalationTitle, setEscalationTitle] = useState("");
-  const [message, setMessage] = useState("");
-  const [titleError, setTitleError] = useState<string | null>(null);
-  const [messageError, setMessageError] = useState<string | null>(null);
+  const form = useForm<EscalationFormValues>({
+    resolver: zodResolver(EscalationFormSchema),
+    defaultValues: { title: "", message: "" },
+    mode: "onSubmit",
+  });
   const titleRef = useRef<HTMLInputElement | null>(null);
 
-  useFlushOnClose(open, () => {
-    setEscalationTitle("");
-    setMessage("");
-    setTitleError(null);
-    setMessageError(null);
-  });
+  useFlushOnClose(open, () => form.reset({ title: "", message: "" }));
   useFocusOnOpen(open, titleRef);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const trimmedTitle = escalationTitle.trim();
-    const trimmedMessage = message.trim();
-    let hasError = false;
-    if (trimmedTitle.length === 0) {
-      setTitleError("Title is required.");
-      hasError = true;
-    } else {
-      setTitleError(null);
-    }
-    if (trimmedMessage.length === 0) {
-      setMessageError("Message is required.");
-      hasError = true;
-    } else {
-      setMessageError(null);
-    }
-    if (hasError) return;
-
+  const handleSubmit = async (values: EscalationFormValues) => {
     await onConfirm({
-      title: trimmedTitle,
-      message: trimmedMessage,
+      title: values.title,
+      message: values.message,
       idempotencyKey: newIdempotencyKey(),
     });
   };
@@ -104,65 +99,58 @@ export function EscalateToAdminDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="escalate-title">Title</Label>
-            <Input
-              id="escalate-title"
-              name="title"
-              value={escalationTitle}
-              onChange={(e) => setEscalationTitle(e.target.value)}
-              maxLength={TITLE_MAX}
-              placeholder="e.g. Disbursement adapter has failed 6 times"
-              ref={titleRef}
-              aria-invalid={titleError ? true : undefined}
-              aria-describedby={titleError ? "escalate-title-error" : undefined}
-            />
-            {titleError ? (
-              <p id="escalate-title-error" className="text-danger text-sm">
-                {titleError}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="escalate-message">Message</Label>
-            <Textarea
-              id="escalate-message"
-              name="message"
-              rows={4}
-              maxLength={MESSAGE_MAX}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="Describe what's stuck and what you've tried."
-              aria-invalid={messageError ? true : undefined}
-              aria-describedby={messageError ? "escalate-message-error" : undefined}
-            />
-            {messageError ? (
-              <p id="escalate-message-error" className="text-danger text-sm">
-                {messageError}
-              </p>
-            ) : (
-              <p className="text-foreground-muted text-xs">
-                Up to {MESSAGE_MAX} characters. Visible to admins in the alerts inbox.
-              </p>
+        <FormShell form={form} onSubmit={handleSubmit}>
+          <FormField
+            control={form.control}
+            name="title"
+            render={({ field }) => (
+              <FormItem required>
+                <FormLabel>Title</FormLabel>
+                <FormControl>
+                  <Input
+                    maxLength={ESCALATION_TITLE_MAX}
+                    placeholder="e.g. Disbursement adapter has failed 6 times"
+                    {...field}
+                    ref={(el) => {
+                      field.ref(el);
+                      titleRef.current = el;
+                    }}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
             )}
-          </div>
+          />
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" variant="default" disabled={loading}>
-              {loading ? "Sending…" : "Send escalation"}
-            </Button>
-          </DialogFooter>
-        </form>
+          <FormField
+            control={form.control}
+            name="message"
+            render={({ field }) => (
+              <FormItem required>
+                <FormLabel>Message</FormLabel>
+                <FormControl>
+                  <Textarea
+                    rows={4}
+                    maxLength={ESCALATION_MESSAGE_MAX}
+                    placeholder="Describe what's stuck and what you've tried."
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  Up to {ESCALATION_MESSAGE_MAX} characters. Visible to admins in the alerts inbox.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <ConfirmDialogFooter
+            loading={loading}
+            onCancel={() => onOpenChange(false)}
+            submitLabel="Send escalation"
+            loadingLabel="Sending…"
+          />
+        </FormShell>
       </DialogContent>
     </Dialog>
   );

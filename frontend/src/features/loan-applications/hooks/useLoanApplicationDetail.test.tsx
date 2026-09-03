@@ -8,20 +8,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
-import type {
-  LoanApplicationActivityResponse,
-  LoanApplicationDetail,
-  LoanApplicationWebhooksResponse,
-} from "../types";
+import type { LoanApplicationActivityResponse, LoanApplicationDetail } from "../types";
 
 const detailMock = vi.fn<(id: string) => Promise<LoanApplicationDetail>>();
 const activityMock = vi.fn<(id: string) => Promise<LoanApplicationActivityResponse>>();
-const webhooksMock = vi.fn<(id: string) => Promise<LoanApplicationWebhooksResponse>>();
 
 vi.mock("../api-detail", () => ({
   fetchLoanApplicationDetail: (id: string) => detailMock(id),
   fetchLoanApplicationActivity: (id: string) => activityMock(id),
-  fetchLoanApplicationWebhooks: (id: string) => webhooksMock(id),
 }));
 
 import {
@@ -29,7 +23,6 @@ import {
   useLoanApplicationDetail,
 } from "./useLoanApplicationDetail";
 import { useLoanApplicationActivity } from "./useLoanApplicationActivity";
-import { useLoanApplicationWebhooks } from "./useLoanApplicationWebhooks";
 
 const DETAIL_FIXTURE = {
   application: { id: "app-1", status: "INITIALIZED" },
@@ -40,6 +33,7 @@ const DETAIL_FIXTURE = {
   docsComplete: false,
   scheduleValid: false,
   accountDelinquency: null,
+  interestRate: null,
 } as unknown as LoanApplicationDetail;
 
 function makeWrapper() {
@@ -55,7 +49,6 @@ function makeWrapper() {
 beforeEach(() => {
   detailMock.mockReset();
   activityMock.mockReset();
-  webhooksMock.mockReset();
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -118,27 +111,5 @@ describe("useLoanApplicationActivity", () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(activityMock).toHaveBeenCalledWith("app-1");
-  });
-});
-
-describe("useLoanApplicationWebhooks", () => {
-  it("respects the enabled option (paused when false)", () => {
-    webhooksMock.mockResolvedValue({ deliveries: [] });
-    const { Wrapper } = makeWrapper();
-    const { result } = renderHook(() => useLoanApplicationWebhooks("app-1", { enabled: false }), {
-      wrapper: Wrapper,
-    });
-    expect(result.current.fetchStatus).toBe("idle");
-    expect(webhooksMock).not.toHaveBeenCalled();
-  });
-
-  it("fetches when enabled is true", async () => {
-    webhooksMock.mockResolvedValue({ deliveries: [] });
-    const { Wrapper } = makeWrapper();
-    const { result } = renderHook(() => useLoanApplicationWebhooks("app-1", { enabled: true }), {
-      wrapper: Wrapper,
-    });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(webhooksMock).toHaveBeenCalledWith("app-1");
   });
 });

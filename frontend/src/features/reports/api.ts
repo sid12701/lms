@@ -5,9 +5,8 @@
  * `/api/v1/internal/reports` (SYSTEM_ADMIN only).
  *
  * The frontend's `MisSummary` field names differ from the backend
- * (`totalDisbursedMtd` vs `totalDisbursed`, `weightedAvgYieldPct` vs
- * `weightedAvgInterestRate`, `portfolioAtRisk30Pct` vs
- * `portfolioAtRiskPct`). We translate inside this module so the page
+ * (`weightedAvgYieldPct` vs `weightedAvgInterestRate`, `portfolioAtRisk30Pct`
+ * vs `portfolioAtRiskPct`). We translate inside this module so the page
  * components and tests keep their existing field names.
  */
 import { requestJson, requestBlob, buildQueryPath } from "@/lib/api/http-client";
@@ -169,7 +168,7 @@ export async function misSummary(filters: MisFilters = {}): Promise<MisSummary> 
   const path = buildQueryPath(`${BASE}/portfolio-mis/summary`, filterToQuery(filters));
   const payload = await requestJson<BackendMisSummary>(path);
   return {
-    totalDisbursedMtd: Number(payload.totalDisbursed),
+    totalDisbursed: Number(payload.totalDisbursed),
     activeLoanCount: Number(payload.activeLoanCount),
     weightedAvgYieldPct: Number(payload.weightedAvgInterestRate),
     portfolioAtRisk30Pct: Number(payload.portfolioAtRiskPct),
@@ -288,8 +287,14 @@ export async function createRequest(
   return toReportRequest(payload);
 }
 
-export async function downloadRequest(id: string): Promise<{ url: string }> {
-  const { blob } = await requestBlob(`${BASE}/requests/${id}/download`);
+export async function downloadRequest(id: string): Promise<void> {
+  const { blob, filename } = await requestBlob(`${BASE}/requests/${id}/download`);
   const url = URL.createObjectURL(blob);
-  return { url };
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename ?? `portfolio-mis-${id}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

@@ -18,13 +18,13 @@ export const BREADCRUMB_LABELS: Record<string, string> = {
   products: "Products",
   users: "Users",
   "api-clients": "API clients",
-  "my-loans": "Loan applications",
+  "my-loans": "My loans",
   dev: "Developer",
   components: "Components",
 };
 
 /** True if the segment looks like an opaque id (UUID-ish / 16+ hex chars). */
-function isOpaqueId(segment: string): boolean {
+export function isOpaqueIdSegment(segment: string): boolean {
   return /^[0-9a-f-]{16,}$/i.test(segment);
 }
 
@@ -38,7 +38,10 @@ function humanize(segment: string): string {
  * known segments resolve via {@link BREADCRUMB_LABELS}; unknown segments
  * fall back to title-casing via `humanize()`.
  */
-export function resolveBreadcrumbLabel(segment: string): string {
-  if (isOpaqueId(segment)) return "Detail";
+export function resolveBreadcrumbLabel(segment: string, dynamicLabel?: string): string {
+  if (isOpaqueIdSegment(segment)) {
+    const trimmed = dynamicLabel?.trim();
+    return trimmed ? trimmed : "Detail";
+  }
   return BREADCRUMB_LABELS[segment] ?? humanize(segment);
 }

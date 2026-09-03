@@ -80,7 +80,7 @@ export function EntityRowActions({
           <MoreHorizontal aria-hidden="true" className="size-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-48 p-1">
+      <PopoverContent align="end" aria-label={ariaLabel} className="w-48 p-1">
         <ul className="flex flex-col">
           {items.map((item) => {
             const Icon = item.icon;

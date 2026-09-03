@@ -148,7 +148,7 @@ export function UserEditDialog({
             control={form.control}
             name="email"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
                   <Input
@@ -170,7 +170,7 @@ export function UserEditDialog({
             control={form.control}
             name="role"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Role</FormLabel>
                 <FormControl>
                   <Select
@@ -205,7 +205,7 @@ export function UserEditDialog({
               control={form.control}
               name="lspId"
               render={({ field }) => (
-                <FormItem>
+                <FormItem required>
                   <FormLabel>LSP</FormLabel>
                   <FormControl>
                     <Select
@@ -236,7 +236,7 @@ export function UserEditDialog({
             control={form.control}
             name="status"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Status</FormLabel>
                 <FormControl>
                   <Select

@@ -1,6 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
-import { renderWithProviders } from "@/test/utils";
+import { axeBaseElement, renderWithProviders } from "@/test/utils";
 import { Button } from "@/components/ui/button";
 import { TransitionDisabledTooltip, resolveDisabledReason } from "./TransitionDisabledTooltip";
 import type { LifecycleAction } from "./actions";
@@ -93,14 +95,59 @@ describe("<TransitionDisabledTooltip />", () => {
     expect(btn).toBeEnabled();
   });
 
-  it("disables the child when disabledReason is set", () => {
+  it("marks the child aria-disabled but keeps it focusable", async () => {
+    const user = userEvent.setup();
     const { getByRole } = renderWithProviders(
       <TransitionDisabledTooltip disabledReason="Insufficient permissions.">
         <Button type="button">Approve</Button>
       </TransitionDisabledTooltip>,
     );
     const btn = getByRole("button", { name: "Approve" });
-    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("aria-disabled", "true");
+    // Native `disabled` would drop it out of the tab order, which is what hid
+    // the reason from keyboard and screen-reader operators.
+    expect(btn).not.toBeDisabled();
+    await user.tab();
+    expect(btn).toHaveFocus();
+  });
+
+  it("does not activate the action when clicked or keyed", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    const { getByRole } = renderWithProviders(
+      <TransitionDisabledTooltip disabledReason="Documents incomplete.">
+        <Button type="button" onClick={onClick}>
+          Initiate disbursement
+        </Button>
+      </TransitionDisabledTooltip>,
+    );
+    const btn = getByRole("button", { name: "Initiate disbursement" });
+    await user.click(btn);
+    btn.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("reveals the reason on keyboard focus and describes the control with it", async () => {
+    const user = userEvent.setup();
+    const { getByRole } = renderWithProviders(
+      <TransitionDisabledTooltip disabledReason="Documents incomplete.">
+        <Button type="button">Initiate disbursement</Button>
+      </TransitionDisabledTooltip>,
+    );
+    const btn = getByRole("button", { name: "Initiate disbursement" });
+    await user.tab();
+    expect(btn).toHaveFocus();
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-slot="tooltip-content"]')).not.toBeNull();
+    });
+    // Radix points the trigger at its visually-hidden copy of the content, so
+    // the reason is announced rather than only painted.
+    const describedBy = btn.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy!)?.textContent).toMatch(/Documents incomplete/i);
   });
 
   it("has no axe violations in the disabled state", async () => {
@@ -119,5 +166,27 @@ describe("<TransitionDisabledTooltip />", () => {
       </TransitionDisabledTooltip>,
     );
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no axe violations with the reason tooltip open (portalled content lives on baseElement)", async () => {
+    const user = userEvent.setup();
+    const { baseElement } = renderWithProviders(
+      <TransitionDisabledTooltip disabledReason="Documents incomplete (BR-3).">
+        <Button type="button">Initiate disbursement</Button>
+      </TransitionDisabledTooltip>,
+    );
+    // The blocked control is the trigger itself now: `aria-disabled` leaves
+    // pointer events intact, so no wrapping span is needed to surface hover.
+    await user.hover(document.querySelector("button")!);
+    // Not `findByRole("tooltip")`: Radix renders the visible bubble *and* an
+    // internal visually-hidden copy wired to the trigger's
+    // `aria-describedby`, both carrying `role="tooltip"` — a unique-role
+    // query throws "found multiple elements" here, so key off the content
+    // slot instead.
+    await waitFor(() => {
+      expect(document.querySelector('[data-slot="tooltip-content"]')).not.toBeNull();
+    });
+
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
   });
 });

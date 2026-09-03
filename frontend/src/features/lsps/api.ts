@@ -6,7 +6,7 @@
  * response; only fields the backend actually serves are displayed.
  */
 import { requestJson } from "@/lib/api/http-client";
-import type { Lsp, LspStatus, LspStatusChangeReason, LspWebhookSubscription } from "@/schemas/lsp";
+import type { Lsp, LspStatus, LspStatusChangeReason } from "@/schemas/lsp";
 import type {
   CreateLspInput,
   LspAllowlistEnforcement,
@@ -18,44 +18,9 @@ import type {
   LspsListFilters,
   LspsListResponse,
   UpdateLspStatusInput,
-  UpsertWebhookSubscriptionInput,
-  WebhookSubscriptionResponse,
 } from "./types";
 
 const BACKEND_BASE = "/api/v1/internal/admin/lsps";
-
-// Backend targets MUST be WebhookEventType values that a producer actually
-// emits, otherwise the subscription is stored but never matched by
-// enqueueIfSubscribed (which compares on the exact enum). "Disbursement
-// completed" maps to DISBURSEMENT_COMPLETED (raised by DisbursementOutcomeApplier)
-// — not the never-emitted LOAN_DISBURSEMENT_UPDATED it was previously bound to.
-const FRONTEND_TO_BACKEND_EVENT: Record<string, string> = {
-  "loan.created": "LOAN_CREATED",
-  "loan.status.changed": "LOAN_STATUS_CHANGED",
-  "loan.documents.uploaded": "DOCUMENTS_UPLOADED",
-  "loan.disbursement.requested": "DISBURSEMENT_REQUESTED",
-  "loan.disbursement.completed": "DISBURSEMENT_COMPLETED",
-  "loan.disbursement.failed": "DISBURSEMENT_FAILED",
-  "loan.repayment.posted": "LOAN_REPAYMENT_RECORDED",
-  "loan.repaid": "LOAN_FULLY_REPAID",
-  "loan.foreclosure.quote.requested": "FORECLOSURE_QUOTE_REQUESTED",
-  "loan.foreclosed": "LOAN_FORECLOSURE_COMPLETED",
-  "borrower.bank.details.updated": "BORROWER_BANK_DETAILS_UPDATED",
-};
-
-const BACKEND_TO_FRONTEND_EVENT: Record<string, LspWebhookSubscription["eventTypes"][number]> = {
-  LOAN_CREATED: "loan.created",
-  LOAN_STATUS_CHANGED: "loan.status.changed",
-  DOCUMENTS_UPLOADED: "loan.documents.uploaded",
-  DISBURSEMENT_REQUESTED: "loan.disbursement.requested",
-  DISBURSEMENT_COMPLETED: "loan.disbursement.completed",
-  DISBURSEMENT_FAILED: "loan.disbursement.failed",
-  LOAN_REPAYMENT_RECORDED: "loan.repayment.posted",
-  LOAN_FULLY_REPAID: "loan.repaid",
-  FORECLOSURE_QUOTE_REQUESTED: "loan.foreclosure.quote.requested",
-  LOAN_FORECLOSURE_COMPLETED: "loan.foreclosed",
-  BORROWER_BANK_DETAILS_UPDATED: "borrower.bank.details.updated",
-};
 
 const SUPPORTED_BACKEND_STATUSES = new Set(["ACTIVE", "SUSPENDED", "INACTIVE"]);
 
@@ -66,23 +31,12 @@ function normaliseStatus(value: string): LspStatus {
   return "ACTIVE";
 }
 
-interface BackendWebhookSubscriptionResponse {
-  enabled: boolean;
-  endpointUrl: string | null;
-  /** Always null on reads — the secret is write-only. */
-  signingSecret: string | null;
-  /** Whether a signing secret is configured server-side. */
-  secretSet?: boolean;
-  eventTypes: string[];
-}
-
 interface BackendLspResponse {
   id: string;
   code: string;
   name: string;
   status: string;
   createdAt?: string;
-  webhookSubscription: BackendWebhookSubscriptionResponse;
   userCount: number;
   portfolioSummary: unknown;
 }
@@ -98,30 +52,6 @@ function projectLspRow(payload: BackendLspResponse): LspRow {
   return {
     ...lsp,
     userCount: payload.userCount ?? 0,
-    webhookEnabled: payload.webhookSubscription?.enabled ?? false,
-  };
-}
-
-function projectWebhookSubscription(
-  lspId: string,
-  payload: BackendWebhookSubscriptionResponse | null | undefined,
-): LspWebhookSubscription | null {
-  if (!payload || !payload.endpointUrl) return null;
-  // secretSet is the authoritative signal; fall back to a returned secret for
-  // any cached/older backend response shape.
-  const secretSet = payload.secretSet ?? Boolean(payload.signingSecret);
-  if (!secretSet) return null;
-  const eventTypes = (payload.eventTypes ?? [])
-    .map((event) => BACKEND_TO_FRONTEND_EVENT[event])
-    .filter((event): event is LspWebhookSubscription["eventTypes"][number] => Boolean(event));
-  if (eventTypes.length === 0) return null;
-  return {
-    lspId,
-    enabled: payload.enabled,
-    endpointUrl: payload.endpointUrl,
-    signingSecret: payload.signingSecret ?? null,
-    secretSet,
-    eventTypes,
   };
 }
 
@@ -227,39 +157,6 @@ export async function listLspAuditEvents(lspId: string): Promise<LspAuditEventRo
     throw new Error("Unexpected audit-events response shape (expected JSON array).");
   }
   return rows.map(projectAuditEvent);
-}
-
-export async function getLspWebhookSubscription(id: string): Promise<WebhookSubscriptionResponse> {
-  const payload = await requestJson<BackendLspResponse>(`${BACKEND_BASE}/${id}`);
-  return { subscription: projectWebhookSubscription(id, payload.webhookSubscription) };
-}
-
-export async function upsertLspWebhookSubscription(
-  id: string,
-  input: UpsertWebhookSubscriptionInput,
-): Promise<WebhookSubscriptionResponse> {
-  const backendEventTypes = Array.from(
-    new Set(
-      input.eventTypes
-        .map((event) => FRONTEND_TO_BACKEND_EVENT[event])
-        .filter((event): event is string => Boolean(event)),
-    ),
-  );
-  const payload = await requestJson<BackendLspResponse>(
-    `${BACKEND_BASE}/${id}/webhook-subscription`,
-    {
-      method: "PUT",
-      body: JSON.stringify({
-        enabled: input.enabled,
-        endpointUrl: input.endpointUrl,
-        // Blank means "keep the current secret" — the backend treats null the same.
-        signingSecret: input.signingSecret === "" ? null : input.signingSecret,
-        eventTypes: backendEventTypes,
-      }),
-    },
-    { idempotencyKey: input.idempotencyKey },
-  );
-  return { subscription: projectWebhookSubscription(id, payload.webhookSubscription) };
 }
 
 interface BackendIpAllowlistEntry {

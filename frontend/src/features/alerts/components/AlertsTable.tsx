@@ -14,9 +14,10 @@ import { Badge } from "@/components/ui/badge";
 import { AdminEntityDataTable } from "@/components/app/data/AdminEntityDataTable";
 import { EntityRowActions } from "@/components/app/data/EntityRowActions";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
-import { formatDateTime, formatRelative } from "@/lib/format";
+import { AbsoluteRelativeTime } from "@/components/app/misc/AbsoluteRelativeTime";
 import { cn } from "@/lib/utils";
 import { resolveAlertSubjectHref } from "@/lib/alert-links";
+import { alertSubjectTypeLabel, humanizeAlertTitle } from "@/lib/alert-display";
 import type { AlertRow, AlertsListFilters, AlertsListResponse } from "../types";
 import type { AlertSeverity } from "@/schemas/alert";
 
@@ -106,9 +107,9 @@ export function AlertsTable({
               <Link
                 to={href}
                 data-slot="alerts-title-link"
-                className="text-foreground focus-visible:ring-ring/50 rounded-sm text-sm font-medium outline-none hover:underline focus-visible:underline focus-visible:ring-2"
+                className="text-foreground focus-visible:ring-ring rounded-control text-sm font-medium outline-none hover:underline focus-visible:underline focus-visible:ring-2"
               >
-                {a.title}
+                {humanizeAlertTitle(a.title)}
               </Link>
               <p className="text-foreground-muted line-clamp-2 max-w-md text-xs">{a.message}</p>
             </div>
@@ -120,7 +121,7 @@ export function AlertsTable({
         header: "Subject",
         cell: ({ row }) => (
           <span className="text-foreground-muted text-xs tracking-wide uppercase">
-            {row.original.subjectType.replace(/_/g, " ").toLowerCase()}
+            {alertSubjectTypeLabel(row.original.subjectType)}
           </span>
         ),
       },
@@ -128,14 +129,7 @@ export function AlertsTable({
         id: "created",
         header: "Created",
         meta: { label: "Created", mobileCard: "secondary" },
-        cell: ({ row }) => (
-          <span
-            title={formatDateTime(row.original.createdAt)}
-            className="text-foreground-muted text-xs"
-          >
-            {formatRelative(row.original.createdAt)}
-          </span>
-        ),
+        cell: ({ row }) => <AbsoluteRelativeTime iso={row.original.createdAt} compact />,
       },
       {
         id: "acknowledgement",

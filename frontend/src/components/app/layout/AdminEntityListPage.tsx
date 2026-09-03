@@ -15,6 +15,16 @@ export interface AdminEntityListPagePrimaryAction {
 
 export interface AdminEntityListPageProps {
   testId: string;
+  /**
+   * Optional and *undefaulted*.
+   *
+   * This used to default to `"Administration"`, which meant removing the
+   * `eyebrow=` prop from the five admin pages changed nothing — they all fell
+   * back to the default and kept rendering a kicker that only restated the
+   * sidebar group the user had just clicked (audit S6, triple orientation
+   * redundancy). A default here is invisible at the call site, so opting out of
+   * it was impossible without editing this file.
+   */
   eyebrow?: string;
   title: string;
   description: string;
@@ -57,7 +67,7 @@ export interface AdminEntityListPageProps {
  */
 export function AdminEntityListPage({
   testId,
-  eyebrow = "Administration",
+  eyebrow,
   title,
   description,
   primaryAction,

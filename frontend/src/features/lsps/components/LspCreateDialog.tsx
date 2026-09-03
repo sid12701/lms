@@ -91,7 +91,7 @@ export function LspCreateDialog({
             control={form.control}
             name="code"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Code</FormLabel>
                 <FormControl>
                   <Input
@@ -117,7 +117,7 @@ export function LspCreateDialog({
             control={form.control}
             name="name"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Display name</FormLabel>
                 <FormControl>
                   <Input placeholder="Example Originators Pvt Ltd" maxLength={120} {...field} />

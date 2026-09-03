@@ -28,7 +28,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDensity } from "@/app/providers";
 import { DataTableMobileCards } from "@/components/app/data/DataTableMobileCards";
-import { useMediaQuery } from "@/lib/hooks/use-media-query";
+import { useIsMobileViewport } from "@/lib/hooks/use-media-query";
 import { TABULAR_ATTR } from "@/lib/tabular-nums";
 import { cn } from "@/lib/utils";
 
@@ -103,6 +103,12 @@ export interface DataTableProps<TData, TValue> {
   ariaLabel?: string;
   /** At mobile widths, render stacked cards instead of a wide table. */
   responsiveCards?: boolean;
+  /**
+   * Controls rendered above the table, given the live table instance — the
+   * seam for column-visibility and density toggles, which otherwise cannot
+   * reach the internally-owned TanStack instance.
+   */
+  toolbar?: (table: TanStackTable<TData>) => ReactNode;
   /** Header className override. */
   headerClassName?: string;
   className?: string;
@@ -254,7 +260,9 @@ function DataTableHeader<TData>({
   return (
     <TableHeader
       data-slot="data-table-header"
-      className={cn("bg-surface-muted/60 sticky top-0 z-10 backdrop-blur", className)}
+      // Opaque, not 60%: now that the header actually pins, rows scroll
+      // underneath it and a translucent band lets them ghost through.
+      className={cn("bg-surface-muted sticky top-0 z-10", className)}
     >
       {table.getHeaderGroups().map((headerGroup) => (
         <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
@@ -393,8 +401,7 @@ function DataTableRow<TData>({
       onKeyDown={onKeyDown}
       className={cn(
         "border-border hover:bg-surface-muted/40 transition-colors duration-150",
-        interactive &&
-          "focus-visible:ring-ring/50 cursor-pointer outline-none focus-visible:ring-2",
+        interactive && "focus-visible:ring-ring cursor-pointer outline-none focus-visible:ring-2",
       )}
     >
       {row.getVisibleCells().map((cell) => {
@@ -436,13 +443,14 @@ export function DataTable<TData, TValue>({
   manualSorting = false,
   ariaLabel,
   responsiveCards = true,
+  toolbar,
   headerClassName,
   className,
 }: DataTableProps<TData, TValue>) {
   const densityCtx = useDensity();
   const density = densityProp ?? densityCtx.density;
-  const isMobile = useMediaQuery("(max-width: 767px)");
-  const showMobileCards = responsiveCards && isMobile;
+  const isMobileViewport = useIsMobileViewport();
+  const showMobileCards = responsiveCards && isMobileViewport;
   const table = useConfiguredTable({
     columns,
     data,
@@ -455,44 +463,66 @@ export function DataTable<TData, TValue>({
   const cellPad = density === "compact" ? "px-2.5 py-1.5" : "px-3 py-3";
   const headPad = density === "compact" ? "h-8 px-2.5" : "h-10 px-3";
 
+  const toolbarNode = toolbar ? (
+    <div data-slot="data-table-toolbar" className="flex items-center justify-end gap-2">
+      {toolbar(table)}
+    </div>
+  ) : null;
+
   if (showMobileCards) {
     return (
-      <DataTableMobileCards
-        table={table}
-        density={density}
-        loading={loading}
-        skeletonRows={skeletonRows}
-        empty={empty}
-        getRowAction={getRowAction}
-        getRowTestId={getRowTestId}
-        getRowAriaLabel={getRowAriaLabel}
-        className={className}
-      />
-    );
-  }
-
-  return (
-    <div
-      data-slot="data-table"
-      data-density={density}
-      className={cn(
-        "border-border bg-surface shadow-e1 overflow-x-auto rounded-md border",
-        className,
-      )}
-    >
-      <Table aria-label={ariaLabel}>
-        <DataTableHeader table={table} headPad={headPad} className={headerClassName} />
-        <DataTableBody
+      <div className="flex flex-col gap-2">
+        {toolbarNode}
+        <DataTableMobileCards
           table={table}
+          density={density}
           loading={loading}
           skeletonRows={skeletonRows}
-          cellPad={cellPad}
           empty={empty}
           getRowAction={getRowAction}
           getRowTestId={getRowTestId}
           getRowAriaLabel={getRowAriaLabel}
+          className={className}
         />
-      </Table>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {toolbarNode}
+      {/*
+        The sticky `thead` used to be inert: this wrapper carried
+        `overflow-x-auto` and `Table` added a second one inside it, so the
+        header resolved against a scroll container with no bounded height and
+        simply scrolled off with the page — gone by row ~14 of 25.
+
+        There is now exactly one scroller, and it is bounded, so the header pins
+        against it. `--data-table-max-h` is the viewport minus the shell chrome
+        (56px top bar + breadcrumb + page padding); the table takes the rest.
+      */}
+      <div
+        data-slot="data-table"
+        data-density={density}
+        className={cn("border-border bg-surface shadow-e1 rounded-container border", className)}
+      >
+        <Table
+          aria-label={ariaLabel}
+          containerClassName="max-h-[calc(100dvh-var(--data-table-chrome,17rem))] overflow-y-auto"
+        >
+          <DataTableHeader table={table} headPad={headPad} className={headerClassName} />
+          <DataTableBody
+            table={table}
+            loading={loading}
+            skeletonRows={skeletonRows}
+            cellPad={cellPad}
+            empty={empty}
+            getRowAction={getRowAction}
+            getRowTestId={getRowTestId}
+            getRowAriaLabel={getRowAriaLabel}
+          />
+        </Table>
+      </div>
     </div>
   );
 }

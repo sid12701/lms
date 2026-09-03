@@ -50,6 +50,9 @@ function useBorrowerTabParam(): readonly [BorrowerDetailTab, (next: BorrowerDeta
 function DetailSkeleton() {
   return (
     <div data-slot="borrower-detail-skeleton" className="flex flex-col gap-6">
+      {/* Keeps the route's single `h1` present while data is in flight, so a
+          screen-reader user is not left on a page with no identity at all. */}
+      <h1 className="sr-only">Loading borrower</h1>
       <div className="flex flex-col gap-3">
         <Skeleton className="h-4 w-48" />
         <Skeleton className="h-8 w-72" />
@@ -126,10 +129,13 @@ export function BorrowerDetailPage() {
           data-testid="borrower-detail"
           data-state="forbidden"
         >
+          {/* Whole-page state with no `PageHeader` above it, so this title is
+              the route's only heading — `EmptyState` defaults to a `p`. */}
           <EmptyState
             variant="no-permission"
             icon={ShieldAlert}
             title="No access to this borrower"
+            titleAs="h1"
             description="You don't have permission to view this borrower record."
             action={{ label: "Back to borrowers", onClick: () => navigate("/borrowers") }}
             secondaryAction={{ label: "Go back", onClick: () => navigate(-1) }}
@@ -182,7 +188,10 @@ export function BorrowerDetailPage() {
       <RightRail>
         <section
           data-slot="borrower-summary"
-          className={cn("border-border bg-surface rounded-md border p-4", "flex flex-col gap-3")}
+          className={cn(
+            "border-border bg-surface rounded-container border p-4",
+            "flex flex-col gap-3",
+          )}
         >
           <h2 className="text-foreground text-sm font-semibold tracking-tight">At a glance</h2>
           <div className="flex flex-col gap-2">

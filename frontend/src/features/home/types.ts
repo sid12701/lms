@@ -54,6 +54,12 @@ export interface HomeAlertSummary {
   id: string;
   severity: AlertSeverity;
   title: string;
+  /**
+   * The rule's detail sentence — the only field that separates a run of
+   * same-titled alerts (loan id, DPD, overdue amount). `null` when the alert
+   * carries none, so the card omits the line rather than rendering an empty one.
+   */
+  message: string | null;
   subjectType: AlertSubjectType;
   subjectId: string;
   createdAt: string;
@@ -66,18 +72,22 @@ export interface HomeAlertSummary {
 export interface InternalHomeKpis {
   applicationsAwaitingApproval: number;
   applicationsInDisbursement: number;
-  /** ₹ disbursed in the current month-to-date window. */
-  mtdDisbursedAmount: number;
+  /** ₹ total principal disbursed across the portfolio snapshot (lifetime, not MTD). */
+  totalDisbursedAmount: number;
   overdueLoansCount: number;
   /** ₹ outstanding across all overdue installments. */
   overdueAmount: number;
-  /** Average hours from AWAITING_APPROVAL → APPROVED_PENDING_DISBURSAL over last 30d. */
-  avgApprovalTatHours: number | null;
   applicationsByStatus: readonly ApplicationsByStatusBucket[];
   /** Loans grouped by delinquency bucket — drives the DPD bar chart on /home. */
   dpdBuckets: readonly DpdBucketSummary[];
   recentApplications: readonly HomeRecentApplication[];
   openAlerts: readonly HomeAlertSummary[];
+  /**
+   * When the portfolio snapshot these figures come from was computed.
+   * `null` means no snapshot exists yet — which is not the same as zero, and
+   * must not be rendered as one.
+   */
+  dataAsOf: string | null;
 }
 
 /** Narrow union returned by the home API based on the caller's role. */

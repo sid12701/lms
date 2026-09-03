@@ -35,6 +35,13 @@ describe("PermissionDeniedState", () => {
     expect(container.querySelector('[data-slot="empty-state"]')).toHaveClass("denied-x");
   });
 
+  it("renders title as h1 for permission-denied routes", () => {
+    const { getByRole } = renderWithProviders(<PermissionDeniedState />);
+    expect(
+      getByRole("heading", { level: 1, name: "You don't have access to this page" }),
+    ).toBeInTheDocument();
+  });
+
   it("has no axe violations", async () => {
     const { container } = renderWithProviders(
       <PermissionDeniedState currentRole="OPS_USER" missingPermission="LOAN_STATUS_UPDATE" />,

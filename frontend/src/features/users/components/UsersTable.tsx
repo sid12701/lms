@@ -14,10 +14,10 @@ import { CheckCircle2, Lock, PauseCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AdminEntityDataTable } from "@/components/app/data/AdminEntityDataTable";
+import { AbsoluteRelativeTime } from "@/components/app/misc/AbsoluteRelativeTime";
 import { EntityRowActions } from "@/components/app/data/EntityRowActions";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { useSession } from "@/features/auth/session-context";
-import { formatDateTime, formatRelative } from "@/lib/format";
 import type { Role } from "@/schemas/role";
 import type { UserStatus } from "@/schemas/user";
 import type { UserRow, UsersListFilters, UsersListResponse } from "../types";
@@ -163,12 +163,7 @@ export function UsersTable({
         id: "created",
         header: "Created",
         cell: ({ row }) => (
-          <span
-            title={formatDateTime(row.original.createdAt)}
-            className="text-foreground-muted text-xs"
-          >
-            {formatRelative(row.original.createdAt)}
-          </span>
+          <AbsoluteRelativeTime iso={row.original.createdAt} variant="relative" compact />
         ),
       },
       {

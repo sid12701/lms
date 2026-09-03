@@ -108,10 +108,7 @@ export function ReportsPage() {
   const handleDownload = async (row: ReportRequest) => {
     setDownloadingId(row.id);
     try {
-      const result = await downloadMutation.mutateAsync({ id: row.id });
-      if (typeof window !== "undefined") {
-        window.open(result.url, "_blank", "noopener,noreferrer");
-      }
+      await downloadMutation.mutateAsync({ id: row.id });
     } catch {
       // Error toast fires from the hook's onError.
     } finally {
@@ -133,7 +130,6 @@ export function ReportsPage() {
   return (
     <div data-testid="reports-page" className="flex flex-col gap-6 p-6" data-density="comfortable">
       <PageHeader
-        eyebrow="Reporting"
         title="Reports"
         description="Portfolio MIS preview and downloadable report generation."
         actions={

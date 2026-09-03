@@ -55,34 +55,43 @@ const STATUS_ICON: Partial<Record<AnyStatus, LucideIcon>> = {
   UNDER_REPAYMENT: Check,
 };
 
+/*
+  The solid variant's text is `text-surface`, not `text-white`.
+
+  The intents invert between themes: light fills are dark (`#7d5e14`), dark fills
+  are lifted and bright (`#fbbf24`). White text therefore only worked in light —
+  in dark it measured 1.66:1 on `warning` and 2.69:1 on `progress`. `--color-surface`
+  is white in light and near-black in dark, so it is always the opposite pole of
+  whatever the fill is.
+*/
 const INTENT_CLASSES: Record<Intent, { default: string; subtle: string; iconColor: string }> = {
   success: {
-    default: "border-transparent bg-success text-white",
+    default: "border-transparent bg-success text-surface",
     subtle: "border-success/30 bg-success/10 text-success",
     iconColor: "text-success",
   },
   warning: {
-    default: "border-transparent bg-warning text-white",
+    default: "border-transparent bg-warning text-surface",
     subtle: "border-warning/30 bg-warning/10 text-warning",
     iconColor: "text-warning",
   },
   danger: {
-    default: "border-transparent bg-danger text-white",
+    default: "border-transparent bg-danger text-surface",
     subtle: "border-danger/30 bg-danger/10 text-danger",
     iconColor: "text-danger",
   },
   info: {
-    default: "border-transparent bg-info text-white",
+    default: "border-transparent bg-info text-surface",
     subtle: "border-info/30 bg-info/10 text-info",
     iconColor: "text-info",
   },
   progress: {
-    default: "border-transparent bg-progress text-white",
+    default: "border-transparent bg-progress text-surface",
     subtle: "border-progress/30 bg-progress/10 text-progress",
     iconColor: "text-progress",
   },
   revoked: {
-    default: "border-transparent bg-revoked text-white",
+    default: "border-transparent bg-revoked text-surface",
     subtle: "border-revoked/30 bg-revoked/10 text-revoked",
     iconColor: "text-revoked",
   },
@@ -93,9 +102,22 @@ const INTENT_CLASSES: Record<Intent, { default: string; subtle: string; iconColo
   },
 };
 
+/**
+ * Intents that mean "something is wrong". When a delinquency override pushes a
+ * status into one of these, the icon must follow the *intent*, not the status —
+ * otherwise a delinquent `UNDER_REPAYMENT` loan renders `Check` inside a red
+ * badge, and the icon contradicts the colour instead of reinforcing it. The
+ * whole point of pairing colour with an icon (WCAG 1.4.1) is that the second
+ * channel agrees with the first.
+ */
+const ADVERSE_INTENTS = new Set<Intent>(["danger", "warning"]);
+
 function statusIcon(status: AnyStatus, intent: Intent): LucideIcon {
   if (typeof status === "string" && status.startsWith("UNKNOWN:")) {
     return HelpCircle;
+  }
+  if (ADVERSE_INTENTS.has(intent)) {
+    return INTENT_ICON[intent];
   }
   return STATUS_ICON[status] ?? INTENT_ICON[intent];
 }

@@ -4,7 +4,8 @@
  * Status enum is the union of:
  *   - blueprint §9 recommended statuses
  *   - frontend-implementation-plan.md §5.5 lifecycle groups
- *   - UI pages.md role-based-actions terminology (e.g. APPROVED_PENDING_DISBURSAL)
+ *   - `@/lib/loan-application-status`, which mirrors the backend
+ *     `LoanApplicationStatus` enum (e.g. APPROVED_PENDING_DISBURSAL)
  *
  * Document schema gates BR-2 (required-for-approval) and BR-3
  * (required-for-disbursement) flags.
@@ -53,7 +54,7 @@ export type LoanDocumentType = z.infer<typeof LoanDocumentType>;
 
 // Gap #18 — the verify/reject document model was removed; statuses collapse
 // to PENDING (no upload) or UPLOADED (file attached, maps to BE `SUBMITTED`).
-export const LoanDocumentStatus = z.enum(["PENDING", "UPLOADED"]);
+export const LoanDocumentStatus = z.enum(["PENDING", "UPLOADED", "NOT_REQUIRED"]);
 type LoanDocumentStatus = z.infer<typeof LoanDocumentStatus>;
 
 export const LoanDocumentFileMeta = z.object({

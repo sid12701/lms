@@ -27,7 +27,6 @@ const lsp: LspRow = {
   status: "ACTIVE",
   createdAt: "2026-01-01T00:00:00.000Z",
   userCount: 2,
-  webhookEnabled: false,
 };
 
 const uiEntry = {

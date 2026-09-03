@@ -14,17 +14,6 @@ const ENDPOINT = "/api/v1/internal/admin/audit-events";
 const DEFAULT_PAGE_SIZE = 25;
 const DEFAULT_WINDOW_DAYS = 7;
 
-const BACKEND_STREAMS: ReadonlySet<AuditStream> = new Set<AuditStream>([
-  "APPLICATION",
-  "INTAKE",
-  "DOCUMENT_ACCESS",
-  "PRODUCT",
-  "APP_USER",
-  "API_CLIENT",
-  "DISBURSEMENT",
-  "REPORT_ACCESS",
-]);
-
 interface BackendUnifiedAuditEvent {
   id: string;
   stream: AuditStream;
@@ -46,12 +35,6 @@ interface BackendCursorPagedAuditEvents {
   limit: number;
 }
 
-function backendSubsetOf(streams: readonly AuditStream[] | undefined): AuditStream[] | undefined {
-  if (!streams || streams.length === 0) return undefined;
-  const filtered = streams.filter((s) => BACKEND_STREAMS.has(s));
-  return filtered.length > 0 ? filtered : undefined;
-}
-
 function defaultDateFrom(): string {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - DEFAULT_WINDOW_DAYS);
@@ -70,13 +53,16 @@ function buildBackendQueryParams(
   filters: AuditEventsFilters,
 ): Record<string, string | number | undefined> {
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
-  const streams = backendSubsetOf(filters.streams);
 
   const params: Record<string, string | number | undefined> = {
     limit: pageSize,
   };
   if (filters.cursor) params["cursor"] = filters.cursor;
-  if (streams) params["streams"] = streams.join(",");
+  // `AUDIT_STREAMS` is the backend's own enum, so anything that survived URL
+  // coercion is a stream the query understands and can be passed through.
+  if (filters.streams && filters.streams.length > 0) {
+    params["streams"] = filters.streams.join(",");
+  }
   if (filters.actorId) params["actorUsername"] = filters.actorId;
   if (filters.loanApplicationId) params["loanApplicationId"] = filters.loanApplicationId;
   if (filters.correlationId) params["correlationId"] = filters.correlationId;
@@ -109,9 +95,6 @@ function subjectFor(event: BackendUnifiedAuditEvent): {
       subjectType: "API_CLIENT",
       subjectId: readDetailId(event.detail, "apiClientId"),
     };
-  }
-  if (event.stream === "PII_REVEAL" && event.borrowerId) {
-    return { subjectType: "BORROWER", subjectId: event.borrowerId };
   }
   if (event.loanApplicationId) {
     return { subjectType: "LOAN_APPLICATION", subjectId: event.loanApplicationId };

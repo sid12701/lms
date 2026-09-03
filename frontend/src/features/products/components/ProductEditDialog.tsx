@@ -95,10 +95,10 @@ export function ProductEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <FormDialogHeader
           icon={Edit2}
-          iconClassName="text-primary"
+          iconClassName="text-primary-tinted"
           title={
             <>
               Edit product
@@ -119,7 +119,7 @@ export function ProductEditDialog({
               control={form.control}
               name="name"
               render={({ field }) => (
-                <FormItem>
+                <FormItem required>
                   <FormLabel>Name</FormLabel>
                   <FormControl>
                     <Input
@@ -138,7 +138,7 @@ export function ProductEditDialog({
               control={form.control}
               name="status"
               render={({ field }) => (
-                <FormItem>
+                <FormItem required>
                   <FormLabel>Status</FormLabel>
                   <FormControl>
                     <Select value={field.value} onValueChange={(v) => field.onChange(v)}>

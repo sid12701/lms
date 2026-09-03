@@ -1,5 +1,7 @@
 import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { usePageMeta } from "@/components/app/shell/page-meta-context";
+import { formatLoanDocumentTitle } from "@/lib/loan-page-identity";
 import { PageEyebrow } from "./PageEyebrow";
 
 interface PageHeaderProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
@@ -11,6 +13,12 @@ interface PageHeaderProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
   description?: string;
   /** Right-aligned slot for primary/secondary actions. */
   actions?: ReactNode;
+  /**
+   * Overrides the `document.title` derived from `title`. Pass this when the tab
+   * should read differently from the visible heading; pass `null` when an
+   * ancestor already owns the title for this route.
+   */
+  documentTitle?: string | null;
   className?: string;
 }
 
@@ -21,9 +29,21 @@ interface PageHeaderProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
  * decides whether the surrounding container should pin it.
  */
 export const PageHeader = forwardRef<HTMLElement, PageHeaderProps>(function PageHeader(
-  { eyebrow, title, description, actions, className, ...rest },
+  { eyebrow, title, description, actions, documentTitle, className, ...rest },
   ref,
 ) {
+  /*
+    Naming the tab is the header's job, because the header is the one place every
+    routed screen already states what it is. Left to the individual pages, only
+    the two loan-detail routes ever called `usePageMeta`, so the other thirteen
+    shipped the literal fallback title "LMS" — undescriptive, non-unique, and a
+    WCAG 2.4.2 failure on a tool whose operators keep many tabs open.
+  */
+  usePageMeta({
+    documentTitle:
+      documentTitle === null ? undefined : (documentTitle ?? formatLoanDocumentTitle(title)),
+  });
+
   return (
     <header
       ref={ref}

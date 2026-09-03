@@ -28,9 +28,6 @@ const LoansByDpdBucketCard = lazy(() =>
   })),
 );
 
-const CARD_ENTRANCE =
-  "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-300";
-
 function HomeLoadingSkeleton() {
   return (
     <div className="flex flex-col gap-6" data-testid="home-page-loading">
@@ -56,7 +53,6 @@ export function HomePage() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <PageHeader
-        eyebrow="Internal workspace"
         title="Home"
         description="Operational summary across all LSPs — applications, repayments, alerts."
       />
@@ -83,22 +79,14 @@ export function HomePage() {
         />
       ) : query.data.kind === "internal" ? (
         <div data-testid="home-page-internal" className="flex flex-col gap-6">
-          <div className={CARD_ENTRANCE}>
-            <InternalKpiSummary kpis={query.data.data} />
-          </div>
+          <InternalKpiSummary kpis={query.data.data} />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className={CARD_ENTRANCE}>
-              <Suspense fallback={<ChartSkeleton />}>
-                <LoansByDpdBucketCard buckets={query.data.data.dpdBuckets} />
-              </Suspense>
-            </div>
-            <div className={CARD_ENTRANCE}>
-              <OpenAlertsCard alerts={query.data.data.openAlerts} />
-            </div>
+            <Suspense fallback={<ChartSkeleton />}>
+              <LoansByDpdBucketCard buckets={query.data.data.dpdBuckets} />
+            </Suspense>
+            <OpenAlertsCard alerts={query.data.data.openAlerts} />
           </div>
-          <div className={CARD_ENTRANCE}>
-            <RecentApplicationsCard applications={query.data.data.recentApplications} />
-          </div>
+          <RecentApplicationsCard applications={query.data.data.recentApplications} />
         </div>
       ) : null}
     </div>

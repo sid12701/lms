@@ -9,6 +9,10 @@ const TONE_CLASSES: Record<DocumentStatusPillTone, { wrap: string; icon: string 
     wrap: "border-warning/30 bg-warning/10 text-warning",
     icon: "text-warning",
   },
+  neutral: {
+    wrap: "border-border bg-surface-muted text-foreground-muted",
+    icon: "text-foreground-muted",
+  },
   info: {
     wrap: "border-info/30 bg-info/10 text-info",
     icon: "text-info",

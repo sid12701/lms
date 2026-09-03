@@ -4,8 +4,7 @@
  * Internal roles (SYSTEM_ADMIN / OPS_USER) call the live backend under
  * `/api/v1/internal/ops/loan-applications/{id}` and translate the flat
  * backend `LoanApplicationDetailResponse` into the nested `LoanApplicationDetail`
- * projection the UI consumes. The webhook tab projects rows from the admin
- * webhook outbox filtered by `aggregateId`.
+ * projection the UI consumes.
  *
  * Lifecycle mutations (`postTransition`, `postDisbursement`) call the same
  * internal ops endpoints with BR-5 idempotency keys.
@@ -24,13 +23,11 @@ import type {
   LoanApplicationActivityResponse,
   LoanApplicationDetail,
   LoanForeclosureQuote,
-  LoanApplicationWebhookDelivery,
-  LoanApplicationWebhooksResponse,
   RequestForeclosureQuoteInput,
   TransitionStatusInput,
 } from "./types";
 import type { ApplicationAuditEvent, LoanApplication } from "@/types";
-import { isUploadedBackendChecklistStatus } from "@/schemas/document";
+import { isSatisfiedBackendChecklistStatus } from "@/schemas/document";
 import { parseLoanApplicationStatus } from "@/lib/loan-application-status";
 
 const BACKEND_BASE = "/api/v1/internal/ops/loan-applications";
@@ -215,7 +212,7 @@ function areRequiredDocumentsComplete(
   const requiredChecklistRows = checklist.filter((row) => row.required);
   return (
     requiredChecklistRows.length === 0 ||
-    requiredChecklistRows.every((row) => isUploadedBackendChecklistStatus(row.status ?? ""))
+    requiredChecklistRows.every((row) => isSatisfiedBackendChecklistStatus(row.status ?? ""))
   );
 }
 
@@ -255,6 +252,7 @@ function backendToDetail(
     docsComplete: areRequiredDocumentsComplete(checklist),
     scheduleValid: hasValidRepaymentSchedule(payload),
     accountDelinquency: toAccountDelinquency(payload),
+    interestRate: payload.interestRate == null ? null : toAmount(payload.interestRate),
   };
 }
 
@@ -322,48 +320,6 @@ export async function fetchLoanApplicationActivity(
     `${BACKEND_BASE}/${encodeURIComponent(id)}/audit-events`,
   );
   return { events: rows.map(toAuditEvent) };
-}
-
-interface BackendWebhookEventDeliveryRow {
-  eventId: string;
-  eventType: string;
-  targetUrl: string | null;
-  status: "PENDING" | "DELIVERED" | "FAILED" | "DEAD_LETTERED";
-  attempts: number;
-  lastAttemptAt: string | null;
-  lastResponseCode: number | null;
-  lastError: string | null;
-  createdAt: string;
-}
-
-function toWebhookDelivery(row: BackendWebhookEventDeliveryRow): LoanApplicationWebhookDelivery {
-  return {
-    id: row.eventId,
-    eventType: row.eventType,
-    endpoint: row.targetUrl ?? "—",
-    status: row.status,
-    attemptCount: row.attempts,
-    lastAttemptAt: row.lastAttemptAt,
-    lastError: row.lastError,
-    createdAt: row.createdAt,
-  };
-}
-
-/**
- * Fetch the per-application webhook-delivery feed.
- *
- * Both SYSTEM_ADMIN and OPS_USER read from the dedicated per-loan endpoint
- * `/api/v1/internal/ops/loan-applications/{id}/webhook-events` (Gap #5):
- * the backend projects each outbox row + its latest delivery attempt into
- * a single row, capped at 200 events newest-first.
- */
-export async function fetchLoanApplicationWebhooks(
-  id: string,
-): Promise<LoanApplicationWebhooksResponse> {
-  const rows = await requestJson<BackendWebhookEventDeliveryRow[]>(
-    `${BACKEND_BASE}/${encodeURIComponent(id)}/webhook-events`,
-  );
-  return { deliveries: rows.map(toWebhookDelivery) };
 }
 
 export async function fetchForeclosureQuotes(id: string): Promise<readonly LoanForeclosureQuote[]> {

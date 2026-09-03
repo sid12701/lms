@@ -1,26 +1,18 @@
 /**
  * View-layer types for the `/lsps` admin surface (Phase 9 — Agent A).
  *
- * `Lsp` and `LspWebhookSubscription` are the canonical wire shapes from
- * `src/schemas/lsp.ts`. The list page consumes a `LspRow` projection that
- * adds the operator-facing aggregate `userCount` so the table can show
- * tenant-user reach at a glance without a second round-trip.
+ * `Lsp` is the canonical wire shape from `src/schemas/lsp.ts`. The list page
+ * consumes a `LspRow` projection that adds the operator-facing aggregate
+ * `userCount` so the table can show tenant-user reach at a glance without a
+ * second round-trip.
  *
- * All mutations carry an idempotency key (BR-5). Webhook subscription writes
- * are upsert-style — there's one subscription per LSP per blueprint §11.
+ * All mutations carry an idempotency key (BR-5).
  */
 import { z } from "zod";
-import {
-  Lsp,
-  LspOperationalStatus,
-  LspStatus,
-  LspStatusChangeReason,
-  LspWebhookSubscription,
-  WebhookEventType,
-} from "@/schemas/lsp";
+import { Lsp, LspOperationalStatus, LspStatus, LspStatusChangeReason } from "@/schemas/lsp";
 import { ADMIN_LIST_FILTER_FIELDS } from "@/lib/admin-list-url-state";
 
-export type { Lsp, LspWebhookSubscription };
+export type { Lsp };
 
 /** Server-side filter shape for the list page. URL-bound via `useSearchParams`. */
 const LspsListFilters = z.object({
@@ -33,8 +25,6 @@ export type LspsListFilters = z.infer<typeof LspsListFilters>;
 export interface LspRow extends Lsp {
   /** Number of app users scoped to this LSP (served by the directory endpoint). */
   userCount: number;
-  /** Whether a webhook subscription exists + is enabled. */
-  webhookEnabled: boolean;
 }
 
 export interface LspsListResponse {
@@ -89,18 +79,4 @@ export interface LspAuditEventRow {
 
 export interface LspMutationResponse {
   lsp: LspRow;
-}
-
-/** Webhook subscription upsert. `null` returned when none exists yet. */
-export interface UpsertWebhookSubscriptionInput {
-  enabled: boolean;
-  endpointUrl: string;
-  /** Empty string keeps the currently stored secret (write-only on reads). */
-  signingSecret: string;
-  eventTypes: z.infer<typeof WebhookEventType>[];
-  idempotencyKey: string;
-}
-
-export interface WebhookSubscriptionResponse {
-  subscription: LspWebhookSubscription | null;
 }

@@ -15,10 +15,9 @@ const FIXTURE: HomeKpis = {
   data: {
     applicationsAwaitingApproval: 5,
     applicationsInDisbursement: 2,
-    mtdDisbursedAmount: 1_000_000,
+    totalDisbursedAmount: 1_000_000,
     overdueLoansCount: 1,
     overdueAmount: 25_000,
-    avgApprovalTatHours: 9,
     applicationsByStatus: [{ status: "AWAITING_APPROVAL", count: 5 }],
     dpdBuckets: [
       { bucket: "B0", count: 9 },
@@ -29,6 +28,7 @@ const FIXTURE: HomeKpis = {
     ],
     recentApplications: [],
     openAlerts: [],
+    dataAsOf: "2026-08-01T12:00:00.000Z",
   },
 };
 

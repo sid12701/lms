@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/app/data/DataTable";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { StatusBadge } from "@/components/app/status/StatusBadge";
-import { formatINR, formatRelative } from "@/lib/format";
+import { AbsoluteRelativeTime } from "@/components/app/misc/AbsoluteRelativeTime";
+import { formatINR } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Files } from "lucide-react";
 import type { HomeRecentApplication } from "../types";
@@ -85,9 +86,7 @@ export const RecentApplicationsCard = forwardRef<HTMLDivElement, RecentApplicati
           header: "Created",
           accessorKey: "createdAt",
           cell: ({ row }) => (
-            <span className="text-foreground-muted text-sm">
-              {formatRelative(row.original.createdAt)}
-            </span>
+            <AbsoluteRelativeTime iso={row.original.createdAt} variant="relative" />
           ),
           meta: { label: "Created" },
         },

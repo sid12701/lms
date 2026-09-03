@@ -1,6 +1,7 @@
 import { forwardRef, useMemo } from "react";
 import { BarChart3 } from "lucide-react";
 import { StatBreakdownCardFrame } from "./StatBreakdownCardFrame";
+import { delinquencyBucketShortLabel } from "@/lib/delinquency-display";
 import { prefersReducedMotion } from "@/lib/prefers-reduced-motion";
 import { ChartSkeleton } from "@/components/app/feedback/Skeletons";
 import type { DelinquencyBucket } from "@/schemas/loan-account";
@@ -12,14 +13,6 @@ interface LoansByDpdBucketCardProps {
   isLoading?: boolean;
   className?: string;
 }
-
-const BUCKET_LABEL: Record<DelinquencyBucket, string> = {
-  B0: "Current",
-  B1_30: "0-30",
-  B31_60: "30-60",
-  B61_90: "60-90",
-  B90_PLUS: "90+",
-};
 
 const BUCKET_FILL: Record<DelinquencyBucket, string> = {
   B0: "var(--color-success)",
@@ -41,7 +34,7 @@ export const LoansByDpdBucketCard = forwardRef<HTMLDivElement, LoansByDpdBucketC
     const data: DpdChartDatum[] = useMemo(() => {
       return buckets.map((b) => ({
         bucket: b.bucket,
-        label: BUCKET_LABEL[b.bucket],
+        label: delinquencyBucketShortLabel(b.bucket),
         count: b.count,
         fill: BUCKET_FILL[b.bucket],
       }));

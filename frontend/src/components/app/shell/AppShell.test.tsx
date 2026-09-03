@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { axe } from "vitest-axe";
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -17,6 +17,24 @@ function createQueryClient() {
 }
 
 const adminSessionFixture = adminSession;
+
+function stubViewportTier(tier: "mobile" | "compact" | "wide") {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches:
+        tier === "wide"
+          ? query === "(min-width: 1280px)"
+          : tier === "compact"
+            ? query === "(min-width: 1024px) and (max-width: 1279px)"
+            : false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  });
+}
 
 function renderShell() {
   return render(
@@ -44,14 +62,19 @@ function renderShell() {
 }
 
 describe("AppShell", () => {
-  it("renders the sidebar, top bar, breadcrumb, and outlet", () => {
+  beforeEach(() => {
+    stubViewportTier("compact");
+  });
+
+  it("renders the sidebar, top bar, and outlet", () => {
     const { getByLabelText, getByTestId, container } = renderShell();
     // Exactly one sidebar landmark — landmark-unique a11y rule depends on it.
     expect(getByLabelText("Primary navigation")).toBeInTheDocument();
     // TopBar slot is data-attributed.
     expect(document.querySelector('[data-slot="top-bar"]')).not.toBeNull();
-    // Breadcrumb landmark (inside main).
-    expect(container.querySelector('main nav[aria-label="Breadcrumb"]')).not.toBeNull();
+    // No Breadcrumb landmark at /home: the trail is rooted at Home, so it would
+    // read "Home > Home". The reserved bar keeps the vertical rhythm stable.
+    expect(container.querySelector('main nav[aria-label="Breadcrumb"]')).toBeNull();
     // Outlet.
     expect(getByTestId("outlet")).toBeInTheDocument();
   });
@@ -170,6 +193,15 @@ describe("AppShell", () => {
         "LSPs page",
       );
     });
+  });
+
+  it("shows the mobile nav trigger only on the mobile viewport tier", () => {
+    stubViewportTier("mobile");
+
+    const { getByRole } = renderShell();
+    const menuButton = getByRole("button", { name: "Open navigation" });
+    expect(menuButton).toBeInTheDocument();
+    expect(menuButton.className).not.toContain("lg:hidden");
   });
 
   it("has no axe violations", async () => {

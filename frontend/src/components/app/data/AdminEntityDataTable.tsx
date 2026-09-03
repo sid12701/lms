@@ -1,7 +1,15 @@
-import type { ColumnDef, PaginationState, Row, SortingState } from "@tanstack/react-table";
+import type {
+  ColumnDef,
+  PaginationState,
+  Row,
+  SortingState,
+  VisibilityState,
+} from "@tanstack/react-table";
 import type { ReactNode } from "react";
 import { DataTable } from "@/components/app/data/DataTable";
 import { DataTablePagination } from "@/components/app/data/DataTablePagination";
+import { DataTableViewOptions } from "@/components/app/data/DataTableViewOptions";
+import { DensityToggle } from "@/components/app/data/DensityToggle";
 import { cn } from "@/lib/utils";
 
 export interface AdminEntityDataTableProps<TData> {
@@ -26,6 +34,15 @@ export interface AdminEntityDataTableProps<TData> {
   className?: string;
   /** Forwarded to `DataTable` — list pages default to mobile cards. */
   responsiveCards?: boolean;
+  /**
+   * Column-visibility and row-density controls above the table. On by default:
+   * dense server-paged lists are exactly where operators need to drop columns
+   * they do not use and tighten rows.
+   */
+  showTableControls?: boolean;
+  /** Controlled column visibility — pair with `onColumnVisibilityChange`. */
+  columnVisibility?: VisibilityState;
+  onColumnVisibilityChange?: (next: VisibilityState) => void;
 }
 
 /**
@@ -53,6 +70,9 @@ export function AdminEntityDataTable<TData>({
   skeletonRows,
   className,
   responsiveCards = true,
+  showTableControls = true,
+  columnVisibility,
+  onColumnVisibilityChange,
 }: AdminEntityDataTableProps<TData>) {
   const pagination = { pageIndex: page, pageSize };
 
@@ -74,16 +94,30 @@ export function AdminEntityDataTable<TData>({
         state={{
           pagination,
           ...(sorting !== undefined ? { sorting } : {}),
+          ...(columnVisibility !== undefined ? { columnVisibility } : {}),
         }}
         onStateChange={(next) => {
           if (next.pagination !== undefined) onPaginationChange(next.pagination);
           if (next.sorting !== undefined && onSortingChange) onSortingChange(next.sorting);
+          if (next.columnVisibility !== undefined && onColumnVisibilityChange) {
+            onColumnVisibilityChange(next.columnVisibility);
+          }
         }}
         empty={empty}
         getRowAction={getRowAction}
         getRowTestId={getRowTestId}
         getRowAriaLabel={getRowAriaLabel}
         responsiveCards={responsiveCards}
+        {...(showTableControls
+          ? {
+              toolbar: (table) => (
+                <>
+                  <DensityToggle />
+                  <DataTableViewOptions table={table} />
+                </>
+              ),
+            }
+          : {})}
       />
       <DataTablePagination
         pageIndex={page}

@@ -56,7 +56,7 @@ export function LspAuditEventsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <History className="text-progress h-5 w-5" aria-hidden="true" />
@@ -87,7 +87,7 @@ export function LspAuditEventsDialog({
             description="Disable or reactivate actions will appear here with reason, note, and actor."
           />
         ) : (
-          <div className="max-h-[min(24rem,50vh)] overflow-auto rounded-md border">
+          <div className="rounded-container max-h-[min(24rem,50vh)] overflow-auto border">
             <table className="w-full text-sm" data-slot="lsp-audit-table">
               <thead className="bg-surface-muted sticky top-0">
                 <tr className="text-foreground-muted text-left text-xs">
@@ -126,7 +126,7 @@ export function LspAuditEventsDialog({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+            Done
           </Button>
         </DialogFooter>
       </DialogContent>

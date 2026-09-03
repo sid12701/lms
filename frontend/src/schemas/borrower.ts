@@ -1,5 +1,5 @@
 /**
- * Borrower master record per blueprint §8 + UI pages.md borrower-detail.
+ * Borrower master record per blueprint §8; surfaced on `/borrowers/:id`.
  * Borrower is the canonical identity carrier (BR-1 one-open-loan key).
  */
 import { z } from "zod";

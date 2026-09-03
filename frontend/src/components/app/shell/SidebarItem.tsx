@@ -13,9 +13,10 @@ export interface SidebarItemProps {
 }
 
 /**
- * Renders a single sidebar nav link with active styling. Active state shows
- * a navy left border, brand-50 background, and brand-700 text per design
- * spec. Tabular focus ring and reduced-motion safe.
+ * Renders a single sidebar nav link. The active state is a 10% primary tint
+ * with `--color-primary-tinted` text (a dark-safe foreground — the preset's
+ * dark `--primary` is a background value and measured 2.23:1 as text) plus a
+ * 2px primary bar on the leading edge. Focus-visible ring, reduced-motion safe.
  */
 export function SidebarItem({
   to,
@@ -32,9 +33,9 @@ export function SidebarItem({
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          "group focus-visible:ring-ring/50 relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 outline-none focus-visible:ring-2",
+          "group focus-visible:ring-ring rounded-control relative flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors duration-150 outline-none focus-visible:ring-2",
           isActive
-            ? "bg-primary/10 text-primary"
+            ? "bg-primary/10 text-primary-tinted"
             : "text-foreground-muted hover:bg-surface-muted hover:text-foreground",
           collapsed && "justify-center px-2",
         )

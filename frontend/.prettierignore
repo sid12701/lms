@@ -11,3 +11,6 @@ package-lock.json
 docs/
 CLAUDE.md
 .claude/
+
+# Impeccable design-tooling state (generated)
+.impeccable/

@@ -28,7 +28,7 @@ const RechartsDpdBucketChart = lazy(async () => {
         className="h-[280px] w-full opacity-100 transition-opacity duration-200 motion-reduce:transition-none"
       >
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={[...data]} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+          <BarChart data={[...data]} margin={{ top: 8, right: 16, bottom: 8, left: 20 }}>
             <CartesianGrid
               strokeDasharray="3 3"
               stroke="color-mix(in srgb, var(--color-accent) 18%, var(--color-border))"
@@ -52,12 +52,12 @@ const RechartsDpdBucketChart = lazy(async () => {
               tick={{ fontSize: 12, fill: "var(--color-foreground-muted)" }}
               axisLine={false}
               tickLine={false}
-              width={36}
+              width={44}
               label={{
                 value: "Loans",
                 angle: -90,
                 position: "insideLeft",
-                offset: 12,
+                offset: 4,
                 fontSize: 11,
                 fill: "var(--color-foreground-subtle)",
               }}

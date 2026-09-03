@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { Tabs as TabsPrimitive } from "radix-ui";
+import { prefersReducedMotion } from "@/lib/prefers-reduced-motion";
 import { cn } from "@/lib/utils";
 import type { LoanApplicationDetailTab } from "../types";
 
@@ -9,7 +10,6 @@ const TAB_DEFS: ReadonlyArray<{ value: LoanApplicationDetailTab; label: string }
   { value: "documents", label: "Documents" },
   { value: "repayments", label: "Repayments" },
   { value: "activity", label: "Activity" },
-  { value: "webhooks", label: "Webhooks" },
 ];
 
 export interface DetailTabsShellProps {
@@ -28,7 +28,7 @@ const TAB_TRIGGER_CLASSES = cn(
 );
 
 /**
- * Six-tab navigation shell for `/loan-applications/:id`.
+ * Five-tab navigation shell for `/loan-applications/:id`.
  *
  * The component is presentational — URL plumbing lives upstream in
  * `detail-page.tsx` via a `useSearchParams` helper. We render TabsList +
@@ -42,6 +42,8 @@ export function DetailTabsShell({
   children,
   className,
 }: DetailTabsShellProps) {
+  const reducedMotion = prefersReducedMotion();
+
   return (
     <TabsPrimitive.Root
       data-slot="detail-tabs"
@@ -65,10 +67,27 @@ export function DetailTabsShell({
         ))}
       </TabsPrimitive.List>
 
+      {/*
+        A short fade on the content swap: one panel replacing another is a state
+        change where continuity aids comprehension, which is the only kind of
+        motion DESIGN.md allows. Fade alone — no slide or zoom — because the
+        panel is a large content region and movement there reads as decoration.
+
+        `key` is load-bearing. Only the active panel is mounted and its `value`
+        prop changes in place, so without a key React reuses the same DOM node
+        and the entrance never replays. There is no exit animation: the old
+        panel is gone the moment the tab changes, which is as fast as an exit
+        can be.
+      */}
       <TabsPrimitive.Content
+        key={activeTab}
         value={activeTab}
         data-testid={`tab-panel-${activeTab}`}
-        className="focus-visible:outline-none"
+        data-reduced-motion={reducedMotion ? "true" : undefined}
+        className={cn(
+          "focus-visible:outline-none",
+          !reducedMotion && "animate-in fade-in-0 duration-150",
+        )}
       >
         {children}
       </TabsPrimitive.Content>

@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatDateTime, formatRelative } from "@/lib/format";
-import { STATUS_META } from "@/lib/lifecycle";
-import type { LoanStatus, Role } from "@/types";
+import { loanStatusLabel } from "@/lib/loan-application-activity";
+import type { Role } from "@/types";
 import { AUDIT_STREAM_LABEL, type AuditEvent, type AuditStreamKind, getAuditCommon } from "./types";
 
 interface AuditEventNodeProps extends HTMLAttributes<HTMLLIElement> {
@@ -60,20 +60,12 @@ function humanizeAction(action: string | null | undefined): string | null {
   return lowered.charAt(0).toUpperCase() + lowered.slice(1);
 }
 
-function statusLabel(status: string | null | undefined): string {
-  if (!status) return "—";
-  if (status in STATUS_META) {
-    return STATUS_META[status as LoanStatus].label;
-  }
-  return status.replace(/_/g, " ").toLowerCase();
-}
-
 function summarize(entry: AuditEvent): { headline: string; detail: string | null } {
   switch (entry.kind) {
     case "APPLICATION": {
       const e = entry.event;
-      const from = statusLabel(e.fromStatus);
-      const to = statusLabel(e.toStatus);
+      const from = loanStatusLabel(e.fromStatus);
+      const to = loanStatusLabel(e.toStatus);
       const actionLabel = humanizeAction(e.action);
       if (e.fromStatus && e.toStatus && e.fromStatus === e.toStatus) {
         return {
@@ -120,7 +112,7 @@ function CorrelationReveal({
       <summary
         className={cn(
           "cursor-pointer underline decoration-dotted underline-offset-2 select-none",
-          compact ? "text-[11px]" : "text-xs",
+          compact ? "text-xs" : "text-xs",
         )}
       >
         Reference id
@@ -129,7 +121,7 @@ function CorrelationReveal({
         <code
           className={cn(
             "bg-surface-muted text-foreground rounded px-1.5 py-0.5 font-mono",
-            compact ? "text-[11px]" : "text-xs",
+            compact ? "text-xs" : "text-xs",
           )}
         >
           {correlationId}
@@ -204,7 +196,7 @@ export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
             </span>
             <span
               data-slot="audit-event-actor"
-              className={cn("text-foreground-muted", compact ? "text-[11px]" : "text-xs")}
+              className={cn("text-foreground-muted", compact ? "text-xs" : "text-xs")}
               title={common.actorId !== actorLabel ? common.actorId : undefined}
             >
               {actorLabel}
@@ -215,10 +207,7 @@ export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
             <time
               data-slot="audit-event-timestamp"
               dateTime={common.timestamp}
-              className={cn(
-                "text-foreground-muted tabular-nums",
-                compact ? "text-[11px]" : "text-xs",
-              )}
+              className={cn("text-foreground-muted tabular-nums", compact ? "text-xs" : "text-xs")}
             >
               <span>{absolute}</span>
               <span aria-hidden="true" className="px-1">
@@ -226,8 +215,8 @@ export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
               </span>
               <span data-slot="audit-event-relative">{relative}</span>
             </time>
-            {common.correlationId ? (
-              <CorrelationReveal correlationId={common.correlationId} compact={compact} />
+            {common.correlationId?.trim() ? (
+              <CorrelationReveal correlationId={common.correlationId.trim()} compact={compact} />
             ) : null}
           </div>
 
@@ -240,7 +229,7 @@ export const AuditEventNode = forwardRef<HTMLLIElement, AuditEventNodeProps>(
             ) : (
               <p
                 data-slot="audit-event-detail"
-                className={cn("text-foreground-muted", compact ? "text-[11px]" : "text-xs")}
+                className={cn("text-foreground-muted", compact ? "text-xs" : "text-xs")}
               >
                 {detail}
               </p>

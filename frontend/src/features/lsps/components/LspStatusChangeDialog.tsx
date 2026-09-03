@@ -111,7 +111,7 @@ export function LspStatusChangeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <ShieldOff className="text-progress h-5 w-5" aria-hidden="true" />
@@ -135,7 +135,7 @@ export function LspStatusChangeDialog({
             control={form.control}
             name="status"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Target status</FormLabel>
                 <FormControl>
                   <Select
@@ -162,7 +162,7 @@ export function LspStatusChangeDialog({
           {isDisable ? (
             <div
               role="alert"
-              className="border-danger/30 bg-danger/5 text-danger flex gap-2 rounded-md border p-3 text-sm"
+              className="border-danger/30 bg-danger/5 text-danger rounded-container flex gap-2 border p-3 text-sm"
               data-slot="lsp-disable-warning"
             >
               <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
@@ -179,7 +179,7 @@ export function LspStatusChangeDialog({
 
           {isReactivate ? (
             <div
-              className="border-warning/30 bg-warning/5 text-foreground rounded-md border p-3 text-sm"
+              className="border-warning/30 bg-warning/5 text-foreground rounded-container border p-3 text-sm"
               data-slot="lsp-reactivate-warning"
             >
               Reactivating restores LSP access only. API clients stay inactive until their secrets
@@ -191,7 +191,7 @@ export function LspStatusChangeDialog({
             control={form.control}
             name="reason"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Reason</FormLabel>
                 <FormControl>
                   <Select
@@ -225,7 +225,7 @@ export function LspStatusChangeDialog({
             control={form.control}
             name="note"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Audit note</FormLabel>
                 <FormControl>
                   <Textarea

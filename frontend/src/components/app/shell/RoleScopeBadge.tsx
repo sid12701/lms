@@ -21,7 +21,7 @@ export function RoleScopeBadge({ className }: RoleScopeBadgeProps) {
       data-slot="role-scope-badge"
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
-        internal ? "bg-primary/10 text-primary" : "bg-muted text-foreground",
+        internal ? "bg-primary/10 text-primary-tinted" : "bg-muted text-foreground",
         className,
       )}
     >

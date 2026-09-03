@@ -16,10 +16,20 @@ import { IsoDate, Uuid } from "@/schemas/common";
 
 // ─── Stream discriminator ────────────────────────────────────────────────────
 
+/**
+ * The streams the explorer can actually select on.
+ *
+ * This list mirrors `AuditExplorerQuery.AuditStream` in the backend exactly.
+ * It used to carry a tenth entry, `PII_REVEAL`, which the backend has never
+ * known: `streams=PII_REVEAL` filtered to nothing the query recognised, so the
+ * client dropped the param and the operator got *every* stream back while the
+ * "PII reveal" control sat highlighted. A filter that reads as applied and
+ * silently widens the result set is the panel lying about the money it is
+ * showing — DESIGN.md's "no lever attached to nothing".
+ */
 export const AUDIT_STREAMS = [
   "APPLICATION",
   "INTAKE",
-  "PII_REVEAL",
   "DOCUMENT_ACCESS",
   "PRODUCT",
   "APP_USER",
@@ -34,7 +44,6 @@ export type AuditStream = z.infer<typeof AuditStreamSchema>;
 export const AUDIT_STREAM_LABEL: Record<AuditStream, string> = {
   APPLICATION: "Application",
   INTAKE: "Intake",
-  PII_REVEAL: "PII reveal",
   DOCUMENT_ACCESS: "Document access",
   PRODUCT: "Product",
   APP_USER: "App user",
@@ -47,10 +56,9 @@ export const AUDIT_STREAM_LABEL: Record<AuditStream, string> = {
 export const AUDIT_STREAM_BADGE_TONE: Record<AuditStream, string> = {
   APPLICATION: "bg-info/15 text-info-foreground border-info/40",
   INTAKE: "bg-success/15 text-success-foreground border-success/40",
-  PII_REVEAL: "bg-warning/15 text-warning-foreground border-warning/40",
   DOCUMENT_ACCESS: "bg-warning/15 text-warning-foreground border-warning/40",
   PRODUCT: "bg-muted text-foreground-muted border-border",
-  APP_USER: "bg-primary/10 text-primary border-primary/30",
+  APP_USER: "bg-primary/10 text-primary-tinted border-primary/30",
   API_CLIENT: "bg-secondary/15 text-secondary-foreground border-secondary/40",
   DISBURSEMENT: "bg-accent/15 text-accent-foreground border-accent/40",
   REPORT_ACCESS: "bg-chart-5/15 text-chart-5 border-chart-5/40",

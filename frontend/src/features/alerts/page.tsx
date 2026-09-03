@@ -84,7 +84,6 @@ export function AlertsPage() {
   return (
     <AdminEntityListPage
       testId="alerts-page"
-      eyebrow="Reporting"
       title="Alerts"
       description="Operational alerts across applications, disbursements, and repayments."
       list={query}

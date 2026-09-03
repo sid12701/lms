@@ -88,6 +88,12 @@ describe("ScheduleTable", () => {
     expect(buttons[0]!.getAttribute("aria-label")).toMatch(/installment 3/i);
   });
 
+  it("renders schedule totals above the table", () => {
+    const { getByText } = renderWithProviders(<ScheduleTable installments={INSTALLMENTS} />);
+    expect(getByText("Total installment amount")).toBeInTheDocument();
+    expect(getByText("Outstanding as of today")).toBeInTheDocument();
+  });
+
   it("has no axe violations", async () => {
     const { container } = renderWithProviders(
       <ScheduleTable installments={INSTALLMENTS} onRecordPayment={() => {}} />,

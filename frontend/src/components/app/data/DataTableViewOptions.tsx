@@ -2,6 +2,7 @@ import { Check, Settings2 } from "lucide-react";
 import type { Table } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useIsMobileViewport } from "@/lib/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 
 export interface DataTableViewOptionsProps<TData> {
@@ -13,8 +14,9 @@ export interface DataTableViewOptionsProps<TData> {
 
 /**
  * Popover-driven column visibility toggle. Lists every TanStack column that
- * opts into hiding (`column.getCanHide()`) as a checkbox-styled `Button` with
- * `aria-pressed`. Toggling fires `column.toggleVisibility`. We use buttons
+ * opts into hiding (`column.getCanHide()`) — narrowed at mobile widths to the
+ * columns the card layout can actually render, see below — as a checkbox-styled
+ * `Button` with `aria-pressed`. Toggling fires `column.toggleVisibility`. We use buttons
  * (not raw `<input type="checkbox">`) because raw inputs are reserved for
  * RHF-driven forms by repo policy — this is a UI-state control.
  */
@@ -23,9 +25,31 @@ export function DataTableViewOptions<TData>({
   label = "Columns",
   className,
 }: DataTableViewOptionsProps<TData>) {
-  const hideableColumns = table
+  const isMobileViewport = useIsMobileViewport();
+
+  const hideable = table
     .getAllLeafColumns()
     .filter((c) => typeof c.accessorFn !== "undefined" && c.getCanHide());
+
+  /*
+   * At mobile widths `DataTable` swaps the table for `DataTableMobileCards`,
+   * which renders only the columns that opt in via `meta.mobileCard`. Listing
+   * the rest here offered toggles that could not change anything on screen —
+   * "Tenure" read as visible on `/loan-applications` at 390px while the card
+   * never rendered it. A control is not allowed to promise what the layout
+   * cannot deliver.
+   *
+   * When no column opts in, the card falls back to a slice of the data columns
+   * (see `fallbackMobileColumns`), so every hideable column can still affect it
+   * and the unfiltered list stays correct.
+   */
+  const anyColumnOptsIntoCards = table
+    .getAllLeafColumns()
+    .some((c) => c.columnDef.meta?.mobileCard);
+  const hideableColumns =
+    isMobileViewport && anyColumnOptsIntoCards
+      ? hideable.filter((c) => c.columnDef.meta?.mobileCard)
+      : hideable;
 
   return (
     <Popover>
@@ -42,7 +66,12 @@ export function DataTableViewOptions<TData>({
           <span>{label}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-56 p-2" data-slot="view-options-content">
+      <PopoverContent
+        align="end"
+        aria-label={label}
+        className="w-56 p-2"
+        data-slot="view-options-content"
+      >
         <p className="text-foreground-muted px-2 pb-1 text-xs font-medium tracking-wide uppercase">
           Toggle columns
         </p>

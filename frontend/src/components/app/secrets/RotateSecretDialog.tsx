@@ -96,7 +96,7 @@ export function RotateSecretDialog({
             control={form.control}
             name="reason"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Reason for rotation</FormLabel>
                 <FormControl>
                   <Textarea

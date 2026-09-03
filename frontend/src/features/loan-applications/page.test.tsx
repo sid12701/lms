@@ -80,7 +80,7 @@ describe("LoanApplicationsPage", () => {
     });
     renderPage();
     expect(screen.getByTestId("loan-applications-page")).toBeInTheDocument();
-    expect(screen.getByText(/Workspace/)).toBeInTheDocument();
+    // "Workspace" eyebrow removed; the h1 carries the page identity.
     expect(
       screen.getByRole("heading", { level: 1, name: /Loan applications/i }),
     ).toBeInTheDocument();

@@ -32,7 +32,7 @@ describe("<ActionBar />", () => {
       />,
     );
     const approve = getByRole("button", { name: "Approve" });
-    expect(approve).toBeDisabled();
+    expect(approve).toHaveAttribute("aria-disabled", "true");
   });
 
   it("disables actions when role lacks the permission", () => {
@@ -40,7 +40,7 @@ describe("<ActionBar />", () => {
       <ActionBar currentStatus="AWAITING_APPROVAL" role="LSP_UI_READ" onConfirm={() => {}} />,
     );
     const approve = getByRole("button", { name: "Approve" });
-    expect(approve).toBeDisabled();
+    expect(approve).toHaveAttribute("aria-disabled", "true");
   });
 
   it("renders an empty-state message when no transitions leave the status", () => {
@@ -50,8 +50,13 @@ describe("<ActionBar />", () => {
     expect(getByText(/No actions available/i)).toBeInTheDocument();
   });
 
-  it("can hide target statuses that are handled by a dedicated workflow", () => {
-    const { queryByRole, getByText } = renderWithProviders(
+  /**
+   * When every action leaving a status is relocated to a dedicated workflow, the
+   * bar is empty but the screen is not — claiming "no actions available" directly
+   * above the panel that offers one is false.
+   */
+  it("stays silent when every action is handled by a dedicated workflow", () => {
+    const { queryByRole, queryByText } = renderWithProviders(
       <ActionBar
         currentStatus="UNDER_REPAYMENT"
         role="SYSTEM_ADMIN"
@@ -61,7 +66,21 @@ describe("<ActionBar />", () => {
       />,
     );
     expect(queryByRole("button", { name: "Settle foreclosure" })).not.toBeInTheDocument();
-    expect(getByText(/No actions available/i)).toBeInTheDocument();
+    expect(queryByText(/No actions available/i)).not.toBeInTheDocument();
+  });
+
+  it("still reports genuinely empty statuses when nothing was relocated", () => {
+    const { getByText } = renderWithProviders(
+      <ActionBar
+        currentStatus="UNDER_REPAYMENT"
+        role="OPS_USER"
+        gates={{ docsComplete: true, scheduleValid: true }}
+        onConfirm={() => {}}
+      />,
+    );
+    // Foreclosure is not relocated here, so it renders disabled with its reason
+    // rather than the bar falsely claiming the status has no actions at all.
+    expect(getByText("Settle foreclosure")).toBeInTheDocument();
   });
 
   it("opens the confirm dialog when an enabled action is clicked", async () => {

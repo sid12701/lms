@@ -43,7 +43,7 @@ export function LspMultiSelect({ choices, selected, onChange, className }: LspMu
           <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-1">
+      <PopoverContent align="start" aria-label="LSP selection" className="w-72 p-1">
         <ul
           role="listbox"
           aria-label="LSP selection"
@@ -70,14 +70,14 @@ export function LspMultiSelect({ choices, selected, onChange, className }: LspMu
                   <span
                     aria-hidden="true"
                     className={cn(
-                      "border-border inline-flex size-4 items-center justify-center rounded-sm border",
+                      "border-border rounded-control inline-flex size-4 items-center justify-center border",
                       isSelected ? "bg-primary border-primary text-primary-foreground" : null,
                     )}
                   >
                     {isSelected ? <Check className="size-3" aria-hidden="true" /> : null}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-left">{choice.name}</span>
-                  <span className="text-foreground-muted font-mono text-[10px] uppercase">
+                  <span className="text-foreground-muted text-eyebrow font-mono uppercase">
                     {choice.code}
                   </span>
                 </Button>

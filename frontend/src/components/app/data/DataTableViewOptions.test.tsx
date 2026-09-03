@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import type { ColumnDef, VisibilityState } from "@tanstack/react-table";
 import { useReactTable, getCoreRowModel } from "@tanstack/react-table";
-import { renderWithProviders } from "@/test/utils";
+import { axeBaseElement, renderWithProviders } from "@/test/utils";
 import { DataTableViewOptions } from "./DataTableViewOptions";
 
 interface Row {
@@ -45,5 +45,13 @@ describe("DataTableViewOptions", () => {
   it("has no axe violations on the trigger surface", async () => {
     const { container } = renderWithProviders(<Harness />);
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no axe violations with the popover open (portalled content lives on baseElement)", async () => {
+    const { getByRole, findByRole, baseElement } = renderWithProviders(<Harness />);
+    await userEvent.click(getByRole("button", { name: "Columns" }));
+    await findByRole("switch", { name: /name/i });
+
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
   });
 });

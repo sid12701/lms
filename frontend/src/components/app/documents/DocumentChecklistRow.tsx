@@ -21,6 +21,11 @@ export interface DocumentChecklistRowProps {
   onView?: () => void;
   onDownload?: () => void;
   permissions?: DocumentChecklistRowPermissions;
+  /**
+   * True once the loan is past disbursement, which turns the requirement from a
+   * blocker into a record. See `isDisbursementGatePassed`.
+   */
+  gatePassed?: boolean;
   className?: string;
 }
 
@@ -29,6 +34,7 @@ export function DocumentChecklistRow({
   compact = false,
   onView,
   onDownload,
+  gatePassed = false,
   className,
 }: DocumentChecklistRowProps) {
   const kindLabel = DOCUMENT_KIND_LABELS[doc.kind];
@@ -39,7 +45,7 @@ export function DocumentChecklistRow({
       data-status={doc.status}
       data-compact={compact ? "true" : "false"}
       className={cn(
-        "border-border bg-surface flex flex-col gap-3 rounded-md border p-4 sm:flex-row sm:items-start sm:justify-between",
+        "border-border bg-surface rounded-container flex flex-col gap-3 border p-4 sm:flex-row sm:items-start sm:justify-between",
         compact && "gap-2 p-3",
         className,
       )}
@@ -48,14 +54,29 @@ export function DocumentChecklistRow({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-foreground text-sm font-semibold">{kindLabel}</span>
           <DocumentStatusPill status={doc.status} />
-          {doc.requiredForDisbursement ? (
+          {doc.requiredForDisbursement && doc.status !== "NOT_REQUIRED" ? (
             <Badge
               variant="outline"
               data-slot="required-for-disbursement-badge"
-              className="border-warning/30 bg-warning/10 text-warning gap-1"
+              className={cn(
+                "gap-1",
+                gatePassed
+                  ? // `dark:` prefix required: the `outline` variant sets
+                    // `dark:bg-input/30`, and tailwind-merge does not dedupe a
+                    // prefixed utility against an unprefixed one — so in dark
+                    // both applied and the pill rendered `input/30` *over*
+                    // `surface-muted`, dropping its text to 4.32:1.
+                    "border-border bg-surface-muted dark:bg-surface-muted text-foreground-muted"
+                  : "border-warning/30 bg-warning/10 text-warning",
+              )}
             >
               <ShieldCheck className="size-3" aria-hidden="true" />
-              <span>Required for disbursement</span>
+              {/* Past the gate this is a record of what was required, not a
+                  blocker — the warning tint would assert an action nobody can
+                  take on a loan whose funds have already moved. */}
+              <span>
+                {gatePassed ? "Required before disbursement" : "Required for disbursement"}
+              </span>
             </Badge>
           ) : null}
         </div>
@@ -72,6 +93,14 @@ export function DocumentChecklistRow({
               </>
             ) : null}
           </p>
+        ) : doc.status === "NOT_REQUIRED" ? (
+          <p className="text-foreground-muted text-xs">
+            Not required for this loan — no document is expected.
+          </p>
+        ) : gatePassed ? (
+          // Factual and closed-ended: the gap is historical, and there is no
+          // upload affordance on this surface that could resolve it.
+          <p className="text-foreground-muted text-xs">Not provided before disbursement.</p>
         ) : (
           <p className="text-foreground-muted text-xs">No file uploaded yet.</p>
         )}

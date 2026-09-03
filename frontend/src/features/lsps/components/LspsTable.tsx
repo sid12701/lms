@@ -3,11 +3,11 @@
  *
  * Status is colour-coded via a small intent-mapped `Badge` (LSP status is a
  * separate enum from LoanStatus, so we don't reuse `StatusBadge` here).
- * Row actions: Details, Status, Audit, Webhook — delegated to the parent.
+ * Row actions: Details, Status, Audit — delegated to the parent.
  */
 import { useCallback, useMemo } from "react";
 import type { ColumnDef, PaginationState } from "@tanstack/react-table";
-import { CheckCircle2, MinusCircle, PauseCircle, Webhook } from "lucide-react";
+import { CheckCircle2, MinusCircle, PauseCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { AdminEntityDataTable } from "@/components/app/data/AdminEntityDataTable";
 import { EntityRowActions } from "@/components/app/data/EntityRowActions";
@@ -46,7 +46,6 @@ export interface LspsTableProps {
   onDetails: (row: LspRow) => void;
   onChangeStatus: (row: LspRow) => void;
   onViewAudit: (row: LspRow) => void;
-  onEditWebhook: (row: LspRow) => void;
   className?: string;
 }
 
@@ -58,7 +57,6 @@ export function LspsTable({
   onDetails,
   onChangeStatus,
   onViewAudit,
-  onEditWebhook,
   className,
 }: LspsTableProps) {
   const rows = data?.items ?? [];
@@ -114,24 +112,6 @@ export function LspsTable({
         meta: { numeric: true },
       },
       {
-        id: "webhook",
-        header: "Webhook",
-        cell: ({ row }) => {
-          if (row.original.webhookEnabled) {
-            return (
-              <span
-                data-slot="lsps-webhook-enabled"
-                className="text-success flex items-center gap-1 text-xs font-medium"
-              >
-                <Webhook aria-hidden="true" className="size-3" />
-                Enabled
-              </span>
-            );
-          }
-          return <span className="text-foreground-muted text-xs">Not configured</span>;
-        },
-      },
-      {
         id: "createdAt",
         header: "Created",
         cell: ({ row }) => (
@@ -173,21 +153,13 @@ export function LspsTable({
                   dataSlot: "lsps-audit-button",
                   onSelect: () => onViewAudit(lsp),
                 },
-                {
-                  id: "webhook",
-                  label: "Webhook",
-                  ariaLabel: `Webhook subscription for ${lsp.code}`,
-                  variant: "ghost",
-                  dataSlot: "lsps-webhook-button",
-                  onSelect: () => onEditWebhook(lsp),
-                },
               ]}
             />
           );
         },
       },
     ],
-    [onDetails, onChangeStatus, onViewAudit, onEditWebhook],
+    [onDetails, onChangeStatus, onViewAudit],
   );
 
   const handlePaginationChange = useCallback(

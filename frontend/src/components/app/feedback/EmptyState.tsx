@@ -27,10 +27,14 @@ const iconToneByVariant: Record<EmptyVariant, string> = {
   "no-permission": "text-warning",
 };
 
+type EmptyStateTitleElement = "p" | "h1" | "h2" | "h3";
+
 export interface EmptyStateProps
   extends Omit<HTMLAttributes<HTMLDivElement>, "title">, VariantProps<typeof emptyVariants> {
   variant?: EmptyVariant;
   title: string;
+  /** Heading element for `title`. Defaults to `p` for inline empty blocks. */
+  titleAs?: EmptyStateTitleElement;
   description?: string;
   action?: {
     label: string;
@@ -56,6 +60,7 @@ export const EmptyState = forwardRef<HTMLDivElement, EmptyStateProps>(function E
   {
     variant = "no-data",
     title,
+    titleAs: TitleTag = "p",
     description,
     action,
     secondaryAction,
@@ -75,7 +80,7 @@ export const EmptyState = forwardRef<HTMLDivElement, EmptyStateProps>(function E
     >
       <Icon aria-hidden="true" className={cn("h-8 w-8", iconToneByVariant[variant])} />
       <div className="flex max-w-sm flex-col gap-1">
-        <p className="text-foreground text-base leading-6 font-semibold">{title}</p>
+        <TitleTag className="text-foreground text-base leading-6 font-semibold">{title}</TitleTag>
         {description ? (
           <p className="text-foreground-muted text-sm leading-5.5">{description}</p>
         ) : null}

@@ -2,10 +2,10 @@
  * Phase 9 — `/lsps` admin surface (SYSTEM_ADMIN-only).
  *
  * Composes list filters, table, create, status change (kill chain), audit trail,
- * and webhook subscription dialogs. All writes go to the live backend under
+ * and IP allowlist dialogs. All writes go to the live backend under
  * `/api/v1/internal/admin/lsps`.
  */
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Building2 } from "lucide-react";
 import { AdminEntityListPage } from "@/components/app/layout/AdminEntityListPage";
@@ -17,13 +17,10 @@ import { LspDetailsDialog } from "./components/LspDetailsDialog";
 import { LspIpAllowlistDialog } from "./components/LspIpAllowlistDialog";
 import { LspStatusChangeDialog } from "./components/LspStatusChangeDialog";
 import { LspAuditEventsDialog } from "./components/LspAuditEventsDialog";
-import { LspWebhookSubscriptionDialog } from "./components/LspWebhookSubscriptionDialog";
 import { useLsps } from "./hooks/useLsps";
 import { useCreateLsp } from "./hooks/useCreateLsp";
 import { useUpdateLspStatus } from "./hooks/useUpdateLspStatus";
 import { useLspAuditEvents } from "./hooks/useLspAuditEvents";
-import { useLspWebhookSubscription } from "./hooks/useLspWebhookSubscription";
-import { useUpsertLspWebhookSubscription } from "./hooks/useUpsertLspWebhookSubscription";
 import type { LspRow, LspsListFilters } from "./types";
 import type { LspStatus } from "@/schemas/lsp";
 import {
@@ -53,7 +50,6 @@ type LspDialogState =
   | { kind: "details"; lsp: LspRow }
   | { kind: "status"; lsp: LspRow }
   | { kind: "audit"; lsp: LspRow }
-  | { kind: "webhook"; lsp: LspRow }
   | { kind: "allowlist"; lsp: LspRow };
 
 export function LspsPage() {
@@ -66,19 +62,26 @@ export function LspsPage() {
 
   const [dialog, setDialog] = useState<LspDialogState>({ kind: "none" });
 
+  /*
+    Memoised because `LspsTable` lists these in its `columns` dependency array,
+    and TanStack renders each column's `cell` function as a React component type
+    — so a new identity remounts every cell, discarding the row button the
+    operator just activated and leaving the dialog nothing to return focus to.
+  */
+  const openDetails = useCallback((lsp: LspRow) => setDialog({ kind: "details", lsp }), []);
+  const openChangeStatus = useCallback((lsp: LspRow) => setDialog({ kind: "status", lsp }), []);
+  const openViewAudit = useCallback((lsp: LspRow) => setDialog({ kind: "audit", lsp }), []);
+
   const createOpen = dialog.kind === "create";
   const detailsTarget = dialog.kind === "details" ? dialog.lsp : null;
   const statusTarget = dialog.kind === "status" ? dialog.lsp : null;
   const auditTarget = dialog.kind === "audit" ? dialog.lsp : null;
-  const webhookTarget = dialog.kind === "webhook" ? dialog.lsp : null;
   const allowlistTarget = dialog.kind === "allowlist" ? dialog.lsp : null;
 
   const list = useLsps(filters);
   const listLoading = list.isPending || (list.isFetching && list.data === undefined);
   const create = useCreateLsp();
   const updateStatus = useUpdateLspStatus();
-  const upsertWebhook = useUpsertLspWebhookSubscription();
-  const webhookQuery = useLspWebhookSubscription(webhookTarget?.id ?? null);
   const auditQuery = useLspAuditEvents(auditTarget?.id ?? null, auditTarget !== null);
 
   const handleCreateOpenChange = (open: boolean) => {
@@ -140,44 +143,6 @@ export function LspsPage() {
     if (!open) setDialog({ kind: "none" });
   };
 
-  const handleWebhookOpenChange = (open: boolean) => {
-    if (!open) {
-      if (upsertWebhook.isPending) return;
-      setDialog({ kind: "none" });
-      upsertWebhook.reset();
-    }
-  };
-  const handleWebhookConfirm = async ({
-    id,
-    enabled,
-    endpointUrl,
-    signingSecret,
-    eventTypes,
-    idempotencyKey,
-  }: {
-    id: string;
-    enabled: boolean;
-    endpointUrl: string;
-    signingSecret: string;
-    eventTypes: import("@/schemas/lsp").WebhookEventType[];
-    idempotencyKey: string;
-  }) => {
-    try {
-      await upsertWebhook.mutateAsync({
-        id,
-        enabled,
-        endpointUrl,
-        signingSecret,
-        eventTypes,
-        idempotencyKey,
-      });
-      setDialog({ kind: "none" });
-      upsertWebhook.reset();
-    } catch {
-      // Surfaced via upsertWebhook.error.
-    }
-  };
-
   const openStatusFromDetails = () => {
     if (!detailsTarget) return;
     setDialog({ kind: "status", lsp: detailsTarget });
@@ -195,7 +160,7 @@ export function LspsPage() {
     <AdminEntityListPage
       testId="lsps-page"
       title="LSPs"
-      description="Manage Lending Service Provider tenants, operational status, and webhook subscriptions."
+      description="Manage Lending Service Provider tenants, operational status, and IP allowlists."
       primaryAction={{
         label: "New LSP",
         dataSlot: "lsps-new-button",
@@ -223,10 +188,9 @@ export function LspsPage() {
           isLoading={listLoading}
           filters={filters}
           onFiltersChange={setFilters}
-          onDetails={(lsp) => setDialog({ kind: "details", lsp })}
-          onChangeStatus={(lsp) => setDialog({ kind: "status", lsp })}
-          onViewAudit={(lsp) => setDialog({ kind: "audit", lsp })}
-          onEditWebhook={(lsp) => setDialog({ kind: "webhook", lsp })}
+          onDetails={openDetails}
+          onChangeStatus={openChangeStatus}
+          onViewAudit={openViewAudit}
         />
       }
       dialogs={
@@ -281,19 +245,6 @@ export function LspsPage() {
             onRetry={() => {
               void auditQuery.refetch();
             }}
-          />
-
-          <LspWebhookSubscriptionDialog
-            open={webhookTarget !== null}
-            onOpenChange={handleWebhookOpenChange}
-            lspId={webhookTarget?.id ?? null}
-            lspLabel={webhookTarget ? `${webhookTarget.code} — ${webhookTarget.name}` : ""}
-            initialSubscription={webhookQuery.data?.subscription ?? null}
-            onConfirm={handleWebhookConfirm}
-            loading={upsertWebhook.isPending}
-            errorMessage={
-              upsertWebhook.isError ? extractAdminErrorMessage(upsertWebhook.error) : null
-            }
           />
         </>
       }

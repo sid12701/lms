@@ -144,7 +144,7 @@ describe("DocumentsTab", () => {
     expect(screen.getByText(/No documents attached/i)).toBeInTheDocument();
   });
 
-  it("renders the Required + Optional sections when documents are present", () => {
+  it("renders the gating and non-gating sections when documents are present", () => {
     useDocumentsMock.mockReturnValue({
       isPending: false,
       isError: false,
@@ -159,7 +159,7 @@ describe("DocumentsTab", () => {
     renderWithProviders(<DocumentsTab applicationId="app-1" canManage />);
     // Heading + badge both contain this text — assert at least one is present.
     expect(screen.getAllByText(/Required for disbursement/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/^Optional$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Not required for this loan$/i)).toBeInTheDocument();
   });
 
   it("renders the error state with retry", async () => {

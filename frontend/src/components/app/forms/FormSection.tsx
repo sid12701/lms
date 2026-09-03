@@ -40,7 +40,7 @@ export const FormSection = forwardRef<HTMLElement, FormSectionProps>(function Fo
       data-slot="form-section"
       ref={ref as Ref<HTMLFieldSetElement>}
       className={cn(
-        "border-border bg-surface shadow-e1 flex flex-col gap-4 rounded-md border p-5",
+        "border-border bg-surface shadow-e1 rounded-container flex flex-col gap-4 border p-5",
         className,
       )}
       {...rest}

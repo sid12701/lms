@@ -51,6 +51,7 @@ export const PermissionDeniedState = forwardRef<HTMLDivElement, PermissionDenied
         variant="no-permission"
         icon={Lock}
         title={title}
+        titleAs="h1"
         description={composed}
         action={action}
         secondaryAction={secondaryAction}

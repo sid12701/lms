@@ -12,7 +12,7 @@ export function InlineErrorAlert({ message, className }: InlineErrorAlertProps) 
     <div
       role="alert"
       className={cn(
-        "border-danger/30 bg-danger/5 text-danger rounded-md border p-3 text-sm",
+        "border-danger/30 bg-danger/5 text-danger rounded-container border p-3 text-sm",
         className,
       )}
     >

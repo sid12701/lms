@@ -43,8 +43,3 @@ export async function pickDateInField(user: UserEvent, fieldLabel: string | RegE
   });
   await user.click(dayButton);
 }
-
-/** Clear a DatePickerField via its clear control. */
-export async function clearDateField(user: UserEvent, clearLabel: string | RegExp) {
-  await user.click(screen.getByRole("button", { name: clearLabel }));
-}

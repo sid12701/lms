@@ -40,7 +40,7 @@ export const KbdHint = forwardRef<HTMLSpanElement, KbdHintProps>(function KbdHin
               +
             </span>
           ) : null}
-          <kbd className="border-border bg-surface-muted text-foreground shadow-e1 inline-flex min-w-5 items-center justify-center rounded border px-1.5 py-0.5 text-[11px] leading-4 font-medium">
+          <kbd className="border-border bg-surface-muted text-foreground shadow-e1 inline-flex min-w-5 items-center justify-center rounded border px-1.5 py-0.5 text-xs font-medium">
             {label}
           </kbd>
         </Fragment>

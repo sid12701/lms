@@ -1,6 +1,6 @@
 /**
  * MIS report request + summary + preview row.
- * Per UI pages.md "Portfolio MIS".
+ * Portfolio MIS, surfaced on `/reports` (`@/features/reports`).
  */
 import { z } from "zod";
 import { Email, Iso8601, IsoDate, MoneyINR, Uuid } from "./common";
@@ -39,7 +39,7 @@ export type ReportRequest = z.infer<typeof ReportRequest>;
 
 /** Summary KPIs above the preview table. */
 export const MisSummary = z.object({
-  totalDisbursedMtd: MoneyINR,
+  totalDisbursed: MoneyINR,
   activeLoanCount: z.number().int().nonnegative(),
   weightedAvgYieldPct: z.number().nonnegative().max(100),
   portfolioAtRisk30Pct: z.number().nonnegative().max(100),
@@ -56,7 +56,7 @@ export const MisPreviewInstallment = z.object({
 });
 export type MisPreviewInstallment = z.infer<typeof MisPreviewInstallment>;
 
-/** One row in the on-page preview table; columns mirror UI pages.md §Reports. */
+/** One row in the on-page preview table on `/reports`. */
 export const MisPreviewRow = z.object({
   loanId: Uuid,
   externalLoanId: z.string().nullable(),

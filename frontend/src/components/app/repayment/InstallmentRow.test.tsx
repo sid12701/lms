@@ -33,8 +33,10 @@ function renderRow(ui: React.ReactNode) {
           <TableHead>Principal</TableHead>
           <TableHead>Interest</TableHead>
           <TableHead>Installment</TableHead>
+          <TableHead>Paid</TableHead>
           <TableHead>Outstanding</TableHead>
           <TableHead>Status</TableHead>
+          <TableHead>DPD</TableHead>
           <TableHead>Action</TableHead>
         </TableRow>
       </TableHeader>
@@ -107,7 +109,7 @@ describe("InstallmentRow", () => {
     expect(queryByRole("button")).toBeNull();
   });
 
-  it("renders a DPD badge when dpd > 0", () => {
+  it("renders a DPD value when dpd > 0", () => {
     const { getByLabelText, getByText } = renderRow(
       <InstallmentRow
         installment={{ ...BASE_INSTALLMENT, dpd: 14, status: "OVERDUE" }}
@@ -115,6 +117,7 @@ describe("InstallmentRow", () => {
       />,
     );
     expect(getByLabelText(/14 days past due/i)).toBeInTheDocument();
+    expect(getByText("14")).toBeInTheDocument();
     expect(getByText("Overdue")).toBeInTheDocument();
   });
 

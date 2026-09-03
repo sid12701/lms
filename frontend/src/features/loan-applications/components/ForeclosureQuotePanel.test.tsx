@@ -77,6 +77,7 @@ const DETAIL: LoanApplicationDetail = {
   docsComplete: true,
   scheduleValid: true,
   accountDelinquency: null,
+  interestRate: null,
 };
 
 const QUOTE: LoanForeclosureQuote = {
@@ -102,7 +103,33 @@ describe("<ForeclosureQuotePanel />", () => {
     apiMocks.executeForeclosureQuote.mockReset();
   });
 
-  it("renders the latest active quote and executes it with a settlement reference", async () => {
+  it("requests a quote for the selected effective date", async () => {
+    apiMocks.fetchForeclosureQuotes.mockResolvedValue([]);
+    apiMocks.requestForeclosureQuote.mockResolvedValue(QUOTE);
+    const user = userEvent.setup();
+
+    renderWithProviders(<ForeclosureQuotePanel detail={DETAIL} />);
+
+    expect(screen.getByRole("button", { name: /foreclosure/i })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.queryByLabelText("Settlement reference")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /foreclosure/i }));
+
+    await screen.findByText("No foreclosure quote has been generated for this loan yet.");
+    await user.click(screen.getByRole("button", { name: "Request quote" }));
+
+    await waitFor(() => {
+      expect(apiMocks.requestForeclosureQuote).toHaveBeenCalledWith(
+        "app-1",
+        expect.objectContaining({ effectiveDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }),
+      );
+    });
+  });
+
+  it("renders the latest active quote expanded and executes it with a settlement reference", async () => {
     apiMocks.fetchForeclosureQuotes.mockResolvedValue([QUOTE]);
     apiMocks.executeForeclosureQuote.mockResolvedValue({ ...QUOTE, status: "EXECUTED" });
     const onExecuted = vi.fn();
@@ -111,6 +138,10 @@ describe("<ForeclosureQuotePanel />", () => {
     renderWithProviders(<ForeclosureQuotePanel detail={DETAIL} onExecuted={onExecuted} />);
 
     expect(await screen.findByText("Quote version 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /foreclosure/i })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     const execute = screen.getByRole("button", { name: "Execute quote" });
     expect(execute).toBeDisabled();
 
@@ -128,23 +159,5 @@ describe("<ForeclosureQuotePanel />", () => {
       );
     });
     expect(onExecuted).toHaveBeenCalledTimes(1);
-  });
-
-  it("requests a quote for the selected effective date", async () => {
-    apiMocks.fetchForeclosureQuotes.mockResolvedValue([]);
-    apiMocks.requestForeclosureQuote.mockResolvedValue(QUOTE);
-    const user = userEvent.setup();
-
-    renderWithProviders(<ForeclosureQuotePanel detail={DETAIL} />);
-
-    await screen.findByText("No foreclosure quote has been generated for this loan yet.");
-    await user.click(screen.getByRole("button", { name: "Request quote" }));
-
-    await waitFor(() => {
-      expect(apiMocks.requestForeclosureQuote).toHaveBeenCalledWith(
-        "app-1",
-        expect.objectContaining({ effectiveDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }),
-      );
-    });
   });
 });

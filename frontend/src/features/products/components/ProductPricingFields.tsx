@@ -26,12 +26,12 @@ export function ProductPricingFields<T extends FieldValues & PricingShape>({
 }: ProductPricingFieldsProps<T>) {
   return (
     <>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         <FormField
           control={control}
           name={"principalMin" as FieldPath<T>}
           render={({ field }) => (
-            <FormItem>
+            <FormItem required>
               <FormLabel>Min principal (INR)</FormLabel>
               <FormControl>
                 <Input
@@ -39,7 +39,7 @@ export function ProductPricingFields<T extends FieldValues & PricingShape>({
                   inputMode="numeric"
                   min={1}
                   step={1000}
-                  value={Number.isFinite(field.value) ? field.value : 0}
+                  value={Number.isFinite(field.value) ? field.value : ""}
                   onChange={(e) => field.onChange(Number(e.target.value))}
                   onBlur={field.onBlur}
                   name={field.name}
@@ -55,7 +55,7 @@ export function ProductPricingFields<T extends FieldValues & PricingShape>({
           control={control}
           name={"principalMax" as FieldPath<T>}
           render={({ field }) => (
-            <FormItem>
+            <FormItem required>
               <FormLabel>Max principal (INR)</FormLabel>
               <FormControl>
                 <Input
@@ -63,7 +63,7 @@ export function ProductPricingFields<T extends FieldValues & PricingShape>({
                   inputMode="numeric"
                   min={1}
                   step={1000}
-                  value={Number.isFinite(field.value) ? field.value : 0}
+                  value={Number.isFinite(field.value) ? field.value : ""}
                   onChange={(e) => field.onChange(Number(e.target.value))}
                   onBlur={field.onBlur}
                   name={field.name}
@@ -77,12 +77,12 @@ export function ProductPricingFields<T extends FieldValues & PricingShape>({
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         <FormField
           control={control}
           name={"interestRatePct" as FieldPath<T>}
           render={({ field }) => (
-            <FormItem>
+            <FormItem required>
               <FormLabel>Interest rate (%)</FormLabel>
               <FormControl>
                 <Input
@@ -90,7 +90,7 @@ export function ProductPricingFields<T extends FieldValues & PricingShape>({
                   inputMode="decimal"
                   min={0}
                   step={0.25}
-                  value={Number.isFinite(field.value) ? field.value : 0}
+                  value={Number.isFinite(field.value) ? field.value : ""}
                   onChange={(e) => field.onChange(Number(e.target.value))}
                   onBlur={field.onBlur}
                   name={field.name}
@@ -105,7 +105,7 @@ export function ProductPricingFields<T extends FieldValues & PricingShape>({
           control={control}
           name={"processingFeePct" as FieldPath<T>}
           render={({ field }) => (
-            <FormItem>
+            <FormItem required>
               <FormLabel>Processing fee (%)</FormLabel>
               <FormControl>
                 <Input
@@ -113,7 +113,7 @@ export function ProductPricingFields<T extends FieldValues & PricingShape>({
                   inputMode="decimal"
                   min={0}
                   step={0.25}
-                  value={Number.isFinite(field.value) ? field.value : 0}
+                  value={Number.isFinite(field.value) ? field.value : ""}
                   onChange={(e) => field.onChange(Number(e.target.value))}
                   onBlur={field.onBlur}
                   name={field.name}
@@ -126,12 +126,12 @@ export function ProductPricingFields<T extends FieldValues & PricingShape>({
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
         <FormField
           control={control}
           name={"tenureMinMonths" as FieldPath<T>}
           render={({ field }) => (
-            <FormItem>
+            <FormItem required>
               <FormLabel>Min tenure (months)</FormLabel>
               <FormControl>
                 <Input
@@ -155,7 +155,7 @@ export function ProductPricingFields<T extends FieldValues & PricingShape>({
           control={control}
           name={"tenureMaxMonths" as FieldPath<T>}
           render={({ field }) => (
-            <FormItem>
+            <FormItem required>
               <FormLabel>Max tenure (months)</FormLabel>
               <FormControl>
                 <Input

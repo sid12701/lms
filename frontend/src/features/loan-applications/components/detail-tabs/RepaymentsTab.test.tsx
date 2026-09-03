@@ -87,6 +87,8 @@ describe("RepaymentsTab", () => {
     expect(screen.getAllByText(/9,750/).length).toBeGreaterThan(0);
     expect(screen.getByText(/BANK_TRANSFER/)).toBeInTheDocument();
     expect(screen.getByText(/^UPI$/)).toBeInTheDocument();
+    expect(screen.getAllByText(/^Posted$/).length).toBe(2);
+    expect(screen.queryByText(/^POSTED$/)).toBeNull();
   });
 
   it("renders the payment reference instead of the installment id when present", () => {

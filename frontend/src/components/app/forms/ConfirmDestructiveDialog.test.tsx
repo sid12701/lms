@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { axe } from "vitest-axe";
-import { renderWithProviders } from "@/test/utils";
+import { axeBaseElement, renderWithProviders } from "@/test/utils";
 import { ConfirmDestructiveDialog } from "./ConfirmDestructiveDialog";
 
 describe("ConfirmDestructiveDialog", () => {
@@ -85,6 +84,6 @@ describe("ConfirmDestructiveDialog", () => {
         onConfirm={() => {}}
       />,
     );
-    expect(await axe(baseElement)).toHaveNoViolations();
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
   });
 });

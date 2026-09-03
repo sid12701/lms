@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { screen } from "@testing-library/react";
 import { axe } from "vitest-axe";
-import { renderWithProviders } from "@/test/utils";
+import { axeBaseElement, renderWithProviders } from "@/test/utils";
 import { pickDateInField } from "@/test/date-picker";
 import { formatPickerDate } from "@/lib/format";
 import { DatePickerField } from "./DatePickerField";
@@ -42,5 +42,16 @@ describe("DatePickerField", () => {
       <DatePickerField value="2026-06-01" onChange={() => {}} ariaLabel="Audit from" />,
     );
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no axe violations with the calendar popover open (portalled content lives on baseElement)", async () => {
+    const user = userEvent.setup();
+    const { baseElement } = renderWithProviders(
+      <DatePickerField value="2026-06-01" onChange={() => {}} ariaLabel="Audit from" />,
+    );
+    await user.click(screen.getByRole("button", { name: "Audit from" }));
+    await screen.findByRole("grid");
+
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
   });
 });

@@ -82,7 +82,7 @@ export function TempPasswordRevealCard({
         <div className="mt-3 flex w-full flex-col gap-2">
           <code
             data-slot="temp-password-value"
-            className="bg-surface-muted text-foreground block w-full overflow-x-auto rounded-md border px-3 py-2 font-mono text-sm tabular-nums"
+            className="bg-surface-muted text-foreground rounded-container block w-full overflow-x-auto border px-3 py-2 font-mono text-sm tabular-nums"
           >
             {password}
           </code>

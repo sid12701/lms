@@ -5,6 +5,7 @@ import { RoleScopeBadge } from "./RoleScopeBadge";
 import { ThemeToggle } from "./ThemeToggle";
 import { UserMenu } from "./UserMenu";
 import { useSession } from "@/features/auth/session-context";
+import { useAlerts } from "@/features/alerts/hooks/useAlerts";
 import { cn } from "@/lib/utils";
 
 export interface TopBarProps {
@@ -14,6 +15,48 @@ export interface TopBarProps {
 }
 
 const INTERNAL_ALERT_ROLES = new Set(["SYSTEM_ADMIN", "OPS_USER"]);
+
+/** Anything above this renders as "9+" so the badge never widens the bar. */
+const MAX_BADGE_COUNT = 9;
+
+/**
+ * Notifications bell, with the count it was missing.
+ *
+ * The audit's finding was that the bell carried no indicator while `/alerts`
+ * held a HIGH-severity queue — the one control whose entire job is to say
+ * "something needs you" said nothing, so the operator had to navigate to find
+ * out. It is now a live count, and the accessible name states it rather than
+ * relying on the badge glyph.
+ */
+function AlertsBell({ onOpen }: { onOpen: () => void }) {
+  const { data } = useAlerts({ status: "OPEN", page: 0, pageSize: 1 });
+  const count = data?.total ?? 0;
+  const hasAlerts = count > 0;
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={hasAlerts ? `Notifications, ${count} open` : "Notifications, none open"}
+      title={hasAlerts ? `${count} open alert${count === 1 ? "" : "s"}` : "No open alerts"}
+      onClick={onOpen}
+      data-slot="alerts-bell"
+      data-open-count={count}
+      className="relative"
+    >
+      <Bell className="h-4 w-4" />
+      {hasAlerts ? (
+        <span
+          aria-hidden="true"
+          className="bg-danger text-background text-badge absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 font-semibold tabular-nums"
+        >
+          {count > MAX_BADGE_COUNT ? `${MAX_BADGE_COUNT}+` : count}
+        </span>
+      ) : null}
+    </Button>
+  );
+}
 
 /**
  * Sticky 56px top bar. Renders a mobile hamburger, a brand mark (mobile-only —
@@ -39,7 +82,6 @@ export function TopBar({ onOpenMobileNav, className }: TopBarProps) {
           variant="ghost"
           size="icon-sm"
           aria-label="Open navigation"
-          className="lg:hidden"
           onClick={onOpenMobileNav}
         >
           <Menu className="h-4 w-4" />
@@ -56,18 +98,7 @@ export function TopBar({ onOpenMobileNav, className }: TopBarProps) {
 
       <RoleScopeBadge className="hidden md:inline-flex" />
 
-      {showAlerts ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Notifications"
-          title="Open alerts"
-          onClick={() => navigate("/alerts")}
-        >
-          <Bell className="h-4 w-4" />
-        </Button>
-      ) : null}
+      {showAlerts ? <AlertsBell onOpen={() => navigate("/alerts")} /> : null}
 
       <ThemeToggle />
 

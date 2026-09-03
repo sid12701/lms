@@ -87,7 +87,7 @@ export function ForeclosureRequestDialog({
             control={form.control}
             name="reason"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Reason</FormLabel>
                 <FormControl>
                   <Textarea

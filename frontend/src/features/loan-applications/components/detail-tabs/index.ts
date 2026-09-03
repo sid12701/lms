@@ -3,7 +3,7 @@
  *
  * Owner split (Phase 5):
  *   - This file owns: ScheduleTab, DocumentsTab, RepaymentsTab.
- *   - Agent C appends: OverviewTab, ActivityTab, WebhooksTab.
+ *   - Agent C appends: OverviewTab, ActivityTab.
  *
  * Keep exports alphabetised within each agent's block to make merges
  * deterministic.
@@ -15,4 +15,3 @@ export { RepaymentsTab } from "./RepaymentsTab";
 // ─── Agent C exports ────────────────────────────────────────────────────────
 export { OverviewTab } from "./OverviewTab";
 export { ActivityTab } from "./ActivityTab";
-export { WebhooksTab } from "./WebhooksTab";

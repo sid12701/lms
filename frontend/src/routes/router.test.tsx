@@ -193,7 +193,6 @@ describe("route smoke tests", () => {
   it("createAppRouter compiles the route tree without throwing", async () => {
     const { createAppRouter } = await import("./router");
     const router = createAppRouter();
-    expect(router).toBeDefined();
     expect(router.routes.length).toBeGreaterThan(0);
     // Sanity: a Navigate component is composable inside MemoryRouter.
     render(

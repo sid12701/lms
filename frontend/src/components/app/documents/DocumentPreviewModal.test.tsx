@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { renderWithProviders } from "@/test/utils";
+import { axeBaseElement, renderWithProviders } from "@/test/utils";
 
 const requestBlobMock = vi.hoisted(() => vi.fn());
 
@@ -165,6 +165,38 @@ describe("DocumentPreviewModal", () => {
     await screen.findByTitle(/Preview of PAN card/i);
     await user.click(screen.getByRole("button", { name: /download/i }));
     expect(onDownload).toHaveBeenCalledTimes(1);
+  });
+
+  it("has no axe violations when open (portalled content lives on baseElement)", async () => {
+    // Image mime type, not PDF: the PDF branch renders the blob into an
+    // `<iframe>`, and jsdom's iframe never actually navigates to a `blob:`
+    // URL — axe-core tries to script into it for a recursive scan and throws
+    // ("Respondable target must be a frame in the current window") rather
+    // than reporting a violation. That's a jsdom/axe environment limit, not
+    // a defect in the component: the iframe carries a real `title`, and its
+    // contents are an arbitrary uploaded file we don't own or render markup
+    // into. The image branch exercises the identical dialog chrome (title,
+    // description, footer) without touching that gap.
+    stubObjectUrl();
+    requestBlobMock.mockResolvedValue({
+      blob: new Blob(["jpegbytes"], { type: "image/jpeg" }),
+      filename: "selfie.jpg",
+    });
+
+    const { baseElement } = renderWithProviders(
+      <DocumentPreviewModal
+        open
+        onOpenChange={vi.fn()}
+        title="Selfie"
+        mimeType="image/jpeg"
+        contentPath="/x/content?disposition=inline"
+        onDownload={vi.fn()}
+      />,
+    );
+
+    await screen.findByRole("img", { name: /Preview of Selfie/i });
+
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
   });
 
   it("revokes the object URL when unmounted", async () => {

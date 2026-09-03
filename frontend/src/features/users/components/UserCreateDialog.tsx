@@ -167,7 +167,7 @@ export function UserCreateDialog({
               control={form.control}
               name="username"
               render={({ field }) => (
-                <FormItem>
+                <FormItem required>
                   <FormLabel>Username</FormLabel>
                   <FormControl>
                     <Input
@@ -192,7 +192,7 @@ export function UserCreateDialog({
               control={form.control}
               name="email"
               render={({ field }) => (
-                <FormItem>
+                <FormItem required>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
                     <Input type="email" placeholder="user@example.com" maxLength={254} {...field} />
@@ -206,7 +206,7 @@ export function UserCreateDialog({
               control={form.control}
               name="role"
               render={({ field }) => (
-                <FormItem>
+                <FormItem required>
                   <FormLabel>Role</FormLabel>
                   <FormControl>
                     <Select
@@ -241,7 +241,7 @@ export function UserCreateDialog({
                 control={form.control}
                 name="lspId"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem required>
                     <FormLabel>LSP</FormLabel>
                     <FormControl>
                       <Select

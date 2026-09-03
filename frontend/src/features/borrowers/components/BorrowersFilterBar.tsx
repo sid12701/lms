@@ -38,9 +38,12 @@ export function BorrowersFilterBar({ className }: BorrowersFilterBarProps) {
   const active = Boolean(filters.q && filters.q.length > 0);
 
   return (
+    // One control: no frame, and the field is sized like a field rather than
+    // stretched to the full 1520px content width.
     <FilterBarShell
       dataSlot="borrowers-filter-bar"
       ariaLabel="Borrowers filters"
+      variant="bare"
       className={className}
     >
       <FilterBarSearchField
@@ -49,10 +52,8 @@ export function BorrowersFilterBar({ className }: BorrowersFilterBarProps) {
         placeholder="Search by name, PAN, mobile, or email"
         ariaLabel="Search borrowers"
         dataSlot="borrowers-search"
-        className="min-w-[260px]"
+        className="max-w-sm min-w-[260px]"
       />
-
-      <div className="flex-1" />
 
       <FilterBarClearButton
         onClick={clearAll}

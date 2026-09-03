@@ -17,34 +17,12 @@ import type {
   Role,
 } from "@/types";
 
-/**
- * Stateless filter snapshot for `AuditFilterBar`. Empty arrays / null
- * dates mean "any". Lives here (alongside the discriminated union) so
- * the component file stays component-only — react-refresh requires that.
- */
-export interface AuditFilterValue {
-  kinds: AuditStreamKind[];
-  roles: Role[];
-  fromDate: string | null;
-  toDate: string | null;
-}
-
-export const EMPTY_AUDIT_FILTER: AuditFilterValue = {
-  kinds: [],
-  roles: [],
-  fromDate: null,
-  toDate: null,
-};
-
-export const AUDIT_STREAM_KINDS = [
-  "APPLICATION",
-  "INTAKE",
-  "PII_REVEAL",
-  "DOCUMENT_ACCESS",
-  "PRODUCT",
-] as const;
-
-export type AuditStreamKind = (typeof AUDIT_STREAM_KINDS)[number];
+export type AuditStreamKind =
+  | "APPLICATION"
+  | "INTAKE"
+  | "PII_REVEAL"
+  | "DOCUMENT_ACCESS"
+  | "PRODUCT";
 
 export type AuditEvent =
   | { kind: "APPLICATION"; event: ApplicationAuditEvent }

@@ -19,7 +19,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Loan id" },
       header: () => <span>Loan id</span>,
       cell: ({ row }) => (
-        <span className="text-foreground font-mono text-[11px]" title={row.original.loanId}>
+        <span className="text-foreground font-mono text-xs" title={row.original.loanId}>
           {truncateMiddle(row.original.loanId)}
         </span>
       ),
@@ -37,7 +37,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Account" },
       header: () => <span>Account</span>,
       cell: ({ row }) => (
-        <span className="text-foreground font-mono text-[11px]">
+        <span className="text-foreground font-mono text-xs">
           {plainText(row.original.accountNumber)}
         </span>
       ),
@@ -47,9 +47,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "LSP code" },
       header: () => <span>LSP code</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted text-[11px] tracking-wide uppercase">
-          {row.original.lspCode}
-        </span>
+        <span className="text-foreground-muted text-eyebrow uppercase">{row.original.lspCode}</span>
       ),
     },
     {
@@ -65,7 +63,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Product code" },
       header: () => <span>Product code</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted text-[11px] tracking-wide uppercase">
+        <span className="text-foreground-muted text-eyebrow uppercase">
           {row.original.productCode}
         </span>
       ),
@@ -96,7 +94,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
         <Badge
           variant="outline"
           data-status={row.original.status}
-          className="text-[10px] font-medium"
+          className="text-badge font-medium"
         >
           {(row.original.loanStatusDisplay ?? row.original.status).replace(/_/g, " ").toLowerCase()}
         </Badge>
@@ -107,7 +105,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Applied" },
       header: () => <span>Applied</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted text-[11px] tabular-nums">
+        <span className="text-foreground-muted text-xs tabular-nums">
           {plainText(row.original.applicationCreatedAt)}
         </span>
       ),
@@ -117,7 +115,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Disbursed" },
       header: () => <span>Disbursed</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted text-[11px] tabular-nums">
+        <span className="text-foreground-muted text-xs tabular-nums">
           {row.original.disbursalDate ?? "—"}
         </span>
       ),
@@ -169,7 +167,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Bucket" },
       header: () => <span>Bucket</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted text-[11px] tracking-wide uppercase">
+        <span className="text-foreground-muted text-eyebrow uppercase">
           {row.original.delinquencyBucket ?? "—"}
         </span>
       ),
@@ -179,7 +177,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "External id" },
       header: () => <span>External id</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted font-mono text-[11px]">
+        <span className="text-foreground-muted font-mono text-xs">
           {row.original.externalLoanId ?? "—"}
         </span>
       ),
@@ -233,7 +231,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Closed" },
       header: () => <span>Closed</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted text-[11px] tabular-nums">
+        <span className="text-foreground-muted text-xs tabular-nums">
           {plainText(row.original.closureDate)}
         </span>
       ),
@@ -243,7 +241,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Closure reason" },
       header: () => <span>Closure reason</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted text-[11px]">
+        <span className="text-foreground-muted text-xs">
           {plainText(row.original.closureReason)}
         </span>
       ),
@@ -253,7 +251,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Foreclosed" },
       header: () => <span>Foreclosed</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted text-[11px] tabular-nums">
+        <span className="text-foreground-muted text-xs tabular-nums">
           {plainText(row.original.foreclosureDate)}
         </span>
       ),
@@ -275,7 +273,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "PAN" },
       header: () => <span>PAN</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted font-mono text-[11px]">
+        <span className="text-foreground-muted font-mono text-xs">
           {plainText(row.original.pan)}
         </span>
       ),
@@ -285,7 +283,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Aadhaar" },
       header: () => <span>Aadhaar</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted font-mono text-[11px]" data-pii="aadhaar">
+        <span className="text-foreground-muted font-mono text-xs" data-pii="aadhaar">
           {safeAadhaarDisplay(row.original.aadhaar)}
         </span>
       ),
@@ -296,7 +294,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       header: () => <span>Borrower id</span>,
       cell: ({ row }) => (
         <span
-          className="text-foreground-muted font-mono text-[11px]"
+          className="text-foreground-muted font-mono text-xs"
           title={row.original.borrowerId ?? undefined}
         >
           {row.original.borrowerId ? truncateMiddle(row.original.borrowerId) : "—"}
@@ -309,7 +307,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       header: () => <span>Address</span>,
       cell: ({ row }) => (
         <span
-          className="text-foreground-muted max-w-48 truncate text-[11px]"
+          className="text-foreground-muted max-w-48 truncate text-xs"
           title={row.original.address ?? undefined}
         >
           {plainText(row.original.address)}
@@ -321,7 +319,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Gender" },
       header: () => <span>Gender</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted text-[11px]">{plainText(row.original.gender)}</span>
+        <span className="text-foreground-muted text-xs">{plainText(row.original.gender)}</span>
       ),
     },
     {
@@ -329,7 +327,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "State" },
       header: () => <span>State</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted text-[11px]">{plainText(row.original.state)}</span>
+        <span className="text-foreground-muted text-xs">{plainText(row.original.state)}</span>
       ),
     },
     {
@@ -337,7 +335,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "ZIP" },
       header: () => <span>ZIP</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted font-mono text-[11px]">
+        <span className="text-foreground-muted font-mono text-xs">
           {plainText(row.original.zip)}
         </span>
       ),
@@ -347,7 +345,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "IFSC" },
       header: () => <span>IFSC</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted font-mono text-[11px]">
+        <span className="text-foreground-muted font-mono text-xs">
           {plainText(row.original.ifsc)}
         </span>
       ),
@@ -357,7 +355,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Bank a/c" },
       header: () => <span>Bank a/c</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted font-mono text-[11px]" data-pii="bank-account">
+        <span className="text-foreground-muted font-mono text-xs" data-pii="bank-account">
           {safeBankAccountDisplay(row.original.bankAccount)}
         </span>
       ),
@@ -367,9 +365,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Profession" },
       header: () => <span>Profession</span>,
       cell: ({ row }) => (
-        <span className="text-foreground-muted text-[11px]">
-          {plainText(row.original.profession)}
-        </span>
+        <span className="text-foreground-muted text-xs">{plainText(row.original.profession)}</span>
       ),
     },
     {
@@ -397,7 +393,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
           return (
             <span
               className={cn(
-                "text-foreground-muted text-[11px] whitespace-nowrap",
+                "text-foreground-muted text-xs whitespace-nowrap",
                 installment?.received && "text-success",
               )}
             >

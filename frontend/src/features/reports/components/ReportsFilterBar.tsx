@@ -4,9 +4,10 @@
  * LSP scope uses the same name dropdown as loan applications and users.
  * Date filters use the shared dd/MM/yyyy picker (browser-locale independent).
  */
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { DatePickerField } from "@/components/app/data/DatePickerField";
 import { FilterBarClearButton, FilterBarShell } from "@/components/app/data/FilterBarShell";
+import { filterControlClass } from "@/components/app/data/filter-control";
 import {
   Select,
   SelectContent,
@@ -14,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { listLspOptions } from "@/features/lsps/options";
+import { useLspOptions, toLspFilterOption } from "@/features/lsps/hooks/useLspOptions";
 import { cn } from "@/lib/utils";
 import type { ReportsPageFilters } from "../types";
 
@@ -27,27 +28,11 @@ export interface ReportsFilterBarProps {
 }
 
 export function ReportsFilterBar({ filters, onChange, className }: ReportsFilterBarProps) {
-  const [lspOptions, setLspOptions] = useState<readonly { value: string; label: string }[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void listLspOptions()
-      .then((rows) => {
-        if (cancelled) return;
-        setLspOptions(
-          rows.map((row) => ({
-            value: row.id,
-            label: `${row.name} (${row.code})`,
-          })),
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setLspOptions([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const lspOptionsQuery = useLspOptions();
+  const lspOptions = useMemo(
+    () => (lspOptionsQuery.data ?? []).map(toLspFilterOption),
+    [lspOptionsQuery.data],
+  );
 
   const setDateFrom = (next: string | undefined) => {
     onChange({ ...filters, dateFrom: next && next !== "" ? next : null });
@@ -74,15 +59,13 @@ export function ReportsFilterBar({ filters, onChange, className }: ReportsFilter
       className={cn("items-end gap-3 p-3", className)}
     >
       <div className="flex min-w-[220px] flex-col gap-1">
-        <span className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
-          LSP
-        </span>
+        <span className="text-foreground-muted text-eyebrow uppercase">LSP</span>
         <Select value={filters.lspId ?? ALL_SENTINEL} onValueChange={setLspId}>
           <SelectTrigger
-            size="sm"
             aria-label="LSP filter"
             data-slot="reports-lsp-filter"
-            className="w-full min-w-[220px]"
+            data-filter-set={filters.lspId != null ? "true" : undefined}
+            className={filterControlClass(filters.lspId != null, "w-full min-w-[220px]")}
           >
             <SelectValue placeholder="All LSPs" />
           </SelectTrigger>
@@ -98,34 +81,33 @@ export function ReportsFilterBar({ filters, onChange, className }: ReportsFilter
       </div>
 
       <div className="flex min-w-[220px] flex-col gap-1">
-        <span className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
-          Disbursed from
-        </span>
+        <span className="text-foreground-muted text-eyebrow uppercase">Disbursed from</span>
         <DatePickerField
           value={filters.dateFrom ?? undefined}
           onChange={setDateFrom}
           ariaLabel="Disbursed from"
           dataSlot="reports-date-from"
-          className="min-w-[220px] [&_button]:h-9"
+          className="min-w-[220px]"
         />
       </div>
 
       <div className="flex min-w-[220px] flex-col gap-1">
-        <span className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
-          Disbursed to
-        </span>
+        <span className="text-foreground-muted text-eyebrow uppercase">Disbursed to</span>
         <DatePickerField
           value={filters.dateTo ?? undefined}
           onChange={setDateTo}
           ariaLabel="Disbursed to"
           dataSlot="reports-date-to"
-          className="min-w-[220px] [&_button]:h-9"
+          className="min-w-[220px]"
         />
       </div>
 
-      <div className="flex-1" />
-
-      <FilterBarClearButton onClick={clearAll} disabled={!active} dataSlot="reports-filter-clear" />
+      <FilterBarClearButton
+        onClick={clearAll}
+        disabled={!active}
+        dataSlot="reports-filter-clear"
+        className="ml-auto"
+      />
     </FilterBarShell>
   );
 }

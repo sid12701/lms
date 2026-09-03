@@ -3,7 +3,10 @@ import { Link } from "react-router-dom";
 import { AlertCircle, AlertTriangle, BellOff, Info, type LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
-import { formatRelative } from "@/lib/format";
+import { AbsoluteRelativeTime } from "@/components/app/misc/AbsoluteRelativeTime";
+import { alertSubjectTypeLabel, humanizeAlertTitle } from "@/lib/alert-display";
+import { resolveAlertSubjectHref } from "@/lib/alert-links";
+import { shortId } from "@/lib/short-id";
 import { cn } from "@/lib/utils";
 import type { AlertSeverity } from "@/schemas/alert";
 import type { HomeAlertSummary } from "../types";
@@ -53,6 +56,26 @@ const SEVERITY_META: Record<AlertSeverity, SeverityMeta> = {
   },
 };
 
+function AlertSubjectLink({ alert }: { alert: HomeAlertSummary }) {
+  const subjectLabel = alertSubjectTypeLabel(alert.subjectType);
+  const href = resolveAlertSubjectHref(alert.subjectType, alert.subjectId, alert.id);
+  const displayId = shortId(alert.subjectId);
+
+  if (alert.subjectType === "LOAN_APPLICATION" || alert.subjectType === "BORROWER") {
+    return (
+      <Link to={href} className="text-info hover:underline">
+        {subjectLabel} · {displayId}
+      </Link>
+    );
+  }
+
+  return (
+    <span>
+      {subjectLabel} · <span className="font-mono">{displayId}</span>
+    </span>
+  );
+}
+
 export const OpenAlertsCard = forwardRef<HTMLDivElement, OpenAlertsCardProps>(
   function OpenAlertsCard({ alerts, className }, ref) {
     return (
@@ -74,7 +97,10 @@ export const OpenAlertsCard = forwardRef<HTMLDivElement, OpenAlertsCardProps>(
                     data-slot="alert-row"
                     data-severity={alert.severity}
                     data-token={meta.token}
-                    className={cn("flex items-start gap-3 rounded-md border p-3", meta.classes)}
+                    className={cn(
+                      "rounded-container flex items-start gap-3 border p-3",
+                      meta.classes,
+                    )}
                   >
                     <Icon
                       aria-hidden="true"
@@ -82,7 +108,9 @@ export const OpenAlertsCard = forwardRef<HTMLDivElement, OpenAlertsCardProps>(
                     />
                     <div className="flex min-w-0 flex-1 flex-col gap-1">
                       <div className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="text-foreground text-sm font-medium">{alert.title}</span>
+                        <span className="text-foreground text-sm font-medium">
+                          {humanizeAlertTitle(alert.title)}
+                        </span>
                         <span
                           className="text-foreground-muted text-xs tracking-wide uppercase"
                           aria-label={`Severity ${meta.label}`}
@@ -90,21 +118,20 @@ export const OpenAlertsCard = forwardRef<HTMLDivElement, OpenAlertsCardProps>(
                           {meta.label}
                         </span>
                       </div>
+                      {/* Same-rule alerts share a title; the detail line is what makes the
+                          row triageable without opening it. Absent on some alert types. */}
+                      {alert.message ? (
+                        <p
+                          data-slot="alert-message"
+                          className="text-foreground-muted line-clamp-2 text-xs"
+                        >
+                          {alert.message}
+                        </p>
+                      ) : null}
                       <div className="text-foreground-muted flex flex-wrap items-center gap-x-2 text-xs">
-                        {alert.subjectType === "LOAN_APPLICATION" ? (
-                          <Link
-                            to={`/loan-applications/${alert.subjectId}`}
-                            className="text-info font-mono hover:underline"
-                          >
-                            {alert.subjectId.slice(0, 8)}
-                          </Link>
-                        ) : (
-                          <span className="font-mono">
-                            {alert.subjectType.toLowerCase()} · {alert.subjectId.slice(0, 8)}
-                          </span>
-                        )}
+                        <AlertSubjectLink alert={alert} />
                         <span aria-hidden="true">·</span>
-                        <span>{formatRelative(alert.createdAt)}</span>
+                        <AbsoluteRelativeTime iso={alert.createdAt} />
                       </div>
                     </div>
                   </li>

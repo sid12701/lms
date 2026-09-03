@@ -1,7 +1,7 @@
 /**
  * Pure role predicates.
  *
- * Mirrors plan §F + UI pages.md "Role and navigation model" + blueprint §6.
+ * Mirrors plan §F + the route guards in `@/routes/router.tsx` + blueprint §6.
  * No React imports — every gate is a synchronous boolean check.
  */
 import type { Role } from "@/types";

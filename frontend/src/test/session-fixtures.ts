@@ -15,7 +15,7 @@ export const adminSession: Session = {
     mustChangePassword: false,
   },
   accessToken: "test.access.token",
-  expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+  expiresAt: "2099-01-01T00:00:00.000Z",
 };
 
 export const lspReadSession: Session = {
@@ -27,7 +27,7 @@ export const lspReadSession: Session = {
     mustChangePassword: false,
   },
   accessToken: "test.access.token",
-  expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+  expiresAt: "2099-01-01T00:00:00.000Z",
 };
 
 export const tempPasswordSession: Session = {
@@ -39,5 +39,5 @@ export const tempPasswordSession: Session = {
     mustChangePassword: true,
   },
   accessToken: "test.access.token",
-  expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+  expiresAt: "2099-01-01T00:00:00.000Z",
 };

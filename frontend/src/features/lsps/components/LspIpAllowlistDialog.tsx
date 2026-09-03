@@ -53,7 +53,7 @@ function SurfaceSection({
   emptyHint: string;
 }) {
   return (
-    <section className="border-border flex flex-col gap-3 rounded-md border p-3">
+    <section className="border-border rounded-container flex flex-col gap-3 border p-3">
       <div className="flex flex-col gap-1">
         <h3 className="text-sm font-medium">{title}</h3>
         <p className="text-muted-foreground text-xs">{description}</p>

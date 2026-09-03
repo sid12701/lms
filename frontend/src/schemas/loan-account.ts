@@ -1,7 +1,7 @@
 /**
  * Loan account + repayment schedule + installment.
  *
- * Per blueprint §13 + UI pages.md "Repayment installment".
+ * Per blueprint §13 (`docs/architecture/lms-blueprint.md`).
  * BR-12: schedule frozen flips to true at disbursement.
  *
  * LoanAccountStatus must match backend `com.bhawana.lms.domain.LoanAccountStatus`
@@ -12,6 +12,7 @@ import {
   LOAN_ACCOUNT_STATUSES,
   type LoanAccountStatus as GeneratedLoanAccountStatus,
 } from "@/lib/api/generated/loan-account-status";
+import { unknownLoanApplicationStatusLabel } from "@/lib/loan-application-status";
 import { Iso8601, IsoDate, MoneyINR, MoneyINRPositive, Uuid } from "./common";
 
 /** Canonical loan-account statuses — keep in lockstep with the Java enum. */
@@ -26,6 +27,25 @@ export function isLoanAccountStatus(value: string): value is LoanAccountStatus {
 
 export const ClosureReason = z.enum(["FULLY_REPAID", "FORECLOSED", "CANCELLED"]);
 type ClosureReason = z.infer<typeof ClosureReason>;
+
+/**
+ * Two spellings of "closed by foreclosure" reach the UI: this schema's
+ * `FORECLOSED` and the backend enum's `LoanAccountClosureReason.FORECLOSURE`.
+ * Both are storage identifiers, so either rendered raw puts a database value in
+ * front of a partner. Unmapped codes degrade to `Unknown (raw)` so a new
+ * closure reason stays readable — and visibly unmapped — until it lands here.
+ */
+const CLOSURE_REASON_LABELS: Record<string, string> = {
+  FULLY_REPAID: "Fully repaid",
+  FORECLOSED: "Foreclosed",
+  FORECLOSURE: "Foreclosed",
+  CANCELLED: "Cancelled",
+};
+
+export function closureReasonLabel(raw: string): string {
+  const trimmed = raw.trim();
+  return CLOSURE_REASON_LABELS[trimmed] ?? unknownLoanApplicationStatusLabel(trimmed);
+}
 
 export const LoanAccount = z.object({
   id: Uuid,

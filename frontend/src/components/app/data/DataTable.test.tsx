@@ -104,8 +104,8 @@ describe("DataTable", () => {
     const headerBtn = getAllByRole("button", { name: /sort/i })[0]!;
     await userEvent.click(headerBtn);
     const sortCall = onChange.mock.calls.find((call) => call[0]?.sorting !== undefined)?.[0];
-    expect(sortCall?.sorting).toBeDefined();
-    expect((sortCall?.sorting as SortingState)[0]?.id).toBe("name");
+    expect(sortCall).toBeDefined();
+    expect((sortCall!.sorting as SortingState)[0]?.id).toBe("name");
   });
 
   it("fires getRowAction on Enter when row is interactive", async () => {
@@ -151,12 +151,12 @@ describe("DataTable", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
-  it("renders mobile cards when the viewport is narrow", () => {
+  it("renders mobile cards when the viewport is below lg", () => {
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
       writable: true,
       value: (query: string) => ({
-        matches: query.includes("max-width"),
+        matches: false,
         media: query,
         addEventListener: () => {},
         removeEventListener: () => {},

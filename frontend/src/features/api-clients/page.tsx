@@ -20,7 +20,7 @@
  *
  * IP allow-lists are managed per LSP (Administration → LSPs), not per client.
  */
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { KeyRound } from "lucide-react";
 import { AdminEntityListPage } from "@/components/app/layout/AdminEntityListPage";
@@ -102,6 +102,19 @@ export function ApiClientsPage() {
   const createOpen = dialog.kind === "create";
   const editTarget = dialog.kind === "edit" ? dialog.client : null;
   const rotateTarget = dialog.kind === "rotate-secret" ? dialog.client : null;
+
+  /*
+    Memoised because `ApiClientsTable` lists these in its `columns` dependency
+    array, and TanStack renders each column's `cell` function as a React
+    component type — so a new identity remounts every cell, discarding the row
+    button the operator just activated and leaving the dialog nothing to return
+    focus to on close.
+  */
+  const openEdit = useCallback((client: ApiClientRow) => setDialog({ kind: "edit", client }), []);
+  const openRotate = useCallback(
+    (client: ApiClientRow) => setDialog({ kind: "rotate-secret", client }),
+    [],
+  );
 
   // ── Create dialog handlers ─────────────────────────────────────────────────
   const handleCreateOpenChange = (open: boolean) => {
@@ -240,8 +253,8 @@ export function ApiClientsPage() {
           isLoading={listLoading}
           filters={filters}
           onFiltersChange={setFilters}
-          onEdit={(client) => setDialog({ kind: "edit", client })}
-          onRotate={(client) => setDialog({ kind: "rotate-secret", client })}
+          onEdit={openEdit}
+          onRotate={openRotate}
         />
       }
       dialogs={

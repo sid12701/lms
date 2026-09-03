@@ -1,8 +1,8 @@
 /**
  * Shared Zod primitives used across all domain schemas.
  *
- * Currency is modelled as `number` of rupees (paise are not modelled per
- * `docs/UI pages.md` data summary). Datetimes are ISO 8601 strings.
+ * Currency is modelled as `number` of rupees (paise are not modelled).
+ * Datetimes are ISO 8601 strings.
  *
  * Indian-format identifiers (PAN, Aadhaar, mobile) are validated against
  * canonical regexes; storage layer is expected to keep them un-spaced.

@@ -10,6 +10,7 @@ import {
   FilterBarSearchField,
   FilterBarShell,
 } from "@/components/app/data/FilterBarShell";
+import { filterControlClass } from "@/components/app/data/filter-control";
 import {
   Select,
   SelectContent,
@@ -66,10 +67,10 @@ export function LspsFilterBar({ filters, onChange, className }: LspsFilterBarPro
         onValueChange={(next) => setStatus(next === ALL_SENTINEL ? undefined : next)}
       >
         <SelectTrigger
-          size="sm"
           aria-label="Status filter"
           data-slot="lsps-status-filter"
-          className="w-40"
+          data-filter-set={filters.status !== undefined ? "true" : undefined}
+          className={filterControlClass(filters.status !== undefined, "w-40")}
         >
           <SelectValue placeholder="All statuses" />
         </SelectTrigger>

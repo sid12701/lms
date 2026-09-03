@@ -13,12 +13,24 @@ function PopoverTrigger({ ...props }: React.ComponentProps<typeof PopoverPrimiti
   return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />;
 }
 
+/**
+ * Radix renders the panel as `role="dialog"`, and a dialog must carry its own
+ * accessible name — labelling a listbox or group *inside* it does not satisfy
+ * `aria-dialog-name`. Requiring the name in the type stops the next popover
+ * from shipping unnamed, which is how all five original call sites did.
+ */
+type PopoverContentProps = Omit<
+  React.ComponentProps<typeof PopoverPrimitive.Content>,
+  "aria-label" | "aria-labelledby"
+> &
+  ({ "aria-label": string; "aria-labelledby"?: never } | { "aria-labelledby": string });
+
 function PopoverContent({
   className,
   align = "center",
   sideOffset = 4,
   ...props
-}: React.ComponentProps<typeof PopoverPrimitive.Content>) {
+}: PopoverContentProps) {
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Content
@@ -26,7 +38,7 @@ function PopoverContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "bg-popover text-popover-foreground ring-foreground/10 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 z-50 flex w-72 origin-(--radix-popover-content-transform-origin) flex-col gap-4 rounded-lg p-2.5 text-xs shadow-md ring-1 outline-hidden duration-100",
+          "bg-popover text-popover-foreground ring-foreground/10 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 rounded-container z-50 flex w-72 origin-(--radix-popover-content-transform-origin) flex-col gap-4 p-2.5 text-xs shadow-md ring-1 outline-hidden duration-100",
           className,
         )}
         {...props}

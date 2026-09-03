@@ -26,12 +26,12 @@ describe("ProductEditDialog", () => {
 
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Personal loan");
     expect(screen.getByRole("combobox", { name: "Status" })).toHaveTextContent("Inactive");
-    expect(screen.getByRole("spinbutton", { name: "Min principal (INR)" })).toHaveValue(10_000);
-    expect(screen.getByRole("spinbutton", { name: "Max principal (INR)" })).toHaveValue(500_000);
-    expect(screen.getByRole("spinbutton", { name: "Interest rate (%)" })).toHaveValue(14.5);
-    expect(screen.getByRole("spinbutton", { name: "Processing fee (%)" })).toHaveValue(1.25);
-    expect(screen.getByRole("spinbutton", { name: "Min tenure (months)" })).toHaveValue(3);
-    expect(screen.getByRole("spinbutton", { name: "Max tenure (months)" })).toHaveValue(36);
+    expect(screen.getByRole("spinbutton", { name: /^Min principal \(INR\)/ })).toHaveValue(10_000);
+    expect(screen.getByRole("spinbutton", { name: /^Max principal \(INR\)/ })).toHaveValue(500_000);
+    expect(screen.getByRole("spinbutton", { name: /^Interest rate \(%\)/ })).toHaveValue(14.5);
+    expect(screen.getByRole("spinbutton", { name: /^Processing fee \(%\)/ })).toHaveValue(1.25);
+    expect(screen.getByRole("spinbutton", { name: /^Min tenure \(months\)/ })).toHaveValue(3);
+    expect(screen.getByRole("spinbutton", { name: /^Max tenure \(months\)/ })).toHaveValue(36);
   });
 
   it("uses safe form defaults when no product is selected", () => {
@@ -41,9 +41,9 @@ describe("ProductEditDialog", () => {
 
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("");
     expect(screen.getByRole("combobox", { name: "Status" })).toHaveTextContent("Active");
-    expect(screen.getByRole("spinbutton", { name: "Min principal (INR)" })).toHaveValue(0);
-    expect(screen.getByRole("spinbutton", { name: "Max principal (INR)" })).toHaveValue(0);
-    expect(screen.getByRole("spinbutton", { name: "Min tenure (months)" })).toHaveValue(1);
-    expect(screen.getByRole("spinbutton", { name: "Max tenure (months)" })).toHaveValue(12);
+    expect(screen.getByRole("spinbutton", { name: /^Min principal \(INR\)/ })).toHaveValue(0);
+    expect(screen.getByRole("spinbutton", { name: /^Max principal \(INR\)/ })).toHaveValue(0);
+    expect(screen.getByRole("spinbutton", { name: /^Min tenure \(months\)/ })).toHaveValue(1);
+    expect(screen.getByRole("spinbutton", { name: /^Max tenure \(months\)/ })).toHaveValue(12);
   });
 });

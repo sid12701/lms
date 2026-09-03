@@ -85,7 +85,7 @@ export function ReportRequestsTable({
     return (
       <div
         data-slot="report-requests-table-empty"
-        className={cn("border-border bg-surface rounded-md border", className)}
+        className={cn("border-border bg-surface rounded-container border", className)}
       >
         <EmptyState
           title="No reports queued yet"
@@ -99,7 +99,7 @@ export function ReportRequestsTable({
     <div
       data-slot="report-requests-table"
       className={cn(
-        "border-border bg-surface shadow-e1 overflow-hidden rounded-md border",
+        "border-border bg-surface shadow-e1 rounded-container overflow-hidden border",
         className,
       )}
       data-density="compact"
@@ -107,19 +107,19 @@ export function ReportRequestsTable({
       <Table aria-label="Report requests">
         <TableHeader className="bg-surface-muted/60">
           <TableRow className="border-border hover:bg-transparent">
-            <TableHead className="text-foreground-muted h-8 px-2.5 text-[11px] font-medium tracking-wide uppercase">
+            <TableHead className="text-foreground-muted h-8 px-2.5 text-xs font-medium">
               Status
             </TableHead>
-            <TableHead className="text-foreground-muted h-8 px-2.5 text-[11px] font-medium tracking-wide uppercase">
+            <TableHead className="text-foreground-muted h-8 px-2.5 text-xs font-medium">
               Range
             </TableHead>
-            <TableHead className="text-foreground-muted h-8 px-2.5 text-[11px] font-medium tracking-wide uppercase">
+            <TableHead className="text-foreground-muted h-8 px-2.5 text-xs font-medium">
               LSP
             </TableHead>
-            <TableHead className="text-foreground-muted h-8 px-2.5 text-[11px] font-medium tracking-wide uppercase">
+            <TableHead className="text-foreground-muted h-8 px-2.5 text-xs font-medium">
               Queued
             </TableHead>
-            <TableHead className="text-foreground-muted h-8 px-2.5 text-right text-[11px] font-medium tracking-wide uppercase">
+            <TableHead className="text-foreground-muted h-8 px-2.5 text-right text-xs font-medium">
               <span className="sr-only">Actions</span>
             </TableHead>
           </TableRow>
@@ -152,10 +152,10 @@ export function ReportRequestsTable({
                 <TableCell className="text-foreground px-2.5 py-1.5 text-xs">
                   {shortRange(row)}
                 </TableCell>
-                <TableCell className="text-foreground-muted px-2.5 py-1.5 font-mono text-[11px]">
+                <TableCell className="text-foreground-muted px-2.5 py-1.5 font-mono text-xs">
                   {row.lspId ? row.lspId.slice(0, 8) + "…" : "All"}
                 </TableCell>
-                <TableCell className="text-foreground-muted px-2.5 py-1.5 text-[11px] tabular-nums">
+                <TableCell className="text-foreground-muted px-2.5 py-1.5 text-xs tabular-nums">
                   {formatDateTime(row.queuedAt)}
                 </TableCell>
                 <TableCell className="px-2.5 py-1.5 text-right">

@@ -1,5 +1,6 @@
 import { flexRender, type Column, type Row, type Table as ReactTable } from "@tanstack/react-table";
 import type { ReactNode } from "react";
+import { TimeLayoutProvider } from "@/components/app/misc/AbsoluteRelativeTime";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TABULAR_ATTR } from "@/lib/tabular-nums";
 import { cn } from "@/lib/utils";
@@ -83,7 +84,7 @@ export function DataTableMobileCards<TData>({
         {Array.from({ length: skeletonRows }).map((_, i) => (
           <li
             key={`mobile-skeleton-${i}`}
-            className="border-border bg-surface shadow-e1 rounded-md border p-4"
+            className="border-border bg-surface shadow-e1 rounded-container border p-4"
           >
             <Skeleton className="mb-2 h-4 w-2/3" />
             <Skeleton className="mb-1 h-3 w-full" />
@@ -99,7 +100,7 @@ export function DataTableMobileCards<TData>({
       <div
         data-slot="data-table-mobile-empty"
         className={cn(
-          "border-border bg-surface shadow-e1 flex min-h-[180px] items-center justify-center rounded-md border p-4",
+          "border-border bg-surface shadow-e1 rounded-container flex min-h-[180px] items-center justify-center border p-4",
           className,
         )}
       >
@@ -109,103 +110,113 @@ export function DataTableMobileCards<TData>({
   }
 
   return (
-    <ul
-      data-slot="data-table-mobile-cards"
-      data-density={density}
-      className={cn("flex flex-col gap-2", className)}
-    >
-      {rows.map((row) => {
-        const isInteractive = Boolean(getRowAction);
-        const rowTestId = getRowTestId?.(row);
-        const rowAriaLabel = isInteractive ? getRowAriaLabel?.(row) : undefined;
+    // A stacked card is not a dense table column: each field already owns its
+    // own line, and on a touch device `title` never surfaces. Timestamps render
+    // their full reading here so the instant stays reachable without hover.
+    <TimeLayoutProvider dense={false}>
+      <ul
+        data-slot="data-table-mobile-cards"
+        data-density={density}
+        className={cn("flex flex-col gap-2", className)}
+      >
+        {rows.map((row) => {
+          const isInteractive = Boolean(getRowAction);
+          const rowTestId = getRowTestId?.(row);
+          const rowAriaLabel = isInteractive ? getRowAriaLabel?.(row) : undefined;
 
-        const cellByColumnId = new Map(row.getVisibleCells().map((cell) => [cell.column.id, cell]));
+          const cellByColumnId = new Map(
+            row.getVisibleCells().map((cell) => [cell.column.id, cell]),
+          );
 
-        const onRowActivate = () => getRowAction?.(row);
+          const onRowActivate = () => getRowAction?.(row);
 
-        const primaryBlock =
-          primaryCols.length > 0 ? (
-            <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
-              {primaryCols.map((column) => {
-                const cell = cellByColumnId.get(column.id);
-                if (!cell) return null;
-                return (
-                  <div key={cell.id} className="text-foreground min-w-0 text-sm font-medium">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null;
-
-        const secondaryBlock =
-          secondaryCols.length > 0 ? (
-            <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
-              {secondaryCols.map((column) => {
-                const cell = cellByColumnId.get(column.id);
-                if (!cell) return null;
-                const numeric = cell.column.columnDef.meta?.numeric ?? false;
-                return (
-                  <div key={cell.id} className="flex min-w-0 flex-col gap-0.5">
-                    <dt className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
-                      {columnLabel(column)}
-                    </dt>
-                    <dd
-                      {...(numeric ? TABULAR_ATTR : {})}
-                      className={cn("text-foreground text-sm", numeric && "font-mono tabular-nums")}
-                    >
+          const primaryBlock =
+            primaryCols.length > 0 ? (
+              <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                {primaryCols.map((column) => {
+                  const cell = cellByColumnId.get(column.id);
+                  if (!cell) return null;
+                  return (
+                    <div key={cell.id} className="text-foreground min-w-0 text-sm font-medium">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </dd>
-                  </div>
-                );
-              })}
-            </dl>
-          ) : null;
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null;
 
-        const actionBlock =
-          actionCols.length > 0 ? (
-            <div className="border-border mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
-              {actionCols.map((column) => {
-                const cell = cellByColumnId.get(column.id);
-                if (!cell) return null;
-                return (
-                  <div key={cell.id} className="flex flex-wrap gap-2">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null;
+          const secondaryBlock =
+            secondaryCols.length > 0 ? (
+              <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
+                {secondaryCols.map((column) => {
+                  const cell = cellByColumnId.get(column.id);
+                  if (!cell) return null;
+                  const numeric = cell.column.columnDef.meta?.numeric ?? false;
+                  return (
+                    <div key={cell.id} className="flex min-w-0 flex-col gap-0.5">
+                      <dt className="text-foreground-muted text-eyebrow uppercase">
+                        {columnLabel(column)}
+                      </dt>
+                      <dd
+                        {...(numeric ? TABULAR_ATTR : {})}
+                        className={cn(
+                          "text-foreground text-sm",
+                          numeric && "font-mono tabular-nums",
+                        )}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </dd>
+                    </div>
+                  );
+                })}
+              </dl>
+            ) : null;
 
-        return (
-          <li
-            key={row.id}
-            data-testid={rowTestId}
-            className={cn("border-border bg-surface shadow-e1 rounded-md border", pad)}
-          >
-            {isInteractive ? (
-              <button
-                type="button"
-                aria-label={rowAriaLabel}
-                onClick={onRowActivate}
-                className={cn(
-                  "focus-visible:ring-ring/50 -m-px block w-[calc(100%+2px)] cursor-pointer rounded-[inherit] border-0 bg-transparent p-px text-left outline-none focus-visible:ring-2",
-                  actionBlock ? "pb-0" : undefined,
-                )}
-              >
-                {primaryBlock}
-                {secondaryBlock}
-              </button>
-            ) : (
-              <>
-                {primaryBlock}
-                {secondaryBlock}
-              </>
-            )}
-            {actionBlock}
-          </li>
-        );
-      })}
-    </ul>
+          const actionBlock =
+            actionCols.length > 0 ? (
+              <div className="border-border mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
+                {actionCols.map((column) => {
+                  const cell = cellByColumnId.get(column.id);
+                  if (!cell) return null;
+                  return (
+                    <div key={cell.id} className="flex flex-wrap gap-2">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null;
+
+          return (
+            <li
+              key={row.id}
+              data-testid={rowTestId}
+              className={cn("border-border bg-surface shadow-e1 rounded-container border", pad)}
+            >
+              {isInteractive ? (
+                <button
+                  type="button"
+                  aria-label={rowAriaLabel}
+                  onClick={onRowActivate}
+                  className={cn(
+                    "focus-visible:ring-ring -m-px block w-[calc(100%+2px)] cursor-pointer rounded-[inherit] border-0 bg-transparent p-px text-left outline-none focus-visible:ring-2",
+                    actionBlock ? "pb-0" : undefined,
+                  )}
+                >
+                  {primaryBlock}
+                  {secondaryBlock}
+                </button>
+              ) : (
+                <>
+                  {primaryBlock}
+                  {secondaryBlock}
+                </>
+              )}
+              {actionBlock}
+            </li>
+          );
+        })}
+      </ul>
+    </TimeLayoutProvider>
   );
 }

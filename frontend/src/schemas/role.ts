@@ -29,7 +29,6 @@ export const Permission = z.enum([
   "USER_WRITE",
   "REPORT_REQUEST",
   "REPORT_READ",
-  "WEBHOOK_CONFIG_WRITE",
   "DISBURSEMENT_TRIGGER",
   "FORECLOSURE_TRIGGER",
   "ALL_LSP_VIEW",

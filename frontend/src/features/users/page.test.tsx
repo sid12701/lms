@@ -87,6 +87,11 @@ vi.mock("./components/UsersTable", () => ({
       <button onClick={() => props.onResetPassword(user)}>Reset row</button>
       <button onClick={() => props.onRevokeSessions(user)}>Revoke row</button>
       <button onClick={() => props.onToggleStatus(user)}>Toggle row</button>
+      {/* Disabling is confirmed, re-enabling is immediate, so the two paths
+          need separate triggers. */}
+      <button onClick={() => props.onToggleStatus({ ...user, status: "DISABLED" })}>
+        Toggle disabled row
+      </button>
     </div>
   ),
 }));
@@ -298,10 +303,31 @@ describe("UsersPage dialog coordination", () => {
       idempotencyKey: "revoke-key",
     });
 
+    // Disabling locks a person out, so it is confirmed rather than applied on
+    // the first click — see `handleToggleStatus`.
     await operator.click(screen.getByRole("button", { name: "Toggle row" }));
-    expect(updateMutation.mutate).toHaveBeenCalledWith(
+    expect(updateMutation.mutate).not.toHaveBeenCalled();
+
+    expect(await screen.findByRole("heading", { name: "Disable user" })).toBeInTheDocument();
+    await operator.click(screen.getByRole("button", { name: "Disable user" }));
+    expect(updateMutation.mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ id: "user-1", status: "DISABLED" }),
     );
+  });
+
+  it("re-enables a disabled user without a confirmation step", async () => {
+    const operator = userEvent.setup();
+    renderWithProviders(
+      <MemoryRouter>
+        <UsersPage />
+      </MemoryRouter>,
+    );
+
+    await operator.click(await screen.findByRole("button", { name: "Toggle disabled row" }));
+    expect(updateMutation.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "user-1", status: "ACTIVE" }),
+    );
+    expect(screen.queryByRole("heading", { name: "Disable user" })).not.toBeInTheDocument();
   });
 
   it("keeps a dialog open when its mutation fails", async () => {

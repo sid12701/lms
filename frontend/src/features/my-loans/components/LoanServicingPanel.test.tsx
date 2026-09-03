@@ -40,11 +40,14 @@ describe("LoanServicingPanel", () => {
         id: "inst-1",
         installmentNumber: 1,
         dueDate: "2026-08-01",
+        principalDue: 800,
+        interestDue: 200,
         installmentAmount: 1000,
         paidAmount: 0,
         outstandingAmount: 1000,
-        status: "PENDING",
+        status: "DUE",
         daysPastDue: null,
+        delinquencyBucket: "B0",
       },
     ]);
 
@@ -53,6 +56,6 @@ describe("LoanServicingPanel", () => {
     expect(await screen.findByText("Repayment schedule")).toBeInTheDocument();
     expect(fetchMyLoanRepaymentScheduleMock).toHaveBeenCalledWith("acct-42");
     expect(fetchMyLoanPaymentsMock).toHaveBeenCalledWith("acct-42");
-    expect(screen.getByText("PENDING")).toBeInTheDocument();
+    expect(screen.getByText("Due")).toBeInTheDocument();
   });
 });

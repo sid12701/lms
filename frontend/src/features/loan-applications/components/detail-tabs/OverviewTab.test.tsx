@@ -39,6 +39,7 @@ const DETAIL: LoanApplicationDetail = {
   docsComplete: false,
   scheduleValid: false,
   accountDelinquency: null,
+  interestRate: 18,
 };
 
 describe("OverviewTab", () => {
@@ -46,6 +47,7 @@ describe("OverviewTab", () => {
     const { getByText } = renderWithProviders(<OverviewTab detail={DETAIL} />);
     expect(getByText("Loan terms")).toBeInTheDocument();
     expect(getByText(/₹\s*2,50,000/)).toBeInTheDocument();
+    expect(getByText("18%")).toBeInTheDocument();
     expect(getByText("12 months")).toBeInTheDocument();
     expect(getByText("Personal Loan A")).toBeInTheDocument();
   });

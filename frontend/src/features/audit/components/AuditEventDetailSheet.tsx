@@ -133,13 +133,13 @@ export function AuditEventDetailSheet({ event, open, onOpenChange }: AuditEventD
         >
           <header className="flex items-start justify-between gap-3">
             <div className="flex flex-col gap-1">
-              <Badge variant="outline" className="w-fit text-[10px] font-medium uppercase">
+              <Badge variant="outline" className="text-eyebrow w-fit uppercase">
                 {AUDIT_STREAM_LABEL[event.stream]}
               </Badge>
               <DialogPrimitive.Title className="text-foreground text-base leading-6 font-semibold">
                 {event.headline}
               </DialogPrimitive.Title>
-              <p className="text-foreground-muted font-mono text-[11px]">
+              <p className="text-foreground-muted font-mono text-xs">
                 {formatTimestamp(event.createdAt)}
               </p>
             </div>
@@ -169,7 +169,7 @@ export function AuditEventDetailSheet({ event, open, onOpenChange }: AuditEventD
             <dt className="text-foreground-muted tracking-wide uppercase">Correlation</dt>
             <dd className="flex items-center gap-1">
               <span
-                className="text-foreground font-mono text-[11px] break-all"
+                className="text-foreground font-mono text-xs break-all"
                 data-slot="audit-sheet-correlation"
               >
                 {event.correlationId}
@@ -192,7 +192,7 @@ export function AuditEventDetailSheet({ event, open, onOpenChange }: AuditEventD
                 <span>
                   {event.subjectType}
                   {event.subjectId ? (
-                    <span className="text-foreground-muted ml-1 font-mono text-[11px]">
+                    <span className="text-foreground-muted ml-1 font-mono text-xs">
                       · {event.subjectId}
                     </span>
                   ) : null}
@@ -221,12 +221,10 @@ export function AuditEventDetailSheet({ event, open, onOpenChange }: AuditEventD
           ) : null}
 
           <section className="flex flex-1 flex-col gap-1 overflow-hidden">
-            <h3 className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
-              Raw event
-            </h3>
+            <h3 className="text-foreground-muted text-eyebrow uppercase">Raw event</h3>
             <pre
               data-slot="audit-sheet-raw"
-              className="border-border bg-surface-muted text-foreground flex-1 overflow-auto rounded-md border p-3 font-mono text-[11px] leading-4"
+              className="border-border bg-surface-muted text-foreground rounded-container flex-1 overflow-auto border p-3 font-mono text-xs"
             >
               {JSON.stringify(event.raw, null, 2)}
             </pre>

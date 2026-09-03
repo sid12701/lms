@@ -29,7 +29,11 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 fixed inset-0 isolate z-50 bg-black/80 duration-100 supports-backdrop-filter:backdrop-blur-xs",
+        // 50%, the shadcn default. At 80% the scrim was near-opaque and the
+        // record the operator is acting on became unreadable behind its own
+        // confirmation dialog — on a panel whose job is to let you check the
+        // context before you commit.
+        "data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 fixed inset-0 isolate z-50 bg-black/50 duration-100 supports-backdrop-filter:backdrop-blur-xs",
         className,
       )}
       {...props}
@@ -41,17 +45,65 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
 }) {
+  /*
+    Return focus to whatever opened the dialog.
+
+    Radix restores focus by calling `triggerRef.current?.focus()`, and that ref is
+    populated only by `<DialogPrimitive.Trigger>`. Every dialog in this app is
+    controlled — opened from an ordinary button, a row action, or a lifecycle
+    control — so the ref is always null, the call is a no-op, and focus fell to
+    `<body>`. A keyboard operator pressing Escape on the disbursement dialog
+    landed at the top of the document and had to walk the sidebar, top bar,
+    breadcrumb and tabs to get back (WCAG 2.4.3).
+
+    These two events are the open/close pair Radix fires around its own focus
+    move, so the opener is still focused when the first one runs.
+  */
+  const openerRef = React.useRef<HTMLElement | null>(null);
+
+  const handleOpenAutoFocus = React.useCallback(
+    (event: Event) => {
+      const active = document.activeElement;
+      openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+      onOpenAutoFocus?.(event);
+    },
+    [onOpenAutoFocus],
+  );
+
+  const handleCloseAutoFocus = React.useCallback(
+    (event: Event) => {
+      onCloseAutoFocus?.(event);
+      if (event.defaultPrevented) return;
+      const opener = openerRef.current;
+      // The opener can be gone — a row action whose row was removed by the very
+      // action just confirmed. Radix's default lands focus on <body>, which is
+      // the right fallback there.
+      if (!opener?.isConnected) return;
+      event.preventDefault();
+      opener.focus();
+    },
+    [onCloseAutoFocus],
+  );
+
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        onOpenAutoFocus={handleOpenAutoFocus}
+        onCloseAutoFocus={handleCloseAutoFocus}
         className={cn(
-          "bg-popover text-popover-foreground ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-xl p-4 text-xs/relaxed ring-1 duration-100 outline-none sm:max-w-sm",
+          // Width note: the default cap is `sm:max-w-sm`. Because that is a
+          // breakpoint variant, a caller passing a *base* `max-w-*` is silently
+          // ignored above 640px — tailwind-merge cannot dedupe across variants.
+          // Callers that need a wider dialog must pass `sm:max-w-*`.
+          "bg-popover text-popover-foreground ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 rounded-container fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto p-4 text-xs/relaxed ring-1 duration-100 outline-none sm:max-w-sm",
           className,
         )}
         {...props}
@@ -61,7 +113,7 @@ function DialogContent({
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
             <Button variant="ghost" className="absolute top-2 right-2" size="icon-sm">
               <IconX />
-              <span className="sr-only">Close</span>
+              <span className="sr-only">Close dialog</span>
             </Button>
           </DialogPrimitive.Close>
         )}
@@ -85,9 +137,23 @@ function DialogFooter({
   showCloseButton?: boolean;
 }) {
   return (
+    // Pinned to the bottom of `DialogContent`'s scroll box. `DialogContent` caps
+    // its height and scrolls as a whole, so on a short viewport a tall dialog
+    // used to push its own actions below the fold with nothing on screen
+    // suggesting they existed — found live on `DisbursementInitiateDialog`, at
+    // 697px, where both Cancel and the confirm button were fully out of view.
+    // The negative inset bleeds the footer across the container's `p-4` so
+    // scrolled content cannot show through beside or beneath it.
     <div
       data-slot="dialog-footer"
-      className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
+      className={cn(
+        // `-bottom-4` rather than `bottom-0`: a sticky offset is measured from the
+        // scrollport's padding edge, so `bottom-0` would leave the container's
+        // `p-4` gutter uncovered and scrolled content would show through beneath
+        // the actions. `pb-4` keeps the buttons themselves off the edge.
+        "bg-popover sticky -bottom-4 z-10 -mx-4 flex flex-col-reverse gap-2 px-4 pt-2 pb-4 sm:flex-row sm:justify-end",
+        className,
+      )}
       {...props}
     >
       {children}

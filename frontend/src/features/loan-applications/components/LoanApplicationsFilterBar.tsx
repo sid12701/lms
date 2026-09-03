@@ -6,91 +6,60 @@
  * before it reaches the URL — that keeps the cache key from churning
  * with every keystroke while leaving paste/blur snappy.
  *
- * Product / LSP dropdowns render their static placeholders
- * for now; agents wiring `useLsps()` / `useProducts()` swap the option
- * lists in a follow-up without changing this component's contract.
+ * Structure A (toolbar + applied chips). Everything visual lives in
+ * `FilterBarShell`; this file owns only the URL wiring and which filters exist.
+ * The old bar had no applied-state feedback at all — three active filters
+ * looked exactly like zero — and ended in a `flex-1` spacer that occupied 710px
+ * (62%) of its own second row. Both are gone: set controls tint, applied
+ * filters are named in a chip row with per-filter clear, and the spacer is
+ * replaced by the chip row's own `ml-auto` group.
  */
 import { useMemo } from "react";
 import { useDebouncedControlledText } from "@/lib/hooks/use-debounced-controlled-text";
 import { DatePickerField } from "@/components/app/data/DatePickerField";
 import {
-  FilterBarClearButton,
+  FilterAppliedChips,
+  FilterBarFieldGroup,
   FilterBarSearchField,
   FilterBarShell,
+  FilterBarSingleSelect,
+  IgnoredFilterNotice,
+  type AppliedFilter,
 } from "@/components/app/data/FilterBarShell";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { filterControlClass } from "@/components/app/data/filter-control";
+import { StatusBadge } from "@/components/app/status/StatusBadge";
 import { useUrlFilters } from "@/lib/url-state";
 import { LoanApplicationListFilters } from "../types";
 import { STATUS_META } from "@/lib/lifecycle";
 import type { LoanStatus } from "@/types";
+
+/**
+ * Schema key → the label the operator sees on that control, so a rejected URL
+ * param is named the way it appears on screen rather than as a field name.
+ */
+const FILTER_LABELS: Record<string, string> = {
+  q: "Search",
+  lspLoanId: "LSP loan ID",
+  bhawLoanId: "Bhawana loan ID",
+  status: "Status",
+  lspId: "LSP",
+  productId: "Product",
+  disbursalDateFrom: "Disbursed from",
+  disbursalDateTo: "Disbursed to",
+  page: "Page",
+  pageSize: "Rows per page",
+  sortBy: "Sort column",
+  sortDir: "Sort direction",
+};
+
+const filterLabelFor = (key: string): string => FILTER_LABELS[key] ?? key;
 
 const STATUS_OPTIONS: readonly { value: LoanStatus; label: string }[] = (
   Object.keys(STATUS_META) as LoanStatus[]
 ).map((s) => ({ value: s, label: STATUS_META[s].label }));
 
 const SEARCH_DEBOUNCE_MS = 200;
-
-/**
- * The shadcn `Select` primitive does not accept an empty-string value
- * for `<SelectItem>`. We use this sentinel for the "all" option, then
- * translate it back to `undefined` in the change handler.
- */
-const ALL_SENTINEL = "__all__";
-
-interface SingleSelectProps {
-  value: string | undefined;
-  onChange: (next: string | undefined) => void;
-  placeholder: string;
-  ariaLabel: string;
-  options: readonly { value: string; label: string }[];
-  testId: string;
-}
-
-function SingleSelect({
-  value,
-  onChange,
-  placeholder,
-  ariaLabel,
-  options,
-  testId,
-}: SingleSelectProps) {
-  return (
-    <Select
-      value={value ?? ALL_SENTINEL}
-      onValueChange={(next) => onChange(next === ALL_SENTINEL ? undefined : next)}
-    >
-      <SelectTrigger size="sm" aria-label={ariaLabel} data-slot={testId} className="w-40">
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={ALL_SENTINEL}>{placeholder}</SelectItem>
-        {options.map((o) => (
-          <SelectItem key={o.value} value={o.value}>
-            {o.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
-function hasAnyFilter(filters: Partial<LoanApplicationListFilters>): boolean {
-  if (filters.q && filters.q.trim() !== "") return true;
-  if (filters.lspLoanId && filters.lspLoanId.trim() !== "") return true;
-  if (filters.bhawLoanId && filters.bhawLoanId.trim() !== "") return true;
-  if (filters.disbursalDateFrom) return true;
-  if (filters.disbursalDateTo) return true;
-  if (filters.status && filters.status.length > 0) return true;
-  if (filters.lspId) return true;
-  if (filters.productId) return true;
-  return false;
-}
+const EMPTY_FILTER_OPTIONS: readonly { value: string; label: string }[] = [];
 
 export interface LoanApplicationsFilterBarProps {
   /**
@@ -101,15 +70,21 @@ export interface LoanApplicationsFilterBarProps {
   lspOptions?: readonly { value: string; label: string }[];
   /** Optional product options — see `lspOptions` comment. */
   productOptions?: readonly { value: string; label: string }[];
+  /**
+   * Rows the current filter set matches. Rendered in the applied-chips row so
+   * the operator can see whether they are looking at the whole book or a slice.
+   */
+  resultCount?: number;
   className?: string;
 }
 
 export function LoanApplicationsFilterBar({
-  lspOptions = [],
-  productOptions = [],
+  lspOptions = EMPTY_FILTER_OPTIONS,
+  productOptions = EMPTY_FILTER_OPTIONS,
+  resultCount,
   className,
 }: LoanApplicationsFilterBarProps) {
-  const [filters, setFilters] = useUrlFilters(LoanApplicationListFilters);
+  const [filters, setFilters, ignoredFilterKeys] = useUrlFilters(LoanApplicationListFilters);
 
   // Search input: locally controlled, debounced into the URL.
   const searchField = useDebouncedControlledText(
@@ -118,9 +93,11 @@ export function LoanApplicationsFilterBar({
     SEARCH_DEBOUNCE_MS,
   );
 
+  const { clearPending, onChange: setSearchValue } = searchField;
+
   const clearAll = () => {
-    searchField.clearPending();
-    searchField.onChange("");
+    clearPending();
+    setSearchValue("");
     setFilters({
       q: undefined,
       lspLoanId: undefined,
@@ -134,13 +111,110 @@ export function LoanApplicationsFilterBar({
     });
   };
 
-  const active = useMemo(() => hasAnyFilter(filters), [filters]);
+  /**
+   * One chip per *set* filter, resolved to the label the operator chose rather
+   * than the raw id — an LSP chip reading `a3f1b…` would be no better than the
+   * silent state it replaces.
+   */
+  const appliedFilters = useMemo<AppliedFilter[]>(() => {
+    const chips: AppliedFilter[] = [];
+    const labelFor = (
+      options: readonly { value: string; label: string }[],
+      value: string,
+    ): string => options.find((o) => o.value === value)?.label ?? value;
+
+    if (filters.q?.trim()) {
+      chips.push({
+        key: "q",
+        label: "Search",
+        value: filters.q.trim(),
+        onClear: () => {
+          clearPending();
+          setSearchValue("");
+          setFilters({ q: undefined, page: 0 });
+        },
+      });
+    }
+    if (filters.lspLoanId?.trim()) {
+      chips.push({
+        key: "lspLoanId",
+        label: "LSP loan ID",
+        value: filters.lspLoanId,
+        onClear: () => setFilters({ lspLoanId: undefined, page: 0 }),
+      });
+    }
+    if (filters.bhawLoanId?.trim()) {
+      chips.push({
+        key: "bhawLoanId",
+        label: "Bhawana loan ID",
+        value: filters.bhawLoanId,
+        onClear: () => setFilters({ bhawLoanId: undefined, page: 0 }),
+      });
+    }
+    if (filters.status?.[0]) {
+      chips.push({
+        key: "status",
+        label: "Status",
+        value: labelFor(STATUS_OPTIONS, filters.status[0]),
+        onClear: () => setFilters({ status: undefined, page: 0 }),
+      });
+    }
+    if (filters.lspId) {
+      chips.push({
+        key: "lspId",
+        label: "LSP",
+        value: labelFor(lspOptions, filters.lspId),
+        onClear: () => setFilters({ lspId: undefined, page: 0 }),
+      });
+    }
+    if (filters.productId) {
+      chips.push({
+        key: "productId",
+        label: "Product",
+        value: labelFor(productOptions, filters.productId),
+        onClear: () => setFilters({ productId: undefined, page: 0 }),
+      });
+    }
+    if (filters.disbursalDateFrom) {
+      chips.push({
+        key: "disbursalDateFrom",
+        label: "Disbursed from",
+        value: filters.disbursalDateFrom,
+        onClear: () => setFilters({ disbursalDateFrom: undefined, page: 0 }),
+      });
+    }
+    if (filters.disbursalDateTo) {
+      chips.push({
+        key: "disbursalDateTo",
+        label: "Disbursed to",
+        value: filters.disbursalDateTo,
+        onClear: () => setFilters({ disbursalDateTo: undefined, page: 0 }),
+      });
+    }
+    return chips;
+  }, [filters, lspOptions, productOptions, setFilters, clearPending, setSearchValue]);
 
   return (
     <FilterBarShell
       dataSlot="loan-applications-filter-bar"
       ariaLabel="Loan application filters"
       className={className}
+      notice={
+        <IgnoredFilterNotice
+          ignoredKeys={ignoredFilterKeys}
+          labelFor={filterLabelFor}
+          dataSlot="loan-applications-ignored-filters"
+        />
+      }
+      appliedChips={
+        <FilterAppliedChips
+          filters={appliedFilters}
+          onClearAll={clearAll}
+          resultCount={resultCount}
+          resultNoun="applications"
+          dataSlot="loan-applications-applied-filters"
+        />
+      }
     >
       <FilterBarSearchField
         value={searchField.value}
@@ -166,7 +240,8 @@ export function LoanApplicationsFilterBar({
           }
           placeholder="LSP Loan ID"
           aria-label="LSP loan ID"
-          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border px-2 text-sm outline-none focus-visible:ring-[3px]"
+          data-filter-set={filters.lspLoanId?.trim() ? "true" : undefined}
+          className={filterControlClass(Boolean(filters.lspLoanId?.trim()), "w-full")}
         />
       </label>
 
@@ -186,14 +261,15 @@ export function LoanApplicationsFilterBar({
           }
           placeholder="Bhawana loan ID"
           aria-label="Bhawana loan ID"
-          className="border-border bg-surface text-foreground placeholder:text-foreground-muted focus-visible:border-ring focus-visible:ring-ring/50 h-8 w-full rounded-md border px-2 text-sm outline-none focus-visible:ring-[3px]"
+          data-filter-set={filters.bhawLoanId?.trim() ? "true" : undefined}
+          className={filterControlClass(Boolean(filters.bhawLoanId?.trim()), "w-full")}
         />
       </label>
 
       {/* Single-select on purpose: the ops list endpoint accepts one `status`
           param, and a multi-select that silently applies only the first
           choice misleads (audit F5). */}
-      <SingleSelect
+      <FilterBarSingleSelect
         value={filters.status?.[0]}
         onChange={(next) =>
           setFilters({ status: next ? [next as LoanStatus] : undefined, page: 0 })
@@ -201,50 +277,55 @@ export function LoanApplicationsFilterBar({
         placeholder="All statuses"
         ariaLabel="Status filter"
         options={STATUS_OPTIONS}
-        testId="loan-applications-status-filter"
+        renderOption={(o) => <StatusBadge status={o.value as LoanStatus} variant="subtle" />}
+        dataSlot="loan-applications-status-filter"
       />
 
-      <SingleSelect
+      <FilterBarSingleSelect
         value={filters.lspId}
         onChange={(next) => setFilters({ lspId: next, page: 0 })}
         placeholder="All LSPs"
         ariaLabel="LSP filter"
         options={lspOptions}
-        testId="loan-applications-lsp-filter"
+        dataSlot="loan-applications-lsp-filter"
       />
 
-      <DatePickerField
-        value={filters.disbursalDateFrom}
-        onChange={(next) => setFilters({ disbursalDateFrom: next, page: 0 })}
-        ariaLabel="Disbursed from"
-        dataSlot="loan-applications-disbursed-from"
-        className="w-40"
-      />
-
-      <DatePickerField
-        value={filters.disbursalDateTo}
-        onChange={(next) => setFilters({ disbursalDateTo: next, page: 0 })}
-        ariaLabel="Disbursed to"
-        dataSlot="loan-applications-disbursed-to"
-        className="w-40"
-      />
-
-      <SingleSelect
+      <FilterBarSingleSelect
         value={filters.productId}
         onChange={(next) => setFilters({ productId: next, page: 0 })}
         placeholder="All products"
         ariaLabel="Product filter"
         options={productOptions}
-        testId="loan-applications-product-filter"
+        dataSlot="loan-applications-product-filter"
       />
 
-      <div className="flex-1" />
-
-      <FilterBarClearButton
-        onClick={clearAll}
-        disabled={!active}
-        dataSlot="loan-applications-filter-clear"
-      />
+      {/*
+        Grouped, not adjacent. As two loose flex items the pair split across
+        rows at 1440 but not at 1280 — grouping was decided by viewport width —
+        and nothing on screen named which box set the lower bound. One fieldset
+        wraps as a unit at every width and labels the pair once.
+      */}
+      <FilterBarFieldGroup label="Disbursed">
+        <DatePickerField
+          value={filters.disbursalDateFrom}
+          onChange={(next) => setFilters({ disbursalDateFrom: next, page: 0 })}
+          ariaLabel="Disbursed from"
+          placeholder="From"
+          dataSlot="loan-applications-disbursed-from"
+          className="w-28"
+        />
+        <span aria-hidden="true" className="text-foreground-muted text-xs">
+          –
+        </span>
+        <DatePickerField
+          value={filters.disbursalDateTo}
+          onChange={(next) => setFilters({ disbursalDateTo: next, page: 0 })}
+          ariaLabel="Disbursed to"
+          placeholder="To"
+          dataSlot="loan-applications-disbursed-to"
+          className="w-28"
+        />
+      </FilterBarFieldGroup>
     </FilterBarShell>
   );
 }

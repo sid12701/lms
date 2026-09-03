@@ -191,27 +191,6 @@ test.describe("Phase 8 UI edge coverage", () => {
     expect(label).toContain(detail.status.replace(/_/g, " ").toLowerCase().split(" ")[0]!);
   });
 
-  test("EC-097: webhook tab row count matches API", async ({ page, request }) => {
-    const token = await adminToken(request);
-    const res = await request.get(
-      `${API_BASE}/api/v1/internal/ops/loan-applications/${APPLICATION_ID}/webhook-events`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
-    expect(res.ok()).toBeTruthy();
-    const body = (await res.json()) as { deliveries?: unknown[] };
-    const apiCount = body.deliveries?.length ?? 0;
-
-    await openLoanDetail(page);
-    await page.getByRole("tab", { name: /Webhooks/i }).click();
-    if (apiCount === 0) {
-      await expect(page.getByText(/No webhook deliveries yet/i)).toBeVisible({ timeout: 10_000 });
-    } else {
-      await expect(page.locator('[data-slot="webhooks-tab"] tbody tr')).toHaveCount(apiCount, {
-        timeout: 15_000,
-      });
-    }
-  });
-
   test("EC-111: UI stays stale after API status change (known gap)", async ({ page, request }) => {
     const token = await adminToken(request);
     const detail = (await (

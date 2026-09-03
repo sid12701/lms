@@ -4,39 +4,119 @@
  * Scope after 2026-05-26 shadcn preset adoption (b4hbL0iSO):
  *   - shadcn role tokens (--primary, --secondary, --accent, --card, --popover,
  *     --muted, --destructive, --border, --input, --ring, --radius, --sidebar*,
- *     --chart-*, --font-sans) are owned by `globals.css` (preset).
- *   - This file owns only what the preset does NOT define: project semantic
- *     intents (success/warning/danger/info/progress/revoked/neutral), the
- *     surface scale (surface/surface-muted/surface-raised), foreground-muted/
- *     subtle, border-strong, navy-tinted shadows, and the monospace font.
+ *     --chart-*, --font-sans) are owned by `globals.css` (preset). Since
+ *     2026-08-03 the preset's surface roles are *derived* from the scale below
+ *     rather than carrying independent values — see "One surface family".
+ *   - This file owns the surface scale, the radius ladder, foreground tiers,
+ *     border tiers, the semantic intents, shadows, and the monospace font.
  *
  * Light values are defaults at :root via @theme. Dark variants in .dark { }.
  * Brand navy and indigo accent scales were retired on 2026-05-26 in favour of
  * the preset's blue primary.
+ *
+ * Every value below is derived, not eyeballed — `token-contrast.test.ts` reads
+ * this file directly and fails the build on any regression.
  */
 
 @theme {
   /* ---------- Type ---------- */
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* ---------- Surface scale (project-specific neutrals) ---------- */
+  /* ---------- Type roles ----------
+     Promoted from 54 arbitrary `text-[11px]` / `text-[10px]` literals. The
+     badge size is 12px, not the former 10px: 10px was the single root cause of
+     25 `undersized-ui-text` findings on `/loan-applications` alone, and
+     DESIGN.md already sets 12px as "the floor for anything a person reads in
+     sequence". */
+  --text-eyebrow: 0.6875rem;
+  --text-eyebrow--line-height: 1rem;
+  --text-eyebrow--font-weight: 600;
+  --text-eyebrow--letter-spacing: 0.08em;
+  --text-badge: 0.75rem;
+  --text-badge--line-height: 1rem;
+  --text-badge--font-weight: 500;
+
+  /* ---------- Radius ladder ----------
+     Three radii, one job each. Previously a single value (`rounded-md`,
+     11.2px) covered a 24px select, a 32px input, the filter panel and an 858px
+     table container alike, so shape carried no scale information — and a 24px
+     control at 11.2px is 93% of the way to a pill, colliding with the Pill
+     Means State rule.
+
+     The root cause is a ratio: shadcn's `--radius` is tuned for 36px controls,
+     and this system kept the larger root while halving control heights to
+     20-32px. Fluent drops sub-32px components to 2-4px; Atlassian puts buttons
+     at 6px and reserves its largest step for modals and full-page containers.
+
+     Integers on purpose — 11.2 / 8.4 rasterise inconsistently at 1x. */
+  --radius-control: 0.25rem;
+  --radius-container: 0.5rem;
+  --radius-card: 0.75rem;
+
+  /* ---------- Surface scale ----------
+     Light is a lifted-panel model: the page is a soft off-white and panels are
+     paper white, so a panel separates from the page by value as well as by
+     hairline. Before this, `background`, `surface` and `surface-raised` were
+     all `#ffffff` — a three-step scale in which two steps were identical, and
+     light, not dark, was the under-articulated theme. */
   --color-surface: #ffffff;
-  --color-surface-muted: #f6f7fb;
+  --color-surface-muted: #eef1f7;
   --color-surface-raised: #ffffff;
+  --color-surface-page: #f7f9fc;
+
+  /* Fill for verification / read-only summary panels (disbursement preview,
+     quote panels). Previously referenced as `--color-card-muted`, which was
+     never defined anywhere — so the disbursement safety panel computed
+     `rgba(0,0,0,0)` and rendered as an empty rectangle. */
+  --color-card-muted: #eef1f7;
+
+  /* ---------- Border tiers ----------
+     `border` is the decorative hairline: dividers, table rules, panel edges.
+     `border-control` is the *affordance* border on inputs, selects and outline
+     buttons. WCAG 1.4.11 requires 3:1 for the visual information that
+     identifies a control, and on a filter bar the boundary is the only such
+     feature — the old 1.25:1 hairline was a formal failure. */
+  --color-border-control: #7e8796;
   --color-border-strong: #cfd5e3;
 
-  /* ---------- Foreground tiers (project-specific) ---------- */
+  /* ---------- Foreground tiers ---------- */
   --color-foreground-muted: #5e6680;
-  --color-foreground-subtle: #5e6680;
+  /* Was byte-identical to `-muted`. The AA floor on its own 10% tint caps how
+     far this can lift, so the step is deliberately small but real. */
+  --color-foreground-subtle: #666c79;
+
+  /* ---------- Foreground for text sitting on a primary tint ---------- */
+  /* `text-primary` on `bg-primary/10` fails AA in dark, because the preset's
+     dark --primary is a *background* value. This token is the foreground
+     counterpart: same role, lifted for dark like the intents below.
+     Hex, not oklch(), so `token-contrast.test.ts` can gate it — as an oklch()
+     literal it parsed as `undefined` and silently skipped every check. */
+  --color-primary-tinted: #0069a8;
 
   /* ---------- Semantic intents (color + icon + text — never color alone) ---------- */
-  --color-success: #0f7a4a;
-  --color-warning: #a67c1a;
-  --color-danger: #b23a48;
+  /* These four were re-derived on 2026-08-10. The previous values cleared AA on
+     `--color-surface` and on their own 10% tint over it — the only two composites
+     the gate checked — but a `bg-x/10 text-x` badge also renders over
+     `--color-surface-page`, over `--color-surface-muted`, and over a hovered
+     table row (`bg-surface-muted/40` on the panel), each of which is darker.
+     Live axe caught `success` at 4.44:1 and `warning` at 4.30:1 on real screens;
+     `danger` and `neutral` were latent failures on the muted tier. Each value is
+     the smallest darkening of the same hue that clears 4.5:1 on all four
+     backgrounds, and the gate now checks all four so the class cannot recur. */
+  --color-success: #0e7145;
+  --color-warning: #7d5e14;
+  --color-danger: #ae3947;
   --color-info: #1f4ec9;
-  --color-progress: #1f4ec9;
+  /* Progress was byte-identical to `info` in light and collapsed further in
+     dark, where `info`, `progress` and `primary-tinted` were all `#60a5fa` —
+     brand, "informational", and "in flight, do not act" as one pixel value, in
+     a product whose hardest constraint is that in-flight means hands-off.
+     Violet separates it by hue *and* luminance from both. */
+  --color-progress: #5836a6;
   --color-revoked: #7a5a18;
-  --color-neutral: #5e6680;
+  /* Kept distinct from `--color-foreground-muted` (#5e6680) on purpose: as a
+     badge tint this needs the extra depth to clear AA on the muted tier. */
+  --color-neutral: #5b637c;
 
   /* ---------- Shadows (navy-tinted) ---------- */
   --shadow-e1: 0 1px 2px rgba(0, 6, 102, 0.06);
@@ -45,29 +125,61 @@
 }
 
 /**
- * Dark variant — Phase 10.
+ * Dark variant.
  *
  * Banking/NBFC dark: subdued, navy-tinted blacks for surface tiers and
- * semantic intents only. Role tokens (primary/accent/border/etc.) come from
- * the preset's .dark block in globals.css.
+ * semantic intents. Role tokens (primary/accent/border/etc.) come from the
+ * preset's .dark block in globals.css, which derives its surface roles from
+ * the scale here.
+ *
+ * One surface family. `--color-surface` used to be navy `#0f1729` while
+ * `--card` / `--popover` / `--sidebar` were near-neutral charcoal `#161b1d`.
+ * Both were pure white in light, so the split was invisible until you switched
+ * themes — and then every dropdown, popover and dialog reverted to grey
+ * floating over navy panels. All five tiers are now one hue (250deg) at one
+ * chroma (0.022), stepping only in lightness.
+ *
+ * A live ladder. The old steps measured 1.10 / 1.08 / 1.07 / 1.03 — nothing at
+ * 1.03:1 is perceivable, so "raised" did not read as raised. Steps are now
+ * +6 / +5.5 / +5.5 L*, matching Material 3's dark elevation ladder.
  */
 .dark {
-  /* Surface tiers — navy-tinted blacks for the enterprise banking feel. */
-  --color-surface: #0f1729;
-  --color-surface-muted: #161e36;
-  --color-surface-raised: #1a2342;
-  --color-border-strong: #313b5a;
+  /* Surface tiers — one navy family, evenly stepped. */
+  --color-surface: #141d26;
+  --color-surface-muted: #212a33;
+  --color-surface-raised: #2e3842;
+  --color-surface-page: #070f18;
+  --color-card-muted: #212a33;
+
+  /* Border tiers */
+  --color-border-control: #75828f;
+  --color-border-strong: #4c5661;
 
   /* Foreground tiers */
-  --color-foreground-muted: #9aa3bd;
-  --color-foreground-subtle: #6e7693;
+  --color-foreground-muted: #a2abc4;
+  /* #6e7693 measured 3.98:1 on the dark surface — below AA. Lifted again on
+     2026-08-10: #868ea8 cleared the surface but measured 4.47:1 on the muted
+     tier, which table header bands and hovered rows actually paint. */
+  --color-foreground-subtle: #8a91ab;
+
+  /* Lifted for dark, matching the intent scale below. */
+  --color-primary-tinted: #5bb7f9;
 
   /* Semantic intents — lifted saturation for dark backgrounds. */
   --color-success: #34d399;
   --color-warning: #fbbf24;
   --color-danger: #f87171;
-  --color-info: #60a5fa;
-  --color-progress: #60a5fa;
+  --color-info: #5cd0ea;
+  /* Lifted from #9b85ec, whose 10% tint measured 4.16:1 on the muted tier. */
+  --color-progress: #a490ee;
   --color-revoked: #d4a574;
-  --color-neutral: #9aa3bd;
+  --color-neutral: #a2abc4;
+
+  /* Shadows re-authored for dark. The light tokens are navy
+     (`rgba(0, 6, 102, …)`) — a shadow tuned for white paper, which was still
+     rendering unchanged on a #141d26 surface where it is invisible. Dark
+     shadows are near-black and carry more alpha to survive a dark backdrop. */
+  --shadow-e1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-e2: 0 4px 12px rgba(0, 0, 0, 0.55);
+  --shadow-e3: 0 12px 28px rgba(0, 0, 0, 0.65);
 }

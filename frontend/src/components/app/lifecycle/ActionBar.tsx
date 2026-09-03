@@ -32,10 +32,20 @@ export interface ActionBarProps {
   className?: string;
 }
 
+/**
+ * Approve is the primary action, not a green one.
+ *
+ * A solid `--success` fill used a *semantic intent* as an action colour.
+ * DESIGN.md is explicit that the seven intents "are not decorative colours and
+ * must not be reused as a palette" — success means paid, closed, credited,
+ * healthy: a state the record is *in*, not a button you can press. Approving is
+ * simply the consequential action on this view, which is what the One Blue Rule
+ * describes. The green now stays available to say what the loan became.
+ */
 const TONE_BUTTON: Record<LifecycleAction["tone"], string> = {
   default: "",
   destructive: "",
-  approve: "bg-success text-success-foreground hover:bg-success/90 focus-visible:ring-success/30",
+  approve: "",
 };
 
 const TONE_BUTTON_DISABLED: Record<LifecycleAction["tone"], string> = {
@@ -73,13 +83,20 @@ export function ActionBar({
   const [statusMessage, setStatusMessage] = useState("");
   const [dialogError, setDialogError] = useState<string | null>(null);
 
-  const items = useMemo(() => {
+  const { items, allActionsRelocated } = useMemo(() => {
     const hiddenTargets = new Set(hiddenTargetStatuses);
-    const all = actionsFor(currentStatus).filter((action) => !hiddenTargets.has(action.toStatus));
-    return all.map((action) => ({
-      action,
-      disabledReason: resolveDisabledReason(action, currentStatus, role, gates),
-    }));
+    const all = actionsFor(currentStatus);
+    const visible = all.filter((action) => !hiddenTargets.has(action.toStatus));
+    return {
+      items: visible.map((action) => ({
+        action,
+        disabledReason: resolveDisabledReason(action, currentStatus, role, gates),
+      })),
+      // Every action leaving this status is owned by a dedicated workflow on the
+      // host screen. The bar is empty, but the screen is not — so it must not
+      // claim otherwise.
+      allActionsRelocated: visible.length === 0 && all.length > 0,
+    };
   }, [currentStatus, role, gates, hiddenTargetStatuses]);
 
   const handleClick = (action: LifecycleAction) => {
@@ -115,9 +132,11 @@ export function ActionBar({
     <div data-slot="action-bar" className={cn("flex flex-col gap-2", className)}>
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Loan actions">
         {items.length === 0 ? (
-          <p className="text-foreground-muted text-sm" data-slot="action-bar-empty">
-            No actions available from this status.
-          </p>
+          allActionsRelocated ? null : (
+            <p className="text-foreground-muted text-sm" data-slot="action-bar-empty">
+              No actions available from this status.
+            </p>
+          )
         ) : (
           items.map(({ action, disabledReason }) => {
             const isDisabled = disabledReason !== null;

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { useState } from "react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import {
@@ -9,7 +10,7 @@ import {
   type ColumnDef,
   type PaginationState,
 } from "@tanstack/react-table";
-import { renderWithProviders } from "@/test/utils";
+import { axeBaseElement, renderWithProviders } from "@/test/utils";
 import { DataTablePagination } from "./DataTablePagination";
 
 interface Row {
@@ -58,6 +59,15 @@ describe("DataTablePagination", () => {
   it("has no axe violations", async () => {
     const { container } = renderWithProviders(<Harness />);
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no axe violations with the page-size listbox open (portalled content lives on baseElement)", async () => {
+    const user = userEvent.setup();
+    const { baseElement } = renderWithProviders(<Harness />);
+    await user.click(screen.getByRole("combobox", { name: "Rows per page" }));
+    await screen.findByRole("listbox");
+
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
   });
 
   it("shows Loading… in the range label when loading", () => {

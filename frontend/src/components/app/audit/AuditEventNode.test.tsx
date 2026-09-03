@@ -81,6 +81,16 @@ describe("AuditEventNode", () => {
     expect(code?.textContent).toBe(FIXTURE_APPLICATION.event.correlationId);
   });
 
+  it("omits the reference id reveal when correlation id is blank", () => {
+    const entry = {
+      ...FIXTURE_APPLICATION,
+      event: { ...FIXTURE_APPLICATION.event, correlationId: "   " },
+    };
+    const { container, queryByText } = renderNode(entry);
+    expect(queryByText("Reference id")).toBeNull();
+    expect(container.querySelector('[data-slot="audit-event-correlation"]')).toBeNull();
+  });
+
   it("flips data-compact when compact=true", () => {
     const { container } = renderNode(FIXTURE_APPLICATION, true);
     expect(container.querySelector('[data-compact="true"]')).toBeInTheDocument();

@@ -1,7 +1,10 @@
 import { Loader2 } from "lucide-react";
 
 import { ErrorState } from "@/components/app/feedback/ErrorState";
+import { ScheduleTable, lspScheduleToRepaymentInstallments } from "@/components/app/repayment";
+import { PaymentStatusBadge } from "@/components/app/repayment/PaymentStatusBadge";
 import { formatINR } from "@/lib/format";
+import { useMemo } from "react";
 import { safeApiMessage } from "../utils";
 import { useMyLoanServicing } from "../hooks/useMyLoanServicing";
 
@@ -12,10 +15,15 @@ export interface LoanServicingPanelProps {
 export function LoanServicingPanel({ loanAccountId }: LoanServicingPanelProps) {
   const { schedule, payments, loading, error, refetch } = useMyLoanServicing(loanAccountId);
 
+  const installments = useMemo(
+    () => (schedule ? lspScheduleToRepaymentInstallments(schedule, loanAccountId) : []),
+    [loanAccountId, schedule],
+  );
+
   return (
     <section
       data-slot="loan-servicing-card"
-      className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
+      className="border-border bg-background rounded-container flex flex-col gap-4 border p-5"
     >
       <h2 className="text-base font-semibold">Servicing</h2>
       {loading ? (
@@ -38,35 +46,8 @@ export function LoanServicingPanel({ loanAccountId }: LoanServicingPanelProps) {
         <>
           <div className="flex flex-col gap-2">
             <h3 className="text-sm font-semibold">Repayment schedule</h3>
-            {schedule && schedule.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-160 text-left text-xs">
-                  <thead className="text-foreground-muted border-border border-b">
-                    <tr>
-                      <th className="px-2 py-2 font-medium">#</th>
-                      <th className="px-2 py-2 font-medium">Due date</th>
-                      <th className="px-2 py-2 font-medium">Amount</th>
-                      <th className="px-2 py-2 font-medium">Paid</th>
-                      <th className="px-2 py-2 font-medium">Outstanding</th>
-                      <th className="px-2 py-2 font-medium">Status</th>
-                      <th className="px-2 py-2 font-medium">DPD</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {schedule.map((row) => (
-                      <tr key={row.id} className="border-border border-b last:border-b-0">
-                        <td className="px-2 py-2 font-mono">{row.installmentNumber}</td>
-                        <td className="px-2 py-2 font-mono">{row.dueDate}</td>
-                        <td className="px-2 py-2 font-mono">{formatINR(row.installmentAmount)}</td>
-                        <td className="px-2 py-2 font-mono">{formatINR(row.paidAmount)}</td>
-                        <td className="px-2 py-2 font-mono">{formatINR(row.outstandingAmount)}</td>
-                        <td className="px-2 py-2">{row.status}</td>
-                        <td className="px-2 py-2 font-mono">{row.daysPastDue ?? "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            {installments.length > 0 ? (
+              <ScheduleTable installments={installments} ariaLabel="LSP repayment schedule" />
             ) : (
               <p className="text-foreground-muted text-xs">
                 No repayment schedule is available yet.
@@ -95,7 +76,12 @@ export function LoanServicingPanel({ loanAccountId }: LoanServicingPanelProps) {
                         <td className="px-2 py-2 font-mono">{formatINR(row.amount)}</td>
                         <td className="px-2 py-2">{row.channel}</td>
                         <td className="px-2 py-2 font-mono">{row.reference ?? "—"}</td>
-                        <td className="px-2 py-2">{row.status}</td>
+                        {/* Same badge the ops repayments ledger uses, so an
+                            LSP agent and the Bhawana operator they call read
+                            one vocabulary for one payment. */}
+                        <td className="px-2 py-2">
+                          <PaymentStatusBadge status={row.status} />
+                        </td>
                       </tr>
                     ))}
                   </tbody>

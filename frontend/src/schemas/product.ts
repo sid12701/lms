@@ -1,6 +1,6 @@
 /**
  * Loan products + LSP mapping.
- * Per blueprint §7 + UI pages.md "Loan Product Configuration".
+ * Per blueprint §7; configured on `/products` (`@/features/products`).
  */
 import { z } from "zod";
 import { Iso8601, MoneyINRPositive, Uuid } from "./common";

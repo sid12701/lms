@@ -14,6 +14,10 @@ import type { LoanApplicationDetail, TransitionStatusInput } from "../types";
 import { mapApiErrorMessage, formatLoanStatusLabel } from "@/lib/api/user-messages";
 import { shortId } from "@/lib/short-id";
 import { ForeclosureQuotePanel } from "./ForeclosureQuotePanel";
+import type { LoanStatus } from "@/types";
+
+/** Stable identity so `ActionBar`'s memo does not re-run every render. */
+const FORECLOSURE_OWNED_BY_PANEL: readonly LoanStatus[] = ["FORECLOSED"];
 
 export interface DetailHeaderProps {
   detail: LoanApplicationDetail;
@@ -27,6 +31,9 @@ export interface DetailHeaderProps {
 export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps) {
   const { session } = useSession();
   const role = session?.user.role;
+  // `ForeclosureQuotePanel` owns the foreclosure transition when it renders, so
+  // the two must be decided together — see `hiddenTargetStatuses` below.
+  const showsForeclosurePanel = role === "SYSTEM_ADMIN";
   const mutation = useTransitionStatus(detail.application.id);
   const disbursementMutation = useInitiateDisbursement(detail.application.id);
   const [escalateOpen, setEscalateOpen] = useState(false);
@@ -164,11 +171,14 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
             scheduleValid: detail.scheduleValid,
           }}
           onConfirm={handleConfirm}
-          hiddenTargetStatuses={["FORECLOSED"]}
+          // Only relocate foreclosure when the panel that owns it is actually
+          // rendered below; otherwise the bar would hide an action nothing else
+          // offers.
+          hiddenTargetStatuses={showsForeclosurePanel ? FORECLOSURE_OWNED_BY_PANEL : undefined}
         />
       ) : null}
 
-      {role === "SYSTEM_ADMIN" ? (
+      {showsForeclosurePanel ? (
         <ForeclosureQuotePanel detail={detail} onExecuted={onTransitionSuccess} />
       ) : null}
     </div>

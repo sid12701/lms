@@ -23,7 +23,6 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { formatDistanceToNow } from "date-fns";
 import {
   Table,
   TableBody,
@@ -36,6 +35,7 @@ import { DataTableColumnHeader } from "@/components/app/data/DataTableColumnHead
 import { TableSkeleton } from "@/components/app/feedback/Skeletons";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
+import { AbsoluteRelativeTime } from "@/components/app/misc/AbsoluteRelativeTime";
 import { StatusBadge } from "@/components/app/status/StatusBadge";
 import { TABULAR_ATTR } from "@/lib/tabular-nums";
 import { formatINR } from "@/lib/format";
@@ -46,14 +46,6 @@ import { useBorrowerLoans } from "../../hooks/useBorrowerLoans";
 import type { BorrowerLoanRow } from "../../types";
 
 const SORTABLE_COLUMNS = new Set(["createdAt", "updatedAt", "requestedAmount", "status"]);
-
-function safeRelative(iso: string): string {
-  try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true });
-  } catch {
-    return iso;
-  }
-}
 
 export interface LoansTabProps {
   borrowerId: string;
@@ -138,11 +130,7 @@ export function LoansTab({ borrowerId }: LoansTabProps) {
         accessorKey: "updatedAt",
         meta: { label: "Updated" },
         header: ({ column }) => <DataTableColumnHeader column={column} title="Updated" />,
-        cell: ({ row }) => (
-          <span className="text-foreground-muted text-sm" title={row.original.updatedAt}>
-            {safeRelative(row.original.updatedAt)}
-          </span>
-        ),
+        cell: ({ row }) => <AbsoluteRelativeTime iso={row.original.updatedAt} variant="relative" />,
         enableSorting: true,
       },
     ],
@@ -201,7 +189,7 @@ export function LoansTab({ borrowerId }: LoansTabProps) {
   return (
     <div data-slot="loans-tab" data-density={density} className="flex flex-col gap-3">
       <div
-        className="border-border bg-surface shadow-e1 overflow-hidden rounded-md border"
+        className="border-border bg-surface shadow-e1 rounded-container overflow-hidden border"
         data-density={density}
       >
         <Table aria-label="Borrower loans">
@@ -253,7 +241,7 @@ export function LoansTab({ borrowerId }: LoansTabProps) {
                   }
                 }}
                 className={cn(
-                  "border-border focus-visible:ring-ring/50 cursor-pointer outline-none focus-visible:ring-2",
+                  "border-border focus-visible:ring-ring cursor-pointer outline-none focus-visible:ring-2",
                 )}
               >
                 {row.getVisibleCells().map((cell) => {

@@ -5,6 +5,7 @@ import {
   DocumentKind,
   DocumentStatus,
   isUploadedBackendChecklistStatus,
+  isSatisfiedBackendChecklistStatus,
 } from "./document";
 
 const UUID = "550e8400-e29b-41d4-a716-446655440000";
@@ -154,5 +155,25 @@ describe("Document schema", () => {
     if (carriesReject.success) {
       expect(carriesReject.data).not.toHaveProperty("rejectionReason");
     }
+  });
+});
+
+describe("isSatisfiedBackendChecklistStatus", () => {
+  /**
+   * A `NOT_REQUIRED` row has no file and never will, but it cannot gate a loan
+   * it does not apply to. Folding it onto PENDING made "docs complete"
+   * unreachable for any loan carrying a waived requirement.
+   */
+  it("treats an exempted document as no longer blocking", () => {
+    expect(isSatisfiedBackendChecklistStatus("NOT_REQUIRED")).toBe(true);
+    expect(isSatisfiedBackendChecklistStatus("SUBMITTED")).toBe(true);
+  });
+
+  it("still blocks on a genuinely outstanding document", () => {
+    expect(isSatisfiedBackendChecklistStatus("PENDING")).toBe(false);
+  });
+
+  it("keeps 'has a file' separate from 'no longer blocking'", () => {
+    expect(isUploadedBackendChecklistStatus("NOT_REQUIRED")).toBe(false);
   });
 });

@@ -134,7 +134,7 @@ export function ApiClientEditDialog({
               control={form.control}
               name="name"
               render={({ field }) => (
-                <FormItem>
+                <FormItem required>
                   <FormLabel>Name</FormLabel>
                   <FormControl>
                     <Input
@@ -156,7 +156,7 @@ export function ApiClientEditDialog({
               control={form.control}
               name="status"
               render={({ field }) => (
-                <FormItem>
+                <FormItem required>
                   <FormLabel>Status</FormLabel>
                   <FormControl>
                     <Select value={field.value} onValueChange={field.onChange}>

@@ -46,7 +46,6 @@ export interface BackendHomeOverview {
   dpd90PlusLoanCount: number;
   applicationsAwaitingApproval: number;
   applicationsInDisbursement: number;
-  avgApprovalTatHours: number | null;
   applicationsByStatus: ReadonlyArray<{ status: string; count: number }>;
   dpdBuckets: ReadonlyArray<{ bucket: string; count: number }>;
   openAlerts: number;
@@ -54,6 +53,8 @@ export interface BackendHomeOverview {
     id: string;
     severity: string;
     title: string;
+    /** Optional so a backend predating the field maps to "no detail" rather than failing. */
+    message?: string | null;
     subjectType: string;
     subjectId: string;
     createdAt: string;
@@ -132,6 +133,7 @@ export function mapBackendHomeOverviewToInternalKpis(
       ? AlertSeverity.parse(alert.severity)
       : "MEDIUM",
     title: alert.title,
+    message: alert.message?.trim() || null,
     subjectType: safeAlertSubjectType(alert.subjectType),
     subjectId: alert.subjectId || alert.id,
     createdAt: alert.createdAt,
@@ -139,14 +141,14 @@ export function mapBackendHomeOverviewToInternalKpis(
   return {
     applicationsAwaitingApproval: overview.applicationsAwaitingApproval,
     applicationsInDisbursement: overview.applicationsInDisbursement,
-    mtdDisbursedAmount: overview.totalDisbursedAmount,
+    totalDisbursedAmount: overview.totalDisbursedAmount,
     overdueLoansCount: overview.dpd90PlusLoanCount,
     overdueAmount: overview.dpd90PlusAmount,
-    avgApprovalTatHours: overview.avgApprovalTatHours,
     applicationsByStatus: mapApplicationsByStatus(overview.applicationsByStatus),
     dpdBuckets: mapDpdBuckets(overview.dpdBuckets),
     recentApplications,
     openAlerts,
+    dataAsOf: overview.dataAsOf ?? null,
   };
 }
 

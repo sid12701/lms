@@ -1,4 +1,4 @@
-import type { FormHTMLAttributes, ReactNode } from "react";
+import { useEffect, useRef, type FormHTMLAttributes, type ReactNode } from "react";
 import { type FieldValues, type SubmitHandler, type UseFormReturn } from "react-hook-form";
 import { cn } from "@/lib/utils";
 import { Form } from "@/components/ui/form";
@@ -33,12 +33,27 @@ export function FormShell<TFieldValues extends FieldValues = FieldValues>({
   errorSummaryLabel = "There are errors in this form",
   ...rest
 }: FormShellProps<TFieldValues>) {
+  const formRef = useRef<HTMLFormElement>(null);
   const errors = form.formState.errors;
+  const submitCount = form.formState.submitCount;
   const messages = collectErrorMessages(errors);
+
+  // Focus must run *after* React commits `aria-invalid` onto the controls.
+  // A `requestAnimationFrame` scheduled from RHF's invalid callback fires
+  // before that commit in a real browser, so the query found nothing and
+  // focus silently stayed on the submit button. An effect keyed on
+  // `submitCount` runs once per submit attempt, after the DOM is updated.
+  useEffect(() => {
+    if (submitCount === 0) return;
+    const root = formRef.current;
+    if (!root) return;
+    root.querySelector<HTMLElement>("[aria-invalid='true']")?.focus();
+  }, [submitCount]);
 
   return (
     <Form {...form}>
       <form
+        ref={formRef}
         data-slot="form-shell"
         onSubmit={form.handleSubmit(onSubmit)}
         className={cn("flex flex-col gap-6", className)}
@@ -47,12 +62,13 @@ export function FormShell<TFieldValues extends FieldValues = FieldValues>({
       >
         <div
           data-slot="form-shell-summary"
+          role={messages.length > 0 ? "alert" : undefined}
           aria-live="polite"
           aria-atomic="true"
           className={cn(
             messages.length === 0
               ? "sr-only"
-              : "border-danger/30 bg-danger/5 text-foreground rounded-md border p-4 text-sm",
+              : "border-danger/30 bg-danger/5 text-foreground rounded-container border p-4 text-sm",
           )}
         >
           {messages.length > 0 ? (

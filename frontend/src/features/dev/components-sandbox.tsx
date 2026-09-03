@@ -131,10 +131,10 @@ const FILTER_SCHEMA = z.object({
 
 function ColorSwatch({ name, token }: { name: string; token: string }) {
   return (
-    <div className="border-border bg-surface flex items-center gap-3 rounded-md border p-3">
+    <div className="border-border bg-surface rounded-container flex items-center gap-3 border p-3">
       <span
         aria-hidden="true"
-        className={cn("size-8 shrink-0 rounded-md border", `bg-${token}`)}
+        className={cn("rounded-container size-8 shrink-0 border", `bg-${token}`)}
         style={{ backgroundColor: `var(--color-${token.replace("color-", "")})` }}
       />
       <div className="min-w-0 text-xs">
@@ -172,26 +172,26 @@ function SandboxMain({
 
       <PageSection id="layout" eyebrow="Layout" title="PageSection, KpiStrip, palette swatches">
         <KpiStrip>
-          <div className="border-border bg-surface rounded-md border p-4">
+          <div className="border-border bg-surface rounded-container border p-4">
             <div className="text-foreground-muted text-xs uppercase">Open loans</div>
             <div className="text-foreground mt-1 text-2xl font-semibold">
               <TabularNumber value={1248} />
             </div>
           </div>
-          <div className="border-border bg-surface rounded-md border p-4">
+          <div className="border-border bg-surface rounded-container border p-4">
             <div className="text-foreground-muted text-xs uppercase">Disbursed (mtd)</div>
             <div className="text-foreground mt-1 text-2xl font-semibold">
               <TabularNumber value={4520000} variant="currency" />
             </div>
           </div>
-          <div className="border-border bg-surface rounded-md border p-4">
+          <div className="border-border bg-surface rounded-container border p-4">
             <div className="text-foreground-muted text-xs uppercase">Avg. DPD</div>
             <div className="text-foreground mt-1 text-2xl font-semibold">
               <TabularNumber value={3.42} variant="percent" />
             </div>
           </div>
-          <div className="border-border bg-surface rounded-md border p-4">
-            <div className="text-foreground-muted text-xs uppercase">Webhooks</div>
+          <div className="border-border bg-surface rounded-container border p-4">
+            <div className="text-foreground-muted text-xs uppercase">Documents</div>
             <div className="text-foreground mt-1 text-2xl font-semibold">
               <TabularNumber value={97.5} variant="percent" />
             </div>
@@ -255,40 +255,40 @@ function SandboxMain({
 
       <PageSection id="feedback" eyebrow="Feedback" title="Empty / Error / Permission / Skeletons">
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="border-border rounded-md border p-3">
+          <div className="border-border rounded-container border p-3">
             <EmptyState
               title="No loan applications"
               description="No loans match the current filters."
             />
           </div>
-          <div className="border-border rounded-md border p-3">
+          <div className="border-border rounded-container border p-3">
             <ErrorState
               title="Something went wrong"
               description="The backend returned an error."
               retry={{ label: "Retry", onClick: () => undefined }}
             />
           </div>
-          <div className="border-border rounded-md border p-3">
+          <div className="border-border rounded-container border p-3">
             <PermissionDeniedState
               title="No access"
               description="Your role cannot view this surface."
             />
           </div>
-          <div className="border-border rounded-md border p-3">
+          <div className="border-border rounded-container border p-3">
             <ContentState status="loading">
               <span>Body content (hidden while loading)</span>
             </ContentState>
           </div>
-          <div className="border-border rounded-md border p-3">
+          <div className="border-border rounded-container border p-3">
             <KpiSkeleton />
           </div>
-          <div className="border-border rounded-md border p-3">
+          <div className="border-border rounded-container border p-3">
             <CardSkeleton />
           </div>
-          <div className="border-border rounded-md border p-3">
+          <div className="border-border rounded-container border p-3">
             <FormSkeleton />
           </div>
-          <div className="border-border rounded-md border p-3">
+          <div className="border-border rounded-container border p-3">
             <TableSkeleton />
           </div>
         </div>
@@ -445,7 +445,7 @@ export function ComponentsSandboxPage() {
 
           {/* Right rail */}
           <RightRail>
-            <div className="border-border bg-surface flex flex-col gap-3 rounded-md border p-4">
+            <div className="border-border bg-surface rounded-container flex flex-col gap-3 border p-4">
               <PageEyebrow>Sandbox</PageEyebrow>
               <p className="text-foreground text-sm">
                 Visual QA only. Components mounted with hard-coded fixtures so changes are

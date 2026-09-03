@@ -17,7 +17,7 @@
  * Each open triggers a fresh inline fetch, which the backend records as a
  * SINGLE_DOCUMENT_PREVIEWED access-audit row.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, FileWarning, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -76,15 +76,30 @@ export function DocumentPreviewModal({
     retry: false,
   });
 
-  const objectUrl = useMemo(() => {
-    if (!blobQuery.data) return null;
-    return URL.createObjectURL(blobQuery.data);
-  }, [blobQuery.data]);
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!objectUrl) return;
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [objectUrl]);
+    let active = true;
+    if (!enabled || !blobQuery.data) {
+      queueMicrotask(() => {
+        if (active) setObjectUrl(null);
+      });
+      return () => {
+        active = false;
+      };
+    }
+
+    const url = URL.createObjectURL(blobQuery.data);
+    // Publish after the committed effect turn so a stale request cannot win
+    // if the dialog closes or the selected document changes immediately.
+    queueMicrotask(() => {
+      if (active) setObjectUrl(url);
+    });
+    return () => {
+      active = false;
+      URL.revokeObjectURL(url);
+    };
+  }, [blobQuery.data, enabled]);
 
   const renderKind = (mimeType ?? "").toLowerCase().startsWith("image/") ? "image" : "pdf";
 
@@ -108,7 +123,7 @@ export function DocumentPreviewModal({
 
         <div
           data-slot="document-preview-surface"
-          className="bg-muted/30 border-border relative flex h-[70vh] min-h-64 items-center justify-center overflow-hidden rounded-md border"
+          className="bg-muted/30 border-border rounded-container relative flex h-[70vh] min-h-64 items-center justify-center overflow-hidden border"
         >
           {!previewable ? (
             <PreviewFallback

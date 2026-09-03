@@ -11,6 +11,7 @@ import {
   FilterBarSearchField,
   FilterBarShell,
 } from "@/components/app/data/FilterBarShell";
+import { filterControlClass } from "@/components/app/data/filter-control";
 import {
   Select,
   SelectContent,
@@ -101,10 +102,10 @@ export function UsersFilterBar({ filters, onChange, lspOptions, className }: Use
         onValueChange={(next) => setRole(next === ALL_SENTINEL ? undefined : next)}
       >
         <SelectTrigger
-          size="sm"
           aria-label="Role filter"
           data-slot="users-role-filter"
-          className="w-44"
+          data-filter-set={filters.role !== undefined ? "true" : undefined}
+          className={filterControlClass(filters.role !== undefined, "w-44")}
         >
           <SelectValue placeholder="All roles" />
         </SelectTrigger>
@@ -123,10 +124,10 @@ export function UsersFilterBar({ filters, onChange, lspOptions, className }: Use
         onValueChange={(next) => setStatus(next === ALL_SENTINEL ? undefined : next)}
       >
         <SelectTrigger
-          size="sm"
           aria-label="Status filter"
           data-slot="users-status-filter"
-          className="w-36"
+          data-filter-set={filters.status !== undefined ? "true" : undefined}
+          className={filterControlClass(filters.status !== undefined, "w-36")}
         >
           <SelectValue placeholder="All statuses" />
         </SelectTrigger>
@@ -145,10 +146,10 @@ export function UsersFilterBar({ filters, onChange, lspOptions, className }: Use
         onValueChange={(next) => setLsp(next === ALL_SENTINEL ? undefined : next)}
       >
         <SelectTrigger
-          size="sm"
           aria-label="LSP filter"
           data-slot="users-lsp-filter"
-          className="w-48"
+          data-filter-set={filters.lspId !== undefined ? "true" : undefined}
+          className={filterControlClass(filters.lspId !== undefined, "w-48")}
         >
           <SelectValue placeholder="All LSPs" />
         </SelectTrigger>

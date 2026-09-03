@@ -42,7 +42,7 @@ function Section({
   return (
     <section
       data-slot="profile-section"
-      className={cn("border-border bg-surface rounded-md border p-4", className)}
+      className={cn("border-border bg-surface rounded-container border p-4", className)}
     >
       <h2 className="text-foreground mb-3 text-sm font-semibold tracking-tight">{title}</h2>
       {children}
@@ -174,7 +174,7 @@ export function ProfileTab({ detail }: ProfileTabProps) {
             {visibleLsps.map((lsp) => (
               <li
                 key={lsp.id}
-                className="border-border flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2"
+                className="border-border rounded-container flex flex-wrap items-center justify-between gap-2 border px-3 py-2"
               >
                 <Badge variant="outline" className="border-border">
                   {lsp.name}

@@ -4,14 +4,20 @@
  * Mounts the AppShell at the 1024px (lg) breakpoint — the most likely
  * culprit for horizontal overflow because the right-rail collapses
  * here per locked decision D6 (rail kept at xl ≥ 1280, hidden below).
- * Asserts that no descendant pushes `document.body.scrollWidth` beyond
- * the viewport's `clientWidth`.
+ *
+ * jsdom has no layout engine, so `scrollWidth`/`offsetWidth` are always 0 —
+ * there is no way to assert on *actual* overflow here. What we can catch is
+ * the anti-pattern that causes it: this codebase styles exclusively with
+ * Tailwind utility classes (no inline `style` widths), so a stray arbitrary
+ * fixed width — `w-[1300px]` rather than a responsive/`max-w-*` class — on
+ * any shell or table container is the concrete, greppable risk. The test
+ * scans the rendered class list for that pattern at >= the lg viewport width.
  *
  * The page content is intentionally synthesised (representative
  * KPI strip + DataTable, not a real feature page) so this test stays
  * decoupled from any backend data layer that other agents own. The
- * structural invariant (no horizontal scroll at lg) is independent of
- * which feature renders there.
+ * structural invariant (no fixed-width overflow risk at lg) is independent
+ * of which feature renders there.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { render } from "@testing-library/react";
@@ -74,7 +80,7 @@ function SyntheticDashboard() {
           <div className="text-foreground mt-1 text-2xl font-semibold">3.42%</div>
         </div>
         <div className="border-border bg-surface rounded-md border p-4">
-          <div className="text-foreground-muted text-xs uppercase">Webhooks</div>
+          <div className="text-foreground-muted text-xs uppercase">Documents</div>
           <div className="text-foreground mt-1 text-2xl font-semibold">97.5%</div>
         </div>
       </KpiStrip>
@@ -123,7 +129,7 @@ describe("Responsive QA — AppShell at lg (1024px)", () => {
     void originalClientWidth;
   });
 
-  it("renders the shell + dashboard without horizontal overflow", () => {
+  it("renders the shell + dashboard with no fixed-width class wider than the lg viewport", () => {
     const { container } = render(
       <QueryClientProvider client={createQueryClient()}>
         <MemoryRouter initialEntries={["/home"]}>
@@ -154,20 +160,24 @@ describe("Responsive QA — AppShell at lg (1024px)", () => {
     const tables = container.querySelectorAll("table");
     expect(tables.length).toBeGreaterThan(0);
 
-    // The structural invariant: nothing in the tree should overflow the
-    // 1024px viewport. We assert via offsetWidth on the rendered root
-    // (jsdom doesn't compute scrollWidth from CSS layout, so we check the
-    // page didn't render anything that requested >1024px intrinsically).
+    // The structural invariant: no descendant carries a fixed-width Tailwind
+    // arbitrary-value class (`w-[Npx]`, optionally behind a breakpoint
+    // variant like `lg:w-[Npx]`) at or above the lg viewport. Unlike
+    // `min-w-*`/`max-w-*`, `w-[Npx]` pins an intrinsic width regardless of
+    // container size, so one at >= 1024px on a shell/table container would
+    // force horizontal overflow the moment it renders at this breakpoint.
     const root = container.firstElementChild as HTMLElement | null;
     expect(root).not.toBeNull();
     if (root) {
-      // jsdom returns 0 for offsetWidth without a layout engine; the check
-      // we can make is on explicit width attrs or inline-styled overflow.
-      const overflowing = Array.from(root.querySelectorAll<HTMLElement>("*")).filter((el) => {
-        const style = el.getAttribute("style") ?? "";
-        return /width:\s*1[2-9]\d{2,}px/.test(style) || /min-width:\s*1[2-9]\d{2,}px/.test(style);
+      const FIXED_WIDTH_CLASS = /(?:^|:)w-\[(\d+)px\]$/;
+      const offendingClasses = Array.from(root.querySelectorAll<HTMLElement>("*")).flatMap((el) => {
+        const classes = (el.getAttribute("class") ?? "").split(/\s+/).filter(Boolean);
+        return classes.filter((token) => {
+          const match = FIXED_WIDTH_CLASS.exec(token);
+          return match !== undefined && match !== null && Number(match[1]) >= LG_VIEWPORT_PX;
+        });
       });
-      expect(overflowing).toHaveLength(0);
+      expect(offendingClasses).toHaveLength(0);
     }
   });
 });

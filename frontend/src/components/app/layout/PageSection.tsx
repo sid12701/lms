@@ -25,7 +25,7 @@ export const PageSection = forwardRef<HTMLElement, PageSectionProps>(function Pa
   return (
     <section
       ref={ref}
-      className={cn("border-border bg-surface shadow-e1 rounded-md border p-5", className)}
+      className={cn("border-border bg-surface shadow-e1 rounded-container border p-5", className)}
       {...rest}
     >
       {hasHeader ? (

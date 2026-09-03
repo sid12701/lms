@@ -27,8 +27,10 @@ export const PageEyebrow = forwardRef<HTMLElement, PageEyebrowProps>(function Pa
   { children, as = "p", className, ...rest },
   ref,
 ) {
-  const baseClass =
-    "text-foreground-muted text-[11px] leading-4 font-semibold uppercase tracking-[0.08em]";
+  // `text-eyebrow` carries size, line-height, weight and tracking (tokens.css),
+  // replacing the hand-written arbitrary-value spelling this role was repeated
+  // in across the app.
+  const baseClass = "text-foreground-muted text-eyebrow uppercase";
   if (as === "span") {
     return (
       <span

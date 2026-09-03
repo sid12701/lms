@@ -34,7 +34,11 @@ export function DataTableColumnHeader<TData, TValue>({
       <span
         data-slot="column-header"
         className={cn(
-          "text-foreground-muted text-xs font-medium tracking-wide uppercase",
+          // Not uppercase. DESIGN.md's One Voice Rule reserves uppercase for
+          // the eyebrow and names table headers explicitly as somewhere not to
+          // use it; weight, colour and the muted header band separate a header
+          // from its column without shouting.
+          "text-foreground-muted text-xs font-medium",
           numeric && "block w-full text-right",
           className,
         )}
@@ -64,13 +68,16 @@ export function DataTableColumnHeader<TData, TValue>({
       data-sorted={sorted || undefined}
       onClick={() => column.toggleSorting(sorted === "asc")}
       className={cn(
-        "text-foreground-muted hover:text-foreground -ml-2 h-7 gap-1.5 px-2 text-xs font-medium tracking-wide uppercase",
+        "text-foreground-muted hover:text-foreground -ml-2 h-7 gap-1.5 px-2 text-xs font-medium",
         numeric && "ml-0 w-full justify-end",
         className,
       )}
     >
       <span>{title}</span>
-      <span className="sr-only">{sortHint}</span>
+      {/* `normal-case` because this used to inherit the header's `uppercase`.
+          A visually-hidden sentence is prose for a screen reader, and some
+          readers announce CSS-uppercased text letter by letter. */}
+      <span className="sr-only normal-case">{sortHint}</span>
       <SortIcon
         aria-hidden="true"
         className={cn("size-3", sorted ? "text-foreground" : "text-foreground-subtle")}

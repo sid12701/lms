@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { RepaymentInstallment } from "@/schemas/loan-account";
 import { InstallmentRow } from "./InstallmentRow";
+import { ScheduleSummaryStrip } from "./ScheduleSummaryStrip";
 
 export interface ScheduleTableProps {
   /** Ordered installment list (typically by `number` ascending). */
@@ -24,7 +25,7 @@ export interface ScheduleTableProps {
   className?: string;
 }
 
-const COMPACT_HEAD = "h-8 px-2.5 text-[11px]";
+const COMPACT_HEAD = "h-8 px-2.5 text-xs";
 
 /** Header columns — labels mirror the cells rendered by `InstallmentRow`. */
 const COLUMNS: ColumnDef<RepaymentInstallment>[] = [
@@ -33,8 +34,10 @@ const COLUMNS: ColumnDef<RepaymentInstallment>[] = [
   { id: "principal", header: "Principal", meta: { numeric: true } },
   { id: "interest", header: "Interest", meta: { numeric: true } },
   { id: "amount", header: "Installment", meta: { numeric: true } },
+  { id: "paid", header: "Paid", meta: { numeric: true } },
   { id: "outstanding", header: "Outstanding", meta: { numeric: true } },
   { id: "status", header: "Status" },
+  { id: "dpd", header: "DPD", meta: { numeric: true } },
   // Action column header has no visible text — provide a screen-reader-only
   // label so axe's empty-table-header rule passes.
   { id: "action", header: () => <span className="sr-only">Actions</span> },
@@ -76,55 +79,55 @@ export function ScheduleTable({
     <div
       data-slot="schedule-table"
       data-density="compact"
-      className={cn(
-        "border-border bg-surface shadow-e1 overflow-hidden rounded-md border",
-        className,
-      )}
+      className={cn("flex flex-col gap-2", className)}
     >
-      <Table aria-label={ariaLabel}>
-        <TableHeader className="bg-surface-muted/60">
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
-              {headerGroup.headers.map((header) => {
-                const meta = header.column.columnDef.meta;
-                return (
-                  <TableHead
-                    key={header.id}
-                    scope="col"
-                    className={cn(COMPACT_HEAD, meta?.numeric && "text-right")}
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                );
-              })}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {rows.length === 0 ? (
-            <TableRow className="border-border hover:bg-transparent">
-              <TableCell
-                colSpan={COLUMNS.length}
-                className="text-foreground-muted py-12 text-center text-sm"
-              >
-                No installments scheduled.
-              </TableCell>
-            </TableRow>
-          ) : (
-            rows.map((row) => (
-              <InstallmentRow
-                key={row.id}
-                installment={row.original}
-                outstandingAmount={row.original.outstandingAmount}
-                isNextDue={row.original.id === resolvedNextDueId}
-                onRecordPayment={onRecordPayment}
-              />
-            ))
-          )}
-        </TableBody>
-      </Table>
+      <ScheduleSummaryStrip installments={installments} />
+      <div className="border-border bg-surface shadow-e1 rounded-container overflow-hidden border">
+        <Table aria-label={ariaLabel}>
+          <TableHeader className="bg-surface-muted/60">
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
+                {headerGroup.headers.map((header) => {
+                  const meta = header.column.columnDef.meta;
+                  return (
+                    <TableHead
+                      key={header.id}
+                      scope="col"
+                      className={cn(COMPACT_HEAD, meta?.numeric && "text-right")}
+                    >
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 ? (
+              <TableRow className="border-border hover:bg-transparent">
+                <TableCell
+                  colSpan={COLUMNS.length}
+                  className="text-foreground-muted py-12 text-center text-sm"
+                >
+                  No installments scheduled.
+                </TableCell>
+              </TableRow>
+            ) : (
+              rows.map((row) => (
+                <InstallmentRow
+                  key={row.id}
+                  installment={row.original}
+                  outstandingAmount={row.original.outstandingAmount}
+                  isNextDue={row.original.id === resolvedNextDueId}
+                  onRecordPayment={onRecordPayment}
+                />
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

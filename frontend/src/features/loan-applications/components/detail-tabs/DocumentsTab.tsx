@@ -18,6 +18,7 @@ import { DocumentChecklistGroup, DocumentPreviewModal } from "@/components/app/d
 import { ApiError, requestBlob } from "@/lib/api/http-client";
 import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { DOCUMENT_KIND_LABELS, type Document } from "@/schemas/document";
+import type { LoanStatus } from "@/types";
 import type { LoanDocument, LoanDocumentType } from "@/types";
 import { useLoanApplicationDocuments } from "../../hooks/useLoanApplicationDocuments";
 import { adaptLoanDocumentToDocument } from "./document-adapter";
@@ -38,6 +39,11 @@ export interface DocumentsTabProps {
   applicationId: string;
   /** Reserved for future role gating; currently the tab is view-only for all internal roles. */
   canManage: boolean;
+  /**
+   * Loan lifecycle status, so the checklist can stop describing a gate the loan
+   * has already passed. Optional for callers that do not have it to hand.
+   */
+  loanStatus?: LoanStatus;
 }
 
 function filenameFromPathLike(value: string | null | undefined): string | null {
@@ -76,7 +82,11 @@ function documentContentPath(
   return opts?.inline ? `${base}?disposition=inline` : base;
 }
 
-export function DocumentsTab({ applicationId, canManage: _canManage }: DocumentsTabProps) {
+export function DocumentsTab({
+  applicationId,
+  canManage: _canManage,
+  loanStatus,
+}: DocumentsTabProps) {
   const query = useLoanApplicationDocuments(applicationId);
 
   const adapted = useMemo<Document[]>(
@@ -171,7 +181,12 @@ export function DocumentsTab({ applicationId, canManage: _canManage }: Documents
 
   return (
     <div data-slot="documents-tab" className="flex flex-col gap-4">
-      <DocumentChecklistGroup docs={adapted} onView={handleView} onDownload={handleDownload} />
+      <DocumentChecklistGroup
+        docs={adapted}
+        loanStatus={loanStatus}
+        onView={handleView}
+        onDownload={handleDownload}
+      />
       <DocumentPreviewModal
         open={previewOpen}
         onOpenChange={setPreviewOpen}

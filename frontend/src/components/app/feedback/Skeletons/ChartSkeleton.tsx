@@ -23,7 +23,7 @@ export const ChartSkeleton = forwardRef<HTMLDivElement, ChartSkeletonProps>(func
       role="status"
       aria-label="Loading chart"
       className={cn(
-        "border-border bg-surface shadow-e1 flex flex-col gap-4 rounded-md border p-5 opacity-100 transition-opacity duration-200 motion-reduce:transition-none",
+        "border-border bg-surface shadow-e1 rounded-container flex flex-col gap-4 border p-5 opacity-100 transition-opacity duration-200 motion-reduce:transition-none",
         className,
       )}
       {...rest}
@@ -32,7 +32,7 @@ export const ChartSkeleton = forwardRef<HTMLDivElement, ChartSkeletonProps>(func
         <Skeleton className="h-4 w-2/5" />
         <Skeleton className="h-3 w-3/5" />
       </div>
-      <div className="border-border/60 flex h-[280px] items-end gap-3 rounded-md border border-dashed px-4 py-5">
+      <div className="border-border/60 rounded-container flex h-[280px] items-end gap-3 border border-dashed px-4 py-5">
         {Array.from({ length: bars }).map((_, index) => (
           <Skeleton
             key={index}

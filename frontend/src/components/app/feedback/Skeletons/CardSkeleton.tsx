@@ -24,7 +24,7 @@ export const CardSkeleton = forwardRef<HTMLDivElement, CardSkeletonProps>(functi
       role="status"
       aria-label="Loading content"
       className={cn(
-        "border-border bg-surface shadow-e1 flex flex-col gap-3 rounded-md border p-5",
+        "border-border bg-surface shadow-e1 rounded-container flex flex-col gap-3 border p-5",
         className,
       )}
       {...rest}

@@ -30,7 +30,7 @@ export const KpiSkeleton = forwardRef<HTMLDivElement, KpiSkeletonProps>(function
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="border-border bg-surface shadow-e1 flex flex-col gap-3 rounded-md border p-5"
+          className="border-border bg-surface shadow-e1 rounded-container flex flex-col gap-3 border p-5"
         >
           <Skeleton className="h-3 w-24" />
           <Skeleton className="h-7 w-32" />

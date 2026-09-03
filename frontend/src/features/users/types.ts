@@ -34,6 +34,19 @@ export interface UserRow extends User {
   lspName: string | null;
 }
 
+export type UserDialogState =
+  | { kind: "none" }
+  | { kind: "create" }
+  | { kind: "edit"; user: UserRow }
+  | { kind: "reset-password"; user: UserRow }
+  | { kind: "revoke-sessions"; user: UserRow }
+  | { kind: "disable"; user: UserRow };
+
+export interface RevealedTemporaryPassword {
+  username: string;
+  password: string;
+}
+
 export interface UsersListResponse {
   items: UserRow[];
   total: number;

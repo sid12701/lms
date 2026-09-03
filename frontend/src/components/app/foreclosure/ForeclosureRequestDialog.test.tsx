@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { axe } from "vitest-axe";
-import { renderWithProviders } from "@/test/utils";
+import { axeBaseElement, renderWithProviders } from "@/test/utils";
 import { ForeclosureRequestDialog } from "./ForeclosureRequestDialog";
 
 describe("<ForeclosureRequestDialog />", () => {
@@ -10,7 +9,7 @@ describe("<ForeclosureRequestDialog />", () => {
       <ForeclosureRequestDialog open onOpenChange={() => {}} onConfirm={() => {}} />,
     );
     expect(getByRole("heading", { name: /Request foreclosure/i })).toBeInTheDocument();
-    expect(getByLabelText("Reason")).toBeInTheDocument();
+    expect(getByLabelText(/^Reason/)).toBeInTheDocument();
     expect(getByLabelText(/Note \(optional\)/i)).toBeInTheDocument();
   });
 
@@ -34,7 +33,7 @@ describe("<ForeclosureRequestDialog />", () => {
     const { getByLabelText, getAllByRole } = renderWithProviders(
       <ForeclosureRequestDialog open onOpenChange={() => {}} onConfirm={onConfirm} />,
     );
-    await userEvent.type(getByLabelText("Reason"), "  Borrower requested closure.  ");
+    await userEvent.type(getByLabelText(/^Reason/), "  Borrower requested closure.  ");
     await userEvent.type(getByLabelText(/Note \(optional\)/i), "  Sales-ops escalation 2391.  ");
     const submit = getAllByRole("button", { name: /Request foreclosure/i }).find(
       (b) => (b as HTMLButtonElement).type === "submit",
@@ -56,7 +55,7 @@ describe("<ForeclosureRequestDialog />", () => {
     const { getByLabelText, getAllByRole } = renderWithProviders(
       <ForeclosureRequestDialog open onOpenChange={() => {}} onConfirm={onConfirm} />,
     );
-    await userEvent.type(getByLabelText("Reason"), "Borrower requested closure.");
+    await userEvent.type(getByLabelText(/^Reason/), "Borrower requested closure.");
     const submit = getAllByRole("button", { name: /Request foreclosure/i }).find(
       (b) => (b as HTMLButtonElement).type === "submit",
     )!;
@@ -88,7 +87,7 @@ describe("<ForeclosureRequestDialog />", () => {
     const { getByLabelText, getAllByRole, rerender } = renderWithProviders(
       <ForeclosureRequestDialog open onOpenChange={() => {}} onConfirm={onConfirm} />,
     );
-    await userEvent.type(getByLabelText("Reason"), "Stale draft");
+    await userEvent.type(getByLabelText(/^Reason/), "Stale draft");
     rerender(
       <ForeclosureRequestDialog open={false} onOpenChange={() => {}} onConfirm={onConfirm} />,
     );
@@ -106,6 +105,6 @@ describe("<ForeclosureRequestDialog />", () => {
     const { baseElement } = renderWithProviders(
       <ForeclosureRequestDialog open onOpenChange={() => {}} onConfirm={() => {}} />,
     );
-    expect(await axe(baseElement)).toHaveNoViolations();
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
   });
 });

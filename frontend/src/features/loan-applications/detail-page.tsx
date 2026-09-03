@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { FileText, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
@@ -7,12 +7,12 @@ import { PermissionDeniedState } from "@/components/app/feedback/PermissionDenie
 import { isNotFoundApiError, isUnauthorizedApiError } from "@/lib/api/api-errors";
 import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { RightRail } from "@/components/app/layout/RightRail";
-import { StatusBadge } from "@/components/app/status/StatusBadge";
+import { CardSkeleton } from "@/components/app/feedback/Skeletons";
+import { usePageMeta } from "@/components/app/shell/page-meta-context";
+import { formatLoanDocumentTitle, resolveLoanPageIdentity } from "@/lib/loan-page-identity";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { useSession } from "@/features/auth/session-context";
 import { canPostRepayment } from "@/lib/role-gates";
-import { formatINR } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useBorrowerDetail } from "@/features/borrowers/hooks/useBorrowerDetail";
 import { DetailHeader } from "./components/DetailHeader";
@@ -23,7 +23,6 @@ import {
   OverviewTab,
   RepaymentsTab,
   ScheduleTab,
-  WebhooksTab,
 } from "./components/detail-tabs";
 import { useLoanApplicationDetail } from "./hooks/useLoanApplicationDetail";
 import { LoanApplicationDetailTab, type LoanApplicationDetail } from "./types";
@@ -31,6 +30,23 @@ import type { BorrowerDetail } from "@/features/borrowers/types";
 import type { Role } from "@/schemas/role";
 
 const REPAYABLE_STATUSES = new Set(["DISBURSED", "UNDER_REPAYMENT"]);
+
+/**
+ * Statuses where the money has not left the LSP's disbursal account yet, so
+ * there is nothing to repay and no repayment health to report.
+ *
+ * "At a glance" used to fall through to "Repayment · On track" for these,
+ * which read as reassurance on the two screens where it is least warranted —
+ * an approved loan awaiting disbursal, and one the automated worker has given
+ * up on. `REJECTED` and `INVALID` are deliberately absent: they will never
+ * disburse, so "awaiting disbursement" would be just as untrue.
+ */
+const PRE_DISBURSEMENT_STATUSES = new Set([
+  "INITIALIZED",
+  "AWAITING_APPROVAL",
+  "APPROVED_PENDING_DISBURSAL",
+  "DISBURSEMENT_RETRY",
+]);
 
 /**
  * `?tab=` URL state. Mirrors the type from `./types.ts` — invalid or
@@ -68,18 +84,103 @@ function useTabParam(): readonly [
 
 function DetailSkeleton() {
   return (
-    <div data-slot="detail-skeleton" className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-4 w-48" />
-        <Skeleton className="h-8 w-72" />
-        <Skeleton className="h-5 w-32" />
+    <div
+      data-slot="detail-skeleton"
+      className="flex flex-col gap-6 xl:flex-row xl:items-start xl:gap-8"
+      role="status"
+      aria-label="Loading loan application"
+    >
+      {/*
+        Every route in this app exposes exactly one `h1`; while the detail data
+        is in flight there was none at all, so a screen-reader user had no page
+        identity on a slow load. `my-loans` already solved it this way.
+      */}
+      <h1 className="sr-only">Loading loan application</h1>
+      <div className="min-w-0 flex-1 space-y-6">
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-3 w-48" />
+          <Skeleton className="h-8 w-72" />
+          <Skeleton className="h-4 w-40" />
+          <div className="flex flex-wrap gap-2">
+            <Skeleton className="h-9 w-28" />
+            <Skeleton className="h-9 w-28" />
+            <Skeleton className="h-9 w-28" />
+          </div>
+        </div>
+        <div className="flex flex-col gap-4">
+          <div className="border-border flex flex-wrap gap-2 border-b pb-2">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <Skeleton key={index} className="h-8 w-20" />
+            ))}
+          </div>
+          <CardSkeleton lines={6} />
+        </div>
       </div>
-      <div className="flex gap-2">
-        <Skeleton className="h-9 w-24" />
-        <Skeleton className="h-9 w-24" />
+      <div className="hidden w-72 shrink-0 xl:block">
+        <CardSkeleton lines={4} />
       </div>
-      <Skeleton className="h-48 w-full" />
     </div>
+  );
+}
+
+function DetailRightRail({
+  detail,
+}: {
+  detail: LoanApplicationDetail;
+  borrowerDetail: BorrowerDetail | null;
+}) {
+  const delinquency = detail.accountDelinquency;
+  const interestRate = detail.interestRate != null ? `${detail.interestRate}%` : null;
+
+  return (
+    <section
+      data-slot="detail-summary"
+      className={cn("border-border bg-surface rounded-container border p-4", "flex flex-col gap-4")}
+    >
+      <h2 className="text-foreground text-sm font-semibold tracking-tight">At a glance</h2>
+      {delinquency && delinquency.maxDaysPastDue != null && delinquency.maxDaysPastDue > 0 ? (
+        <div className="flex flex-col gap-1">
+          <div className="text-foreground-muted text-xs tracking-wide uppercase">Delinquency</div>
+          <div className="text-foreground text-sm tabular-nums">
+            {delinquency.maxDaysPastDue} day{delinquency.maxDaysPastDue === 1 ? "" : "s"} past due
+          </div>
+          {delinquency.overdueInstallmentCount != null ? (
+            <div className="text-foreground-muted text-xs">
+              {delinquency.overdueInstallmentCount} overdue installment
+              {delinquency.overdueInstallmentCount === 1 ? "" : "s"}
+            </div>
+          ) : null}
+        </div>
+      ) : PRE_DISBURSEMENT_STATUSES.has(detail.application.status) ? (
+        <div className="flex flex-col gap-1">
+          <div className="text-foreground-muted text-xs tracking-wide uppercase">Repayment</div>
+          <div className="text-foreground text-sm">Awaiting disbursement</div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          <div className="text-foreground-muted text-xs tracking-wide uppercase">Repayment</div>
+          <div className="text-foreground text-sm">On track</div>
+        </div>
+      )}
+      <div className="flex flex-col gap-1">
+        <div className="text-foreground-muted text-xs tracking-wide uppercase">Documents</div>
+        <div className="text-foreground text-sm">
+          {detail.docsComplete ? "Docs complete" : "Docs incomplete"}
+        </div>
+      </div>
+      <div className="flex flex-col gap-1">
+        <div className="text-foreground-muted text-xs tracking-wide uppercase">Schedule</div>
+        <div className="text-foreground text-sm">
+          {detail.scheduleValid ? "Schedule valid" : "Schedule invalid"}
+        </div>
+      </div>
+      {interestRate ? (
+        <div className="flex flex-col gap-1">
+          <div className="text-foreground-muted text-xs tracking-wide uppercase">Interest rate</div>
+          <div className="text-foreground text-sm tabular-nums">{interestRate}</div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -115,13 +216,17 @@ function ApplicationTabBody({
         />
       );
     case "documents":
-      return <DocumentsTab applicationId={applicationId} canManage={false} />;
+      return (
+        <DocumentsTab
+          applicationId={applicationId}
+          canManage={false}
+          loanStatus={detail.application.status}
+        />
+      );
     case "repayments":
       return <RepaymentsTab applicationId={applicationId} />;
     case "activity":
       return <ActivityTab applicationId={applicationId} />;
-    case "webhooks":
-      return <WebhooksTab applicationId={applicationId} />;
   }
 }
 
@@ -133,9 +238,9 @@ function ApplicationTabBody({
  * duplicated as a tab here because the Overview tab already carries the
  * full context (the rail is a "stuck above the fold" convenience).
  *
- * Per-tab fetches are gated by the active `?tab=` — Activity / Webhooks
- * queries stay paused until the user opens them so the cold-load only
- * pays for the header + Overview.
+ * Per-tab fetches are gated by the active `?tab=` — the Activity query
+ * stays paused until the user opens it so the cold-load only pays for
+ * the header + Overview.
  */
 export function LoanApplicationDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -155,6 +260,21 @@ export function LoanApplicationDetailPage() {
   const borrowerDetailQuery = useBorrowerDetail(borrowerId);
   const borrowerDetail =
     borrowerDetailQuery.data && borrowerId.length > 0 ? borrowerDetailQuery.data : null;
+
+  const pageIdentity = useMemo(() => {
+    if (!detailQuery.data) return null;
+    const identity = resolveLoanPageIdentity({
+      applicationId: detailQuery.data.application.id,
+      externalLoanId: detailQuery.data.application.externalLoanId,
+      borrowerName: detailQuery.data.borrower.fullName,
+    });
+    return {
+      breadcrumbLabel: identity,
+      documentTitle: formatLoanDocumentTitle(identity),
+    };
+  }, [detailQuery.data]);
+
+  usePageMeta(pageIdentity ?? {});
 
   if (!applicationId) {
     return (
@@ -188,10 +308,13 @@ export function LoanApplicationDetailPage() {
           data-testid="loan-application-detail"
           data-state="forbidden"
         >
+          {/* Whole-page state with no `PageHeader` above it, so this title is
+              the route's only heading — `EmptyState` defaults to a `p`. */}
           <EmptyState
             variant="no-permission"
             icon={ShieldAlert}
             title="No access to this application"
+            titleAs="h1"
             description="You don't have permission to view this loan application."
             action={{
               label: "Back to applications",
@@ -258,51 +381,7 @@ export function LoanApplicationDetailPage() {
       </div>
 
       <RightRail>
-        <section
-          data-slot="detail-summary"
-          className={cn("border-border bg-surface rounded-md border p-4", "flex flex-col gap-3")}
-        >
-          <h2 className="text-foreground text-sm font-semibold tracking-tight">At a glance</h2>
-          <div className="flex flex-col gap-2">
-            <div className="text-foreground-muted text-xs tracking-wide uppercase">Status</div>
-            <StatusBadge
-              status={detail.application.status}
-              delinquency={detail.accountDelinquency}
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <div className="text-foreground-muted text-xs tracking-wide uppercase">Requested</div>
-            <div className="text-foreground text-base tabular-nums">
-              {formatINR(detail.application.requestedAmount)}
-            </div>
-          </div>
-          <div className="flex flex-col gap-2">
-            <div className="text-foreground-muted text-xs tracking-wide uppercase">LSP</div>
-            <div className="text-foreground text-sm">{detail.lsp.name}</div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge
-              className={cn(
-                "border",
-                detail.docsComplete
-                  ? "border-success/30 bg-success/10 text-success"
-                  : "border-warning/30 bg-warning/10 text-warning",
-              )}
-            >
-              {detail.docsComplete ? "Docs complete" : "Docs incomplete"}
-            </Badge>
-            <Badge
-              className={cn(
-                "border",
-                detail.scheduleValid
-                  ? "border-success/30 bg-success/10 text-success"
-                  : "border-warning/30 bg-warning/10 text-warning",
-              )}
-            >
-              {detail.scheduleValid ? "Schedule valid" : "Schedule missing"}
-            </Badge>
-          </div>
-        </section>
+        <DetailRightRail detail={detail} borrowerDetail={borrowerDetail} />
       </RightRail>
     </div>
   );

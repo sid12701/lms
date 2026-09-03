@@ -2,9 +2,71 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+/**
+ * True while the element can actually scroll in either axis.
+ *
+ * A bounded scroll container that holds no focusable content is unreachable by
+ * keyboard — `/reports` and the repayments ledger both scrolled ~430px of rows
+ * that a keyboard user could not move at all, because their tables are pure data
+ * with no row action to tab to. Making the container focusable is the fix, but
+ * only while it genuinely scrolls: an unconditional `tabIndex` would add a dead
+ * tab stop to every short table in the app.
+ */
+function useScrollable(ref: React.RefObject<HTMLElement | null>): boolean {
+  const [scrollable, setScrollable] = React.useState(false);
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    const measure = () =>
+      setScrollable(el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+
+    measure();
+    // Observe the inner table too: adding rows grows the content without
+    // resizing the container's own border box.
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    const table = el.firstElementChild;
+    if (table) observer.observe(table);
+    return () => observer.disconnect();
+  }, [ref]);
+
+  return scrollable;
+}
+
+function Table({
+  className,
+  containerClassName,
+  ...props
+}: React.ComponentProps<"table"> & {
+  /**
+   * Classes for the scroll container that wraps the `<table>`.
+   *
+   * Needed because `position: sticky` resolves against the nearest scrolling
+   * ancestor. A sticky `thead` inside this container can only pin if *this*
+   * element is the scroller and has a bounded height — see `DataTable`.
+   */
+  containerClassName?: string;
+}) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const scrollable = useScrollable(containerRef);
+
   return (
-    <div data-slot="table-container" className="relative w-full overflow-x-auto">
+    <div
+      ref={containerRef}
+      data-slot="table-container"
+      // Named via the table's own label so the region announces as something
+      // more useful than "scrollable region".
+      role={scrollable ? "region" : undefined}
+      aria-label={scrollable ? props["aria-label"] : undefined}
+      tabIndex={scrollable ? 0 : undefined}
+      className={cn(
+        "relative w-full overflow-x-auto",
+        scrollable && "focus-visible:ring-ring rounded-container outline-none focus-visible:ring-2",
+        containerClassName,
+      )}
+    >
       <table
         data-slot="table"
         className={cn("w-full caption-bottom text-xs", className)}

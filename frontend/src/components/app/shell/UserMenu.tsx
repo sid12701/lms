@@ -9,10 +9,10 @@ import { formatRoleLabel } from "@/lib/role-labels";
 import { cn } from "@/lib/utils";
 
 const menuContentClass =
-  "z-50 min-w-[12rem] rounded-md border border-(--color-border) bg-popover p-1 shadow-md outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0";
+  "z-50 min-w-[12rem] rounded-container border border-(--color-border) bg-popover p-1 shadow-md outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0";
 
 const itemClass =
-  "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-highlighted:bg-accent/10 data-highlighted:text-foreground";
+  "flex cursor-pointer items-center gap-2 rounded-control px-2 py-1.5 text-sm outline-none data-highlighted:bg-accent/10 data-highlighted:text-foreground";
 
 /**
  * TopBar user menu. DropdownMenu (radix) showing role, scope, and sign-out.

@@ -28,7 +28,6 @@ export function BorrowersPage() {
   return (
     <div className="flex flex-col gap-6 p-6" data-testid="borrowers-page" data-page="borrowers">
       <PageHeader
-        eyebrow="Workspace"
         title="Borrowers"
         description="Browse and search the borrower directory across every LSP."
       />

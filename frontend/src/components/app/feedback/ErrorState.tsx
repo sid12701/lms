@@ -49,7 +49,7 @@ export const ErrorState = forwardRef<HTMLDivElement, ErrorStateProps>(function E
       role="alert"
       data-slot="error-state"
       className={cn(
-        "border-border bg-danger/5 flex flex-col items-center justify-center gap-3 rounded-md border px-6 py-16 text-center",
+        "border-border bg-danger/5 rounded-container flex flex-col items-center justify-center gap-3 border px-6 py-16 text-center",
         className,
       )}
       {...rest}

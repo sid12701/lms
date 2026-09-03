@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useViewportTier } from "@/lib/hooks/use-media-query";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { BreadcrumbBar } from "./BreadcrumbBar";
 import { resolveBreadcrumbLabel } from "./breadcrumb-labels";
+import { usePageMetaState } from "./page-meta-context";
 import { cn } from "@/lib/utils";
 
 export interface AppShellProps {
@@ -13,29 +15,6 @@ export interface AppShellProps {
   /** Optional right-rail slot — surfaces per detail page (D6, 288px ≥ xl). */
   rightRail?: ReactNode;
   className?: string;
-}
-
-// Tailwind tier breakpoints (px). Matches the project's @theme defaults.
-const LG_PX = 1024;
-const XL_PX = 1280;
-
-function viewportTier(): "mobile" | "compact" | "wide" {
-  if (typeof window === "undefined") return "wide";
-  const width = window.innerWidth;
-  if (width >= XL_PX) return "wide";
-  if (width >= LG_PX) return "compact";
-  return "mobile";
-}
-
-function useViewportTier(): "mobile" | "compact" | "wide" {
-  const [tier, setTier] = useState<"mobile" | "compact" | "wide">(viewportTier);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onResize = () => setTier(viewportTier());
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-  return tier;
 }
 
 /**
@@ -59,18 +38,22 @@ export function AppShell({ children, rightRail, className }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const tier = useViewportTier();
   const { pathname } = useLocation();
+  const { breadcrumbLabel } = usePageMetaState();
 
   // Resolve a friendly page label for the live region from the last meaningful
-  // segment of the pathname (e.g. "/loan-applications/:id" → "Detail").
+  // segment of the pathname (e.g. "/loan-applications/:id" → borrower name).
   const liveLabel = useMemo(() => {
     const segments = pathname.split("/").filter(Boolean);
     if (segments.length === 0) return "Home page";
     const last = segments[segments.length - 1] ?? "";
-    return `${resolveBreadcrumbLabel(last)} page`;
-  }, [pathname]);
+    return `${resolveBreadcrumbLabel(last, breadcrumbLabel)} page`;
+  }, [pathname, breadcrumbLabel]);
 
   return (
-    <div data-slot="app-shell" className={cn("bg-background flex min-h-screen", className)}>
+    <div
+      data-slot="app-shell"
+      className={cn("bg-background flex min-h-screen items-stretch", className)}
+    >
       {/*
         Skip-to-main link — visually hidden until focused. Anchor (not Button)
         is the canonical pattern for skip links because the target is a

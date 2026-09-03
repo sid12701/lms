@@ -9,8 +9,6 @@ const useLspsMock = vi.fn();
 const useCreateLspMock = vi.fn();
 const useUpdateLspStatusMock = vi.fn();
 const useLspAuditEventsMock = vi.fn();
-const useLspWebhookSubscriptionMock = vi.fn();
-const useUpsertLspWebhookSubscriptionMock = vi.fn();
 
 const lsp = {
   id: "lsp-1",
@@ -18,7 +16,6 @@ const lsp = {
   name: "Acme Finance",
   status: "ACTIVE",
   userCount: 2,
-  webhookEnabled: false,
 };
 
 function mutation() {
@@ -33,7 +30,6 @@ function mutation() {
 
 let createMutation: ReturnType<typeof mutation>;
 let statusMutation: ReturnType<typeof mutation>;
-let webhookMutation: ReturnType<typeof mutation>;
 
 vi.mock("@/components/app/layout/AdminEntityListPage", () => ({
   AdminEntityListPage: (props: {
@@ -58,12 +54,6 @@ vi.mock("./hooks/useUpdateLspStatus", () => ({
 vi.mock("./hooks/useLspAuditEvents", () => ({
   useLspAuditEvents: (...args: unknown[]) => useLspAuditEventsMock(...args),
 }));
-vi.mock("./hooks/useLspWebhookSubscription", () => ({
-  useLspWebhookSubscription: (...args: unknown[]) => useLspWebhookSubscriptionMock(...args),
-}));
-vi.mock("./hooks/useUpsertLspWebhookSubscription", () => ({
-  useUpsertLspWebhookSubscription: () => useUpsertLspWebhookSubscriptionMock(),
-}));
 vi.mock("./components/LspsFilterBar", () => ({
   LspsFilterBar: (props: { onChange: (filters: { q: string; page: number }) => void }) => (
     <button onClick={() => props.onChange({ q: "updated", page: 0 })}>Change filters</button>
@@ -74,13 +64,11 @@ vi.mock("./components/LspsTable", () => ({
     onDetails: (row: typeof lsp) => void;
     onChangeStatus: (row: typeof lsp) => void;
     onViewAudit: (row: typeof lsp) => void;
-    onEditWebhook: (row: typeof lsp) => void;
   }) => (
     <div>
       <button onClick={() => props.onDetails(lsp)}>Details row</button>
       <button onClick={() => props.onChangeStatus(lsp)}>Status row</button>
       <button onClick={() => props.onViewAudit(lsp)}>Audit row</button>
-      <button onClick={() => props.onEditWebhook(lsp)}>Webhook row</button>
     </div>
   ),
 }));
@@ -152,36 +140,6 @@ vi.mock("./components/LspAuditEventsDialog", () => ({
     <div data-testid="audit-dialog" data-open={String(props.open)} />
   ),
 }));
-vi.mock("./components/LspWebhookSubscriptionDialog", () => ({
-  LspWebhookSubscriptionDialog: (props: {
-    open: boolean;
-    onConfirm: (input: {
-      id: string;
-      enabled: boolean;
-      endpointUrl: string;
-      signingSecret: string;
-      eventTypes: ["loan.created"];
-      idempotencyKey: string;
-    }) => void;
-  }) => (
-    <div data-testid="webhook-dialog" data-open={String(props.open)}>
-      <button
-        onClick={() =>
-          props.onConfirm({
-            id: "lsp-1",
-            enabled: true,
-            endpointUrl: "https://example.com/webhook",
-            signingSecret: "secret",
-            eventTypes: ["loan.created"],
-            idempotencyKey: "webhook-key",
-          })
-        }
-      >
-        Confirm webhook
-      </button>
-    </div>
-  ),
-}));
 
 import { LspsPage } from "./page";
 
@@ -193,7 +151,6 @@ beforeEach(() => {
   });
   createMutation = mutation();
   statusMutation = mutation();
-  webhookMutation = mutation();
   useCreateLspMock.mockReset().mockReturnValue(createMutation);
   useUpdateLspStatusMock.mockReset().mockReturnValue(statusMutation);
   useLspAuditEventsMock.mockReset().mockReturnValue({
@@ -202,8 +159,6 @@ beforeEach(() => {
     isError: false,
     refetch: vi.fn(),
   });
-  useLspWebhookSubscriptionMock.mockReset().mockReturnValue({ data: null });
-  useUpsertLspWebhookSubscriptionMock.mockReset().mockReturnValue(webhookMutation);
 });
 
 describe("LspsPage dialog coordination", () => {
@@ -230,11 +185,6 @@ describe("LspsPage dialog coordination", () => {
     expect(screen.getByTestId("allowlist-dialog")).toHaveAttribute("data-open", "false");
     expect(screen.getByTestId("audit-dialog")).toHaveAttribute("data-open", "true");
     expect(useLspAuditEventsMock).toHaveBeenLastCalledWith("lsp-1", true);
-
-    await operator.click(screen.getByRole("button", { name: "Webhook row" }));
-    expect(screen.getByTestId("audit-dialog")).toHaveAttribute("data-open", "false");
-    expect(screen.getByTestId("webhook-dialog")).toHaveAttribute("data-open", "true");
-    expect(useLspWebhookSubscriptionMock).toHaveBeenLastCalledWith("lsp-1");
   });
 
   it("hydrates URL filters and writes filter changes", async () => {
@@ -253,7 +203,7 @@ describe("LspsPage dialog coordination", () => {
     expect(useLspsMock.mock.lastCall?.[0]).not.toHaveProperty("page");
   });
 
-  it("routes create, status, and webhook confirmations to their mutations", async () => {
+  it("routes create and status confirmations to their mutations", async () => {
     const operator = userEvent.setup();
     renderWithProviders(
       <MemoryRouter>
@@ -280,30 +230,5 @@ describe("LspsPage dialog coordination", () => {
     });
     expect(screen.getByTestId("status-dialog")).toHaveAttribute("data-open", "false");
     expect(screen.getByTestId("audit-dialog")).toHaveAttribute("data-open", "true");
-
-    await operator.click(screen.getByRole("button", { name: "Webhook row" }));
-    await operator.click(screen.getByRole("button", { name: "Confirm webhook" }));
-    expect(webhookMutation.mutateAsync).toHaveBeenCalledWith({
-      id: "lsp-1",
-      enabled: true,
-      endpointUrl: "https://example.com/webhook",
-      signingSecret: "secret",
-      eventTypes: ["loan.created"],
-      idempotencyKey: "webhook-key",
-    });
-  });
-
-  it("keeps the current workflow open after a failed mutation", async () => {
-    const operator = userEvent.setup();
-    webhookMutation.mutateAsync.mockRejectedValue(new Error("webhook failed"));
-    renderWithProviders(
-      <MemoryRouter>
-        <LspsPage />
-      </MemoryRouter>,
-    );
-
-    await operator.click(screen.getByRole("button", { name: "Webhook row" }));
-    await operator.click(screen.getByRole("button", { name: "Confirm webhook" }));
-    expect(screen.getByTestId("webhook-dialog")).toHaveAttribute("data-open", "true");
   });
 });

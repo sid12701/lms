@@ -101,7 +101,7 @@ export function ProductMappingDialog({
       <DialogContent>
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <Network className="text-primary h-5 w-5" aria-hidden="true" />
+            <Network className="text-primary-tinted h-5 w-5" aria-hidden="true" />
             <DialogTitle>
               Edit LSP mapping
               {product ? (

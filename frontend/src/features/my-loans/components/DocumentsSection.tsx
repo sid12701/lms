@@ -1,15 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { CheckCircle2, FileText, Upload } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DocumentStatusPill } from "@/components/app/documents/DocumentStatusPill";
+import { isUploadedBackendChecklistStatus, type DocumentStatus } from "@/schemas/document";
 import { formatDateTime } from "@/lib/format";
-import {
-  fetchLspDocumentRequirements,
-  listLspSubmittedDocuments,
-  uploadLspDocument,
-  type LspDocumentType,
-  type UploadedLspDocument,
-} from "../api";
+import type { LspDocumentType, UploadedLspDocument } from "../api";
+import { useLspDocumentRequirements } from "../hooks/useLspDocumentRequirements";
+import { useLspSubmittedDocuments } from "../hooks/useLspSubmittedDocuments";
+import { useUploadLspDocument } from "../hooks/useUploadLspDocument";
 import { safeApiMessage } from "../utils";
 
 const FALLBACK_REQUIRED_DOC_TYPES: readonly LspDocumentType[] = [
@@ -50,6 +48,22 @@ function backendCodeToSlot(code: string): LspDocumentType | null {
   return BE_TO_FE_SLOT[code] ?? null;
 }
 
+/**
+ * Backend checklist status → the shared `DocumentStatus` vocabulary.
+ *
+ * The LSP endpoints answer in the backend's spelling (`SUBMITTED`, plus the
+ * legacy states `isUploadedBackendChecklistStatus` already recognises), while
+ * `documentStatusMeta` — the map every other document surface renders through —
+ * is keyed on the frontend's. Translating here rather than in `api.ts` keeps
+ * the view honest about what it was handed: the raw string is what actually
+ * arrives, whoever produced it.
+ */
+function toDocumentStatus(raw: string): DocumentStatus {
+  if (isUploadedBackendChecklistStatus(raw)) return "UPLOADED";
+  if (raw.trim().toUpperCase() === "NOT_REQUIRED") return "NOT_REQUIRED";
+  return "PENDING";
+}
+
 export type DocumentsReadOnlyReason = "terminal" | "role" | null;
 
 interface DocumentRowProps {
@@ -83,7 +97,7 @@ function DocumentRow({
     <div
       data-slot="lsp-document-row"
       data-document-type={documentType}
-      className="border-border bg-surface-muted flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between"
+      className="border-border bg-surface-muted rounded-container flex flex-col gap-2 border p-3 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex min-w-0 items-center gap-3">
         {uploaded ? (
@@ -104,11 +118,7 @@ function DocumentRow({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        {uploaded ? (
-          <Badge variant="outline" className="border-success/30 bg-success/5 text-success">
-            {uploaded.status}
-          </Badge>
-        ) : null}
+        {uploaded ? <DocumentStatusPill status={toDocumentStatus(uploaded.status)} /> : null}
         {canUpload ? (
           <>
             <input
@@ -147,83 +157,83 @@ export function DocumentsSection({
   canUpload,
   readOnlyReason = null,
 }: DocumentsSectionProps) {
-  const [requiredDocTypes, setRequiredDocTypes] = useState<readonly LspDocumentType[]>(
-    FALLBACK_REQUIRED_DOC_TYPES,
-  );
-  const [docLabels, setDocLabels] = useState<Record<LspDocumentType, string>>(LSP_DOC_LABELS);
-  const [uploads, setUploads] = useState<Record<string, UploadedLspDocument>>({});
   const [busyType, setBusyType] = useState<LspDocumentType | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    void fetchLspDocumentRequirements()
-      .then((rows) => {
-        if (cancelled) return;
-        const intakeSlots: LspDocumentType[] = [];
-        const labels = { ...LSP_DOC_LABELS };
-        for (const row of rows) {
-          const slot = backendCodeToSlot(row.code);
-          if (!slot) continue;
-          if (row.requiredForDisbursement) intakeSlots.push(slot);
-          labels[slot] = row.displayName;
-        }
-        if (intakeSlots.length > 0) {
-          setRequiredDocTypes(intakeSlots);
-        }
-        setDocLabels(labels);
-      })
-      .catch(() => {
-        // Fall back to the static taxonomy when metadata is unavailable.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const requirementsQuery = useLspDocumentRequirements();
+  const submittedQuery = useLspSubmittedDocuments(applicationId);
+  const uploadMutation = useUploadLspDocument(applicationId);
 
-  useEffect(() => {
-    let cancelled = false;
-    void listLspSubmittedDocuments(applicationId)
-      .then((rows) => {
-        if (cancelled) return;
-        const seeded: Record<string, UploadedLspDocument> = {};
-        for (const row of rows) {
-          seeded[row.documentType] = {
-            id: `${row.documentType}-${row.uploadedAt ?? "seed"}`,
-            documentType: row.documentType,
-            documentDisplayName: docLabels[row.documentType as LspDocumentType] ?? row.documentType,
-            status: row.status,
-            fileName: row.fileName,
-            contentType: row.contentType,
-            fileSizeBytes: null,
-            uploadedAt: row.uploadedAt,
-            uploadedByUsername: row.uploadedByUsername,
-          };
-        }
-        setUploads(seeded);
-      })
-      .catch(() => {
-        // Non-fatal: the section continues to work with upload-only state.
-      });
-    return () => {
-      cancelled = true;
+  const { requiredDocTypes, docLabels } = useMemo(() => {
+    const rows = requirementsQuery.data;
+    // Fall back to the static taxonomy while the requirements query is
+    // still loading or has failed outright — deliberate, mirroring the
+    // effect this replaced (see useLspDocumentRequirements's header
+    // comment for why the hook itself doesn't distinguish the two).
+    if (!rows) {
+      return { requiredDocTypes: FALLBACK_REQUIRED_DOC_TYPES, docLabels: LSP_DOC_LABELS };
+    }
+    const intakeSlots: LspDocumentType[] = [];
+    const labels = { ...LSP_DOC_LABELS };
+    for (const row of rows) {
+      const slot = backendCodeToSlot(row.code);
+      if (!slot) continue;
+      if (row.requiredForDisbursement) intakeSlots.push(slot);
+      labels[slot] = row.displayName;
+    }
+    return {
+      requiredDocTypes: intakeSlots.length > 0 ? intakeSlots : FALLBACK_REQUIRED_DOC_TYPES,
+      docLabels: labels,
     };
-  }, [applicationId, docLabels]);
+  }, [requirementsQuery.data]);
+
+  /**
+   * Seeded from the submitted-documents query, keyed by document type.
+   * `docLabels` is derived above, not state, so recomputing this on every
+   * render it changes is a small local merge — never a second fetch. That
+   * is the structural fix for the defect this section used to carry: the
+   * old effect depended on `docLabels` directly and refetched the
+   * submitted list a second time whenever the taxonomy resolved after it
+   * did.
+   */
+  const uploads = useMemo(() => {
+    const rows = submittedQuery.data;
+    // Non-fatal when undefined (still loading, or the fetch failed): the
+    // section continues to work with upload-only state — anything uploaded
+    // this session is written straight into the query cache by
+    // useUploadLspDocument (see its header comment) and still renders below
+    // even if this list never loaded.
+    if (!rows) return {};
+    const seeded: Record<string, UploadedLspDocument> = {};
+    for (const row of rows) {
+      seeded[row.documentType] = {
+        id: `${row.documentType}-${row.uploadedAt ?? "seed"}`,
+        documentType: row.documentType,
+        documentDisplayName: docLabels[row.documentType as LspDocumentType] ?? row.documentType,
+        status: row.status,
+        fileName: row.fileName,
+        contentType: row.contentType,
+        fileSizeBytes: null,
+        uploadedAt: row.uploadedAt,
+        uploadedByUsername: row.uploadedByUsername,
+      };
+    }
+    return seeded;
+  }, [submittedQuery.data, docLabels]);
 
   const handlePickFile = useCallback(
     async (documentType: LspDocumentType, file: File) => {
       setBusyType(documentType);
       setError(null);
       try {
-        const uploaded = await uploadLspDocument({ applicationId, documentType, file });
-        setUploads((prev) => ({ ...prev, [documentType]: uploaded }));
+        await uploadMutation.mutateAsync({ documentType, file });
       } catch (err) {
         setError(safeApiMessage(err, `Failed to upload ${docLabels[documentType]}.`));
       } finally {
         setBusyType(null);
       }
     },
-    [applicationId, docLabels],
+    [docLabels, uploadMutation],
   );
 
   const otherUploads = Object.values(uploads).filter(
@@ -242,7 +252,7 @@ export function DocumentsSection({
   return (
     <section
       data-slot="lsp-documents-card"
-      className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
+      className="border-border bg-background rounded-container flex flex-col gap-4 border p-5"
     >
       <header className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">Documents</h2>
@@ -256,7 +266,7 @@ export function DocumentsSection({
       {error ? (
         <div
           role="alert"
-          className="border-danger/30 bg-danger/5 text-danger rounded-md border px-3 py-2 text-sm"
+          className="border-danger/30 bg-danger/5 text-danger rounded-container border px-3 py-2 text-sm"
         >
           {error}
         </div>
@@ -298,9 +308,9 @@ export function DocumentsSection({
         {otherUploads.length > 0 ? (
           <ul className="flex flex-col gap-1 text-xs">
             {otherUploads.map((row) => (
-              <li key={row.id} className="text-foreground-muted">
-                {row.fileName ?? row.documentDisplayName} ·{" "}
-                <span className="text-foreground">{row.status}</span>
+              <li key={row.id} className="text-foreground-muted flex items-center gap-1.5">
+                <span className="truncate">{row.fileName ?? row.documentDisplayName}</span>
+                <DocumentStatusPill status={toDocumentStatus(row.status)} />
               </li>
             ))}
           </ul>

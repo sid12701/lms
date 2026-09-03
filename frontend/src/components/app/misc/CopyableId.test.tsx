@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
-import { renderWithProviders } from "@/test/utils";
+import { axeBaseElement, renderWithProviders } from "@/test/utils";
 import { CopyableId } from "./CopyableId";
 
 describe("CopyableId", () => {
@@ -39,5 +40,21 @@ describe("CopyableId", () => {
       <CopyableId value="abc-123" label="Correlation ID" />,
     );
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no axe violations with the tooltip open (portalled content lives on baseElement)", async () => {
+    const user = userEvent.setup();
+    const { baseElement } = renderWithProviders(
+      <CopyableId value="abc-123" label="Correlation ID" />,
+    );
+    const trigger = screen.getByRole("button", { name: "Correlation ID" });
+    await user.hover(trigger);
+    // Radix's internal accessible-description span also carries a tooltip
+    // role, so a role query can match twice — wait on the content slot.
+    await waitFor(() => {
+      expect(document.querySelector('[data-slot="tooltip-content"]')).not.toBeNull();
+    });
+
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
   });
 });

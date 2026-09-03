@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, type RefObject } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useFlushOnClose } from "@/lib/hooks/use-flush-on-close";
 import { useFocusOnOpen } from "@/lib/hooks/use-focus-on-open";
 import { useForm } from "react-hook-form";
@@ -28,10 +29,16 @@ import {
   DisbursementPreviewSummary,
   type DisbursementPreviewData,
 } from "@/components/app/disbursement/DisbursementPreviewSummary";
+import { formatINR } from "@/lib/format";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import type { LifecycleAction, LifecycleActionTone } from "./actions";
 import { LIFECYCLE_REASON_CODES } from "./reason-codes";
 import { lifecycleDialogSchema, type LifecycleDialogValues } from "./schema";
+import {
+  disbursementPreviewQueryKey,
+  useDisbursementPreview,
+  type PreviewState,
+} from "./useDisbursementPreview";
 
 export interface TransitionConfirmDialogProps {
   open: boolean;
@@ -75,68 +82,6 @@ const TONE_ICON_CLASSES: Record<LifecycleActionTone, string> = {
   default: "text-foreground-muted",
 };
 
-interface PreviewState {
-  data: DisbursementPreviewData | null;
-  loading: boolean;
-  error: string | null;
-}
-
-const EMPTY_PREVIEW: PreviewState = { data: null, loading: false, error: null };
-
-interface PreviewRequest {
-  applicationId: string;
-  load: (applicationId: string) => Promise<DisbursementPreviewData>;
-}
-
-interface SettledPreview {
-  request: PreviewRequest;
-  data: DisbursementPreviewData | null;
-  error: string | null;
-}
-
-function useDisbursementPreview({
-  enabled,
-  applicationId,
-  load,
-}: {
-  enabled: boolean;
-  applicationId?: string;
-  load?: (applicationId: string) => Promise<DisbursementPreviewData>;
-}): PreviewState {
-  const request = useMemo<PreviewRequest | null>(
-    () => (enabled && applicationId && load ? { applicationId, load } : null),
-    [enabled, applicationId, load],
-  );
-  const [settled, setSettled] = useState<SettledPreview | null>(null);
-
-  useEffect(() => {
-    if (!request) return;
-
-    let cancelled = false;
-    void request
-      .load(request.applicationId)
-      .then((data) => {
-        if (!cancelled) setSettled({ request, data, error: null });
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        const message =
-          error instanceof Error ? error.message : "Could not load disbursement preview.";
-        setSettled({ request, data: null, error: message });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [request]);
-
-  if (!request) return EMPTY_PREVIEW;
-  if (settled?.request !== request) {
-    return { data: null, loading: true, error: null };
-  }
-  return { data: settled.data, loading: false, error: settled.error };
-}
-
 function DisbursementPreview({ state }: { state: PreviewState }) {
   return (
     <div className="flex flex-col gap-2">
@@ -169,7 +114,7 @@ function ReasonCodeField({ form }: { form: ReturnType<typeof useLifecycleDialogF
       control={form.control}
       name="reasonCode"
       render={({ field }) => (
-        <FormItem>
+        <FormItem required>
           <FormLabel>Reason</FormLabel>
           <Select value={field.value ?? ""} onValueChange={field.onChange}>
             <FormControl>
@@ -225,7 +170,7 @@ function ReasonDetailsField({
       control={form.control}
       name="reason"
       render={({ field }) => (
-        <FormItem>
+        <FormItem required={requiresReason}>
           <FormLabel>
             {requiresReasonCode ? "Details" : requiresReason ? "Reason" : "Reason (optional)"}
           </FormLabel>
@@ -283,8 +228,17 @@ export function TransitionConfirmDialog({
   const form = useLifecycleDialogForm(requiresReason, requiresReasonCode);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const queryClient = useQueryClient();
 
   useFlushOnClose(open, () => form.reset({ reason: "", reasonCode: "" }));
+  // See useDisbursementPreview's header comment: a closed dialog drops its
+  // cached preview so the next open always fetches fresh rather than
+  // momentarily showing a stale figure while the refetch races it.
+  useFlushOnClose(open, () => {
+    if (applicationId) {
+      queryClient.removeQueries({ queryKey: disbursementPreviewQueryKey(applicationId) });
+    }
+  });
   useEffect(() => {
     if (open) form.reset({ reason: "", reasonCode: "" });
   }, [action?.id, open, form]);
@@ -335,6 +289,20 @@ export function TransitionConfirmDialog({
   const confirmVariant: "default" | "destructive" =
     tone === "destructive" ? "destructive" : "default";
 
+  /**
+   * A disbursement confirm names the amount it will move.
+   *
+   * "Initiate disbursement" is a verb with no object — it reads identically
+   * whether the net is ₹12,000 or ₹12,00,000. Putting the figure on the button
+   * means the last thing the operator commits to is the number itself, and a
+   * wrong magnitude is visible at the moment of the click rather than only in
+   * the panel above it.
+   */
+  const confirmLabel =
+    isDisbursementAction && preview.data
+      ? `${action.label} · ${formatINR(preview.data.netDisbursalAmount, { decimals: 2 })}`
+      : action.label;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -372,8 +340,9 @@ export function TransitionConfirmDialog({
             loading={loading}
             submitDisabled={confirmBlockedByPreview}
             onCancel={() => onOpenChange(false)}
-            submitLabel={action.label}
+            submitLabel={confirmLabel}
             submitVariant={confirmVariant}
+            submitIrreversible={isDisbursementAction}
           />
         </FormShell>
       </DialogContent>

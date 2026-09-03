@@ -14,7 +14,6 @@
 import { useMemo } from "react";
 import { Copy, ExternalLink, ScrollText } from "lucide-react";
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
-import { formatDistanceToNow } from "date-fns";
 import {
   Table,
   TableBody,
@@ -25,6 +24,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AbsoluteRelativeTime } from "@/components/app/misc/AbsoluteRelativeTime";
 import { TableSkeleton } from "@/components/app/feedback/Skeletons";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { TABULAR_ATTR } from "@/lib/tabular-nums";
@@ -35,14 +35,6 @@ import {
   type AuditEventsResponse,
   type AuditRow,
 } from "../types";
-
-function safeRelative(iso: string): string {
-  try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true });
-  } catch {
-    return iso;
-  }
-}
 
 function truncateMiddle(value: string, head = 6, tail = 4): string {
   if (value.length <= head + tail + 1) return value;
@@ -117,12 +109,10 @@ export function AuditTable({ data, isLoading, onSelect, onLoadMore, className }:
         meta: { label: "When" },
         header: () => <span>When</span>,
         cell: ({ row }) => (
-          <span
-            className="text-foreground-muted text-xs tabular-nums"
-            title={row.original.createdAt}
-          >
-            {safeRelative(row.original.createdAt)}
-          </span>
+          // An audit log is forensic evidence: the instant is the datum, not
+          // decoration, so this column carries the absolute reading rather
+          // than hiding it in a `title` that held a raw ISO string.
+          <AbsoluteRelativeTime iso={row.original.createdAt} compact />
         ),
       },
       {
@@ -132,7 +122,7 @@ export function AuditTable({ data, isLoading, onSelect, onLoadMore, className }:
         cell: ({ row }) => (
           <Badge
             variant="outline"
-            className={cn("text-[10px] font-medium", AUDIT_STREAM_BADGE_TONE[row.original.stream])}
+            className={cn("text-badge font-medium", AUDIT_STREAM_BADGE_TONE[row.original.stream])}
           >
             {AUDIT_STREAM_LABEL[row.original.stream]}
           </Badge>
@@ -146,7 +136,7 @@ export function AuditTable({ data, isLoading, onSelect, onLoadMore, className }:
           <div className="flex flex-col">
             <span className="text-foreground text-xs">{row.original.actorName}</span>
             {row.original.actorRole ? (
-              <span className="text-foreground-muted text-[10px]">{row.original.actorRole}</span>
+              <span className="text-foreground-muted text-badge">{row.original.actorRole}</span>
             ) : null}
           </div>
         ),
@@ -171,7 +161,10 @@ export function AuditTable({ data, isLoading, onSelect, onLoadMore, className }:
             <a
               href={href}
               onClick={(e) => e.stopPropagation()}
-              className="text-foreground hover:text-primary inline-flex items-center gap-1 text-xs underline-offset-2 hover:underline"
+              // `min-h-6` keeps the link on the 24px target floor (WCAG 2.5.8);
+              // at its natural 16px line box it failed both the size and the
+              // spacing halves of that criterion.
+              className="text-foreground hover:text-primary-tinted inline-flex min-h-6 items-center gap-1 text-xs underline-offset-2 hover:underline"
             >
               <span>{label}</span>
               <ExternalLink aria-hidden="true" className="size-3" />
@@ -186,7 +179,7 @@ export function AuditTable({ data, isLoading, onSelect, onLoadMore, className }:
         cell: ({ row }) => (
           <div className="flex items-center gap-1">
             <span
-              className="text-foreground-muted font-mono text-[11px]"
+              className="text-foreground-muted font-mono text-xs"
               title={row.original.correlationId}
             >
               {truncateMiddle(row.original.correlationId)}
@@ -236,7 +229,7 @@ export function AuditTable({ data, isLoading, onSelect, onLoadMore, className }:
   return (
     <div data-slot="audit-table" className={cn("flex flex-col gap-3", className)}>
       <div
-        className="border-border bg-surface shadow-e1 overflow-hidden rounded-md border"
+        className="border-border bg-surface shadow-e1 rounded-container overflow-hidden border"
         data-density="compact"
       >
         <Table aria-label="Audit log">
@@ -247,7 +240,7 @@ export function AuditTable({ data, isLoading, onSelect, onLoadMore, className }:
                   <TableHead
                     key={header.id}
                     scope="col"
-                    className="text-foreground-muted h-8 px-2.5 text-[11px] font-medium tracking-wide uppercase"
+                    className="text-foreground-muted h-8 px-2.5 text-xs font-medium"
                   >
                     {header.isPlaceholder
                       ? null
@@ -274,8 +267,14 @@ export function AuditTable({ data, isLoading, onSelect, onLoadMore, className }:
                 <TableRow
                   key={row.id}
                   tabIndex={0}
-                  role="button"
-                  aria-label={`Open audit event ${row.original.id}`}
+                  // Deliberately no `role="button"`. It made the row an
+                  // interactive element wrapping a link and a copy button, which
+                  // is a `nested-interactive` violation (WCAG 4.1.2) on all 25
+                  // rows, and it also stripped the row of its `row` semantics so
+                  // cells lost their column associations. This matches the
+                  // shared `DataTable`, which keeps the implicit row role and is
+                  // covered by a regression test asserting exactly that.
+                  aria-label={`Open audit event ${row.original.headline}`}
                   data-testid={`audit-row-${row.original.id}`}
                   onClick={() => onSelect(row.original)}
                   onKeyDown={(event) => {
@@ -284,7 +283,7 @@ export function AuditTable({ data, isLoading, onSelect, onLoadMore, className }:
                       onSelect(row.original);
                     }
                   }}
-                  className="border-border focus-visible:ring-ring/50 cursor-pointer outline-none focus-visible:ring-2"
+                  className="border-border focus-visible:ring-ring cursor-pointer outline-none focus-visible:ring-2"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell

@@ -17,60 +17,29 @@ import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { isUnauthorizedApiError } from "@/lib/api/api-errors";
 import { useUrlFilters } from "@/lib/url-state";
-import { listProductOptions } from "@/features/products/options";
-import { listLspOptions } from "@/features/lsps/options";
+import { useLspOptions, toLspFilterOption } from "@/features/lsps/hooks/useLspOptions";
+import {
+  useProductOptions,
+  toProductFilterOption,
+} from "@/features/products/hooks/useProductOptions";
 import { LoanApplicationsFilterBar, LoanApplicationsTable } from "./components";
 import { useLoanApplications } from "./hooks/useLoanApplications";
 import { LoanApplicationListFilters } from "./types";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 
 export function LoanApplicationsPage() {
   const [filters, setFilters] = useUrlFilters(LoanApplicationListFilters);
   const query = useLoanApplications(filters);
-  const [lspOptions, setLspOptions] = useState<readonly { value: string; label: string }[]>([]);
-  const [productOptions, setProductOptions] = useState<readonly { value: string; label: string }[]>(
-    [],
+  const lspOptionsQuery = useLspOptions();
+  const productOptionsQuery = useProductOptions();
+  const lspOptions = useMemo(
+    () => (lspOptionsQuery.data ?? []).map(toLspFilterOption),
+    [lspOptionsQuery.data],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    void listLspOptions()
-      .then((rows) => {
-        if (cancelled) return;
-        setLspOptions(
-          rows.map((row) => ({
-            value: row.id,
-            label: `${row.name} (${row.code})`,
-          })),
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setLspOptions([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void listProductOptions()
-      .then((products) => {
-        if (cancelled) return;
-        setProductOptions(
-          products.map((product) => ({
-            value: product.id,
-            label: `${product.name} (${product.code})`,
-          })),
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setProductOptions([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const productOptions = useMemo(
+    () => (productOptionsQuery.data ?? []).map(toProductFilterOption),
+    [productOptionsQuery.data],
+  );
 
   return (
     <div
@@ -79,12 +48,17 @@ export function LoanApplicationsPage() {
       data-page="loan-applications"
     >
       <PageHeader
-        eyebrow="Workspace"
         title="Loan applications"
         description="Browse, filter, and act on every loan application across LSPs."
       />
 
-      <LoanApplicationsFilterBar lspOptions={lspOptions} productOptions={productOptions} />
+      {/* `total` is the server's count for the *current* filter set, so the
+          applied row can state what the operator is actually looking at. */}
+      <LoanApplicationsFilterBar
+        lspOptions={lspOptions}
+        productOptions={productOptions}
+        resultCount={query.data?.total}
+      />
 
       {query.isError && isUnauthorizedApiError(query.error) ? (
         <EmptyState

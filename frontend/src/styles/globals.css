@@ -18,9 +18,26 @@
     @apply bg-background text-foreground;
   }
 
+  /*
+   * The focus indicator, at full strength.
+   *
+   * `--ring` is the primary blue (5.86:1 on a panel), so this clears the 3:1
+   * floor of SC 2.4.11 and 1.4.11 on every surface tier. It is deliberately
+   * NOT rendered at a fractional opacity: the previous grey ring measured
+   * 2.44:1 at full opacity and 1.51:1 as actually rendered at /50.
+   */
   :focus-visible {
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
+  }
+
+  /*
+   * Components that draw their own ring opt out of the outline so the two
+   * indicators do not stack. They must then supply `focus-visible:ring-ring`
+   * at full opacity — `ring-ring/50` reintroduces the failure this fixes.
+   */
+  :focus-visible:where([data-focus-ring="self"]) {
+    outline: none;
   }
 
   /* Tabular numerics for amounts, IDs, dates, table numeric columns. */
@@ -54,8 +71,10 @@
   [data-page="loan-applications"] tbody tr {
     line-height: 1.4;
   }
+  /* Full opacity, not `outline-ring/50`: this rule lands after `:focus-visible`
+     above and would otherwise dilute the indicator back below 3:1. */
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
@@ -106,71 +125,102 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/*
+ * Preset role tokens.
+ *
+ * Since 2026-08-03 the surface roles (`--background`, `--card`, `--popover`,
+ * `--sidebar`, `--border`) are *derived* from the scale in `tokens.css` rather
+ * than carrying independent values. They previously did not agree: `--surface`
+ * was navy `#0f1729` while `--card`/`--popover`/`--sidebar` were near-neutral
+ * charcoal. Both were white in light, so the two families only diverged in
+ * dark — where every dropdown, popover and dialog reverted to grey floating
+ * over navy panels. Deriving them makes that divergence unrepresentable.
+ */
 :root {
-  --background: oklch(1 0 0);
+  --background: var(--color-surface-page);
   --foreground: oklch(0.148 0.004 228.8);
-  --card: oklch(1 0 0);
+  /* Cards sit *in* the page plane and are separated by ring, not by value
+     (DESIGN.md, The Hairline Rule). Popovers genuinely leave the plane. */
+  --card: var(--color-surface);
   --card-foreground: oklch(0.148 0.004 228.8);
-  --popover: oklch(1 0 0);
+  --popover: var(--color-surface-raised);
   --popover-foreground: oklch(0.148 0.004 228.8);
   --primary: oklch(0.5 0.134 242.749);
   --primary-foreground: oklch(0.977 0.013 236.62);
   --secondary: oklch(0.967 0.001 286.375);
   --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.963 0.002 197.1);
+  --muted: var(--color-surface-muted);
   --muted-foreground: oklch(0.5 0.021 213.5);
-  --accent: oklch(0.963 0.002 197.1);
+  --accent: var(--color-surface-muted);
   --accent-foreground: oklch(0.218 0.008 223.9);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.925 0.005 214.3);
-  --input: oklch(0.925 0.005 214.3);
-  --ring: oklch(0.723 0.014 214.4);
+  /* The affordance border on form controls — 3:1, per WCAG 1.4.11. The
+     decorative hairline above stays light for dividers and table rules. */
+  --input: var(--color-border-control);
+  /* Was `oklch(0.723 0.014 214.4)` — a light grey measuring 2.44:1 on white,
+     below the 3:1 floor of SC 2.4.11 and 1.4.11, and rendered at /30–/50
+     opacity on top of that. The focus indicator is now the primary blue at
+     full strength: 5.86:1 on a panel, 5.55:1 on the page. */
+  --ring: oklch(0.5 0.134 242.749);
   --chart-1: oklch(0.808 0.114 19.571);
   --chart-2: oklch(0.637 0.237 25.331);
   --chart-3: oklch(0.577 0.245 27.325);
   --chart-4: oklch(0.505 0.213 27.518);
   --chart-5: oklch(0.444 0.177 26.899);
   --radius: 0.875rem;
-  --sidebar: oklch(0.987 0.002 197.1);
+  --sidebar: var(--color-surface);
   --sidebar-foreground: oklch(0.148 0.004 228.8);
   --sidebar-primary: oklch(0.588 0.158 241.966);
   --sidebar-primary-foreground: oklch(0.977 0.013 236.62);
-  --sidebar-accent: oklch(0.963 0.002 197.1);
+  --sidebar-accent: var(--color-surface-muted);
   --sidebar-accent-foreground: oklch(0.218 0.008 223.9);
   --sidebar-border: oklch(0.925 0.005 214.3);
-  --sidebar-ring: oklch(0.723 0.014 214.4);
+  --sidebar-ring: oklch(0.5 0.134 242.749);
 }
 
 .dark {
-  --background: oklch(0.148 0.004 228.8);
+  --background: var(--color-surface-page);
   --foreground: oklch(0.987 0.002 197.1);
-  --card: oklch(0.218 0.008 223.9);
+  --card: var(--color-surface);
   --card-foreground: oklch(0.987 0.002 197.1);
-  --popover: oklch(0.218 0.008 223.9);
+  --popover: var(--color-surface-raised);
   --popover-foreground: oklch(0.987 0.002 197.1);
-  --primary: oklch(0.443 0.11 240.79);
-  --primary-foreground: oklch(0.977 0.013 236.62);
+  /* Was `oklch(0.443 0.11 240.79)` — *darker* than the light value, measuring
+     2.38:1 on the dark surface, so a primary button's own shape fell below the
+     3:1 non-text threshold while all seven semantic intents brightened to the
+     Tailwind-400 ramp. The restraint was on the accent and the brightness on
+     the semantics, exactly inverted. This lifts the fill to 3.55:1 on surface
+     while keeping white text on it at 4.79:1.
+
+     Correction (2026-08-10): that 4.79:1 was computed against pure white, but
+     the foreground was left at the preset's near-white oklch(0.977 …) = #f0f9ff,
+     which lands at **4.49:1** — a hairline AA failure axe flags as serious on
+     every primary button in dark. Pure white delivers the ratio this comment
+     already claimed. */
+  --primary: oklch(0.55 0.125 242.749);
+  --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.274 0.006 286.033);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.275 0.011 216.9);
+  --muted: var(--color-surface-muted);
   --muted-foreground: oklch(0.723 0.014 214.4);
-  --accent: oklch(0.275 0.011 216.9);
+  --accent: var(--color-surface-muted);
   --accent-foreground: oklch(0.987 0.002 197.1);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.56 0.021 213.5);
+  --input: var(--color-border-control);
+  --ring: oklch(0.72 0.14 242.749);
   --chart-1: oklch(0.808 0.114 19.571);
   --chart-2: oklch(0.637 0.237 25.331);
   --chart-3: oklch(0.577 0.245 27.325);
   --chart-4: oklch(0.505 0.213 27.518);
   --chart-5: oklch(0.444 0.177 26.899);
-  --sidebar: oklch(0.218 0.008 223.9);
+  --sidebar: var(--color-surface);
   --sidebar-foreground: oklch(0.987 0.002 197.1);
   --sidebar-primary: oklch(0.685 0.169 237.323);
   --sidebar-primary-foreground: oklch(0.293 0.066 243.157);
-  --sidebar-accent: oklch(0.275 0.011 216.9);
+  --sidebar-accent: var(--color-surface-muted);
   --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.56 0.021 213.5);
+  --sidebar-ring: oklch(0.72 0.14 242.749);
 }

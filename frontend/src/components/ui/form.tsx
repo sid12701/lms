@@ -50,10 +50,11 @@ const useFormField = () => {
     throw new Error("useFormField should be used within <FormField>");
   }
 
-  const { id } = itemContext;
+  const { id, required } = itemContext;
 
   return {
     id,
+    required,
     name: fieldContext.name,
     formItemId: `${id}-form-item`,
     formDescriptionId: `${id}-form-item-description`,
@@ -64,13 +65,23 @@ const useFormField = () => {
 
 type FormItemContextValue = {
   id: string;
+  required: boolean;
 };
 
 const FormItemContext = React.createContext<FormItemContextValue>({} as FormItemContextValue);
 
-function FormItem({ className, ...props }: React.ComponentProps<"div">) {
+/**
+ * Owns one field's identity. `required` lives here rather than on `FormLabel`
+ * because the label and the control are siblings: only their shared parent can
+ * feed both the visual marker and `aria-required` from a single declaration.
+ */
+function FormItem({
+  className,
+  required = false,
+  ...props
+}: React.ComponentProps<"div"> & { required?: boolean }) {
   const id = React.useId();
-  const contextValue = React.useMemo(() => ({ id }), [id]);
+  const contextValue = React.useMemo(() => ({ id, required }), [id, required]);
 
   return (
     <FormItemContext.Provider value={contextValue}>
@@ -79,22 +90,50 @@ function FormItem({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function FormLabel({ className, ...props }: React.ComponentProps<typeof LabelPrimitive.Root>) {
-  const { error, formItemId } = useFormField();
+/**
+ * Marks a required field for sighted users with a `*`. The marker is
+ * `aria-hidden` on purpose: `FormControl` publishes `aria-required` from the
+ * same `required` on `<FormItem>`, so assistive tech already announces the
+ * constraint. Adding screen-reader-only "(required)" text on top of that would
+ * announce it twice and pollute the control's accessible name. Without either
+ * signal a user cannot tell which fields are mandatory until submit fails
+ * (WCAG 3.3.2).
+ */
+function FormLabel({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof LabelPrimitive.Root>) {
+  const { error, formItemId, required } = useFormField();
 
   return (
     <Label
       data-slot="form-label"
       data-error={!!error}
+      data-required={required || undefined}
       className={cn("data-[error=true]:text-destructive", className)}
       htmlFor={formItemId}
       {...props}
-    />
+    >
+      {children}
+      {/*
+        Muted, not red. The Reserved Red Rule keeps danger for money that failed
+        or a record that will be lost; a required marker is neither, and on a
+        form where 8 of 8 fields are required, eight red asterisks are eight
+        alarms that carry no information. The marker still marks — it just stops
+        borrowing the failure colour.
+      */}
+      {required ? (
+        <span className="text-foreground-muted ml-0.5" aria-hidden="true">
+          *
+        </span>
+      ) : null}
+    </Label>
   );
 }
 
 function FormControl({ ...props }: React.ComponentProps<typeof Slot.Root>) {
-  const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
+  const { error, formItemId, formDescriptionId, formMessageId, required } = useFormField();
 
   return (
     <Slot.Root
@@ -102,6 +141,7 @@ function FormControl({ ...props }: React.ComponentProps<typeof Slot.Root>) {
       id={formItemId}
       aria-describedby={!error ? `${formDescriptionId}` : `${formDescriptionId} ${formMessageId}`}
       aria-invalid={!!error}
+      aria-required={required || undefined}
       {...props}
     />
   );

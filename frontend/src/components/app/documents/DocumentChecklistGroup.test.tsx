@@ -29,10 +29,10 @@ function makeDoc(overrides: Partial<Document> = {}): Document {
 }
 
 describe("DocumentChecklistGroup", () => {
-  it("renders the Required and Optional section headings", () => {
+  it("renders the gating and non-gating section headings", () => {
     const { getByText } = renderWithProviders(<DocumentChecklistGroup docs={[]} />);
-    expect(getByText(/Required for disbursement/i)).toBeInTheDocument();
-    expect(getByText(/^Optional$/i)).toBeInTheDocument();
+    expect(getByText(/^Required for disbursement$/i)).toBeInTheDocument();
+    expect(getByText(/^Not required for this loan$/i)).toBeInTheDocument();
   });
 
   it("splits docs into required and optional lists", () => {
@@ -59,11 +59,11 @@ describe("DocumentChecklistGroup", () => {
     expect(getByText(/No required documents/i)).toBeInTheDocument();
   });
 
-  it("renders an empty state for the optional section when there are none", () => {
+  it("renders an empty state for the non-gating section when there are none", () => {
     const { getByText } = renderWithProviders(
       <DocumentChecklistGroup docs={[makeDoc({ requiredForDisbursement: true })]} />,
     );
-    expect(getByText(/No optional documents/i)).toBeInTheDocument();
+    expect(getByText(/No other documents/i)).toBeInTheDocument();
   });
 
   it("renders DocumentUploadRow for PENDING docs and DocumentChecklistRow for UPLOADED docs", () => {

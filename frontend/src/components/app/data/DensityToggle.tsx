@@ -21,6 +21,9 @@ export interface DensityToggleProps {
  * the semantically correct group; the `radiogroup` ARIA role keeps assistive
  * tech that understands the pattern happy without redundancy.
  */
+const densityOptionClass =
+  "h-7 gap-1.5 px-2 text-xs data-[state=on]:bg-surface-muted data-[state=on]:text-foreground data-[state=on]:border-border-control data-[state=on]:!font-semibold data-[state=on]:border data-[state=on]:shadow-none";
+
 export function DensityToggle({ label = "Row density", className }: DensityToggleProps) {
   const { density, setDensity } = useDensity();
 
@@ -30,7 +33,7 @@ export function DensityToggle({ label = "Row density", className }: DensityToggl
       aria-label={label}
       data-slot="density-toggle"
       className={cn(
-        "border-border bg-surface inline-flex items-center gap-0.5 rounded-md border p-0.5",
+        "border-border bg-surface rounded-container inline-flex items-center gap-0.5 border p-0.5",
         className,
       )}
     >
@@ -38,13 +41,13 @@ export function DensityToggle({ label = "Row density", className }: DensityToggl
       <Button
         type="button"
         size="sm"
-        variant={density === "comfortable" ? "secondary" : "ghost"}
+        variant="ghost"
         role="radio"
         aria-checked={density === "comfortable"}
         onClick={() => setDensity("comfortable")}
         data-state={density === "comfortable" ? "on" : "off"}
         data-slot="density-comfortable"
-        className="h-7 gap-1.5 px-2 text-xs"
+        className={densityOptionClass}
       >
         <Rows3 aria-hidden="true" className="size-3.5" />
         <span>Comfortable</span>
@@ -52,13 +55,13 @@ export function DensityToggle({ label = "Row density", className }: DensityToggl
       <Button
         type="button"
         size="sm"
-        variant={density === "compact" ? "secondary" : "ghost"}
+        variant="ghost"
         role="radio"
         aria-checked={density === "compact"}
         onClick={() => setDensity("compact")}
         data-state={density === "compact" ? "on" : "off"}
         data-slot="density-compact"
-        className="h-7 gap-1.5 px-2 text-xs"
+        className={densityOptionClass}
       >
         <LayoutList aria-hidden="true" className="size-3.5" />
         <span>Compact</span>

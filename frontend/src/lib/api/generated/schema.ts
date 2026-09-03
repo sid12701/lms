@@ -84,22 +84,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/v1/internal/admin/lsps/{lspId}/webhook-subscription": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put: operations["updateWebhookSubscription"];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/api/v1/internal/admin/lsps/{lspId}/status": {
     parameters: {
       query?: never;
@@ -500,38 +484,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/api/v1/internal/admin/webhook-outbox/{id}/redrive": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post: operations["redrive"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/internal/admin/webhook-outbox/dispatch": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post: operations["dispatchOutbox"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/api/v1/internal/admin/users": {
     parameters: {
       query?: never;
@@ -852,6 +804,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/lsp/loan-events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["listLoanEvents"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/lsp/loan-applications/{applicationId}": {
     parameters: {
       query?: never;
@@ -1020,22 +988,6 @@ export interface paths {
       cookie?: never;
     };
     get: operations["getApplication_1"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/internal/ops/loan-applications/{applicationId}/webhook-events": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["listWebhookEvents"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1244,22 +1196,6 @@ export interface paths {
       cookie?: never;
     };
     get: operations["listAlertRules"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/internal/admin/webhook-outbox": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get: operations["listOutbox"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1601,24 +1537,10 @@ export interface components {
       productId?: string;
       lspIds?: string[];
     };
-    UpdateWebhookSubscriptionRequest: {
-      enabled?: boolean;
-      endpointUrl?: string;
-      signingSecret?: string;
-      eventTypes?: (
-        | "LOAN_CREATED"
-        | "LOAN_STATUS_CHANGED"
-        | "LOAN_DISBURSEMENT_UPDATED"
-        | "DISBURSEMENT_REQUESTED"
-        | "DISBURSEMENT_COMPLETED"
-        | "DISBURSEMENT_FAILED"
-        | "DOCUMENTS_UPLOADED"
-        | "LOAN_REPAYMENT_RECORDED"
-        | "LOAN_FULLY_REPAID"
-        | "FORECLOSURE_QUOTE_REQUESTED"
-        | "LOAN_FORECLOSURE_COMPLETED"
-        | "BORROWER_BANK_DETAILS_UPDATED"
-      )[];
+    UpdateLspStatusRequest: {
+      status: string;
+      reason?: string;
+      note?: string;
     };
     LspResponse: {
       /** Format: uuid */
@@ -1628,7 +1550,6 @@ export interface components {
       status?: string;
       /** Format: date-time */
       createdAt?: string;
-      webhookSubscription?: components["schemas"]["WebhookSubscriptionResponse"];
       /** Format: int32 */
       userCount?: number;
       portfolioSummary?: components["schemas"]["PortfolioSummaryResponse"];
@@ -1643,18 +1564,6 @@ export interface components {
       totalDisbursedAmount?: number;
       /** Format: date */
       latestDisbursalDate?: string;
-    };
-    WebhookSubscriptionResponse: {
-      enabled?: boolean;
-      endpointUrl?: string;
-      signingSecret?: string;
-      secretSet?: boolean;
-      eventTypes?: string[];
-    };
-    UpdateLspStatusRequest: {
-      status: string;
-      reason?: string;
-      note?: string;
     };
     AllowlistEnforcementRequest: {
       enforceUi?: boolean;
@@ -2102,6 +2011,7 @@ export interface components {
       requestedAmount?: number;
       /** Format: int32 */
       tenureMonths?: number;
+      interestRate?: number;
       status?: string;
       /** Format: date-time */
       createdAt?: string;
@@ -2178,6 +2088,7 @@ export interface components {
       requestedAmount?: number;
       /** Format: int32 */
       tenureMonths?: number;
+      interestRate?: number;
       status?: string;
       invalidReasonCode?: string;
       invalidReasonText?: string;
@@ -2334,36 +2245,6 @@ export interface components {
       title: string;
       message: string;
     };
-    WebhookOutboxEventResponse: {
-      id?: string;
-      lspId?: string;
-      lspCode?: string;
-      eventType?: string;
-      aggregateType?: string;
-      aggregateId?: string;
-      status?: string;
-      payloadJson?: string;
-      correlationId?: string;
-      /** Format: int32 */
-      attemptCount?: number;
-      lastAttemptAt?: string;
-      nextAttemptAt?: string;
-      deliveredAt?: string;
-      lastError?: string;
-      createdAt?: string;
-      /** Format: int32 */
-      redriveCount?: number;
-    };
-    DispatchWebhookOutboxResponse: {
-      /** Format: int32 */
-      processed?: number;
-      /** Format: int32 */
-      delivered?: number;
-      /** Format: int32 */
-      retryableFailures?: number;
-      /** Format: int32 */
-      permanentFailures?: number;
-    };
     CreateUserRequest: {
       username: string;
       /** Format: email */
@@ -2516,6 +2397,32 @@ export interface components {
       /** Format: int32 */
       maxTenureMonths?: number;
       status?: string;
+    };
+    JsonNode: unknown;
+    LoanEventFeedEvent: {
+      /** Format: uuid */
+      eventId?: string;
+      /** Format: int32 */
+      schemaVersion?: number;
+      eventType?: string;
+      /** Format: date-time */
+      occurredAt?: string;
+      aggregateType?: string;
+      aggregateId?: string;
+      /** Format: uuid */
+      lspId?: string;
+      lspCode?: string;
+      /** Format: uuid */
+      loanApplicationId?: string;
+      correlationId?: string;
+      payload?: components["schemas"]["JsonNode"];
+    };
+    LoanEventFeedPage: {
+      items?: components["schemas"]["LoanEventFeedEvent"][];
+      nextCursor?: string;
+      /** Format: int32 */
+      limit?: number;
+      hasMore?: boolean;
     };
     LspLoanApplicationResponse: {
       /** Format: uuid */
@@ -2679,21 +2586,6 @@ export interface components {
       panNumber?: string;
       profession?: string;
       income?: number;
-    };
-    WebhookEventDeliveryResponse: {
-      eventId?: string;
-      eventType?: string;
-      targetUrl?: string;
-      status?: string;
-      /** Format: int32 */
-      attempts?: number;
-      /** Format: date-time */
-      lastAttemptAt?: string;
-      /** Format: int32 */
-      lastResponseCode?: number;
-      lastError?: string;
-      /** Format: date-time */
-      createdAt?: string;
     };
     LoanApplicationStatusTransitionResponse: {
       /** Format: uuid */
@@ -2870,7 +2762,6 @@ export interface components {
       /** Format: date-time */
       createdAt?: string;
     };
-    JsonNode: unknown;
     PagedResultAuthAuditEventResponse: {
       items?: components["schemas"]["AuthAuditEventResponse"][];
       /** Format: int64 */
@@ -2895,8 +2786,6 @@ export interface components {
       applicationsAwaitingApproval?: number;
       /** Format: int32 */
       applicationsInDisbursement?: number;
-      /** Format: double */
-      avgApprovalTatHours?: number;
       applicationsByStatus?: components["schemas"]["StatusCount"][];
       dpdBuckets?: components["schemas"]["DpdBucketCount"][];
       /** Format: int64 */
@@ -2931,6 +2820,7 @@ export interface components {
       id?: string;
       severity?: string;
       title?: string;
+      message?: string;
       subjectType?: string;
       subjectId?: string;
       createdAt?: string;
@@ -3021,7 +2911,6 @@ export interface components {
       status?: string;
       /** Format: date-time */
       createdAt?: string;
-      webhookSubscription?: components["schemas"]["WebhookSubscriptionResponse"];
       /** Format: int32 */
       userCount?: number;
       portfolioSummary?: components["schemas"]["PortfolioSummaryResponse"];
@@ -3358,34 +3247,6 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["ProductLspMappingResponse"];
-        };
-      };
-    };
-  };
-  updateWebhookSubscription: {
-    parameters: {
-      query?: never;
-      header?: {
-        "Idempotency-Key"?: string;
-      };
-      path: {
-        lspId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UpdateWebhookSubscriptionRequest"];
-      };
-    };
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "*/*": components["schemas"]["LspResponse"];
         };
       };
     };
@@ -4282,50 +4143,6 @@ export interface operations {
       };
     };
   };
-  redrive: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "*/*": components["schemas"]["WebhookOutboxEventResponse"];
-        };
-      };
-    };
-  };
-  dispatchOutbox: {
-    parameters: {
-      query?: {
-        batchSize?: number;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "*/*": components["schemas"]["DispatchWebhookOutboxResponse"];
-        };
-      };
-    };
-  };
   listUsers: {
     parameters: {
       query?: never;
@@ -4984,6 +4801,30 @@ export interface operations {
       };
     };
   };
+  listLoanEvents: {
+    parameters: {
+      query?: {
+        cursor?: string;
+        limit?: number;
+        eventTypes?: string[];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["LoanEventFeedPage"];
+        };
+      };
+    };
+  };
   getApplication: {
     parameters: {
       query?: never;
@@ -5222,28 +5063,6 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LoanApplicationDetailResponse"];
-        };
-      };
-    };
-  };
-  listWebhookEvents: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        applicationId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "*/*": components["schemas"]["WebhookEventDeliveryResponse"][];
         };
       };
     };
@@ -5544,28 +5363,6 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["AlertRuleResponse"][];
-        };
-      };
-    };
-  };
-  listOutbox: {
-    parameters: {
-      query?: {
-        lspId?: string;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description OK */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "*/*": components["schemas"]["WebhookOutboxEventResponse"][];
         };
       };
     };

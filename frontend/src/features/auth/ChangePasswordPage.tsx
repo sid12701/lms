@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { KeyRound, Loader2 } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Form,
   FormControl,
   FormDescription,
   FormField,
@@ -15,12 +14,14 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { FormShell } from "@/components/app/forms/FormShell";
 import { completePasswordChange } from "@/features/auth/auth-service";
 import { useSession } from "@/features/auth/session-context";
 import { defaultLandingFor } from "@/lib/role-gates";
 import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { PageEyebrow } from "@/components/app/layout/PageEyebrow";
 import { InlineErrorAlert } from "@/components/app/feedback/InlineErrorAlert";
+import { cn } from "@/lib/utils";
 
 const ChangePasswordSchema = z
   .object({
@@ -43,15 +44,23 @@ type ChangePasswordValues = z.infer<typeof ChangePasswordSchema>;
  * role's default landing surface.
  */
 export function ChangePasswordPage() {
-  const { session, isLoading, signIn } = useSession();
+  const { session, isLoading, signIn, signOut } = useSession();
   const navigate = useNavigate();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const form = useForm<ChangePasswordValues>({
     resolver: zodResolver(ChangePasswordSchema),
     defaultValues: { newPassword: "", confirmPassword: "" },
     mode: "onBlur",
   });
+
+  // `useWatch` subscribes without returning a fresh function each render, so
+  // the React Compiler can still memoize this component (`form.watch` cannot).
+  // Being a hook, it has to sit above the early returns below.
+  const newPasswordValue = useWatch({ control: form.control, name: "newPassword" });
+  const confirmPasswordValue = useWatch({ control: form.control, name: "confirmPassword" });
 
   if (isLoading) {
     return (
@@ -82,13 +91,18 @@ export function ChangePasswordPage() {
     }
   }
 
+  async function handleSignOut(): Promise<void> {
+    await signOut();
+    navigate("/login", { replace: true });
+  }
+
   return (
     <main className="bg-background flex min-h-screen flex-col items-center justify-center p-6">
       <div className="w-full max-w-md">
         <header className="mb-6 flex flex-col items-center gap-3 text-center">
           <span
             aria-hidden="true"
-            className="bg-primary text-primary-foreground inline-flex h-10 w-10 items-center justify-center rounded-md"
+            className="bg-primary text-primary-foreground rounded-control inline-flex h-10 w-10 items-center justify-center"
           >
             <KeyRound className="h-5 w-5" />
           </span>
@@ -106,56 +120,115 @@ export function ChangePasswordPage() {
 
         <InlineErrorAlert message={submitError} className="mb-4" />
 
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex flex-col gap-5"
-            aria-label="Change password"
-            noValidate
+        <FormShell
+          form={form}
+          onSubmit={onSubmit}
+          className="gap-5"
+          aria-label="Change password"
+          errorSummaryLabel="There are errors in this form"
+        >
+          <FormField
+            control={form.control}
+            name="newPassword"
+            render={({ field }) => (
+              <FormItem required>
+                <FormLabel>New password</FormLabel>
+                <div className="relative">
+                  <FormControl>
+                    <Input
+                      type={showNewPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      className="pr-10"
+                      {...field}
+                    />
+                  </FormControl>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((prev) => !prev)}
+                    disabled={form.formState.isSubmitting || newPasswordValue.length === 0}
+                    aria-label={showNewPassword ? "Hide new password" : "Show new password"}
+                    aria-pressed={showNewPassword}
+                    className={cn(
+                      "text-foreground-muted hover:text-foreground focus-visible:ring-ring rounded-r-control absolute inset-y-0 right-0 inline-flex h-full w-10 items-center justify-center transition-colors outline-none focus-visible:ring-2",
+                      "disabled:pointer-events-none disabled:opacity-40",
+                    )}
+                  >
+                    {showNewPassword ? (
+                      <EyeOff aria-hidden="true" className="h-4 w-4" />
+                    ) : (
+                      <Eye aria-hidden="true" className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                <FormDescription>
+                  At least 12 characters (matches the server password policy).
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="confirmPassword"
+            render={({ field }) => (
+              <FormItem required>
+                <FormLabel>Confirm new password</FormLabel>
+                <div className="relative">
+                  <FormControl>
+                    <Input
+                      type={showConfirmPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      className="pr-10"
+                      {...field}
+                    />
+                  </FormControl>
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    disabled={form.formState.isSubmitting || confirmPasswordValue.length === 0}
+                    aria-label={
+                      showConfirmPassword ? "Hide confirm password" : "Show confirm password"
+                    }
+                    aria-pressed={showConfirmPassword}
+                    className={cn(
+                      "text-foreground-muted hover:text-foreground focus-visible:ring-ring rounded-r-control absolute inset-y-0 right-0 inline-flex h-full w-10 items-center justify-center transition-colors outline-none focus-visible:ring-2",
+                      "disabled:pointer-events-none disabled:opacity-40",
+                    )}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff aria-hidden="true" className="h-4 w-4" />
+                    ) : (
+                      <Eye aria-hidden="true" className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <Button type="submit" disabled={form.formState.isSubmitting} className="mt-2">
+            {form.formState.isSubmitting ? (
+              <>
+                <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                <span>Saving…</span>
+              </>
+            ) : (
+              <span>Update password</span>
+            )}
+          </Button>
+
+          <Button
+            type="button"
+            variant="link"
+            disabled={form.formState.isSubmitting}
+            onClick={() => void handleSignOut()}
+            className="text-foreground-muted h-auto p-0 text-sm"
           >
-            <FormField
-              control={form.control}
-              name="newPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>New password</FormLabel>
-                  <FormControl>
-                    <Input type="password" autoComplete="new-password" {...field} />
-                  </FormControl>
-                  <FormDescription>
-                    At least 12 characters (matches the server password policy).
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Confirm new password</FormLabel>
-                  <FormControl>
-                    <Input type="password" autoComplete="new-password" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <Button type="submit" disabled={form.formState.isSubmitting} className="mt-2">
-              {form.formState.isSubmitting ? (
-                <>
-                  <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
-                  <span>Saving…</span>
-                </>
-              ) : (
-                <span>Update password</span>
-              )}
-            </Button>
-          </form>
-        </Form>
+            Sign out and return to login
+          </Button>
+        </FormShell>
       </div>
     </main>
   );

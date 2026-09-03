@@ -94,7 +94,7 @@ export function LspDetailsDialog({
             </Button>
           </div>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+            Done
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { axe } from "vitest-axe";
-import { renderWithProviders } from "@/test/utils";
+import { waitFor } from "@testing-library/react";
+import { axeBaseElement, renderWithProviders } from "@/test/utils";
 import { TransitionConfirmDialog } from "./TransitionConfirmDialog";
 import type { LifecycleAction } from "./actions";
 
@@ -65,6 +65,35 @@ describe("<TransitionConfirmDialog />", () => {
     );
     expect(getByRole("heading", { name: /Reject/i })).toBeInTheDocument();
     expect(getByLabelText(/Reason/i)).toBeInTheDocument();
+  });
+
+  /*
+   * F-31: the required marker has to follow the action, not the field. The
+   * same textarea is mandatory for a rejection and genuinely optional for an
+   * approval, so a hardcoded marker would be wrong half the time — and a
+   * marker that overstates the constraint is worse than none.
+   */
+  it("marks the reason field required only when the action requires one", () => {
+    const required = renderWithProviders(
+      <TransitionConfirmDialog
+        open
+        onOpenChange={() => {}}
+        action={REASON_REQUIRED}
+        onConfirm={() => {}}
+      />,
+    );
+    expect(required.getByLabelText(/^Reason/)).toHaveAttribute("aria-required", "true");
+    required.unmount();
+
+    const optional = renderWithProviders(
+      <TransitionConfirmDialog
+        open
+        onOpenChange={() => {}}
+        action={REASON_OPTIONAL}
+        onConfirm={() => {}}
+      />,
+    );
+    expect(optional.getByLabelText(/^Reason/)).not.toHaveAttribute("aria-required", "true");
   });
 
   it("blocks submit when reason is required and empty", async () => {
@@ -198,11 +227,17 @@ describe("<TransitionConfirmDialog />", () => {
     expect(getByRole("button", { name: /Working/i })).toBeDisabled();
   });
 
-  it("renders a fallback empty body when no action is supplied", () => {
-    const { baseElement } = renderWithProviders(
+  it("offers nothing to confirm when no action is supplied", () => {
+    const { baseElement, queryByRole, getAllByRole } = renderWithProviders(
       <TransitionConfirmDialog open onOpenChange={() => {}} action={null} onConfirm={() => {}} />,
     );
-    expect(baseElement).toBeTruthy();
+    // The dialog shell still mounts (the caller controls `open`), but with an
+    // empty body — no headline, no reason field, and no submit path, so a null
+    // action can never be transitioned by accident.
+    expect(baseElement.querySelector('[data-slot="dialog-content"]')).not.toBeNull();
+    expect(queryByRole("heading")).toBeNull();
+    expect(queryByRole("textbox")).toBeNull();
+    expect(getAllByRole("button").map((b) => b.textContent)).toEqual(["Close dialog"]);
   });
 
   it("has no axe violations when open", async () => {
@@ -214,8 +249,32 @@ describe("<TransitionConfirmDialog />", () => {
         onConfirm={() => {}}
       />,
     );
-    expect(await axe(baseElement)).toHaveNoViolations();
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
   });
+
+  /**
+   * The reason-field variant above scans the shell, not the money-critical
+   * path this conversion touches. A dialog with a spinner or an empty error
+   * region passes axe almost by default — the assertion that actually
+   * exercises `DisbursementPreviewSummary`'s markup (table semantics, the
+   * populated `aria-label`) needs the preview loaded first.
+   */
+  it("has no axe violations with a loaded disbursement preview", async () => {
+    const loadDisbursementPreview = vi.fn(() => Promise.resolve(PREVIEW));
+    const { baseElement, findByText } = renderWithProviders(
+      <TransitionConfirmDialog
+        open
+        applicationId="app-1"
+        onOpenChange={() => {}}
+        action={DISBURSEMENT_ACTION}
+        loadDisbursementPreview={loadDisbursementPreview}
+        onConfirm={() => {}}
+      />,
+    );
+
+    expect(await findByText(/Net disbursal/i)).toBeInTheDocument();
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
+  }, 15_000);
 
   it("renders disbursement money fields and keeps confirm disabled while preview loads", async () => {
     let resolvePreview: ((value: typeof PREVIEW) => void) | undefined;
@@ -267,5 +326,87 @@ describe("<TransitionConfirmDialog />", () => {
 
     expect(await findByText(/Preview unavailable/i)).toBeInTheDocument();
     expect(getByRole("button", { name: /Initiate disbursement/i })).toBeDisabled();
+  }, 15_000);
+
+  it("does not fetch the disbursement preview while the dialog is closed", () => {
+    const loadDisbursementPreview = vi.fn(() => Promise.resolve(PREVIEW));
+
+    renderWithProviders(
+      <TransitionConfirmDialog
+        open={false}
+        applicationId="app-1"
+        onOpenChange={() => {}}
+        action={DISBURSEMENT_ACTION}
+        loadDisbursementPreview={loadDisbursementPreview}
+        onConfirm={() => {}}
+      />,
+    );
+
+    expect(loadDisbursementPreview).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The old hand-rolled hook always fetched fresh on every open — the
+   * `request` object was recreated by identity whenever `enabled` flipped
+   * true again, so a re-open could never be served a cached figure. Moving
+   * to `useQuery` keeps that: the dialog drops its cached preview on close
+   * (see `useDisbursementPreview`'s comment), so re-opening for the same
+   * application fetches again rather than flashing yesterday's number.
+   */
+  it("refetches the disbursement preview on every open instead of reusing a cached one", async () => {
+    const loadDisbursementPreview = vi
+      .fn<(id: string) => Promise<typeof PREVIEW>>()
+      .mockResolvedValueOnce(PREVIEW)
+      .mockResolvedValueOnce({ ...PREVIEW, netDisbursalAmount: 50_000 });
+
+    function Wrapper({ open }: { open: boolean }) {
+      return (
+        <TransitionConfirmDialog
+          open={open}
+          applicationId="app-1"
+          onOpenChange={() => {}}
+          action={DISBURSEMENT_ACTION}
+          loadDisbursementPreview={loadDisbursementPreview}
+          onConfirm={() => {}}
+        />
+      );
+    }
+
+    const { rerender, findByText } = renderWithProviders(<Wrapper open />);
+    expect(await findByText(/Net disbursal/i)).toBeInTheDocument();
+    expect(loadDisbursementPreview).toHaveBeenCalledTimes(1);
+
+    rerender(<Wrapper open={false} />);
+    rerender(<Wrapper open />);
+
+    await waitFor(() => expect(loadDisbursementPreview).toHaveBeenCalledTimes(2));
+  }, 15_000);
+
+  /**
+   * The audit's P1: the irreversible action was styled and worded exactly like
+   * every reversible one. Both halves of the fix are asserted here so a future
+   * refactor cannot quietly drop them.
+   */
+  it("states that disbursement cannot be undone, and names the amount on the confirm", async () => {
+    const loadDisbursementPreview = vi.fn(() => Promise.resolve(PREVIEW));
+
+    const { getByRole, findByText } = renderWithProviders(
+      <TransitionConfirmDialog
+        open
+        applicationId="app-1"
+        onOpenChange={() => {}}
+        action={DISBURSEMENT_ACTION}
+        loadDisbursementPreview={loadDisbursementPreview}
+        onConfirm={() => {}}
+      />,
+    );
+
+    expect(await findByText(/This cannot be undone/i)).toBeInTheDocument();
+    expect(await findByText(/cannot be recalled or re-initiated/i)).toBeInTheDocument();
+
+    // The operator's last commitment is to a figure, not to a verb.
+    const submit = getByRole("button", { name: /Initiate disbursement/i });
+    expect(submit).toHaveTextContent("43,987.50");
+    expect(submit).toHaveAttribute("data-irreversible", "true");
   }, 15_000);
 });

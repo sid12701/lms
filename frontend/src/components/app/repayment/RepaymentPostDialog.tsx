@@ -165,7 +165,7 @@ export function RepaymentPostDialog({
             control={form.control}
             name="amount"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Amount (INR)</FormLabel>
                 <FormControl>
                   <Input
@@ -192,7 +192,7 @@ export function RepaymentPostDialog({
             control={form.control}
             name="postedAt"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Posted at</FormLabel>
                 <FormControl>
                   <Input type="datetime-local" {...field} />
@@ -226,7 +226,7 @@ export function RepaymentPostDialog({
             control={form.control}
             name="mode"
             render={({ field }) => (
-              <FormItem>
+              <FormItem required>
                 <FormLabel>Mode</FormLabel>
                 <Select value={field.value} onValueChange={field.onChange}>
                   <FormControl>

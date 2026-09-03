@@ -70,7 +70,7 @@ function PanelShell({
   return (
     <section
       data-slot="blocking-issues-panel"
-      className={`rounded-md border p-4 ${PANEL_TONE_CLASSES[tone]}`}
+      className={`rounded-container border p-4 ${PANEL_TONE_CLASSES[tone]}`}
     >
       <header className="mb-2 flex items-center justify-between">
         <h2 className="text-foreground text-sm font-semibold tracking-tight">{title}</h2>

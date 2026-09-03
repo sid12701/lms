@@ -102,7 +102,7 @@ export function ScheduleTab({
       {query.isPending ? (
         <TableSkeleton
           rows={6}
-          cols={8}
+          cols={10}
           className="opacity-100 transition-opacity duration-200 motion-reduce:transition-none"
         />
       ) : query.isError && isNotFoundApiError(query.error) ? (
@@ -123,7 +123,7 @@ export function ScheduleTab({
         <div
           data-slot="awaiting-schedule-banner"
           role="status"
-          className="border-info/30 bg-info/5 text-foreground flex items-start gap-3 rounded-md border p-4 text-sm"
+          className="border-info/30 bg-info/5 text-foreground rounded-container flex items-start gap-3 border p-4 text-sm"
         >
           <Inbox aria-hidden="true" className="text-info mt-0.5 h-5 w-5 shrink-0" />
           <div className="flex flex-col gap-1">

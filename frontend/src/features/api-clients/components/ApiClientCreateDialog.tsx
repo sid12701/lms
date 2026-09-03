@@ -157,7 +157,7 @@ export function ApiClientCreateDialog({
               control={form.control}
               name="name"
               render={({ field }) => (
-                <FormItem>
+                <FormItem required>
                   <FormLabel>Name</FormLabel>
                   <FormControl>
                     <Input
@@ -180,7 +180,7 @@ export function ApiClientCreateDialog({
               control={form.control}
               name="lspId"
               render={({ field }) => (
-                <FormItem>
+                <FormItem required>
                   <FormLabel>LSP</FormLabel>
                   <FormControl>
                     <Select value={field.value} onValueChange={field.onChange}>

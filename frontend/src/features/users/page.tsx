@@ -4,9 +4,7 @@
  * Composes:
  *   - `UsersFilterBar` (URL-bound filters via `useSearchParams`)
  *   - `UsersTable` (server-paged TanStack table with row actions)
- *   - `UserCreateDialog` (POST /api/v1/admin/users — returns temp password)
- *   - `UserEditDialog` (PATCH /api/v1/admin/users/:id)
- *   - `ResetPasswordDialog` (POST /api/v1/admin/users/:id/reset-password)
+ *   - `UsersDialogs` (create, edit, reset, revoke, and disable workflows)
  *   - `TempPasswordRevealCard` (page-level reveal-once card)
  *
  * Role enforcement is server-side (backend 401s non-admin) AND
@@ -15,28 +13,21 @@
  *
  * Density default = comfortable per D7.
  */
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Users } from "lucide-react";
 import { AdminEntityListPage } from "@/components/app/layout/AdminEntityListPage";
 import { extractAdminErrorMessage } from "@/lib/admin-page-utils";
-import { newIdempotencyKey } from "@/lib/idempotency";
 import { Role } from "@/schemas/role";
 import { UserStatus } from "@/schemas/user";
 import { UsersFilterBar } from "./components/UsersFilterBar";
 import { UsersTable } from "./components/UsersTable";
-import { UserCreateDialog } from "./components/UserCreateDialog";
-import { UserEditDialog } from "./components/UserEditDialog";
-import { ResetPasswordDialog } from "./components/ResetPasswordDialog";
 import { TempPasswordRevealCard } from "./components/TempPasswordRevealCard";
+import { UsersDialogs } from "./components/UsersDialogs";
 import { useUsers } from "./hooks/useUsers";
-import { useCreateUser } from "./hooks/useCreateUser";
-import { useUpdateUser } from "./hooks/useUpdateUser";
-import { useResetUserPassword } from "./hooks/useResetUserPassword";
-import { useRevokeUserSessions } from "./hooks/useRevokeUserSessions";
-import { RevokeSessionsDialog } from "./components/RevokeSessionsDialog";
+import { useUsersDialogController } from "./hooks/useUsersDialogController";
 import { useLsps } from "@/features/lsps/hooks/useLsps";
-import type { UserRow, UsersListFilters } from "./types";
+import type { UsersListFilters } from "./types";
 import type { Role as RoleT } from "@/schemas/role";
 import type { UserStatus as UserStatusT } from "@/schemas/user";
 import {
@@ -48,6 +39,7 @@ import {
 
 const VALID_ROLES: readonly RoleT[] = Role.options;
 const VALID_STATUSES: readonly UserStatusT[] = UserStatus.options;
+
 function parseFiltersFromUrl(params: URLSearchParams): UsersListFilters {
   return {
     ...readAdminListParams(params),
@@ -65,201 +57,20 @@ function filtersToParams(filters: UsersListFilters): URLSearchParams {
   return params;
 }
 
-type UserDialogState =
-  | { kind: "none" }
-  | { kind: "create" }
-  | { kind: "edit"; user: UserRow }
-  | { kind: "reset-password"; user: UserRow }
-  | { kind: "revoke-sessions"; user: UserRow };
-
 export function UsersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => parseFiltersFromUrl(searchParams), [searchParams]);
-
   const setFilters = (next: UsersListFilters) => {
     setSearchParams(filtersToParams(next), { replace: false });
   };
 
-  const [dialog, setDialog] = useState<UserDialogState>({ kind: "none" });
-  const [revealedTempPassword, setRevealedTempPassword] = useState<{
-    username: string;
-    password: string;
-  } | null>(null);
-
   const list = useUsers(filters);
-  const create = useCreateUser();
-  const update = useUpdateUser();
-  const reset = useResetUserPassword();
-  const revokeSessions = useRevokeUserSessions();
-
-  // LSP options for the filter bar + create/edit dialogs. Pull a wide page —
-  // the admin LSP list is short enough in practice (BRD §1) to fit without
-  // a typeahead.
+  const dialogs = useUsersDialogController();
   const lspsQuery = useLsps({ pageSize: 100 });
   const lspOptions = useMemo(
     () => (lspsQuery.data?.items ?? []).map((l) => ({ id: l.id, name: l.name })),
     [lspsQuery.data],
   );
-
-  const clearRevealed = () => setRevealedTempPassword(null);
-  const createOpen = dialog.kind === "create";
-  const editTarget = dialog.kind === "edit" ? dialog.user : null;
-  const resetTarget = dialog.kind === "reset-password" ? dialog.user : null;
-  const revokeTarget = dialog.kind === "revoke-sessions" ? dialog.user : null;
-
-  // ── Create dialog handlers ──────────────────────────────────────────────────
-  const handleCreateOpenChange = (open: boolean) => {
-    if (!open) {
-      if (create.isPending) return;
-      setDialog({ kind: "none" });
-      create.reset();
-      clearRevealed();
-    } else {
-      setDialog({ kind: "create" });
-    }
-  };
-  const handleCreateConfirm = async ({
-    username,
-    email,
-    role,
-    lspId,
-    idempotencyKey,
-  }: {
-    username: string;
-    email: string;
-    role: RoleT;
-    lspId: string | null;
-    idempotencyKey: string;
-  }) => {
-    try {
-      const result = await create.mutateAsync({
-        username,
-        email,
-        role,
-        lspId,
-        idempotencyKey,
-      });
-      setRevealedTempPassword({
-        username: result.user.username,
-        password: result.temporaryPassword,
-      });
-    } catch {
-      // Surfaced via create.error.
-    }
-  };
-  const handleCreateAcknowledge = () => {
-    setDialog({ kind: "none" });
-    create.reset();
-    clearRevealed();
-  };
-
-  // ── Edit dialog handlers ────────────────────────────────────────────────────
-  const handleEditOpenChange = (open: boolean) => {
-    if (!open) {
-      if (update.isPending) return;
-      setDialog({ kind: "none" });
-      update.reset();
-    }
-  };
-  const handleEditConfirm = async ({
-    email,
-    role,
-    lspId,
-    status,
-    idempotencyKey,
-  }: {
-    email: string;
-    role: RoleT;
-    lspId: string | null;
-    status: UserStatusT;
-    idempotencyKey: string;
-  }) => {
-    if (!editTarget) return;
-    try {
-      await update.mutateAsync({
-        id: editTarget.id,
-        email,
-        role,
-        lspId,
-        status,
-        idempotencyKey,
-      });
-      setDialog({ kind: "none" });
-      update.reset();
-    } catch {
-      // Surfaced via update.error.
-    }
-  };
-
-  // ── Reset-password dialog handlers ──────────────────────────────────────────
-  const handleResetOpenChange = (open: boolean) => {
-    if (!open) {
-      if (reset.isPending) return;
-      setDialog({ kind: "none" });
-      reset.reset();
-      clearRevealed();
-    }
-  };
-  const handleResetConfirm = async ({ idempotencyKey }: { idempotencyKey: string }) => {
-    if (!resetTarget) return;
-    const username = resetTarget.username;
-    try {
-      const result = await reset.mutateAsync({
-        id: resetTarget.id,
-        idempotencyKey,
-      });
-      setRevealedTempPassword({
-        username,
-        password: result.temporaryPassword,
-      });
-    } catch {
-      // Surfaced via reset.error.
-    }
-  };
-  const handleResetAcknowledge = () => {
-    setDialog({ kind: "none" });
-    reset.reset();
-    clearRevealed();
-  };
-
-  const handleRevokeOpenChange = (open: boolean) => {
-    if (!open) {
-      if (revokeSessions.isPending) return;
-      setDialog({ kind: "none" });
-      revokeSessions.reset();
-    }
-  };
-  const handleRevokeConfirm = async ({
-    reason,
-    idempotencyKey,
-  }: {
-    reason?: string;
-    idempotencyKey: string;
-  }) => {
-    if (!revokeTarget) return;
-    try {
-      await revokeSessions.mutateAsync({
-        id: revokeTarget.id,
-        username: revokeTarget.username,
-        reason,
-        idempotencyKey,
-      });
-      setDialog({ kind: "none" });
-      revokeSessions.reset();
-    } catch {
-      // Surfaced via revokeSessions.error.
-    }
-  };
-
-  // ── Toggle status (Enable / Disable) ────────────────────────────────────────
-  const handleToggleStatus = (row: UserRow) => {
-    const nextStatus: UserStatusT = row.status === "DISABLED" ? "ACTIVE" : "DISABLED";
-    update.mutate({
-      id: row.id,
-      status: nextStatus,
-      idempotencyKey: newIdempotencyKey(),
-    });
-  };
 
   const isCatalogueEmpty =
     !list.isPending &&
@@ -277,14 +88,14 @@ export function UsersPage() {
       primaryAction={{
         label: "New user",
         dataSlot: "users-new-button",
-        onClick: () => setDialog({ kind: "create" }),
+        onClick: dialogs.openCreate,
       }}
       banner={
-        revealedTempPassword !== null ? (
+        dialogs.revealedTempPassword !== null ? (
           <TempPasswordRevealCard
-            password={revealedTempPassword.password}
-            username={revealedTempPassword.username}
-            onAcknowledge={clearRevealed}
+            password={dialogs.revealedTempPassword.password}
+            username={dialogs.revealedTempPassword.username}
+            onAcknowledge={dialogs.clearRevealed}
           />
         ) : null
       }
@@ -310,60 +121,48 @@ export function UsersPage() {
           isLoading={list.isPending}
           filters={filters}
           onFiltersChange={setFilters}
-          onEdit={(user) => setDialog({ kind: "edit", user })}
-          onResetPassword={(user) => setDialog({ kind: "reset-password", user })}
-          onRevokeSessions={(user) => setDialog({ kind: "revoke-sessions", user })}
-          onToggleStatus={handleToggleStatus}
+          onEdit={dialogs.openEdit}
+          onResetPassword={dialogs.openResetPassword}
+          onRevokeSessions={dialogs.openRevokeSessions}
+          onToggleStatus={dialogs.handleToggleStatus}
         />
       }
       dialogs={
-        <>
-          <UserCreateDialog
-            open={createOpen}
-            onOpenChange={handleCreateOpenChange}
-            lspOptions={lspOptions}
-            onConfirm={handleCreateConfirm}
-            temporaryPassword={revealedTempPassword?.password ?? null}
-            createdUsername={revealedTempPassword?.username ?? null}
-            onAcknowledgePassword={handleCreateAcknowledge}
-            loading={create.isPending}
-            errorMessage={create.isError ? extractAdminErrorMessage(create.error) : null}
-          />
-
-          <UserEditDialog
-            open={editTarget !== null}
-            onOpenChange={handleEditOpenChange}
-            user={editTarget}
-            lspOptions={lspOptions}
-            onConfirm={handleEditConfirm}
-            loading={update.isPending}
-            errorMessage={update.isError ? extractAdminErrorMessage(update.error) : null}
-          />
-
-          <ResetPasswordDialog
-            open={resetTarget !== null}
-            onOpenChange={handleResetOpenChange}
-            username={resetTarget?.username ?? ""}
-            onConfirm={handleResetConfirm}
-            temporaryPassword={
-              resetTarget !== null ? (revealedTempPassword?.password ?? null) : null
-            }
-            onAcknowledgePassword={handleResetAcknowledge}
-            loading={reset.isPending}
-            errorMessage={reset.isError ? extractAdminErrorMessage(reset.error) : null}
-          />
-
-          <RevokeSessionsDialog
-            open={revokeTarget !== null}
-            onOpenChange={handleRevokeOpenChange}
-            username={revokeTarget?.username ?? ""}
-            onConfirm={handleRevokeConfirm}
-            loading={revokeSessions.isPending}
-            errorMessage={
-              revokeSessions.isError ? extractAdminErrorMessage(revokeSessions.error) : null
-            }
-          />
-        </>
+        <UsersDialogs
+          dialog={dialogs.dialog}
+          revealedTempPassword={dialogs.revealedTempPassword}
+          lspOptions={lspOptions}
+          onCreateOpenChange={dialogs.handleCreateOpenChange}
+          onCreateConfirm={dialogs.handleCreateConfirm}
+          onCreateAcknowledge={dialogs.handleCreateAcknowledge}
+          createLoading={dialogs.create.isPending}
+          createErrorMessage={
+            dialogs.create.isError ? extractAdminErrorMessage(dialogs.create.error) : null
+          }
+          onEditOpenChange={dialogs.handleEditOpenChange}
+          onEditConfirm={dialogs.handleEditConfirm}
+          updateLoading={dialogs.update.isPending}
+          updateErrorMessage={
+            dialogs.update.isError ? extractAdminErrorMessage(dialogs.update.error) : null
+          }
+          onResetOpenChange={dialogs.handleResetOpenChange}
+          onResetConfirm={dialogs.handleResetConfirm}
+          onResetAcknowledge={dialogs.handleResetAcknowledge}
+          resetLoading={dialogs.reset.isPending}
+          resetErrorMessage={
+            dialogs.reset.isError ? extractAdminErrorMessage(dialogs.reset.error) : null
+          }
+          onRevokeOpenChange={dialogs.handleRevokeOpenChange}
+          onRevokeConfirm={dialogs.handleRevokeConfirm}
+          revokeLoading={dialogs.revokeSessions.isPending}
+          revokeErrorMessage={
+            dialogs.revokeSessions.isError
+              ? extractAdminErrorMessage(dialogs.revokeSessions.error)
+              : null
+          }
+          onDisableOpenChange={dialogs.handleDisableOpenChange}
+          onDisableConfirm={dialogs.handleDisableConfirm}
+        />
       }
     />
   );

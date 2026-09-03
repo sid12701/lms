@@ -62,7 +62,7 @@ export function RequireInternal({ children }: { children: ReactNode }): ReactEle
         title="Internal workspace only"
         currentRole={session.user.role}
         allowedRoles={["SYSTEM_ADMIN", "OPS_USER", "PRODUCT_ADMIN"]}
-        actionLabel="Go to loan applications"
+        actionLabel="Go to my loans"
       />
     );
   }

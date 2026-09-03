@@ -64,7 +64,7 @@ export function MultiSelectChip<T extends string>({
           <ChevronDown aria-hidden="true" className="size-3.5" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-56 p-1">
+      <PopoverContent align="start" aria-label={listboxLabel ?? label} className="w-56 p-1">
         <ul
           role="listbox"
           aria-label={listboxLabel ?? label}
@@ -74,7 +74,14 @@ export function MultiSelectChip<T extends string>({
           {options.map((opt) => {
             const checked = selectedValues.has(opt.value);
             return (
-              <li key={opt.value}>
+              // `role="presentation"` strips the `<li>`'s implicit listitem
+              // semantics: with the `<ul>` overridden to `role="listbox"`,
+              // an unmarked `<li>` sits between it and the `role="option"`
+              // button, which axe's aria-required-children/-parent rules
+              // both reject — a listbox must contain options (or groups)
+              // directly, not listitems. `<li>` stays for its layout, not
+              // its semantics.
+              <li key={opt.value} role="presentation">
                 <Button
                   type="button"
                   variant="ghost"
@@ -87,7 +94,7 @@ export function MultiSelectChip<T extends string>({
                   <span
                     aria-hidden="true"
                     className={cn(
-                      "border-border inline-flex size-4 items-center justify-center rounded-sm border",
+                      "border-border rounded-control inline-flex size-4 items-center justify-center border",
                       checked ? "bg-primary border-primary text-primary-foreground" : null,
                     )}
                   >

@@ -26,7 +26,13 @@ export const DocumentKind = z.enum([
 ]);
 export type DocumentKind = z.infer<typeof DocumentKind>;
 
-export const DocumentStatus = z.enum(["PENDING", "UPLOADED"]);
+/**
+ * `NOT_REQUIRED` mirrors the backend's third checklist state: the business has
+ * recorded that this document does not apply to this loan. It used to be folded
+ * onto `PENDING`, which reported a deliberate exemption as an outstanding
+ * compliance gap and made "docs complete" unreachable for any loan carrying one.
+ */
+export const DocumentStatus = z.enum(["PENDING", "UPLOADED", "NOT_REQUIRED"]);
 export type DocumentStatus = z.infer<typeof DocumentStatus>;
 
 /** Gap #18 — BE `SUBMITTED` (+ legacy rows) count as uploaded for lifecycle gates. */
@@ -35,6 +41,17 @@ export function isUploadedBackendChecklistStatus(status: string): boolean {
   return (
     value === "SUBMITTED" || value === "UPLOADED" || value === "VERIFIED" || value === "RECEIVED"
   );
+}
+
+/**
+ * Whether a checklist row no longer blocks disbursement.
+ *
+ * Distinct from `isUploadedBackendChecklistStatus`, which answers the narrower
+ * "is there a file?". A document marked `NOT_REQUIRED` has no file and never
+ * will, but it cannot gate a loan it does not apply to.
+ */
+export function isSatisfiedBackendChecklistStatus(status: string): boolean {
+  return isUploadedBackendChecklistStatus(status) || status.toUpperCase() === "NOT_REQUIRED";
 }
 
 export const DOCUMENT_KIND_LABELS: Record<DocumentKind, string> = {

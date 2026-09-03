@@ -82,20 +82,39 @@ function renderTable(props: {
 }
 
 describe("LoanApplicationsTable", () => {
-  it("renders one body row per item with all required columns", () => {
+  it("renders one body row per item with the default column set", () => {
     const { container } = renderTable({ data: RESPONSE });
     expect(container.querySelectorAll('[data-slot="data-table"] tbody tr')).toHaveLength(2);
     expect(screen.getByText(ROW_A.borrowerNameMasked)).toBeInTheDocument();
     expect(screen.getByText(ROW_B.borrowerNameMasked)).toBeInTheDocument();
-    expect(screen.getByText("LSP Loan ID")).toBeInTheDocument();
-    expect(screen.getByText("Bhawana loan ID")).toBeInTheDocument();
-    expect(screen.getByText("LMS-LN-111111111111")).toBeInTheDocument();
-    // Em-dash fallback appears for ROW_B's null LSP loan ID and Bhaw loan ID.
-    expect(screen.getAllByText("—")).toHaveLength(2);
     // Tenure formatting
     expect(screen.getAllByText("24 mo")).toHaveLength(2);
-    // Short id with mono font
-    expect(screen.getByText("11111111…")).toBeInTheDocument();
+  });
+
+  it("hides the identifier columns by default so Status fits without scrolling", () => {
+    renderTable({ data: RESPONSE });
+    // The three lookup-key columns are off by default — they previously took
+    // 44% of the table width and pushed Status out of view.
+    expect(screen.queryByText("LSP loan ID")).not.toBeInTheDocument();
+    expect(screen.queryByText("Bhawana loan ID")).not.toBeInTheDocument();
+    expect(screen.queryByText("Internal ID")).not.toBeInTheDocument();
+    expect(screen.queryByText("LMS-LN-111111111111")).not.toBeInTheDocument();
+    // Status ships visible — it is what triage reads.
+    expect(screen.getByText("Status")).toBeInTheDocument();
+  });
+
+  it("offers the hidden identifier columns for restore under Columns", async () => {
+    const user = userEvent.setup();
+    renderTable({ data: RESPONSE });
+    await user.click(screen.getByRole("button", { name: "Columns" }));
+    // Every hidden column stays reachable — nothing is deleted, only defaulted
+    // off. Options are switches carrying their visibility in aria-checked.
+    const lspLoanId = await screen.findByRole("switch", { name: /LSP loan ID/i });
+    expect(lspLoanId).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: /Bhawana loan ID/i })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /Internal ID/i })).toBeInTheDocument();
+    // Status ships on.
+    expect(screen.getByRole("switch", { name: /Status/i })).toHaveAttribute("aria-checked", "true");
   });
 
   it("renders the loading skeleton when isLoading and no data", () => {
@@ -208,6 +227,8 @@ describe("LoanApplicationsTable", () => {
     expect(screen.getByText("Product")).toBeInTheDocument();
     const bodyRows = container.querySelectorAll('[data-slot="data-table"] tbody tr');
     expect(bodyRows.length).toBe(2);
-    expect(bodyRows[0]!.querySelectorAll("td").length).toBe(10);
+    // Seven columns ship visible; the three identifier columns default to hidden
+    // and are restorable under "Columns".
+    expect(bodyRows[0]!.querySelectorAll("td").length).toBe(7);
   });
 });

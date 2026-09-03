@@ -16,7 +16,7 @@ export function MaskedBorrowerCard({ detail }: MaskedBorrowerCardProps) {
   return (
     <section
       data-slot="masked-borrower-card"
-      className="border-border bg-background flex flex-col gap-4 rounded-md border p-5"
+      className="border-border bg-background rounded-container flex flex-col gap-4 border p-5"
     >
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">

@@ -24,10 +24,11 @@ describe("PageEyebrow", () => {
       <PageEyebrow className="mb-1">Workspace</PageEyebrow>,
     );
     const node = getByText("Workspace");
-    expect(node.className).toMatch(/text-\[11px\]/);
+    // Size, line-height, weight and tracking now come from the `--text-eyebrow`
+    // token rather than four arbitrary utilities repeated at every call site,
+    // so the single class *is* the typography contract.
+    expect(node.className).toMatch(/text-eyebrow/);
     expect(node.className).toMatch(/uppercase/);
-    expect(node.className).toMatch(/tracking-\[0\.08em\]/);
-    expect(node.className).toMatch(/font-semibold/);
     expect(node.className).toMatch(/mb-1/);
   });
 

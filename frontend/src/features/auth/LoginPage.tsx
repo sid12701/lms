@@ -14,7 +14,6 @@ import {
 } from "@/features/auth/login-role-presets";
 import { defaultLandingFor } from "@/lib/role-gates";
 import { cn } from "@/lib/utils";
-import { PageEyebrow } from "@/components/app/layout/PageEyebrow";
 import { ApiError } from "@/lib/api/http-client";
 import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { LOGIN_PAGE_HEADING } from "@/lib/product-branding";
@@ -142,20 +141,21 @@ export function LoginPage() {
 
   return (
     <main className="bg-background relative flex min-h-screen flex-col items-center justify-center p-6">
-      <div
-        aria-hidden="true"
-        className="from-brand-100/40 dark:from-brand-950/30 pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px] bg-linear-to-b to-transparent"
-      />
-
       <div className="flex w-full max-w-3xl flex-col gap-10">
         <header className="flex flex-col items-center gap-4 text-center">
+          {/*
+            No eyebrow here.
+            "SIGN IN" above "Bhawana Capital — Loan Management" restated what
+            the form beneath it already says, on a page with exactly one
+            purpose — the same orientation redundancy that was removed from the
+            admin pages (audit S6). The heading carries its own weight.
+          */}
           <div>
-            <PageEyebrow className="mb-1.5">Sign in</PageEyebrow>
             <h1 className="text-foreground text-2xl leading-8 font-semibold tracking-tight sm:text-[26px]">
               {LOGIN_PAGE_HEADING}
             </h1>
             <p className="text-foreground-muted mx-auto mt-2 max-w-sm text-sm leading-6">
-              Sign in with your backend credentials to access the platform.
+              Sign in to the loan management platform.
             </p>
           </div>
         </header>
@@ -164,7 +164,7 @@ export function LoginPage() {
           onSubmit={handleSubmit}
           aria-label="Sign in"
           aria-busy={submitting}
-          className="border-border bg-card mx-auto flex w-full max-w-md flex-col gap-5 rounded-2xl border p-7 shadow-lg shadow-black/3 sm:p-8"
+          className="border-border bg-card rounded-card mx-auto flex w-full max-w-md flex-col gap-5 border p-7 shadow-lg shadow-black/3 sm:p-8"
         >
           <div className="flex flex-col gap-2">
             <Label htmlFor="email" className="text-sm font-medium">
@@ -180,7 +180,7 @@ export function LoginPage() {
               disabled={submitting}
               required
               placeholder="you@company.com"
-              className="h-10 rounded-lg px-3 text-sm"
+              className="h-10 px-3 text-sm"
             />
           </div>
           <div className="flex flex-col gap-2">
@@ -200,7 +200,7 @@ export function LoginPage() {
                 disabled={submitting}
                 required
                 placeholder="Enter your password"
-                className="h-10 rounded-lg px-3 pr-10 text-sm"
+                className="h-10 px-3 pr-10 text-sm"
               />
               <button
                 type="button"
@@ -209,7 +209,7 @@ export function LoginPage() {
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 aria-pressed={showPassword}
                 className={cn(
-                  "text-foreground-muted hover:text-foreground focus-visible:ring-ring/40 absolute inset-y-0 right-0 inline-flex h-full w-10 items-center justify-center rounded-r-lg transition-colors outline-none focus-visible:ring-2",
+                  "text-foreground-muted hover:text-foreground focus-visible:ring-ring rounded-r-control absolute inset-y-0 right-0 inline-flex h-full w-10 items-center justify-center transition-colors outline-none focus-visible:ring-2",
                   "disabled:pointer-events-none disabled:opacity-40",
                 )}
               >
@@ -225,7 +225,7 @@ export function LoginPage() {
           {error ? (
             <div
               role="alert"
-              className="border-danger/30 bg-danger/5 text-danger flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm leading-5"
+              className="border-danger/30 bg-danger/5 text-danger rounded-control flex items-start gap-2 border px-3 py-2.5 text-sm leading-5"
             >
               <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{error}</span>
@@ -234,9 +234,10 @@ export function LoginPage() {
 
           <Button
             type="submit"
+            size="xl"
             disabled={submitting}
             aria-live="polite"
-            className="mt-1 h-10 w-full rounded-lg text-sm font-semibold tracking-tight shadow-sm transition-all hover:shadow-md active:translate-y-0"
+            className="mt-1 w-full font-semibold tracking-tight"
           >
             {submitting ? (
               <>
@@ -252,12 +253,15 @@ export function LoginPage() {
         {import.meta.env.DEV && configuredRoleCards.length > 0 ? (
           <section
             aria-labelledby="role-quick-fill-title"
-            className="border-border bg-muted/30 flex flex-col gap-4 rounded-2xl border p-6"
+            className="border-border bg-muted/30 rounded-card flex flex-col gap-4 border p-6"
           >
             <header className="flex flex-col gap-1">
+              {/* Title role (14px / 500), per DESIGN.md — `text-base
+                  font-semibold` was a 16px step that exists nowhere else in
+                  the system. */}
               <h2
                 id="role-quick-fill-title"
-                className="text-foreground text-base font-semibold tracking-tight"
+                className="text-foreground text-sm font-medium tracking-tight"
               >
                 Sign in by role
               </h2>
@@ -284,17 +288,16 @@ export function LoginPage() {
                       aria-label={`Fill email for ${copy.title}`}
                       aria-pressed={isActive}
                       className={cn(
-                        "group/card border-border bg-background flex h-full w-full flex-col items-start gap-1 rounded-xl border px-4 py-3 text-left text-sm transition-all duration-150",
-                        "hover:border-brand-500/60 hover:bg-brand-50/40 dark:hover:bg-brand-950/20 hover:-translate-y-px hover:shadow-sm",
-                        "focus-visible:border-brand-500 focus-visible:ring-brand-500/30 outline-none focus-visible:ring-2",
+                        "group/card border-border bg-background rounded-container flex h-full w-full flex-col items-start gap-1 border px-4 py-3 text-left text-sm transition-all duration-150",
+                        "hover:border-border-strong hover:bg-surface-muted hover:-translate-y-px hover:shadow-sm",
+                        "focus-visible:border-ring focus-visible:ring-ring outline-none focus-visible:ring-2",
                         "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-none",
-                        isActive &&
-                          "border-brand-500 bg-brand-50/60 dark:bg-brand-950/30 ring-brand-500/20 ring-2",
+                        isActive && "border-primary bg-primary/10 ring-primary/20 ring-2",
                       )}
                     >
                       <span className="text-foreground font-semibold">{copy.title}</span>
                       <span className="text-foreground-muted text-xs leading-5">{copy.blurb}</span>
-                      <span className="text-foreground-subtle font-mono text-[11px]">{role}</span>
+                      <span className="text-foreground-subtle font-mono text-xs">{role}</span>
                     </button>
                   </li>
                 );

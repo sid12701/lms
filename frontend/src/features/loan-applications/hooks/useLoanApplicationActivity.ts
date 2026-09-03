@@ -1,7 +1,7 @@
 /**
  * TanStack Query wrapper around `fetchLoanApplicationActivity`. The query
  * is keyed by application id + the literal "activity" so it stays distinct
- * from the detail and webhooks caches.
+ * from the detail cache.
  */
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { fetchLoanApplicationActivity } from "../api-detail";

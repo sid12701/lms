@@ -32,7 +32,7 @@ export function Sidebar({ collapsed = false, onNavigate, className }: SidebarPro
       aria-label="Primary navigation"
       data-collapsed={collapsed || undefined}
       className={cn(
-        "bg-surface flex h-full shrink-0 flex-col border-r border-(--color-border)",
+        "bg-surface flex min-h-screen shrink-0 flex-col self-stretch border-r border-(--color-border)",
         collapsed ? "w-16" : "w-64",
         className,
       )}
@@ -63,7 +63,7 @@ export function Sidebar({ collapsed = false, onNavigate, className }: SidebarPro
         {groups.map((group) => (
           <div key={group.label} className="mb-5 last:mb-0">
             {!collapsed ? (
-              <p className="text-foreground-subtle mb-2 px-3 text-[11px] font-semibold tracking-[0.08em] uppercase">
+              <p className="text-foreground-subtle text-eyebrow mb-2 px-3 uppercase">
                 {group.label}
               </p>
             ) : null}

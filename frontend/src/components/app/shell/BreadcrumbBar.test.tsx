@@ -24,9 +24,9 @@ describe("BreadcrumbBar", () => {
     expect(getByText("API clients")).toBeInTheDocument();
   });
 
-  it("resolves my-loans slug to 'Loan applications'", () => {
+  it("resolves my-loans slug to 'My loans'", () => {
     const { getByText } = renderAt("/my-loans");
-    expect(getByText("Loan applications")).toBeInTheDocument();
+    expect(getByText("My loans")).toBeInTheDocument();
   });
 
   it("renders nested mapped + opaque-id segments correctly", () => {
@@ -49,6 +49,7 @@ describe("BreadcrumbBar", () => {
 
   it("exports a BREADCRUMB_LABELS lookup covering the documented top-level routes", () => {
     expect(BREADCRUMB_LABELS["loan-applications"]).toBe("Loan applications");
+    expect(BREADCRUMB_LABELS["my-loans"]).toBe("My loans");
     expect(BREADCRUMB_LABELS["api-clients"]).toBe("API clients");
     expect(BREADCRUMB_LABELS["lsps"]).toBe("LSPs");
     expect(BREADCRUMB_LABELS["audit"]).toBe("Audit");
@@ -63,6 +64,14 @@ describe("BreadcrumbBar", () => {
     expect(container.querySelector('nav[aria-label="Breadcrumb"]')).not.toBeNull();
     const current = container.querySelector('[aria-current="page"]');
     expect(current?.textContent).toBe("LSPs");
+  });
+
+  it("renders breadcrumb links with at least 24px hit targets", () => {
+    const { getByRole } = renderAt("/loan-applications/0123456789abcdef0123456789abcdef");
+    const homeLink = getByRole("link", { name: "Home" });
+    expect(homeLink.className).toContain("min-h-6");
+    const loanAppsLink = getByRole("link", { name: "Loan applications" });
+    expect(loanAppsLink.className).toContain("min-h-6");
   });
 
   it("has no axe violations", async () => {

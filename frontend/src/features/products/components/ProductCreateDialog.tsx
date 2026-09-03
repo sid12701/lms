@@ -46,13 +46,21 @@ export interface ProductCreateDialogProps {
   errorMessage?: string | null;
 }
 
+/*
+ * Money and rate fields start empty, not at 0. A pre-filled `0` is a real,
+ * submittable value — `interestRatePct` is `.nonnegative()`, so a 0% product
+ * would have passed validation — and it forces the operator to clear the field
+ * before typing. NaN renders as blank and fails the schema until a value is
+ * entered, which is the honest default. Tenure keeps 1/12: those are genuine
+ * product conventions, not placeholders.
+ */
 const DEFAULTS: CreateProductFormValues = {
   code: "",
   name: "",
-  principalMin: 0,
-  principalMax: 0,
-  interestRatePct: 0,
-  processingFeePct: 0,
+  principalMin: NaN,
+  principalMax: NaN,
+  interestRatePct: NaN,
+  processingFeePct: NaN,
   tenureMinMonths: 1,
   tenureMaxMonths: 12,
   lspIds: [],
@@ -96,10 +104,10 @@ export function ProductCreateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <FormDialogHeader
           icon={Layers}
-          iconClassName="text-primary"
+          iconClassName="text-primary-tinted"
           title="New loan product"
           description={
             <>
@@ -110,12 +118,12 @@ export function ProductCreateDialog({
         />
 
         <FormShell form={form} onSubmit={handleSubmit}>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
             <FormField
               control={form.control}
               name="code"
               render={({ field }) => (
-                <FormItem>
+                <FormItem required>
                   <FormLabel>Code</FormLabel>
                   <FormControl>
                     <Input
@@ -138,7 +146,7 @@ export function ProductCreateDialog({
               control={form.control}
               name="name"
               render={({ field }) => (
-                <FormItem>
+                <FormItem required>
                   <FormLabel>Name</FormLabel>
                   <FormControl>
                     <Input placeholder="Personal Loan — Standard" {...field} />

@@ -10,9 +10,9 @@ import type { ColumnDef, PaginationState } from "@tanstack/react-table";
 import { CheckCircle2, MinusCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { AdminEntityDataTable } from "@/components/app/data/AdminEntityDataTable";
+import { AbsoluteRelativeTime } from "@/components/app/misc/AbsoluteRelativeTime";
 import { EntityRowActions } from "@/components/app/data/EntityRowActions";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
-import { formatDateTime, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ApiClientRow, ApiClientsListFilters, ApiClientsListResponse } from "../types";
 
@@ -53,7 +53,7 @@ export function ApiClientsTable({
             type="button"
             data-slot="api-clients-row-link"
             onClick={() => onEdit(row.original)}
-            className="text-foreground focus-visible:ring-ring/50 rounded-sm font-mono text-sm tabular-nums outline-none hover:underline focus-visible:underline focus-visible:ring-2"
+            className="text-foreground focus-visible:ring-ring rounded-control font-mono text-sm tabular-nums outline-none hover:underline focus-visible:underline focus-visible:ring-2"
           >
             {row.original.clientId}
           </button>
@@ -104,11 +104,7 @@ export function ApiClientsTable({
           if (!v) {
             return <span className="text-foreground-muted text-xs">—</span>;
           }
-          return (
-            <span title={formatDateTime(v)} className="text-foreground-muted text-xs">
-              {formatRelative(v)}
-            </span>
-          );
+          return <AbsoluteRelativeTime iso={v} variant="relative" compact />;
         },
       },
       {

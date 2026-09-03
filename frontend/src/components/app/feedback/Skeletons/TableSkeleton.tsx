@@ -26,7 +26,7 @@ export const TableSkeleton = forwardRef<HTMLDivElement, TableSkeletonProps>(func
       role="status"
       aria-label="Loading rows"
       className={cn(
-        "border-border bg-surface shadow-e1 overflow-hidden rounded-md border",
+        "border-border bg-surface shadow-e1 rounded-container overflow-hidden border",
         className,
       )}
       {...rest}

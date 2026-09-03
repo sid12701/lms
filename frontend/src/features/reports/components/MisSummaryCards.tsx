@@ -1,7 +1,7 @@
 /**
  * Five KPI summary cards for the Portfolio MIS surface.
  *
- *  1. Total disbursed MTD (INR)
+ *  1. Total disbursed (INR, lifetime principal)
  *  2. Active loans
  *  3. Total loans
  *  4. Weighted-average yield (%)
@@ -37,10 +37,10 @@ interface KpiSpec {
 const KPI_SPECS: readonly KpiSpec[] = [
   {
     key: "disbursed-mtd",
-    label: "Total disbursed (MTD)",
+    label: "Total disbursed",
     icon: TrendingUp,
     iconTone: "text-success",
-    format: (d) => formatINR(d.totalDisbursedMtd, { compact: true }),
+    format: (d) => formatINR(d.totalDisbursed),
   },
   {
     key: "active-loans",
@@ -89,15 +89,13 @@ function KpiCard({
     <Card data-slot="mis-kpi-card" data-testid={testId} className="gap-2 py-4">
       <CardContent className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <p className="text-foreground-muted text-[11px] font-medium tracking-wide uppercase">
-            {label}
-          </p>
+          <p className="text-foreground-muted text-eyebrow uppercase">{label}</p>
           <p className="text-foreground text-xl font-semibold tabular-nums">{value}</p>
         </div>
         <span
           aria-hidden="true"
           className={cn(
-            "border-border bg-surface-muted/60 inline-flex size-9 shrink-0 items-center justify-center rounded-md border",
+            "border-border bg-surface-muted/60 rounded-container inline-flex size-9 shrink-0 items-center justify-center border",
             iconTone,
           )}
         >
@@ -120,7 +118,7 @@ export function MisSummaryCards({
         role="alert"
         data-slot="mis-kpi-error"
         className={cn(
-          "border-danger/30 bg-danger/5 text-danger rounded-md border p-3 text-sm",
+          "border-danger/30 bg-danger/5 text-danger rounded-container border p-3 text-sm",
           className,
         )}
       >

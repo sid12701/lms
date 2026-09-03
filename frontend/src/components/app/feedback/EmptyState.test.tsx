@@ -34,6 +34,11 @@ describe("EmptyState", () => {
     expect(container.querySelector('[data-slot="empty-state"]')).toHaveClass("my-empty");
   });
 
+  it("renders title with a custom heading element when titleAs is set", () => {
+    const { getByRole } = renderWithProviders(<EmptyState title="Denied" titleAs="h1" />);
+    expect(getByRole("heading", { level: 1, name: "Denied" })).toBeInTheDocument();
+  });
+
   it("has no axe violations", async () => {
     const { container } = renderWithProviders(
       <EmptyState

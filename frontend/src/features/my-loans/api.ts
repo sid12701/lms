@@ -64,10 +64,16 @@ function toMyLoanListRow(row: BackendLspListItem): MyLoanListRow {
 export async function fetchMyLoansPage(params: {
   offset: number;
   limit: number;
+  /** Free-text borrower / reference search, passed straight to the LSP endpoint. */
+  q?: string | undefined;
+  /** Single lifecycle status — the endpoint accepts one value. */
+  status?: string | undefined;
 }): Promise<MyLoanListPage> {
   const path = buildQueryPath(LSP_BASE, {
     offset: params.offset,
     limit: params.limit,
+    q: params.q,
+    status: params.status,
     paginationDetails: "ON",
   });
   const { data, headers } = await requestJsonWithHeaders<BackendLspListItem[]>(path);
@@ -573,22 +579,29 @@ export interface MyLoanScheduleInstallment {
   id: string;
   installmentNumber: number;
   dueDate: string;
+  principalDue: number;
+  interestDue: number;
   installmentAmount: number;
   paidAmount: number;
   outstandingAmount: number;
   status: string;
   daysPastDue: number | null;
+  delinquencyBucket: string | null;
 }
 
 interface BackendLspScheduleInstallment {
   id: string;
+  loanAccountId?: string;
   installmentNumber: number;
   dueDate: string;
+  principalDue?: number | string | null;
+  interestDue?: number | string | null;
   installmentAmount: number | string;
   paidAmount: number | string | null;
   outstandingAmount: number | string | null;
   status: string;
-  daysPastDue: number | null;
+  daysPastDue?: number | null;
+  delinquencyBucket?: string | null;
 }
 
 /** GET `/api/v1/lsp/loans/{loanId}/repayment-schedule`. */
@@ -603,11 +616,14 @@ export async function fetchMyLoanRepaymentSchedule(
     id: row.id,
     installmentNumber: row.installmentNumber,
     dueDate: row.dueDate,
+    principalDue: toNumber(row.principalDue),
+    interestDue: toNumber(row.interestDue),
     installmentAmount: toNumber(row.installmentAmount),
     paidAmount: toNumber(row.paidAmount),
     outstandingAmount: toNumber(row.outstandingAmount),
     status: row.status,
-    daysPastDue: row.daysPastDue,
+    daysPastDue: row.daysPastDue ?? null,
+    delinquencyBucket: row.delinquencyBucket ?? null,
   }));
 }
 

@@ -159,10 +159,11 @@ function safeDocumentType(value: string): LoanDocument["type"] {
 }
 
 function safeDocumentStatus(value: string): LoanDocument["status"] {
-  // Gap #18 — BE statuses collapse to {PENDING, SUBMITTED, NOT_REQUIRED};
-  // we fold SUBMITTED/UPLOADED/PENDING_REVIEW and any legacy VERIFIED/REJECTED
-  // rows in the DB onto UPLOADED so existing data stays visible. NOT_REQUIRED
-  // surfaces as PENDING in the UI (optional placeholder).
+  // BE statuses are {PENDING, SUBMITTED, NOT_REQUIRED}. SUBMITTED/UPLOADED/
+  // PENDING_REVIEW and any legacy VERIFIED/REJECTED rows fold onto UPLOADED so
+  // existing data stays visible. NOT_REQUIRED is carried through rather than
+  // folded onto PENDING: it records a deliberate exemption, and reporting it as
+  // outstanding made the platform overstate compliance gaps on real loans.
   if (
     value === "SUBMITTED" ||
     value === "UPLOADED" ||
@@ -171,6 +172,9 @@ function safeDocumentStatus(value: string): LoanDocument["status"] {
     value === "REJECTED"
   ) {
     return "UPLOADED";
+  }
+  if (value === "NOT_REQUIRED") {
+    return "NOT_REQUIRED";
   }
   return "PENDING";
 }

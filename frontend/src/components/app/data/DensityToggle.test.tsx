@@ -6,6 +6,7 @@ import { DensityProvider } from "@/app/providers";
 import { DensityToggle } from "./DensityToggle";
 
 function renderToggle() {
+  window.localStorage.removeItem("bhawana-lms-density");
   return renderWithProviders(
     <DensityProvider>
       <DensityToggle />
@@ -14,18 +15,20 @@ function renderToggle() {
 }
 
 describe("DensityToggle", () => {
-  it("starts with comfortable selected", () => {
+  // `compact` is the first-run default: the product's north star is instrument
+  // density, and shipping `comfortable` put 6 of 25 rows on a 1280x800 screen.
+  it("starts with compact selected", () => {
     const { getByRole } = renderToggle();
-    expect(getByRole("radio", { name: /comfortable/i }).getAttribute("aria-checked")).toBe("true");
-    expect(getByRole("radio", { name: /compact/i }).getAttribute("aria-checked")).toBe("false");
+    expect(getByRole("radio", { name: /compact/i }).getAttribute("aria-checked")).toBe("true");
+    expect(getByRole("radio", { name: /comfortable/i }).getAttribute("aria-checked")).toBe("false");
   });
 
-  it("switches to compact on click", async () => {
+  it("switches to comfortable on click", async () => {
     const { getByRole } = renderToggle();
-    const compact = getByRole("radio", { name: /compact/i });
-    await userEvent.click(compact);
-    expect(compact.getAttribute("aria-checked")).toBe("true");
-    expect(getByRole("radio", { name: /comfortable/i }).getAttribute("aria-checked")).toBe("false");
+    const comfortable = getByRole("radio", { name: /comfortable/i });
+    await userEvent.click(comfortable);
+    expect(comfortable.getAttribute("aria-checked")).toBe("true");
+    expect(getByRole("radio", { name: /compact/i }).getAttribute("aria-checked")).toBe("false");
   });
 
   it("groups the radios inside a <fieldset> with an sr-only <legend>", () => {
@@ -48,6 +51,16 @@ describe("DensityToggle", () => {
     const fieldset = container.querySelector('fieldset[data-slot="density-toggle"]');
     expect(fieldset?.getAttribute("aria-label")).toBe("Table density");
     expect(fieldset?.querySelector("legend")?.textContent).toBe("Table density");
+  });
+
+  it("marks the selected option with border and semibold weight for non-color state", () => {
+    const { getByRole } = renderToggle();
+    const compact = getByRole("radio", { name: /compact/i });
+    expect(compact.getAttribute("data-state")).toBe("on");
+    expect(compact.className).toContain("data-[state=on]:bg-surface-muted");
+    expect(compact.className).toContain("data-[state=on]:border");
+    expect(compact.className).toContain("data-[state=on]:!font-semibold");
+    expect(getByRole("radio", { name: /comfortable/i }).getAttribute("data-state")).toBe("off");
   });
 
   it("has no axe violations", async () => {

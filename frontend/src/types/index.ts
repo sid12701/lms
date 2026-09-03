@@ -23,7 +23,7 @@ export type {
 
 export type { ActorContext, ActorType, Channel, Permission, Role } from "@/schemas/role";
 
-export type { Lsp, LspStatus, LspWebhookSubscription, WebhookEventType } from "@/schemas/lsp";
+export type { Lsp, LspStatus } from "@/schemas/lsp";
 
 export type { LoanProduct, ProductLspMapping, ProductStatus } from "@/schemas/product";
 

@@ -90,30 +90,28 @@ export function DisbursementInitiateDialog({
 
         <div
           data-slot="disbursement-target"
-          className="border-border bg-card-muted/40 rounded-md border p-3"
+          className="border-border bg-card-muted/40 rounded-container border p-3"
           aria-label="Disbursement target"
         >
           <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
             <div className="flex flex-col gap-0.5">
-              <dt className="text-foreground-muted text-xs tracking-wide uppercase">Beneficiary</dt>
+              <dt className="text-foreground-muted text-eyebrow uppercase">Beneficiary</dt>
               <dd className="text-foreground font-medium">{target.beneficiaryName}</dd>
             </div>
             {target.bankName ? (
               <div className="flex flex-col gap-0.5">
-                <dt className="text-foreground-muted text-xs tracking-wide uppercase">Bank</dt>
+                <dt className="text-foreground-muted text-eyebrow uppercase">Bank</dt>
                 <dd className="text-foreground font-medium">{target.bankName}</dd>
               </div>
             ) : null}
             <div className="flex flex-col gap-0.5">
-              <dt className="text-foreground-muted text-xs tracking-wide uppercase">
-                Account number
-              </dt>
+              <dt className="text-foreground-muted text-eyebrow uppercase">Account number</dt>
               <dd className="text-foreground font-medium" {...TABULAR_ATTR}>
                 {maskAccount(target.accountNumber)}
               </dd>
             </div>
             <div className="flex flex-col gap-0.5">
-              <dt className="text-foreground-muted text-xs tracking-wide uppercase">IFSC</dt>
+              <dt className="text-foreground-muted text-eyebrow uppercase">IFSC</dt>
               <dd className="text-foreground font-medium" {...TABULAR_ATTR}>
                 {target.ifsc}
               </dd>

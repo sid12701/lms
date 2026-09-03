@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Folder } from "lucide-react";
+import { Folder, SearchX } from "lucide-react";
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { AdminEntityDataTable } from "@/components/app/data/AdminEntityDataTable";
-import { LspLinkCardGrid } from "@/features/home/components/LspLinkCardGrid";
 import { StatusBadge } from "@/components/app/status/StatusBadge";
 import { apiLoanStatus } from "@/lib/loan-application-status";
 import { formatINR } from "@/lib/format";
+import { useUrlFilters } from "@/lib/url-state";
 import { fetchMyLoansPage, type MyLoanListRow } from "./api";
+import { MyLoansFilterBar } from "./components/MyLoansFilterBar";
+import { MyLoanListFilters } from "./types";
 import { safeApiMessage } from "./utils";
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -21,7 +23,7 @@ const COLUMNS: ColumnDef<MyLoanListRow>[] = [
     meta: { label: "Reference", mobileCard: "primary" },
     header: () => <span>Reference</span>,
     cell: ({ row }) => (
-      <span className="text-primary font-mono text-xs">
+      <span className="text-primary-tinted font-mono text-xs">
         {row.original.externalLoanId ?? row.original.id.slice(0, 8)}
       </span>
     ),
@@ -56,81 +58,73 @@ const COLUMNS: ColumnDef<MyLoanListRow>[] = [
 
 export function MyLoansPage() {
   const navigate = useNavigate();
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [items, setItems] = useState<MyLoanListRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Pagination and filters share the URL so a link to "this borrower's loan"
+  // reopens the same view — the support workflow this surface exists for.
+  const [filters, setFilters] = useUrlFilters(MyLoanListFilters);
+  const page = filters.page ?? 0;
+  const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
+  const query = useQuery({
+    queryKey: ["my-loans", page, pageSize, filters.q ?? null, filters.status ?? null],
+    queryFn: () =>
+      fetchMyLoansPage({
+        offset: page * pageSize,
+        limit: pageSize,
+        q: filters.q,
+        status: filters.status,
+      }),
+    placeholderData: (previousData) => previousData,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-    async function run(): Promise<void> {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await fetchMyLoansPage({
-          offset: page * pageSize,
-          limit: pageSize,
-        });
-        if (cancelled) return;
-        setItems(result.items);
-        setTotal(result.totalCount);
-      } catch (err) {
-        if (cancelled) return;
-        setError(safeApiMessage(err, "Failed to load loans."));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [page, pageSize]);
-
-  const columns = useMemo(() => COLUMNS, []);
+  const items: MyLoanListRow[] = query.data?.items ?? [];
+  const total = query.data?.totalCount ?? 0;
+  // An empty book and an over-filtered one need different guidance.
+  const hasActiveFilters = Boolean(filters.q?.trim() || filters.status);
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <PageHeader
-        eyebrow="LSP workspace"
-        title="Loan applications"
-        description="Loans and applications for your lending partner."
-      />
-      <LspLinkCardGrid />
-      {error ? (
+      <PageHeader title="My loans" description="Loans and applications for your lending partner." />
+      <MyLoansFilterBar resultCount={query.data?.totalCount} />
+      {query.isError ? (
         <ErrorState
           title="Couldn't load loans"
-          description={error}
+          description={safeApiMessage(query.error, "Failed to load loans.")}
           retry={{
             label: "Retry",
-            onClick: () => window.location.reload(),
+            onClick: () => {
+              void query.refetch();
+            },
           }}
         />
       ) : (
         <AdminEntityDataTable
           dataSlot="my-loans-table"
-          columns={columns}
+          columns={COLUMNS}
           rows={items}
           total={total}
           page={page}
           pageSize={pageSize}
-          loading={loading}
+          loading={query.isFetching}
           rowIdKey="id"
-          ariaLabel="Loan applications"
+          ariaLabel="My loans"
           onPaginationChange={(next) => {
-            setPage(next.pageIndex);
-            setPageSize(next.pageSize);
+            setFilters({ page: next.pageIndex, pageSize: next.pageSize });
           }}
           getRowAction={(row) => navigate(`/my-loans/${row.original.id}`)}
           getRowAriaLabel={(row) => `Open loan for ${row.original.borrowerFullName}`}
           empty={
-            <EmptyState
-              icon={Folder}
-              title="No loans yet"
-              description="When your LSP originates loans through Bhawana, they will appear here."
-            />
+            hasActiveFilters ? (
+              <EmptyState
+                icon={SearchX}
+                title="No loans match these filters"
+                description="Try a different search term or status, or clear the filters to see the full book."
+              />
+            ) : (
+              <EmptyState
+                icon={Folder}
+                title="No loans yet"
+                description="When your LSP originates loans through Bhawana, they will appear here."
+              />
+            )
           }
         />
       )}

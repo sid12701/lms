@@ -13,7 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { renderWithProviders } from "@/test/utils";
+import { axeBaseElement, renderWithProviders } from "@/test/utils";
 import { DensityProvider } from "@/app/providers";
 import { SessionProvider } from "@/features/auth/session-context";
 import type { Session } from "@/features/auth/session-types";
@@ -219,7 +219,8 @@ describe("AlertsPage - load + listing", () => {
   it("renders header, filter bar, and table for an authorised session", async () => {
     renderPage();
     expect(screen.getByTestId("alerts-page")).toBeInTheDocument();
-    expect(screen.getByText(/Reporting/i)).toBeInTheDocument();
+    // The "Reporting" eyebrow was removed: it restated the sidebar group the
+    // user can already see highlighted. The h1 carries the page identity.
     expect(screen.getByRole("heading", { level: 1, name: /Alerts/i })).toBeInTheDocument();
 
     expect(await screen.findByRole("group", { name: /Alert filters/i })).toBeInTheDocument();
@@ -255,7 +256,10 @@ describe("AlertsPage - acknowledge flow", () => {
     const dialog = await within(baseElement).findByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: /Acknowledge alert/i })).toBeInTheDocument();
 
-    expect(await axe(baseElement)).toHaveNoViolations();
+    // Radix portals the dialog to `document.body`, outside `container` —
+    // scan `baseElement`. `region` is off via the shared helper: an isolated
+    // component render has no page landmarks to satisfy it.
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
 
     const note = within(dialog).getByLabelText(/Acknowledgement note/i);
     await user.type(note, "investigated, false alarm");

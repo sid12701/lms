@@ -3,25 +3,25 @@
  *
  * Density: COMFORTABLE per D7.
  *
- * Columns: posted at (relative + tooltip with full timestamp), amount (INR,
- * right-aligned, tabular-nums), mode (PaymentChannel), payment reference,
- * transaction id (short uuid, mono). The Phase-5 contract
- * does not surface a payment status column — every posted row is settled
- * (the backend rejects partials per BR-13). We render a static
- * "POSTED" badge so the column reads sensibly when the schema evolves.
+ * Columns: posted at (absolute + relative), amount (INR, right-aligned,
+ * tabular-nums), mode (PaymentChannel), payment reference, transaction id
+ * (short uuid, mono). The Phase-5 contract does not surface a payment status
+ * column — every posted row is settled (the backend rejects partials per
+ * BR-13). We render a human "Posted" badge so the column reads sensibly
+ * when the schema evolves.
  */
 import { useMemo } from "react";
 import { Receipt } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { AbsoluteRelativeTime } from "@/components/app/misc/AbsoluteRelativeTime";
+import { PaymentStatusBadge } from "@/components/app/repayment/PaymentStatusBadge";
 import { DataTable } from "@/components/app/data/DataTable";
 import { EmptyState } from "@/components/app/feedback/EmptyState";
 import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { TableSkeleton } from "@/components/app/feedback/Skeletons";
 import { isNotFoundApiError } from "@/lib/api/api-errors";
 import { mapApiErrorMessage } from "@/lib/api/user-messages";
-import { formatDateTime, formatINR, formatRelative } from "@/lib/format";
+import { formatINR } from "@/lib/format";
 import type { PaymentTransaction } from "@/types";
 import { useLoanApplicationRepayments } from "../../hooks/useLoanApplicationRepayments";
 
@@ -39,17 +39,7 @@ const COLUMNS: ColumnDef<PaymentTransaction>[] = [
     id: "postedAt",
     header: "Posted at",
     accessorKey: "postedAt",
-    cell: ({ row }) => {
-      const iso = row.original.postedAt;
-      return (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="text-foreground text-sm">{formatRelative(iso)}</span>
-          </TooltipTrigger>
-          <TooltipContent>{formatDateTime(iso)}</TooltipContent>
-        </Tooltip>
-      );
-    },
+    cell: ({ row }) => <AbsoluteRelativeTime iso={row.original.postedAt} />,
   },
   {
     id: "amount",
@@ -67,11 +57,7 @@ const COLUMNS: ColumnDef<PaymentTransaction>[] = [
   {
     id: "status",
     header: "Status",
-    cell: () => (
-      <Badge variant="outline" data-tone="success">
-        POSTED
-      </Badge>
-    ),
+    cell: () => <PaymentStatusBadge status="POSTED" />,
   },
   {
     id: "reference",

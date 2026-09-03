@@ -96,7 +96,7 @@ export function MisPreviewTable({
       <div data-slot="mis-preview-table" className={cn("flex flex-col gap-3", className)}>
         <div
           data-slot="mis-preview-empty"
-          className="border-border bg-surface flex min-h-[220px] items-center justify-center rounded-md border p-6"
+          className="border-border bg-surface rounded-container flex min-h-[220px] items-center justify-center border p-6"
         >
           <EmptyState
             variant="filtered-empty"
@@ -117,7 +117,7 @@ export function MisPreviewTable({
           <button
             type="button"
             onClick={onRequestFullExport}
-            className="text-primary hover:text-primary/80 font-medium underline underline-offset-2"
+            className="text-primary-tinted hover:text-primary-tinted/80 font-medium underline underline-offset-2"
           >
             Generate a report
           </button>
@@ -126,13 +126,19 @@ export function MisPreviewTable({
         )}{" "}
         to download the full CSV with all fields.
       </p>
+      {/* One bounded scroller, so the sticky header can resolve against it —
+          same fix as `DataTable`. */}
       <div
-        className="border-border bg-surface shadow-e1 overflow-x-auto rounded-md border"
+        className="border-border bg-surface shadow-e1 rounded-container border"
         data-density="compact"
         data-slot="mis-preview-scroll"
       >
-        <Table aria-label="Portfolio MIS preview" className="min-w-max">
-          <TableHeader className="bg-surface-muted/60 sticky top-0 z-10 backdrop-blur">
+        <Table
+          aria-label="Portfolio MIS preview"
+          className="min-w-max"
+          containerClassName="max-h-[calc(100dvh-var(--data-table-chrome,17rem))] overflow-y-auto"
+        >
+          <TableHeader className="bg-surface-muted sticky top-0 z-10">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="border-border hover:bg-transparent">
                 {headerGroup.headers.map((header) => {
@@ -142,7 +148,7 @@ export function MisPreviewTable({
                       key={header.id}
                       scope="col"
                       className={cn(
-                        "text-foreground-muted h-8 px-2.5 text-[11px] font-medium tracking-wide uppercase",
+                        "text-foreground-muted h-8 px-2.5 text-xs font-medium",
                         numeric && "text-right",
                       )}
                     >

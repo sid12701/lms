@@ -12,6 +12,7 @@ import {
   FilterBarShell,
   FilterBarStatusTabs,
 } from "@/components/app/data/FilterBarShell";
+import { filterControlClass } from "@/components/app/data/filter-control";
 import {
   Select,
   SelectContent,
@@ -97,10 +98,10 @@ export function ApiClientsFilterBar({
         onValueChange={(next) => setLspId(next === ALL_SENTINEL ? undefined : next)}
       >
         <SelectTrigger
-          size="sm"
           aria-label="LSP filter"
           data-slot="api-clients-lsp-filter"
-          className="w-56"
+          data-filter-set={filters.lspId !== undefined ? "true" : undefined}
+          className={filterControlClass(filters.lspId !== undefined, "w-56")}
         >
           <SelectValue placeholder="All LSPs" />
         </SelectTrigger>

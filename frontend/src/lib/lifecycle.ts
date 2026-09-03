@@ -256,7 +256,17 @@ const CORE_TRANSITIONS: TransitionRule[] = [
     from: "DISBURSEMENT_RETRY",
     to: "DISBURSED",
     allowedRoles: SYS_ADMIN,
-    label: "Retry disbursement",
+    /*
+     * "New disbursement attempt", not "Retry disbursement". `CONTEXT.md` lists
+     * **retry** as a term to avoid in favour of **disbursement attempt**,
+     * because "retry" is silent on whether the previous attempt actually
+     * reached the bank — the one thing that must never be ambiguous here.
+     *
+     * The label on the transition *into* `DISBURSEMENT_RETRY` above keeps the
+     * word, because there it names the canonical lifecycle status (which
+     * `PRODUCT.md` lists verbatim) rather than describing the act.
+     */
+    label: "New disbursement attempt",
     intent: "primary",
   },
   {

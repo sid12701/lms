@@ -44,7 +44,13 @@ export const LoanApplicationListFilters = z.object({
   disbursalDateFrom: z.string().trim().min(1).max(10).optional(),
   /** Inclusive disbursal date upper bound. */
   disbursalDateTo: z.string().trim().min(1).max(10).optional(),
-  /** Multi-select of LoanStatus values, encoded as `?status=X,Y,Z`. */
+  /**
+   * Status filter. Modelled as an array because `useUrlFilters` serializes
+   * arrays as repeated params (`?status=X&status=Y`) — note it is *not*
+   * comma-separated — but the control and the ops list endpoint are
+   * single-select today, so only the first entry is read. See the
+   * "Single-select on purpose" note on the status control below.
+   */
   status: z.array(LoanStatus).optional(),
   /** Filter to one LSP. */
   lspId: z.string().uuid().optional(),
@@ -103,7 +109,6 @@ export const LoanApplicationDetailTab = z.enum([
   "documents",
   "repayments",
   "activity",
-  "webhooks",
 ]);
 export type LoanApplicationDetailTab = z.infer<typeof LoanApplicationDetailTab>;
 
@@ -128,6 +133,8 @@ export interface LoanApplicationDetail {
     maxDaysPastDue: number | null;
     overdueInstallmentCount: number | null;
   } | null;
+  /** Annual interest rate (percent) from the locked product version, when supplied. */
+  interestRate: number | null;
 }
 
 export interface LoanApplicationScheduleResponse {
@@ -145,28 +152,6 @@ export interface LoanApplicationRepaymentsResponse {
 
 export interface LoanApplicationActivityResponse {
   events: readonly ApplicationAuditEvent[];
-}
-
-/**
- * Webhook delivery row surfaced on the Webhooks tab.
- * No Zod schema exists for `WebhookDelivery` yet (BR-15 outbox), so this
- * is a minimal projection. If the production system lands a richer
- * schema, swap this for the inferred type and adjust the handler.
- */
-export interface LoanApplicationWebhookDelivery {
-  id: string;
-  eventType: string;
-  /** Target endpoint URL. */
-  endpoint: string;
-  status: "PENDING" | "DELIVERED" | "FAILED" | "DEAD_LETTERED";
-  attemptCount: number;
-  lastAttemptAt: string | null;
-  lastError: string | null;
-  createdAt: string;
-}
-
-export interface LoanApplicationWebhooksResponse {
-  deliveries: readonly LoanApplicationWebhookDelivery[];
 }
 
 // ─── Mutation contracts ──────────────────────────────────────────────────────

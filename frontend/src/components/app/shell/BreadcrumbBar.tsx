@@ -2,6 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveBreadcrumbLabel } from "./breadcrumb-labels";
+import { usePageMetaState } from "./page-meta-context";
 
 export interface BreadcrumbBarProps {
   className?: string;
@@ -15,10 +16,17 @@ export interface BreadcrumbBarProps {
  */
 export function BreadcrumbBar({ className }: BreadcrumbBarProps) {
   const { pathname } = useLocation();
+  const { breadcrumbLabel } = usePageMetaState();
   const segments = pathname.split("/").filter(Boolean);
 
-  // Skip rendering on root or single-segment top-level pages — caller decides.
-  if (segments.length === 0) {
+  /*
+   * The trail is always rooted at Home, so /home rendered "Home > Home". Only
+   * that duplicate case is suppressed: on every other route the trail still
+   * earns its place as a one-click path back, and the redundancy the audit
+   * flagged was the *eyebrow* restating the sidebar group, which is now gone.
+   * The bar keeps its height either way so routes do not shift vertically.
+   */
+  if (segments.length === 0 || (segments.length === 1 && segments[0] === "home")) {
     return (
       <div
         aria-hidden="true"
@@ -29,7 +37,11 @@ export function BreadcrumbBar({ className }: BreadcrumbBarProps) {
 
   const crumbs = segments.map((segment, idx) => {
     const to = "/" + segments.slice(0, idx + 1).join("/");
-    return { to, label: resolveBreadcrumbLabel(segment) };
+    const isLast = idx === segments.length - 1;
+    return {
+      to,
+      label: resolveBreadcrumbLabel(segment, isLast ? breadcrumbLabel : undefined),
+    };
   });
 
   return (
@@ -42,7 +54,10 @@ export function BreadcrumbBar({ className }: BreadcrumbBarProps) {
     >
       <ol className="text-foreground-muted flex flex-wrap items-center gap-1">
         <li>
-          <Link to="/home" className="hover:text-foreground transition-colors">
+          <Link
+            to="/home"
+            className="hover:text-foreground inline-flex min-h-6 items-center px-1 transition-colors"
+          >
             Home
           </Link>
         </li>
@@ -54,7 +69,10 @@ export function BreadcrumbBar({ className }: BreadcrumbBarProps) {
                 {c.label}
               </span>
             ) : (
-              <Link to={c.to} className="hover:text-foreground transition-colors">
+              <Link
+                to={c.to}
+                className="hover:text-foreground inline-flex min-h-6 items-center px-1 transition-colors"
+              >
                 {c.label}
               </Link>
             )}

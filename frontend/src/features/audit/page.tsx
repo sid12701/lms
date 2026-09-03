@@ -3,12 +3,13 @@
  *
  * Composes the landed audit primitives into a single page:
  *
- *   PageHeader → AuditStreamTabs (sticky) → AuditPageFilterBar →
- *   AuditTable → AuditEventDetailSheet
+ *   PageHeader → AuditPageFilterBar → AuditTable → AuditEventDetailSheet
  *
  * Filter state is URL-bound: `streams`, `actorId`, `loanApplicationId`,
  * `correlationId`, `dateFrom`, `dateTo`, `page`, `pageSize`, `eventId`. Deep links
- * from the Alerts table (`/audit?correlationId=…`) pre-fill the bar.
+ * from the Alerts table (`/audit?correlationId=…`) pre-fill the bar. Coercion
+ * lives in `./url-filters`; anything the URL asked for that could not be
+ * applied is handed to the bar and named there rather than dropped in silence.
  *
  * Selecting a row writes `eventId` to the URL and opens the right-anchored
  * detail sheet; closing it strips `eventId`. The detail event is resolved
@@ -31,84 +32,16 @@ import { ErrorState } from "@/components/app/feedback/ErrorState";
 import { isUnauthorizedApiError } from "@/lib/api/api-errors";
 import { useSession } from "@/features/auth/session-context";
 import { useAuditEvents } from "./hooks/useAuditEvents";
-import { AUDIT_STREAMS, type AuditEventsFilters, type AuditRow, type AuditStream } from "./types";
-import { AuditStreamTabs } from "./components/AuditStreamTabs";
+import { type AuditEventsFilters, type AuditRow } from "./types";
 import { AuditPageFilterBar, type ActorOption } from "./components/AuditFilterBar";
 import { AuditTable } from "./components/AuditTable";
 import { AuditEventDetailSheet } from "./components/AuditEventDetailSheet";
+import { parseAuditFiltersFromUrl, serializeAuditFiltersToUrl } from "./url-filters";
 import {
   accumulateAuditRowsReducer,
   auditFilterKey,
   type AccumulatedAuditRowsState,
 } from "./accumulateAuditRows";
-
-// ─── URL ↔ filter coercion ────────────────────────────────────────────────────
-
-const VALID_STREAM_SET = new Set<AuditStream>(AUDIT_STREAMS);
-
-function readNumber(value: string | null): number | undefined {
-  if (value === null || value === "") return undefined;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return undefined;
-  return n;
-}
-
-function readStreams(params: URLSearchParams): AuditStream[] | undefined {
-  const repeated = params.getAll("streams");
-  if (repeated.length === 0) return undefined;
-  const streams: AuditStream[] = [];
-  for (const value of repeated) {
-    for (const candidate of value.split(",")) {
-      const trimmed = candidate.trim() as AuditStream;
-      if (VALID_STREAM_SET.has(trimmed)) streams.push(trimmed);
-    }
-  }
-  return streams.length > 0 ? streams : undefined;
-}
-
-function parseFiltersFromUrl(params: URLSearchParams): AuditEventsFilters {
-  const out: AuditEventsFilters = {};
-  const streams = readStreams(params);
-  if (streams) out.streams = streams;
-  const actorId = params.get("actorId");
-  if (actorId) out.actorId = actorId;
-  const loanApplicationId = params.get("loanApplicationId");
-  if (loanApplicationId) out.loanApplicationId = loanApplicationId;
-  const correlationId = params.get("correlationId");
-  if (correlationId) out.correlationId = correlationId;
-  const dateFrom = params.get("dateFrom");
-  if (dateFrom) out.dateFrom = dateFrom;
-  const dateTo = params.get("dateTo");
-  if (dateTo) out.dateTo = dateTo;
-  const page = readNumber(params.get("page"));
-  if (page !== undefined) out.page = page;
-  const pageSize = readNumber(params.get("pageSize"));
-  if (pageSize !== undefined) out.pageSize = pageSize;
-  const eventId = params.get("eventId");
-  if (eventId) out.eventId = eventId;
-  return out;
-}
-
-function serializeFiltersToUrl(filters: AuditEventsFilters): URLSearchParams {
-  const params = new URLSearchParams();
-  if (filters.streams && filters.streams.length > 0) {
-    // Repeated params — the backend accepts both this and comma-joined,
-    // and repeated params are the convention used elsewhere in this codebase
-    // (see useUrlFilters).
-    for (const s of filters.streams) params.append("streams", s);
-  }
-  if (filters.actorId) params.set("actorId", filters.actorId);
-  if (filters.loanApplicationId) params.set("loanApplicationId", filters.loanApplicationId);
-  if (filters.correlationId) params.set("correlationId", filters.correlationId);
-  if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
-  if (filters.dateTo) params.set("dateTo", filters.dateTo);
-  if (typeof filters.page === "number") params.set("page", String(filters.page));
-  if (typeof filters.pageSize === "number") {
-    params.set("pageSize", String(filters.pageSize));
-  }
-  if (filters.eventId) params.set("eventId", filters.eventId);
-  return params;
-}
 
 function distinctActorOptions(rows: ReadonlyArray<AuditRow>): ActorOption[] {
   const seen = new Map<string, string>();
@@ -130,11 +63,12 @@ export function AuditPage() {
   const isSystemAdmin = role === "SYSTEM_ADMIN";
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const filters = useMemo(() => parseFiltersFromUrl(searchParams), [searchParams]);
+  const parsed = useMemo(() => parseAuditFiltersFromUrl(searchParams), [searchParams]);
+  const filters = parsed.filters;
 
   const updateFilters = useCallback(
     (next: AuditEventsFilters) => {
-      setSearchParams(serializeFiltersToUrl(next));
+      setSearchParams(serializeAuditFiltersToUrl(next));
     },
     [setSearchParams],
   );
@@ -199,13 +133,6 @@ export function AuditPage() {
     return rows.find((r) => r.id === filters.eventId) ?? null;
   }, [filters.eventId, rows]);
 
-  const handleStreamsChange = useCallback(
-    (streams: AuditStream[] | undefined) => {
-      updateFilters({ ...filters, streams, page: 0, cursor: undefined });
-    },
-    [filters, updateFilters],
-  );
-
   const handleSelect = useCallback(
     (row: AuditRow) => {
       updateFilters({ ...filters, eventId: row.id });
@@ -226,7 +153,6 @@ export function AuditPage() {
     return (
       <div className="flex flex-col gap-6 p-6" data-testid="audit-page">
         <PageHeader
-          eyebrow="Administration"
           title="Audit log"
           description="Application, intake, document access, product, app user, API client, disbursement, and report access audit streams."
         />
@@ -246,7 +172,6 @@ export function AuditPage() {
   return (
     <div className="flex flex-col gap-6 p-6" data-testid="audit-page">
       <PageHeader
-        eyebrow="Administration"
         title="Audit log"
         description="Application, intake, document access, product, app user, API client, disbursement, and report access audit streams."
       />
@@ -271,11 +196,11 @@ export function AuditPage() {
         />
       ) : (
         <>
-          <AuditStreamTabs value={filters.streams} onChange={handleStreamsChange} />
           <AuditPageFilterBar
             value={filters}
             onChange={updateFilters}
             actorOptions={actorOptions}
+            ignoredFilterKeys={parsed.ignoredKeys}
           />
           <AuditTable
             data={query.data ? { ...query.data, items: rows } : undefined}

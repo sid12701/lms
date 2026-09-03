@@ -70,7 +70,7 @@ export function FilterBar<T extends AnyZodObject>({
       role="group"
       aria-label={label ?? "Filters"}
       className={cn(
-        "border-border bg-surface flex flex-wrap items-center gap-2 rounded-md border p-2",
+        "border-border bg-surface rounded-container flex flex-wrap items-center gap-2 border p-2",
         className,
       )}
     >

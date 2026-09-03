@@ -75,14 +75,6 @@ function InstallmentRowImpl({
       </TableCell>
       <TableCell className="text-foreground py-2 text-sm">
         {formatDate(installment.dueDate)}
-        {installment.dpd > 0 ? (
-          <span
-            className="text-danger ml-2 text-xs font-medium"
-            aria-label={`${installment.dpd} days past due`}
-          >
-            +{installment.dpd}d
-          </span>
-        ) : null}
       </TableCell>
       <TableCell className="py-2 text-right text-sm" {...TABULAR_ATTR}>
         {formatINR(installment.principalDue, { decimals: 2 })}
@@ -94,6 +86,9 @@ function InstallmentRowImpl({
         {formatINR(installment.installmentAmount, { decimals: 2 })}
       </TableCell>
       <TableCell className="py-2 text-right text-sm" {...TABULAR_ATTR}>
+        {formatINR(installment.paidAmount, { decimals: 2 })}
+      </TableCell>
+      <TableCell className="py-2 text-right text-sm" {...TABULAR_ATTR}>
         {formatINR(outstandingAmount, { decimals: 2 })}
       </TableCell>
       <TableCell className="py-2 text-sm">
@@ -101,6 +96,17 @@ function InstallmentRowImpl({
           <Icon aria-hidden="true" className="size-3" />
           <span>{visual.label}</span>
         </Badge>
+      </TableCell>
+      <TableCell className="py-2 text-right text-sm" {...TABULAR_ATTR}>
+        {installment.dpd > 0 ? (
+          <span className="text-danger font-medium" aria-label={`${installment.dpd} days past due`}>
+            {installment.dpd}
+          </span>
+        ) : (
+          <span className="text-foreground-muted" aria-hidden="true">
+            —
+          </span>
+        )}
       </TableCell>
       <TableCell className="py-2 text-right text-sm">
         {showAction ? (

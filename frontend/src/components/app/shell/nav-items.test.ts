@@ -29,9 +29,9 @@ describe("getNavItems (Gap #8)", () => {
     expect(labels).not.toContain("Borrowers");
   });
 
-  it("gives LSP users only the loan applications workspace", () => {
+  it("gives LSP users only the My loans workspace", () => {
     for (const role of ["LSP_UI_READ", "LSP_UI_WRITE"] as const) {
-      expect(flatLabels(role)).toEqual(["Loan applications"]);
+      expect(flatLabels(role)).toEqual(["My loans"]);
     }
   });
 });

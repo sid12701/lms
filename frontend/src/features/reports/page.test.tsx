@@ -13,13 +13,13 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { renderWithProviders } from "@/test/utils";
+import { axeBaseElement, renderWithProviders } from "@/test/utils";
 import { pickDateInField } from "@/test/date-picker";
 import { DensityProvider } from "@/app/providers";
 import type { MisPreviewResponseDto, MisSummary, ReportRequest } from "./types";
 
 const SUMMARY_FIXTURE: MisSummary = {
-  totalDisbursedMtd: 12_500_000,
+  totalDisbursed: 12_500_000,
   activeLoanCount: 42,
   weightedAvgYieldPct: 14.2,
   portfolioAtRisk30Pct: 3.1,
@@ -175,7 +175,7 @@ describe("ReportsPage — load + listing", () => {
   it("renders header, KPI cards, and preview rows for an authorised session", async () => {
     renderPage();
     expect(screen.getByTestId("reports-page")).toBeInTheDocument();
-    expect(screen.getByText(/Reporting/i)).toBeInTheDocument();
+    // "Reporting" eyebrow removed; the h1 carries the page identity.
     expect(screen.getByRole("heading", { level: 1, name: /^Reports$/i })).toBeInTheDocument();
 
     expect(await screen.findByRole("group", { name: /Report filters/i })).toBeInTheDocument();
@@ -222,7 +222,10 @@ describe("ReportsPage — create flow", () => {
       }),
     ).toBeInTheDocument();
 
-    expect(await axe(baseElement)).toHaveNoViolations();
+    // Radix portals the dialog to `document.body`, outside `container` —
+    // scan `baseElement`. `region` is off via the shared helper: an isolated
+    // component render has no page landmarks to satisfy it.
+    expect(await axeBaseElement(baseElement)).toHaveNoViolations();
 
     const submit = within(dialog).getByRole("button", {
       name: /^Queue report$/i,

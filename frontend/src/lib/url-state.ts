@@ -5,16 +5,19 @@
  * Arrays become repeated params (`?status=APPROVED&status=DISBURSED`).
  * `undefined`, `null`, and empty-string values are omitted from the URL.
  *
- * On parse, values that fail schema validation are silently omitted rather
- * than throwing — deep-link contexts must degrade gracefully when a stale
- * query string carries a value that no longer maps to a valid filter.
+ * On parse, values that fail schema validation are dropped rather than throwing
+ * — deep-link contexts must degrade gracefully when a stale query string
+ * carries a value that no longer maps to a valid filter. Dropping them quietly
+ * is not enough, though: a filtered view that silently becomes an unfiltered
+ * one misreports the size of the book being looked at. Every rejected key is
+ * therefore reported back so the surface can say what it ignored.
  *
  * Usage:
  *   const filtersSchema = z.object({
  *     status: LoanStatus.optional(),
  *     search: z.string().optional(),
  *   });
- *   const [filters, setFilters] = useUrlFilters(filtersSchema);
+ *   const [filters, setFilters, ignoredKeys] = useUrlFilters(filtersSchema);
  */
 import { useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -22,13 +25,20 @@ import { z } from "zod";
 
 type AnyZodObject = z.ZodObject<z.ZodRawShape>;
 
+export interface ParsedFilters<T extends AnyZodObject> {
+  values: Partial<z.infer<T>>;
+  /** Schema keys the URL supplied but that failed validation, in schema order. */
+  ignoredKeys: readonly string[];
+}
+
 /** Pure: read a URLSearchParams snapshot through a Zod object schema. */
 function parseFilters<T extends AnyZodObject>(
   schema: T,
   params: URLSearchParams,
-): Partial<z.infer<T>> {
+): ParsedFilters<T> {
   const shape = schema.shape;
   const out: Record<string, unknown> = {};
+  const ignoredKeys: string[] = [];
 
   for (const key of Object.keys(shape)) {
     const fieldSchema = shape[key] as z.ZodTypeAny;
@@ -42,11 +52,11 @@ function parseFilters<T extends AnyZodObject>(
         const parsed = coerceScalar(innerArray.element, v);
         if (parsed.ok) coerced.push(parsed.value);
       }
-      if (coerced.length > 0) {
-        const validated = fieldSchema.safeParse(coerced);
-        if (validated.success) {
-          out[key] = validated.data;
-        }
+      const validated = coerced.length > 0 ? fieldSchema.safeParse(coerced) : null;
+      if (validated?.success) {
+        out[key] = validated.data;
+      } else {
+        ignoredKeys.push(key);
       }
       continue;
     }
@@ -55,14 +65,15 @@ function parseFilters<T extends AnyZodObject>(
     if (raw === null || raw === "") continue;
 
     const parsed = coerceScalar(fieldSchema, raw);
-    if (!parsed.ok) continue;
-    const validated = fieldSchema.safeParse(parsed.value);
-    if (validated.success) {
+    const validated = parsed.ok ? fieldSchema.safeParse(parsed.value) : null;
+    if (validated?.success) {
       out[key] = validated.data;
+    } else {
+      ignoredKeys.push(key);
     }
   }
 
-  return out as Partial<z.infer<T>>;
+  return { values: out as Partial<z.infer<T>>, ignoredKeys };
 }
 
 /** Pure: write filter values back to URLSearchParams. */
@@ -100,20 +111,24 @@ function serializeFilters<T extends AnyZodObject>(
  */
 export function useUrlFilters<T extends AnyZodObject>(
   schema: T,
-): readonly [Partial<z.infer<T>>, (next: Partial<z.infer<T>>) => void] {
+): readonly [Partial<z.infer<T>>, (next: Partial<z.infer<T>>) => void, readonly string[]] {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const filters = useMemo(() => parseFilters(schema, searchParams), [schema, searchParams]);
+  const parsed = useMemo(() => parseFilters(schema, searchParams), [schema, searchParams]);
+  const filters = parsed.values;
 
   const update = useCallback(
     (next: Partial<z.infer<T>>) => {
       const merged = { ...filters, ...next };
+      // Serializing from the parsed values also drops the rejected params, so
+      // the URL self-heals on the first interaction rather than being rewritten
+      // underneath the user on load.
       setSearchParams(serializeFilters(schema, merged));
     },
     [schema, filters, setSearchParams],
   );
 
-  return [filters, update] as const;
+  return [filters, update, parsed.ignoredKeys] as const;
 }
 
 // ─── internal helpers ──────────────────────────────────────────────────────
