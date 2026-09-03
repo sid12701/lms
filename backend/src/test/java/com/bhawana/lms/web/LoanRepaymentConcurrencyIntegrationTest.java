@@ -8,10 +8,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallmentStatus;
-import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
-import com.bhawana.lms.service.WebhookOutboxService;
+import com.bhawana.lms.service.LoanEventLog;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.bhawana.lms.tenant.TenantScopedExecution;
@@ -72,12 +72,12 @@ class LoanRepaymentConcurrencyIntegrationTest {
     private LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
 
     @MockitoSpyBean
-    private WebhookOutboxService webhookOutboxService;
+    private LoanEventLog loanEventLog;
 
     @BeforeEach
     void setUp() {
         integrationTestDatabaseCleaner.cleanIntegrationTestData();
-        Mockito.reset(webhookOutboxService);
+        Mockito.reset(loanEventLog);
     }
 
     @Test
@@ -116,11 +116,11 @@ class LoanRepaymentConcurrencyIntegrationTest {
     void allocationFailureRollsBackPaymentRow() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan();
 
-        Mockito.doThrow(new RuntimeException("webhook enqueue failed"))
-                .when(webhookOutboxService)
-                .enqueueIfSubscribed(
+        Mockito.doThrow(new RuntimeException("loan event append failed"))
+                .when(loanEventLog)
+                .append(
                         Mockito.any(),
-                        Mockito.eq(WebhookEventType.LOAN_REPAYMENT_RECORDED),
+                        Mockito.eq(LoanEventType.LOAN_REPAYMENT_RECORDED),
                         Mockito.any(),
                         Mockito.any(),
                         Mockito.any(),

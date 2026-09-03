@@ -15,12 +15,10 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.OpsAlertType;
-import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
-import com.bhawana.lms.repo.WebhookEventOutboxRepository;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -73,9 +71,6 @@ class Issue74LspForeclosureExecuteIntegrationTest {
     private OpsAlertRepository opsAlertRepository;
 
     @Autowired
-    private WebhookEventOutboxRepository webhookEventOutboxRepository;
-
-    @Autowired
     private LoanApplicationRepository loanApplicationRepository;
 
     @BeforeEach
@@ -117,9 +112,6 @@ class Issue74LspForeclosureExecuteIntegrationTest {
                 .stream()
                 .anyMatch(event -> event.getAction() == LoanApplicationAuditAction.FORECLOSURE_EXECUTED
                         && fixture.clientId().equals(event.getActorUsername())));
-
-        assertTrue(webhookEventOutboxRepository.findAll().stream()
-                .anyMatch(event -> event.getEventType() == WebhookEventType.LOAN_FORECLOSURE_COMPLETED));
     }
 
     @Test
@@ -350,7 +342,6 @@ class Issue74LspForeclosureExecuteIntegrationTest {
 
     private DisbursedLoanFixture seedDisbursedLoan(String externalLoanId) throws Exception {
         String lspId = createLspViaAdmin("FC-LSP");
-        enableWebhook(lspId, List.of("LOAN_FORECLOSURE_COMPLETED"));
         String productId = createProductViaAdmin();
         mapProductToLsp(productId, lspId);
         JsonNode apiClient = createApiClient(lspId);
@@ -394,19 +385,6 @@ class Issue74LspForeclosureExecuteIntegrationTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-                .andExpect(status().isOk());
-    }
-
-    private void enableWebhook(String lspId, List<String> eventTypes) throws Exception {
-        mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "enabled", true,
-                                "endpointUrl", "https://partner.example.com/webhooks/lms",
-                                "signingSecret", "whsec_foreclosure",
-                                "eventTypes", eventTypes
-                        ))))
                 .andExpect(status().isOk());
     }
 

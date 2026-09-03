@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.common.money.Money;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.OpsAlert;
@@ -26,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -80,6 +82,16 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
         TenantScopedExecution.runAsAdmin(() -> loanDelinquencyStateRepository.deleteAllInBatch());
     }
 
+    /**
+     * This class commits its fixtures, so it must also clean up after its last test: later
+     * {@code @DataJpaTest} classes count rows and would otherwise see this class's leftovers.
+     */
+    @AfterEach
+    void tearDown() {
+        integrationTestDatabaseCleaner.cleanIntegrationTestData();
+        TenantScopedExecution.runAsAdmin(() -> loanDelinquencyStateRepository.deleteAllInBatch());
+    }
+
     @Test
     void firstEvaluationOfTenDayPastDueLoanEmitsAlertAndPersistsState() throws Exception {
         UUID applicationId = seedUnderRepaymentLoan();
@@ -93,10 +105,70 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
         OpsAlert alert = findLatestDpdAlert(applicationId);
         assertThat(alert.getContextJson()).contains("DPD_1_30");
         assertThat(alert.getContextJson()).contains("\"previousBucket\":\"CURRENT\"");
+        // Plural day count: "is 10 days past due" — and the raw bucket code belongs on the
+        // title (asserted below), not repeated a second time in the free-text message.
+        assertThat(alert.getMessage()).contains("is 10 days past due");
+        assertThat(alert.getMessage()).doesNotContain("DPD_1_30");
+        assertThat(alert.getTitle()).isEqualTo("Delinquency bucket DPD_1_30");
 
         var state = loanDelinquencyStateRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         assertThat(state.getLastBucket()).isEqualTo(LoanDelinquencyBucket.DPD_1_30);
         assertThat(state.getLastMaxDaysPastDue()).isEqualTo(10);
+    }
+
+    @Test
+    void firstEvaluationOfOneDayPastDueLoanEmitsAlertWithSingularDayWording() throws Exception {
+        UUID applicationId = seedUnderRepaymentLoan();
+        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(1));
+
+        AlertRuleEvaluationWorker.EvaluationSummary summary = alertRuleEvaluationWorker.evaluateScheduledRules();
+
+        assertThat(summary.alertsEmitted()).isGreaterThanOrEqualTo(1);
+        assertThat(countDpdAlerts(applicationId)).isEqualTo(1);
+
+        OpsAlert alert = findLatestDpdAlert(applicationId);
+        // The regression this covers: the worker used to always say "days", so a loan exactly
+        // one day past due read as "is 1 days past due". It must singularise, and it must not
+        // also match as a substring of "10 days", "21 days", etc.
+        assertThat(alert.getMessage()).contains("is 1 day past due");
+        assertThat(alert.getMessage()).doesNotContain("1 days past due");
+        // Overdue amount is grouped for legibility (Indian digit grouping), not a bare
+        // BigDecimal#toString() — compare against the same production formatter used by the
+        // worker, applied to the installment's actual outstanding amount.
+        BigDecimal outstandingAmount = jdbcTemplate.queryForObject(
+                """
+                        SELECT outstanding_amount FROM loan_repayment_schedule_installment
+                        WHERE loan_account_id = (
+                            SELECT id FROM loan_account WHERE loan_application_id = ?
+                        ) AND installment_number = 1
+                        """,
+                BigDecimal.class,
+                applicationId
+        );
+        assertThat(alert.getMessage())
+                .contains("overdue ₹" + Money.formatIndianGrouping(outstandingAmount) + ").");
+
+        var state = loanDelinquencyStateRepository.findByLoanApplication_Id(applicationId).orElseThrow();
+        assertThat(state.getLastBucket()).isEqualTo(LoanDelinquencyBucket.DPD_1_30);
+        assertThat(state.getLastMaxDaysPastDue()).isEqualTo(1);
+    }
+
+    @Test
+    void zeroDaysPastDueLoanNeverEmitsADpdAlert() throws Exception {
+        // Boundary case for the singularisation fix: 0 days past due is CURRENT, the lowest
+        // LoanDelinquencyBucket ordinal. evaluateDpdBucketTransitions() only alerts when
+        // currentBucket.ordinal() > previousBucket.ordinal(), and CURRENT can never be greater
+        // than anything (including the CURRENT default used when no prior state exists) — so
+        // "is 0 days past due" can never actually reach the alert message on this path.
+        UUID applicationId = seedUnderRepaymentLoan();
+        setFirstInstallmentDueDate(applicationId, LocalDate.now());
+
+        alertRuleEvaluationWorker.evaluateScheduledRules();
+
+        assertThat(countDpdAlerts(applicationId)).isZero();
+        // shouldPersistDelinquencyState() also skips writing a state row for a CURRENT loan with
+        // no prior state — there is nothing "worsening" to record.
+        assertThat(loanDelinquencyStateRepository.findByLoanApplication_Id(applicationId)).isEmpty();
     }
 
     @Test

@@ -183,15 +183,18 @@ public class UserAdminService {
 
         boolean rolesChanged = roleCodes != null
                 && !user.getRoles().stream().map(AppRole::getCode).collect(Collectors.toSet()).equals(resolvedRoleCodes);
+        boolean statusChanged = resolvedStatus != user.getStatus();
 
         enforceSelfEditGuards(user, actorUsername, resolvedStatus, resolvedRoleCodes);
 
         user.updateManagedProfile(
                 resolvedEmail,
-                resolvedStatus,
                 resolvedLsp,
                 new LinkedHashSet<>(resolvedRoles)
         );
+        if (statusChanged) {
+            user.changeStatus(resolvedStatus);
+        }
         AppUser saved = appUserRepository.save(user);
 
         UserAuditSnapshot afterSnapshot = toAuditSnapshot(saved);
@@ -213,6 +216,17 @@ public class UserAdminService {
                     actorIp,
                     CorrelationIdHolder.get(),
                     RevocationSource.ROLE_CHANGE
+            );
+        }
+
+        if (statusChanged) {
+            sessionRevocationService.revokeAllSessions(
+                    saved,
+                    actorUsername,
+                    "Status change",
+                    actorIp,
+                    CorrelationIdHolder.get(),
+                    RevocationSource.STATUS_CHANGE
             );
         }
 

@@ -46,9 +46,6 @@ public class PortfolioKpiSnapshot {
     @JdbcTypeCode(SqlTypes.JSON)
     private JsonNode dpdBuckets;
 
-    @Column(name = "avg_approval_tat_hours", precision = 10, scale = 2)
-    private BigDecimal avgApprovalTatHours;
-
     protected PortfolioKpiSnapshot() {
     }
 
@@ -59,8 +56,7 @@ public class PortfolioKpiSnapshot {
             BigDecimal totalOutstanding,
             BigDecimal totalOverdue,
             JsonNode statusCounts,
-            JsonNode dpdBuckets,
-            BigDecimal avgApprovalTatHours
+            JsonNode dpdBuckets
     ) {
         this.id = UUID.randomUUID();
         this.lsp = lsp;
@@ -70,7 +66,6 @@ public class PortfolioKpiSnapshot {
         this.totalOverdue = totalOverdue;
         this.statusCounts = statusCounts;
         this.dpdBuckets = dpdBuckets;
-        this.avgApprovalTatHours = avgApprovalTatHours;
     }
 
     @PrePersist
@@ -114,9 +109,5 @@ public class PortfolioKpiSnapshot {
 
     public JsonNode getDpdBuckets() {
         return dpdBuckets;
-    }
-
-    public BigDecimal getAvgApprovalTatHours() {
-        return avgApprovalTatHours;
     }
 }

@@ -18,6 +18,7 @@ public class AlertRuleProperties {
     private int authBruteForceDistributedDistinctIpMin = 5;
     private int authBruteForceDistributedWindowHours = 24;
     private int evaluationBatchLimit = 500;
+    private int oldestTransactionAgeSeconds = 300;
 
     public boolean isSchedulerEnabled() {
         return schedulerEnabled;
@@ -121,5 +122,13 @@ public class AlertRuleProperties {
 
     public void setEvaluationBatchLimit(int evaluationBatchLimit) {
         this.evaluationBatchLimit = evaluationBatchLimit;
+    }
+
+    public int getOldestTransactionAgeSeconds() {
+        return oldestTransactionAgeSeconds;
+    }
+
+    public void setOldestTransactionAgeSeconds(int oldestTransactionAgeSeconds) {
+        this.oldestTransactionAgeSeconds = oldestTransactionAgeSeconds;
     }
 }

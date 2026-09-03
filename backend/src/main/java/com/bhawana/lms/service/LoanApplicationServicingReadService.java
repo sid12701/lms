@@ -30,7 +30,6 @@ import com.bhawana.lms.repo.LoanForeclosureQuoteRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,8 +55,6 @@ public class LoanApplicationServicingReadService {
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationDocumentChecklistService documentChecklistService;
     private final LoanDocumentService loanDocumentService;
-    private final WebhookOutboxService webhookOutboxService;
-    private final com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
     private final BusinessCalendar businessCalendar;
     private final org.springframework.transaction.support.TransactionTemplate documentAccessAuditTransactionTemplate;
 
@@ -76,8 +73,6 @@ public class LoanApplicationServicingReadService {
             LoanApplicationQueryService loanApplicationQueryService,
             LoanApplicationDocumentChecklistService documentChecklistService,
             LoanDocumentService loanDocumentService,
-            WebhookOutboxService webhookOutboxService,
-            com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
             BusinessCalendar businessCalendar,
             org.springframework.transaction.PlatformTransactionManager transactionManager
     ) {
@@ -95,8 +90,6 @@ public class LoanApplicationServicingReadService {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.documentChecklistService = documentChecklistService;
         this.loanDocumentService = loanDocumentService;
-        this.webhookOutboxService = webhookOutboxService;
-        this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
         this.businessCalendar = businessCalendar;
         this.documentAccessAuditTransactionTemplate = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
     }
@@ -206,22 +199,6 @@ public class LoanApplicationServicingReadService {
         return loanRepaymentScheduleInstallmentRepository.findByLoanAccount_IdOrderByInstallmentNumberAsc(
                 loanAccount.getId()
         );
-    }
-
-    @Transactional(readOnly = true)
-    public List<LoanApplicationWebhookEventProjection> listWebhookEventsForApplication(UUID applicationId) {
-        if (applicationId == null || !loanApplicationRepository.existsById(applicationId)) {
-            throw new ResourceNotFoundException("Loan application not found: " + applicationId);
-        }
-        List<com.bhawana.lms.domain.WebhookEventOutbox> events =
-                webhookOutboxService.listOutboxForLoanApplication(applicationId);
-        Map<UUID, Integer> latestResponseCodes = resolveLatestDeliveryResponseCodes(events);
-        return events.stream()
-                .map(event -> toWebhookEventProjection(
-                        event,
-                        latestResponseCodes.get(event.getId())
-                ))
-                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -404,50 +381,6 @@ public class LoanApplicationServicingReadService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Loan account is not available for application id: " + applicationId
                 ));
-    }
-
-    private Map<UUID, Integer> resolveLatestDeliveryResponseCodes(
-            List<com.bhawana.lms.domain.WebhookEventOutbox> events
-    ) {
-        if (events.isEmpty()) {
-            return Map.of();
-        }
-        List<UUID> outboxEventIds = events.stream()
-                .map(com.bhawana.lms.domain.WebhookEventOutbox::getId)
-                .toList();
-        Map<UUID, Integer> latestResponseCodes = new HashMap<>();
-        for (com.bhawana.lms.domain.WebhookEventDeliveryAttempt attempt
-                : webhookEventDeliveryAttemptRepository.findByOutboxEvent_IdInOrderByCreatedAtDesc(outboxEventIds)) {
-            UUID outboxEventId = attempt.getOutboxEvent().getId();
-            latestResponseCodes.putIfAbsent(outboxEventId, attempt.getResponseStatusCode());
-        }
-        return latestResponseCodes;
-    }
-
-    private LoanApplicationWebhookEventProjection toWebhookEventProjection(
-            com.bhawana.lms.domain.WebhookEventOutbox event,
-            Integer responseCode
-    ) {
-        return new LoanApplicationWebhookEventProjection(
-                event.getId().toString(),
-                event.getEventType().name(),
-                event.getLsp() == null ? null : event.getLsp().getWebhookEndpointUrl(),
-                mapOutboxStatusToDeliveryStatus(event.getStatus()),
-                event.getAttemptCount(),
-                event.getLastAttemptAt(),
-                responseCode,
-                event.getLastError(),
-                event.getCreatedAt()
-        );
-    }
-
-    private static String mapOutboxStatusToDeliveryStatus(com.bhawana.lms.domain.WebhookEventOutboxStatus status) {
-        return switch (status) {
-            case PENDING, IN_FLIGHT -> "PENDING";
-            case DELIVERED -> "DELIVERED";
-            case RETRYABLE_FAILURE -> "FAILED";
-            case PERMANENT_FAILURE -> "DEAD_LETTERED";
-        };
     }
 
     private boolean hasMeaningfulDocumentActivity(LoanApplicationDocumentChecklist checklistItem) {

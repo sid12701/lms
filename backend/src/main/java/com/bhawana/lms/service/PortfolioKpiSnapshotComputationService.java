@@ -66,7 +66,6 @@ public class PortfolioKpiSnapshotComputationService {
         LocalDate today = businessCalendar.today();
         List<AccountSnapshotRow> accountRows = loadAccountSnapshots(today);
         ObjectNode globalStatusCounts = buildStatusCounts();
-        Double avgApprovalTatHours = computeAvgApprovalTatHours(Instant.now().minus(30, ChronoUnit.DAYS));
 
         Map<UUID, List<AccountSnapshotRow>> byLsp = new HashMap<>();
         for (AccountSnapshotRow row : accountRows) {
@@ -77,8 +76,7 @@ public class PortfolioKpiSnapshotComputationService {
                 null,
                 computedAt,
                 accountRows,
-                globalStatusCounts,
-                avgApprovalTatHours
+                globalStatusCounts
         ));
 
         for (Lsp lsp : lspRepository.findAllByOrderByNameAsc()) {
@@ -87,8 +85,7 @@ public class PortfolioKpiSnapshotComputationService {
                     lsp,
                     computedAt,
                     lspRows,
-                    objectMapper.createObjectNode(),
-                    null
+                    objectMapper.createObjectNode()
             ));
         }
 
@@ -99,8 +96,7 @@ public class PortfolioKpiSnapshotComputationService {
             Lsp lsp,
             Instant computedAt,
             List<AccountSnapshotRow> rows,
-            ObjectNode statusCounts,
-            Double avgApprovalTatHours
+            ObjectNode statusCounts
     ) {
         BigDecimal totalDisbursed = zeroCurrency();
         BigDecimal totalOutstanding = zeroCurrency();
@@ -128,10 +124,6 @@ public class PortfolioKpiSnapshotComputationService {
             dpdBuckets.set(bucket.name(), bucketNode);
         }
 
-        BigDecimal avgTat = avgApprovalTatHours == null
-                ? null
-                : BigDecimal.valueOf(avgApprovalTatHours).setScale(2, RoundingMode.HALF_UP);
-
         return new PortfolioKpiSnapshot(
                 lsp,
                 computedAt,
@@ -139,8 +131,7 @@ public class PortfolioKpiSnapshotComputationService {
                 Money.scale(totalOutstanding),
                 Money.scale(totalOverdue),
                 statusCounts,
-                dpdBuckets,
-                avgTat
+                dpdBuckets
         );
     }
 
@@ -190,38 +181,6 @@ public class PortfolioKpiSnapshotComputationService {
                     );
                 }
         );
-    }
-
-    private Double computeAvgApprovalTatHours(Instant windowStart) {
-        Double avgHours = jdbc.queryForObject("""
-                select avg(extract(epoch from (approval.created_at - awaiting.awaiting_at)) / 3600.0)
-                from loan_application_status_transition approval
-                join (
-                    select st.loan_application_id,
-                           approval_inner.created_at as approval_at,
-                           max(st.created_at) as awaiting_at
-                    from loan_application_status_transition approval_inner
-                    join loan_application_status_transition st
-                      on st.loan_application_id = approval_inner.loan_application_id
-                     and st.to_status = 'AWAITING_APPROVAL'
-                     and st.created_at <= approval_inner.created_at
-                    where approval_inner.to_status = 'APPROVED_PENDING_DISBURSAL'
-                      and approval_inner.created_at >= :windowStart
-                    group by st.loan_application_id, approval_inner.created_at
-                ) awaiting on awaiting.loan_application_id = approval.loan_application_id
-                             and awaiting.approval_at = approval.created_at
-                where approval.to_status = 'APPROVED_PENDING_DISBURSAL'
-                  and approval.created_at >= :windowStart
-                  and approval.created_at > awaiting.awaiting_at
-                """,
-                // pgjdbc cannot infer a SQL type for java.time.Instant — bind as Timestamp.
-                new MapSqlParameterSource("windowStart", java.sql.Timestamp.from(windowStart)),
-                Double.class
-        );
-        if (avgHours == null) {
-            return null;
-        }
-        return BigDecimal.valueOf(avgHours).setScale(1, RoundingMode.HALF_UP).doubleValue();
     }
 
     private static BigDecimal zeroCurrency() {

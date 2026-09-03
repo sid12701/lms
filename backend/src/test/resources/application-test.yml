@@ -1,24 +1,34 @@
 spring:
+  test:
+    database:
+      replace: none
   datasource:
-    url: jdbc:h2:mem:lms;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    driver-class-name: org.postgresql.Driver
+    username: lms
+    password: lms
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 0
+      max-lifetime: 60000
   flyway:
     placeholders:
       tenant_app_role: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
       tenant_app_password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
-    enabled: false
+    enabled: true
   jpa:
     open-in-view: false
-    database-platform: org.hibernate.dialect.H2Dialect
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: validate
   autoconfigure:
     exclude:
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
       - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
+
+lms:
+  it:
+    ephemeral-database: true
 
 app:
   security:
@@ -33,9 +43,6 @@ app:
       secure-cookies: false
   seed:
     sample-data:
-      enabled: false
-  webhooks:
-    delivery:
       enabled: false
   reports:
     processing:
@@ -72,10 +79,22 @@ app:
       mismatch-window-minutes: 15
   alert-rules:
     scheduler-enabled: false
+    # Effectively off by default. This rule reads live pg_stat_activity, so unlike every other
+    # alert rule its outcome depends on ambient state of the shared test cluster rather than on
+    # the calling test's own fixtures — a stray transaction open past the production 300s default
+    # would add an alert to EvaluationSummary.alertsEmitted() and break the unrelated
+    # assertThat(...alertsEmitted()).isZero() assertions in the DPD transition tests.
+    # AlertRuleEvaluationWorkerOldestTransactionAgeIntegrationTest sets the threshold it needs
+    # explicitly per phase, so it is unaffected by this.
+    oldest-transaction-age-seconds: 86400
   portfolio-kpi:
     scheduler-enabled: false
   idempotency:
     purge-enabled: false
+  loan-event-log:
+    # Off by default so a background run cannot create or drop partitions underneath a test that is
+    # asserting on them. LoanEventPartitionLifecyclePostgresTest drives maintenance explicitly.
+    partition-maintenance-enabled: false
   storage:
     documents:
       provider: LOCAL
@@ -90,6 +109,7 @@ app:
     tenant:
       username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
       password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
+      connection-strategy: ${APP_TENANT_CONNECTION_STRATEGY:DIRECT_LOGIN}
 
 springdoc:
   api-docs:

@@ -7,10 +7,12 @@ import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.AuthEventFailureReason;
+import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.security.ApiClientJwtSessionValidator;
+import com.bhawana.lms.security.LspInactiveAuthenticationException;
 import com.bhawana.lms.security.SecurityProperties;
 import java.time.Instant;
 import java.util.List;
@@ -77,9 +79,21 @@ public class AuthAuthenticationService {
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(username, password)
             );
+            AppUser authenticatedUser = appUserRepository.findByUsername(authentication.getName()).orElse(user);
+            if (authenticatedUser != null
+                    && authenticatedUser.getLsp() != null
+                    && authenticatedUser.getLsp().getStatus() != LspStatus.ACTIVE) {
+                authAuditService.recordLoginFailure(
+                        authentication.getName(),
+                        AuthEventFailureReason.LSP_INACTIVE,
+                        remoteAddress,
+                        correlationId
+                );
+                throw new LspInactiveAuthenticationException();
+            }
             try {
-                if (user != null && user.getLsp() != null && hasLspUiRole(user)) {
-                    lspSurfaceIpAllowlistService.assertUiLoginAllowed(user.getLsp().getId(), remoteAddress);
+                if (authenticatedUser != null && authenticatedUser.getLsp() != null && hasLspUiRole(authenticatedUser)) {
+                    lspSurfaceIpAllowlistService.assertUiLoginAllowed(authenticatedUser.getLsp().getId(), remoteAddress);
                 }
             } catch (LspSurfaceIpAccessDeniedException exception) {
                 authAuditService.recordLoginFailure(
@@ -90,7 +104,7 @@ public class AuthAuthenticationService {
                 );
                 throw exception;
             }
-            authAuditService.recordLoginSuccess(authentication.getName(), user, remoteAddress, correlationId);
+            authAuditService.recordLoginSuccess(authentication.getName(), authenticatedUser, remoteAddress, correlationId);
             return new PasswordLoginResult(
                     authTokenService.mintTokenResponse(authentication),
                     authentication.getName()

@@ -6,12 +6,10 @@ import org.springframework.test.context.TestExecutionListeners;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
@@ -50,100 +48,6 @@ class LspAdminControllerTest {
     }
 
     @Test
-    void systemAdminCanCreateListAndUpdateWebhookSubscription() throws Exception {
-        MvcResult createResult = mockMvc.perform(post("/api/v1/internal/admin/lsps")
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "code", "APEX-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
-                                "name", "Apex Finance",
-                                "status", "ACTIVE"
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.webhookSubscription.enabled").value(false))
-                .andExpect(jsonPath("$.webhookSubscription.eventTypes.length()").value(0))
-                .andReturn();
-
-        JsonNode created = objectMapper.readTree(createResult.getResponse().getContentAsString());
-        String lspId = created.get("id").asText();
-
-        mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "enabled", true,
-                                "endpointUrl", "https://partner.example.com/webhooks/lms",
-                                "signingSecret", "whsec_test_123",
-                                "eventTypes", List.of("LOAN_CREATED", "LOAN_STATUS_CHANGED")
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.webhookSubscription.enabled").value(true))
-                .andExpect(jsonPath("$.webhookSubscription.endpointUrl").value("https://partner.example.com/webhooks/lms"))
-                // Write-only: the secret is never echoed back; secretSet says one exists.
-                .andExpect(jsonPath("$.webhookSubscription.signingSecret").isEmpty())
-                .andExpect(jsonPath("$.webhookSubscription.secretSet").value(true))
-                .andExpect(jsonPath("$.webhookSubscription.eventTypes.length()").value(2));
-
-        mockMvc.perform(get("/api/v1/internal/admin/lsps")
-                        .with(systemAdmin()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].id").value(lspId))
-                .andExpect(jsonPath("$[0].webhookSubscription.enabled").value(true))
-                .andExpect(jsonPath("$[0].webhookSubscription.eventTypes[0]").value("LOAN_CREATED"));
-    }
-
-    @Test
-    void blankSigningSecretOnUpdateKeepsTheExistingSecret() throws Exception {
-        String lspId = createLsp();
-
-        mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "enabled", true,
-                                "endpointUrl", "https://partner.example.com/webhooks/lms",
-                                "signingSecret", "whsec_initial_secret",
-                                "eventTypes", List.of("LOAN_CREATED")
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.webhookSubscription.secretSet").value(true));
-
-        // The UI cannot re-read the secret, so edits send it blank; the stored
-        // secret must survive and the subscription must stay enabled.
-        mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "enabled", true,
-                                "endpointUrl", "https://partner.example.com/webhooks/lms-v2",
-                                "signingSecret", "",
-                                "eventTypes", List.of("LOAN_CREATED", "LOAN_STATUS_CHANGED")
-                        ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.webhookSubscription.enabled").value(true))
-                .andExpect(jsonPath("$.webhookSubscription.endpointUrl").value("https://partner.example.com/webhooks/lms-v2"))
-                .andExpect(jsonPath("$.webhookSubscription.signingSecret").isEmpty())
-                .andExpect(jsonPath("$.webhookSubscription.secretSet").value(true));
-    }
-
-    @Test
-    void enabledWebhookSubscriptionRequiresUrlSecretAndEvents() throws Exception {
-        String lspId = createLsp();
-
-        mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "enabled", true,
-                                "endpointUrl", "",
-                                "signingSecret", "",
-                                "eventTypes", List.of()
-                        ))))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.errorCode").value("WEBHOOK_ENDPOINT_REQUIRED"));
-    }
-
-    @Test
     void opsUserCannotAccessLspAdminEndpoints() throws Exception {
         mockMvc.perform(get("/api/v1/internal/admin/lsps").with(opsUser()))
                 .andExpect(status().isForbidden());
@@ -162,8 +66,7 @@ class LspAdminControllerTest {
                 .andExpect(jsonPath("$[0].code").exists())
                 .andExpect(jsonPath("$[0].name").value("North Finance"))
                 .andExpect(jsonPath("$[0].status").value("ACTIVE"))
-                .andExpect(jsonPath("$[0].portfolioSummary").doesNotExist())
-                .andExpect(jsonPath("$[0].webhookSubscription").doesNotExist());
+                .andExpect(jsonPath("$[0].portfolioSummary").doesNotExist());
     }
 
     @Test

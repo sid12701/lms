@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -25,6 +26,7 @@ class R2RegionAndStoreProbeTest {
     }
 
     @Test
+    @EnabledIfSystemProperty(named = "r2.probe.enabled", matches = "true")
     @EnabledIf("r2EnvPresent")
     void putObjectAgainstConfiguredR2Endpoint() throws Exception {
         Map<String, String> env = loadRepoRootEnv();

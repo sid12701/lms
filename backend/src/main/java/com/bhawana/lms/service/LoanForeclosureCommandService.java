@@ -16,7 +16,7 @@ import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
-import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.LoanForeclosureQuoteRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
@@ -37,7 +37,7 @@ public class LoanForeclosureCommandService {
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanServicingSupportService loanServicingSupportService;
     private final LoanApplicationStatusWriter loanApplicationStatusWriter;
-    private final WebhookOutboxService webhookOutboxService;
+    private final LoanEventLog loanEventLog;
     private final OpsAlertEmitters opsAlertEmitters;
 
     public LoanForeclosureCommandService(
@@ -46,7 +46,7 @@ public class LoanForeclosureCommandService {
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanServicingSupportService loanServicingSupportService,
             LoanApplicationStatusWriter loanApplicationStatusWriter,
-            WebhookOutboxService webhookOutboxService,
+            LoanEventLog loanEventLog,
             OpsAlertEmitters opsAlertEmitters
     ) {
         this.loanForeclosureQuoteRepository = loanForeclosureQuoteRepository;
@@ -54,7 +54,7 @@ public class LoanForeclosureCommandService {
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanServicingSupportService = loanServicingSupportService;
         this.loanApplicationStatusWriter = loanApplicationStatusWriter;
-        this.webhookOutboxService = webhookOutboxService;
+        this.loanEventLog = loanEventLog;
         this.opsAlertEmitters = opsAlertEmitters;
     }
 
@@ -126,13 +126,13 @@ public class LoanForeclosureCommandService {
                 loanServicingSupportService.scaleCurrency(outstandingInterest),
                 settlementAmount
         ));
-        webhookOutboxService.enqueueIfSubscribed(
+        loanEventLog.append(
                 application.getLsp(),
-                WebhookEventType.FORECLOSURE_QUOTE_REQUESTED,
+                LoanEventType.FORECLOSURE_QUOTE_REQUESTED,
                 "LOAN_FORECLOSURE_QUOTE",
                 savedQuote.getId().toString(),
                 application.getId(),
-                LoanWebhookPayloads.foreclosureQuote(application, loanAccount, savedQuote)
+                LoanEventPayloads.foreclosureQuote(application, loanAccount, savedQuote)
         );
         return savedQuote;
     }
@@ -289,13 +289,13 @@ public class LoanForeclosureCommandService {
                 null
         );
 
-        webhookOutboxService.enqueueIfSubscribed(
+        loanEventLog.append(
                 application.getLsp(),
-                WebhookEventType.LOAN_FORECLOSURE_COMPLETED,
+                LoanEventType.LOAN_FORECLOSURE_COMPLETED,
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
                 application.getId(),
-                LoanWebhookPayloads.foreclosure(application, loanAccount, quote)
+                LoanEventPayloads.foreclosure(application, loanAccount, quote)
         );
         return quote;
     }

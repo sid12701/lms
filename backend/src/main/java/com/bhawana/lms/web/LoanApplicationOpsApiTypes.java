@@ -4,7 +4,6 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanPaymentChannel;
-import com.bhawana.lms.service.LoanApplicationWebhookEventProjection;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
@@ -76,6 +75,7 @@ public final class LoanApplicationOpsApiTypes {
             String sourceChannel,
             BigDecimal requestedAmount,
             Integer tenureMonths,
+            BigDecimal interestRate,
             String status,
             Instant createdAt
     ) {
@@ -104,6 +104,7 @@ public final class LoanApplicationOpsApiTypes {
             String sourceChannel,
             BigDecimal requestedAmount,
             Integer tenureMonths,
+            BigDecimal interestRate,
             String status,
             String invalidReasonCode,
             String invalidReasonText,
@@ -357,32 +358,6 @@ public final class LoanApplicationOpsApiTypes {
             Instant createdAt,
             Instant updatedAt
     ) {
-    }
-
-    public record WebhookEventDeliveryResponse(
-            String eventId,
-            String eventType,
-            String targetUrl,
-            String status,
-            int attempts,
-            Instant lastAttemptAt,
-            Integer lastResponseCode,
-            String lastError,
-            Instant createdAt
-    ) {
-        static WebhookEventDeliveryResponse from(LoanApplicationWebhookEventProjection projection) {
-            return new WebhookEventDeliveryResponse(
-                    projection.eventId(),
-                    projection.eventType(),
-                    projection.targetUrl(),
-                    projection.status(),
-                    projection.attempts(),
-                    projection.lastAttemptAt(),
-                    projection.lastResponseCode(),
-                    projection.lastError(),
-                    projection.createdAt()
-            );
-        }
     }
 
     public record LoanApplicationDocumentAccessAuditResponse(

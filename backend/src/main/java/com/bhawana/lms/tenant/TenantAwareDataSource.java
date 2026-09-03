@@ -10,16 +10,14 @@ import org.springframework.jdbc.datasource.DelegatingDataSource;
 final class TenantAwareDataSource extends DelegatingDataSource {
 
     private final String tenantRole;
-    private final boolean assumeTenantRole;
+    private final TenantConnectionStrategy connectionStrategy;
 
-    TenantAwareDataSource(DataSource targetDataSource) {
-        this(targetDataSource, null, false);
-    }
-
-    TenantAwareDataSource(DataSource targetDataSource, String tenantRole, boolean assumeTenantRole) {
+    TenantAwareDataSource(DataSource targetDataSource, String tenantRole, TenantConnectionStrategy connectionStrategy) {
         super(targetDataSource);
         this.tenantRole = tenantRole;
-        this.assumeTenantRole = assumeTenantRole;
+        this.connectionStrategy = connectionStrategy == null
+                ? TenantConnectionStrategy.DIRECT_LOGIN
+                : connectionStrategy;
     }
 
     @Override
@@ -49,12 +47,12 @@ final class TenantAwareDataSource extends DelegatingDataSource {
     }
 
     private void applyTenantContext(Connection connection) throws SQLException {
-        if (assumeTenantRole && tenantRole != null && !tenantRole.isBlank()) {
-            if (!tenantRole.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
-                throw new SQLException("Invalid tenant role: " + tenantRole);
-            }
+        if (connectionStrategy == TenantConnectionStrategy.ASSUME_ROLE) {
+            requireValidTenantRole();
             try (var roleStatement = connection.createStatement()) {
-                roleStatement.execute("SET ROLE " + tenantRole);
+                // Transaction-scoped: PgBouncer transaction mode reuses connections
+                // across clients; a connect-time SET ROLE would leak identity.
+                roleStatement.execute("SET LOCAL ROLE " + tenantRole);
             }
         }
         UUID lspId = TenantDataAccessContextHolder.getCurrentLspId();
@@ -69,6 +67,15 @@ final class TenantAwareDataSource extends DelegatingDataSource {
         )) {
             statement.setString(1, value);
             statement.execute();
+        }
+    }
+
+    private void requireValidTenantRole() {
+        if (tenantRole == null || tenantRole.isBlank()) {
+            throw new IllegalStateException("Tenant role is required for ASSUME_ROLE connection strategy.");
+        }
+        if (!tenantRole.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
+            throw new IllegalStateException("Invalid tenant role: " + tenantRole);
         }
     }
 }

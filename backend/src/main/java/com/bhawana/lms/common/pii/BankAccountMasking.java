@@ -5,7 +5,7 @@ package com.bhawana.lms.common.pii;
  * returned by the dedicated bank-details endpoints
  * ({@code GET /api/v1/lsp/borrowers/{id}/bank-details} and the admin PATCH
  * response) and the payment-rail integration; every other serialization
- * (loan-application responses, ops alerts, webhook payloads) uses this mask.
+ * (loan-application responses, ops alerts, loan event payloads) uses this mask.
  * Format matches {@link AadhaarMasking}: {@code XXXXXXXX<last4>}.
  */
 public final class BankAccountMasking {

@@ -1,6 +1,7 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
+import com.bhawana.lms.support.TestPanSequence;
 import org.springframework.test.context.TestExecutionListeners;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -18,15 +19,13 @@ import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.OpsAlertType;
-import com.bhawana.lms.domain.WebhookEventOutbox;
-import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository;
 import com.bhawana.lms.repo.BorrowerPiiRevealAuditRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
-import com.bhawana.lms.repo.WebhookEventOutboxRepository;
 import com.bhawana.lms.service.LoanDisbursementWorkerService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -79,15 +78,11 @@ class Issue62BorrowerBankDetailsIntegrationTest {
     private OpsAlertRepository opsAlertRepository;
 
     @Autowired
-    private WebhookEventOutboxRepository webhookEventOutboxRepository;
-
-    @Autowired
     private LoanDisbursementWorkerService loanDisbursementWorkerService;
 
     @Test
-    void borrowerBankDetailsUpdateViaDedicatedEndpointIsAuditedAndWebhookFires() throws Exception {
+    void borrowerBankDetailsUpdateIsAuditedWithoutPopulatingLegacyOutbox() throws Exception {
         String lspId = createLspViaAdmin("BANK-LSP");
-        enableWebhook(lspId, List.of("BORROWER_BANK_DETAILS_UPDATED"));
         String productId = createProductViaAdmin();
         mapProductToLsp(productId, lspId);
         JsonNode apiClient = createApiClient(lspId);
@@ -118,11 +113,6 @@ class Issue62BorrowerBankDetailsIntegrationTest {
                 bankDetailsUpdateAuditRepository.findAll().stream()
                         .anyMatch(audit -> "998877665544".equals(audit.getNewBankAccountNumber()))
         );
-
-        List<WebhookEventOutbox> events = webhookEventOutboxRepository.findTop50ByLsp_IdOrderByCreatedAtDesc(
-                UUID.fromString(lspId)
-        );
-        assertTrue(events.stream().anyMatch(event -> event.getEventType() == WebhookEventType.BORROWER_BANK_DETAILS_UPDATED));
     }
 
     @Test
@@ -475,19 +465,6 @@ class Issue62BorrowerBankDetailsIntegrationTest {
         return objectMapper.readTree(result.getResponse().getContentAsString());
     }
 
-    private void enableWebhook(String lspId, List<String> eventTypes) throws Exception {
-        mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/webhook-subscription", lspId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
-                                "enabled", true,
-                                "endpointUrl", "https://example.com/webhooks",
-                                "signingSecret", "test-signing-secret",
-                                "eventTypes", eventTypes
-                        ))))
-                .andExpect(status().isOk());
-    }
-
     private JsonNode createApiClient(String lspId) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/internal/admin/api-clients")
                         .with(systemAdmin())
@@ -648,8 +625,7 @@ class Issue62BorrowerBankDetailsIntegrationTest {
     }
 
     private static String uniquePan() {
-        int suffix = Math.abs(UUID.randomUUID().hashCode()) % 10_000;
-        return String.format("ABCDE%04dF", suffix);
+        return TestPanSequence.uniquePan();
     }
 
     private static String mobileForPan(String pan) {

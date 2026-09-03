@@ -1,2 +1,4 @@
 org.springframework.test.context.TestExecutionListener=\
 com.bhawana.lms.support.TenantContextTestExecutionListener
+org.springframework.test.context.ContextCustomizerFactory=com.bhawana.lms.support.PostgresTestContextCustomizerFactory
+org.springframework.boot.env.EnvironmentPostProcessor=com.bhawana.lms.support.PostgresTestEnvironmentPostProcessor

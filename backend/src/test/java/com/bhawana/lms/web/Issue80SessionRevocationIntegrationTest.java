@@ -258,6 +258,54 @@ class Issue80SessionRevocationIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void deactivatingUserInvalidatesAccessTokenAndRefreshWithAuditReason() throws Exception {
+        AppUser sarah = appUserRepository.findByUsername("sarah.user").orElseThrow();
+        LoginArtifacts sarahSession = login("sarah.user", "SarahPassword123!");
+
+        mockMvc.perform(put("/api/v1/internal/admin/users/{userId}", sarah.getId())
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("status", "INACTIVE"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("INACTIVE"));
+
+        mockMvc.perform(get("/api/v1/internal/system/context")
+                        .header("Authorization", "Bearer " + sarahSession.accessToken()))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(sarahSession.refreshCookie()))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/v1/internal/ops/auth-audit")
+                        .with(systemAdmin())
+                        .param("username", "sarah.user")
+                        .param("eventType", "TOKEN_REFRESH_FAILED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].failureReason").value("USER_INACTIVE"));
+    }
+
+    @Test
+    void deactivatingUserRevokesSessionsWithStatusChangeSource() throws Exception {
+        AppUser sarah = appUserRepository.findByUsername("sarah.user").orElseThrow();
+        login("sarah.user", "SarahPassword123!");
+
+        mockMvc.perform(put("/api/v1/internal/admin/users/{userId}", sarah.getId())
+                        .with(systemAdmin())
+                        .header("X-Forwarded-For", CLIENT_IP)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("status", "INACTIVE"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/internal/ops/auth-audit")
+                        .with(systemAdmin())
+                        .param("username", "sarah.user")
+                        .param("eventType", "SESSIONS_REVOKED_BY_ADMIN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].details.source").value("STATUS_CHANGE"));
+    }
+
     private LoginArtifacts login(String username, String password) throws Exception {
         ObjectNode body = objectMapper.createObjectNode();
         // Login authenticates by email; the seeded users use <username>@bhawana.local.

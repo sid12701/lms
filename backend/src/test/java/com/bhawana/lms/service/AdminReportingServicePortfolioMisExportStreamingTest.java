@@ -32,6 +32,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -73,6 +74,17 @@ class AdminReportingServicePortfolioMisExportStreamingTest {
 
     @MockitoBean
     private BusinessCalendar businessCalendar;
+
+    @BeforeEach
+    void cleanPortfolioMisFixtures() {
+        loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
+        loanAccountRepository.deleteAllInBatch();
+        loanApplicationRepository.deleteAllInBatch();
+        borrowerRepository.deleteAllInBatch();
+        loanProductVersionRepository.deleteAllInBatch();
+        loanProductRepository.deleteAllInBatch();
+        lspRepository.deleteAllInBatch();
+    }
 
     @Test
     void streamingCsvMatchesRowAggregationOnSeededPortfolio() {

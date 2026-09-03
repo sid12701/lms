@@ -22,7 +22,6 @@ import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.Lsp;
-import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -38,8 +37,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * Verifies the disposition dispatch table extracted into {@link DisbursementOutcomeApplier}: each
- * provider verdict maps to the right loan-account state, application transition, partner webhook,
- * ops alert and outcome-audit category.
+ * provider verdict maps to the right loan-account state, application transition, ops alert and
+ * outcome-audit category.
+ *
+ * <p>What a partner learns from each verdict is asserted where a partner can actually observe it —
+ * {@code LspLoanEventFeedApiIntegrationTest} drives a real disbursement and reads the feed — rather
+ * than by verifying that {@link LoanEventLog} was called here.
  */
 @ExtendWith(MockitoExtension.class)
 class DisbursementOutcomeApplierTest {
@@ -47,7 +50,7 @@ class DisbursementOutcomeApplierTest {
     @Mock private LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
     @Mock private LoanAccountRepository loanAccountRepository;
     @Mock private LoanApplicationStatusWriter loanApplicationStatusWriter;
-    @Mock private WebhookOutboxService webhookOutboxService;
+    @Mock private LoanEventLog loanEventLog;
     @Mock private OpsAlertEmitters opsAlertEmitters;
     @Mock private DisbursementOutcomeAuditService disbursementOutcomeAuditService;
 
@@ -66,7 +69,7 @@ class DisbursementOutcomeApplierTest {
                 loanDisbursementRequestLogRepository,
                 loanAccountRepository,
                 loanApplicationStatusWriter,
-                webhookOutboxService,
+                loanEventLog,
                 opsAlertEmitters,
                 disbursementOutcomeAuditService,
                 new ObjectMapper()
@@ -88,7 +91,7 @@ class DisbursementOutcomeApplierTest {
     }
 
     @Test
-    void successDisbursesAccountPersistsFeeAndEmitsCompletionWebhook() {
+    void successDisbursesAccountAndPersistsFee() {
         LoanAccount acct = account(new BigDecimal("150000"));
         when(requestLog.getAmount()).thenReturn(new BigDecimal("147750.00")); // net cash actually sent
         when(application.getLsp()).thenReturn(lsp);
@@ -104,8 +107,6 @@ class DisbursementOutcomeApplierTest {
         assertEquals(LoanAccountStatus.DISBURSED, acct.getStatus());
         assertEquals(new BigDecimal("2250.00"), acct.getProcessingFeeAmount());
         assertEquals(LoanApplicationStatus.DISBURSED, captureTransition().targetStatus());
-        verify(webhookOutboxService).enqueueIfSubscribed(
-                eq(lsp), eq(WebhookEventType.DISBURSEMENT_COMPLETED), any(), any(), any(), any());
         verify(opsAlertEmitters, never()).emitLspBoundViolation(any(), any(), any(), any());
         verify(disbursementOutcomeAuditService).recordOutcomeApplied(
                 eq(application), eq(acct), eq("ops.admin"), isNull(), eq("corr-1"),
@@ -158,7 +159,10 @@ class DisbursementOutcomeApplierTest {
     }
 
     @Test
-    void pendingParksForReconciliationAlertsAndSkipsWebhook() {
+    void pendingParksForReconciliationAndAlerts() {
+        // The park is now a recorded fact too, so this branch builds a payload like the others and
+        // needs the product's fee rate (NOT NULL in schema, unstubbed on a bare mock).
+        when(loanProductVersion.getProcessingFeeRate()).thenReturn(new BigDecimal("1.5"));
         LoanAccount acct = account(new BigDecimal("150000"));
 
         applier.apply(
@@ -172,6 +176,5 @@ class DisbursementOutcomeApplierTest {
         assertEquals(LoanApplicationStatus.DISBURSEMENT_RETRY, captureTransition().targetStatus());
         verify(opsAlertEmitters).emitLspBoundViolation(
                 eq(application), eq("DISBURSEMENT_PENDING_RECONCILIATION"), any(), any());
-        verify(webhookOutboxService, never()).enqueueIfSubscribed(any(), any(), any(), any(), any(), any());
     }
 }

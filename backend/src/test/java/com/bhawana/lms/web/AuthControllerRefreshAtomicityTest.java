@@ -24,6 +24,7 @@ import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
 import com.bhawana.lms.service.ApiClientManagementService;
 import com.bhawana.lms.service.AuthAuditService;
+import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
@@ -86,6 +87,9 @@ class AuthControllerRefreshAtomicityTest {
     @Autowired
     private ApiClientManagementService apiClientManagementService;
 
+    @Autowired
+    private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
+
     @MockitoBean
     private JwtEncoder jwtEncoder;
 
@@ -94,12 +98,7 @@ class AuthControllerRefreshAtomicityTest {
 
     @BeforeEach
     void setUpUser() {
-        authEventAuditRepository.deleteAll();
-        refreshTokenRepository.deleteAll();
-        apiClientAuditEventRepository.deleteAll();
-        apiClientRepository.deleteAll();
-        appUserRepository.deleteAll();
-        lspRepository.deleteAll();
+        integrationTestDatabaseCleaner.cleanIntegrationTestData();
 
         AppRole opsUserRole = appRoleRepository.findByCodeIn(List.of(RoleCode.OPS_USER)).stream()
                 .findFirst()

@@ -45,7 +45,7 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
     @Mock private LoanAccountRepository loanAccountRepository;
     @Mock private LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
     @Mock private LoanDisbursementAdapter loanDisbursementAdapter;
-    @Mock private WebhookOutboxService webhookOutboxService;
+    @Mock private LoanEventLog loanEventLog;
     @Mock private LoanApplicationQueryService loanApplicationQueryService;
     @Mock private LoanApplicationDocumentChecklistService loanApplicationDocumentChecklistService;
     @Mock private LoanApplicationStatusWriter loanApplicationStatusWriter;
@@ -69,7 +69,7 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
                 loanDisbursementRequestLogRepository,
                 loanAccountRepository,
                 loanApplicationStatusWriter,
-                webhookOutboxService,
+                loanEventLog,
                 opsAlertEmitters,
                 disbursementOutcomeAuditService,
                 new ObjectMapper()
@@ -82,7 +82,7 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
                 loanAccountRepository,
                 loanDisbursementRequestLogRepository,
                 loanDisbursementAdapter,
-                webhookOutboxService,
+                loanEventLog,
                 loanApplicationQueryService,
                 loanApplicationDocumentChecklistService,
                 loanApplicationStatusWriter,

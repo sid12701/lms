@@ -10,6 +10,7 @@ import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
 import com.bhawana.lms.security.ApiClientJwtSessionValidator;
 import com.bhawana.lms.security.SecurityProperties;
+import com.bhawana.lms.security.SessionValidityPolicy;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -43,6 +44,7 @@ public class AuthTokenService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final ApiClientRepository apiClientRepository;
     private final ApiClientAuthenticationService apiClientAuthenticationService;
+    private final SessionValidityPolicy sessionValidityPolicy;
 
     public AuthTokenService(
             JwtEncoder jwtEncoder,
@@ -50,7 +52,8 @@ public class AuthTokenService {
             AppUserRepository appUserRepository,
             RefreshTokenRepository refreshTokenRepository,
             ApiClientRepository apiClientRepository,
-            ApiClientAuthenticationService apiClientAuthenticationService
+            ApiClientAuthenticationService apiClientAuthenticationService,
+            SessionValidityPolicy sessionValidityPolicy
     ) {
         this.jwtEncoder = jwtEncoder;
         this.securityProperties = securityProperties;
@@ -58,6 +61,7 @@ public class AuthTokenService {
         this.refreshTokenRepository = refreshTokenRepository;
         this.apiClientRepository = apiClientRepository;
         this.apiClientAuthenticationService = apiClientAuthenticationService;
+        this.sessionValidityPolicy = sessionValidityPolicy;
     }
 
     public TokenResponse mintTokenForAppUser(AppUser user) {
@@ -167,6 +171,15 @@ public class AuthTokenService {
         if (existing == null) {
             return RefreshOutcome.failure(AuthEventFailureReason.TOKEN_EXPIRED, AuthAuditService.UNKNOWN_USERNAME);
         }
+
+        SessionValidityPolicy.Result sessionValidity = validateRefreshSubject(existing);
+        if (!sessionValidity.valid()) {
+            return RefreshOutcome.failure(
+                    sessionValidityPolicy.toAuthEventFailureReason(sessionValidity.reason()),
+                    refreshSubjectUsername(existing)
+            );
+        }
+
         if (existing.isRevoked()) {
             return RefreshOutcome.failure(AuthEventFailureReason.TOKEN_REVOKED, refreshSubjectUsername(existing));
         }
@@ -226,6 +239,30 @@ public class AuthTokenService {
             return apiClient.getClientId();
         }
         return AuthAuditService.UNKNOWN_USERNAME;
+    }
+
+    private SessionValidityPolicy.Result validateRefreshSubject(RefreshToken refreshToken) {
+        AppUser appUser = refreshToken.getAppUser();
+        if (appUser != null) {
+            return appUserRepository.findByUsername(appUser.getUsername())
+                    .map(user -> sessionValidityPolicy.validate(
+                            SessionValidityPolicy.SessionClaims.statusOnly(),
+                            SessionValidityPolicy.SubjectSnapshot.of(SessionValidityPolicy.appUserSnapshot(user))
+                    ))
+                    .orElse(SessionValidityPolicy.Result.invalid(SessionValidityPolicy.InvalidReason.SUBJECT_MISSING));
+        }
+
+        ApiClient apiClient = refreshToken.getApiClient();
+        if (apiClient != null) {
+            return apiClientRepository.findByClientId(apiClient.getClientId())
+                    .map(client -> sessionValidityPolicy.validate(
+                            SessionValidityPolicy.SessionClaims.statusOnly(),
+                            SessionValidityPolicy.SubjectSnapshot.of(SessionValidityPolicy.apiClientSnapshot(client))
+                    ))
+                    .orElse(SessionValidityPolicy.Result.invalid(SessionValidityPolicy.InvalidReason.SUBJECT_MISSING));
+        }
+
+        return SessionValidityPolicy.Result.invalid(SessionValidityPolicy.InvalidReason.SUBJECT_MISSING);
     }
 
     private List<String> loadRolesForUsername(String username) {

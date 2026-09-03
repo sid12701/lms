@@ -1,6 +1,7 @@
 package com.bhawana.lms.web;
 
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
+import com.bhawana.lms.support.TestPanSequence;
 import org.springframework.test.context.TestExecutionListeners;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -246,8 +247,7 @@ class Issue62DisbursementWorkerIntegrationTest {
     }
 
     private static String uniquePan() {
-        int suffix = Math.abs(UUID.randomUUID().hashCode()) % 10_000;
-        return String.format("ABCDE%04dF", suffix);
+        return TestPanSequence.uniquePan();
     }
 
     private static String mobileForPan(String pan) {

@@ -71,7 +71,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
                             rejection.retryAfterSeconds()
                     );
                 } catch (RuntimeException exception) {
-                    log.debug("Rate limit alert skipped: {}", exception.getMessage());
+                    // The 429 is already correct and must be returned regardless — alerting is
+                    // observability, not part of the HTTP contract. But log it loud: this was
+                    // debug-level, and it hid a permission error that silently suppressed
+                    // RATE_LIMIT_BREACH for every LSP-keyed rule until someone read the SQL grants.
+                    log.warn(
+                            "Rate limit breach alert failed for bucket {} on {} — the 429 was still returned",
+                            rejection.bucketKey(),
+                            request.getRequestURI(),
+                            exception
+                    );
                 }
             }
             writeApiError(

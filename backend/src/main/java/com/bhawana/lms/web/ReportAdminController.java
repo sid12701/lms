@@ -146,8 +146,8 @@ public class ReportAdminController {
     }
 
     /**
-     * Manually drains the async report queue — mirrors webhook outbox dispatch for E2E and
-     * environments where {@code app.reports.processing.enabled=false}.
+     * Manually drains the async report queue for E2E and environments where
+     * {@code app.reports.processing.enabled=false}.
      */
     @PostMapping("/requests/process")
     public ProcessReportRequestsResponse processReportRequests(

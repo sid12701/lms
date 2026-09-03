@@ -196,6 +196,18 @@ public class AuthController {
                     "TOKEN_REVOKED",
                     "Refresh token was revoked"
             );
+            case USER_INACTIVE -> new RefreshFailureResponse(
+                    "USER_INACTIVE",
+                    "User is not active"
+            );
+            case LSP_INACTIVE -> new RefreshFailureResponse(
+                    "LSP_INACTIVE",
+                    "LSP is not active"
+            );
+            case SESSION_INVALID_STATUS -> new RefreshFailureResponse(
+                    "SESSION_INVALID_STATUS",
+                    "Session is no longer valid"
+            );
             case OTHER -> new RefreshFailureResponse(
                     "REFRESH_INVALID",
                     "Refresh token is invalid"

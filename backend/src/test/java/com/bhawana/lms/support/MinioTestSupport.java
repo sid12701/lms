@@ -18,7 +18,7 @@ import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
  * Test support that boots a single MinIO container and binds it to
  * {@code app.storage.reports.r2.*}. The bucket is created on first start.
  */
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
 public abstract class MinioTestSupport {
 
     private static final String REPORTS_BUCKET = "lms-reports-test";

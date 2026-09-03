@@ -7,7 +7,6 @@ import com.bhawana.lms.domain.LspAuditEventAction;
 import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -21,77 +20,6 @@ public class LspAuditEventService {
     public LspAuditEventService(LspAuditEventRepository lspAuditEventRepository, ObjectMapper objectMapper) {
         this.lspAuditEventRepository = lspAuditEventRepository;
         this.objectMapper = objectMapper;
-    }
-
-    public void recordWebhookSubscriptionChanges(
-            Lsp lsp,
-            WebhookSubscriptionSnapshot before,
-            WebhookSubscriptionSnapshot after,
-            String actorUsername,
-            String actorIp,
-            String correlationId
-    ) {
-        String resolvedCorrelationId = resolveCorrelationId(correlationId);
-
-        if (before.enabledChanged(after)) {
-            if (after.enabled()) {
-                save(
-                        lsp,
-                        actorUsername,
-                        LspAuditEventAction.WEBHOOK_ENABLED,
-                        buildEnabledDetails(after),
-                        resolvedCorrelationId,
-                        actorIp
-                );
-            } else {
-                save(
-                        lsp,
-                        actorUsername,
-                        LspAuditEventAction.WEBHOOK_DISABLED,
-                        buildDisabledDetails(before),
-                        resolvedCorrelationId,
-                        actorIp
-                );
-            }
-        }
-        if (before.urlChanged(after)) {
-            ObjectNode details = objectMapper.createObjectNode();
-            ObjectNode beforeNode = details.putObject("before");
-            beforeNode.put("url", before.endpointUrl());
-            ObjectNode afterNode = details.putObject("after");
-            afterNode.put("url", after.endpointUrl());
-            save(
-                    lsp,
-                    actorUsername,
-                    LspAuditEventAction.WEBHOOK_URL_CHANGED,
-                    details,
-                    resolvedCorrelationId,
-                    actorIp
-            );
-        }
-        if (before.signingSecretChanged(after)) {
-            save(
-                    lsp,
-                    actorUsername,
-                    LspAuditEventAction.WEBHOOK_SECRET_ROTATED,
-                    objectMapper.createObjectNode(),
-                    resolvedCorrelationId,
-                    actorIp
-            );
-        }
-        if (before.eventTypesChanged(after)) {
-            ObjectNode details = objectMapper.createObjectNode();
-            details.set("before", eventTypesNode(before));
-            details.set("after", eventTypesNode(after));
-            save(
-                    lsp,
-                    actorUsername,
-                    LspAuditEventAction.WEBHOOK_EVENT_TYPES_CHANGED,
-                    details,
-                    resolvedCorrelationId,
-                    actorIp
-            );
-        }
     }
 
     public void recordIpAllowlistEntryAdded(
@@ -142,38 +70,6 @@ public class LspAuditEventService {
                 resolveCorrelationId(correlationId),
                 actorIp
         );
-    }
-
-    private ObjectNode buildEnabledDetails(WebhookSubscriptionSnapshot snapshot) {
-        ObjectNode details = objectMapper.createObjectNode();
-        ObjectNode after = details.putObject("after");
-        after.put("enabled", true);
-        after.put("url", snapshot.endpointUrl());
-        after.set("eventTypes", toArrayNode(snapshot.eventTypeNames()));
-        return details;
-    }
-
-    private ObjectNode buildDisabledDetails(WebhookSubscriptionSnapshot snapshot) {
-        ObjectNode details = objectMapper.createObjectNode();
-        ObjectNode before = details.putObject("before");
-        before.put("enabled", true);
-        before.put("url", snapshot.endpointUrl());
-        before.set("eventTypes", toArrayNode(snapshot.eventTypeNames()));
-        return details;
-    }
-
-    private ObjectNode eventTypesNode(WebhookSubscriptionSnapshot snapshot) {
-        ObjectNode node = objectMapper.createObjectNode();
-        node.set("eventTypes", toArrayNode(snapshot.eventTypeNames()));
-        return node;
-    }
-
-    private ArrayNode toArrayNode(Iterable<String> values) {
-        ArrayNode array = objectMapper.createArrayNode();
-        for (String value : values) {
-            array.add(value);
-        }
-        return array;
     }
 
     private void save(

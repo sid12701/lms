@@ -14,6 +14,7 @@ import com.bhawana.lms.web.AuthApiResponses.ClientCredentialsRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
@@ -97,7 +98,7 @@ class IdempotencyCrashRecoveryIntegrationTest {
                             lease_expires_at = ?
                         where lsp_id = ? and idempotency_key = ?
                         """,
-                expiredLease,
+                Timestamp.from(expiredLease),
                 UUID.fromString(lsp.id()),
                 idempotencyKey
         );
@@ -146,8 +147,8 @@ class IdempotencyCrashRecoveryIntegrationTest {
         payload.put("gender", "FEMALE");
         payload.put("maritalStatus", "SINGLE");
         payload.put("fatherName", "Test Father");
-        payload.put("aadharNumber", "123412341234");
-        payload.put("panNumber", "ABCDE1234F");
+        payload.put("aadharNumber", uniqueAadhaar(lspLoanId));
+        payload.put("panNumber", uniquePan(lspLoanId));
         payload.put("loanAmount", new BigDecimal("45000.00"));
         payload.put("interestRate", new BigDecimal("18.50"));
         payload.put("loanTenure", 12);
@@ -170,6 +171,18 @@ class IdempotencyCrashRecoveryIntegrationTest {
         payload.put("referencePersonName", "Ref Person");
         payload.put("referencePersonNumber", "9876543210");
         return payload;
+    }
+
+    private static String uniquePan(String seed) {
+        // Indian PAN shape: 5 letters + 4 digits + 1 letter. Derive from seed for shared-DB isolation.
+        String hex = Integer.toHexString(Math.abs(seed.hashCode())).toUpperCase();
+        String letters = ("AAAAA" + hex.replaceAll("[0-9]", "A")).substring(0, 5);
+        String digits = String.format("%04d", Math.abs(seed.hashCode()) % 10000);
+        return letters + digits + "Z";
+    }
+
+    private static String uniqueAadhaar(String seed) {
+        return String.format("%012d", Math.abs((long) seed.hashCode()) % 1_000_000_000_000L);
     }
 
     private LspFixture createLsp() throws Exception {

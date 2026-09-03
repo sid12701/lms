@@ -264,7 +264,6 @@ public class LoanDocumentService {
         return uploaded;
     }
 
-    @Transactional
     DocumentChecklistUpdateResult persistStoredDocumentForLsp(
             UUID lspId,
             UUID applicationId,
@@ -293,7 +292,6 @@ public class LoanDocumentService {
         );
     }
 
-    @Transactional
     List<LoanApplicationDocumentChecklist> persistStoredDocumentsForLsp(
             UUID lspId,
             UUID applicationId,

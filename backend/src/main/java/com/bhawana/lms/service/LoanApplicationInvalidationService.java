@@ -10,7 +10,7 @@ import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanInvalidationReason;
-import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
@@ -29,7 +29,7 @@ public class LoanApplicationInvalidationService {
     private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationStatusWriter loanApplicationStatusWriter;
-    private final WebhookOutboxService webhookOutboxService;
+    private final LoanEventLog loanEventLog;
 
     public LoanApplicationInvalidationService(
             LoanAccountRepository loanAccountRepository,
@@ -37,14 +37,14 @@ public class LoanApplicationInvalidationService {
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
             LoanApplicationQueryService loanApplicationQueryService,
             LoanApplicationStatusWriter loanApplicationStatusWriter,
-            WebhookOutboxService webhookOutboxService
+            LoanEventLog loanEventLog
     ) {
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanApplicationStatusWriter = loanApplicationStatusWriter;
-        this.webhookOutboxService = webhookOutboxService;
+        this.loanEventLog = loanEventLog;
     }
 
     @Transactional
@@ -135,13 +135,13 @@ public class LoanApplicationInvalidationService {
                 invalidationNote,
                 null
         );
-        webhookOutboxService.enqueueIfSubscribed(
+        loanEventLog.append(
                 savedApplication.getLsp(),
-                WebhookEventType.LOAN_STATUS_CHANGED,
+                LoanEventType.LOAN_STATUS_CHANGED,
                 "LOAN_APPLICATION",
                 savedApplication.getId().toString(),
                 savedApplication.getId(),
-                LoanWebhookPayloads.loanStatusChanged(
+                LoanEventPayloads.loanStatusChanged(
                         savedApplication,
                         currentStatus,
                         LoanApplicationStatus.INVALID,

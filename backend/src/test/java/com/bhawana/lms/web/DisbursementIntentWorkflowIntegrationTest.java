@@ -33,6 +33,7 @@ import com.bhawana.lms.service.LoanDisbursementAdapter;
 import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.service.LoanDisbursementWorkerService;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
+import com.bhawana.lms.support.TestPanSequence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -357,8 +358,7 @@ class DisbursementIntentWorkflowIntegrationTest {
     }
 
     private static String uniquePan() {
-        int suffix = Math.abs(UUID.randomUUID().hashCode()) % 10_000;
-        return String.format("ABCDE%04dF", suffix);
+        return TestPanSequence.uniquePan();
     }
 
     private static String mobileForPan(String pan) {

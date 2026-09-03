@@ -8,7 +8,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.not;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -32,6 +32,7 @@ import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.BorrowerLspRelationshipRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.DisbursementIntentRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
@@ -52,6 +53,7 @@ import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.support.LoanProductVersionTestSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -60,6 +62,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -78,6 +81,9 @@ class AuditExplorerControllerTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private LoanApplicationAuditEventRepository applicationAuditRepo;
@@ -117,6 +123,9 @@ class AuditExplorerControllerTest {
 
     @Autowired
     private LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
+
+    @Autowired
+    private DisbursementIntentRepository disbursementIntentRepository;
 
     @Autowired
     private LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
@@ -179,6 +188,13 @@ class AuditExplorerControllerTest {
         borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
+        // Before loan_account, and mirroring the order IntegrationTestDatabaseCleaner already uses.
+        // This class clears tables by hand rather than through that cleaner, and disbursement_intent
+        // was missing from the list — so a disbursement_intent row left behind by an earlier class in
+        // the same JVM held a foreign key onto loan_account and failed every test here in @BeforeEach.
+        // Invisible in the usual run only because this class sorts ahead of the one that creates those
+        // rows; selecting the two classes together in either order is enough to expose it.
+        disbursementIntentRepository.deleteAllInBatch();
         loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanAccountRepository.deleteAllInBatch();
@@ -189,6 +205,7 @@ class AuditExplorerControllerTest {
         loanApplicationAssignmentEventRepository.deleteAllInBatch();
         loanApplicationDocumentChecklistRepository.deleteAllInBatch();
         loanApplicationStatusTransitionRepository.deleteAllInBatch();
+        jdbcTemplate.execute("TRUNCATE TABLE loan_event");
         loanApplicationRepository.deleteAllInBatch();
         borrowerLspRelationshipRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
@@ -525,7 +542,7 @@ class AuditExplorerControllerTest {
                 .andExpect(jsonPath("$.items[0].detail.payload.borrowerAadharNumber",
                         equalTo("XXXXXXXX9012")))
                 .andReturn().getResponse().getContentAsString();
-        assertEquals(false, response.contains("123456789012"), "raw aadhaar must not leak through the response");
+        assertFalse(response.contains("123456789012"), "raw aadhaar must not leak through the response");
     }
 
     @Test
@@ -596,10 +613,15 @@ class AuditExplorerControllerTest {
         com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(body);
         com.fasterxml.jackson.databind.JsonNode items = root.get("items");
         for (int i = 1; i < items.size(); i++) {
-            String prev = items.get(i - 1).get("occurredAt").asText();
-            String curr = items.get(i).get("occurredAt").asText();
-            // Strings are ISO-8601 and lexicographically comparable.
-            assertEquals(true, prev.compareTo(curr) >= 0,
+            // Compared as instants, not as strings. ISO-8601 is only lexicographically ordered when
+            // every value carries the same fractional-second precision, and these do not: the
+            // serializer drops trailing zeros, so an instant landing on an exact millisecond
+            // renders ".440Z" while its neighbour renders ".440974Z". Comparing those as text puts
+            // '9' against 'Z' and reports the earlier instant as the larger one — a real ordering
+            // assertion failing on how the timestamp happened to print.
+            Instant prev = Instant.parse(items.get(i - 1).get("occurredAt").asText());
+            Instant curr = Instant.parse(items.get(i).get("occurredAt").asText());
+            assertFalse(prev.isBefore(curr),
                     "expected occurredAt to be non-increasing; got " + prev + " -> " + curr);
         }
     }

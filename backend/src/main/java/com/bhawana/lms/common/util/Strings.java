@@ -20,4 +20,14 @@ public final class Strings {
         String normalized = actorUsername.trim();
         return normalized.isBlank() ? "system" : normalized;
     }
+
+    /**
+     * Returns {@code singularNoun} unchanged for a count of exactly one, otherwise the noun with
+     * a trailing "s". Covers the regular nouns used in operator-facing alert copy (day, hour,
+     * login, attempt, ...) — this is English pluralisation for a handful of known nouns, not a
+     * general i18n framework, so irregular plurals aren't handled.
+     */
+    public static String pluralize(long count, String singularNoun) {
+        return count == 1 ? singularNoun : singularNoun + "s";
+    }
 }

@@ -38,9 +38,6 @@ import com.bhawana.lms.repo.LspUiIpAllowlistRepository;
 import com.bhawana.lms.repo.PortfolioKpiSnapshotRepository;
 import com.bhawana.lms.repo.ReportAccessAuditRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
-import com.bhawana.lms.repo.WebhookEventDeliveryAttemptRepository;
-import com.bhawana.lms.repo.WebhookEventOutboxRepository;
-import com.bhawana.lms.repo.WebhookOutboxRedriveAuditRepository;
 import com.bhawana.lms.tenant.TenantScopedExecution;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -48,8 +45,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * FK-safe deletion order for {@code @SpringBootTest} classes that share the H2
- * database. Call {@link #cleanIntegrationTestData()} in {@code @BeforeEach} so
+ * FK-safe deletion order for {@code @SpringBootTest} classes that share the integration-test
+ * Postgres database. Call {@link #cleanIntegrationTestData()} in {@code @BeforeEach} so
  * cross-test rows (e.g. {@code app_user_audit_event} from user-admin tests, or
  * {@code lsp_api_ip_allowlist} from LSP admin tests) do not block teardown.
  */
@@ -65,9 +62,6 @@ public class IntegrationTestDatabaseCleaner {
     private final BorrowerPiiRevealAuditRepository borrowerPiiRevealAuditRepository;
     private final LoanDelinquencyStateRepository loanDelinquencyStateRepository;
     private final AdminApiIdempotencyRecordRepository adminApiIdempotencyRecordRepository;
-    private final WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository;
-    private final WebhookEventOutboxRepository webhookEventOutboxRepository;
-    private final WebhookOutboxRedriveAuditRepository webhookOutboxRedriveAuditRepository;
     private final LoanForeclosureQuoteRepository loanForeclosureQuoteRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
@@ -111,9 +105,6 @@ public class IntegrationTestDatabaseCleaner {
             BorrowerPiiRevealAuditRepository borrowerPiiRevealAuditRepository,
             LoanDelinquencyStateRepository loanDelinquencyStateRepository,
             AdminApiIdempotencyRecordRepository adminApiIdempotencyRecordRepository,
-            WebhookEventDeliveryAttemptRepository webhookEventDeliveryAttemptRepository,
-            WebhookEventOutboxRepository webhookEventOutboxRepository,
-            WebhookOutboxRedriveAuditRepository webhookOutboxRedriveAuditRepository,
             LoanForeclosureQuoteRepository loanForeclosureQuoteRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
             LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
@@ -156,9 +147,6 @@ public class IntegrationTestDatabaseCleaner {
         this.borrowerPiiRevealAuditRepository = borrowerPiiRevealAuditRepository;
         this.loanDelinquencyStateRepository = loanDelinquencyStateRepository;
         this.adminApiIdempotencyRecordRepository = adminApiIdempotencyRecordRepository;
-        this.webhookEventDeliveryAttemptRepository = webhookEventDeliveryAttemptRepository;
-        this.webhookEventOutboxRepository = webhookEventOutboxRepository;
-        this.webhookOutboxRedriveAuditRepository = webhookOutboxRedriveAuditRepository;
         this.loanForeclosureQuoteRepository = loanForeclosureQuoteRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
@@ -205,9 +193,6 @@ public class IntegrationTestDatabaseCleaner {
         disbursementOutcomeAuditRepository.deleteAllInBatch();
         loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
         borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
-        webhookEventDeliveryAttemptRepository.deleteAllInBatch();
-        webhookOutboxRedriveAuditRepository.deleteAllInBatch();
-        webhookEventOutboxRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
@@ -227,6 +212,9 @@ public class IntegrationTestDatabaseCleaner {
         adminApiIdempotencyRecordRepository.deleteAllInBatch();
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
         loanDelinquencyStateRepository.deleteAllInBatch();
+        // The production log rejects UPDATE/DELETE; integration cleanup is allowed to truncate
+        // only after the ephemeral-database guard above has verified the target.
+        jdbcTemplate.execute("TRUNCATE TABLE loan_event");
         loanApplicationRepository.deleteAllInBatch();
         borrowerPiiRevealAuditRepository.deleteAllInBatch();
         jdbcTemplate.execute("DELETE FROM borrower_lsp_relationship");

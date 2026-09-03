@@ -8,7 +8,7 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
-import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import java.util.List;
@@ -21,16 +21,16 @@ public class LoanApplicationDocumentChecklistService {
 
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
-    private final WebhookOutboxService webhookOutboxService;
+    private final LoanEventLog loanEventLog;
 
     public LoanApplicationDocumentChecklistService(
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
-            WebhookOutboxService webhookOutboxService
+            LoanEventLog loanEventLog
     ) {
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
-        this.webhookOutboxService = webhookOutboxService;
+        this.loanEventLog = loanEventLog;
     }
 
     public void seedDocumentChecklist(LoanApplication application, String actorUsername) {
@@ -161,13 +161,13 @@ public class LoanApplicationDocumentChecklistService {
                     .filter(LoanApplicationDocumentRequirements::isChecklistItemComplete)
                     .map(item -> item.getDocumentType().name())
                     .toList();
-            webhookOutboxService.enqueueIfSubscribed(
+            loanEventLog.append(
                     application.getLsp(),
-                    WebhookEventType.DOCUMENTS_UPLOADED,
+                    LoanEventType.DOCUMENTS_UPLOADED,
                     "LOAN_APPLICATION",
                     application.getId().toString(),
                     application.getId(),
-                    LoanWebhookPayloads.documentsUploaded(application, completedTypes)
+                    LoanEventPayloads.documentsUploaded(application, completedTypes)
             );
         }
         return new DocumentChecklistUpdateResult(savedChecklistItem, allRequiredDocumentsJustCompleted);

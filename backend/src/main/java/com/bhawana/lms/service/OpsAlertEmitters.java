@@ -2,13 +2,14 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.util.AlertContextJson;
+import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.domain.AlertRule;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertType;
-import com.bhawana.lms.domain.WebhookEventOutbox;
 import com.bhawana.lms.repo.AlertRuleRepository;
+import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -28,44 +29,18 @@ public class OpsAlertEmitters {
     private final OpsAlertService opsAlertService;
     private final AlertRuleRepository alertRuleRepository;
     private final ObjectMapper objectMapper;
+    private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
 
     public OpsAlertEmitters(
             OpsAlertService opsAlertService,
             AlertRuleRepository alertRuleRepository,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            AdminScopedTransactionExecutor adminScopedTransactionExecutor
     ) {
         this.opsAlertService = opsAlertService;
         this.alertRuleRepository = alertRuleRepository;
         this.objectMapper = objectMapper;
-    }
-
-    public void emitWebhookDeadLetter(WebhookEventOutbox event, String errorMessage) {
-        if (!isRuleEnabled("WEBHOOK_DEAD_LETTER")) {
-            return;
-        }
-        String title = "Webhook delivery dead-lettered";
-        String message = "Event "
-                + event.getEventType().name()
-                + " for aggregate "
-                + event.getAggregateType()
-                + "/"
-                + event.getAggregateId()
-                + " failed permanently: "
-                + errorMessage;
-        Map<String, Object> context = new LinkedHashMap<>();
-        context.put("eventId", event.getId());
-        context.put("lspId", event.getLsp().getId());
-        context.put("eventType", event.getEventType().name());
-        opsAlertService.createAlertIfAbsent(
-                OpsAlertType.WEBHOOK_DEAD_LETTER,
-                OpsAlertSeverity.HIGH,
-                title,
-                message,
-                "WEBHOOK_DELIVERY",
-                event.getId(),
-                "webhook-dead-letter:" + event.getId(),
-                serializeContext(context)
-        );
+        this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
     }
 
     public void emitManualRuleEngineOverride(
@@ -201,7 +176,9 @@ public class OpsAlertEmitters {
                         + borrower.getPan()
                         + " had "
                         + updateCount
-                        + " bank-detail updates in the configured velocity window.",
+                        + " bank-detail "
+                        + Strings.pluralize(updateCount, "update")
+                        + " in the configured velocity window.",
                 "BORROWER",
                 borrower.getId(),
                 "borrower-bank-velocity:" + borrower.getId(),
@@ -217,7 +194,11 @@ public class OpsAlertEmitters {
                 OpsAlertType.DISBURSEMENT_RETRY_EXHAUSTED,
                 OpsAlertSeverity.HIGH,
                 "Disbursement retries exhausted",
-                "Automated disbursement failed after " + attemptCount + " attempts.",
+                "Automated disbursement failed after "
+                        + attemptCount
+                        + " "
+                        + Strings.pluralize(attemptCount, "attempt")
+                        + ".",
                 "LOAN_APPLICATION",
                 application.getId(),
                 "disbursement-retry-exhausted:" + application.getId(),
@@ -236,7 +217,9 @@ public class OpsAlertEmitters {
                 + path
                 + ". Retry after "
                 + retryAfterSeconds
-                + " seconds.";
+                + " "
+                + Strings.pluralize(retryAfterSeconds, "second")
+                + ".";
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("bucket", bucketKey);
         context.put("path", path);
@@ -256,9 +239,22 @@ public class OpsAlertEmitters {
         return AlertContextJson.serialize(objectMapper, log, context);
     }
 
+    /**
+     * {@code alert_rule} is admin-plane configuration: {@code V41__tenant_isolation_rls.sql} grants it
+     * to no tenant role, so reading it on whatever scope the caller happens to hold fails with
+     * {@code permission denied for table alert_rule} on every tenant-scoped path — which is every
+     * LSP-authenticated request, because {@code AuthenticationTenantScopeFilter} switches to the
+     * tenant role before {@code RateLimitFilter} runs.
+     *
+     * <p>The gate therefore runs admin-scoped, exactly as the write it guards already does in
+     * {@link OpsAlertService}. {@link AdminScopedTransactionExecutor} rather than a bare scope switch
+     * because {@link #emitRateLimitBreach} is called from inside an active transaction: switching
+     * the thread-local alone would leave the already-bound tenant connection in place, so the read
+     * needs its own {@code REQUIRES_NEW} transaction to acquire an admin connection.
+     */
     private boolean isRuleEnabled(String code) {
-        return alertRuleRepository.findByCode(code)
+        return adminScopedTransactionExecutor.call(() -> alertRuleRepository.findByCode(code)
                 .map(AlertRule::isEnabled)
-                .orElse(false);
+                .orElse(false));
     }
 }

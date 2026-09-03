@@ -3,6 +3,7 @@ package com.bhawana.lms.common.web;
 import com.bhawana.lms.common.api.ApiError;
 import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.CursorExpiredException;
 import com.bhawana.lms.common.api.error.DocumentNotFoundException;
 import com.bhawana.lms.common.api.error.DocumentStorageMisconfiguredException;
 import com.bhawana.lms.common.api.error.DocumentStorageUnavailableException;
@@ -15,6 +16,7 @@ import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.common.api.error.UnsupportedDocumentPreviewException;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
+import com.bhawana.lms.security.LspInactiveAuthenticationException;
 import com.bhawana.lms.tenant.MissingTenantContextException;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.persistence.EntityNotFoundException;
@@ -56,6 +58,16 @@ public class GlobalExceptionHandler {
     private static final String DOCUMENT_STORAGE_UNAVAILABLE_COUNTER = "lms.document.storage.unavailable";
     private static final String TENANT_SCOPE_MISSING_COUNTER = "lms.tenant.scope.missing";
     private static final String UNTYPED_API_ERROR_COUNTER = "lms.api.untyped_error";
+    private static final String ACCESS_DENIED_ERROR_CODE = "ACCESS_DENIED";
+    private static final String BORROWER_PAN_CONFLICT_ERROR_CODE = "BORROWER_PAN_CONFLICT";
+    private static final String CONFLICT_ERROR_CODE = "CONFLICT";
+    private static final String DUPLICATE_EXTERNAL_LOAN_ID_ERROR_CODE = "DUPLICATE_EXTERNAL_LOAN_ID";
+    private static final String IDEMPOTENCY_CONFLICT_ERROR_CODE = "IDEMPOTENCY_CONFLICT";
+    private static final String INTERNAL_SERVER_ERROR_CODE = "INTERNAL_SERVER_ERROR";
+    private static final String INVALID_REQUEST_ERROR_CODE = "INVALID_REQUEST";
+    private static final String NOT_FOUND_ERROR_CODE = "NOT_FOUND";
+    private static final String PAYLOAD_TOO_LARGE_ERROR_CODE = "PAYLOAD_TOO_LARGE";
+    private static final String VALIDATION_FAILED_ERROR_CODE = "VALIDATION_FAILED";
 
     private final MeterRegistry meterRegistry;
 
@@ -70,7 +82,7 @@ public class GlobalExceptionHandler {
             fieldErrors.put(fieldError.getField(), friendlyValidationMessage(fieldError.getDefaultMessage()));
         }
 
-        return build(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed", request, fieldErrors);
+        return build(HttpStatus.BAD_REQUEST, VALIDATION_FAILED_ERROR_CODE, "Request validation failed", request, fieldErrors);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -86,7 +98,7 @@ public class GlobalExceptionHandler {
             fieldErrors.put(field, friendlyValidationMessage(violation.getMessage()));
         }
 
-        return build(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed", request, fieldErrors);
+        return build(HttpStatus.BAD_REQUEST, VALIDATION_FAILED_ERROR_CODE, "Request validation failed", request, fieldErrors);
     }
 
     @ExceptionHandler(HandlerMethodValidationException.class)
@@ -105,7 +117,7 @@ public class GlobalExceptionHandler {
             }
         }
 
-        return build(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Request validation failed", request, fieldErrors);
+        return build(HttpStatus.BAD_REQUEST, VALIDATION_FAILED_ERROR_CODE, "Request validation failed", request, fieldErrors);
     }
 
     @ExceptionHandler(KycCompletionRequiredException.class)
@@ -159,6 +171,20 @@ public class GlobalExceptionHandler {
     ) {
         return build(
                 HttpStatus.UNPROCESSABLE_ENTITY,
+                exception.getErrorCode(),
+                exception.getMessage(),
+                request,
+                exception.getFieldErrors()
+        );
+    }
+
+    @ExceptionHandler(CursorExpiredException.class)
+    public ResponseEntity<ApiError> handleCursorExpired(
+            CursorExpiredException exception,
+            HttpServletRequest request
+    ) {
+        return build(
+                HttpStatus.GONE,
                 exception.getErrorCode(),
                 exception.getMessage(),
                 request,
@@ -220,7 +246,7 @@ public class GlobalExceptionHandler {
             ResourceNotFoundException exception,
             HttpServletRequest request
     ) {
-        return build(HttpStatus.NOT_FOUND, "NOT_FOUND", exception.getMessage(), request, Map.of());
+        return build(HttpStatus.NOT_FOUND, NOT_FOUND_ERROR_CODE, exception.getMessage(), request, Map.of());
     }
 
     @ExceptionHandler(DocumentNotFoundException.class)
@@ -236,7 +262,7 @@ public class GlobalExceptionHandler {
             EntityNotFoundException exception,
             HttpServletRequest request
     ) {
-        return build(HttpStatus.NOT_FOUND, "NOT_FOUND", exception.getMessage(), request, Map.of());
+        return build(HttpStatus.NOT_FOUND, NOT_FOUND_ERROR_CODE, exception.getMessage(), request, Map.of());
     }
 
     @ExceptionHandler(UnsupportedDocumentPreviewException.class)
@@ -308,7 +334,7 @@ public class GlobalExceptionHandler {
     ) {
         String headerName = exception.getHeaderName();
         String message = headerName + " header is required.";
-        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, request, Map.of(headerName, message));
+        return build(HttpStatus.BAD_REQUEST, INVALID_REQUEST_ERROR_CODE, message, request, Map.of(headerName, message));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -320,7 +346,7 @@ public class GlobalExceptionHandler {
                 request.getRequestURI(),
                 exception.getMessage()
         );
-        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", friendly, request, Map.of());
+        return build(HttpStatus.BAD_REQUEST, INVALID_REQUEST_ERROR_CODE, friendly, request, Map.of());
     }
 
     @ExceptionHandler(LspSurfaceIpAccessDeniedException.class)
@@ -341,6 +367,14 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.UNAUTHORIZED, "ACCOUNT_DISABLED", "User account is disabled", request, Map.of());
     }
 
+    @ExceptionHandler(LspInactiveAuthenticationException.class)
+    public ResponseEntity<ApiError> handleLspInactive(
+            LspInactiveAuthenticationException exception,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.UNAUTHORIZED, "LSP_INACTIVE", "LSP is not active", request, Map.of());
+    }
+
     @ExceptionHandler(LockedException.class)
     public ResponseEntity<ApiError> handleLocked(LockedException exception, HttpServletRequest request) {
         return build(HttpStatus.UNAUTHORIZED, "ACCOUNT_LOCKED", "User account is locked", request, Map.of());
@@ -348,7 +382,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiError> handleAccessDenied(AccessDeniedException exception, HttpServletRequest request) {
-        return build(HttpStatus.FORBIDDEN, "ACCESS_DENIED", exception.getMessage(), request, Map.of());
+        return build(HttpStatus.FORBIDDEN, ACCESS_DENIED_ERROR_CODE, exception.getMessage(), request, Map.of());
     }
 
     @ExceptionHandler(AuthorizationDeniedException.class)
@@ -356,14 +390,14 @@ public class GlobalExceptionHandler {
             AuthorizationDeniedException exception,
             HttpServletRequest request
     ) {
-        return build(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Access denied", request, Map.of());
+        return build(HttpStatus.FORBIDDEN, ACCESS_DENIED_ERROR_CODE, "Access denied", request, Map.of());
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiError> handleNoResourceFound(NoResourceFoundException exception, HttpServletRequest request) {
         return build(
                 HttpStatus.NOT_FOUND,
-                "NOT_FOUND",
+                NOT_FOUND_ERROR_CODE,
                 "Resource not found: " + request.getRequestURI(),
                 request,
                 Map.of()
@@ -394,7 +428,7 @@ public class GlobalExceptionHandler {
             message = "Invalid value '" + rejectedValue + "' for parameter '" + parameterName + "'.";
             fieldErrors.put(parameterName, message);
         }
-        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, request, fieldErrors);
+        return build(HttpStatus.BAD_REQUEST, INVALID_REQUEST_ERROR_CODE, message, request, fieldErrors);
     }
 
     @ExceptionHandler(PayloadTooLargeException.class)
@@ -404,7 +438,7 @@ public class GlobalExceptionHandler {
     ) {
         return build(
                 HttpStatus.PAYLOAD_TOO_LARGE,
-                "PAYLOAD_TOO_LARGE",
+                PAYLOAD_TOO_LARGE_ERROR_CODE,
                 "Request body exceeds the maximum permitted size.",
                 request,
                 Map.of()
@@ -419,7 +453,7 @@ public class GlobalExceptionHandler {
         if (causedBy(exception, PayloadTooLargeException.class)) {
             return build(
                     HttpStatus.PAYLOAD_TOO_LARGE,
-                    "PAYLOAD_TOO_LARGE",
+                    PAYLOAD_TOO_LARGE_ERROR_CODE,
                     "Request body exceeds the maximum permitted size.",
                     request,
                     Map.of()
@@ -453,7 +487,7 @@ public class GlobalExceptionHandler {
         } else {
             message = "Request body is malformed or could not be parsed.";
         }
-        return build(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, request, fieldErrors);
+        return build(HttpStatus.BAD_REQUEST, INVALID_REQUEST_ERROR_CODE, message, request, fieldErrors);
     }
 
     @ExceptionHandler(MissingServletRequestPartException.class)
@@ -464,7 +498,7 @@ public class GlobalExceptionHandler {
         String message = "Required multipart part '" + exception.getRequestPartName() + "' is missing.";
         return build(
                 HttpStatus.BAD_REQUEST,
-                "INVALID_REQUEST",
+                INVALID_REQUEST_ERROR_CODE,
                 message,
                 request,
                 Map.of(exception.getRequestPartName(), message)
@@ -478,7 +512,7 @@ public class GlobalExceptionHandler {
     ) {
         return build(
                 HttpStatus.PAYLOAD_TOO_LARGE,
-                "PAYLOAD_TOO_LARGE",
+                PAYLOAD_TOO_LARGE_ERROR_CODE,
                 "Uploaded content exceeds the maximum permitted size.",
                 request,
                 Map.of()
@@ -525,7 +559,7 @@ public class GlobalExceptionHandler {
         log.error("Unhandled exception on {} {}", request.getMethod(), request.getRequestURI(), exception);
         return build(
                 HttpStatus.INTERNAL_SERVER_ERROR,
-                "INTERNAL_SERVER_ERROR",
+                INTERNAL_SERVER_ERROR_CODE,
                 "An unexpected error occurred",
                 request,
                 Map.of()
@@ -631,10 +665,10 @@ public class GlobalExceptionHandler {
         if ("23505".equals(sqlState)) {
             String errorCode = mapUniqueConstraintErrorCode(constraintName);
             String message = switch (errorCode) {
-                case "BORROWER_PAN_CONFLICT" -> "A borrower with this PAN already exists.";
-                case "DUPLICATE_EXTERNAL_LOAN_ID" -> "An application with this external loan id already exists for the LSP.";
-                case "IDEMPOTENCY_CONFLICT" -> "Idempotency-Key has already been used.";
-                case "CONFLICT" -> "The request conflicts with existing data.";
+                case BORROWER_PAN_CONFLICT_ERROR_CODE -> "A borrower with this PAN already exists.";
+                case DUPLICATE_EXTERNAL_LOAN_ID_ERROR_CODE -> "An application with this external loan id already exists for the LSP.";
+                case IDEMPOTENCY_CONFLICT_ERROR_CODE -> "Idempotency-Key has already been used.";
+                case CONFLICT_ERROR_CODE -> "The request conflicts with existing data.";
                 default -> "The request conflicts with existing data.";
             };
             return new ConstraintViolationResolution(
@@ -650,7 +684,7 @@ public class GlobalExceptionHandler {
         if ("23514".equals(sqlState) || "22001".equals(sqlState)) {
             return new ConstraintViolationResolution(
                     HttpStatus.BAD_REQUEST,
-                    "VALIDATION_FAILED",
+                    VALIDATION_FAILED_ERROR_CODE,
                     "Request validation failed",
                     constraintName,
                     sqlState,
@@ -660,7 +694,7 @@ public class GlobalExceptionHandler {
 
         return new ConstraintViolationResolution(
                 HttpStatus.INTERNAL_SERVER_ERROR,
-                "INTERNAL_SERVER_ERROR",
+                INTERNAL_SERVER_ERROR_CODE,
                 "An unexpected error occurred",
                 constraintName,
                 sqlState,
@@ -681,13 +715,13 @@ public class GlobalExceptionHandler {
 
     private static String mapUniqueConstraintErrorCode(String constraintName) {
         if (constraintName == null) {
-            return "CONFLICT";
+            return CONFLICT_ERROR_CODE;
         }
         return switch (constraintName) {
-            case "uk_loan_payment_transaction_idempotency_key" -> "IDEMPOTENCY_CONFLICT";
-            case "uk_borrower_pan" -> "BORROWER_PAN_CONFLICT";
-            case "uk_loan_application_lsp_external" -> "DUPLICATE_EXTERNAL_LOAN_ID";
-            default -> constraintName.contains("idempotency") ? "IDEMPOTENCY_CONFLICT" : "CONFLICT";
+            case "uk_loan_payment_transaction_idempotency_key" -> IDEMPOTENCY_CONFLICT_ERROR_CODE;
+            case "uk_borrower_pan" -> BORROWER_PAN_CONFLICT_ERROR_CODE;
+            case "uk_loan_application_lsp_external" -> DUPLICATE_EXTERNAL_LOAN_ID_ERROR_CODE;
+            default -> constraintName.contains("idempotency") ? IDEMPOTENCY_CONFLICT_ERROR_CODE : CONFLICT_ERROR_CODE;
         };
     }
 

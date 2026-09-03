@@ -79,15 +79,6 @@ app:
       whale-volume-share: 0.25
       batch-size: 5000
       tenure-months: 12
-  webhooks:
-    redrive:
-      max-manual-redrives: 3
-    delivery:
-      enabled: true
-      fixed-delay-ms: 60000
-      batch-size: 20
-      thread-pool-size: 10
-      max-attempts: 8
   reports:
     processing:
       enabled: true
@@ -118,6 +109,7 @@ app:
     tenant:
       username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
       password: ${APP_TENANT_DATASOURCE_PASSWORD}
+      connection-strategy: ${APP_TENANT_CONNECTION_STRATEGY:DIRECT_LOGIN}
   rate-limit:
     enabled: ${APP_RATE_LIMIT_ENABLED:true}
     rules:
@@ -166,6 +158,11 @@ app:
         methods: [GET]
         key: LSP
         permits-per-minute: 120
+      - id: lsp-loan-events
+        path: /api/v1/lsp/loan-events
+        methods: [GET]
+        key: LSP
+        permits-per-minute: ${APP_RATE_LIMIT_LSP_FEED_PER_MINUTE:120}
       - id: reports
         path: /api/v1/internal/reports/**
         methods: [GET, POST]
@@ -236,3 +233,10 @@ app:
     scheduler-enabled: ${APP_PORTFOLIO_KPI_SCHEDULER_ENABLED:true}
     scheduler-fixed-delay-ms: ${APP_PORTFOLIO_KPI_SCHEDULER_FIXED_DELAY_MS:900000}
     advisory-lock-id: ${APP_PORTFOLIO_KPI_ADVISORY_LOCK_ID:42109}
+  loan-event-log:
+    # Retention floor published to partners (ADR 0007). Partitions are whole months, so the month
+    # holding the cutoff is kept until everything in it has aged out.
+    retention-days: ${APP_LOAN_EVENT_LOG_RETENTION_DAYS:30}
+    partition-maintenance-enabled: ${APP_LOAN_EVENT_LOG_PARTITION_MAINTENANCE_ENABLED:true}
+    partition-maintenance-fixed-delay-ms: ${APP_LOAN_EVENT_LOG_PARTITION_MAINTENANCE_FIXED_DELAY_MS:3600000}
+    partition-lead-months: ${APP_LOAN_EVENT_LOG_PARTITION_LEAD_MONTHS:3}

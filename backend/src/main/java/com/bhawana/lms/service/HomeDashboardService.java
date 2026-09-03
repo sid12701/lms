@@ -117,10 +117,6 @@ public class HomeDashboardService {
                 .map(this::toRecentApplication)
                 .toList();
 
-        Double avgApprovalTatHours = globalSnapshot.getAvgApprovalTatHours() == null
-                ? null
-                : globalSnapshot.getAvgApprovalTatHours().setScale(1, RoundingMode.HALF_UP).doubleValue();
-
         return new HomeDashboardSummary(
                 Money.scale(totalDisbursedAmount),
                 Money.scale(totalOutstandingAmount),
@@ -128,7 +124,6 @@ public class HomeDashboardService {
                 dpd90PlusTotals.loanCount(),
                 applicationsAwaitingApproval,
                 applicationsInDisbursement,
-                avgApprovalTatHours,
                 applicationsByStatus,
                 dpdBuckets,
                 openAlerts,
@@ -206,6 +201,11 @@ public class HomeDashboardService {
                 alert.getId().toString(),
                 alert.getSeverity().name(),
                 alert.getTitle(),
+                // Titles repeat across a run of same-rule alerts ("Delinquency bucket DPD_1_30");
+                // the message is the only field carrying the per-alert specifics (loan, DPD,
+                // overdue amount) an operator triages on. Null rather than "" so the card can
+                // omit the line instead of rendering an empty one.
+                blankToNull(alert.getMessage()),
                 alert.getSubjectType() == null ? "UNKNOWN" : alert.getSubjectType(),
                 alert.getSubjectId() == null ? "" : alert.getSubjectId().toString(),
                 alert.getCreatedAt().toString()
@@ -291,6 +291,14 @@ public class HomeDashboardService {
         return value == null ? zeroCurrency() : value;
     }
 
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
     private static BigDecimal percentage(BigDecimal value, BigDecimal total) {
         if (total.compareTo(BigDecimal.ZERO) <= 0 || value.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
@@ -309,7 +317,6 @@ public class HomeDashboardService {
             long dpd90PlusLoanCount,
             int applicationsAwaitingApproval,
             int applicationsInDisbursement,
-            Double avgApprovalTatHours,
             List<StatusCount> applicationsByStatus,
             List<DpdBucketCount> dpdBuckets,
             long openAlerts,
@@ -343,6 +350,7 @@ public class HomeDashboardService {
             String id,
             String severity,
             String title,
+            String message,
             String subjectType,
             String subjectId,
             String createdAt

@@ -66,7 +66,8 @@ public class AuthPrincipalCache {
             long tokenVersion,
             long passwordChangedAtMillis,
             boolean passwordChangeRequired,
-            UserStatus status
+            UserStatus status,
+            LspStatus lspStatus
     ) {
     }
 

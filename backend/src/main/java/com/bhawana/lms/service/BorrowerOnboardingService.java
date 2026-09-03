@@ -12,6 +12,7 @@ import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ public class BorrowerOnboardingService {
     private final OpsAlertService opsAlertService;
     private final BorrowerActiveLoanChecker borrowerActiveLoanChecker;
     private final BorrowerLspRelationshipService borrowerLspRelationshipService;
+    private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
     private final ObjectMapper objectMapper;
 
     public BorrowerOnboardingService(
@@ -39,20 +41,21 @@ public class BorrowerOnboardingService {
             OpsAlertService opsAlertService,
             BorrowerActiveLoanChecker borrowerActiveLoanChecker,
             BorrowerLspRelationshipService borrowerLspRelationshipService,
+            AdminScopedTransactionExecutor adminScopedTransactionExecutor,
             ObjectMapper objectMapper
     ) {
         this.borrowerRepository = borrowerRepository;
         this.opsAlertService = opsAlertService;
         this.borrowerActiveLoanChecker = borrowerActiveLoanChecker;
         this.borrowerLspRelationshipService = borrowerLspRelationshipService;
+        this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
         this.objectMapper = objectMapper;
     }
 
     /**
-     * Resolve (find-or-create) the global borrower for an onboarding request. The borrower
-     * directory is shared across every LSP; the caller runs this inside an admin-scoped
-     * transaction so the dedup {@code findByPan} can see a borrower another LSP already created
-     * (tenant row-level security would otherwise hide it and force a duplicate-PAN insert).
+     * Resolve (find-or-create) the global borrower for an onboarding request. Cross-tenant PAN
+     * and mobile dedup plus the visibility grant run under explicit admin scope (ADR 0005);
+     * profile writes stay on the tenant datasource with row-level security enforced.
      */
     @Transactional
     public Borrower resolveBorrowerForOnboarding(
@@ -66,11 +69,8 @@ public class BorrowerOnboardingService {
         String normalizedPan = profile.panNumber();
         String normalizedMobile = profile.mobileNumber();
 
-        Borrower borrowerByPan = borrowerRepository.findByPan(normalizedPan).orElse(null);
-        Borrower borrowerByMobile = borrowerRepository.findTop10ByMobileOrderByUpdatedAtDesc(normalizedMobile)
-                .stream()
-                .findFirst()
-                .orElse(null);
+        Borrower borrowerByPan = lookupBorrowerByPan(normalizedPan);
+        Borrower borrowerByMobile = lookupBorrowerByMobile(normalizedMobile);
 
         if (borrowerByPan != null) {
             if (borrowerByMobile != null && !borrowerByMobile.getId().equals(borrowerByPan.getId())) {
@@ -84,12 +84,10 @@ public class BorrowerOnboardingService {
             }
             validateImmutableBorrowerIdentity(lsp, borrowerByPan, profile, actorUsername);
             raiseActiveLoanDuplicateIfPresent(lsp, borrowerByPan, profile, actorUsername);
-            borrowerByPan.mergeLatestProfile(profile);
-            return borrowerLspRelationshipService.grantVisibility(
-                    borrowerByPan,
-                    lsp,
-                    BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING
-            );
+            // Cross-tenant visibility grant needs admin (borrower row already committed).
+            Borrower visibleBorrower = grantVisibilityUnderAdmin(borrowerByPan, lsp);
+            visibleBorrower.mergeLatestProfile(profile);
+            return borrowerRepository.save(visibleBorrower);
         }
 
         if (borrowerByMobile != null) {
@@ -102,12 +100,37 @@ public class BorrowerOnboardingService {
             );
         }
 
-        Borrower borrower = new Borrower(profile);
+        // New borrower: insert + visibility grant must stay in the same tenant transaction.
+        // Elevating to a REQUIRES_NEW admin transaction here cannot see the uncommitted insert
+        // and Hibernate re-persists the same id → borrower_pkey conflict.
+        Borrower borrower = borrowerRepository.save(new Borrower(profile));
         return borrowerLspRelationshipService.grantVisibility(
                 borrower,
                 lsp,
                 BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING
         );
+    }
+
+    private Borrower lookupBorrowerByPan(String normalizedPan) {
+        return adminScopedTransactionExecutor.call(
+                () -> borrowerRepository.findByPan(normalizedPan).orElse(null)
+        );
+    }
+
+    private Borrower lookupBorrowerByMobile(String normalizedMobile) {
+        return adminScopedTransactionExecutor.call(() -> borrowerRepository
+                .findTop10ByMobileOrderByUpdatedAtDesc(normalizedMobile)
+                .stream()
+                .findFirst()
+                .orElse(null));
+    }
+
+    private Borrower grantVisibilityUnderAdmin(Borrower borrower, Lsp lsp) {
+        return adminScopedTransactionExecutor.call(() -> borrowerLspRelationshipService.grantVisibility(
+                borrower,
+                lsp,
+                BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING
+        ));
     }
 
     private BorrowerProfile normalizedProfile(
@@ -181,7 +204,8 @@ public class BorrowerOnboardingService {
             return;
         }
 
-        String reason = "Borrower already has " + openLoans.size() + " open loan(s) across LSPs. "
+        String reason = "Borrower already has " + openLoans.size() + " open "
+                + Strings.pluralize(openLoans.size(), "loan") + " across LSPs. "
                 + "Concurrent loan onboarding is blocked.";
         opsAlertService.createAlert(
                 OpsAlertType.BORROWER_ACTIVE_LOAN_DUPLICATE,

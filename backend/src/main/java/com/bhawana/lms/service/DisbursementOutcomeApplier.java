@@ -12,7 +12,7 @@ import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanDisbursementRequestLog;
-import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -27,12 +27,13 @@ import org.springframework.stereotype.Service;
  * Applies a terminal disbursement verdict to persistent state. Every resolution path (manual ops
  * mock outcome, worker auto-resolve, status-check poll) normalises the provider response into a
  * {@link ProviderOutcome} and hands it here, so the account state, application transition,
- * partner webhook, ops alert and outcome audit are written in exactly one place.
+ * loan event, ops alert and outcome audit are written in exactly one place.
  *
  * <p>This runs inside the caller's transaction (the orchestrating methods on
- * {@link LoanDisbursementCommandService} are {@code @Transactional}); it deliberately carries no
- * transaction annotation so the request-log, account, transition and audit writes stay atomic with
- * the surrounding command.
+ * {@link LoanDisbursementCommandService} are either {@code @Transactional} or open a
+ * {@code TransactionTemplate} around the call); it deliberately carries no transaction annotation
+ * so the request-log, account, transition, loan event and audit writes stay atomic with the
+ * surrounding command. {@link LoanEventLog} enforces that boundary rather than trusting it.
  */
 @Service
 public class DisbursementOutcomeApplier {
@@ -40,7 +41,7 @@ public class DisbursementOutcomeApplier {
     private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
     private final LoanAccountRepository loanAccountRepository;
     private final LoanApplicationStatusWriter loanApplicationStatusWriter;
-    private final WebhookOutboxService webhookOutboxService;
+    private final LoanEventLog loanEventLog;
     private final OpsAlertEmitters opsAlertEmitters;
     private final DisbursementOutcomeAuditService disbursementOutcomeAuditService;
     private final ObjectMapper objectMapper;
@@ -49,7 +50,7 @@ public class DisbursementOutcomeApplier {
             LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
             LoanAccountRepository loanAccountRepository,
             LoanApplicationStatusWriter loanApplicationStatusWriter,
-            WebhookOutboxService webhookOutboxService,
+            LoanEventLog loanEventLog,
             OpsAlertEmitters opsAlertEmitters,
             DisbursementOutcomeAuditService disbursementOutcomeAuditService,
             ObjectMapper objectMapper
@@ -57,7 +58,7 @@ public class DisbursementOutcomeApplier {
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationStatusWriter = loanApplicationStatusWriter;
-        this.webhookOutboxService = webhookOutboxService;
+        this.loanEventLog = loanEventLog;
         this.opsAlertEmitters = opsAlertEmitters;
         this.disbursementOutcomeAuditService = disbursementOutcomeAuditService;
         this.objectMapper = objectMapper;
@@ -65,7 +66,7 @@ public class DisbursementOutcomeApplier {
 
     /**
      * Maps the normalised {@link ProviderOutcome} onto the loan-account state, the application
-     * transition (technical declines retry; business declines reject), the partner webhook and the
+     * transition (technical declines retry; business declines reject), the loan event and the
      * outcome audit, and persists the provider response on the request log.
      */
     LoanApplication apply(
@@ -108,16 +109,16 @@ public class DisbursementOutcomeApplier {
                         .build()
         );
 
-        if (resolution.webhookEventType() != null) {
-            webhookOutboxService.enqueueIfSubscribed(
-                    application.getLsp(),
-                    resolution.webhookEventType(),
-                    "LOAN_ACCOUNT",
-                    loanAccount.getId().toString(),
-                    application.getId(),
-                    LoanWebhookPayloads.disbursement(application, loanAccount, latestRequest)
-            );
-        }
+        // Every resolution is a recorded fact: there is no disbursement outcome a partner may not
+        // observe, including the reconciliation park that resolves to no terminal verdict yet.
+        loanEventLog.append(
+                application.getLsp(),
+                resolution.eventType(),
+                "LOAN_ACCOUNT",
+                loanAccount.getId().toString(),
+                application.getId(),
+                LoanEventPayloads.disbursement(application, loanAccount, latestRequest)
+        );
 
         if (resolution.businessDecline()) {
             opsAlertEmitters.emitLspBoundViolation(
@@ -158,7 +159,7 @@ public class DisbursementOutcomeApplier {
                     LoanApplicationStatusTransitioner.TransitionContext.STANDARD,
                     null,
                     "Loan disbursement completed successfully.",
-                    WebhookEventType.DISBURSEMENT_COMPLETED,
+                    LoanEventType.DISBURSEMENT_COMPLETED,
                     DisbursementOutcomeAuditOutcome.DISBURSED,
                     "DISBURSED",
                     false
@@ -171,7 +172,7 @@ public class DisbursementOutcomeApplier {
                             LoanApplicationStatusReasonCode.FAILED_VERIFICATION,
                             "Disbursement declined by provider (business decline, ActCode "
                                     + outcome.actCode() + "). " + outcome.message(),
-                            WebhookEventType.DISBURSEMENT_FAILED,
+                            LoanEventType.DISBURSEMENT_FAILED,
                             DisbursementOutcomeAuditOutcome.FAILED,
                             "FAILED",
                             true
@@ -182,7 +183,7 @@ public class DisbursementOutcomeApplier {
                             LoanApplicationStatusTransitioner.TransitionContext.STANDARD,
                             LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
                             "Loan disbursement requires retry after failed/pending-reconciliation outcome.",
-                            WebhookEventType.DISBURSEMENT_FAILED,
+                            LoanEventType.DISBURSEMENT_FAILED,
                             DisbursementOutcomeAuditOutcome.FAILED,
                             "FAILED",
                             false
@@ -193,7 +194,7 @@ public class DisbursementOutcomeApplier {
                     LoanApplicationStatusTransitioner.TransitionContext.STANDARD,
                     LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
                     "Loan disbursement requires retry after failed/pending-reconciliation outcome.",
-                    null,
+                    LoanEventType.DISBURSEMENT_PENDING_RECONCILIATION,
                     DisbursementOutcomeAuditOutcome.PENDING_RECONCILIATION,
                     "PENDING_RECONCILIATION",
                     false
@@ -242,7 +243,7 @@ public class DisbursementOutcomeApplier {
             LoanApplicationStatusTransitioner.TransitionContext transitionContext,
             LoanApplicationStatusReasonCode reasonCode,
             String note,
-            WebhookEventType webhookEventType,
+            LoanEventType eventType,
             DisbursementOutcomeAuditOutcome auditOutcome,
             String providerStatus,
             boolean businessDecline

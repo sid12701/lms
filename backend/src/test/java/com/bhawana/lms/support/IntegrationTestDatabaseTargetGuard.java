@@ -10,7 +10,7 @@ import javax.sql.DataSource;
  *
  * <p>There is deliberately no opt-in escape hatch: an environment variable that re-enables bulk
  * deletes against a developer-configured database is exactly how a seeded portfolio was destroyed
- * once already. Point integration tests at H2 or Testcontainers, never at a real database.
+ * once already. Point integration tests at Testcontainers Postgres, never at a real database.
  */
 public final class IntegrationTestDatabaseTargetGuard {
 
@@ -40,6 +40,12 @@ public final class IntegrationTestDatabaseTargetGuard {
             throw new IllegalStateException("Integration-test cleanup refused: JDBC URL is blank");
         }
         String normalized = jdbcUrl.toLowerCase();
+        if (isBlockedHostedDatabase(normalized)) {
+            throw new IllegalStateException(
+                    "Integration-test cleanup refused for hosted database host "
+                            + describeHost(normalized)
+                            + ". Integration tests must never bulk-delete a shared or production database.");
+        }
         if (normalized.startsWith("jdbc:h2:") || explicitlyEphemeral) {
             return;
         }
@@ -49,6 +55,11 @@ public final class IntegrationTestDatabaseTargetGuard {
                         + ". Use in-memory H2, or mark a Testcontainers datasource with "
                         + EPHEMERAL_DB_PROPERTY
                         + "=true. Integration tests must never bulk-delete a real database.");
+    }
+
+    private static boolean isBlockedHostedDatabase(String normalizedUrl) {
+        return normalizedUrl.contains("supabase.co")
+                || normalizedUrl.contains("postgres.database.azure.com");
     }
 
     private static String describeHost(String normalizedUrl) {

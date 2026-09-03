@@ -7,9 +7,6 @@ app:
   seed:
     synthetic-portfolio:
       enabled: false
-  webhooks:
-    delivery:
-      enabled: false
   reports:
     processing:
       enabled: false

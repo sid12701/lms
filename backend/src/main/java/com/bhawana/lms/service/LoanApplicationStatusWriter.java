@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.domain.LoanAccount;
@@ -10,18 +11,19 @@ import com.bhawana.lms.domain.LoanApplicationAuditEvent;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanApplicationStatusTransition;
-import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import java.time.Instant;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Single transactional owner for loan-application status mutations, transition rows,
- * audit events, and status-change webhooks.
+ * audit events, and status-change loan events.
  */
 @Service
 public class LoanApplicationStatusWriter {
@@ -30,23 +32,26 @@ public class LoanApplicationStatusWriter {
     private final LoanApplicationAuditEventRepository loanApplicationAuditEventRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
+    private final BorrowerActiveLoanChecker borrowerActiveLoanChecker;
     private final LoanRepaymentScheduleService loanRepaymentScheduleService;
-    private final WebhookOutboxService webhookOutboxService;
+    private final LoanEventLog loanEventLog;
 
     public LoanApplicationStatusWriter(
             LoanAccountRepository loanAccountRepository,
             LoanApplicationAuditEventRepository loanApplicationAuditEventRepository,
             LoanApplicationRepository loanApplicationRepository,
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
+            BorrowerActiveLoanChecker borrowerActiveLoanChecker,
             LoanRepaymentScheduleService loanRepaymentScheduleService,
-            WebhookOutboxService webhookOutboxService
+            LoanEventLog loanEventLog
     ) {
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationAuditEventRepository = loanApplicationAuditEventRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanApplicationStatusTransitionRepository = loanApplicationStatusTransitionRepository;
+        this.borrowerActiveLoanChecker = borrowerActiveLoanChecker;
         this.loanRepaymentScheduleService = loanRepaymentScheduleService;
-        this.webhookOutboxService = webhookOutboxService;
+        this.loanEventLog = loanEventLog;
     }
 
     @Transactional
@@ -89,13 +94,13 @@ public class LoanApplicationStatusWriter {
                 resolvedNote,
                 command.reasonCode()
         );
-        webhookOutboxService.enqueueIfSubscribed(
+        loanEventLog.append(
                 savedApplication.getLsp(),
-                WebhookEventType.LOAN_STATUS_CHANGED,
+                LoanEventType.LOAN_STATUS_CHANGED,
                 "LOAN_APPLICATION",
                 savedApplication.getId().toString(),
                 savedApplication.getId(),
-                LoanWebhookPayloads.loanStatusChanged(
+                LoanEventPayloads.loanStatusChanged(
                         savedApplication,
                         currentStatus,
                         targetStatus,
@@ -107,19 +112,37 @@ public class LoanApplicationStatusWriter {
 
     @Transactional
     public LoanAccount ensureLoanAccountForApprovedApplication(LoanApplication application) {
-        LoanAccount loanAccount = loanAccountRepository.findByLoanApplication_Id(application.getId())
-                .orElseGet(() -> loanAccountRepository.save(new LoanAccount(
-                        application,
-                        application.getBorrower(),
-                        application.getLsp(),
-                        application.getLoanProduct(),
-                        application.getLoanProductVersion(),
-                        generateAccountNumber(application),
-                        application.getRequestedAmount(),
-                        application.getTenureMonths(),
-                        LoanAccountStatus.PENDING_DISBURSEMENT,
-                        Instant.now()
-                )));
+        loanApplicationRepository.findBorrowerByApplicationIdForUpdate(application.getId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Cannot create a loan account for an application without a borrower."));
+
+        LoanAccount existingAccount = loanAccountRepository.findByLoanApplication_Id(application.getId())
+                .orElse(null);
+        if (existingAccount != null) {
+            loanRepaymentScheduleService.generateIfAbsent(existingAccount);
+            return existingAccount;
+        }
+
+        if (borrowerActiveLoanChecker.hasOpenLoanAcrossAllLsps(application.getBorrower().getId())) {
+            throw new BusinessRuleViolationException(
+                    "BORROWER_HAS_OPEN_LOAN",
+                    "Borrower already has an open loan. Approval cannot create another loan account.",
+                    Map.of("borrowerId", application.getBorrower().getId().toString())
+            );
+        }
+
+        LoanAccount loanAccount = loanAccountRepository.save(new LoanAccount(
+                application,
+                application.getBorrower(),
+                application.getLsp(),
+                application.getLoanProduct(),
+                application.getLoanProductVersion(),
+                generateAccountNumber(application),
+                application.getRequestedAmount(),
+                application.getTenureMonths(),
+                LoanAccountStatus.PENDING_DISBURSEMENT,
+                Instant.now()
+        ));
         loanRepaymentScheduleService.generateIfAbsent(loanAccount);
         return loanAccount;
     }

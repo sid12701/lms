@@ -11,7 +11,7 @@ import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
-import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,7 +35,7 @@ public class LoanRepaymentCommandService {
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanServicingSupportService loanServicingSupportService;
     private final LoanApplicationStatusWriter loanApplicationStatusWriter;
-    private final WebhookOutboxService webhookOutboxService;
+    private final LoanEventLog loanEventLog;
     private final ObjectMapper objectMapper;
     private final IdempotencyClaimService idempotencyClaimService;
     private final TransactionTemplate transactionTemplate;
@@ -46,7 +46,7 @@ public class LoanRepaymentCommandService {
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanServicingSupportService loanServicingSupportService,
             LoanApplicationStatusWriter loanApplicationStatusWriter,
-            WebhookOutboxService webhookOutboxService,
+            LoanEventLog loanEventLog,
             ObjectMapper objectMapper,
             IdempotencyClaimService idempotencyClaimService,
             PlatformTransactionManager transactionManager
@@ -55,7 +55,7 @@ public class LoanRepaymentCommandService {
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanServicingSupportService = loanServicingSupportService;
         this.loanApplicationStatusWriter = loanApplicationStatusWriter;
-        this.webhookOutboxService = webhookOutboxService;
+        this.loanEventLog = loanEventLog;
         this.objectMapper = objectMapper;
         this.idempotencyClaimService = idempotencyClaimService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -267,8 +267,8 @@ public class LoanRepaymentCommandService {
                 "Loan moved under repayment after the first posted payment."
         );
         recordPaymentAudit(applicationForUpdate, savedPaymentTransaction, installment, idempotencyKey);
-        enqueueRepaymentWebhook(applicationForUpdate, loanAccountForUpdate, savedPaymentTransaction);
-        enqueueFullyRepaidWebhookIfClosed(applicationForUpdate, loanAccountForUpdate, wasFullyRepaid);
+        appendRepaymentEvent(applicationForUpdate, loanAccountForUpdate, savedPaymentTransaction);
+        appendFullyRepaidEventIfClosed(applicationForUpdate, loanAccountForUpdate, wasFullyRepaid);
         return savedPaymentTransaction;
     }
 
@@ -360,22 +360,22 @@ public class LoanRepaymentCommandService {
         }
     }
 
-    private void enqueueRepaymentWebhook(
+    private void appendRepaymentEvent(
             LoanApplication application,
             LoanAccount loanAccount,
             LoanPaymentTransaction paymentTransaction
     ) {
-        webhookOutboxService.enqueueIfSubscribed(
+        loanEventLog.append(
                 application.getLsp(),
-                WebhookEventType.LOAN_REPAYMENT_RECORDED,
+                LoanEventType.LOAN_REPAYMENT_RECORDED,
                 "LOAN_PAYMENT_TRANSACTION",
                 paymentTransaction.getId().toString(),
                 application.getId(),
-                LoanWebhookPayloads.repayment(application, loanAccount, paymentTransaction)
+                LoanEventPayloads.repayment(application, loanAccount, paymentTransaction)
         );
     }
 
-    private void enqueueFullyRepaidWebhookIfClosed(
+    private void appendFullyRepaidEventIfClosed(
             LoanApplication application,
             LoanAccount loanAccount,
             boolean wasFullyRepaid
@@ -384,13 +384,13 @@ public class LoanRepaymentCommandService {
             return;
         }
 
-        webhookOutboxService.enqueueIfSubscribed(
+        loanEventLog.append(
                 application.getLsp(),
-                WebhookEventType.LOAN_FULLY_REPAID,
+                LoanEventType.LOAN_FULLY_REPAID,
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
                 application.getId(),
-                LoanWebhookPayloads.loanFullyRepaid(application, loanAccount)
+                LoanEventPayloads.loanFullyRepaid(application, loanAccount)
         );
     }
 

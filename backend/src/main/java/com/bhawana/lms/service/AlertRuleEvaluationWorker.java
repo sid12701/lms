@@ -1,7 +1,9 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.money.Money;
 import com.bhawana.lms.common.util.AlertContextJson;
+import com.bhawana.lms.common.util.Strings;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,9 +17,11 @@ import com.bhawana.lms.domain.OpsAlert;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.domain.RevocationSource;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.repo.AlertRuleSetQueryRepository;
 import com.bhawana.lms.repo.AlertRuleSetQueryRepository.DelinquencyEvaluationRow;
+import com.bhawana.lms.repo.AlertRuleSetQueryRepository.OldestOpenTransaction;
 import com.bhawana.lms.repo.AlertRuleSetQueryRepository.StaleIntakeCandidate;
 import com.bhawana.lms.repo.AlertRuleSetQueryRepository.StuckDisbursementCandidate;
 import com.bhawana.lms.repo.AlertRuleRepository;
@@ -37,6 +41,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +55,11 @@ public class AlertRuleEvaluationWorker {
 
     private static final Logger log = LoggerFactory.getLogger(AlertRuleEvaluationWorker.class);
     private static final String AUTO_LOCKOUT_ACTOR = "SYSTEM_AUTO_LOCKOUT";
+    // Stable, not per-evaluation: the condition is database-wide with no aggregate to subject, so
+    // createAlertIfAbsent dedupes on type + correlationId. CorrelationIdHolder.get() varies per
+    // evaluation and would defeat that dedupe, filing a fresh alert every scheduler run for as
+    // long as the transaction stays open.
+    private static final String OLDEST_TRANSACTION_AGE_CORRELATION_ID = "oldest-transaction-age";
 
     private final AlertRuleRepository alertRuleRepository;
     private final AlertRuleSetQueryRepository alertRuleSetQueryRepository;
@@ -62,6 +72,7 @@ public class AlertRuleEvaluationWorker {
     private final SessionRevocationService sessionRevocationService;
     private final OpsAlertService opsAlertService;
     private final LoanDelinquencyStateRepository loanDelinquencyStateRepository;
+    private final LoanEventLog loanEventLog;
     private final BusinessCalendar businessCalendar;
     private final AlertRuleProperties properties;
     private final Clock clock;
@@ -80,6 +91,7 @@ public class AlertRuleEvaluationWorker {
             SessionRevocationService sessionRevocationService,
             OpsAlertService opsAlertService,
             LoanDelinquencyStateRepository loanDelinquencyStateRepository,
+            LoanEventLog loanEventLog,
             BusinessCalendar businessCalendar,
             AlertRuleProperties properties,
             Clock clock,
@@ -97,6 +109,7 @@ public class AlertRuleEvaluationWorker {
         this.sessionRevocationService = sessionRevocationService;
         this.opsAlertService = opsAlertService;
         this.loanDelinquencyStateRepository = loanDelinquencyStateRepository;
+        this.loanEventLog = loanEventLog;
         this.businessCalendar = businessCalendar;
         this.properties = properties;
         this.clock = clock;
@@ -116,12 +129,14 @@ public class AlertRuleEvaluationWorker {
         emitted += evaluateLspAutoRejectSpikes(evaluatedAt);
         emitted += evaluateAuthBruteForce(evaluatedAt);
         emitted += evaluateAuthBruteForceDistributed(evaluatedAt);
+        emitted += evaluateOldestTransactionAge(evaluatedAt);
         markRuleEvaluated("STALE_INTAKE", evaluatedAt);
         markRuleEvaluated("STUCK_DISBURSEMENT", evaluatedAt);
         markRuleEvaluated("DPD_BUCKET_TRANSITION", evaluatedAt);
         markRuleEvaluated("LSP_AUTO_REJECT_SPIKE", evaluatedAt);
         markRuleEvaluated("AUTH_BRUTE_FORCE", evaluatedAt);
         markRuleEvaluated("AUTH_BRUTE_FORCE_DISTRIBUTED", evaluatedAt);
+        markRuleEvaluated("OLDEST_TRANSACTION_AGE", evaluatedAt);
         return new EvaluationSummary(emitted, evaluatedAt);
     }
 
@@ -152,7 +167,9 @@ public class AlertRuleEvaluationWorker {
                             + candidate.externalLoanId()
                             + " has been INITIALIZED for more than "
                             + properties.getStaleIntakeHours()
-                            + " hours with incomplete required documents.",
+                            + " "
+                            + Strings.pluralize(properties.getStaleIntakeHours(), "hour")
+                            + " with incomplete required documents.",
                     "LOAN_APPLICATION",
                     candidate.applicationId(),
                     CorrelationIdHolder.get(),
@@ -182,8 +199,8 @@ public class AlertRuleEvaluationWorker {
                     "Disbursement retry stuck",
                     "Application "
                             + candidate.externalLoanId()
-                            + " has been in DISBURSEMENT_RETRY since "
-                            + candidate.lastRetryAt()
+                            + " has been retrying for "
+                            + describeStuckDuration(candidate.lastRetryAt(), evaluatedAt)
                             + ". Payout adapter may need ops intervention.",
                     "LOAN_APPLICATION",
                     candidate.applicationId(),
@@ -195,6 +212,50 @@ public class AlertRuleEvaluationWorker {
             }
         }
         return emitted;
+    }
+
+    /**
+     * How long a payout has been retrying, as operator-facing copy.
+     *
+     * Deliberately an elapsed duration rather than the instant itself. The
+     * message is assembled server-side, so any formatted absolute timestamp
+     * would bake in a timezone the operator reading it may not be in — and the
+     * raw {@link Instant#toString()} it replaced put an ISO-8601 value with
+     * microsecond precision in front of a human. "How long has this been
+     * stuck" is also the question the rule exists to answer.
+     */
+    // Static and package-private so it can be unit-tested without Testcontainers; the rule itself
+    // only fires against a DISBURSEMENT_RETRY row, which needs a database to set up.
+    static String describeStuckDuration(Instant lastRetryAt, Instant evaluatedAt) {
+        if (lastRetryAt == null) {
+            return "some time";
+        }
+        long hours = Duration.between(lastRetryAt, evaluatedAt).toHours();
+        if (hours < 1) {
+            long minutes = Math.max(1, Duration.between(lastRetryAt, evaluatedAt).toMinutes());
+            return minutes + " " + Strings.pluralize(minutes, "minute");
+        }
+        return hours + " " + Strings.pluralize(hours, "hour");
+    }
+
+    /**
+     * How long a transaction has been open, as operator-facing copy.
+     *
+     * The base unit is minutes rather than hours: the operational tolerance for a stalled partner
+     * feed is minutes, not hours, and {@link AlertRuleProperties#getOldestTransactionAgeSeconds()}
+     * is configured in seconds for the same reason (it is also the only unit a test can cross in
+     * real time). Degrades to seconds under a minute so a threshold crossed a moment ago does not
+     * read as "0 minutes".
+     */
+    // Static and package-private so it can be unit-tested without Testcontainers; the rule itself
+    // only fires against real pg_stat_activity rows, which need a database to produce.
+    static String describeTransactionAge(long ageSeconds) {
+        if (ageSeconds < 60) {
+            long seconds = Math.max(1, ageSeconds);
+            return seconds + " " + Strings.pluralize(seconds, "second");
+        }
+        long minutes = ageSeconds / 60;
+        return minutes + " " + Strings.pluralize(minutes, "minute");
     }
 
     private int evaluateDpdBucketTransitions(Instant evaluatedAt) {
@@ -221,15 +282,21 @@ public class AlertRuleEvaluationWorker {
                 OpsAlert created = opsAlertService.createAlertIfAbsent(
                         OpsAlertType.DPD_BUCKET_TRANSITION,
                         severityForBucket(currentBucket),
+                        // Title keeps the raw bucket code ("Delinquency bucket DPD_1_30") — the
+                        // frontend's humanizeAlertTitle() parses this exact shape into a display
+                        // label, so it must stay a stable, machine-parseable code, not prose.
                         "Delinquency bucket " + bucketLabel,
+                        // The bucket is deliberately left out of the message: it's already carried
+                        // (and humanized) via the title above, so repeating the raw enum name here
+                        // would just be the same vocabulary spelled two different ways in one card.
                         "Loan "
                                 + row.externalLoanId()
                                 + " is "
                                 + currentMaxDaysPastDue
-                                + " days past due (bucket "
-                                + bucketLabel
-                                + ", overdue ₹"
-                                + row.overdueAmount()
+                                + " "
+                                + Strings.pluralize(currentMaxDaysPastDue, "day")
+                                + " past due (overdue ₹"
+                                + Money.formatIndianGrouping(row.overdueAmount())
                                 + ").",
                         "LOAN_APPLICATION",
                         row.applicationId(),
@@ -259,6 +326,35 @@ public class AlertRuleEvaluationWorker {
                         : loanDelinquencyStateRepository.findById(row.existingStateId()).orElseThrow();
                 state.refresh(currentBucket, currentMaxDaysPastDue, evaluatedAt);
                 loanDelinquencyStateRepository.save(state);
+
+                // Fire on bucket change only, not on every days-past-due tick a re-evaluation
+                // re-confirms: shouldPersistDelinquencyState() being true does not by itself mean the
+                // bucket moved (the max-days-past-due count alone can advance within the same bucket),
+                // so this is a narrower condition than the block it lives in. It is never a wider one:
+                // whenever the bucket changes, the state write above always runs too, which is what
+                // keeps this exactly-once per transition rather than re-emitted on later runs.
+                if (previousBucket != currentBucket) {
+                    Lsp lsp = lspRepository.findById(row.lspId()).orElseThrow(() -> new IllegalStateException(
+                            "Loan application " + row.applicationId() + " references unknown LSP " + row.lspId()
+                    ));
+                    loanEventLog.append(
+                            lsp,
+                            LoanEventType.LOAN_DELINQUENCY_BUCKET_CHANGED,
+                            "LOAN_APPLICATION",
+                            row.applicationId().toString(),
+                            row.applicationId(),
+                            LoanEventPayloads.delinquencyBucketChanged(
+                                    row.applicationId(),
+                                    row.externalLoanId(),
+                                    previousBucket,
+                                    currentBucket,
+                                    currentMaxDaysPastDue,
+                                    row.previousMaxDaysPastDue(),
+                                    row.overdueAmount(),
+                                    evaluatedAt
+                            )
+                    );
+                }
             }
         }
         return emitted;
@@ -315,11 +411,15 @@ public class AlertRuleEvaluationWorker {
                             + user.getUsername()
                             + " was locked after "
                             + candidate.getFailureCount()
-                            + " failed logins from IP "
+                            + " failed "
+                            + Strings.pluralize(candidate.getFailureCount(), "login")
+                            + " from IP "
                             + candidate.getActorIp()
                             + " within "
                             + properties.getAuthBruteForceWindowMinutes()
-                            + " minutes.",
+                            + " "
+                            + Strings.pluralize(properties.getAuthBruteForceWindowMinutes(), "minute")
+                            + ".",
                     "APP_USER",
                     user.getId(),
                     "auth-brute-force:" + user.getId(),
@@ -365,11 +465,17 @@ public class AlertRuleEvaluationWorker {
                             + user.getUsername()
                             + " had "
                             + candidate.getFailureCount()
-                            + " failed logins from "
+                            + " failed "
+                            + Strings.pluralize(candidate.getFailureCount(), "login")
+                            + " from "
                             + candidate.getDistinctIpCount()
-                            + " distinct IPs within "
+                            + " distinct "
+                            + Strings.pluralize(candidate.getDistinctIpCount(), "IP")
+                            + " within "
                             + properties.getAuthBruteForceDistributedWindowHours()
-                            + " hours.",
+                            + " "
+                            + Strings.pluralize(properties.getAuthBruteForceDistributedWindowHours(), "hour")
+                            + ".",
                     "APP_USER",
                     user.getId(),
                     "auth-brute-force-distributed:" + user.getId(),
@@ -420,9 +526,13 @@ public class AlertRuleEvaluationWorker {
                             + rejectRatePct
                             + "% of "
                             + intakes
-                            + " intakes in the last "
+                            + " "
+                            + Strings.pluralize(intakes, "intake")
+                            + " in the last "
                             + properties.getLspRejectWindowDays()
-                            + " days (threshold "
+                            + " "
+                            + Strings.pluralize(properties.getLspRejectWindowDays(), "day")
+                            + " (threshold "
                             + properties.getLspRejectRatePct()
                             + "%).",
                     "SYSTEM",
@@ -440,6 +550,64 @@ public class AlertRuleEvaluationWorker {
             }
         }
         return emitted;
+    }
+
+    private int evaluateOldestTransactionAge(Instant evaluatedAt) {
+        if (!isRuleEnabled("OLDEST_TRANSACTION_AGE")) {
+            return 0;
+        }
+        if (!alertRuleSetQueryRepository.canReadAllBackendStats()) {
+            // Not a second ops alert: that would be a new alert type and scope creep. A WARN is
+            // greppable and this is the one log line that says why the rule can go permanently
+            // silent without ever looking broken.
+            log.warn(
+                    "oldest_transaction_age_alert_blind missing_grant=pg_read_all_stats "
+                            + "the admin DB role cannot see other sessions' xact_start, "
+                            + "so this alert can never fire until it is granted"
+            );
+            return 0;
+        }
+        Optional<OldestOpenTransaction> candidate = alertRuleSetQueryRepository.findOldestOpenTransaction();
+        if (candidate.isEmpty()) {
+            return 0;
+        }
+        OldestOpenTransaction transaction = candidate.get();
+        long thresholdSeconds = properties.getOldestTransactionAgeSeconds();
+        if (transaction.ageSeconds() < thresholdSeconds) {
+            return 0;
+        }
+        OpsAlert created = opsAlertService.createAlertIfAbsent(
+                OpsAlertType.OLDEST_TRANSACTION_AGE,
+                OpsAlertSeverity.HIGH,
+                "Long-running database transaction",
+                "A database transaction has been open for "
+                        + describeTransactionAge(transaction.ageSeconds())
+                        + " (pid "
+                        + transaction.pid()
+                        + ", state \""
+                        + transaction.state()
+                        + "\", application \""
+                        + transaction.applicationName()
+                        + "\", user \""
+                        + transaction.username()
+                        + "\"). The loan event feed only serves events from transactions that "
+                        + "have completed, so no new events reach any LSP until this one ends. "
+                        + "Threshold is "
+                        + describeTransactionAge(thresholdSeconds)
+                        + ".",
+                "SYSTEM",
+                null,
+                OLDEST_TRANSACTION_AGE_CORRELATION_ID,
+                alertContext(Map.of(
+                        "pid", transaction.pid(),
+                        "ageSeconds", transaction.ageSeconds(),
+                        "thresholdSeconds", thresholdSeconds,
+                        "state", transaction.state(),
+                        "applicationName", transaction.applicationName(),
+                        "username", transaction.username()
+                ))
+        );
+        return created != null ? 1 : 0;
     }
 
     private boolean isRequiredDocumentChecklistComplete(UUID applicationId) {

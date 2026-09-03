@@ -1,7 +1,5 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.tenant.TenantAccessContext;
-import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.springframework.stereotype.Service;
@@ -30,18 +28,8 @@ public class LspApiIdempotencyService {
                 normalizedKey,
                 requestFingerprintSource,
                 responseType,
-                () -> runUnderAdminScope(action)
+                action
         );
-    }
-
-    private <T> T runUnderAdminScope(Supplier<T> action) {
-        TenantAccessContext previous = TenantDataAccessContextHolder.snapshot();
-        TenantDataAccessContextHolder.useAdmin();
-        try {
-            return action.get();
-        } finally {
-            TenantDataAccessContextHolder.restore(previous);
-        }
     }
 
     public String requireUuidV4(String idempotencyKey) {

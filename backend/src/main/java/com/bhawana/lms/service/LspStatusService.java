@@ -5,13 +5,16 @@ import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.common.api.error.LspStatusUpdateException;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.ApiClient;
+import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspAuditEvent;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.LspStatusChangeReason;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertType;
+import com.bhawana.lms.domain.RevocationSource;
 import com.bhawana.lms.repo.ApiClientRepository;
+import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.security.AuthPrincipalCache;
@@ -27,25 +30,31 @@ public class LspStatusService {
 
     private final LspRepository lspRepository;
     private final ApiClientRepository apiClientRepository;
+    private final AppUserRepository appUserRepository;
     private final LspAuditEventRepository lspAuditEventRepository;
     private final OpsAlertService opsAlertService;
     private final ObjectMapper objectMapper;
     private final AuthPrincipalCache authPrincipalCache;
+    private final SessionRevocationService sessionRevocationService;
 
     public LspStatusService(
             LspRepository lspRepository,
             ApiClientRepository apiClientRepository,
+            AppUserRepository appUserRepository,
             LspAuditEventRepository lspAuditEventRepository,
             OpsAlertService opsAlertService,
             ObjectMapper objectMapper,
-            AuthPrincipalCache authPrincipalCache
+            AuthPrincipalCache authPrincipalCache,
+            SessionRevocationService sessionRevocationService
     ) {
         this.lspRepository = lspRepository;
         this.apiClientRepository = apiClientRepository;
+        this.appUserRepository = appUserRepository;
         this.lspAuditEventRepository = lspAuditEventRepository;
         this.opsAlertService = opsAlertService;
         this.objectMapper = objectMapper;
         this.authPrincipalCache = authPrincipalCache;
+        this.sessionRevocationService = sessionRevocationService;
     }
 
     @Transactional
@@ -100,6 +109,19 @@ public class LspStatusService {
             client.revokeAllSessions();
         }
         apiClientRepository.saveAll(clients);
+
+        List<AppUser> users = appUserRepository.findByLsp_IdOrderByUsernameAsc(lsp.getId());
+        for (AppUser user : users) {
+            sessionRevocationService.revokeAllSessions(
+                    user,
+                    actorUsername,
+                    "LSP disabled",
+                    null,
+                    CorrelationIdHolder.get(),
+                    RevocationSource.LSP_DISABLED
+            );
+        }
+
         Lsp saved = lspRepository.save(lsp);
 
         // Kill chain (#63): bumping the LSP/client token versions is only effective if the cached
@@ -109,8 +131,8 @@ public class LspStatusService {
             authPrincipalCache.evictApiClient(client.getClientId());
         }
 
-        writeAudit(saved, actorUsername, "LSP_DISABLED", reason, note, clients.size());
-        emitDisabledAlert(saved, reason, note, clients.size());
+        writeAudit(saved, actorUsername, "LSP_DISABLED", reason, note, clients.size(), users.size());
+        emitDisabledAlert(saved, reason, note, clients.size(), users.size());
         return saved;
     }
 
@@ -118,7 +140,7 @@ public class LspStatusService {
         lsp.updateStatus(LspStatus.ACTIVE);
         Lsp saved = lspRepository.save(lsp);
 
-        writeAudit(saved, actorUsername, "LSP_REACTIVATED", reason, note, 0);
+        writeAudit(saved, actorUsername, "LSP_REACTIVATED", reason, note, 0, 0);
         return saved;
     }
 
@@ -128,12 +150,14 @@ public class LspStatusService {
             String action,
             LspStatusChangeReason reason,
             String note,
-            int cascadedClientCount
+            int cascadedClientCount,
+            int cascadedUserCount
     ) {
         ObjectNode details = objectMapper.createObjectNode();
         details.put("lspCode", lsp.getCode());
         details.put("status", lsp.getStatus().name());
         details.put("tokenVersion", lsp.getTokenVersion());
+        details.put("cascadedUserCount", cascadedUserCount);
 
         lspAuditEventRepository.save(new LspAuditEvent(
                 lsp,
@@ -147,13 +171,21 @@ public class LspStatusService {
         ));
     }
 
-    private void emitDisabledAlert(Lsp lsp, LspStatusChangeReason reason, String note, int cascadedClientCount) {
+    private void emitDisabledAlert(
+            Lsp lsp,
+            LspStatusChangeReason reason,
+            String note,
+            int cascadedClientCount,
+            int cascadedUserCount
+    ) {
         String contextJson = "{\"lspCode\":\""
                 + lsp.getCode()
                 + "\",\"reason\":\""
                 + reason.name()
                 + "\",\"cascadedClientCount\":"
                 + cascadedClientCount
+                + ",\"cascadedUserCount\":"
+                + cascadedUserCount
                 + "}";
         opsAlertService.createAlert(
                 OpsAlertType.LSP_DISABLED,

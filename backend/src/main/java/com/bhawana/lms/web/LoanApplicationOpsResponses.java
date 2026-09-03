@@ -64,6 +64,7 @@ public final class LoanApplicationOpsResponses {
                 application.getSourceChannel(),
                 application.getRequestedAmount(),
                 application.getRequestedTenureMonths(),
+                application.getLoanProductVersion().getInterestRate(),
                 application.getStatus().name(),
                 application.getCreatedAt()
         );
@@ -111,6 +112,7 @@ public final class LoanApplicationOpsResponses {
                 application.getSourceChannel(),
                 application.getRequestedAmount(),
                 application.getRequestedTenureMonths(),
+                application.getLoanProductVersion().getInterestRate(),
                 application.getStatus().name(),
                 application.getInvalidReasonCode() == null ? null : application.getInvalidReasonCode().name(),
                 application.getInvalidReasonText(),

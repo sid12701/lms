@@ -175,14 +175,20 @@ public class AppUser {
 
     public void updateManagedProfile(
             String email,
-            UserStatus status,
             Lsp lsp,
             Set<AppRole> roles
     ) {
         this.email = email;
-        this.status = status;
         this.lsp = lsp;
         this.roles = new LinkedHashSet<>(roles);
+    }
+
+    public void changeStatus(UserStatus newStatus) {
+        if (this.status == newStatus) {
+            return;
+        }
+        this.status = newStatus;
+        this.tokenVersion++;
     }
 
     public void revokeAllSessions() {

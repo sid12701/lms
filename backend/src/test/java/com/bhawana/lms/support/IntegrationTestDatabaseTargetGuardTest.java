@@ -25,6 +25,17 @@ class IntegrationTestDatabaseTargetGuardTest {
     }
 
     @Test
+    void rejectsAzureFlexibleServerUrl() throws SQLException {
+        DataSource dataSource = dataSourceWithUrl(
+                "jdbc:postgresql://my-server.postgres.database.azure.com:5432/lms");
+
+        assertThatThrownBy(() -> IntegrationTestDatabaseTargetGuard.assertEphemeralTarget(dataSource))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("postgres.database.azure.com")
+                .hasMessageContaining("refused");
+    }
+
+    @Test
     void allowsInMemoryH2() throws SQLException {
         DataSource dataSource = dataSourceWithUrl("jdbc:h2:mem:lms;MODE=PostgreSQL");
 

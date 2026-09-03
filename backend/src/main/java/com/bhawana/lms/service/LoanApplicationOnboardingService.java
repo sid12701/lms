@@ -17,14 +17,14 @@ import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.LspStatus;
-import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.LoanApplicationIntakeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LoanProductVersionRepository;
 import com.bhawana.lms.repo.LspRepository;
-import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
+import com.bhawana.lms.tenant.ScopePreservingTransactionExecutor;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.LinkedHashMap;
@@ -46,8 +46,8 @@ public class LoanApplicationOnboardingService {
     private final LoanProductLspMappingRepository loanProductLspMappingRepository;
     private final BorrowerOnboardingService borrowerOnboardingService;
     private final LoanApplicationDocumentChecklistService documentChecklistService;
-    private final WebhookOutboxService webhookOutboxService;
-    private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
+    private final LoanEventLog loanEventLog;
+    private final ScopePreservingTransactionExecutor scopePreservingTransactionExecutor;
     private final JsonPayloadSerializer jsonPayloadSerializer;
 
     public LoanApplicationOnboardingService(
@@ -59,8 +59,8 @@ public class LoanApplicationOnboardingService {
             LoanProductLspMappingRepository loanProductLspMappingRepository,
             BorrowerOnboardingService borrowerOnboardingService,
             LoanApplicationDocumentChecklistService documentChecklistService,
-            WebhookOutboxService webhookOutboxService,
-            AdminScopedTransactionExecutor adminScopedTransactionExecutor,
+            LoanEventLog loanEventLog,
+            ScopePreservingTransactionExecutor scopePreservingTransactionExecutor,
             JsonPayloadSerializer jsonPayloadSerializer
     ) {
         this.loanApplicationIntakeAuditRepository = loanApplicationIntakeAuditRepository;
@@ -71,8 +71,8 @@ public class LoanApplicationOnboardingService {
         this.loanProductLspMappingRepository = loanProductLspMappingRepository;
         this.borrowerOnboardingService = borrowerOnboardingService;
         this.documentChecklistService = documentChecklistService;
-        this.webhookOutboxService = webhookOutboxService;
-        this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
+        this.loanEventLog = loanEventLog;
+        this.scopePreservingTransactionExecutor = scopePreservingTransactionExecutor;
         this.jsonPayloadSerializer = jsonPayloadSerializer;
     }
 
@@ -91,7 +91,7 @@ public class LoanApplicationOnboardingService {
         DataIntegrityViolationException lastRace = null;
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
-                return adminScopedTransactionExecutor.call(
+                return scopePreservingTransactionExecutor.call(
                         () -> doCreateApplication(actorUsername, command, enforcedLspId));
             } catch (DataIntegrityViolationException borrowerRace) {
                 lastRace = borrowerRace;
@@ -228,13 +228,13 @@ public class LoanApplicationOnboardingService {
                 serializePayload(savedApplication)
         ));
         documentChecklistService.seedDocumentChecklist(savedApplication, actorUsername);
-        webhookOutboxService.enqueueIfSubscribed(
+        loanEventLog.append(
                 savedApplication.getLsp(),
-                WebhookEventType.LOAN_CREATED,
+                LoanEventType.LOAN_CREATED,
                 "LOAN_APPLICATION",
                 savedApplication.getId().toString(),
                 savedApplication.getId(),
-                LoanWebhookPayloads.loanCreated(savedApplication)
+                LoanEventPayloads.loanCreated(savedApplication)
         );
         return savedApplication;
     }

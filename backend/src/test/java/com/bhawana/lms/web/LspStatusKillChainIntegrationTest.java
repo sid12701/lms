@@ -332,6 +332,57 @@ class LspStatusKillChainIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void disablingLspKillsLspUiUserAccessRefreshAndPasswordLogin() throws Exception {
+        String lspId = createLsp("ACTIVE");
+        createLspUiUser(lspId, "lsp.ui.user", "lsp.ui.user@example.com", "LspUiPassword123!");
+        LoginArtifacts uiSession = login("lsp.ui.user@example.com", "LspUiPassword123!");
+
+        mockMvc.perform(get("/api/v1/internal/system/context")
+                        .header("Authorization", "Bearer " + uiSession.accessToken()))
+                .andExpect(status().isOk());
+
+        disableLsp(lspId, "SECURITY_INCIDENT", "Kill UI user sessions.");
+
+        mockMvc.perform(get("/api/v1/internal/system/context")
+                        .header("Authorization", "Bearer " + uiSession.accessToken()))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/auth/refresh").cookie(uiSession.refreshCookie()))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.LoginRequest(
+                                "lsp.ui.user@example.com",
+                                "LspUiPassword123!"
+                        ))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("LSP_INACTIVE"));
+
+        mockMvc.perform(get("/api/v1/internal/ops/auth-audit")
+                        .with(systemAdmin())
+                        .param("username", "lsp.ui.user")
+                        .param("eventType", "LOGIN_FAILED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].failureReason").value("LSP_INACTIVE"));
+    }
+
+    @Test
+    void disableRecordsCascadedUserCountBesideClientCount() throws Exception {
+        String lspId = createLsp("ACTIVE");
+        createApiClient(lspId, "Counted client");
+        createLspUiUser(lspId, "lsp.count.user", "lsp.count.user@example.com", "LspUiPassword123!");
+
+        disableLsp(lspId, "COMPLIANCE", "Count UI users.");
+
+        mockMvc.perform(get("/api/v1/internal/admin/lsps/{lspId}/audit-events", lspId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].cascadedClientCount").value(1))
+                .andExpect(jsonPath("$[0].detailsJson").value(org.hamcrest.Matchers.containsString("\"cascadedUserCount\":1")));
+    }
+
     private void disableLsp(String lspId, String reason, String note) throws Exception {
         mockMvc.perform(put("/api/v1/internal/admin/lsps/{lspId}/status", lspId)
                         .with(systemAdmin())
@@ -382,6 +433,33 @@ class LspStatusKillChainIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private void createLspUiUser(String lspId, String username, String email, String password) throws Exception {
+        mockMvc.perform(post("/api/v1/internal/admin/users")
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "username", username,
+                                "email", email,
+                                "password", password,
+                                "status", "ACTIVE",
+                                "lspId", lspId,
+                                "roles", List.of("LSP_UI_READ")
+                        ))))
+                .andExpect(status().isOk());
+    }
+
+    private LoginArtifacts login(String email, String password) throws Exception {
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new AuthApiResponses.LoginRequest(email, password))))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode tokenResponse = objectMapper.readTree(loginResult.getResponse().getContentAsString());
+        Cookie refreshCookie = loginResult.getResponse().getCookie("lms-refresh");
+        org.junit.jupiter.api.Assertions.assertNotNull(refreshCookie);
+        return new LoginArtifacts(tokenResponse.get("accessToken").asText(), refreshCookie);
     }
 
     private String issueClientCredentialsToken(String clientId, String clientSecret) throws Exception {
@@ -442,5 +520,8 @@ class LspStatusKillChainIntegrationTest {
     }
 
     private record ProductFixture(String id) {
+    }
+
+    private record LoginArtifacts(String accessToken, Cookie refreshCookie) {
     }
 }

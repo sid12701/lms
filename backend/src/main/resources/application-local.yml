@@ -95,3 +95,4 @@ app:
     tenant:
       username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
       password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
+      connection-strategy: ${APP_TENANT_CONNECTION_STRATEGY:DIRECT_LOGIN}

@@ -1,5 +1,6 @@
 package com.bhawana.lms.repo;
 
+import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import java.util.Collection;
@@ -22,6 +23,21 @@ public interface LoanApplicationRepository extends JpaRepository<LoanApplication
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select application from LoanApplication application where application.id = :id")
     Optional<LoanApplication> findByIdForUpdate(@Param("id") UUID id);
+
+    /**
+     * Serializes approval decisions for every application belonging to the same borrower.
+     *
+     * <p>The lock must be acquired before evaluating the cross-LSP one-open-loan rule and
+     * held through loan-account creation. Selecting the borrower (rather than the application)
+     * gives concurrent applications for the same borrower one shared database lock.</p>
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select application.borrower
+            from LoanApplication application
+            where application.id = :applicationId
+            """)
+    Optional<Borrower> findBorrowerByApplicationIdForUpdate(@Param("applicationId") UUID applicationId);
 
     boolean existsByLsp_IdAndExternalLoanIdIgnoreCase(UUID lspId, String externalLoanId);
 

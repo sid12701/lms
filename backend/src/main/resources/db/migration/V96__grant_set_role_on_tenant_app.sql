@@ -1,6 +1,7 @@
 -- The tenant connection pool cannot always log in directly as ${tenant_app_role}
--- (e.g. the Supabase pooler only authenticates project-scoped users). In that
--- case it connects as the admin login and runs SET ROLE ${tenant_app_role}.
+-- (ASSUME_ROLE strategy: e.g. PgBouncer authenticates only project-scoped users).
+-- In that case it connects as the admin login and runs SET LOCAL ROLE ${tenant_app_role}
+-- inside each transaction.
 --
 -- On PostgreSQL 16+ a non-superuser that creates a role receives ADMIN on it
 -- but not the SET option, so SET ROLE fails with "permission denied". The

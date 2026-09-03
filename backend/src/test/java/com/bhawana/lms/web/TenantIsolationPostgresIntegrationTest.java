@@ -45,6 +45,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -161,6 +162,21 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
 
     @BeforeEach
     void setUp() {
+        deleteCommittedRows();
+    }
+
+    /**
+     * This class commits its fixtures, so it must also clean up after its last test: later
+     * {@code @DataJpaTest} classes count rows and would otherwise see this class's leftovers.
+     */
+    @AfterEach
+    void tearDown() {
+        // The base class clears tenant context on its own @AfterEach, so re-enter admin scope here.
+        TenantDataAccessContextHolder.runAsAdmin(this::deleteCommittedRows);
+    }
+
+    private void deleteCommittedRows() {
+        jdbcTemplate.execute("delete from report_access_audit");
         jdbcTemplate.execute("delete from report_request");
         disbursementOutcomeAuditRepository.deleteAllInBatch();
         loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
@@ -178,6 +194,7 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
         loanApplicationPiiRevealAuditRepository.deleteAllInBatch();
         lspApiIdempotencyRecordRepository.deleteAllInBatch();
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
+        jdbcTemplate.execute("TRUNCATE TABLE loan_event");
         loanApplicationRepository.deleteAllInBatch();
         borrowerLspRelationshipRepository.deleteAllInBatch();
         borrowerRepository.deleteAllInBatch();
@@ -382,6 +399,59 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
             return result.getResponse().getStatus();
         } catch (Exception exception) {
             throw new IllegalStateException("Parallel loan create failed.", exception);
+        }
+    }
+
+    @Test
+    void lspCannotReadAnotherLspsApplicationUnderRls() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        LspFixture north = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        ProductFixture northProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+        mapProductToLsp(northProduct.id(), north.id());
+
+        JsonNode apexClient = createApiClient(apex.id(), "Apex Integration");
+        JsonNode northClient = createApiClient(north.id(), "North Integration");
+        String apexAccessToken = issueClientCredentialsToken(
+                apexClient.get("clientId").asText(),
+                apexClient.get("clientSecret").asText()
+        );
+        String northAccessToken = issueClientCredentialsToken(
+                northClient.get("clientId").asText(),
+                northClient.get("clientSecret").asText()
+        );
+
+        JsonNode apexApplication = createExternalApplication(
+                apexAccessToken,
+                apex.id(),
+                apexProduct.id(),
+                "APEX-FORGE-001",
+                "ABCDE1234F"
+        );
+        UUID apexApplicationId = UUID.fromString(apexApplication.get("id").asText());
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/v1/lsp/loan-applications/{applicationId}", apexApplicationId)
+                        .header("Authorization", "Bearer " + northAccessToken))
+                .andExpect(status().isNotFound());
+
+        assertEquals(0, queryCountAsTenant(UUID.fromString(north.id()), "loan_application", apexApplicationId));
+        assertEquals(1, queryCountAsTenant(UUID.fromString(apex.id()), "loan_application", apexApplicationId));
+    }
+
+    private int queryCountAsTenant(UUID lspId, String tableName, UUID rowId) {
+        TenantDataAccessContextHolder.useTenant(lspId);
+        try {
+            return transactionTemplate().execute(status ->
+                    jdbcTemplate.queryForObject(
+                            "select count(*) from " + tableName + " where id = ?",
+                            Integer.class,
+                            rowId
+                    )
+            );
+        } finally {
+            TenantDataAccessContextHolder.clear();
         }
     }
 

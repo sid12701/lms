@@ -38,7 +38,6 @@ import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanPaymentTransactionRequ
 import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanPaymentTransactionResponse;
 import com.bhawana.lms.web.LoanApplicationOpsApiTypes.LoanRepaymentScheduleInstallmentResponse;
 import com.bhawana.lms.web.LoanApplicationOpsApiTypes.ManualStatusUpdateRequest;
-import com.bhawana.lms.web.LoanApplicationOpsApiTypes.WebhookEventDeliveryResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -241,13 +240,6 @@ public class LoanApplicationOpsController {
     public List<LoanPaymentTransactionResponse> listPaymentTransactions(@PathVariable UUID applicationId) {
         return loanApplicationServicingReadService.listPaymentTransactions(applicationId).stream()
                 .map(LoanApplicationOpsResponses::toPaymentTransactionResponse)
-                .toList();
-    }
-
-    @GetMapping("/{applicationId}/webhook-events")
-    public List<WebhookEventDeliveryResponse> listWebhookEvents(@PathVariable UUID applicationId) {
-        return loanApplicationServicingReadService.listWebhookEventsForApplication(applicationId).stream()
-                .map(WebhookEventDeliveryResponse::from)
                 .toList();
     }
 

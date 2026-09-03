@@ -3,6 +3,7 @@ package com.bhawana.lms.web;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -136,7 +137,7 @@ class HomeDashboardControllerTest {
                 .andExpect(jsonPath("$.lspBreakdown[1].bucketBreakdown[0].outstandingAmount", closeTo(49635.79, 0.01)))
                 .andExpect(jsonPath("$.applicationsAwaitingApproval").value(1))
                 .andExpect(jsonPath("$.applicationsInDisbursement").value(0))
-                .andExpect(jsonPath("$.avgApprovalTatHours").isNumber())
+                .andExpect(jsonPath("$.avgApprovalTatHours").doesNotExist())
                 .andExpect(jsonPath("$.applicationsByStatus[?(@.status == 'AWAITING_APPROVAL')].count").value(1))
                 .andExpect(jsonPath("$.applicationsByStatus[?(@.status == 'DISBURSED')].count").value(2))
                 .andExpect(jsonPath("$.dpdBuckets[?(@.bucket == 'DPD_90_PLUS')].count").value(1))
@@ -149,10 +150,64 @@ class HomeDashboardControllerTest {
     }
 
     @Test
+    void openAlertSummariesCarryTheAlertMessageForTriage() throws Exception {
+        UUID firstSubject = UUID.randomUUID();
+        UUID secondSubject = UUID.randomUUID();
+        opsAlertRepository.save(delinquencyAlert(
+                firstSubject,
+                "Loan APEX-DPD-001 is 12 days past due (overdue ₹4,231.00)."
+        ));
+        opsAlertRepository.save(delinquencyAlert(
+                secondSubject,
+                "Loan APEX-DPD-002 is 27 days past due (overdue ₹18,900.50)."
+        ));
+
+        // Both alerts share a title and severity, so the message is the only thing that tells
+        // them apart on the home card.
+        mockMvc.perform(get("/api/v1/internal/home/overview")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.openAlertSummaries[?(@.subjectId == '" + firstSubject + "')].message")
+                        .value("Loan APEX-DPD-001 is 12 days past due (overdue ₹4,231.00)."))
+                .andExpect(jsonPath("$.openAlertSummaries[?(@.subjectId == '" + secondSubject + "')].message")
+                        .value("Loan APEX-DPD-002 is 27 days past due (overdue ₹18,900.50)."));
+    }
+
+    @Test
+    void openAlertSummaryReportsBlankAlertMessagesAsNull() throws Exception {
+        UUID subjectId = UUID.randomUUID();
+        opsAlertRepository.save(delinquencyAlert(subjectId, "   "));
+
+        MvcResult result = mockMvc.perform(get("/api/v1/internal/home/overview")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode summary = objectMapper.readTree(result.getResponse().getContentAsString())
+                .get("openAlertSummaries")
+                .get(0);
+        assertThat(summary.get("subjectId").asText()).isEqualTo(subjectId.toString());
+        assertThat(summary.get("message").isNull()).isTrue();
+    }
+
+    @Test
     void nonSystemAdminCannotReadHomeOverview() throws Exception {
         mockMvc.perform(get("/api/v1/internal/home/overview")
                         .with(opsUser()))
                 .andExpect(status().isForbidden());
+    }
+
+    private static OpsAlert delinquencyAlert(UUID subjectId, String message) {
+        return new OpsAlert(
+                OpsAlertType.DPD_BUCKET_TRANSITION,
+                OpsAlertSeverity.HIGH,
+                "Delinquency bucket DPD_1_30",
+                message,
+                "LOAN_APPLICATION",
+                subjectId,
+                "home-dashboard-test",
+                null
+        );
     }
 
     private ProductFixture createProduct() throws Exception {

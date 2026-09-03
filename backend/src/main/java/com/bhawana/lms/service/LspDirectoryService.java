@@ -1,6 +1,5 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.LoanApplicationStatus;
@@ -8,15 +7,12 @@ import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
-import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.common.api.error.ApiConflictException;
-import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
-import com.bhawana.lms.security.SsrfSafeUrlValidator;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -43,20 +39,17 @@ public class LspDirectoryService {
     private final AppUserRepository appUserRepository;
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanAccountRepository loanAccountRepository;
-    private final LspAuditEventService lspAuditEventService;
 
     public LspDirectoryService(
             LspRepository lspRepository,
             AppUserRepository appUserRepository,
             LoanApplicationRepository loanApplicationRepository,
-            LoanAccountRepository loanAccountRepository,
-            LspAuditEventService lspAuditEventService
+            LoanAccountRepository loanAccountRepository
     ) {
         this.lspRepository = lspRepository;
         this.appUserRepository = appUserRepository;
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanAccountRepository = loanAccountRepository;
-        this.lspAuditEventService = lspAuditEventService;
     }
 
     @Transactional
@@ -130,86 +123,6 @@ public class LspDirectoryService {
                         .toList(),
                 portfolioSummary
         );
-    }
-
-    @Transactional
-    public Lsp updateWebhookSubscription(
-            UUID lspId,
-            boolean enabled,
-            String endpointUrl,
-            String signingSecret,
-            List<WebhookEventType> eventTypes,
-            String actorUsername,
-            String actorIp,
-            String correlationId
-    ) {
-        Lsp lsp = lspRepository.findById(lspId)
-                .orElseThrow(() -> new ResourceNotFoundException("Unknown LSP id: " + lspId));
-
-        WebhookSubscriptionSnapshot before = WebhookSubscriptionSnapshot.from(lsp);
-
-        String normalizedEndpointUrl = Strings.normalizeOptional(endpointUrl);
-        String normalizedSigningSecret = Strings.normalizeOptional(signingSecret);
-        // The secret is write-only on reads, so the admin UI cannot echo it back on
-        // edits. A blank secret means "keep the current one"; the required-when-enabled
-        // rule below still fires when no secret has ever been configured.
-        if (normalizedSigningSecret == null) {
-            normalizedSigningSecret = Strings.normalizeOptional(lsp.getWebhookSigningSecret());
-        }
-        List<WebhookEventType> normalizedEventTypes = eventTypes == null ? List.of() : eventTypes.stream().distinct().toList();
-
-        if (enabled) {
-            if (normalizedEndpointUrl == null) {
-                throw new BusinessRuleViolationException(
-                        "WEBHOOK_ENDPOINT_REQUIRED",
-                        "Webhook endpoint URL is required when the subscription is enabled.",
-                        Map.of("endpointUrl", "required when subscription is enabled")
-                );
-            }
-            if (!normalizedEndpointUrl.startsWith("http://") && !normalizedEndpointUrl.startsWith("https://")) {
-                throw new BusinessRuleViolationException(
-                        "WEBHOOK_ENDPOINT_INVALID",
-                        "Webhook endpoint URL must start with http:// or https://",
-                        Map.of("endpointUrl", "must start with http:// or https://")
-                );
-            }
-            try {
-                SsrfSafeUrlValidator.validateRegistrationTarget(normalizedEndpointUrl);
-            } catch (IllegalArgumentException ex) {
-                throw new BusinessRuleViolationException(
-                        "WEBHOOK_ENDPOINT_UNSAFE",
-                        ex.getMessage(),
-                        Map.of("endpointUrl", ex.getMessage())
-                );
-            }
-            if (normalizedSigningSecret == null) {
-                throw new BusinessRuleViolationException(
-                        "WEBHOOK_SIGNING_SECRET_REQUIRED",
-                        "Webhook signing secret is required when the subscription is enabled.",
-                        Map.of("signingSecret", "required when subscription is enabled")
-                );
-            }
-            if (normalizedEventTypes.isEmpty()) {
-                throw new BusinessRuleViolationException(
-                        "WEBHOOK_EVENTS_REQUIRED",
-                        "At least one webhook event must be selected when the subscription is enabled.",
-                        Map.of("eventTypes", "at least one event is required when subscription is enabled")
-                );
-            }
-        }
-
-        lsp.updateWebhookSubscription(enabled, normalizedEndpointUrl, normalizedSigningSecret, normalizedEventTypes);
-        Lsp saved = lspRepository.save(lsp);
-        WebhookSubscriptionSnapshot after = WebhookSubscriptionSnapshot.from(saved);
-        lspAuditEventService.recordWebhookSubscriptionChanges(
-                saved,
-                before,
-                after,
-                actorUsername,
-                actorIp,
-                correlationId
-        );
-        return saved;
     }
 
     private static LspPortfolioSummary buildPortfolioSummary(

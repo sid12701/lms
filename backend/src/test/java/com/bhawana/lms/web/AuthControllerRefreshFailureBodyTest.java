@@ -19,6 +19,7 @@ import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
@@ -142,28 +143,13 @@ class AuthControllerRefreshFailureBodyTest {
     }
 
     @Test
-    void refresh401WithOrphanTokenReturnsCodeRefreshInvalidInBody() throws Exception {
-        String rawToken = "orphan-refresh-token-" + UUID.randomUUID();
-        UUID tokenId = UUID.randomUUID();
-        Instant now = Instant.now();
-        jdbcTemplate.update(
-                """
-                        INSERT INTO refresh_token (
-                            id, token_hash, auth_type, expires_at, revoked, created_at, app_user_id, api_client_id
-                        ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
-                        """,
-                tokenId,
-                sha256Hex(rawToken),
-                RefreshToken.AUTH_TYPE_PASSWORD,
-                now.plusSeconds(3600),
-                false,
-                now
-        );
+    void refresh401WithUnknownTokenReturnsCodeTokenExpiredInBody() throws Exception {
+        String rawToken = "unknown-refresh-token-" + UUID.randomUUID();
 
         mockMvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("lms-refresh", rawToken)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("REFRESH_INVALID"))
-                .andExpect(jsonPath("$.message").value("Refresh token is invalid"));
+                .andExpect(jsonPath("$.code").value("TOKEN_EXPIRED"))
+                .andExpect(jsonPath("$.message").value("Refresh token has expired"));
     }
 
     private Cookie loginAndCaptureRefreshCookie() throws Exception {

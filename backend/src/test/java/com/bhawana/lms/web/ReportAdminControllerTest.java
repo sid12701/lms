@@ -35,6 +35,7 @@ import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.ReportAccessAuditRepository;
 import com.bhawana.lms.repo.ReportRequestRepository;
+import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.MinioTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -75,6 +76,9 @@ class ReportAdminControllerTest extends MinioTestSupport {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
 
     @Autowired
     private LoanForeclosureQuoteRepository loanForeclosureQuoteRepository;
@@ -159,6 +163,7 @@ class ReportAdminControllerTest extends MinioTestSupport {
 
     @BeforeEach
     void setUp() {
+        integrationTestDatabaseCleaner.cleanIntegrationTestData();
         disbursementOutcomeAuditRepository.deleteAllInBatch();
         loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
         borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
@@ -173,6 +178,7 @@ class ReportAdminControllerTest extends MinioTestSupport {
         loanApplicationDocumentChecklistRepository.deleteAllInBatch();
         loanApplicationStatusTransitionRepository.deleteAllInBatch();
         loanApplicationIntakeAuditRepository.deleteAllInBatch();
+        jdbcTemplate.execute("TRUNCATE TABLE loan_event");
         loanApplicationRepository.deleteAllInBatch();
         borrowerPiiRevealAuditRepository.deleteAllInBatch();
         jdbcTemplate.execute("DELETE FROM borrower_lsp_relationship");

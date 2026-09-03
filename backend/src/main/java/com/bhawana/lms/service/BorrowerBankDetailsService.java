@@ -11,7 +11,7 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanDisbursementBankMismatchLog;
 import com.bhawana.lms.domain.Lsp;
-import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
@@ -19,6 +19,7 @@ import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
+import com.bhawana.lms.tenant.ScopePreservingTransactionExecutor;
 import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
 import java.time.Clock;
 import java.time.Duration;
@@ -56,11 +57,12 @@ public class BorrowerBankDetailsService {
     private final LoanAccountRepository loanAccountRepository;
     private final BorrowerBankDetailsUpdateAuditRepository bankDetailsUpdateAuditRepository;
     private final LoanDisbursementBankMismatchLogRepository bankMismatchLogRepository;
-    private final WebhookOutboxService webhookOutboxService;
+    private final LoanEventLog loanEventLog;
     private final OpsAlertEmitters opsAlertEmitters;
     private final BorrowerBankDetailsProperties properties;
     private final Clock clock;
     private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
+    private final ScopePreservingTransactionExecutor scopePreservingTransactionExecutor;
 
     public BorrowerBankDetailsService(
             BorrowerRepository borrowerRepository,
@@ -69,11 +71,12 @@ public class BorrowerBankDetailsService {
             LoanAccountRepository loanAccountRepository,
             BorrowerBankDetailsUpdateAuditRepository bankDetailsUpdateAuditRepository,
             LoanDisbursementBankMismatchLogRepository bankMismatchLogRepository,
-            WebhookOutboxService webhookOutboxService,
+            LoanEventLog loanEventLog,
             OpsAlertEmitters opsAlertEmitters,
             BorrowerBankDetailsProperties properties,
             Clock clock,
-            AdminScopedTransactionExecutor adminScopedTransactionExecutor
+            AdminScopedTransactionExecutor adminScopedTransactionExecutor,
+            ScopePreservingTransactionExecutor scopePreservingTransactionExecutor
     ) {
         this.borrowerRepository = borrowerRepository;
         this.lspRepository = lspRepository;
@@ -81,11 +84,12 @@ public class BorrowerBankDetailsService {
         this.loanAccountRepository = loanAccountRepository;
         this.bankDetailsUpdateAuditRepository = bankDetailsUpdateAuditRepository;
         this.bankMismatchLogRepository = bankMismatchLogRepository;
-        this.webhookOutboxService = webhookOutboxService;
+        this.loanEventLog = loanEventLog;
         this.opsAlertEmitters = opsAlertEmitters;
         this.properties = properties;
         this.clock = clock;
         this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
+        this.scopePreservingTransactionExecutor = scopePreservingTransactionExecutor;
     }
 
     @Transactional(readOnly = true)
@@ -96,7 +100,7 @@ public class BorrowerBankDetailsService {
     }
 
     public Borrower getBorrowerForLsp(UUID lspId, UUID borrowerId) {
-        return adminScopedTransactionExecutor.call(() -> loadBorrowerForLsp(lspId, borrowerId));
+        return scopePreservingTransactionExecutor.call(() -> loadBorrowerForLsp(lspId, borrowerId));
     }
 
     public Borrower updateBankDetailsForLsp(
@@ -106,7 +110,7 @@ public class BorrowerBankDetailsService {
             String actorUsername,
             String clientIp
     ) {
-        return adminScopedTransactionExecutor.call(() -> updateBankDetails(
+        return scopePreservingTransactionExecutor.call(() -> updateBankDetails(
                 lspId,
                 borrowerId,
                 command,
@@ -124,14 +128,13 @@ public class BorrowerBankDetailsService {
             String actorType,
             String clientIp
     ) {
-        return updateBankDetails(
-                null,
+        return adminScopedTransactionExecutor.call(() -> updateBankDetailsAsAdmin(
                 borrowerId,
                 command,
                 actorUsername,
                 actorType,
                 clientIp
-        );
+        ));
     }
 
     public void recordHardDisbursementBankMismatch(
@@ -233,13 +236,30 @@ public class BorrowerBankDetailsService {
     }
 
     private Borrower loadBorrowerForLsp(UUID lspId, UUID borrowerId) {
-        TenantDataAccessContextHolder.useAdmin();
         Borrower borrower = borrowerRepository.findById(borrowerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown borrower id: " + borrowerId));
         if (!borrower.hasVisibilityFor(lspId)) {
             throw new ResourceNotFoundException("Unknown borrower id: " + borrowerId);
         }
         return borrower;
+    }
+
+    private Borrower updateBankDetailsAsAdmin(
+            UUID borrowerId,
+            BorrowerBankDetailsCommand command,
+            String actorUsername,
+            String actorType,
+            String clientIp
+    ) {
+        TenantDataAccessContextHolder.useAdmin();
+        return updateBankDetails(
+                null,
+                borrowerId,
+                command,
+                actorUsername,
+                actorType,
+                clientIp
+        );
     }
 
     private Borrower updateBankDetails(
@@ -250,7 +270,6 @@ public class BorrowerBankDetailsService {
             String actorType,
             String clientIp
     ) {
-        TenantDataAccessContextHolder.useAdmin();
         Borrower borrower = borrowerRepository.findById(borrowerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown borrower id: " + borrowerId));
         if (lspId != null && !borrower.hasVisibilityFor(lspId)) {
@@ -273,6 +292,63 @@ public class BorrowerBankDetailsService {
         Borrower savedBorrower = borrowerRepository.save(borrower);
 
         Lsp lsp = lspId == null ? null : lspRepository.findById(lspId).orElse(null);
+        Runnable auditWrite = () -> recordBankDetailsAudit(
+                savedBorrower,
+                lsp,
+                actorUsername,
+                actorType,
+                clientIp,
+                previousAccount,
+                previousBankName,
+                previousIfsc,
+                previousHolder
+        );
+        if (lspId == null) {
+            auditWrite.run();
+        } else {
+            adminScopedTransactionExecutor.run(auditWrite);
+        }
+
+        if (lsp != null) {
+            UUID loanApplicationId = loanApplicationRepository
+                    .findTopByBorrower_IdAndLsp_IdOrderByCreatedAtDesc(borrowerId, lspId)
+                    .map(LoanApplication::getId)
+                    .orElse(null);
+            LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+            payload.put("borrowerId", borrowerId);
+            // Full and unmasked: the loan event log is one schema for every LSP, carrying the
+            // complete loan and borrower data (ADR 0007 as clarified by spec 003). Minimisation
+            // is a pre-production review, not a per-payload decision taken here.
+            payload.put("bankAccountNumber", savedBorrower.getBankAccountNumber());
+            payload.put("bankName", savedBorrower.getBankName());
+            payload.put("ifscCode", savedBorrower.getIfscCode());
+            payload.put("accountHolderName", savedBorrower.getAccountHolderName());
+            payload.put("previousBankAccountNumber", previousAccount);
+            payload.put("previousIfscCode", previousIfsc);
+            loanEventLog.append(
+                    lsp,
+                    LoanEventType.BORROWER_BANK_DETAILS_UPDATED,
+                    "BORROWER",
+                    borrowerId.toString(),
+                    loanApplicationId,
+                    payload
+            );
+        }
+
+        return savedBorrower;
+    }
+
+    private void recordBankDetailsAudit(
+            Borrower savedBorrower,
+            Lsp lsp,
+            String actorUsername,
+            String actorType,
+            String clientIp,
+            String previousAccount,
+            String previousBankName,
+            String previousIfsc,
+            String previousHolder
+    ) {
         bankDetailsUpdateAuditRepository.save(new BorrowerBankDetailsUpdateAudit(
                 savedBorrower,
                 lsp,
@@ -289,35 +365,7 @@ public class BorrowerBankDetailsService {
                 clientIp,
                 CorrelationIdHolder.get()
         ));
-
         evaluateVelocityAlert(savedBorrower);
-
-        if (lsp != null) {
-            UUID loanApplicationId = loanApplicationRepository
-                    .findTopByBorrower_IdAndLsp_IdOrderByCreatedAtDesc(borrowerId, lspId)
-                    .map(LoanApplication::getId)
-                    .orElse(null);
-            LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
-            payload.put("borrowerId", borrowerId);
-            // Masked in the webhook: the LSP already holds the full value it submitted;
-            // the dedicated bank-details endpoint returns it unmasked when needed.
-            payload.put("bankAccountNumber", BankAccountMasking.mask(savedBorrower.getBankAccountNumber()));
-            payload.put("bankName", savedBorrower.getBankName());
-            payload.put("ifscCode", savedBorrower.getIfscCode());
-            payload.put("accountHolderName", savedBorrower.getAccountHolderName());
-            payload.put("previousBankAccountNumber", BankAccountMasking.mask(previousAccount));
-            payload.put("previousIfscCode", previousIfsc);
-            webhookOutboxService.enqueueIfSubscribed(
-                    lsp,
-                    WebhookEventType.BORROWER_BANK_DETAILS_UPDATED,
-                    "BORROWER",
-                    borrowerId.toString(),
-                    loanApplicationId,
-                    payload
-            );
-        }
-
-        return savedBorrower;
     }
 
     /**

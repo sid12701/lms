@@ -15,7 +15,7 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
-import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
@@ -43,7 +43,7 @@ public class LoanDisbursementCommandService {
     private final LoanAccountRepository loanAccountRepository;
     private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
     private final LoanDisbursementAdapter loanDisbursementAdapter;
-    private final WebhookOutboxService webhookOutboxService;
+    private final LoanEventLog loanEventLog;
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationDocumentChecklistService loanApplicationDocumentChecklistService;
     private final LoanApplicationStatusWriter loanApplicationStatusWriter;
@@ -60,7 +60,7 @@ public class LoanDisbursementCommandService {
             LoanAccountRepository loanAccountRepository,
             LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
             LoanDisbursementAdapter loanDisbursementAdapter,
-            WebhookOutboxService webhookOutboxService,
+            LoanEventLog loanEventLog,
             LoanApplicationQueryService loanApplicationQueryService,
             LoanApplicationDocumentChecklistService loanApplicationDocumentChecklistService,
             LoanApplicationStatusWriter loanApplicationStatusWriter,
@@ -76,7 +76,7 @@ public class LoanDisbursementCommandService {
         this.loanAccountRepository = loanAccountRepository;
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
         this.loanDisbursementAdapter = loanDisbursementAdapter;
-        this.webhookOutboxService = webhookOutboxService;
+        this.loanEventLog = loanEventLog;
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanApplicationDocumentChecklistService = loanApplicationDocumentChecklistService;
         this.loanApplicationStatusWriter = loanApplicationStatusWriter;
@@ -203,13 +203,13 @@ public class LoanDisbursementCommandService {
                 result.responsePayloadJson(),
                 CorrelationIdHolder.get()
         ));
-        webhookOutboxService.enqueueIfSubscribed(
+        loanEventLog.append(
                 application.getLsp(),
-                WebhookEventType.DISBURSEMENT_REQUESTED,
+                LoanEventType.DISBURSEMENT_REQUESTED,
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
                 application.getId(),
-                LoanWebhookPayloads.disbursement(application, loanAccount, requestLog)
+                LoanEventPayloads.disbursement(application, loanAccount, requestLog)
         );
         return application;
     }
@@ -272,7 +272,6 @@ public class LoanDisbursementCommandService {
         return pollPendingDisbursementInline(applicationId, actorUsername, actorIp, correlationId);
     }
 
-    @Transactional
     boolean pollPendingDisbursementInline(
             UUID applicationId,
             String actorUsername,
@@ -291,6 +290,8 @@ public class LoanDisbursementCommandService {
             return false;
         }
 
+        // Provider call stays outside the transaction: resolving it holds no database work, and a
+        // slow or hung provider must not pin a pooled connection for the worker's whole serial loop.
         LoanDisbursementAdapter.DisbursementStatusResult statusResult = loanDisbursementAdapter.checkStatus(
                 new LoanDisbursementAdapter.DisbursementStatusQuery(
                         latestRequest.getTranRefNo(),
@@ -299,7 +300,28 @@ public class LoanDisbursementCommandService {
                         latestRequest.getStatusCheckCount()
                 )
         );
-        return applyStatusPollResult(application, loanAccount, latestRequest, statusResult, actorUsername, actorIp, correlationId);
+
+        // Applying the verdict opens its own boundary, exactly as the intent-workflow branch does:
+        // the account status, application transition, loan event and outcome audit commit together
+        // or not at all. A self-invocation of an @Transactional method would bypass the proxy and
+        // leave each of those writes auto-committing on its own, so the template is not optional.
+        return Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+            LoanDisbursementRequestLog managedRequest = loanDisbursementRequestLogRepository
+                    .findById(latestRequest.getId())
+                    .orElse(null);
+            if (managedRequest == null) {
+                return false;
+            }
+            return applyStatusPollResult(
+                    application,
+                    loanAccount,
+                    managedRequest,
+                    statusResult,
+                    actorUsername,
+                    actorIp,
+                    correlationId
+            );
+        }));
     }
 
     private boolean pollPendingDisbursementWithIntentWorkflow(

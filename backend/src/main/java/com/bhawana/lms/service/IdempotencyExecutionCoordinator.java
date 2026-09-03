@@ -6,6 +6,7 @@ import com.bhawana.lms.domain.LspApiIdempotencyRecord;
 import com.bhawana.lms.repo.AdminApiIdempotencyRecordRepository;
 import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
 import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
+import com.bhawana.lms.tenant.ScopePreservingTransactionExecutor;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -29,6 +30,7 @@ public class IdempotencyExecutionCoordinator {
     private final IdempotencyClaimService idempotencyClaimService;
     private final IdempotencyRecoveryService idempotencyRecoveryService;
     private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
+    private final ScopePreservingTransactionExecutor scopePreservingTransactionExecutor;
     private final IdempotencyProperties properties;
 
     public IdempotencyExecutionCoordinator(
@@ -38,6 +40,7 @@ public class IdempotencyExecutionCoordinator {
             IdempotencyClaimService idempotencyClaimService,
             IdempotencyRecoveryService idempotencyRecoveryService,
             AdminScopedTransactionExecutor adminScopedTransactionExecutor,
+            ScopePreservingTransactionExecutor scopePreservingTransactionExecutor,
             IdempotencyProperties properties
     ) {
         this.lspApiIdempotencyRecordRepository = lspApiIdempotencyRecordRepository;
@@ -46,6 +49,7 @@ public class IdempotencyExecutionCoordinator {
         this.idempotencyClaimService = idempotencyClaimService;
         this.idempotencyRecoveryService = idempotencyRecoveryService;
         this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
+        this.scopePreservingTransactionExecutor = scopePreservingTransactionExecutor;
         this.properties = properties;
     }
 
@@ -344,7 +348,7 @@ public class IdempotencyExecutionCoordinator {
         }
 
         try {
-            return adminScopedTransactionExecutor.call(() -> {
+            return scopePreservingTransactionExecutor.call(() -> {
                 if (attemptRecovery) {
                     Optional<T> recovered = idempotencyRecoveryService.tryRecover(
                             lspId,
@@ -581,7 +585,7 @@ public class IdempotencyExecutionCoordinator {
     }
 
     private LspApiIdempotencyRecord findLspRecord(UUID lspId, String operationKey, String normalizedKey) {
-        return adminScopedTransactionExecutor.call(() -> lspApiIdempotencyRecordRepository
+        return scopePreservingTransactionExecutor.call(() -> lspApiIdempotencyRecordRepository
                 .findByLspIdAndOperationKeyAndIdempotencyKey(lspId, operationKey, normalizedKey)
                 .orElse(null));
     }

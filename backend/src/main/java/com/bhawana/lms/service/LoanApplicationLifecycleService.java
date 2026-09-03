@@ -79,6 +79,9 @@ public class LoanApplicationLifecycleService {
             throw new IllegalArgumentException("Target status is required.");
         }
 
+        if (targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL) {
+            lockBorrowerForApproval(applicationId);
+        }
         LoanApplication application = getApplication(applicationId);
         LoanApplicationStatus currentStatus = application.getStatus();
         if (currentStatus == targetStatus) {
@@ -225,6 +228,7 @@ public class LoanApplicationLifecycleService {
 
     @Transactional
     public LoanApplication autoApproveIfEligibleForLsp(UUID applicationId, String actorUsername) {
+        lockBorrowerForApproval(applicationId);
         LoanApplication application = getApplication(applicationId);
         LoanApplicationStatus currentStatus = application.getStatus();
         LoanApplicationStatusTransitioner.enforceAutoApprovalAllowed(currentStatus);
@@ -318,6 +322,11 @@ public class LoanApplicationLifecycleService {
 
     private LoanApplication getApplication(UUID applicationId) {
         return loanApplicationRepository.findDetailedById(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
+    }
+
+    private void lockBorrowerForApproval(UUID applicationId) {
+        loanApplicationRepository.findBorrowerByApplicationIdForUpdate(applicationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
     }
 

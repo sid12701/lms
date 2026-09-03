@@ -6,7 +6,7 @@ import com.bhawana.lms.domain.LoanApplicationDocumentType;
 
 /**
  * Shared rules for the eight intake-required document types (PAN through Loan Agreement).
- * All completion checks for auto-approval, webhooks, and the rule engine use this set.
+ * All completion checks for auto-approval, loan events, and the rule engine use this set.
  */
 public final class LoanApplicationDocumentRequirements {
 

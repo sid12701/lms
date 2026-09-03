@@ -36,14 +36,17 @@ public class TenantIsolationDataSourceConfig {
             return adminDataSource;
         }
 
-        boolean supabasePooler = jdbcUrl.contains("pooler.supabase.com");
+        TenantConnectionStrategy strategy = tenantProperties.getConnectionStrategy();
+        if (strategy == null) {
+            strategy = TenantConnectionStrategy.DIRECT_LOGIN;
+        }
 
         HikariDataSource dataSource = dataSourceProperties.initializeDataSourceBuilder()
                 .type(HikariDataSource.class)
                 .build();
-        if (supabasePooler) {
-            // Supavisor authenticates only project-scoped users (e.g. postgres.<ref>).
-            // Assume the Flyway-created tenant role after connect.
+        if (strategy == TenantConnectionStrategy.ASSUME_ROLE) {
+            // Pool authenticates with the admin login; TenantAwareDataSource assumes
+            // the tenant role inside each transaction (see ASSUME_ROLE strategy).
             dataSource.setUsername(dataSourceProperties.getUsername());
             dataSource.setPassword(dataSourceProperties.getPassword());
         } else {
@@ -69,14 +72,17 @@ public class TenantIsolationDataSourceConfig {
             @Qualifier("tenantPhysicalDataSource") DataSource tenantPhysicalDataSource
     ) {
         String jdbcUrl = dataSourceProperties.getUrl();
-        boolean supabasePooler = jdbcUrl != null && jdbcUrl.contains("pooler.supabase.com");
-        TenantAwareDataSource tenantAwareDataSource = supabasePooler
+        TenantAwareDataSource tenantAwareDataSource = jdbcUrl != null && jdbcUrl.startsWith("jdbc:postgresql:")
                 ? new TenantAwareDataSource(
                         tenantPhysicalDataSource,
                         tenantProperties.getUsername(),
-                        true
+                        tenantProperties.getConnectionStrategy()
                 )
-                : new TenantAwareDataSource(tenantPhysicalDataSource);
+                : new TenantAwareDataSource(
+                        tenantPhysicalDataSource,
+                        tenantProperties.getUsername(),
+                        TenantConnectionStrategy.DIRECT_LOGIN
+                );
 
         TenantRoutingDataSource routingDataSource = new TenantRoutingDataSource();
         routingDataSource.setDefaultTargetDataSource(adminDataSource);

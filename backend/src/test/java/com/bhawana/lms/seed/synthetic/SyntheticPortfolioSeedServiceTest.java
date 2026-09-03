@@ -20,7 +20,6 @@ import org.springframework.test.context.TestPropertySource;
         "app.seed.synthetic-portfolio.application-count-override=400",
         "app.seed.synthetic-portfolio.lsp-count=2",
         "app.seed.synthetic-portfolio.batch-size=200",
-        "app.webhooks.delivery.enabled=false",
         "app.reports.processing.enabled=false",
         "app.disbursement.worker.enabled=false",
         "app.alert-rules.scheduler-enabled=false",

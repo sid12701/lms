@@ -7,6 +7,7 @@ public class TenantAwareDataSourceProperties {
 
     private String username;
     private String password;
+    private TenantConnectionStrategy connectionStrategy = TenantConnectionStrategy.DIRECT_LOGIN;
 
     public String getUsername() {
         return username;
@@ -22,5 +23,13 @@ public class TenantAwareDataSourceProperties {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public TenantConnectionStrategy getConnectionStrategy() {
+        return connectionStrategy;
+    }
+
+    public void setConnectionStrategy(TenantConnectionStrategy connectionStrategy) {
+        this.connectionStrategy = connectionStrategy;
     }
 }

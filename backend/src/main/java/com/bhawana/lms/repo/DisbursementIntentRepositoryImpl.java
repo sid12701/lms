@@ -1,14 +1,10 @@
 package com.bhawana.lms.repo;
 
 import jakarta.persistence.EntityManager;
-import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
-import jakarta.persistence.TypedQuery;
-import java.sql.Connection;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.hibernate.Session;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -25,13 +21,6 @@ class DisbursementIntentRepositoryImpl implements DisbursementIntentRepositoryCu
         if (now == null || batchSize < 1 || leaseExpiresAt == null || leaseOwner == null || leaseOwner.isBlank()) {
             return List.of();
         }
-        if (isPostgres()) {
-            return claimPostgres(now, batchSize, leaseExpiresAt, leaseOwner);
-        }
-        return claimWithJpa(now, batchSize, leaseExpiresAt, leaseOwner);
-    }
-
-    private List<UUID> claimPostgres(Instant now, int batchSize, Instant leaseExpiresAt, String leaseOwner) {
         Query query = entityManager.createNativeQuery("""
                 WITH picked AS (
                     SELECT intent.id
@@ -59,36 +48,6 @@ class DisbursementIntentRepositoryImpl implements DisbursementIntentRepositoryCu
         @SuppressWarnings("unchecked")
         List<Object> rows = query.getResultList();
         return rows.stream().map(DisbursementIntentRepositoryImpl::toUuid).toList();
-    }
-
-    private List<UUID> claimWithJpa(Instant now, int batchSize, Instant leaseExpiresAt, String leaseOwner) {
-        TypedQuery<com.bhawana.lms.domain.DisbursementIntent> query = entityManager.createQuery(
-                """
-                        select intent
-                        from DisbursementIntent intent
-                        where intent.state = com.bhawana.lms.domain.DisbursementIntentState.CREATED
-                          and (intent.leaseExpiresAt is null or intent.leaseExpiresAt < :now)
-                        order by intent.createdAt asc
-                        """,
-                com.bhawana.lms.domain.DisbursementIntent.class
-        );
-        query.setParameter("now", now);
-        query.setMaxResults(batchSize);
-        query.setLockMode(LockModeType.PESSIMISTIC_WRITE);
-
-        List<com.bhawana.lms.domain.DisbursementIntent> claimed = query.getResultList();
-        for (com.bhawana.lms.domain.DisbursementIntent intent : claimed) {
-            intent.stampLease(leaseOwner, leaseExpiresAt);
-        }
-        return claimed.stream().map(com.bhawana.lms.domain.DisbursementIntent::getId).toList();
-    }
-
-    private boolean isPostgres() {
-        Session session = entityManager.unwrap(Session.class);
-        return session.doReturningWork(connection -> {
-            String product = connection.getMetaData().getDatabaseProductName();
-            return product != null && product.toLowerCase().contains("postgres");
-        });
     }
 
     private static UUID toUuid(Object value) {

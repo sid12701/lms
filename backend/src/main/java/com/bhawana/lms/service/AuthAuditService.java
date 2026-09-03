@@ -18,6 +18,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.authentication.AccountStatusException;
 import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.authentication.BadCredentialsException;
+import com.bhawana.lms.security.LspInactiveAuthenticationException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.AuthenticationException;
@@ -225,6 +226,9 @@ public class AuthAuditService {
         }
         if (exception instanceof DisabledException) {
             return AuthEventFailureReason.ACCOUNT_DISABLED;
+        }
+        if (exception instanceof LspInactiveAuthenticationException) {
+            return AuthEventFailureReason.LSP_INACTIVE;
         }
         if (exception instanceof AccountStatusException) {
             return AuthEventFailureReason.OTHER;

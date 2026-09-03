@@ -1,20 +1,15 @@
 package com.bhawana.lms.web;
 
-import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.common.api.error.LspStatusUpdateException;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspAuditEvent;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.LspStatusChangeReason;
-import com.bhawana.lms.domain.WebhookEventType;
 import com.bhawana.lms.service.AdminApiIdempotencyService;
 import com.bhawana.lms.service.LspDirectoryService;
 import com.bhawana.lms.service.LspStatusService;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -37,7 +32,6 @@ public class LspAdminController {
 
     private static final String LSP_CREATE = "LSP_CREATE";
     private static final String LSP_STATUS_UPDATE = "LSP_STATUS_UPDATE";
-    private static final String LSP_WEBHOOK_SUBSCRIPTION_UPDATE = "LSP_WEBHOOK_SUBSCRIPTION_UPDATE";
 
     private final LspDirectoryService lspDirectoryService;
     private final LspStatusService lspStatusService;
@@ -125,46 +119,6 @@ public class LspAdminController {
                 .toList();
     }
 
-    @PutMapping("/{lspId}/webhook-subscription")
-    public LspResponse updateWebhookSubscription(
-            @PathVariable UUID lspId,
-            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
-            @Valid @RequestBody UpdateWebhookSubscriptionRequest request,
-            @AuthenticationPrincipal Jwt principal,
-            HttpServletRequest httpRequest
-    ) {
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            return doUpdateWebhookSubscription(lspId, request, principal, httpRequest);
-        }
-        return adminApiIdempotencyService.execute(
-                LSP_WEBHOOK_SUBSCRIPTION_UPDATE,
-                idempotencyKey,
-                new WebhookSubscriptionUpdateFingerprint(lspId.toString(), request),
-                LspResponse.class,
-                () -> doUpdateWebhookSubscription(lspId, request, principal, httpRequest)
-        );
-    }
-
-    private LspResponse doUpdateWebhookSubscription(
-            UUID lspId,
-            UpdateWebhookSubscriptionRequest request,
-            Jwt principal,
-            HttpServletRequest httpRequest
-    ) {
-        String actorUsername = principal == null ? "unknown" : principal.getSubject();
-        Lsp lsp = lspDirectoryService.updateWebhookSubscription(
-                lspId,
-                request.enabled(),
-                request.endpointUrl(),
-                request.signingSecret(),
-                request.eventTypes(),
-                actorUsername,
-                ClientIpAddresses.resolve(httpRequest),
-                CorrelationIdHolder.get()
-        );
-        return toResponse(lsp);
-    }
-
     private static LspResponse toResponse(Lsp lsp) {
         return new LspResponse(
                 lsp.getId(),
@@ -172,7 +126,6 @@ public class LspAdminController {
                 lsp.getName(),
                 lsp.getStatus().name(),
                 lsp.getCreatedAt(),
-                toWebhookSubscriptionResponse(lsp),
                 0,
                 new PortfolioSummaryResponse(0, 0, 0, java.math.BigDecimal.ZERO, null)
         );
@@ -186,7 +139,6 @@ public class LspAdminController {
                 lsp.getName(),
                 lsp.getStatus().name(),
                 lsp.getCreatedAt(),
-                toWebhookSubscriptionResponse(lsp),
                 view.userCount(),
                 toPortfolioSummaryResponse(view.portfolioSummary())
         );
@@ -200,7 +152,6 @@ public class LspAdminController {
                 lsp.getName(),
                 lsp.getStatus().name(),
                 lsp.getCreatedAt(),
-                toWebhookSubscriptionResponse(lsp),
                 view.users().size(),
                 toPortfolioSummaryResponse(view.portfolioSummary()),
                 view.users().stream()
@@ -212,21 +163,6 @@ public class LspAdminController {
                                 user.roles().stream().map(Enum::name).toList()
                         ))
                         .toList()
-        );
-    }
-
-    /**
-     * The signing secret is write-only: reads always emit {@code signingSecret: null}
-     * plus {@code secretSet} so the admin UI knows whether one is configured.
-     * Rotation is a plain PUT with the new value; blank keeps the current one.
-     */
-    private static WebhookSubscriptionResponse toWebhookSubscriptionResponse(Lsp lsp) {
-        return new WebhookSubscriptionResponse(
-                lsp.isWebhookEnabled(),
-                lsp.getWebhookEndpointUrl(),
-                null,
-                lsp.getWebhookSigningSecret() != null && !lsp.getWebhookSigningSecret().isBlank(),
-                lsp.getWebhookEventTypes().stream().map(Enum::name).toList()
         );
     }
 
@@ -293,14 +229,6 @@ public class LspAdminController {
         }
     }
 
-    public record UpdateWebhookSubscriptionRequest(
-            boolean enabled,
-            @Size(max = 500) String endpointUrl,
-            @Size(max = 255) String signingSecret,
-            List<WebhookEventType> eventTypes
-    ) {
-    }
-
     public record LspAuditEventResponse(
             UUID id,
             UUID lspId,
@@ -316,23 +244,12 @@ public class LspAdminController {
     ) {
     }
 
-    /** {@code signingSecret} is always null on reads (write-only); {@code secretSet} says whether one exists. */
-    public record WebhookSubscriptionResponse(
-            boolean enabled,
-            String endpointUrl,
-            String signingSecret,
-            boolean secretSet,
-            List<String> eventTypes
-    ) {
-    }
-
     public record LspResponse(
             UUID id,
             String code,
             String name,
             String status,
             Instant createdAt,
-            WebhookSubscriptionResponse webhookSubscription,
             int userCount,
             PortfolioSummaryResponse portfolioSummary
     ) {
@@ -344,7 +261,6 @@ public class LspAdminController {
             String name,
             String status,
             Instant createdAt,
-            WebhookSubscriptionResponse webhookSubscription,
             int userCount,
             PortfolioSummaryResponse portfolioSummary,
             List<LspUserResponse> users
@@ -370,8 +286,5 @@ public class LspAdminController {
     }
 
     private record LspStatusUpdateFingerprint(String lspId, UpdateLspStatusRequest request) {
-    }
-
-    private record WebhookSubscriptionUpdateFingerprint(String lspId, UpdateWebhookSubscriptionRequest request) {
     }
 }

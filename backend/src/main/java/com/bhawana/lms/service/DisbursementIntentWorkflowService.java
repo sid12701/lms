@@ -11,7 +11,7 @@ import com.bhawana.lms.domain.DisbursementPaymentMode;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanDisbursementRequestLog;
-import com.bhawana.lms.domain.WebhookEventType;
+import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.DisbursementIntentRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
@@ -44,7 +44,7 @@ public class DisbursementIntentWorkflowService {
     private final LoanAccountRepository loanAccountRepository;
     private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
     private final LoanDisbursementAdapter loanDisbursementAdapter;
-    private final WebhookOutboxService webhookOutboxService;
+    private final LoanEventLog loanEventLog;
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final DisbursementIntentWorkflowProperties properties;
     private final ObjectMapper objectMapper;
@@ -55,7 +55,7 @@ public class DisbursementIntentWorkflowService {
             LoanAccountRepository loanAccountRepository,
             LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
             LoanDisbursementAdapter loanDisbursementAdapter,
-            WebhookOutboxService webhookOutboxService,
+            LoanEventLog loanEventLog,
             LoanApplicationQueryService loanApplicationQueryService,
             DisbursementIntentWorkflowProperties properties,
             ObjectMapper objectMapper,
@@ -65,7 +65,7 @@ public class DisbursementIntentWorkflowService {
         this.loanAccountRepository = loanAccountRepository;
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
         this.loanDisbursementAdapter = loanDisbursementAdapter;
-        this.webhookOutboxService = webhookOutboxService;
+        this.loanEventLog = loanEventLog;
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.properties = properties;
         this.objectMapper = objectMapper;
@@ -285,13 +285,13 @@ public class DisbursementIntentWorkflowService {
         );
         disbursementIntentRepository.save(intent);
 
-        webhookOutboxService.enqueueIfSubscribed(
+        loanEventLog.append(
                 application.getLsp(),
-                WebhookEventType.DISBURSEMENT_REQUESTED,
+                LoanEventType.DISBURSEMENT_REQUESTED,
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
                 application.getId(),
-                LoanWebhookPayloads.disbursement(application, loanAccount, requestLog)
+                LoanEventPayloads.disbursement(application, loanAccount, requestLog)
         );
     }
 
@@ -323,13 +323,13 @@ public class DisbursementIntentWorkflowService {
         );
         disbursementIntentRepository.save(intent);
 
-        webhookOutboxService.enqueueIfSubscribed(
+        loanEventLog.append(
                 application.getLsp(),
-                WebhookEventType.DISBURSEMENT_REQUESTED,
+                LoanEventType.DISBURSEMENT_REQUESTED,
                 "LOAN_ACCOUNT",
                 loanAccount.getId().toString(),
                 application.getId(),
-                LoanWebhookPayloads.disbursement(application, loanAccount, requestLog)
+                LoanEventPayloads.disbursement(application, loanAccount, requestLog)
         );
     }
 
