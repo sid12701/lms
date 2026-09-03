@@ -1,0 +1,29 @@
+{
+  "specFolder": "005-loan-event-log",
+  "description": "Persist every loan lifecycle fact unconditionally in an ordered, immutable, tenant-isolated Postgres event log.",
+  "keywords": [
+    "loan",
+    "event",
+    "log",
+    "postgres",
+    "xid8",
+    "partitioning",
+    "tenant",
+    "rls"
+  ],
+  "lastUpdated": "2026-08-17T05:56:00.000Z",
+  "specId": "005",
+  "folderSlug": "loan-event-log",
+  "parentChain": [],
+  "memorySequence": 0,
+  "memoryNameHistory": [],
+  "title": "Durable Loan Event Log",
+  "type": "implementation",
+  "trigger_phrases": [
+    "loan event log",
+    "xid8 ordering",
+    "issue 02"
+  ],
+  "path": "specs/005-loan-event-log",
+  "level": 2
+}
