@@ -320,3 +320,28 @@ Frontend-heavy pilot hardening from production report §19.3 Specs S7–S12. Can
 | Live bank in preview | Labeled `LIVE_BORROWER`; S5 still deferred |
 | OpenAPI drift | Regenerated `openapi/openapi.json` + `schema.ts` |
 | Canary not run | `e2e:canary` passed |
+
+---
+
+## H-01 — Atomic one-open-loan approval enforcement (2026-07-24)
+
+**Problem.** The cross-LSP one-open-loan rule was evaluated before account creation without
+serializing applications belonging to the same borrower. Two concurrent approvals could both see
+no open account and each create a `PENDING_DISBURSEMENT` account.
+
+**Solution.**
+
+- Approval paths acquire a pessimistic write lock on the shared borrower row before evaluating the
+  rule and hold it through application status and loan-account persistence.
+- Loan-account provisioning reacquires the same borrower lock and rechecks the invariant at the
+  write boundary, while preserving same-application retry idempotency.
+- The existing business outcome remains unchanged: the winning application is approved and the
+  later concurrent application is rejected by the rule engine with `BORROWER_HAS_OPEN_LOAN`.
+
+**Files.** `LoanApplicationRepository`, `LoanApplicationLifecycleService`,
+`LoanApplicationStatusWriter`.
+
+**Validation.** Unit coverage verifies write-boundary enforcement and idempotent replay. The H2
+integration test releases two same-borrower approvals simultaneously and asserts one approved
+application, one rejected application, and one open account. A PostgreSQL Testcontainers version
+passes against PostgreSQL 17 and covers the production database locking semantics.

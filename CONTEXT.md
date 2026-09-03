@@ -51,6 +51,27 @@ Repeatedly polling the bank's status checks for an in-flight disbursement until 
 **In flight**:
 The window in which a disbursement attempt has been initiated but not yet resolved to a terminal outcome. While in flight, the money may have left the LSP's disbursal account, so the loan is hands-off for ops — no manual status changes, no second initiation. Leg-level detail of an in-flight attempt lives only on the attempt; the account simply reads as awaiting its verdict.
 
+### Partner lifecycle updates
+
+**Loan event log**:
+The complete, ordered, immutable record of every loan lifecycle fact, written in the same transaction as the state change it describes. It is written unconditionally — nothing gates writing it, and who may read a given event is resolved at read time.
+_Avoid_: outbox, webhook queue, event queue (all imply pending delivery)
+
+**Cursor**:
+An LSP's bookmark into the loan event log — an opaque token naming the last event that LSP consumed. Cursors belong to one LSP, advance only forward, and expire with the log's retention window.
+_Avoid_: offset, checkpoint, watermark
+
+**Retention window**:
+How long the loan event log keeps a fact available to partners: **at least 30 days**. It is a floor, not an exact age. The log is partitioned by month and a whole partition is dropped only once everything it can hold is past 30 days, so events survive between 30 and 60 days depending on where in the month they fall. Say "at least 30 days" to partners; anything that has to know the real boundary — cursor expiry above all — reads the oldest retained partition rather than subtracting 30 days from today.
+_Avoid_: TTL, expiry date, purge window (all imply a per-event deadline; whole partitions are dropped, not individual events)
+
+**Feed order**:
+The order in which the loan event log is served. Guaranteed per loan; across unrelated loans it is a stable replay order, not a causal one.
+_Avoid_: total order, global order
+
+**Internal history** (distinct from the loan event log):
+The permanent record of who changed what — `loan_application_status_transition` and `loan_application_audit_event`. It carries actor identity and internal notes, is never pruned, and never crosses the perimeter. The loan event log is a delivery mechanism with a retention window; internal history is the system of record.
+
 ## Example dialogue
 
 > **Dev:** The credit failed — should the worker retry the disbursement?

@@ -168,6 +168,7 @@ The model is **shared everything, isolation in software** (shared schema + RLS),
 - **CORS / origins:** externalized per environment (#237) — no hardcoded localhost in prod.
 - **Images:** built from a pinned base, scanned in CI (and the upload AV path #221 for partner files), signed; registries private.
 - **Least privilege:** the tenant DB role has only what RLS needs; worker/admin roles separated; pod service accounts scoped to the minimum cloud IAM.
+- **`pg_read_all_stats` on the admin DB role:** the oldest-transaction-age alert (#10) reads `pg_stat_activity.xact_start` for sessions it does not own, which a plain login role sees as `NULL` for. The admin role must be superuser or hold `pg_read_all_stats`, or the alert silently never fires — this can't be granted from a Flyway migration (granting role membership needs superuser), so it has to be done by hand at provisioning time.
 - **`statement_timeout` as a security control** (#201): caps a maliciously expensive "query of death" to one failed request instead of a pool-exhaustion DoS.
 
 ---

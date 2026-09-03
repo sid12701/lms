@@ -1187,6 +1187,7 @@ Do not expose secret values. The table lists variable names and observed usage.
 | `APP_RATE_LIMIT_ENABLED` | `RateLimitFilter` conditional property | Enables/disables rate limiting | Optional, default behavior depends config | Disabling weakens brute-force protection |
 | `APP_RATE_LIMIT_AUTH_PER_MINUTE` | Rate limit properties | Auth endpoint limit | Optional/defaulted | Tune for production |
 | `APP_RATE_LIMIT_LSP_WRITE_PER_MINUTE` | Rate limit properties | LSP write endpoint limit | Optional/defaulted | Tune for production |
+| `APP_RATE_LIMIT_LSP_FEED_PER_MINUTE` | Rate limit properties | Partner loan event feed limit, per LSP | Optional/defaulted | Tune for production |
 | `APP_REPORTS_NOTIFICATIONS_ENABLED` | Report notification config | Enables report emails | Optional/defaulted | Avoid unintended emails |
 | `APP_REPORTS_NOTIFICATIONS_FROM_ADDRESS` | Report notification config | From address | Required if email enabled | Avoid spoofing/misconfig |
 | `APP_REPORTS_NOTIFICATIONS_REPORTS_PAGE_URL` | Report notification config | Link in report emails | Required if email enabled | Must point to trusted UI |
