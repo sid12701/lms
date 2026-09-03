@@ -106,3 +106,28 @@ _COMMUNITY_*.md
 # B12: local prod schema diff outputs (reference artifact is committed)
 /scripts/schema-diff/artifacts/prod-schema.normalized.sql
 /scripts/schema-diff/artifacts/prod-vs-reference.diff
+
+# Impeccable design-tooling state (generated)
+.impeccable/
+
+# Architecture explorer — local dev tool, reads the repo, not part of the build
+tools/architecture-explorer/
+
+# Vendored reference checkout of formancehq/ledger (has its own .git; not part of this build)
+/backend/src/main/java/com/bhawana/lms/formance/
+
+# Root-level Vite cache (frontend/node_modules is ignored separately)
+/node_modules/
+
+# Lavish design-tooling output (generated audit HTML)
+/.lavish/
+
+# Local scratch notes (mirrors the existing scratch/ rule)
+/.scratch/
+
+# Generated audit/screenshot output bundles (reference decks in outputs/ stay tracked)
+/outputs/impeccable-audit-*/
+/outputs/lms-business-process-swimlane/
+/outputs/lms-lifecycle/
+/outputs/phase4-live-*/
+/outputs/ui-audit-*/
