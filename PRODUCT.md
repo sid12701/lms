@@ -83,8 +83,7 @@ Real, in-repo:
 
 - `CONTEXT.md` — domain language, the disbursement model, and security properties, written as a working glossary with an example dialogue between dev and domain expert.
 - `docs/adr/0001`–`0006` — accepted architecture decisions, including the API-only origination stance.
-- `docs/design/` — screenshots of shipped surfaces (home, loan applications, loan detail, alerts, products, loan ledger iterations, light and dark).
-- `docs/` — BRD executive brief, business workflow and use-case guides, vendor proposals and scorecards, bank composite-pay API specs, runbooks, audit and scalability reports.
+- `docs/` — architecture package and blueprint, API references, runbooks, the partner loan event feed guide, and the backend documentation.
 - A frontend test suite with axe assertions across ~90 files and a WCAG contrast test pinned to literal token values.
 
 **Absences future work must not fabricate:** no customer testimonials, no named live LSP partners, no production volume or performance benchmarks, no pricing or licensing claims, no uptime or deployment record. The platform has no external users yet.

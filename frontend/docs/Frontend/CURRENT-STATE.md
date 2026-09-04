@@ -490,6 +490,6 @@ When resuming work on this repo cold:
 1. Run `npx vitest run` first. If green, the build is in a known-good state.
 2. Check `TaskList` (TaskCreate/TaskUpdate tooling) for in-progress phases.
 3. Read this doc top-to-bottom (~10 min).
-4. Read `docs/frontend-implementation-plan.md` if planning a phase boundary.
-5. Read `docs/BRD-executive-brief.md` for any business-rule question.
+4. Read `frontend-implementation-plan.md` if planning a phase boundary.
+5. Read `PRODUCT.md` at the repo root for any business-rule question.
 6. **Never start a phase without slicing it into agent-sized file boundaries first** — the parallel-agent pattern is the whole productivity story of this repo.

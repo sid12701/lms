@@ -67,12 +67,6 @@ Missing admin credentials fail fast inside specs that sign in (not dozens of cas
 2. `applicationId` in `frontend/e2e/.auth/e2e-fixtures.json`
 3. If still unset, the file skips with `skipReason` from the fixture file when present
 
-## Python indep harness
-
-```bash
-py -m pip install -r scripts/indep-e2e/requirements-e2e.txt
-```
-
 ## Bootstrap heal (S10)
 
 If the bootstrap admin is wiped without a restart:

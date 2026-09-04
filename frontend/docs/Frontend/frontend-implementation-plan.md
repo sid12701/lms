@@ -3,9 +3,8 @@
 **This document is the single source of truth for all frontend implementation work.** Agents must read it before starting and must not improvise alternatives without escalation.
 
 Companion documents:
-- `docs/BRD-executive-brief.md` — delivered-state product brief, business rules BR-1…BR-15
-- `docs/lms-blueprint.md` — engineering blueprint
-- `docs/UI pages.md` — existing UI surface (for context only — we are rebuilding, not preserving)
+- `PRODUCT.md` — users, purpose, constraints, and the accessibility standard
+- `docs/architecture/lms-blueprint.md` — engineering blueprint
 - `CLAUDE.md` — repo-level Claude guidance + locked decisions
 
 ---

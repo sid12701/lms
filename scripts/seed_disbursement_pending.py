@@ -6,7 +6,7 @@ actually look at the disbursement UI in a browser.
 
 WHY THIS EXISTS
 ----------------
-docs/impeccable-audit.md S10/S2 records that the money-critical disbursement
+Two full audit passes found that the money-critical disbursement
 UI (`DisbursementInitiateDialog`, `DisbursementGateBanner`, the disbursement
 preview) has *never* been exercised live in two full audit passes, because:
 
