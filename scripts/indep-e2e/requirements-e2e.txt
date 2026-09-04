@@ -1,3 +1,0 @@
-# Pinned deps for scripts/indep-e2e Python API harness (Spec S9).
-# Install: py -m pip install -r scripts/indep-e2e/requirements-e2e.txt
-requests==2.32.4

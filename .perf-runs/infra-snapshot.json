@@ -1,9 +1,0 @@
-{
-  "actuator": {
-    "timestamp": "2026-06-14T07:32:39Z",
-    "health": {
-      "status_code": 503,
-      "body": "{\"status\":\"DOWN\",\"groups\":[\"liveness\",\"readiness\"]}"
-    }
-  }
-}
