@@ -5,7 +5,6 @@
   "java.import.exclusions": [
     "**/frontend/**",
     "**/node_modules/**",
-    "**/graphify-out/**",
     "**/outputs/**"
   ],
   "java.project.importOnFirstTimeStartup": "automatic",

@@ -141,7 +141,7 @@ flowchart TB
     domainsvc --> AUD
 ```
 
-**God nodes / core abstractions** (from the graphify report): `LoanApplicationLifecycleService` (66 edges) is the lifecycle hub; `Jwt`, `requestJson()` (test harness), and webhook `dispatch()` are the next most-connected. The lifecycle service is the natural seam if the monolith is ever decomposed.
+**God nodes / core abstractions** (from the repository mapping tooling report): `LoanApplicationLifecycleService` (66 edges) is the lifecycle hub; `Jwt`, `requestJson()` (test harness), and webhook `dispatch()` are the next most-connected. The lifecycle service is the natural seam if the monolith is ever decomposed.
 
 ## 1.4 API surface inventory
 
@@ -347,7 +347,7 @@ The **Audit Explorer** (`/admin/audit-events`) unions ~8 streams. Growth is proj
 - **Finding:** architecture matches the blueprint intent closely; the realized system is more complete on security/audit than the blueprint anticipated.
 - **Risk:** the disbursement worker and live-aggregate dashboard are the two structural liabilities at volume.
 - **Recommendation:** treat §1.6 worker hardening and §1.10 snapshotting as the first architecture work before any production volume.
-- **Assumption:** the graphify report's reference to `frontend-2/` is stale (graph dated 2026-06-12, before the ADR 0001 consolidation completed).
+- **Assumption:** the repository mapping tooling report's reference to `frontend-2/` is stale (graph dated 2026-06-12, before the ADR 0001 consolidation completed).
 
 ---
 
@@ -780,7 +780,7 @@ Replace the diagram body with the XML below to import the same model as native d
 
 ## B.1 Assumptions
 1. Target load is **100K loans/day, 10+ LSPs** (per audit re-scope), not the original ~8K/day sizing.
-2. The graphify report (2026-06-12) predates the `frontend-2 → frontend` consolidation (ADR 0001 completed 2026-06); the live tree has a **single** `frontend/`.
+2. The repository mapping tooling report (2026-06-12) predates the `frontend-2 → frontend` consolidation (ADR 0001 completed 2026-06); the live tree has a **single** `frontend/`.
 3. RabbitMQ remains deployed in local infra but carries **no production responsibility**; DB-table queues are the queueing mechanism.
 4. The disbursement adapter is a **deterministic mock**; all money-path risk statements assume the real ICICI adapter will eventually replace it.
 5. Prod runs on Kubernetes with a transaction-mode pooler; no provider chosen yet.

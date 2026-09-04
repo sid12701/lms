@@ -84,11 +84,6 @@ postman/__pycache__/
 # Compiled class files
 *.class
 
-# graphify generated output and caches
-graphify-out/
-.graphify_*
-_COMMUNITY_*.md
-
 # Local working trackers and notes (not part of the shipped project)
 /docs/gap-fixes.md
 /docs/gap-fixes-state-tracker.md
@@ -98,7 +93,7 @@ _COMMUNITY_*.md
 /docs/frontend-dev.log
 
 # Reference screenshots of the current frontend (regenerated locally)
-/docs/design/current-*.png
+/docs/design/
 
 # Ad-hoc screenshots dropped at the frontend root (e.g. theme migration captures)
 /frontend/*.png
@@ -125,9 +120,10 @@ tools/architecture-explorer/
 # Local scratch notes (mirrors the existing scratch/ rule)
 /.scratch/
 
-# Generated audit/screenshot output bundles (reference decks in outputs/ stay tracked)
-/outputs/impeccable-audit-*/
-/outputs/lms-business-process-swimlane/
-/outputs/lms-lifecycle/
-/outputs/phase4-live-*/
-/outputs/ui-audit-*/
+# Generated audit, diagram and deck output — regenerate from the tool that made it
+/outputs/
+/output/
+/.perf-runs/
+
+# Agent tooling config is per-developer, not part of the project
+/.claude/

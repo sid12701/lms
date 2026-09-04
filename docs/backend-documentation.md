@@ -18,8 +18,6 @@ The backend is a Java Spring Boot service located under `backend/`. It uses Mave
 | Background jobs | Scheduled webhook dispatcher, scheduled report request processor, application bootstrappers/seeders |
 | API docs | OpenAPI/Springdoc is exposed through `/v3/api-docs/**` and Swagger UI paths when enabled by Springdoc |
 
-The backend also contains generated Graphify output folders under `backend/graphify-out` and `backend/src/main/java/com/bhawana/graphify-out`. These appear to be generated analysis artifacts, not runtime backend modules. Needs review if generated files should live inside `src/main/java`.
-
 ## 2. Backend Folder Structure
 
 ```txt
@@ -47,7 +45,6 @@ backend/
         db/migration/
     test/
       java/com/bhawana/lms/
-  graphify-out/
 ```
 
 | Folder | Purpose |
@@ -470,7 +467,6 @@ Controllers use `@PreAuthorize` for role checks. Some controllers have class-lev
 |---|---|
 | `app_permission` and `app_role_permission` active use | Needs review. Tables exist, but access decisions observed in code are role-based rather than permission-based |
 | Production CORS origins | Needs review. Localhost origins are visible in config |
-| Generated Graphify files under `src/main/java` | Needs review. They appear non-runtime |
 
 ## 8. Database Schema
 
@@ -1402,7 +1398,6 @@ These are code-supported observations only.
 | Gap | Why it needs review | Recommended next step |
 |---|---|---|
 | Permission tables vs role checks | `app_permission` and `app_role_permission` exist, but observed authorization is role-based | Confirm whether permission-level authorization is planned, unused, or incomplete |
-| Generated Graphify output under source tree | `backend/src/main/java/com/bhawana/graphify-out` appears generated/non-runtime | Move generated artifacts outside runtime source if not needed |
 | Production secret posture | Local/default config contains sensitive-looking values | Move all secrets to environment/secret manager and scrub committed config |
 | File upload controls | Upload endpoints store files without clear size/type/malware controls | Add or document maximum size, content validation, extension allowlist, and scanning strategy |
 | Webhook SSRF edge cases | Validator exists but DNS failure/rebinding behavior needs deeper review | Add tests for private IP DNS, multiple A/AAAA records, redirects, and DNS rebinding |
