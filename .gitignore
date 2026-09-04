@@ -127,3 +127,58 @@ tools/architecture-explorer/
 
 # Agent tooling config is per-developer, not part of the project
 /.claude/
+
+# ---------------------------------------------------------------------------
+# Kept on disk, deliberately out of the repo.
+# Agent tooling, issue-tracker apparatus, point-in-time audit reports,
+# generated artifacts and vendor collateral. Delete locally if you don't
+# want them; nothing in the build reads any of it.
+# ---------------------------------------------------------------------------
+
+# Agent tooling and config (per-developer, not part of the project)
+/.agents/
+/.codex/
+/AGENTS.md
+/skills-lock.json
+/frontend/docs/agents/
+
+# Issue-tracker apparatus
+/docs/agents/
+/scripts/gh-issue-updates/
+/scripts/.technical-issue-map.tsv
+/scripts/backfill-issue-links.mjs
+/scripts/create-technical-issues.sh
+/scripts/gen-technical-tracker.mjs
+/scripts/group-issues-by-tag.py
+/scripts/group-issues-by-tag-report.py
+/scripts/publish-scalability-issues.sh
+/scripts/publish-scalability-issues-retry.sh
+/scripts/scalability-issue-map.txt
+
+# Point-in-time audit reports and backlogs
+/SECURITY_AUDIT_REPORT.md
+/E2E-INDEPENDENT-REVIEW.md
+/scalability-audit-360-*.md
+/docs/impeccable-audit*.md
+/docs/database-audit-report-*.md
+/docs/db-audit-remediation-spec-*.md
+/docs/scalability-audit-report-*.md
+/docs/e2e-testing-readiness-review.md
+/docs/deferred-decisions.md
+/docs/api-consistency-backlog.md
+
+# Generated artifacts and one-off harness output
+/specs/
+/lms-ui-demo.html
+/scripts/indep-e2e/
+/scripts/lsp-audit/
+/scripts/perf/.perf-runs/
+
+# Vendor and business collateral
+/docs/presentations/
+/docs/scripts/
+/docs/BRD-executive-brief.md
+/docs/business-workflow-and-use-cases-guide*
+/docs/*.pdf
+/docs/*.xlsx
+/docs/*.csv
