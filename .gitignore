@@ -187,3 +187,7 @@ tools/architecture-explorer/
 # (kept on disk, same rule as the audit sweep above)
 /docs/audits/
 /docs/research/
+
+# H27 observability collateral — dashboard, alert rules and runbook are
+# deployment-side assets, kept on disk and out of the repo
+/docs/observability/
