@@ -23,6 +23,8 @@ import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
 import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.service.LoanDisbursementWorkerService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -93,6 +95,12 @@ class LspLoanApplicationApiControllerTest {
 
     @Autowired
     private LoanDisbursementWorkerService loanDisbursementWorkerService;
+
+    @Autowired
+    private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+
+    @Autowired
+    private LoanDisbursementCommandService loanDisbursementCommandService;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -734,7 +742,6 @@ class LspLoanApplicationApiControllerTest {
         String applicationId = createdApplication.get("id").asText();
         uploadAllRequiredDocuments(accessToken, applicationId);
         requestDisbursement(applicationId);
-        resolveDisbursement(applicationId);
 
         mockMvc.perform(post("/api/v1/lsp/loan-applications/{applicationId}/invalid", applicationId)
                         .header("Authorization", "Bearer " + accessToken)
@@ -815,8 +822,8 @@ class LspLoanApplicationApiControllerTest {
         JsonNode createdApplication = createExternalApplication(accessToken, apexProduct.id(), "APEX-DISB-VIS-001");
         String applicationId = createdApplication.get("id").asText();
         uploadAllRequiredDocuments(accessToken, applicationId);
+        seedTechnicalDeclineIfsc(applicationId);
         requestDisbursement(applicationId);
-        failDisbursement(applicationId);
 
         mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
                         .header("Authorization", "Bearer " + accessToken))
@@ -846,7 +853,6 @@ class LspLoanApplicationApiControllerTest {
         String applicationId = createdApplication.get("id").asText();
         uploadAllRequiredDocuments(accessToken, applicationId);
         requestDisbursement(applicationId);
-        resolveDisbursement(applicationId);
 
         mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
                         .header("Authorization", "Bearer " + accessToken))
@@ -932,7 +938,6 @@ class LspLoanApplicationApiControllerTest {
         transitionApplication(applicationId, "AWAITING_APPROVAL");
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", systemAdmin());
         requestDisbursement(applicationId);
-        resolveDisbursement(applicationId);
 
         JsonNode externalDetail = getApplicationDetail(accessToken, applicationId);
         String loanId = externalDetail.get("loanAccount").get("id").asText();
@@ -2143,8 +2148,28 @@ class LspLoanApplicationApiControllerTest {
     }
 
     private void requestDisbursement(String applicationId) throws Exception {
+        // C04: POST commits the durable intent only; execute it here the way the worker does
+        // (IMPS-success fixtures disburse atomically on execution).
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
+                .andExpect(status().isOk());
+        disbursementIntentWorkflowService.executeForApplication(UUID.fromString(applicationId));
+        loanDisbursementCommandService.autoResolveAfterInitiate(
+                UUID.fromString(applicationId), "ops.admin", null, "lsp-test");
+    }
+
+    private void seedTechnicalDeclineIfsc(String applicationId) throws Exception {
+        String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
+                .getBorrower().getId().toString();
+        mockMvc.perform(patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "123456789012",
+                                "bankName", "Demo Bank",
+                                "ifscCode", "MOCK0NPCIDN",
+                                "accountHolderName", "Anika Sharma"
+                        ))))
                 .andExpect(status().isOk());
     }
 
@@ -2216,22 +2241,6 @@ class LspLoanApplicationApiControllerTest {
         } catch (Exception exception) {
             throw new IllegalStateException("Failed to extract lspId from token", exception);
         }
-    }
-
-    private void resolveDisbursement(String applicationId) throws Exception {
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-                .andExpect(status().isOk());
-    }
-
-    private void failDisbursement(String applicationId) throws Exception {
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", "FAILED"))))
-                .andExpect(status().isOk());
     }
 
     private void recordPaymentViaLsp(String accessToken, String loanId) throws Exception {

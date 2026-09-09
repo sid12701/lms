@@ -5,6 +5,7 @@ import org.springframework.test.context.TestExecutionListeners;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -12,6 +13,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,6 +55,9 @@ class AuditExplorerControllerReportAccessStreamTest {
   @Autowired private ObjectMapper objectMapper;
   @Autowired private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
   @Autowired private LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
+  @Autowired private LoanApplicationRepository loanApplicationRepository;
+  @Autowired private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+  @Autowired private LoanDisbursementCommandService loanDisbursementCommandService;
   @Autowired private JdbcTemplate jdbcTemplate;
 
   @BeforeEach
@@ -130,6 +137,9 @@ class AuditExplorerControllerReportAccessStreamTest {
     transition(applicationId, "AWAITING_APPROVAL", "Ready");
     markAllRequiredKycDocumentsVerified(applicationId);
     transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved");
+    // C04: durable intent is the only initiation path — seed the frozen beneficiary
+    // instruction, raise the intent, then execute it (IMPS success disburses atomically).
+    seedBorrowerBankDetails(applicationId);
     mockMvc
         .perform(
             post(
@@ -137,20 +147,32 @@ class AuditExplorerControllerReportAccessStreamTest {
                     applicationId)
                 .with(systemAdmin()))
         .andExpect(status().isOk());
-    mockMvc
-        .perform(
-            post(
-                    "/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome",
-                    applicationId)
-                .with(systemAdmin())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-        .andExpect(status().isOk());
+    disbursementIntentWorkflowService.executeForApplication(UUID.fromString(applicationId));
+    loanDisbursementCommandService.autoResolveAfterInitiate(
+        UUID.fromString(applicationId), "ops.admin", null, "report-audit-test");
     jdbcTemplate.update(
         "update loan_account set disbursed_at = ? where loan_application_id = ?",
         Timestamp.from(
             OffsetDateTime.of(disbursedDate.atStartOfDay(), ZoneOffset.UTC).toInstant()),
         UUID.fromString(applicationId));
+  }
+
+  private void seedBorrowerBankDetails(String applicationId) throws Exception {
+    String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
+        .getBorrower().getId().toString();
+    mockMvc
+        .perform(
+            patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
+                .with(systemAdmin())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    objectMapper.writeValueAsString(
+                        Map.of(
+                            "bankAccountNumber", "123456789012",
+                            "bankName", "Report Audit Bank",
+                            "ifscCode", "HDFC0001234",
+                            "accountHolderName", "Anika Sharma"))))
+        .andExpect(status().isOk());
   }
 
   private String createLsp() throws Exception {

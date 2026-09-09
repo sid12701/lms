@@ -15,6 +15,9 @@ import org.springframework.stereotype.Service;
  * accepted/pending acknowledgement (NEFT, and IMPS timeout codes), after which {@link #checkStatus}
  * resolves the terminal status. Outcomes are deterministic, keyed off the beneficiary IFSC via
  * {@link MockIciciDisbursementScenario}. The production adapter will replace this behind the same seam.
+ *
+ * <p>G01: simulation-only. Construction fails closed outside explicit simulation profiles, so a
+ * production-like boot with only this adapter wired cannot start.
  */
 @Service
 public class MockLoanDisbursementAdapter implements LoanDisbursementAdapter {
@@ -23,10 +26,17 @@ public class MockLoanDisbursementAdapter implements LoanDisbursementAdapter {
 
     private final ObjectMapper objectMapper;
     private final LoanDisbursementMockProperties properties;
+    private final DisbursementSimulationGuard simulationGuard;
 
-    public MockLoanDisbursementAdapter(ObjectMapper objectMapper, LoanDisbursementMockProperties properties) {
+    public MockLoanDisbursementAdapter(
+            ObjectMapper objectMapper,
+            LoanDisbursementMockProperties properties,
+            DisbursementSimulationGuard simulationGuard
+    ) {
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.simulationGuard = simulationGuard;
+        this.simulationGuard.requireSimulationAllowed("mock-disbursement-adapter");
     }
 
     @Override

@@ -46,11 +46,15 @@ class LspTenantElevationArchitectureTest {
             ),
             Map.entry(
                     "com.bhawana.lms.service.BorrowerActiveLoanChecker",
-                    "Cross-LSP open-loan dedup reads (ADR 0005)."
+                    "Cross-LSP open-loan dedup and bank-gate in-flight reads (ADR 0005)."
             ),
             Map.entry(
                     "com.bhawana.lms.service.OpsAlertService",
                     "ops_alert is not granted to the tenant role (V45)."
+            ),
+            Map.entry(
+                    "com.bhawana.lms.service.OpsAlertEmitters",
+                    "Borrower/loan ops-alert fan-out; ops_alert is tenant-ungranted (V45), same as OpsAlertService."
             ),
             Map.entry(
                     "com.bhawana.lms.service.LspValidationAuditService",

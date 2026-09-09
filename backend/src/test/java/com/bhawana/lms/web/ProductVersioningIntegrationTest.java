@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -11,13 +12,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
-import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanProductVersionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.service.AdminReportingService;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
 import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
@@ -83,6 +84,9 @@ class ProductVersioningIntegrationTest {
 
     @Autowired
     private LoanDisbursementCommandService loanDisbursementCommandService;
+
+    @Autowired
+    private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
 
     @BeforeEach
     void setUp() {
@@ -157,16 +161,33 @@ class ProductVersioningIntegrationTest {
         String applicationId = createAndApproveApplication(lspId, productId, "FEE-EXT-001");
         updateProduct(productId, "VER-FEE-PROD", "Fee Product", RATE_A, FEE_F2);
 
+        // C04: the intent snapshot carries the beneficiary instruction — seed it, raise the
+        // intent, then execute it (IMPS success disburses atomically, preserving the fee
+        // snapshot assertion without a mock outcome).
+        seedBorrowerBankDetails(applicationId);
         loanDisbursementCommandService.initiateDisbursement(UUID.fromString(applicationId), "ops.admin");
-        loanDisbursementCommandService.resolveMockDisbursementOutcome(
-                UUID.fromString(applicationId),
-                "ops.admin",
-                MockDisbursementOutcome.DISBURSED
-        );
+        disbursementIntentWorkflowService.executeForApplication(UUID.fromString(applicationId));
+        loanDisbursementCommandService.autoResolveAfterInitiate(
+                UUID.fromString(applicationId), "ops.admin", null, "version-test");
 
         var loanAccount = loanAccountRepository.findByLoanApplication_Id(UUID.fromString(applicationId)).orElseThrow();
         BigDecimal expectedFee = new BigDecimal("1012.50");
         assertEquals(0, expectedFee.compareTo(loanAccount.getProcessingFeeAmount()));
+    }
+
+    private void seedBorrowerBankDetails(String applicationId) throws Exception {
+        String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
+                .getBorrower().getId().toString();
+        mockMvc.perform(patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "123456789012",
+                                "bankName", "Version Bank",
+                                "ifscCode", "HDFC0001234",
+                                "accountHolderName", "Version Borrower"
+                        ))))
+                .andExpect(status().isOk());
     }
 
     private String createAndApproveApplication(String lspId, String productId, String externalLoanId) throws Exception {

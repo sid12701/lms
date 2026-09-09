@@ -3,14 +3,18 @@ package com.bhawana.lms.web;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallmentStatus;
 import com.bhawana.lms.domain.LoanEventType;
+import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.service.LoanEventLog;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
@@ -70,6 +74,15 @@ class LoanRepaymentConcurrencyIntegrationTest {
 
     @Autowired
     private LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
+
+    @Autowired
+    private LoanApplicationRepository loanApplicationRepository;
+
+    @Autowired
+    private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+
+    @Autowired
+    private LoanDisbursementCommandService loanDisbursementCommandService;
 
     @MockitoSpyBean
     private LoanEventLog loanEventLog;
@@ -223,15 +236,28 @@ class LoanRepaymentConcurrencyIntegrationTest {
     }
 
     private void disburseLoan(String applicationId) throws Exception {
+        // C04: durable intent is the only initiation path — seed the frozen beneficiary
+        // instruction, raise the intent, then execute it (IMPS success disburses atomically).
+        String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
+                .getBorrower().getId().toString();
+        mockMvc.perform(patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "123456789012",
+                                "bankName", "Concurrency Bank",
+                                "ifscCode", "HDFC0001234",
+                                "accountHolderName", "Repayment Concurrency Borrower"
+                        ))))
+                .andExpect(status().isOk());
+
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-                .andExpect(status().isOk());
+        disbursementIntentWorkflowService.executeForApplication(UUID.fromString(applicationId));
+        loanDisbursementCommandService.autoResolveAfterInitiate(
+                UUID.fromString(applicationId), "ops.admin", null, "repayment-concurrency-test");
     }
 
     private void markAllRequiredDocumentsVerified(String applicationId) {

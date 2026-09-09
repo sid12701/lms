@@ -90,15 +90,18 @@ public class DisbursementPreflightValidator {
         if (loanAccount == null) {
             throw new ResourceNotFoundException("Loan account is not available for disbursement.");
         }
-        if (loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED) {
+        // C04: single guarded transition — no copied allow-list. REQUESTED/PENDING_RECONCILIATION
+        // reject; only PENDING_DISBURSEMENT / definitively FAILED may start a new attempt.
+        // This is a pre-flight check only; the state-changing call is LoanAccount.requestDisbursement().
+        if (loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED
+                || loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION) {
             throw new ApiConflictException(
                     "DISBURSEMENT_ALREADY_REQUESTED",
                     "Disbursement has already been requested for this loan account."
             );
         }
         if (loanAccount.getStatus() != LoanAccountStatus.PENDING_DISBURSEMENT
-                && loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_FAILED
-                && loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION) {
+                && loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_FAILED) {
             throw new ApiConflictException(
                     "DISBURSEMENT_NOT_ALLOWED",
                     "Loan account is not eligible for a new disbursement request."

@@ -10,13 +10,23 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select account from LoanAccount account where account.id = :id")
+    Optional<LoanAccount> findByIdForUpdate(@Param("id") UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select account from LoanAccount account where account.loanApplication.id = :applicationId")
+    Optional<LoanAccount> findByLoanApplication_IdForUpdate(@Param("applicationId") UUID applicationId);
 
     @EntityGraph(attributePaths = {
             "loanApplication",
@@ -49,6 +59,32 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
 
     List<LoanAccount> findByStatus(LoanAccountStatus status);
 
+    /**
+     * H02 — bounded discovery for the reconciliation sweep: in-flight or parked accounts that
+     * already submitted at least one provider call (a stored request row exists) but hold no
+     * queue entry yet — typically legacy evidence. Fresh CREATED intents with no submitted
+     * call are excluded: the worker still owns their first execution, and queueing them as
+     * mismatches would fabricate a problem that does not exist.
+     */
+    @Query("""
+            select account.id
+            from LoanAccount account
+            where account.status in (
+                com.bhawana.lms.domain.LoanAccountStatus.DISBURSEMENT_REQUESTED,
+                com.bhawana.lms.domain.LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION
+            )
+              and exists (
+                  select 1 from LoanDisbursementRequestLog requestLog
+                  where requestLog.loanAccount = account
+              )
+              and not exists (
+                  select 1 from DisbursementReconciliationQueueEntry queueEntry
+                  where queueEntry.loanAccount = account
+              )
+            order by account.createdAt asc
+            """)
+    List<UUID> findUnqueuedSubmittedIds(org.springframework.data.domain.Pageable pageable);
+
     @Query("""
             select account.loanApplication.id as applicationId,
                    account.accountNumber as accountNumber
@@ -61,6 +97,11 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
 
     boolean existsByBorrower_IdAndStatusIn(UUID borrowerId, Collection<LoanAccountStatus> statuses);
 
+    /**
+     * C06-phase-2: the duplicate-loan alert serializes lsp/application details after the
+     * admin read transaction has closed, so those associations must be fetched eagerly here.
+     */
+    @EntityGraph(attributePaths = {"lsp", "loanApplication"})
     List<LoanAccount> findByBorrower_IdAndStatusIn(UUID borrowerId, Collection<LoanAccountStatus> statuses);
 
     @EntityGraph(attributePaths = {

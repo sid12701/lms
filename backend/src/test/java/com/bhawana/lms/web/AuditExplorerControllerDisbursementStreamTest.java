@@ -5,6 +5,7 @@ import org.springframework.test.context.TestExecutionListeners;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -12,6 +13,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -47,6 +51,15 @@ class AuditExplorerControllerDisbursementStreamTest {
     @Autowired
     private LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
 
+    @Autowired
+    private LoanApplicationRepository loanApplicationRepository;
+
+    @Autowired
+    private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+
+    @Autowired
+    private LoanDisbursementCommandService loanDisbursementCommandService;
+
     @Test
     void disbursementStreamSurfacesMockOutcomeRow() throws Exception {
         UUID applicationId = disburseApplication();
@@ -75,15 +88,36 @@ class AuditExplorerControllerDisbursementStreamTest {
         transition(applicationId, "AWAITING_APPROVAL", "Ready");
         markAllRequiredKycDocumentsVerified(applicationId);
         transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved");
+        // C04: mock outcomes resolve a raised provider attempt — seed a pending attempt first
+        // (MOCK0PENDOK stays PENDING after execution), then apply the forced verdict.
+        seedBorrowerBankDetails(applicationId, "MOCK0PENDOK");
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
+        disbursementIntentWorkflowService.executeForApplication(applicationId);
+        loanDisbursementCommandService.autoResolveAfterInitiate(
+                applicationId, "ops.admin", null, "audit-explorer-test");
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
                 .andExpect(status().isOk());
         return applicationId;
+    }
+
+    private void seedBorrowerBankDetails(UUID applicationId, String ifsc) throws Exception {
+        String borrowerId = loanApplicationRepository.findById(applicationId).orElseThrow()
+                .getBorrower().getId().toString();
+        mockMvc.perform(patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "123456789012",
+                                "bankName", "Explorer Bank",
+                                "ifscCode", ifsc,
+                                "accountHolderName", "Disbursement Explorer Borrower"
+                        ))))
+                .andExpect(status().isOk());
     }
 
     private String createLsp() throws Exception {

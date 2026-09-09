@@ -1,0 +1,111 @@
+# H27 — disbursement visibility alerts (disbursement slice ONLY).
+#
+# Operational owner: Disbursement Ops on-call (SYSTEM_ADMIN role).
+#
+# STAGING STATUS: UNVERIFIED — the staging Prometheus collector, Alertmanager routing, and
+# alert delivery for these rules have NOT been verified. Do not treat firing/staleness of
+# these alerts as production signal until the staging collection + delivery check lands.
+# No alert delivery is fabricated here: rules below are config, not proof of delivery.
+
+groups:
+  - name: lms-disbursement-visibility
+    interval: 1m
+    rules:
+      - alert: DisbursementUnappliedBacklog
+        expr: lms_disbursement_intent_unapplied_count > 0
+        for: 15m
+        labels:
+          severity: warning
+          owner: disbursement-ops
+        annotations:
+          summary: "Terminal disbursement evidence is waiting for its loan move"
+          description: "{{ $value }} terminal intent(s) are still joined to DISBURSEMENT_REQUESTED accounts. Repair via the C02 stranded-terminal path; never re-initiate."
+          runbook_url: "docs/observability/disbursement-runbook.md#disbursementunappliedbacklog"
+
+      - alert: DisbursementUnappliedOldestCritical
+        expr: lms_disbursement_intent_unapplied_oldest_age_seconds > 7200
+        for: 5m
+        labels:
+          severity: critical
+          owner: disbursement-ops
+        annotations:
+          summary: "Unapplied disbursement evidence is older than 2h"
+          description: "Oldest unapplied terminal intent is {{ $value }}s old. Page the owner; reconcile from bank evidence."
+          runbook_url: "docs/observability/disbursement-runbook.md#disbursementunappliedbacklog"
+
+      - alert: DisbursementUnknownNeedsReconciliation
+        expr: lms_disbursement_intent_unknown_oldest_age_seconds > 3600
+        for: 10m
+        labels:
+          severity: warning
+          owner: disbursement-ops
+        annotations:
+          summary: "Uncertain disbursement outcomes are aging without reconciliation"
+          description: "Oldest UNKNOWN intent is {{ $value }}s old. Poll the original reference; do not issue a new reference."
+          runbook_url: "docs/observability/disbursement-runbook.md#disbursementunknownneedsreconciliation"
+
+      - alert: DisbursementParkedWithoutIntent
+        expr: lms_disbursement_account_parked_without_intent_count > 0
+        for: 30m
+        labels:
+          severity: warning
+          owner: disbursement-ops
+        annotations:
+          summary: "Requested/parked loans have no live intent to reconcile"
+          description: "{{ $value }} account(s) sit in DISBURSEMENT_REQUESTED/PENDING_RECONCILIATION with no live intent (manual parking or legacy mismatch). The H02 reconciliation queue owns recovery selection; review the queue panel before any manual bank-evidence action."
+          runbook_url: "docs/observability/disbursement-runbook.md#disbursementparkedwithoutintent"
+
+      - alert: DisbursementReconciliationQueueBacklog
+        expr: lms_disbursement_reconciliation_queue_count > 0
+        for: 15m
+        labels:
+          severity: warning
+          owner: disbursement-ops
+        annotations:
+          summary: "Unresolved disbursements are waiting in the reconciliation queue"
+          description: "{{ $value }} account(s) await reconciliation poll/repair of their original reference. Check the bounded sweep is running; never re-initiate."
+          runbook_url: "docs/observability/disbursement-runbook.md#disbursementreconciliationqueuebacklog"
+
+      - alert: DisbursementReconciliationQueueOldestCritical
+        expr: lms_disbursement_reconciliation_queue_oldest_age_seconds > 86400
+        for: 5m
+        labels:
+          severity: critical
+          owner: disbursement-ops
+        annotations:
+          summary: "Reconciliation queue holds entries older than the escalation age"
+          description: "Oldest unresolved entry is {{ $value }}s old (past the 24h escalation age). Page the owner; reconcile from bank evidence."
+          runbook_url: "docs/observability/disbursement-runbook.md#disbursementreconciliationqueuebacklog"
+
+      - alert: DisbursementPendingStuck
+        expr: lms_disbursement_intent_pending_oldest_age_seconds > 1800
+        for: 10m
+        labels:
+          severity: warning
+          owner: disbursement-ops
+        annotations:
+          summary: "Live disbursement intents are not progressing"
+          description: "Oldest CREATED/REQUESTED intent is {{ $value }}s old. Check worker health and claim-lease expiry."
+          runbook_url: "docs/observability/disbursement-runbook.md#disbursementpendingstuck"
+
+      - alert: DisbursementProviderLatencyHigh
+        expr: lms_disbursement_provider_initiate_latency_seconds_max > 30
+        for: 10m
+        labels:
+          severity: warning
+          owner: disbursement-ops
+        annotations:
+          summary: "Bank payment-request calls are slow"
+          description: "Max initiate latency {{ $value }}s over the scrape window. Check provider status before scaling workers; never retry an uncertain submission."
+          runbook_url: "docs/observability/disbursement-runbook.md#disbursementproviderlatencyhigh"
+
+      - alert: DisbursementStatusCheckLatencyHigh
+        expr: lms_disbursement_provider_status_check_latency_seconds_max > 30
+        for: 10m
+        labels:
+          severity: warning
+          owner: disbursement-ops
+        annotations:
+          summary: "Bank status-check calls are slow"
+          description: "Max status-check latency {{ $value }}s over the scrape window. Slow polls serialize the reconciliation sweep; check provider status, never issue fresh references to catch up."
+          runbook_url: "docs/observability/disbursement-runbook.md#disbursementproviderlatencyhigh"

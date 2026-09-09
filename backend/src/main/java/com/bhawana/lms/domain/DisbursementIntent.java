@@ -60,7 +60,6 @@ public class DisbursementIntent {
 
     @Column(name = "provider_request_id", length = 128)
     private String providerRequestId;
-
     @Column(name = "provider_act_code", length = 16)
     private String providerActCode;
 
@@ -70,6 +69,16 @@ public class DisbursementIntent {
     @Enumerated(EnumType.STRING)
     @Column(name = "decline_kind", length = 16)
     private DisbursementDeclineKind declineKind;
+
+    /**
+     * H15: canonical hash of the persisted repayment schedule frozen at intent creation.
+     * Null for rows created before H15 (legacy evidence is never invented); a CREATED intent
+     * without frozen evidence must not be submitted, while an already-submitted instruction
+     * stays reconcilable through the existing C02/H02 paths. Immutable after insert so the
+     * frozen evidence cannot be accidentally rewritten by a later writer.
+     */
+    @Column(name = "schedule_hash", length = 64, updatable = false)
+    private String scheduleHash;
 
     @Column(name = "created_by", nullable = false, length = 255)
     private String createdBy;
@@ -188,6 +197,22 @@ public class DisbursementIntent {
         return declineKind;
     }
 
+    public String getScheduleHash() {
+        return scheduleHash;
+    }
+
+    /**
+     * H15: one-time freeze of the canonical schedule hash at intent creation. Re-freezing is
+     * rejected so a later writer cannot silently rebase the evidence the submission check
+     * validates against.
+     */
+    public void freezeScheduleHash(String scheduleHash) {
+        if (this.scheduleHash != null) {
+            throw new IllegalStateException("Repayment schedule hash is already frozen for this intent.");
+        }
+        this.scheduleHash = scheduleHash;
+    }
+
     public String getCreatedBy() {
         return createdBy;
     }
@@ -218,10 +243,14 @@ public class DisbursementIntent {
     /**
      * Persists the point of no automatic retry before the provider side effect. Once this state is
      * committed, recovery must use the deterministic transaction reference and status API.
+     *
+     * <p>C03: retains the claim fence (owner/attempt/lease) through submission so result
+     * completion can be fenced against the captured attempt. A stale result may be retained as
+     * evidence but cannot overwrite the accepted outcome. The fence is released only on terminal
+     * states, which never re-enter claim/prepare.
      */
     public void markProviderCallStarted() {
         this.state = DisbursementIntentState.REQUESTED;
-        clearLease();
     }
 
     public void recordProviderResponse(
@@ -236,6 +265,10 @@ public class DisbursementIntent {
         this.providerActCode = providerActCode;
         this.bankRrn = bankRrn;
         this.declineKind = declineKind;
-        clearLease();
+        // C03: non-terminal states (REQUESTED/PENDING retention, UNKNOWN) keep the fence so a
+        // delayed duplicate cannot slip in with a cleared identity. Terminal states release it.
+        if (state.isTerminal()) {
+            clearLease();
+        }
     }
 }

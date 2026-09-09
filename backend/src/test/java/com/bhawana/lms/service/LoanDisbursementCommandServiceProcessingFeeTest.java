@@ -23,6 +23,7 @@ import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.repo.LoanAccountRepository;
+import com.bhawana.lms.repo.DisbursementIntentRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,6 +45,7 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
     @Mock private LoanApplicationRepository loanApplicationRepository;
     @Mock private LoanAccountRepository loanAccountRepository;
     @Mock private LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
+    @Mock private DisbursementIntentRepository disbursementIntentRepository;
     @Mock private LoanDisbursementAdapter loanDisbursementAdapter;
     @Mock private LoanEventLog loanEventLog;
     @Mock private LoanApplicationQueryService loanApplicationQueryService;
@@ -52,6 +54,7 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
     @Mock private DisbursementOutcomeAuditService disbursementOutcomeAuditService;
     @Mock private OpsAlertEmitters opsAlertEmitters;
     @Mock private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+    @Mock private DisbursementSimulationGuard simulationGuard;
     @Mock private TransactionTemplate transactionTemplate;
 
     @Mock private LoanApplication application;
@@ -74,25 +77,28 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
                 disbursementOutcomeAuditService,
                 new ObjectMapper()
         );
-        DisbursementIntentWorkflowProperties intentWorkflowProperties = new DisbursementIntentWorkflowProperties();
-        intentWorkflowProperties.setEnabled(false);
         LoanDisbursementMockProperties mockProperties = new LoanDisbursementMockProperties();
+        // C04: durable intent is the only initiation path — no flag, no inline adapter call.
         service = new LoanDisbursementCommandService(
                 loanApplicationRepository,
                 loanAccountRepository,
                 loanDisbursementRequestLogRepository,
                 loanDisbursementAdapter,
-                loanEventLog,
                 loanApplicationQueryService,
                 loanApplicationDocumentChecklistService,
                 loanApplicationStatusWriter,
                 disbursementOutcomeApplier,
                 mockProperties,
                 disbursementIntentWorkflowService,
-                intentWorkflowProperties,
                 new DisbursementPaymentModeSelector(mockProperties),
+                simulationGuard,
+                // H02: observation writer + intent repo + mapper for the poll evidence path.
+                mock(DisbursementObservationWriter.class),
+                disbursementIntentRepository,
+                new ObjectMapper(),
+                mock(DisbursementProviderLatency.class),
                 transactionTemplate,
-                new ObjectMapper()
+                mock(jakarta.persistence.EntityManager.class)
         );
     }
 
@@ -103,6 +109,7 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
     }
 
     private void stubLockAndResolve(LoanAccount acct) {
+        when(loanApplicationRepository.findBorrowerByApplicationIdForUpdate(applicationId)).thenReturn(Optional.of(borrower));
         when(loanApplicationRepository.findByIdForUpdate(applicationId)).thenReturn(Optional.of(application));
         when(loanApplicationQueryService.getApplication(applicationId)).thenReturn(application);
         when(application.getId()).thenReturn(applicationId);
@@ -111,30 +118,23 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
     }
 
     @Test
-    void initiateDisbursementSendsPrincipalMinusFeeToAdapter() {
+    void initiateDisbursementSendsPrincipalMinusFeeToIntent() {
         stubLockAndResolve(account(new BigDecimal("150000"), LoanAccountStatus.PENDING_DISBURSEMENT));
         when(loanProductVersion.getProcessingFeeRate()).thenReturn(new BigDecimal("1.5"));
-        when(application.getBorrower()).thenReturn(borrower);
-        when(application.getExternalLoanId()).thenReturn("EXT-1");
-        when(application.getLsp()).thenReturn(lsp);
-        when(borrower.getFullName()).thenReturn("Asha Borrower");
-        when(lsp.getCode()).thenReturn("LSP-A");
-        when(loanDisbursementAdapter.requestDisbursement(any())).thenReturn(
-                new LoanDisbursementAdapter.DisbursementResult(
-                        "MOCK_ICICI", "req-1", "SUCCESS",
-                        DisbursementPaymentMode.IMPS, DisbursementDisposition.SUCCESS,
-                        DisbursementDeclineKind.NONE, "0", "401319578626",
-                        "Transaction Successful", "{}"
-                )
-        );
 
         service.initiateDisbursement(applicationId, "ops.admin");
 
-        ArgumentCaptor<LoanDisbursementAdapter.DisbursementCommand> captor =
-                ArgumentCaptor.forClass(LoanDisbursementAdapter.DisbursementCommand.class);
-        verify(loanDisbursementAdapter).requestDisbursement(captor.capture());
+        ArgumentCaptor<BigDecimal> amountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        ArgumentCaptor<DisbursementPaymentMode> modeCaptor =
+                ArgumentCaptor.forClass(DisbursementPaymentMode.class);
+        verify(disbursementIntentWorkflowService).createIntent(
+                any(), any(), amountCaptor.capture(), modeCaptor.capture(), any());
         // 150000 - (150000 * 1.5%) = 150000 - 2250 = 147750.00 net cash to borrower
-        assertEquals(new BigDecimal("147750.00"), captor.getValue().amount());
+        assertEquals(new BigDecimal("147750.00"), amountCaptor.getValue());
+        assertEquals(DisbursementPaymentMode.IMPS, modeCaptor.getValue());
+        // C04: the command service never calls the bank itself — the worker executes the
+        // committed intent outside any transaction.
+        verify(loanDisbursementAdapter, never()).requestDisbursement(any());
     }
 
     @Test
@@ -147,6 +147,7 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
                 () -> service.initiateDisbursement(applicationId, "ops.admin")
         );
         verify(loanDisbursementAdapter, never()).requestDisbursement(any());
+        verify(disbursementIntentWorkflowService, never()).createIntent(any(), any(), any(), any(), any());
     }
 
     @Test

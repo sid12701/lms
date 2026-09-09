@@ -14,6 +14,7 @@ import com.bhawana.lms.service.LoanApplicationQueryService;
 import com.bhawana.lms.service.LoanApplicationServicingReadService;
 import com.bhawana.lms.service.AdminApiIdempotencyService;
 import com.bhawana.lms.service.DisbursementPreviewService;
+import com.bhawana.lms.service.DisbursementReconciliationService;
 import com.bhawana.lms.service.DisbursementReferenceService;
 import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.service.LoanRepaymentCommandService;
@@ -73,6 +74,7 @@ public class LoanApplicationOpsController {
     private static final String OPS_DISBURSEMENT_INITIATE = "OPS_DISBURSEMENT_INITIATE";
     private static final String OPS_DISBURSEMENT_MOCK_OUTCOME = "OPS_DISBURSEMENT_MOCK_OUTCOME";
     private static final String OPS_DISBURSEMENT_STATUS_CHECK = "OPS_DISBURSEMENT_STATUS_CHECK";
+    private static final String OPS_DISBURSEMENT_RECONCILE = "OPS_DISBURSEMENT_RECONCILE";
     private static final String OPS_FORECLOSURE_EXECUTE = "OPS_FORECLOSURE_EXECUTE";
 
     private final LoanApplicationQueryService loanApplicationQueryService;
@@ -80,6 +82,7 @@ public class LoanApplicationOpsController {
     private final LoanForeclosureCommandService loanForeclosureCommandService;
     private final LoanApplicationServicingReadService loanApplicationServicingReadService;
     private final LoanDisbursementCommandService loanDisbursementCommandService;
+    private final DisbursementReconciliationService disbursementReconciliationService;
     private final DisbursementPreviewService disbursementPreviewService;
     private final DisbursementReferenceService disbursementReferenceService;
     private final LoanRepaymentCommandService loanRepaymentCommandService;
@@ -93,6 +96,7 @@ public class LoanApplicationOpsController {
             LoanForeclosureCommandService loanForeclosureCommandService,
             LoanApplicationServicingReadService loanApplicationServicingReadService,
             LoanDisbursementCommandService loanDisbursementCommandService,
+            DisbursementReconciliationService disbursementReconciliationService,
             DisbursementPreviewService disbursementPreviewService,
             DisbursementReferenceService disbursementReferenceService,
             LoanRepaymentCommandService loanRepaymentCommandService,
@@ -105,6 +109,7 @@ public class LoanApplicationOpsController {
         this.loanForeclosureCommandService = loanForeclosureCommandService;
         this.loanApplicationServicingReadService = loanApplicationServicingReadService;
         this.loanDisbursementCommandService = loanDisbursementCommandService;
+        this.disbursementReconciliationService = disbursementReconciliationService;
         this.disbursementPreviewService = disbursementPreviewService;
         this.disbursementReferenceService = disbursementReferenceService;
         this.loanRepaymentCommandService = loanRepaymentCommandService;
@@ -526,6 +531,50 @@ public class LoanApplicationOpsController {
     ) {
         loanDisbursementCommandService.pollPendingDisbursement(
                 applicationId,
+                authentication.getName(),
+                ClientIpAddresses.resolve(httpRequest),
+                CorrelationIdHolder.get()
+        );
+        return LoanApplicationOpsResponses.toDetailResponse(loanApplicationDetailAssembler.getDetail(applicationId));
+    }
+
+    /**
+     * H02 — privileged evidence-backed manual resolution. Consumes one stored definitive
+     * matching provider observation through the single C02 applier; replay-safe. Any
+     * missing, non-definitive or mismatched evidence is rejected — outcomes are never
+     * invented.
+     */
+    @PostMapping("/{applicationId}/disbursement-requests/reconcile")
+    @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+    public LoanApplicationDetailResponse reconcileDisbursement(
+            Authentication authentication,
+            HttpServletRequest httpRequest,
+            @PathVariable UUID applicationId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody ReconcileDisbursementRequest request
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return doReconcileDisbursement(authentication, httpRequest, applicationId, request);
+        }
+        return adminApiIdempotencyService.execute(
+                OPS_DISBURSEMENT_RECONCILE,
+                idempotencyKey,
+                Map.of("applicationId", applicationId.toString(),
+                        "observationId", request.observationId().toString()),
+                LoanApplicationDetailResponse.class,
+                () -> doReconcileDisbursement(authentication, httpRequest, applicationId, request)
+        );
+    }
+
+    private LoanApplicationDetailResponse doReconcileDisbursement(
+            Authentication authentication,
+            HttpServletRequest httpRequest,
+            UUID applicationId,
+            ReconcileDisbursementRequest request
+    ) {
+        disbursementReconciliationService.resolveManually(
+                applicationId,
+                request.observationId(),
                 authentication.getName(),
                 ClientIpAddresses.resolve(httpRequest),
                 CorrelationIdHolder.get()

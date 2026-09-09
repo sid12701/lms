@@ -14,6 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.service.AlertRuleEvaluationWorker;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.tenant.TenantScopedExecution;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -83,6 +85,12 @@ class LspLoanEventFeedApiIntegrationTest {
 
     @Autowired
     private AlertRuleEvaluationWorker alertRuleEvaluationWorker;
+
+    @Autowired
+    private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+
+    @Autowired
+    private LoanDisbursementCommandService loanDisbursementCommandService;
 
     /** Set by a test that creates a partition of its own, so a failure mid-test cannot leave it behind. */
     private String partitionPendingCleanup;
@@ -406,7 +414,6 @@ class LspLoanEventFeedApiIntegrationTest {
         String staleCursor = page.get("nextCursor").asText();
 
         requestDisbursement(applicationId);
-        resolveDisbursement(applicationId);
 
         List<String> eventTypesAfterStaleCursor = eventTypesOf(itemsOf(readFeed(partner.accessToken(), staleCursor, 500)));
         assertTrue(
@@ -422,7 +429,6 @@ class LspLoanEventFeedApiIntegrationTest {
         String applicationId = createApplication(partner, "FEED-FILTER-001");
         uploadAllRequiredDocuments(partner.accessToken(), applicationId);
         requestDisbursement(applicationId);
-        resolveDisbursement(applicationId);
 
         // Omitting the filter returns all of the LSP's event types.
         List<JsonNode> unfiltered = itemsOf(readFeed(partner.accessToken(), null, 500));
@@ -487,7 +493,6 @@ class LspLoanEventFeedApiIntegrationTest {
         String applicationId = createApplication(partner, "FEED-REWIDEN-001");
         uploadAllRequiredDocuments(partner.accessToken(), applicationId);
         requestDisbursement(applicationId);
-        resolveDisbursement(applicationId);
 
         List<String> everyEventId = eventIdsOf(itemsOf(readFeed(partner.accessToken(), null, 500)));
 
@@ -574,7 +579,6 @@ class LspLoanEventFeedApiIntegrationTest {
         String applicationId = createApplication(partner, "FEED-SERVICING-001");
         uploadAllRequiredDocuments(partner.accessToken(), applicationId);
         requestDisbursement(applicationId);
-        resolveDisbursement(applicationId);
         String loanId = loanAccountId(partner.accessToken(), applicationId);
         recordPayment(partner.accessToken(), loanId);
 
@@ -606,7 +610,6 @@ class LspLoanEventFeedApiIntegrationTest {
         String applicationId = createApplication(partner, "FEED-DELINQUENCY-001");
         uploadAllRequiredDocuments(partner.accessToken(), applicationId);
         requestDisbursement(applicationId);
-        resolveDisbursement(applicationId);
         String loanAccountId = loanAccountId(partner.accessToken(), applicationId);
 
         transitionApplicationToUnderRepayment(applicationId);
@@ -664,10 +667,9 @@ class LspLoanEventFeedApiIntegrationTest {
     @Test
     void reconciliationParkedDisbursementProducesNoCompletionEvent() throws Exception {
         PartnerFixture partner = onboardPartner("FEED-PARKED");
-        String applicationId = createApplication(partner, "FEED-PARKED-001");
+        String applicationId = createApplication(partner, "FEED-PARKED-001", "MOCK0STUCK0");
         uploadAllRequiredDocuments(partner.accessToken(), applicationId);
-        requestDisbursement(applicationId);
-        parkDisbursementForReconciliation(applicationId);
+        requestAndParkDisbursement(applicationId);
 
         List<String> eventTypes = eventTypesOf(itemsOf(readFeed(partner.accessToken(), null, 500)));
 
@@ -684,21 +686,19 @@ class LspLoanEventFeedApiIntegrationTest {
      * lands on the partner's feed in per-loan order, as ADR 0007's Consequences section names it:
      * {@code DISBURSEMENT_REQUESTED -> DISBURSEMENT_PENDING_RECONCILIATION}.
      *
-     * <p>It deliberately stops at the park. The command path does currently re-admit a parked account
-     * for a fresh attempt, but CONTEXT.md § Disbursement is explicit that a parked attempt is in
-     * flight and past the point of no return — "no second initiation" until funds are confirmed
-     * returned, a confirmation this system has no transition for. Driving a second attempt here would
-     * cement that deviation in a regression test; the terminal path is covered by
-     * {@link #disbursementAndRepaymentReachTheFeed()} instead.
+     * <p>It deliberately stops at the park. Since C04 the command path rejects re-initiation for
+     * a parked account — a parked attempt is in flight and past the point of no return, per
+     * CONTEXT.md § Disbursement — so the only forward path is reconciliation of the original
+     * reference. The terminal path is covered by {@link #disbursementAndRepaymentReachTheFeed()}
+     * instead.
      */
     @Test
     void disbursementParkedForReconciliationProducesTheFullSequenceInPerLoanOrder() throws Exception {
         PartnerFixture partner = onboardPartner("FEED-RECONCILE");
-        String applicationId = createApplication(partner, "FEED-RECONCILE-001");
+        String applicationId = createApplication(partner, "FEED-RECONCILE-001", "MOCK0STUCK0");
         uploadAllRequiredDocuments(partner.accessToken(), applicationId);
 
-        requestDisbursement(applicationId);
-        parkDisbursementForReconciliation(applicationId);
+        requestAndParkDisbursement(applicationId);
 
         List<String> disbursementEventTypes = eventTypesOf(itemsOf(readFeed(
                 partner.accessToken(),
@@ -747,11 +747,11 @@ class LspLoanEventFeedApiIntegrationTest {
     @Test
     void aRetryableDisbursementFailureIsDistinguishableFromATerminalOne() throws Exception {
         PartnerFixture partner = onboardPartner("FEED-DECLINE");
-        String applicationId = createApplication(partner, "FEED-DECLINE-001");
+        // MOCK0NPCIDN is a technical decline — a failed attempt, not a rejected loan.
+        String applicationId = createApplication(partner, "FEED-DECLINE-001", "MOCK0NPCIDN");
         uploadAllRequiredDocuments(partner.accessToken(), applicationId);
 
         requestDisbursement(applicationId);
-        failDisbursement(applicationId);
 
         JsonNode failureEvent = itemsOf(readFeed(partner.accessToken(), null, 500)).stream()
                 .filter(event -> "DISBURSEMENT_FAILED".equals(event.get("eventType").asText()))
@@ -1060,6 +1060,10 @@ class LspLoanEventFeedApiIntegrationTest {
     }
 
     private String createApplication(PartnerFixture partner, String externalLoanId) throws Exception {
+        return createApplication(partner, externalLoanId, "HDFC0001234");
+    }
+
+    private String createApplication(PartnerFixture partner, String externalLoanId, String ifscCode) throws Exception {
         LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
         payload.put("lspId", partner.lspId());
         payload.put("productId", partner.productId());
@@ -1091,7 +1095,7 @@ class LspLoanEventFeedApiIntegrationTest {
         payload.put("annualIncome", new BigDecimal("936000.00"));
         payload.put("bankAccountNumber", "123456789012");
         payload.put("bankName", "Demo Bank");
-        payload.put("ifscCode", "HDFC0001234");
+        payload.put("ifscCode", ifscCode);
         payload.put("accountHolderName", "Anika Sharma");
         payload.put("referencePersonName", "Neha Verma");
         payload.put("referencePersonNumber", "9888877777");
@@ -1154,35 +1158,37 @@ class LspLoanEventFeedApiIntegrationTest {
     }
 
     private void requestDisbursement(String applicationId) throws Exception {
+        // C04: POST commits the durable intent only; execute it here the way the worker does
+        // (IMPS-success fixtures disburse atomically on execution, so no mock outcome follows).
         mockMvc.perform(post(
                         "/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests",
                         applicationId
                 ).with(systemAdmin()))
                 .andExpect(status().isOk());
+        UUID applicationUuid = UUID.fromString(applicationId);
+        TenantScopedExecution.runAsAdmin(() -> {
+            disbursementIntentWorkflowService.executeForApplication(applicationUuid);
+            loanDisbursementCommandService.autoResolveAfterInitiate(
+                    applicationUuid, "ops.admin", null, "feed-test");
+        });
     }
 
-    private void resolveDisbursement(String applicationId) throws Exception {
-        applyMockDisbursementOutcome(applicationId, "DISBURSED");
-    }
-
-    private void parkDisbursementForReconciliation(String applicationId) throws Exception {
-        applyMockDisbursementOutcome(applicationId, "PENDING_RECONCILIATION");
-    }
-
-    /** Resolves as a TECHNICAL decline — a failed attempt, not a rejected loan. */
-    private void failDisbursement(String applicationId) throws Exception {
-        applyMockDisbursementOutcome(applicationId, "FAILED");
-    }
-
-    private void applyMockDisbursementOutcome(String applicationId, String outcome) throws Exception {
+    private void requestAndParkDisbursement(String applicationId) throws Exception {
+        // C04: a stuck attempt (MOCK0STUCK0) stays PENDING after execution, then parks once the
+        // poll cap is reached — the runAsAdmin scope mirrors the status-check worker.
         mockMvc.perform(post(
-                        "/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome",
+                        "/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests",
                         applicationId
-                )
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", outcome))))
+                ).with(systemAdmin()))
                 .andExpect(status().isOk());
+        UUID applicationUuid = UUID.fromString(applicationId);
+        TenantScopedExecution.runAsAdmin(() -> {
+            disbursementIntentWorkflowService.executeForApplication(applicationUuid);
+            loanDisbursementCommandService.pollPendingDisbursement(
+                    applicationUuid, "ops.admin", null, "feed-test");
+            loanDisbursementCommandService.pollPendingDisbursement(
+                    applicationUuid, "ops.admin", null, "feed-test");
+        });
     }
 
     /**

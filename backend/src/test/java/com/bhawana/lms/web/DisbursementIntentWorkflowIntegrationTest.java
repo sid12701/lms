@@ -49,7 +49,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestExecutionListeners;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -58,7 +57,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@TestPropertySource(properties = "app.disbursement.intent-workflow.enabled=true")
 @TestExecutionListeners(
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
@@ -163,9 +161,11 @@ class DisbursementIntentWorkflowIntegrationTest {
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
+        // C04: re-initiation while REQUESTED is rejected — same single intent, no second bank call.
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
-                .andExpect(status().isOk());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("DISBURSEMENT_ALREADY_REQUESTED"));
 
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         assertEquals(1, disbursementIntentRepository.findAll().stream()

@@ -6,8 +6,10 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -16,6 +18,15 @@ public interface BorrowerRepository extends JpaRepository<Borrower, UUID> {
     @Override
     @EntityGraph(attributePaths = "visibleLspIds")
     Optional<Borrower> findById(UUID id);
+
+    /**
+     * C06-phase-2: borrower-first lock. Bank edits, approvals and initiation acquire this
+     * before any application/account/intent lock so concurrent commands for the same shared
+     * borrower serialize on one row instead of racing past each other in reverse order.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select borrower from Borrower borrower where borrower.id = :id")
+    Optional<Borrower> findByIdForUpdate(@Param("id") UUID id);
 
     /**
      * Raw equality on `pan`: borrower.pan is normalised to upper-case at write

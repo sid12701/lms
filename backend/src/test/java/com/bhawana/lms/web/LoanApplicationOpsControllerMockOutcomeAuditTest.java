@@ -5,6 +5,7 @@ import org.springframework.test.context.TestExecutionListeners;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -17,7 +18,10 @@ import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.repo.DisbursementOutcomeAuditRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -65,6 +69,15 @@ class LoanApplicationOpsControllerMockOutcomeAuditTest {
 
     @Autowired
     private LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
+
+    @Autowired
+    private LoanApplicationRepository loanApplicationRepository;
+
+    @Autowired
+    private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+
+    @Autowired
+    private LoanDisbursementCommandService loanDisbursementCommandService;
 
     @Test
     void mockOutcomeWritesDisbursementOutcomeAuditRowWithActorIp() throws Exception {
@@ -153,10 +166,31 @@ class LoanApplicationOpsControllerMockOutcomeAuditTest {
     private UUID seedDisbursementRequestedApplication() throws Exception {
         UUID applicationId = createInitializedApplication();
         approveForDisbursement(applicationId);
+        // C04: mock outcomes resolve a raised provider attempt — seed a pending attempt first
+        // (MOCK0PENDOK stays PENDING after execution), then apply the forced verdict.
+        seedBorrowerBankDetails(applicationId);
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
+        disbursementIntentWorkflowService.executeForApplication(applicationId);
+        loanDisbursementCommandService.autoResolveAfterInitiate(
+                applicationId, "ops.admin", null, "mock-outcome-audit-test");
         return applicationId;
+    }
+
+    private void seedBorrowerBankDetails(UUID applicationId) throws Exception {
+        String borrowerId = loanApplicationRepository.findById(applicationId).orElseThrow()
+                .getBorrower().getId().toString();
+        mockMvc.perform(patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "123456789012",
+                                "bankName", "Mock Audit Bank",
+                                "ifscCode", "MOCK0PENDOK",
+                                "accountHolderName", "Mock Outcome Borrower"
+                        ))))
+                .andExpect(status().isOk());
     }
 
     private UUID createInitializedApplication() throws Exception {

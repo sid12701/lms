@@ -171,6 +171,34 @@ public class LoanAccount {
     }
 
     public void markDisbursementRequested() {
+        requestDisbursement();
+    }
+
+    /**
+     * C04 — single guarded transition into {@code DISBURSEMENT_REQUESTED}.
+     *
+     * <p>A new disbursement attempt is only safe from {@code PENDING_DISBURSEMENT} or from a
+     * definitively failed attempt ({@code DISBURSEMENT_FAILED}, where the bank contract proves no
+     * debit happened or funds were confirmed returned — narrowed further under G01). Re-initiation
+     * from {@code DISBURSEMENT_REQUESTED} (in flight) or
+     * {@code DISBURSEMENT_PENDING_RECONCILIATION} (uncertain money) is rejected: the only forward
+     * path there is reconciliation of the original reference, never a fresh bank reference.
+     */
+    public void requestDisbursement() {
+        if (status == LoanAccountStatus.DISBURSEMENT_REQUESTED
+                || status == LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION) {
+            throw new com.bhawana.lms.common.api.error.ApiConflictException(
+                    "DISBURSEMENT_ALREADY_REQUESTED",
+                    "Disbursement has already been requested for this loan account; reconcile the original reference instead of initiating again."
+            );
+        }
+        if (status != LoanAccountStatus.PENDING_DISBURSEMENT
+                && status != LoanAccountStatus.DISBURSEMENT_FAILED) {
+            throw new com.bhawana.lms.common.api.error.ApiConflictException(
+                    "DISBURSEMENT_NOT_ALLOWED",
+                    "Loan account is not eligible for a new disbursement request."
+            );
+        }
         this.status = LoanAccountStatus.DISBURSEMENT_REQUESTED;
     }
 

@@ -16,6 +16,7 @@ import com.bhawana.lms.repo.ApiClientAuditEventRepository;
 import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.BorrowerLspRelationshipRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.DisbursementIntentRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationAssignmentEventRepository;
 import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
@@ -160,6 +161,9 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
     @Autowired
     private com.bhawana.lms.repo.DisbursementOutcomeAuditRepository disbursementOutcomeAuditRepository;
 
+    @Autowired
+    private DisbursementIntentRepository disbursementIntentRepository;
+
     @BeforeEach
     void setUp() {
         deleteCommittedRows();
@@ -178,12 +182,18 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
     private void deleteCommittedRows() {
         jdbcTemplate.execute("delete from report_access_audit");
         jdbcTemplate.execute("delete from report_request");
+        // H02 evidence (test databases only): the observation trail is append-only, so
+        // truncate it and the queue before intent/account deletes.
+        jdbcTemplate.execute("TRUNCATE TABLE disbursement_reconciliation_queue");
+        jdbcTemplate.execute("TRUNCATE TABLE disbursement_observation");
         disbursementOutcomeAuditRepository.deleteAllInBatch();
         loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
         borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
+        // C04: intents reference loan_account — delete them before the accounts they belong to.
+        disbursementIntentRepository.deleteAllInBatch();
         loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
         loanAccountRepository.deleteAllInBatch();
         loanApplicationAuditEventRepository.deleteAllInBatch();

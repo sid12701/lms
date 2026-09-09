@@ -3,6 +3,7 @@ package com.bhawana.lms.web;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -18,7 +19,10 @@ import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.repo.AdminApiIdempotencyRecordRepository;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
+import com.bhawana.lms.repo.DisbursementIntentRepository;
+import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
@@ -74,6 +78,15 @@ class AdminApiIdempotencyIntegrationTest {
 
     @Autowired
     private LoanDisbursementRequestLogRepository disbursementRequestLogRepository;
+
+    @Autowired
+    private DisbursementIntentRepository disbursementIntentRepository;
+
+    @Autowired
+    private LoanApplicationRepository loanApplicationRepository;
+
+    @Autowired
+    private LoanAccountRepository loanAccountRepository;
 
     @Autowired
     private OpsAlertRepository opsAlertRepository;
@@ -140,6 +153,7 @@ class AdminApiIdempotencyIntegrationTest {
     @Test
     void disbursementInitiateWithSameKeyRunsOnce() throws Exception {
         String applicationId = createApprovedApplication();
+        seedBorrowerBankDetails(applicationId);
         String key = UUID.randomUUID().toString();
 
         mockMvc.perform(post(
@@ -156,9 +170,28 @@ class AdminApiIdempotencyIntegrationTest {
                         .header("Idempotency-Key", key))
                 .andExpect(status().isOk());
 
-        assertEquals(1, disbursementRequestLogRepository.findAll().stream()
-                .filter(row -> row.getLoanAccount().getLoanApplication().getId().equals(UUID.fromString(applicationId)))
+        // C04: initiation commits one durable intent (the provider log appears only once the
+        // worker executes it); the replayed key must not raise a second intent.
+        UUID accountId = loanAccountRepository.findByLoanApplication_Id(UUID.fromString(applicationId))
+                .orElseThrow().getId();
+        assertEquals(1, disbursementIntentRepository.findAll().stream()
+                .filter(row -> row.getLoanAccount().getId().equals(accountId))
                 .count());
+    }
+
+    private void seedBorrowerBankDetails(String applicationId) throws Exception {
+        String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
+                .getBorrower().getId().toString();
+        mockMvc.perform(patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "123456789012",
+                                "bankName", "Idempotency Bank",
+                                "ifscCode", "HDFC0001234",
+                                "accountHolderName", "Idempotency Borrower"
+                        ))))
+                .andExpect(status().isOk());
     }
 
     @Test

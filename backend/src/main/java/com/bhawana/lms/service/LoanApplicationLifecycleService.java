@@ -5,6 +5,7 @@ import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.common.util.JsonPayloadSerializer;
 import com.bhawana.lms.common.util.Strings;
+import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
@@ -12,9 +13,14 @@ import com.bhawana.lms.domain.LoanApplicationDocumentType;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LoanInvalidationReason;
+import com.bhawana.lms.repo.DisbursementIntentRepository;
+import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
+import java.util.EnumSet;
+import jakarta.persistence.EntityManager;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +40,22 @@ public class LoanApplicationLifecycleService {
     private final LoanAutoApprovalRuleEngine loanAutoApprovalRuleEngine;
     private final OpsAlertEmitters opsAlertEmitters;
     private final JsonPayloadSerializer jsonPayloadSerializer;
+    private final LoanAccountRepository loanAccountRepository;
+    private final DisbursementIntentRepository disbursementIntentRepository;
+
+    /**
+     * H31 — financial lifecycle states that a generic status request must never write directly.
+     * DISBURSED is written only by the accepted bank-outcome path (C02's
+     * {@link DisbursementOutcomeApplier}, which bypasses this façade via the status writer);
+     * CLOSED/FORECLOSED only by a validated settlement command (final EMI / foreclosure).
+     * An admin reason is not financial evidence.
+     */
+    private static final Set<LoanApplicationStatus> FINANCIAL_EVIDENCE_TARGETS =
+            EnumSet.of(
+                    LoanApplicationStatus.DISBURSED,
+                    LoanApplicationStatus.CLOSED,
+                    LoanApplicationStatus.FORECLOSED);
+    private final EntityManager entityManager;
 
     public LoanApplicationLifecycleService(
             LoanApplicationRepository loanApplicationRepository,
@@ -43,7 +65,10 @@ public class LoanApplicationLifecycleService {
             LoanApplicationDocumentChecklistService documentChecklistService,
             LoanAutoApprovalRuleEngine loanAutoApprovalRuleEngine,
             OpsAlertEmitters opsAlertEmitters,
-            JsonPayloadSerializer jsonPayloadSerializer
+            JsonPayloadSerializer jsonPayloadSerializer,
+            LoanAccountRepository loanAccountRepository,
+            DisbursementIntentRepository disbursementIntentRepository,
+            EntityManager entityManager
     ) {
         this.loanApplicationRepository = loanApplicationRepository;
         this.onboardingService = onboardingService;
@@ -53,6 +78,9 @@ public class LoanApplicationLifecycleService {
         this.loanAutoApprovalRuleEngine = loanAutoApprovalRuleEngine;
         this.opsAlertEmitters = opsAlertEmitters;
         this.jsonPayloadSerializer = jsonPayloadSerializer;
+        this.loanAccountRepository = loanAccountRepository;
+        this.disbursementIntentRepository = disbursementIntentRepository;
+        this.entityManager = entityManager;
     }
 
     public LoanApplication createApplication(String actorUsername, LoanApplicationOnboardingCommand command) {
@@ -78,11 +106,13 @@ public class LoanApplicationLifecycleService {
         if (targetStatus == null) {
             throw new IllegalArgumentException("Target status is required.");
         }
+        rejectDirectFinancialTarget(targetStatus);
 
-        if (targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL) {
-            lockBorrowerForApproval(applicationId);
-        }
-        LoanApplication application = getApplication(applicationId);
+        // H31 generic in-flight guard: shared loan-command lock order
+        // borrower → application → account → live intent. No generic mutation while the
+        // account is REQUESTED/PENDING_RECONCILIATION or a live intent exists; the only
+        // forward path there is reconciliation of the original reference.
+        LoanApplication application = lockAndRecheckInFlight(applicationId);
         LoanApplicationStatus currentStatus = application.getStatus();
         if (currentStatus == targetStatus) {
             throw new ApiConflictException(
@@ -128,8 +158,15 @@ public class LoanApplicationLifecycleService {
         if (targetStatus == null) {
             throw new IllegalArgumentException("Target status is required.");
         }
+        // H31 first: a manual override is never financial evidence, even for otherwise
+        // override-eligible sources. This precedes the MANUAL_OVERRIDE_NOT_ALLOWED checks so the
+        // failure reason is stable and names the missing evidence.
+        rejectDirectFinancialTarget(targetStatus);
 
-        LoanApplication application = getApplication(applicationId);
+        // H31 generic in-flight guard (same shared order as above): a parked
+        // DISBURSEMENT_RETRY loan must stay recoverable under its original bank
+        // reference instead of being hidden by a manual REJECTED.
+        LoanApplication application = lockAndRecheckInFlight(applicationId);
         LoanApplicationStatus currentStatus = application.getStatus();
         if (currentStatus == targetStatus) {
             throw new ApiConflictException(
@@ -325,9 +362,62 @@ public class LoanApplicationLifecycleService {
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
     }
 
+    private static void rejectDirectFinancialTarget(LoanApplicationStatus targetStatus) {
+        if (FINANCIAL_EVIDENCE_TARGETS.contains(targetStatus)) {
+            throw new BusinessRuleViolationException(
+                    "FINANCIAL_STATUS_REQUIRES_EVIDENCE",
+                    "Direct status requests cannot write " + targetStatus.name() + "."
+                            + " DISBURSED is written only by the accepted bank-outcome path and CLOSED/FORECLOSED"
+                            + " only by a validated settlement command.",
+                    Map.of("targetStatus", targetStatus.name())
+            );
+        }
+    }
+
     private void lockBorrowerForApproval(UUID applicationId) {
         loanApplicationRepository.findBorrowerByApplicationIdForUpdate(applicationId)
+                .map(lockedBorrower -> {
+                    // Refresh after the lock wait: a cached borrower copy must never carry a
+                    // stale bank instruction into approval or account creation.
+                    entityManager.refresh(lockedBorrower);
+                    return lockedBorrower;
+                })
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
+    }
+
+    /**
+     * H31 generic in-flight guard: shared loan-command lock order
+     * borrower → application → account → live intent.
+     *
+     * <p>The borrower lock comes first so approval decisions and generic mutations
+     * serialize on the same shared lock; the locked application re-read then observes
+     * a concurrently committed intent creation or invalidation. No generic mutation
+     * is allowed while the account is {@code DISBURSEMENT_REQUESTED} /
+     * {@code DISBURSEMENT_PENDING_RECONCILIATION} or a live intent exists — the only
+     * forward path there is reconciliation of the original reference.
+     */
+    private LoanApplication lockAndRecheckInFlight(UUID applicationId) {
+        lockBorrowerForApproval(applicationId);
+        LoanApplication lockedApplication = loanApplicationRepository.findByIdForUpdate(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
+        loanAccountRepository.findByLoanApplication_IdForUpdate(applicationId).ifPresent(lockedAccount -> {
+            if (lockedAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED
+                    || lockedAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION) {
+                throw new ApiConflictException(
+                        "DISBURSEMENT_IN_PROGRESS",
+                        "Loan status cannot be changed while a disbursement is queued or awaiting reconciliation."
+                                + " Reconcile the disbursement outcome first."
+                );
+            }
+            if (disbursementIntentRepository.findLiveByLoanAccountIdForUpdate(lockedAccount.getId()).isPresent()) {
+                throw new ApiConflictException(
+                        "DISBURSEMENT_IN_PROGRESS",
+                        "Loan status cannot be changed while a live disbursement intent exists."
+                                + " Reconcile the disbursement outcome first."
+                );
+            }
+        });
+        return lockedApplication;
     }
 
     private static String requireNote(String note) {

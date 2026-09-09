@@ -4,6 +4,7 @@ import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.util.AlertContextJson;
 import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.common.api.error.ApiConflictException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.BorrowerLspRelationship;
 import com.bhawana.lms.domain.BorrowerProfile;
@@ -14,11 +15,13 @@ import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.repo.BorrowerRepository;
 import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -33,6 +36,8 @@ public class BorrowerOnboardingService {
     private final OpsAlertService opsAlertService;
     private final BorrowerActiveLoanChecker borrowerActiveLoanChecker;
     private final BorrowerLspRelationshipService borrowerLspRelationshipService;
+    private final BorrowerBankUpdatePolicy bankUpdatePolicy;
+    private final EntityManager entityManager;
     private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
     private final ObjectMapper objectMapper;
 
@@ -41,6 +46,8 @@ public class BorrowerOnboardingService {
             OpsAlertService opsAlertService,
             BorrowerActiveLoanChecker borrowerActiveLoanChecker,
             BorrowerLspRelationshipService borrowerLspRelationshipService,
+            BorrowerBankUpdatePolicy bankUpdatePolicy,
+            EntityManager entityManager,
             AdminScopedTransactionExecutor adminScopedTransactionExecutor,
             ObjectMapper objectMapper
     ) {
@@ -48,14 +55,18 @@ public class BorrowerOnboardingService {
         this.opsAlertService = opsAlertService;
         this.borrowerActiveLoanChecker = borrowerActiveLoanChecker;
         this.borrowerLspRelationshipService = borrowerLspRelationshipService;
+        this.bankUpdatePolicy = bankUpdatePolicy;
+        this.entityManager = entityManager;
         this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
         this.objectMapper = objectMapper;
     }
 
     /**
      * Resolve (find-or-create) the global borrower for an onboarding request. Cross-tenant PAN
-     * and mobile dedup plus the visibility grant run under explicit admin scope (ADR 0005);
-     * profile writes stay on the tenant datasource with row-level security enforced.
+     * and mobile dedup run as narrow admin reads (ADR 0005); every write — visibility grant,
+     * profile merge and bank-instruction change — stays in the caller's tenant transaction
+     * with row-level security enforced, so a failed onboarding leaves no access, profile or
+     * audit delta behind.
      */
     @Transactional
     public Borrower resolveBorrowerForOnboarding(
@@ -84,10 +95,46 @@ public class BorrowerOnboardingService {
             }
             validateImmutableBorrowerIdentity(lsp, borrowerByPan, profile, actorUsername);
             raiseActiveLoanDuplicateIfPresent(lsp, borrowerByPan, profile, actorUsername);
-            // Cross-tenant visibility grant needs admin (borrower row already committed).
-            Borrower visibleBorrower = grantVisibilityUnderAdmin(borrowerByPan, lsp);
-            visibleBorrower.mergeLatestProfile(profile);
-            return borrowerRepository.save(visibleBorrower);
+            // C06-phase-2 atomic existing-borrower path, all in this tenant transaction:
+            // 1. insert only our own access row (V43 permits lsp_id = self) — no detached
+            //    full-entity merge, no separately committed admin write;
+            // 2. lock and refresh the borrower so the post-wait row is authoritative;
+            // 3. recheck global eligibility under the lock (an approval may have committed
+            //    an open loan between the pre-check and the lock);
+            // 4. merge the non-bank profile, route changed bank fields through the common
+            //    audited policy, and record the relationship row. Any failure rolls back
+            //    access, profile and audit together.
+            UUID borrowerId = borrowerByPan.getId();
+            borrowerLspRelationshipService.grantAccess(borrowerId, lsp.getId());
+            Borrower locked = borrowerRepository.findByIdForUpdate(borrowerId)
+                    .orElseThrow(() -> new ApiConflictException(
+                            "BORROWER_IDENTITY_CONFLICT",
+                            "Borrower identity conflict detected. Internal ops has been alerted."
+                    ));
+            entityManager.refresh(locked);
+            raiseActiveLoanDuplicateIfPresent(lsp, locked, profile, actorUsername);
+            locked.mergeLatestProfileExcludingBank(profile);
+            borrowerRepository.save(locked);
+            // Omitted bank fields preserve the existing instruction (merge contract); only
+            // supplied fields can change it, through the shared audited policy. Onboarding
+            // acts on the originating LSP's behalf through the shared instruction.
+            bankUpdatePolicy.applyChangedBankDetails(
+                    locked,
+                    lsp,
+                    effectiveBankValue(profile.bankAccountNumber(), locked.getBankAccountNumber()),
+                    effectiveBankValue(profile.bankName(), locked.getBankName()),
+                    effectiveBankValue(profile.ifscCode(), locked.getIfscCode()),
+                    effectiveBankValue(profile.accountHolderName(), locked.getAccountHolderName()),
+                    actorUsername,
+                    "LSP_API_CLIENT",
+                    null
+            );
+            borrowerLspRelationshipService.recordRelationship(
+                    borrowerId,
+                    lsp.getId(),
+                    BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING
+            );
+            return locked;
         }
 
         if (borrowerByMobile != null) {
@@ -123,14 +170,6 @@ public class BorrowerOnboardingService {
                 .stream()
                 .findFirst()
                 .orElse(null));
-    }
-
-    private Borrower grantVisibilityUnderAdmin(Borrower borrower, Lsp lsp) {
-        return adminScopedTransactionExecutor.call(() -> borrowerLspRelationshipService.grantVisibility(
-                borrower,
-                lsp,
-                BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING
-        ));
     }
 
     private BorrowerProfile normalizedProfile(
@@ -281,6 +320,16 @@ public class BorrowerOnboardingService {
 
     static String normalizePan(String pan) {
         return pan.trim().toUpperCase();
+    }
+
+    /**
+     * C06-phase-2 merge contract: an omitted (blank) incoming bank field preserves the
+     * existing instruction instead of clearing it — clearing would both surprise the other
+     * LSP sharing the instruction and violate the audit row's NOT NULL beneficiary columns.
+     * Explicit edits keep their own null semantics in {@code BorrowerBankDetailsService}.
+     */
+    private static String effectiveBankValue(String incoming, String current) {
+        return Strings.normalizeOptional(incoming) == null ? current : incoming;
     }
 
     static String normalizeMobile(String mobile) {

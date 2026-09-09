@@ -15,11 +15,19 @@ import com.bhawana.lms.service.LoanDisbursementAdapter.DisbursementStatusResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.env.MockEnvironment;
 
 class MockLoanDisbursementAdapterScenarioTest {
 
-    private final MockLoanDisbursementAdapter adapter =
-            new MockLoanDisbursementAdapter(new ObjectMapper(), new LoanDisbursementMockProperties());
+    // G01: the simulator requires an explicit simulation profile, even in unit tests.
+    private final MockLoanDisbursementAdapter adapter = new MockLoanDisbursementAdapter(
+            new ObjectMapper(), new LoanDisbursementMockProperties(), simulationGuard());
+
+    private static DisbursementSimulationGuard simulationGuard() {
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("test");
+        return new DisbursementSimulationGuard(environment);
+    }
 
     private DisbursementResult request(DisbursementPaymentMode mode, String ifsc) {
         return adapter.requestDisbursement(new DisbursementCommand(

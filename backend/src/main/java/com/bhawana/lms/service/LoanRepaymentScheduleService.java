@@ -1,13 +1,16 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.api.error.ApiConflictException;
-import com.bhawana.lms.common.money.Money;
 import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
+import com.bhawana.lms.common.money.Money;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
+import com.bhawana.lms.repo.DisbursementIntentRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import java.math.BigDecimal;
@@ -20,14 +23,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class LoanRepaymentScheduleService {
 
+    private static final Logger log = LoggerFactory.getLogger(LoanRepaymentScheduleService.class);
+
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanAccountRepository loanAccountRepository;
+    private final LoanApplicationRepository loanApplicationRepository;
+    private final DisbursementIntentRepository disbursementIntentRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final LspValidationAuditService lspValidationAuditService;
@@ -36,6 +45,8 @@ public class LoanRepaymentScheduleService {
     public LoanRepaymentScheduleService(
             LoanApplicationQueryService loanApplicationQueryService,
             LoanAccountRepository loanAccountRepository,
+            LoanApplicationRepository loanApplicationRepository,
+            DisbursementIntentRepository disbursementIntentRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
             LspValidationAuditService lspValidationAuditService,
@@ -43,6 +54,8 @@ public class LoanRepaymentScheduleService {
     ) {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanAccountRepository = loanAccountRepository;
+        this.loanApplicationRepository = loanApplicationRepository;
+        this.disbursementIntentRepository = disbursementIntentRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.lspValidationAuditService = lspValidationAuditService;
@@ -52,15 +65,59 @@ public class LoanRepaymentScheduleService {
     /**
      * Generates and persists a repayment schedule when none exists yet for the loan account.
      * Used by the ops approval path so schedule math stays in one place.
+     *
+     * <p>H15: an empty schedule is only (re)built while the loan is still eligible. If the
+     * account already carries a live disbursement intent, receipts, or a post-request status,
+     * generation is skipped: rebuilding terms under a submitted instruction would silently
+     * rebase what the frozen schedule hash protects. New-account approval (PENDING, no
+     * intent, no receipts) is unaffected.
      */
     @Transactional
     public void generateIfAbsent(LoanAccount loanAccount) {
+        UUID accountId = loanAccount.getId();
         if (!loanRepaymentScheduleInstallmentRepository
-                .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId())
+                .findByLoanAccount_IdOrderByInstallmentNumberAsc(accountId)
                 .isEmpty()) {
             return;
         }
-        loanRepaymentScheduleInstallmentRepository.saveAll(buildGeneratedInstallments(loanAccount));
+        // Shared loan-command lock order (C01: application → account → intent; borrower first
+        // only where the caller already holds it, e.g. approval). Rechecked under lock so a
+        // concurrent intent creation cannot slip between the emptiness check and the insert.
+        UUID applicationId = applicationIdOf(loanAccount);
+        if (applicationId != null) {
+            loanApplicationRepository.findByIdForUpdate(applicationId);
+        }
+        LoanAccount lockedAccount = loanAccountRepository.findByIdForUpdate(accountId).orElse(null);
+        LoanAccount effectiveAccount = lockedAccount != null ? lockedAccount : loanAccount;
+        if (effectiveAccount.getStatus() != LoanAccountStatus.PENDING_DISBURSEMENT) {
+            log.warn("Skipping schedule generation for loan account {} in status {}.",
+                    accountId, effectiveAccount.getStatus());
+            return;
+        }
+        if (loanPaymentTransactionRepository.existsByLoanAccount_Id(accountId)) {
+            log.warn("Skipping schedule generation for loan account {} with recorded receipts.", accountId);
+            return;
+        }
+        if (disbursementIntentRepository.findLiveByLoanAccountIdForUpdate(accountId).isPresent()) {
+            log.warn("Skipping schedule generation for loan account {} with a live disbursement intent.",
+                    accountId);
+            return;
+        }
+        if (!loanRepaymentScheduleInstallmentRepository
+                .findByLoanAccount_IdOrderByInstallmentNumberAsc(accountId)
+                .isEmpty()) {
+            return;
+        }
+        loanRepaymentScheduleInstallmentRepository.saveAll(buildGeneratedInstallments(effectiveAccount));
+    }
+
+    private static UUID applicationIdOf(LoanAccount loanAccount) {
+        try {
+            LoanApplication application = loanAccount.getLoanApplication();
+            return application == null ? null : application.getId();
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     @Transactional
@@ -142,7 +199,15 @@ public class LoanRepaymentScheduleService {
 
     private LoanAccount getMutableLoanAccountForLsp(UUID lspId, UUID applicationId) {
         loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
-        LoanAccount loanAccount = loanAccountRepository.findByLoanApplication_Id(applicationId)
+        // H15: shared loan-command lock order (C01: application → account → intent). Both
+        // replacement paths serialize against intent creation/submission on the same rows, so a
+        // replacement cannot commit after the disbursement eligibility check without observing
+        // the committed intent, and vice versa.
+        loanApplicationRepository.findByIdForUpdate(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unknown loan application id: " + applicationId
+                ));
+        LoanAccount loanAccount = loanAccountRepository.findByLoanApplication_IdForUpdate(applicationId)
                 .orElseThrow(() -> new BusinessRuleViolationException(
                         "LOAN_NOT_APPROVED",
                         "Repayment schedule can only be set after the loan has been auto-approved.",
@@ -160,7 +225,25 @@ public class LoanRepaymentScheduleService {
                     "Repayment schedule cannot be replaced after repayments have started."
             );
         }
+        // Rechecked under the same locks intent creation uses: a committed intent (or a
+        // REQUESTED account, checked above) means the schedule is frozen for disbursement.
+        // Nothing is deleted before this point, so a rejection leaves prior installments intact.
+        disbursementIntentRepository.findLiveByLoanAccountIdForUpdate(loanAccount.getId()).ifPresent(live -> {
+            throw new ApiConflictException(
+                    "REPAYMENT_SCHEDULE_LOCKED",
+                    "Repayment schedule cannot be replaced after disbursement has been requested."
+            );
+        });
         return loanAccount;
+    }
+
+    /**
+     * H15: canonical hash of the currently persisted schedule for an account, frozen on the
+     * disbursement intent at creation and re-validated before submission preparation.
+     */
+    public String currentScheduleHash(UUID loanAccountId) {
+        return LoanRepaymentScheduleHash.hashEntities(loanRepaymentScheduleInstallmentRepository
+                .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccountId));
     }
 
     private List<LoanRepaymentScheduleInstallment> buildGeneratedInstallments(LoanAccount loanAccount) {

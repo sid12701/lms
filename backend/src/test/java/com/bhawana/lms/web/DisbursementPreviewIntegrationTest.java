@@ -1,6 +1,8 @@
 package com.bhawana.lms.web;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -12,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
 import com.bhawana.lms.service.LoanDisbursementAdapter;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
@@ -50,6 +53,7 @@ class DisbursementPreviewIntegrationTest {
     @Autowired private LoanApplicationRepository loanApplicationRepository;
     @Autowired private LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     @Autowired private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
+    @Autowired private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
 
     @MockitoSpyBean
     private LoanDisbursementAdapter loanDisbursementAdapter;
@@ -86,6 +90,11 @@ class DisbursementPreviewIntegrationTest {
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
+
+        // C04: initiation commits the intent only — the previewed amount reaches the bank when
+        // the worker executes the committed intent outside any transaction.
+        verify(loanDisbursementAdapter, never()).requestDisbursement(any());
+        disbursementIntentWorkflowService.executeForApplication(applicationId);
 
         ArgumentCaptor<LoanDisbursementAdapter.DisbursementCommand> captor =
                 ArgumentCaptor.forClass(LoanDisbursementAdapter.DisbursementCommand.class);

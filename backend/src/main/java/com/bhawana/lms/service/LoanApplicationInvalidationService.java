@@ -12,6 +12,7 @@ import com.bhawana.lms.domain.LoanApplicationStatusTransition;
 import com.bhawana.lms.domain.LoanInvalidationReason;
 import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.repo.DisbursementIntentRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
@@ -30,6 +31,7 @@ public class LoanApplicationInvalidationService {
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationStatusWriter loanApplicationStatusWriter;
     private final LoanEventLog loanEventLog;
+    private final DisbursementIntentRepository disbursementIntentRepository;
 
     public LoanApplicationInvalidationService(
             LoanAccountRepository loanAccountRepository,
@@ -37,7 +39,8 @@ public class LoanApplicationInvalidationService {
             LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository,
             LoanApplicationQueryService loanApplicationQueryService,
             LoanApplicationStatusWriter loanApplicationStatusWriter,
-            LoanEventLog loanEventLog
+            LoanEventLog loanEventLog,
+            DisbursementIntentRepository disbursementIntentRepository
     ) {
         this.loanAccountRepository = loanAccountRepository;
         this.loanApplicationRepository = loanApplicationRepository;
@@ -45,6 +48,7 @@ public class LoanApplicationInvalidationService {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanApplicationStatusWriter = loanApplicationStatusWriter;
         this.loanEventLog = loanEventLog;
+        this.disbursementIntentRepository = disbursementIntentRepository;
     }
 
     @Transactional
@@ -71,8 +75,23 @@ public class LoanApplicationInvalidationService {
         if (invalidReason == null) {
             throw new IllegalArgumentException("Invalid loan reason is required.");
         }
+        if (application == null || application.getId() == null) {
+            throw new IllegalArgumentException("Loan application is required.");
+        }
 
-        LoanApplicationStatus currentStatus = application.getStatus();
+        // Shared loan-command lock order (C01): application → account → intent.
+        // Intent creation (Tx-A) and submission preparation both acquire the application
+        // row lock first, so invalidation serializes against them: whichever transaction
+        // commits first is visible to the other before it makes a decision.
+        LoanApplication lockedApplication = loanApplicationRepository.findByIdForUpdate(application.getId())
+                .orElseThrow(() -> new IllegalArgumentException("Unknown loan application id: " + application.getId()));
+        // Re-resolve the account under the application lock so a concurrently created
+        // account is observed instead of trusting the caller's possibly stale snapshot.
+        LoanAccount lockedAccount = loanAccountRepository
+                .findByLoanApplication_IdForUpdate(lockedApplication.getId())
+                .orElse(null);
+
+        LoanApplicationStatus currentStatus = lockedApplication.getStatus();
         if (currentStatus == LoanApplicationStatus.INVALID) {
             throw new ApiConflictException("LOAN_ALREADY_INVALID", "Loan application is already marked invalid.");
         }
@@ -84,18 +103,39 @@ public class LoanApplicationInvalidationService {
             );
         }
 
-        if (loanAccount != null) {
-            if (loanAccount.getStatus() == LoanAccountStatus.DISBURSED
-                    || loanAccount.getStatus() == LoanAccountStatus.CLOSED
-                    || loanAccount.getStatus() == LoanAccountStatus.FORECLOSED) {
+        if (lockedAccount != null) {
+            if (lockedAccount.getStatus() == LoanAccountStatus.DISBURSED
+                    || lockedAccount.getStatus() == LoanAccountStatus.CLOSED
+                    || lockedAccount.getStatus() == LoanAccountStatus.FORECLOSED) {
                 throw new BusinessRuleViolationException(
                         "INVALIDATION_NOT_ALLOWED",
                         "Loan applications that have entered servicing cannot be marked invalid.",
-                        Map.of("loanAccountStatus", loanAccount.getStatus().name())
+                        Map.of("loanAccountStatus", lockedAccount.getStatus().name())
                 );
             }
-            if (loanAccount.getStatus() == LoanAccountStatus.INVALID) {
+            if (lockedAccount.getStatus() == LoanAccountStatus.INVALID) {
                 throw new ApiConflictException("LOAN_ALREADY_INVALID", "Loan application is already marked invalid.");
+            }
+            // A queued (REQUESTED) or parked/uncertain (PENDING_RECONCILIATION) disbursement
+            // may already have left the building: the bank instruction must be reconciled
+            // first instead of hiding the loan from recovery.
+            if (lockedAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED
+                    || lockedAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION) {
+                throw new ApiConflictException(
+                        "DISBURSEMENT_IN_PROGRESS",
+                        "Loan cannot be marked invalid while a disbursement is queued or awaiting reconciliation."
+                                + " Reconcile the disbursement outcome first."
+                );
+            }
+            // Covers CREATED intents whose account has not yet flipped, plus REQUESTED and
+            // UNKNOWN (uncertain) instructions that must stay recoverable under their
+            // original bank reference.
+            if (disbursementIntentRepository.findLiveByLoanAccountIdForUpdate(lockedAccount.getId()).isPresent()) {
+                throw new ApiConflictException(
+                        "DISBURSEMENT_IN_PROGRESS",
+                        "Loan cannot be marked invalid while a live disbursement intent exists."
+                                + " Reconcile the disbursement outcome first."
+                );
             }
         }
 
@@ -104,19 +144,19 @@ public class LoanApplicationInvalidationService {
         Instant invalidatedAt = Instant.now();
         String invalidationNote = buildInvalidationNote(invalidReason, normalizedInvalidReasonText);
 
-        application.markInvalid(
+        lockedApplication.markInvalid(
                 invalidReason,
                 normalizedInvalidReasonText,
                 normalizedActor,
                 invalidatedAt
         );
 
-        if (loanAccount != null) {
-            loanAccount.markInvalid();
-            loanAccountRepository.save(loanAccount);
+        if (lockedAccount != null) {
+            lockedAccount.markInvalid();
+            loanAccountRepository.save(lockedAccount);
         }
 
-        LoanApplication savedApplication = loanApplicationRepository.save(application);
+        LoanApplication savedApplication = loanApplicationRepository.save(lockedApplication);
         loanApplicationStatusTransitionRepository.save(new LoanApplicationStatusTransition(
                 savedApplication,
                 currentStatus,

@@ -203,12 +203,12 @@ All workers are Spring `@Scheduled` `fixedDelay` jobs in-process today. DB-table
 
 | Worker | Interval (default) | Batch | Multi-instance safe | Notes |
 |---|---|---|---|---|
-| `LoanDisbursementWorker` | 30s | intent: 10 (configurable) | **Yes** (intent workflow) — `SKIP LOCKED` + lease on `disbursement_intent` | When `app.disbursement.intent-workflow.enabled=true` (default): provider call **outside** DB tx; legacy inline path when flag off |
+| `LoanDisbursementWorker` | 30s | intent: 10 (configurable) | **Yes** — `SKIP LOCKED` + lease on `disbursement_intent` | Provider call **outside** DB tx (C04: intent is the only initiation path) |
 | `WebhookOutboxDispatchWorker` | 60s | 20 | **Yes** — `SKIP LOCKED` + lease TTL | Thread pool 10; HMAC-signed; backoff retry; redrive cap |
 | `ReportRequestProcessingWorker` | 15s | 10 | **Yes** — PG claim | Single tx per batch (gap); CSV in memory |
 | `AlertRuleSchedulerWorker` / `EvaluationWorker` | 300s | full portfolio scan | Partial (dedupe on insert) | Stale-intake, stuck-disbursement, LSP reject-rate, auth brute-force rules |
 
-> **Finding (P0/P1, from audit):** disbursement worker was the weakest link — provider call inside the DB transaction, no `SKIP LOCKED` claim, one mega-transaction for the whole backlog. **Remediated 2026-07-13 (Spec S3 / MNY-01):** `disbursement_intent` + out-of-transaction provider calls + leased claims when intent workflow is enabled. Legacy inline path remains behind `app.disbursement.intent-workflow.enabled=false`. Residual: intent metrics/alarms, full crash-matrix tests; beneficiary snapshot (**S5 deferred 2026-07-15** — see `docs/deferred-implementation.md`). See `docs/implementation-log.md`.
+> **Finding (P0/P1, from audit):** disbursement worker was the weakest link — provider call inside the DB transaction, no `SKIP LOCKED` claim, one mega-transaction for the whole backlog. **Remediated 2026-07-13 (Spec S3 / MNY-01):** `disbursement_intent` + out-of-transaction provider calls + leased claims. **C04 (2026-09-07):** legacy inline initiation path and its flag removed; intent is the only money-movement path. Residual: intent metrics/alarms, full crash-matrix tests; beneficiary snapshot (**S5 deferred 2026-07-15** — see `docs/deferred-implementation.md`). See `docs/implementation-log.md`.
 
 ## 1.7 Integrations & external dependencies
 

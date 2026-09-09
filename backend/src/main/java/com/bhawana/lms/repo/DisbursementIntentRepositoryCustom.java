@@ -6,5 +6,8 @@ import java.util.UUID;
 
 public interface DisbursementIntentRepositoryCustom {
 
-    List<UUID> claimBatch(Instant now, int batchSize, Instant leaseExpiresAt, String leaseOwner);
+    List<ClaimToken> claimBatch(Instant now, int batchSize, Instant leaseExpiresAt, String leaseOwner);
+
+    java.util.Optional<ClaimToken> claimSingle(
+            java.util.UUID intentId, Instant now, Instant leaseExpiresAt, String leaseOwner);
 }

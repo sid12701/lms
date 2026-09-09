@@ -308,6 +308,23 @@ public class Borrower {
         applyProfile(profile);
     }
 
+    /**
+     * C06-phase-2: merges every profile field except the shared bank instruction, which must
+     * flow through {@code BorrowerBankUpdatePolicy} so it is gated and audited like an
+     * explicit edit. Callers capture the bank delta separately via the policy.
+     */
+    public void mergeLatestProfileExcludingBank(BorrowerProfile profile) {
+        String bankAccountNumber = this.bankAccountNumber;
+        String bankName = this.bankName;
+        String ifscCode = this.ifscCode;
+        String accountHolderName = this.accountHolderName;
+        mergeLatestProfile(profile);
+        this.bankAccountNumber = bankAccountNumber;
+        this.bankName = bankName;
+        this.ifscCode = ifscCode;
+        this.accountHolderName = accountHolderName;
+    }
+
     public void mergeLatestProfile(BorrowerProfile profile) {
         BorrowerProfile merged = new BorrowerProfile(
                 profile.fullName(),

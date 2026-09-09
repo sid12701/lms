@@ -186,6 +186,10 @@ class AuditExplorerControllerTest {
         disbursementOutcomeAuditRepository.deleteAllInBatch();
         loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
         borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
+        // H02 evidence (test databases only): the observation trail is append-only, so
+        // truncate it and the queue before intent/account deletes.
+        jdbcTemplate.execute("TRUNCATE TABLE disbursement_reconciliation_queue");
+        jdbcTemplate.execute("TRUNCATE TABLE disbursement_observation");
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
         // Before loan_account, and mirroring the order IntegrationTestDatabaseCleaner already uses.

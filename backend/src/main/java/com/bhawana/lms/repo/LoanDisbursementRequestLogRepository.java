@@ -11,5 +11,8 @@ public interface LoanDisbursementRequestLogRepository extends JpaRepository<Loan
 
     java.util.Optional<LoanDisbursementRequestLog> findTopByLoanAccount_IdOrderByCreatedAtDesc(UUID loanAccountId);
 
+    /** H02 — earliest stored request per account (original-evidence aging). */
+    java.util.Optional<LoanDisbursementRequestLog> findTopByLoanAccount_IdOrderByCreatedAtAsc(UUID loanAccountId);
+
     long countByLoanAccount_Id(UUID loanAccountId);
 }

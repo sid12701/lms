@@ -1,0 +1,39 @@
+{
+  "title": "LMS Disbursement Visibility (H27 slice)",
+  "uid": "lms-disbursement-visibility",
+  "timezone": "utc",
+  "panels": [
+    {
+      "title": "Unresolved buckets (count)",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "lms_disbursement_intent_pending_count", "legendFormat": "pending"},
+        {"expr": "lms_disbursement_intent_unknown_count", "legendFormat": "unknown"},
+        {"expr": "lms_disbursement_intent_unapplied_count", "legendFormat": "unapplied"},
+        {"expr": "lms_disbursement_account_parked_without_intent_count", "legendFormat": "parked w/o intent"},
+        {"expr": "lms_disbursement_reconciliation_queue_count", "legendFormat": "reconciliation queue"}
+      ]
+    },
+    {
+      "title": "Oldest age per bucket (seconds)",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "lms_disbursement_intent_pending_oldest_age_seconds", "legendFormat": "pending"},
+        {"expr": "lms_disbursement_intent_unknown_oldest_age_seconds", "legendFormat": "unknown"},
+        {"expr": "lms_disbursement_intent_unapplied_oldest_age_seconds", "legendFormat": "unapplied"},
+        {"expr": "lms_disbursement_account_parked_without_intent_oldest_age_seconds", "legendFormat": "parked w/o intent"},
+        {"expr": "lms_disbursement_reconciliation_queue_oldest_age_seconds", "legendFormat": "reconciliation queue"}
+      ]
+    },
+    {
+      "title": "Provider call latency (seconds)",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "rate(lms_disbursement_provider_initiate_latency_seconds_sum[5m]) / rate(lms_disbursement_provider_initiate_latency_seconds_count[5m])", "legendFormat": "initiate avg"},
+        {"expr": "rate(lms_disbursement_provider_status_check_latency_seconds_sum[5m]) / rate(lms_disbursement_provider_status_check_latency_seconds_count[5m])", "legendFormat": "status-check avg"},
+        {"expr": "lms_disbursement_provider_initiate_latency_seconds_max", "legendFormat": "initiate max"},
+        {"expr": "lms_disbursement_provider_status_check_latency_seconds_max", "legendFormat": "status-check max"}
+      ]
+    }
+  ]
+}

@@ -24,3 +24,24 @@ This left a structural gap: the security filter chain runs **before** MVC interc
 - An LSP principal calling any endpoint — including internal ones — only ever holds tenant scope; authorization rejections (`@PreAuthorize`) happen with the narrow scope already in place.
 - Workers and async tasks are unchanged: ThreadLocal scope does not propagate, so every entry point must use `TenantScopedExecution` (the fail-closed datasource enforces this).
 - Long-term defense-in-depth (Postgres RLS or Hibernate tenant filters keyed on the connection scope) remains open as a separate decision; this ADR only fixes scope provisioning.
+
+## Allowlist of explicit admin elevations (C06, 2026-09-08)
+
+Reachability from the LSP API surface to `AdminScopedTransactionExecutor` /
+`TenantScopedExecution.callAsAdmin` is fenced by `LspTenantElevationArchitectureTest`.
+Only these named boundaries may elevate, each narrowly scoped to its stated read or write:
+
+- `BorrowerOnboardingService` — cross-tenant PAN/mobile dedup reads.
+- `BorrowerActiveLoanChecker` — cross-LSP open-loan dedup reads, plus the C06 bank-gate
+  in-flight boolean and the global bank-update velocity aggregate (both read-only).
+- `OpsAlertService` / `OpsAlertEmitters` — `ops_alert` is not granted to the tenant role (V45).
+- `LspValidationAuditService` — LSP schedule-violation ops alerts (V45).
+- `BorrowerBankDetailsService` — disbursement mismatch audit rows and admin bank-detail updates only.
+- `IdempotencyExecutionCoordinator` — admin idempotency path only; the LSP path uses `ScopePreservingTransactionExecutor`.
+- `BorrowerPiiRevealAuditService` — PII reveal audit rows are admin-owned (V45).
+
+C06-phase-2 deliberately adds no new elevation: tenant bank mutations write their audit
+rows on the tenant connection under V122 (`borrower_bank_details_update_audit` tenant
+`SELECT,INSERT` + own-LSP RLS), and existing-borrower onboarding inserts only its own
+`borrower_lsp_access` row (V43) in the same tenant transaction. No broad admin write was
+introduced to bypass RLS.

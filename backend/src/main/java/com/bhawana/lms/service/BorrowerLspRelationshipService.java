@@ -6,6 +6,8 @@ import com.bhawana.lms.domain.BorrowerLspRelationship;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.repo.BorrowerLspRelationshipRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
+import com.bhawana.lms.repo.LspRepository;
+import jakarta.persistence.EntityManager;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,15 +32,21 @@ public class BorrowerLspRelationshipService {
     private final BorrowerRepository borrowerRepository;
     private final BorrowerLspRelationshipRepository borrowerLspRelationshipRepository;
     private final BorrowerLegacyAccessWriter borrowerLegacyAccessWriter;
+    private final LspRepository lspRepository;
+    private final EntityManager entityManager;
 
     public BorrowerLspRelationshipService(
             BorrowerRepository borrowerRepository,
             BorrowerLspRelationshipRepository borrowerLspRelationshipRepository,
-            BorrowerLegacyAccessWriter borrowerLegacyAccessWriter
+            BorrowerLegacyAccessWriter borrowerLegacyAccessWriter,
+            LspRepository lspRepository,
+            EntityManager entityManager
     ) {
         this.borrowerRepository = borrowerRepository;
         this.borrowerLspRelationshipRepository = borrowerLspRelationshipRepository;
         this.borrowerLegacyAccessWriter = borrowerLegacyAccessWriter;
+        this.lspRepository = lspRepository;
+        this.entityManager = entityManager;
     }
 
     /**
@@ -67,6 +75,45 @@ public class BorrowerLspRelationshipService {
                 .orElseGet(() -> borrowerLspRelationshipRepository.save(
                         new BorrowerLspRelationship(borrower, lsp, sourceChannel)
                 ));
+    }
+
+    /**
+     * C06-phase-2 narrow access insertion for the atomic existing-borrower onboarding path.
+     * Inserts only the caller's own {@code borrower_lsp_access} row in the current tenant
+     * transaction (V43 permits {@code lsp_id = self}) — no detached full-entity merge, no
+     * admin write. The caller must lock and refresh the borrower next, then merge the
+     * profile and record the relationship row below.
+     */
+    public void grantAccess(UUID borrowerId, UUID lspId) {
+        Objects.requireNonNull(borrowerId, "borrowerId");
+        Objects.requireNonNull(lspId, "lspId");
+        entityManager.createNativeQuery(
+                        "INSERT INTO borrower_lsp_access (borrower_id, lsp_id) "
+                                + "VALUES (:borrowerId, :lspId) "
+                                + "ON CONFLICT (borrower_id, lsp_id) DO NOTHING")
+                .setParameter("borrowerId", borrowerId)
+                .setParameter("lspId", lspId)
+                .executeUpdate();
+    }
+
+    /**
+     * C06-phase-2 relationship upsert by id, without merging borrower state. References are
+     * lazy proxies (FK values only); the borrower's profile is owned by the caller's locked
+     * and refreshed entity, never by this write.
+     */
+    public BorrowerLspRelationship recordRelationship(UUID borrowerId, UUID lspId, String sourceChannel) {
+        Objects.requireNonNull(borrowerId, "borrowerId");
+        Objects.requireNonNull(lspId, "lspId");
+        return borrowerLspRelationshipRepository.findByBorrower_IdAndLsp_Id(borrowerId, lspId)
+                .map(existing -> {
+                    existing.touch();
+                    return borrowerLspRelationshipRepository.save(existing);
+                })
+                .orElseGet(() -> borrowerLspRelationshipRepository.save(new BorrowerLspRelationship(
+                        borrowerRepository.getReferenceById(borrowerId),
+                        lspRepository.getReferenceById(lspId),
+                        sourceChannel
+                )));
     }
 
     @Transactional(readOnly = true)

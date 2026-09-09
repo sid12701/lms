@@ -5,22 +5,19 @@ import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.common.pii.BankAccountMasking;
 import com.bhawana.lms.domain.Borrower;
-import com.bhawana.lms.domain.BorrowerBankDetailsUpdateAudit;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
-import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanDisbursementBankMismatchLog;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LoanEventType;
-import com.bhawana.lms.repo.BorrowerBankDetailsUpdateAuditRepository;
 import com.bhawana.lms.repo.BorrowerRepository;
-import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanDisbursementBankMismatchLogRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
 import com.bhawana.lms.tenant.ScopePreservingTransactionExecutor;
 import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
+import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -39,11 +36,6 @@ public class BorrowerBankDetailsService {
 
     private static final Logger log = LoggerFactory.getLogger(BorrowerBankDetailsService.class);
 
-    private static final Set<LoanAccountStatus> IN_FLIGHT_DISBURSEMENT_STATUSES = EnumSet.of(
-            LoanAccountStatus.DISBURSEMENT_REQUESTED,
-            LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION
-    );
-
     private static final Set<LoanApplicationStatus> PRE_DISBURSAL_APPLICATION_STATUSES = EnumSet.of(
             LoanApplicationStatus.INITIALIZED,
             LoanApplicationStatus.AWAITING_APPROVAL,
@@ -54,13 +46,13 @@ public class BorrowerBankDetailsService {
     private final BorrowerRepository borrowerRepository;
     private final LspRepository lspRepository;
     private final LoanApplicationRepository loanApplicationRepository;
-    private final LoanAccountRepository loanAccountRepository;
-    private final BorrowerBankDetailsUpdateAuditRepository bankDetailsUpdateAuditRepository;
     private final LoanDisbursementBankMismatchLogRepository bankMismatchLogRepository;
     private final LoanEventLog loanEventLog;
     private final OpsAlertEmitters opsAlertEmitters;
     private final BorrowerBankDetailsProperties properties;
     private final Clock clock;
+    private final BorrowerBankUpdatePolicy bankUpdatePolicy;
+    private final EntityManager entityManager;
     private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
     private final ScopePreservingTransactionExecutor scopePreservingTransactionExecutor;
 
@@ -68,26 +60,26 @@ public class BorrowerBankDetailsService {
             BorrowerRepository borrowerRepository,
             LspRepository lspRepository,
             LoanApplicationRepository loanApplicationRepository,
-            LoanAccountRepository loanAccountRepository,
-            BorrowerBankDetailsUpdateAuditRepository bankDetailsUpdateAuditRepository,
             LoanDisbursementBankMismatchLogRepository bankMismatchLogRepository,
             LoanEventLog loanEventLog,
             OpsAlertEmitters opsAlertEmitters,
             BorrowerBankDetailsProperties properties,
             Clock clock,
+            BorrowerBankUpdatePolicy bankUpdatePolicy,
+            EntityManager entityManager,
             AdminScopedTransactionExecutor adminScopedTransactionExecutor,
             ScopePreservingTransactionExecutor scopePreservingTransactionExecutor
     ) {
         this.borrowerRepository = borrowerRepository;
         this.lspRepository = lspRepository;
         this.loanApplicationRepository = loanApplicationRepository;
-        this.loanAccountRepository = loanAccountRepository;
-        this.bankDetailsUpdateAuditRepository = bankDetailsUpdateAuditRepository;
         this.bankMismatchLogRepository = bankMismatchLogRepository;
         this.loanEventLog = loanEventLog;
         this.opsAlertEmitters = opsAlertEmitters;
         this.properties = properties;
         this.clock = clock;
+        this.bankUpdatePolicy = bankUpdatePolicy;
+        this.entityManager = entityManager;
         this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
         this.scopePreservingTransactionExecutor = scopePreservingTransactionExecutor;
     }
@@ -270,8 +262,12 @@ public class BorrowerBankDetailsService {
             String actorType,
             String clientIp
     ) {
-        Borrower borrower = borrowerRepository.findById(borrowerId)
+        // C06-phase-2 borrower-first order: the borrower row lock comes before every
+        // application/account/intent touch, and the entity is refreshed after the wait so a
+        // cached copy can never overwrite a concurrently committed instruction.
+        Borrower borrower = borrowerRepository.findByIdForUpdate(borrowerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown borrower id: " + borrowerId));
+        entityManager.refresh(borrower);
         if (lspId != null && !borrower.hasVisibilityFor(lspId)) {
             throw new ResourceNotFoundException("Unknown borrower id: " + borrowerId);
         }
@@ -279,34 +275,25 @@ public class BorrowerBankDetailsService {
         assertBankDetailsUpdatable(lspId, borrowerId);
 
         String previousAccount = borrower.getBankAccountNumber();
-        String previousBankName = borrower.getBankName();
         String previousIfsc = borrower.getIfscCode();
-        String previousHolder = borrower.getAccountHolderName();
 
-        borrower.updateBankDetails(
+        Lsp lsp = lspId == null ? null : lspRepository.findById(lspId).orElse(null);
+        // Shared audited policy in the caller's transaction: mutation and audit commit or
+        // roll back together (V122 grants the tenant role its narrow audit access). A no-op
+        // resubmission writes nothing — no save, no audit row, no event.
+        boolean changed = bankUpdatePolicy.applyChangedBankDetails(
+                borrower,
+                lsp,
                 command.bankAccountNumber(),
                 command.bankName(),
                 command.ifscCode(),
-                command.accountHolderName()
-        );
-        Borrower savedBorrower = borrowerRepository.save(borrower);
-
-        Lsp lsp = lspId == null ? null : lspRepository.findById(lspId).orElse(null);
-        Runnable auditWrite = () -> recordBankDetailsAudit(
-                savedBorrower,
-                lsp,
+                command.accountHolderName(),
                 actorUsername,
                 actorType,
-                clientIp,
-                previousAccount,
-                previousBankName,
-                previousIfsc,
-                previousHolder
+                clientIp
         );
-        if (lspId == null) {
-            auditWrite.run();
-        } else {
-            adminScopedTransactionExecutor.run(auditWrite);
+        if (!changed) {
+            return borrower;
         }
 
         if (lsp != null) {
@@ -319,10 +306,10 @@ public class BorrowerBankDetailsService {
             // Full and unmasked: the loan event log is one schema for every LSP, carrying the
             // complete loan and borrower data (ADR 0007 as clarified by spec 003). Minimisation
             // is a pre-production review, not a per-payload decision taken here.
-            payload.put("bankAccountNumber", savedBorrower.getBankAccountNumber());
-            payload.put("bankName", savedBorrower.getBankName());
-            payload.put("ifscCode", savedBorrower.getIfscCode());
-            payload.put("accountHolderName", savedBorrower.getAccountHolderName());
+            payload.put("bankAccountNumber", borrower.getBankAccountNumber());
+            payload.put("bankName", borrower.getBankName());
+            payload.put("ifscCode", borrower.getIfscCode());
+            payload.put("accountHolderName", borrower.getAccountHolderName());
             payload.put("previousBankAccountNumber", previousAccount);
             payload.put("previousIfscCode", previousIfsc);
             loanEventLog.append(
@@ -335,57 +322,15 @@ public class BorrowerBankDetailsService {
             );
         }
 
-        return savedBorrower;
-    }
-
-    private void recordBankDetailsAudit(
-            Borrower savedBorrower,
-            Lsp lsp,
-            String actorUsername,
-            String actorType,
-            String clientIp,
-            String previousAccount,
-            String previousBankName,
-            String previousIfsc,
-            String previousHolder
-    ) {
-        bankDetailsUpdateAuditRepository.save(new BorrowerBankDetailsUpdateAudit(
-                savedBorrower,
-                lsp,
-                actorUsername,
-                actorType,
-                previousAccount,
-                previousBankName,
-                previousIfsc,
-                previousHolder,
-                savedBorrower.getBankAccountNumber(),
-                savedBorrower.getBankName(),
-                savedBorrower.getIfscCode(),
-                savedBorrower.getAccountHolderName(),
-                clientIp,
-                CorrelationIdHolder.get()
-        ));
-        evaluateVelocityAlert(savedBorrower);
+        return borrower;
     }
 
     /**
-     * LSP updates require an in-flight pre-disbursal application for the borrower; admin updates
-     * bypass that gate but both paths block while a disbursement is in progress.
+     * LSP updates require a pre-disbursal application of their own for the borrower; admin
+     * updates bypass that gate. The cross-LSP disbursement freeze lives in the shared
+     * {@link BorrowerBankUpdatePolicy}, which runs under the borrower's row lock.
      */
     private void assertBankDetailsUpdatable(UUID lspId, UUID borrowerId) {
-        if (loanAccountRepository.existsByBorrower_IdAndStatusIn(borrowerId, IN_FLIGHT_DISBURSEMENT_STATUSES)) {
-            log.warn(
-                    "borrower_bank_details_update_blocked reason=disbursement_in_flight borrowerId={} lspId={}",
-                    borrowerId,
-                    lspId
-            );
-            throw new BusinessRuleViolationException(
-                    "BANK_DETAILS_LOCKED_DISBURSEMENT_IN_FLIGHT",
-                    "Bank details cannot be updated while a disbursement is in progress for this borrower.",
-                    Map.of()
-            );
-        }
-
         if (lspId == null) {
             return;
         }
@@ -405,17 +350,6 @@ public class BorrowerBankDetailsService {
                     "Bank details can only be updated while a loan application for this borrower is pre-disbursal.",
                     Map.of()
             );
-        }
-    }
-
-    private void evaluateVelocityAlert(Borrower borrower) {
-        Instant since = clock.instant().minus(Duration.ofDays(properties.getVelocityWindowDays()));
-        long updates = bankDetailsUpdateAuditRepository.countByBorrower_IdAndCreatedAtAfter(
-                borrower.getId(),
-                since
-        );
-        if (updates >= properties.getVelocityMaxUpdates()) {
-            opsAlertEmitters.emitBorrowerBankDetailsVelocity(borrower, (int) updates);
         }
     }
 

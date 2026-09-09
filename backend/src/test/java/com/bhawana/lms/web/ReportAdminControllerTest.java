@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -35,6 +36,8 @@ import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.ReportAccessAuditRepository;
 import com.bhawana.lms.repo.ReportRequestRepository;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.MinioTestSupport;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -115,6 +118,12 @@ class ReportAdminControllerTest extends MinioTestSupport {
 
     @Autowired
     private LoanApplicationRepository loanApplicationRepository;
+
+    @Autowired
+    private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+
+    @Autowired
+    private LoanDisbursementCommandService loanDisbursementCommandService;
 
     @Autowired
     private BorrowerRepository borrowerRepository;
@@ -449,14 +458,30 @@ class ReportAdminControllerTest extends MinioTestSupport {
     }
 
     private void disburseLoan(String applicationId) throws Exception {
+        // C04: durable intent is the only initiation path — seed the frozen beneficiary
+        // instruction, raise the intent, then execute it (IMPS success disburses atomically).
+        seedBorrowerBankDetails(applicationId);
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
+        disbursementIntentWorkflowService.executeForApplication(UUID.fromString(applicationId));
+        loanDisbursementCommandService.autoResolveAfterInitiate(
+                UUID.fromString(applicationId), "ops.admin", null, "report-test");
+    }
+
+    private void seedBorrowerBankDetails(String applicationId) throws Exception {
+        String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
+                .getBorrower().getId().toString();
+        mockMvc.perform(patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "123456789012",
+                                "bankName", "Report Bank",
+                                "ifscCode", "HDFC0001234",
+                                "accountHolderName", "Anika Sharma"
+                        ))))
                 .andExpect(status().isOk());
     }
 

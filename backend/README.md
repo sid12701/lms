@@ -13,11 +13,11 @@ Maven is provided via the wrapper (`mvnw` / `mvnw.cmd`) — no system Maven requ
 
 1. Set secrets in the **repo-root** `.env` (see `backend/.env.example` for variable names). Gitignored — do not commit.
 
-2. Start the API from `backend/` (default profile `local` loads **repo-root** `.env` via `application-local.yml`):
+2. Start the API from `backend/` (explicitly activate `local` to load **repo-root** `.env` via `application-local.yml` and allow simulation):
 
 ```bash
-./mvnw spring-boot:run        # macOS/Linux/Git Bash
-mvnw.cmd spring-boot:run      # Windows PowerShell/cmd
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local        # macOS/Linux/Git Bash
+mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local      # Windows PowerShell/cmd
 ```
 
 Rate limiting is **off** by default in `local` (`app.rate-limit.enabled=false`) so the API starts without Redis. Set `APP_RATE_LIMIT_ENABLED=true` in the repo-root `.env` when Redis is up (`docker compose -f infra/docker-compose.yml up -d redis`).
@@ -70,9 +70,9 @@ If you need to reproduce a bug against a real database, do it by hand against a 
 
 The Maven reactor is rooted at the repo `pom.xml` (`lms` aggregator → `backend` module). If the editor reports unresolved imports for classes under `com.bhawana.lms.support` while `mvnw.cmd test-compile` succeeds, reload the Java language server (**Java: Clean Java Language Server Workspace** → Reload). Repo-wide editor settings live in `.vscode/settings.json`.
 
-### Disbursement intent workflow (S3 / MNY-01)
+### Disbursement intent workflow (S3 / MNY-01, C04: only path)
 
-When `app.disbursement.intent-workflow.enabled=true` (default in `application.yml`):
+Disbursement initiation always goes through the durable intent path:
 
 1. **Request** — `POST …/disbursement-requests` commits a `disbursement_intent` row before any bank call.
 2. **Execute** — `LoanDisbursementWorker` claims intents with `SKIP LOCKED` and calls the provider outside a transaction.
@@ -83,7 +83,9 @@ Ops money preview (Spec S12):
 - `GET /api/v1/internal/ops/loan-applications/{id}/disbursement-preview` — principal, fee, net, payment mode, masked beneficiary (`beneficiarySource=LIVE_BORROWER` until Spec S5).
 - `GET /api/v1/internal/ops/loan-applications/{id}/disbursement-reference` — durable `tranRefNo` from live intent (after Tx-A) or request log.
 
-Integration tests default to the legacy inline path (`application-test.yml` sets intent workflow `enabled: false`). Opt-in: `DisbursementIntentWorkflowIntegrationTest` enables the workflow via `@TestPropertySource`.
+Integration tests run the same intent path as production. C04 removed the legacy inline path and its `enabled` flag.
+
+G01 simulation guard: the mock adapter, mock-outcome route, and worker auto-resolve only run under an explicit simulation profile (`test`, `local`, `dev`). Boot locally with `local` active, and set `APP_DISBURSEMENT_WORKER_AUTO_RESOLVE_MOCK=false` in production.
 
 Full record: `docs/implementation-log.md`.
 

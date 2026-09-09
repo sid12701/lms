@@ -81,6 +81,9 @@ public class SecurityFilterChainConfig {
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").authenticated()
                         .requestMatchers("/api/v1/auth/password").authenticated()
                         .requestMatchers("/api/v1/internal/system/context").authenticated()
+                        // H27: Prometheus exposition is authenticated AND role-restricted.
+                        // Only SYSTEM_ADMIN may scrape; unrelated auth behavior is out of scope.
+                        .requestMatchers("/actuator/prometheus").hasRole("SYSTEM_ADMIN")
                         .requestMatchers("/api/v1/**").access((authentication, context) -> {
                             var currentAuthentication = authentication.get();
                             boolean authenticated = currentAuthentication != null

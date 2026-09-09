@@ -31,7 +31,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # H27: prometheus exposition for the deployment-selected collector
+        # (docs/architecture/deployment-strategy.md). Scraping is authenticated;
+        # see SecurityFilterChainConfig — SYSTEM_ADMIN only.
+        include: health,info,prometheus
   endpoint:
     health:
       probes:
@@ -179,10 +182,11 @@ app:
       enabled: ${APP_DISBURSEMENT_WORKER_ENABLED:true}
       fixed-delay-ms: ${APP_DISBURSEMENT_WORKER_FIXED_DELAY_MS:30000}
       status-check-delay-ms: ${APP_DISBURSEMENT_WORKER_STATUS_CHECK_DELAY_MS:60000}
+      reconciliation-delay-ms: ${APP_DISBURSEMENT_WORKER_RECONCILIATION_DELAY_MS:60000}
       max-attempts: ${APP_DISBURSEMENT_WORKER_MAX_ATTEMPTS:5}
       auto-resolve-mock-outcome: ${APP_DISBURSEMENT_WORKER_AUTO_RESOLVE_MOCK:true}
     intent-workflow:
-      enabled: ${APP_DISBURSEMENT_INTENT_WORKFLOW_ENABLED:true}
+      # C04: durable intent is the only disbursement initiation path (no enable/disable flag).
       lease-duration-seconds: ${APP_DISBURSEMENT_INTENT_LEASE_SECONDS:120}
       claim-batch-size: ${APP_DISBURSEMENT_INTENT_CLAIM_BATCH_SIZE:10}
       lease-owner: ${APP_DISBURSEMENT_INTENT_LEASE_OWNER:disbursement-worker}

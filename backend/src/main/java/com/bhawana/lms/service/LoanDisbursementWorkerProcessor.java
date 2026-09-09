@@ -1,6 +1,6 @@
 package com.bhawana.lms.service;
 
-import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
@@ -8,7 +8,9 @@ import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanApplicationStatusReasonCode;
 import com.bhawana.lms.domain.LspStatus;
+import com.bhawana.lms.repo.DisbursementIntentRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.bhawana.lms.tenant.TenantScopedExecution;
 import java.util.Map;
@@ -29,50 +31,66 @@ public class LoanDisbursementWorkerProcessor {
     private static final Logger log = LoggerFactory.getLogger(LoanDisbursementWorkerProcessor.class);
 
     private final LoanAccountRepository loanAccountRepository;
+    private final LoanApplicationRepository loanApplicationRepository;
+    private final DisbursementIntentRepository disbursementIntentRepository;
     private final LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
-    private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanDisbursementCommandService loanDisbursementCommandService;
     private final LoanApplicationStatusWriter loanApplicationStatusWriter;
     private final DisbursementPreflightValidator disbursementPreflightValidator;
     private final BorrowerBankDetailsService borrowerBankDetailsService;
     private final OpsAlertEmitters opsAlertEmitters;
     private final LoanDisbursementWorkerProperties properties;
-    private final DisbursementIntentWorkflowProperties intentWorkflowProperties;
 
     public LoanDisbursementWorkerProcessor(
             LoanAccountRepository loanAccountRepository,
+            LoanApplicationRepository loanApplicationRepository,
+            DisbursementIntentRepository disbursementIntentRepository,
             LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository,
-            LoanApplicationQueryService loanApplicationQueryService,
             LoanDisbursementCommandService loanDisbursementCommandService,
             LoanApplicationStatusWriter loanApplicationStatusWriter,
             DisbursementPreflightValidator disbursementPreflightValidator,
             BorrowerBankDetailsService borrowerBankDetailsService,
             OpsAlertEmitters opsAlertEmitters,
-            LoanDisbursementWorkerProperties properties,
-            DisbursementIntentWorkflowProperties intentWorkflowProperties
+            LoanDisbursementWorkerProperties properties
     ) {
         this.loanAccountRepository = loanAccountRepository;
+        this.loanApplicationRepository = loanApplicationRepository;
+        this.disbursementIntentRepository = disbursementIntentRepository;
         this.loanDisbursementRequestLogRepository = loanDisbursementRequestLogRepository;
-        this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanDisbursementCommandService = loanDisbursementCommandService;
         this.loanApplicationStatusWriter = loanApplicationStatusWriter;
         this.disbursementPreflightValidator = disbursementPreflightValidator;
         this.borrowerBankDetailsService = borrowerBankDetailsService;
         this.opsAlertEmitters = opsAlertEmitters;
         this.properties = properties;
-        this.intentWorkflowProperties = intentWorkflowProperties;
     }
 
     /**
-     * @return true when the worker took action (processed, rejected, or exhausted retries); false when skipped.
+     * H01: ONE atomic transaction for guarded validation plus initiation. There is
+     * deliberately NO catch here — any failure rolls this item's transaction back and
+     * propagates through the Spring proxy to {@link LoanDisbursementWorkerService},
+     * which catches only AFTER the transaction has ended. Catching inside would leave
+     * the transaction rollback-only and poison the rest of the tick.
+     *
+     * @return true when the worker took action (processed, rejected, or exhausted
+     * retries); false when skipped. Never returns true on failure.
      */
     @Transactional
     public boolean processApplication(UUID applicationId) {
-        return TenantScopedExecution.callAsAdmin(() -> processApplicationAsAdmin(applicationId));
+        return TenantScopedExecution.callAsAdmin(() -> processLocked(applicationId));
     }
 
-    private boolean processApplicationAsAdmin(UUID applicationId) {
-        LoanApplication application = loanApplicationQueryService.getApplication(applicationId);
+    private boolean processLocked(UUID applicationId) {
+        // Common lock order: borrower → application → account → live intent. The borrower
+        // lock comes first because approval and bank-detail changes serialize cross-loan work
+        // on the same shared borrower lock; acquiring it here keeps every concurrent writer
+        // in one global order. Every decision below reads the locked (refreshed) rows, so a
+        // submission committed just before the locks were granted is always observed.
+        Borrower borrower = loanApplicationRepository.findBorrowerByApplicationIdForUpdate(applicationId).orElse(null);
+        LoanApplication application = loanApplicationRepository.findByIdForUpdate(applicationId).orElse(null);
+        if (borrower == null || application == null) {
+            return false;
+        }
         if (application.getLsp() == null || application.getLsp().getStatus() != LspStatus.ACTIVE) {
             return false;
         }
@@ -81,12 +99,20 @@ public class LoanDisbursementWorkerProcessor {
             return false;
         }
 
-        LoanAccount loanAccount = loanAccountRepository.findByLoanApplication_Id(applicationId).orElse(null);
+        LoanAccount loanAccount = loanAccountRepository.findByLoanApplication_IdForUpdate(applicationId).orElse(null);
         if (loanAccount == null) {
             rejectForBoundViolation(application, "MISSING_LOAN_ACCOUNT", "Loan account is not available for disbursement.");
             return true;
         }
-        if (loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED) {
+        // H01/C04: skip both submitted (in-flight REQUESTED) and parked (uncertain-money
+        // PENDING_RECONCILIATION) states BEFORE any validation or initiation attempt, and
+        // never re-initiate while a live intent exists. The only forward path for them is
+        // reconciliation of the original reference — never a new intent.
+        if (loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED
+                || loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION) {
+            return false;
+        }
+        if (disbursementIntentRepository.findLiveByLoanAccountIdForUpdate(loanAccount.getId()).isPresent()) {
             return false;
         }
 
@@ -111,6 +137,8 @@ public class LoanDisbursementWorkerProcessor {
             );
         }
 
+        // Pre-initiation exhaustion stays in this atomic transaction under the same locks:
+        // the attempt count cannot move underneath the check.
         long priorAttempts = loanDisbursementRequestLogRepository.countByLoanAccount_Id(loanAccount.getId());
         if (priorAttempts >= properties.getMaxAttempts()) {
             if (application.getStatus() != LoanApplicationStatus.DISBURSEMENT_RETRY) {
@@ -129,41 +157,11 @@ public class LoanDisbursementWorkerProcessor {
             return true;
         }
 
-        try {
-            loanDisbursementCommandService.initiateDisbursement(applicationId, LoanDisbursementWorkerService.WORKER_ACTOR);
-            // Intent workflow (S3): only Tx-A runs here. The provider call must happen after this
-            // transaction commits — LoanDisbursementWorkerService executes the committed intent.
-            if (!intentWorkflowProperties.isEnabled() && properties.isAutoResolveMockOutcome()) {
-                loanDisbursementCommandService.autoResolveAfterInitiate(
-                        applicationId,
-                        LoanDisbursementWorkerService.WORKER_ACTOR,
-                        null,
-                        CorrelationIdHolder.get()
-                );
-            }
-            return true;
-        } catch (RuntimeException exception) {
-            log.warn(
-                    "Automated disbursement attempt failed for application {}: {}",
-                    applicationId,
-                    exception.getMessage()
-            );
-            long attemptsAfterFailure = loanDisbursementRequestLogRepository.countByLoanAccount_Id(loanAccount.getId());
-            if (attemptsAfterFailure >= properties.getMaxAttempts()) {
-                loanApplicationStatusWriter.updateStatus(
-                        application,
-                        LoanApplicationStatusTransitionCommand.statusTransition(
-                                LoanApplicationStatus.DISBURSEMENT_RETRY,
-                                LoanDisbursementWorkerService.WORKER_ACTOR,
-                                "Automated disbursement retries exhausted after adapter failure.",
-                                LoanApplicationStatusReasonCode.POLICY_EXCEPTION,
-                                LoanApplicationAuditAction.STATUS_TRANSITION
-                        )
-                );
-                opsAlertEmitters.emitDisbursementRetryExhausted(application, (int) attemptsAfterFailure);
-            }
-            return true;
-        }
+        // Tx-A joins this transaction (C04: the intent workflow is the only path; the provider
+        // call happens after this transaction commits — WorkerService executes it). No catch:
+        // a failure rolls back and is reported by the caller, never as success.
+        loanDisbursementCommandService.initiateDisbursement(applicationId, LoanDisbursementWorkerService.WORKER_ACTOR);
+        return true;
     }
 
     private void rejectForBoundViolation(

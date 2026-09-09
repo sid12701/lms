@@ -17,6 +17,8 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.repo.LoanAccountRepository;
+import com.bhawana.lms.repo.DisbursementIntentRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.service.LoanRepaymentScheduleService.InstallmentDraft;
@@ -49,6 +51,12 @@ class LoanRepaymentScheduleServiceTest {
     private LoanAccountRepository loanAccountRepository;
 
     @Mock
+    private LoanApplicationRepository loanApplicationRepository;
+
+    @Mock
+    private DisbursementIntentRepository disbursementIntentRepository;
+
+    @Mock
     private LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
 
     @Mock
@@ -66,6 +74,8 @@ class LoanRepaymentScheduleServiceTest {
         scheduleService = new LoanRepaymentScheduleService(
                 loanApplicationQueryService,
                 loanAccountRepository,
+                loanApplicationRepository,
+                disbursementIntentRepository,
                 loanRepaymentScheduleInstallmentRepository,
                 loanPaymentTransactionRepository,
                 lspValidationAuditService,
@@ -102,6 +112,7 @@ class LoanRepaymentScheduleServiceTest {
         int tenureMonths = 18;
         BigDecimal annualRate = new BigDecimal("23.99");
         LoanAccount loanAccount = loanAccount(accountId, principal, tenureMonths, annualRate);
+        when(loanAccount.getStatus()).thenReturn(LoanAccountStatus.PENDING_DISBURSEMENT);
 
         when(loanRepaymentScheduleInstallmentRepository.findByLoanAccount_IdOrderByInstallmentNumberAsc(accountId))
                 .thenReturn(List.of());
@@ -375,7 +386,12 @@ class LoanRepaymentScheduleServiceTest {
     private void stubMutableLoanAccount(UUID lspId, UUID applicationId, LoanAccount loanAccount) {
         LoanApplication application = mock(LoanApplication.class);
         when(loanApplicationQueryService.getApplicationForLsp(lspId, applicationId)).thenReturn(application);
-        when(loanAccountRepository.findByLoanApplication_Id(applicationId)).thenReturn(Optional.of(loanAccount));
+        lenient().when(loanAccountRepository.findByLoanApplication_Id(applicationId)).thenReturn(Optional.of(loanAccount));
+        lenient().when(loanApplicationRepository.findByIdForUpdate(applicationId)).thenReturn(Optional.of(application));
+        lenient().when(loanAccountRepository.findByLoanApplication_IdForUpdate(applicationId))
+                .thenReturn(Optional.of(loanAccount));
+        lenient().when(disbursementIntentRepository.findLiveByLoanAccountIdForUpdate(loanAccount.getId()))
+                .thenReturn(Optional.empty());
         when(loanAccount.getStatus()).thenReturn(LoanAccountStatus.PENDING_DISBURSEMENT);
         when(loanPaymentTransactionRepository.existsByLoanAccount_Id(loanAccount.getId())).thenReturn(false);
         lenient().when(loanRepaymentScheduleInstallmentRepository.deleteByLoanAccountId(loanAccount.getId())).thenReturn(0L);

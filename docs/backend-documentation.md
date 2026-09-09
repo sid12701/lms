@@ -1090,7 +1090,7 @@ Internal authenticated user
 
 ### Disbursement Flow
 
-When `app.disbursement.intent-workflow.enabled=true` (default in non-test profiles):
+Disbursement initiation always goes through the durable intent path (C04 removed the legacy inline path and its flag):
 
 ```txt
 LSP API or system admin request
@@ -1102,9 +1102,7 @@ LSP API or system admin request
   -> auto-resolve terminal outcomes (mock path) or reconciliation sweeps for UNKNOWN
 ```
 
-Legacy path when the intent workflow flag is `false`: provider call still runs inside the command-service transaction (pre-S3 behavior; not for real rails).
-
-See `docs/implementation-log.md` (S3) and `DisbursementIntentWorkflowService`.
+See `docs/implementation-log.md` (S3, C04) and `DisbursementIntentWorkflowService`. Pre-C04 inline-initiated logs remain readable and pollable through the unified status-check path; no new inline initiations are possible.
 
 ### Repayment and Foreclosure Flow
 
@@ -1193,7 +1191,7 @@ Do not expose secret values. The table lists variable names and observed usage.
 | `APP_WEBHOOKS_DELIVERY_ENABLED` | Webhook worker config | Enables scheduled webhook delivery | Optional/defaulted | Worker gate |
 | `APP_WEBHOOKS_DELIVERY_FIXED_DELAY_MS` | Webhook worker config | Delivery schedule delay | Optional/defaulted | Retry/throughput tuning |
 | `APP_WEBHOOKS_DELIVERY_BATCH_SIZE` | Webhook worker config | Dispatch batch size | Optional/defaulted | Throughput tuning |
-| `APP_DISBURSEMENT_INTENT_WORKFLOW_ENABLED` | `DisbursementIntentWorkflowProperties` | Enables durable intent workflow (S3) | Default `true` in prod; `false` in test profile | Set `false` only to roll back to legacy inline provider path |
+| `APP_DISBURSEMENT_INTENT_WORKFLOW_ENABLED` | Removed (C04) | Legacy flag for the pre-S3 inline path; no longer bound — intent path is mandatory | Removed | Do not set; unknown `app.disbursement.intent-workflow.enabled` keys are ignored |
 | `APP_DISBURSEMENT_INTENT_LEASE_SECONDS` | Intent worker claim lease | Seconds before claim expires | Default `120` | Tune for slow provider responses |
 | `APP_DISBURSEMENT_INTENT_CLAIM_BATCH_SIZE` | Intent worker batch | Max intents claimed per tick | Default `10` | Throughput tuning |
 | `APP_DISBURSEMENT_INTENT_LEASE_OWNER` | Intent worker identity | Lease owner label | Default `disbursement-worker` | Distinct per worker fleet if needed |

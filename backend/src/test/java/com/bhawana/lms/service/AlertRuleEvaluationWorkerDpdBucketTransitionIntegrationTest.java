@@ -16,6 +16,8 @@ import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanDelinquencyStateRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.bhawana.lms.tenant.TenantScopedExecution;
@@ -69,6 +71,12 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
 
     @Autowired
     private OpsAlertRepository opsAlertRepository;
+
+    @Autowired
+    private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+
+    @Autowired
+    private LoanDisbursementCommandService loanDisbursementCommandService;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -248,11 +256,10 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-                .andExpect(status().isOk());
+        // C04: HDFC fixtures disburse atomically on intent execution — no mock outcome follows.
+        disbursementIntentWorkflowService.executeForApplication(applicationId);
+        loanDisbursementCommandService.autoResolveAfterInitiate(
+                applicationId, "ops.admin", null, "dpd-test");
 
         jdbcTemplate.update(
                 "UPDATE loan_application SET status = 'UNDER_REPAYMENT', updated_at = CURRENT_TIMESTAMP WHERE id = ?",

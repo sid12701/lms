@@ -7,6 +7,8 @@ import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.tenant.TenantScopedExecution;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -28,8 +30,10 @@ public class LoanDisbursementWorkerService {
     private final LoanDisbursementCommandService loanDisbursementCommandService;
     private final LoanDisbursementWorkerProcessor workerProcessor;
     private final DisbursementIntentWorkflowService disbursementIntentWorkflowService;
-    private final DisbursementIntentWorkflowProperties intentWorkflowProperties;
+    private final DisbursementReconciliationService reconciliationService;
     private final LoanDisbursementWorkerProperties properties;
+    private final Counter itemFailureCounter;
+    private final Counter scanFailureCounter;
 
     public LoanDisbursementWorkerService(
             LoanApplicationRepository loanApplicationRepository,
@@ -37,26 +41,52 @@ public class LoanDisbursementWorkerService {
             LoanDisbursementCommandService loanDisbursementCommandService,
             LoanDisbursementWorkerProcessor workerProcessor,
             DisbursementIntentWorkflowService disbursementIntentWorkflowService,
-            DisbursementIntentWorkflowProperties intentWorkflowProperties,
-            LoanDisbursementWorkerProperties properties
+            DisbursementReconciliationService reconciliationService,
+            LoanDisbursementWorkerProperties properties,
+            MeterRegistry meterRegistry
     ) {
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanAccountRepository = loanAccountRepository;
         this.loanDisbursementCommandService = loanDisbursementCommandService;
         this.workerProcessor = workerProcessor;
         this.disbursementIntentWorkflowService = disbursementIntentWorkflowService;
-        this.intentWorkflowProperties = intentWorkflowProperties;
+        this.reconciliationService = reconciliationService;
         this.properties = properties;
+        // H01: low-cardinality failure counters only — never application, account, or
+        // request identifiers in tags. Gauges for intent backlogs stay with H27's
+        // DisbursementIntentMetrics; these counters record worker-side failures.
+        this.itemFailureCounter = Counter.builder("lms.disbursement.worker.item.failures")
+                .description("Disbursement worker per-item failures; the tick continues with the next item")
+                .register(meterRegistry);
+        this.scanFailureCounter = Counter.builder("lms.disbursement.worker.scan.failures")
+                .description("Disbursement worker scan failures; the phase contributes zero and the tick continues")
+                .register(meterRegistry);
     }
 
     /**
-     * Processes a single application: {@link LoanDisbursementWorkerProcessor} runs the validation
-     * and initiation in its own transaction, then — with the intent workflow on — the committed
-     * intent is executed here, outside any transaction (S3: the provider call must never share the
-     * initiating transaction).
+     * Processes a single application: {@link LoanDisbursementWorkerProcessor} runs guarded
+     * validation plus Tx-A intent creation in ONE transaction (via the Spring proxy), then
+     * the committed intent is executed here, outside any transaction (the provider call
+     * must never share the initiating transaction).
+     *
+     * <p>H01: the catch below runs only AFTER the processor transaction has ended — never
+     * inside a rollback-only transaction. A failure returns false (never processed) and
+     * increments the failure counter, so one parked or conflicted loan can never abort
+     * the rest of the tick.
      */
     public boolean processApplication(UUID applicationId) {
-        boolean actioned = workerProcessor.processApplication(applicationId);
+        final boolean actioned;
+        try {
+            actioned = workerProcessor.processApplication(applicationId);
+        } catch (RuntimeException exception) {
+            itemFailureCounter.increment();
+            log.warn(
+                    "Automated disbursement failed for application {}: {}",
+                    applicationId,
+                    exception.getMessage()
+            );
+            return false;
+        }
         if (actioned) {
             executeCommittedIntent(applicationId);
         }
@@ -64,9 +94,6 @@ public class LoanDisbursementWorkerService {
     }
 
     private void executeCommittedIntent(UUID applicationId) {
-        if (!intentWorkflowProperties.isEnabled()) {
-            return;
-        }
         TenantScopedExecution.runAsAdmin(() ->
                 disbursementIntentWorkflowService.executeForApplication(applicationId).ifPresent(executedApplicationId -> {
                     if (properties.isAutoResolveMockOutcome()) {
@@ -80,39 +107,103 @@ public class LoanDisbursementWorkerService {
                 }));
     }
 
+    /**
+     * H01: each phase isolates its own scan and per-item failures and contributes zero
+     * on failure, so application scanning and bounded intent recovery (claimable
+     * execution, stranded repair) always run independently in the same tick.
+     */
     public int processPendingDisbursements() {
         return TenantScopedExecution.callAsAdmin(() -> {
             int processed = 0;
             processed += processStatus(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL);
             processed += processStatus(LoanApplicationStatus.DISBURSEMENT_RETRY);
             processed += processClaimableIntents();
+            processed += processStrandedTerminalResults();
             return processed;
         });
     }
 
     public int processClaimableIntents() {
         return TenantScopedExecution.callAsAdmin(() -> {
+            // Scan and per-item isolation live in executeClaimableIntents (C03 fenced,
+            // CREATED-only); only the mock auto-resolve loop needs a per-item guard here.
             List<UUID> applicationIds = disbursementIntentWorkflowService.executeClaimableIntents();
-            if (properties.isAutoResolveMockOutcome()) {
-                for (UUID applicationId : applicationIds) {
+            int resolved = 0;
+            for (UUID applicationId : applicationIds) {
+                if (!properties.isAutoResolveMockOutcome()) {
+                    resolved++;
+                    continue;
+                }
+                try {
                     loanDisbursementCommandService.autoResolveAfterInitiate(
                             applicationId,
                             WORKER_ACTOR,
                             null,
                             CorrelationIdHolder.get()
                     );
+                    resolved++;
+                } catch (RuntimeException exception) {
+                    itemFailureCounter.increment();
+                    log.warn(
+                            "Claimable intent auto-resolve failed for application {}: {}",
+                            applicationId,
+                            exception.getMessage()
+                    );
                 }
             }
-            return applicationIds.size();
+            return resolved;
         });
     }
 
+    public int processStrandedTerminalResults() {
+        return TenantScopedExecution.callAsAdmin(
+                () -> disbursementIntentWorkflowService.repairStrandedTerminalDisbursements(20));
+    }
+
+    /**
+     * H27/H02 — bounded reconciliation sweep phase, invoked from its own schedule (never from
+     * the normal disbursement/status-check ticks, whose behavior is unchanged). Admin scope is
+     * entered before any transaction; per-item isolation lives in
+     * {@link DisbursementReconciliationService#pollDueQueue}. A sweep-level failure contributes
+     * zero and never aborts the other worker phases.
+     */
+    public int processReconciliationQueue() {
+        try {
+            return TenantScopedExecution.callAsAdmin(() ->
+                    reconciliationService.pollDueQueue(
+                            WORKER_ACTOR, null, CorrelationIdHolder.get()));
+        } catch (RuntimeException exception) {
+            scanFailureCounter.increment();
+            log.warn("Disbursement reconciliation sweep failed and was skipped: {}",
+                    exception.getMessage());
+            return 0;
+        }
+    }
+
     private int processStatus(LoanApplicationStatus status) {
-        List<LoanApplication> applications = loanApplicationRepository.findByStatus(status);
+        final List<LoanApplication> applications;
+        try {
+            applications = loanApplicationRepository.findByStatus(status);
+        } catch (RuntimeException exception) {
+            scanFailureCounter.increment();
+            log.warn("Disbursement worker scan failed for status {} and was skipped: {}", status, exception.getMessage());
+            return 0;
+        }
         int processed = 0;
         for (LoanApplication application : applications) {
-            if (processApplication(application.getId())) {
-                processed++;
+            try {
+                if (processApplication(application.getId())) {
+                    processed++;
+                }
+            } catch (RuntimeException exception) {
+                // Committed-intent execution runs outside any transaction; a failure there
+                // is isolated per item the same way.
+                itemFailureCounter.increment();
+                log.warn(
+                        "Disbursement worker item failed for application {}: {}",
+                        application.getId(),
+                        exception.getMessage()
+                );
             }
         }
         return processed;

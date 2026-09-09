@@ -1,25 +1,17 @@
 import type { ReactElement, ReactNode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "sonner";
 import { SessionProvider } from "@/features/auth/session-provider";
-import { defaultAppQueryClient } from "@/app/query-client";
+import { AuthScopedQueryProvider } from "@/app/auth-scoped-query-provider";
 import { ThemeProvider } from "@/app/theme-context";
 import { DensityProvider } from "@/app/density-context";
 
-interface ProvidersProps {
-  children: ReactNode;
-  /** Test seam — pass an isolated QueryClient. */
-  queryClient?: QueryClient;
-}
-
-export function Providers({ children, queryClient }: ProvidersProps): ReactElement {
-  const client = queryClient ?? defaultAppQueryClient;
+export function Providers({ children }: { children: ReactNode }): ReactElement {
   return (
-    <QueryClientProvider client={client}>
+    <SessionProvider>
       <ThemeProvider>
         <DensityProvider>
-          <SessionProvider>
+          <AuthScopedQueryProvider>
             <TooltipProvider delayDuration={150}>
               {children}
               <section
@@ -34,9 +26,9 @@ export function Providers({ children, queryClient }: ProvidersProps): ReactEleme
                 />
               </section>
             </TooltipProvider>
-          </SessionProvider>
+          </AuthScopedQueryProvider>
         </DensityProvider>
       </ThemeProvider>
-    </QueryClientProvider>
+    </SessionProvider>
   );
 }

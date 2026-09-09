@@ -187,6 +187,11 @@ public class IntegrationTestDatabaseCleaner {
     }
 
     private void cleanIntegrationTestDataAsAdmin() {
+        // H02: the observation trail rejects UPDATE/DELETE in production; like loan_event it is
+        // truncated here (TRUNCATE fires no row triggers) only after the ephemeral guard above.
+        // The queue is truncated alongside so intent/account deletes never hit its FKs.
+        jdbcTemplate.execute("TRUNCATE TABLE disbursement_reconciliation_queue");
+        jdbcTemplate.execute("TRUNCATE TABLE disbursement_observation");
         reportAccessAuditRepository.deleteAllInBatch();
         jdbcTemplate.execute("DELETE FROM report_request");
         opsAlertRepository.deleteAllInBatch();

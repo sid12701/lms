@@ -8,6 +8,7 @@ import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -19,6 +20,8 @@ import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -59,6 +62,12 @@ class HomeDashboardControllerTest {
 
     @Autowired
     private LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
+
+    @Autowired
+    private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+
+    @Autowired
+    private LoanDisbursementCommandService loanDisbursementCommandService;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -281,15 +290,30 @@ class HomeDashboardControllerTest {
     }
 
     private void disburseLoan(String applicationId) throws Exception {
+        // C04: durable intent is the only initiation path — seed the frozen beneficiary
+        // instruction, raise the intent, then execute it (IMPS success disburses atomically).
+        UUID borrowerId = jdbcTemplate.queryForObject(
+                "SELECT borrower_id FROM loan_application WHERE id = ?",
+                UUID.class,
+                UUID.fromString(applicationId));
+        mockMvc.perform(patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "123456789012",
+                                "bankName", "Dashboard Bank",
+                                "ifscCode", "HDFC0001234",
+                                "accountHolderName", "Anika Sharma"
+                        ))))
+                .andExpect(status().isOk());
+
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-                .andExpect(status().isOk());
+        disbursementIntentWorkflowService.executeForApplication(UUID.fromString(applicationId));
+        loanDisbursementCommandService.autoResolveAfterInitiate(
+                UUID.fromString(applicationId), "ops.admin", null, "dashboard-test");
     }
 
     private void setInstallmentDueDate(String applicationId, int installmentNumber, LocalDate dueDate) {

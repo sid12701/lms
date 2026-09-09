@@ -19,6 +19,8 @@ import com.bhawana.lms.repo.LoanApplicationAuditEventRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -72,6 +74,12 @@ class Issue74LspForeclosureExecuteIntegrationTest {
 
     @Autowired
     private LoanApplicationRepository loanApplicationRepository;
+
+    @Autowired
+    private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+
+    @Autowired
+    private LoanDisbursementCommandService loanDisbursementCommandService;
 
     @BeforeEach
     void setUp() {
@@ -354,7 +362,10 @@ class Issue74LspForeclosureExecuteIntegrationTest {
         transitionToAwaitingApproval(applicationId);
         transitionToApproved(applicationId);
         requestDisbursement(applicationId);
-        resolveDisbursement(applicationId);
+        // C04: HDFC fixtures disburse atomically on intent execution — no mock outcome follows.
+        disbursementIntentWorkflowService.executeForApplication(UUID.fromString(applicationId));
+        loanDisbursementCommandService.autoResolveAfterInitiate(
+                UUID.fromString(applicationId), "ops.admin", null, "foreclosure-test");
         assertEquals(
                 LoanApplicationStatus.DISBURSED,
                 loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow().getStatus()
@@ -375,16 +386,6 @@ class Issue74LspForeclosureExecuteIntegrationTest {
     private void requestDisbursement(String applicationId) throws Exception {
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
-                .andExpect(status().isOk());
-    }
-
-    private void resolveDisbursement(String applicationId) throws Exception {
-        mockMvc.perform(post(
-                        "/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome",
-                        applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
                 .andExpect(status().isOk());
     }
 

@@ -43,4 +43,19 @@ public class LoanDisbursementWorker {
             log.debug("Loan disbursement status-check worker resolved {} transaction(s).", resolved);
         }
     }
+
+    /**
+     * H27/H02 — bounded reconciliation sweep on its own schedule. Gated by the same existing
+     * worker {@code enabled} flag; normal disbursement and status-check ticks are untouched.
+     */
+    @Scheduled(fixedDelayString = "${app.disbursement.worker.reconciliation-delay-ms:60000}")
+    public void runReconciliation() {
+        if (!properties.isEnabled()) {
+            return;
+        }
+        int resolved = workerService.processReconciliationQueue();
+        if (resolved > 0) {
+            log.debug("Loan disbursement reconciliation worker resolved {} entries.", resolved);
+        }
+    }
 }

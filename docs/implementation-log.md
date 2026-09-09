@@ -128,7 +128,7 @@ recorded in the fresh-eyes audit report.
 
 ## S3 / MNY-01 / F-MNY-01 — Durable disbursement intent (2026-07-13)
 
-See earlier entry in git history / report §19.6. Feature flag `app.disbursement.intent-workflow.enabled`.
+Durable intent is the only disbursement initiation path since C04 (2026-09-07), which removed the legacy inline path and its `app.disbursement.intent-workflow.enabled` flag.
 
 **Fresh-eyes audit correction (2026-07-15).** `UNKNOWN` intents are no longer claimable for another
 payment request. Before the provider call, the implementation persists a deterministic request log

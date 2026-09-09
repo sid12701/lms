@@ -8,6 +8,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -21,6 +22,8 @@ import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
+import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -79,6 +82,12 @@ class LoanApplicationOpsControllerTest {
 
     @Autowired
     private OpsAlertRepository opsAlertRepository;
+
+    @Autowired
+    private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
+
+    @Autowired
+    private LoanDisbursementCommandService loanDisbursementCommandService;
 
     @Autowired
     private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
@@ -674,15 +683,7 @@ class LoanApplicationOpsControllerTest {
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
-                        .with(systemAdmin()))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-                .andExpect(status().isOk());
+        disburseLoan(applicationId);
 
         String installment1Id = installmentIdAt(applicationId, 1);
         String installment2Id = installmentIdAt(applicationId, 2);
@@ -820,16 +821,7 @@ class LoanApplicationOpsControllerTest {
         transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
-
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
-                        .with(systemAdmin()))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-                .andExpect(status().isOk());
+        disburseLoan(applicationId);
 
         LocalDate effectiveDate = LocalDate.now();
 
@@ -1081,15 +1073,7 @@ class LoanApplicationOpsControllerTest {
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
-                        .with(systemAdmin()))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-                .andExpect(status().isOk());
+        disburseLoan(applicationId);
 
         UUID loanAccountId = loanAccountRepository.findByLoanApplication_Id(UUID.fromString(applicationId))
                 .orElseThrow()
@@ -1169,15 +1153,7 @@ class LoanApplicationOpsControllerTest {
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
-                        .with(systemAdmin()))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
-                        .with(systemAdmin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
-                .andExpect(status().isOk());
+        disburseLoan(applicationId);
 
         mockMvc.perform(postInstallmentPayment(
                         applicationId,
@@ -1236,11 +1212,16 @@ class LoanApplicationOpsControllerTest {
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
+        // C04: initiation commits the intent only; the provider log appears once the worker
+        // executes the committed intent outside any transaction.
+        seedBorrowerBankDetails(applicationId, "HDFC0001234");
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("APPROVED_PENDING_DISBURSAL"))
                 .andExpect(jsonPath("$.loanAccount.status").value("DISBURSEMENT_REQUESTED"));
+
+        executeDisbursementIntent(applicationId);
 
         mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
@@ -1250,9 +1231,11 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].amount").value(43987.50))
                 .andExpect(jsonPath("$[0].providerName").value("MOCK_ICICI"))
                 .andExpect(jsonPath("$[0].providerRequestId", containsString("ICI")))
-                .andExpect(jsonPath("$[0].providerStatus").value("SUCCESS"))
+                // C04/C02: the terminal verdict and its loan application commit together, so the
+                // stored log carries the applied outcome (DISBURSED), not the raw adapter status.
+                .andExpect(jsonPath("$[0].providerStatus").value("DISBURSED"))
                 .andExpect(jsonPath("$[0].requestPayloadJson", containsString("\"externalLoanId\":\"EXT-968\"")))
-                .andExpect(jsonPath("$[0].responsePayloadJson", containsString("\"ActCode\":\"0\"")));
+                .andExpect(jsonPath("$[0].responsePayloadJson", containsString("\"actCode\":\"0\"")));
     }
 
     @Test
@@ -1273,16 +1256,17 @@ class LoanApplicationOpsControllerTest {
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
+        seedBorrowerBankDetails(applicationId, "HDFC0001234");
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.loanAccount.status").value("DISBURSEMENT_REQUESTED"));
 
+        // C04: re-initiation while REQUESTED is rejected — reconcile, never re-initiate.
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.loanAccount.status").value("DISBURSEMENT_REQUESTED"))
-                .andExpect(jsonPath("$.loanAccountId").isNotEmpty());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("DISBURSEMENT_ALREADY_REQUESTED"));
     }
 
     @Test
@@ -1334,10 +1318,15 @@ class LoanApplicationOpsControllerTest {
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
+        // C04: mock outcomes resolve a raised provider attempt — seed a pending attempt first
+        // (MOCK0PENDOK stays PENDING after execution), then apply the forced verdict.
+        seedBorrowerBankDetails(applicationId, "MOCK0PENDOK");
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.loanAccount.status").value("DISBURSEMENT_REQUESTED"));
+
+        executeDisbursementIntent(applicationId);
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
                         .with(systemAdmin())
@@ -1365,9 +1354,12 @@ class LoanApplicationOpsControllerTest {
         transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
+        seedBorrowerBankDetails(applicationId, "MOCK0PENDOK");
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
+
+        executeDisbursementIntent(applicationId);
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
                         .with(systemAdmin())
@@ -1381,9 +1373,12 @@ class LoanApplicationOpsControllerTest {
         transitionApplication(secondApplicationId, "AWAITING_APPROVAL", "Started review");
         markAllRequiredKycDocumentsVerified(secondApplicationId);
         transitionApplication(secondApplicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
+        seedBorrowerBankDetails(secondApplicationId, "MOCK0PENDOK");
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", secondApplicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
+
+        executeDisbursementIntent(secondApplicationId);
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", secondApplicationId)
                         .with(systemAdmin())
@@ -1907,15 +1902,35 @@ class LoanApplicationOpsControllerTest {
     }
 
     private void disburseLoan(String applicationId) throws Exception {
+        // C04: durable intent is the only initiation path — seed the frozen beneficiary
+        // instruction, raise the intent, then execute it (IMPS success disburses atomically).
+        seedBorrowerBankDetails(applicationId, "HDFC0001234");
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
+        executeDisbursementIntent(applicationId);
+    }
+
+    private void seedBorrowerBankDetails(String applicationId, String ifsc) throws Exception {
+        String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
+                .getBorrower().getId().toString();
+        mockMvc.perform(patch("/api/v1/internal/admin/borrowers/{borrowerId}/bank-details", borrowerId)
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "bankAccountNumber", "123456789012",
+                                "bankName", "Ops Test Bank",
+                                "ifscCode", ifsc,
+                                "accountHolderName", "Anika Sharma"
+                        ))))
                 .andExpect(status().isOk());
+    }
+
+    private void executeDisbursementIntent(String applicationId) {
+        disbursementIntentWorkflowService.executeForApplication(UUID.fromString(applicationId));
+        loanDisbursementCommandService.autoResolveAfterInitiate(
+                UUID.fromString(applicationId), "ops.admin", null, "ops-test");
     }
 
     private void setDisbursedAt(String applicationId, LocalDate disbursedDate) {
