@@ -13,10 +13,21 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
+# Sourced through a temp file rather than `source <(...)`, which silently sets nothing
+# under the bash 3.2 that macOS ships (see repair-supabase.sh).
+ENV_TMP="$(mktemp)"
+trap 'rm -f "$ENV_TMP"' EXIT
+grep -E '^(LMS_DB_URL|LMS_DB_USERNAME|LMS_DB_PASSWORD)=' "$ENV_FILE" | sed 's/\r$//' > "$ENV_TMP"
+
 set -a
 # shellcheck disable=SC1090
-source <(grep -E '^(LMS_DB_URL|LMS_DB_USERNAME|LMS_DB_PASSWORD)=' "$ENV_FILE" | sed 's/\r$//')
+source "$ENV_TMP"
 set +a
+
+if [[ -z "${LMS_DB_URL:-}" || -z "${LMS_DB_USERNAME:-}" || -z "${LMS_DB_PASSWORD:-}" ]]; then
+  echo "LMS_DB_URL / LMS_DB_USERNAME / LMS_DB_PASSWORD must all be set in $ENV_FILE" >&2
+  exit 1
+fi
 
 jdbc="${LMS_DB_URL#jdbc:}"
 pg_url="postgresql://${LMS_DB_USERNAME}:${LMS_DB_PASSWORD}@${jdbc#postgresql://}"
