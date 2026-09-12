@@ -39,7 +39,7 @@ import com.bhawana.lms.repo.ReportRequestRepository;
 import com.bhawana.lms.service.DisbursementIntentWorkflowService;
 import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
-import com.bhawana.lms.support.MinioTestSupport;
+import com.bhawana.lms.support.InMemoryReportStorageConfig;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -66,13 +66,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest(properties = "app.reports.notifications.enabled=true")
+@org.springframework.context.annotation.Import(InMemoryReportStorageConfig.class)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @TestExecutionListeners(
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class ReportAdminControllerTest extends MinioTestSupport {
+class ReportAdminControllerTest {
 
     @Autowired
     private MockMvc mockMvc;

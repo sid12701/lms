@@ -22,7 +22,7 @@ import com.bhawana.lms.service.DisbursementIntentWorkflowService;
 import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.service.ReportRequestService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
-import com.bhawana.lms.support.MinioTestSupport;
+import com.bhawana.lms.support.InMemoryReportStorageConfig;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
@@ -47,13 +47,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest(properties = "app.reports.notifications.enabled=false")
+@org.springframework.context.annotation.Import(InMemoryReportStorageConfig.class)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @TestExecutionListeners(
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class ReportAdminControllerDownloadAuditTest extends MinioTestSupport {
+class ReportAdminControllerDownloadAuditTest {
 
     private static final String CLIENT_IP = "203.0.113.77";
     private static final String ADMIN_SUBJECT = "ops.admin";
