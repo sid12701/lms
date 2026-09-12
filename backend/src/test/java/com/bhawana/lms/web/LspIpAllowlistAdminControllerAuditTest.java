@@ -3,6 +3,7 @@ package com.bhawana.lms.web;
 import com.bhawana.lms.domain.LspAuditEvent;
 import com.bhawana.lms.repo.LspAuditEventRepository;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Comparator;
@@ -62,7 +63,7 @@ class LspIpAllowlistAdminControllerAuditTest {
 
         MvcResult created = mockMvc.perform(post("/api/v1/internal/admin/lsps/{lspId}/api-ip-allowlist", lspId)
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "cidr", "10.0.0.0/8",
@@ -93,7 +94,7 @@ class LspIpAllowlistAdminControllerAuditTest {
 
         mockMvc.perform(delete("/api/v1/internal/admin/lsps/{lspId}/api-ip-allowlist/{entryId}", lspId, entryId)
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP))
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP)))
                 .andExpect(status().isNoContent());
 
         assertEquals(beforeCount + 1, auditCountFor(lspId));
@@ -112,7 +113,7 @@ class LspIpAllowlistAdminControllerAuditTest {
 
         mockMvc.perform(post("/api/v1/internal/admin/lsps/{lspId}/ui-ip-allowlist", lspId)
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "cidr", "172.16.0.0/12",
@@ -143,7 +144,7 @@ class LspIpAllowlistAdminControllerAuditTest {
 
         mockMvc.perform(delete("/api/v1/internal/admin/lsps/{lspId}/ui-ip-allowlist/{entryId}", lspId, entryId)
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP))
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP)))
                 .andExpect(status().isNoContent());
 
         assertEquals(beforeCount + 1, auditCountFor(lspId));

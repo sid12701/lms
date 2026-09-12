@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
@@ -107,7 +108,7 @@ class AuthControllerAuthAuditTest {
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID)
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .content(objectMapper.writeValueAsString(
                                 new AuthApiResponses.LoginRequest("test.user@bhawana.local", "TestPassword123!"))))
                 .andExpect(status().isOk());
@@ -134,7 +135,7 @@ class AuthControllerAuthAuditTest {
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID)
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .content(objectMapper.writeValueAsString(
                                 new AuthApiResponses.LoginRequest("test.user@bhawana.local", "WrongPassword123!"))))
                 .andExpect(status().isUnauthorized());
@@ -192,7 +193,7 @@ class AuthControllerAuthAuditTest {
         mockMvc.perform(post("/api/v1/auth/token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID)
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
                                 created.client().getClientId(),
                                 created.rawSecret()
@@ -229,7 +230,7 @@ class AuthControllerAuthAuditTest {
         MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID)
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .content(objectMapper.writeValueAsString(
                                 new AuthApiResponses.LoginRequest("test.user@bhawana.local", "TestPassword123!"))))
                 .andExpect(status().isOk())
@@ -241,7 +242,7 @@ class AuthControllerAuthAuditTest {
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .cookie(refreshCookie)
                         .header(CorrelationIdFilter.HEADER_NAME, "refresh-success-corr")
-                        .header("X-Forwarded-For", CLIENT_IP))
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP)))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/internal/ops/auth-audit")
@@ -267,7 +268,7 @@ class AuthControllerAuthAuditTest {
     void logoutWritesAuditRowEvenWithoutRefreshCookie() throws Exception {
         mockMvc.perform(post("/api/v1/auth/logout")
                         .header(CorrelationIdFilter.HEADER_NAME, CORRELATION_ID)
-                        .header("X-Forwarded-For", CLIENT_IP))
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP)))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/v1/internal/ops/auth-audit")
@@ -303,7 +304,7 @@ class AuthControllerAuthAuditTest {
         mockMvc.perform(post("/api/v1/auth/password")
                         .header("Authorization", "Bearer " + accessToken)
                         .header(CorrelationIdFilter.HEADER_NAME, "password-change-corr")
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new AuthApiResponses.ChangePasswordRequest("BrandNewPassword123!"))))

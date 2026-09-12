@@ -131,6 +131,7 @@ export function UsersPage() {
         <UsersDialogs
           dialog={dialogs.dialog}
           revealedTempPassword={dialogs.revealedTempPassword}
+          credentialRecoveryNotice={dialogs.credentialRecoveryNotice}
           lspOptions={lspOptions}
           onCreateOpenChange={dialogs.handleCreateOpenChange}
           onCreateConfirm={dialogs.handleCreateConfirm}

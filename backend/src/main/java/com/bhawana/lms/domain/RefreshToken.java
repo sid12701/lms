@@ -39,6 +39,26 @@ public class RefreshToken {
     @Column(name = "auth_type", nullable = false, length = 32)
     private String authType;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "family_id")
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    private AuthSession family;
+
+    @Column(name = "replaced_by_hash", length = 64)
+    private String replacedByHash;
+
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
+    @Column(name = "issued_tv")
+    private Long issuedTokenVersion;
+
+    @Column(name = "issued_pwdv_millis")
+    private Long issuedPasswordChangedAtMillis;
+
+    @Column(name = "issued_policy_epoch", length = 128)
+    private String issuedPolicyEpoch;
+
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
@@ -84,6 +104,23 @@ public class RefreshToken {
 
     public void revoke() {
         this.revoked = true;
+        if (this.revokedAt == null) {
+            this.revokedAt = Instant.now();
+        }
+    }
+
+    public void markReplaced(String successorHash, Instant revokedAt) {
+        this.revoked = true;
+        this.replacedByHash = successorHash;
+        this.revokedAt = revokedAt;
+    }
+
+    /** Attach a human refresh row to its session family with version/epoch lineage. */
+    public void attachFamily(AuthSession family, long issuedTv, long issuedPwdvMillis, String issuedPolicyEpoch) {
+        this.family = family;
+        this.issuedTokenVersion = issuedTv;
+        this.issuedPasswordChangedAtMillis = issuedPwdvMillis;
+        this.issuedPolicyEpoch = issuedPolicyEpoch;
     }
 
     public UUID getId() {
@@ -116,5 +153,33 @@ public class RefreshToken {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public AuthSession getFamily() {
+        return family;
+    }
+
+    public java.util.UUID getFamilyId() {
+        return family != null ? family.getId() : null;
+    }
+
+    public String getReplacedByHash() {
+        return replacedByHash;
+    }
+
+    public Instant getRevokedAt() {
+        return revokedAt;
+    }
+
+    public Long getIssuedTokenVersion() {
+        return issuedTokenVersion;
+    }
+
+    public Long getIssuedPasswordChangedAtMillis() {
+        return issuedPasswordChangedAtMillis;
+    }
+
+    public String getIssuedPolicyEpoch() {
+        return issuedPolicyEpoch;
     }
 }

@@ -18,6 +18,7 @@ import com.bhawana.lms.repo.AppUserAuditEventRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.AuthEventAuditRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -117,7 +118,7 @@ class Issue80SessionRevocationIntegrationTest {
 
         mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/revoke-sessions", sarah.getId())
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("reason", "Suspected compromise"))))
                 .andExpect(status().isOk())
@@ -150,7 +151,7 @@ class Issue80SessionRevocationIntegrationTest {
 
         mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/revoke-sessions", sarah.getId())
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("reason", "Suspected compromise"))))
                 .andExpect(status().isOk());
@@ -293,7 +294,7 @@ class Issue80SessionRevocationIntegrationTest {
 
         mockMvc.perform(put("/api/v1/internal/admin/users/{userId}", sarah.getId())
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("status", "INACTIVE"))))
                 .andExpect(status().isOk());

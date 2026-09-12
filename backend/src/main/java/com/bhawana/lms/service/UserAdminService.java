@@ -12,13 +12,14 @@ import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserAuditEventRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspRepository;
-import com.bhawana.lms.security.AuthPrincipalCache;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.LinkedHashSet;
@@ -54,7 +55,9 @@ public class UserAdminService {
     private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
     private final SessionRevocationService sessionRevocationService;
-    private final AuthPrincipalCache authPrincipalCache;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     public UserAdminService(
             LspRepository lspRepository,
@@ -63,8 +66,7 @@ public class UserAdminService {
             AppUserAuditEventRepository appUserAuditEventRepository,
             PasswordEncoder passwordEncoder,
             ObjectMapper objectMapper,
-            SessionRevocationService sessionRevocationService,
-            AuthPrincipalCache authPrincipalCache
+            SessionRevocationService sessionRevocationService
     ) {
         this.lspRepository = lspRepository;
         this.appRoleRepository = appRoleRepository;
@@ -73,7 +75,23 @@ public class UserAdminService {
         this.passwordEncoder = passwordEncoder;
         this.objectMapper = objectMapper;
         this.sessionRevocationService = sessionRevocationService;
-        this.authPrincipalCache = authPrincipalCache;
+    }
+
+    @Transactional
+    public CreateUserResult createUserWithGeneratedPassword(
+            String username,
+            String email,
+            UserStatus status,
+            UUID lspId,
+            Set<RoleCode> roleCodes
+    ) {
+        // The server is the sole minter of initial credentials. The SecureRandom
+        // generator is shared with the admin reset flow; only the bcrypt hash is
+        // persisted and the cleartext value is returned once to the caller — never
+        // stored in the database, audit events, logs, or idempotency records.
+        String temporaryPassword = generateTemporaryPassword();
+        AppUser user = createUser(username, email, temporaryPassword, status, lspId, roleCodes);
+        return new CreateUserResult(user, temporaryPassword);
     }
 
     @Transactional
@@ -139,8 +157,22 @@ public class UserAdminService {
             UUID lspId,
             Set<RoleCode> roleCodes
     ) {
+        // Principal lock first (base row only, no nullable outer-join FOR UPDATE);
+        // the detailed probe below only initializes roles/LSP under the held lock.
+        AppUser lockedProbe = appUserRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown user id: " + userId));
         AppUser user = appUserRepository.findDetailedById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown user id: " + userId));
+        if (!lockedProbe.getId().equals(user.getId())) {
+            throw new IllegalStateException("Managed user identity mismatch under lock.");
+        }
+        // This writer supports joined transactions, so the row may already be managed
+        // (and stale) in the caller's context — a concurrent reset/disable could have
+        // committed after the caller loaded it. Refresh this row only (never the whole
+        // context) BEFORE reading any field for snapshots, defaults or mutations;
+        // otherwise saveAndFlush below would flush stale password/status/versions over
+        // the newer commit before the revoker ever sees it.
+        entityManager.refresh(user);
 
         UserAuditSnapshot beforeSnapshot = toAuditSnapshot(user);
 
@@ -184,6 +216,12 @@ public class UserAdminService {
         boolean rolesChanged = roleCodes != null
                 && !user.getRoles().stream().map(AppRole::getCode).collect(Collectors.toSet()).equals(resolvedRoleCodes);
         boolean statusChanged = resolvedStatus != user.getStatus();
+        UUID beforeLspId = user.getLsp() == null ? null : user.getLsp().getId();
+        UUID afterLspId = resolvedLsp == null ? null : resolvedLsp.getId();
+        // LSP reassignment joins the all-user fence so old lspId JWT claims cannot
+        // survive (identity/mapping compatibility, not a general redesign).
+        boolean lspChanged = (beforeLspId == null && afterLspId != null)
+                || (beforeLspId != null && !beforeLspId.equals(afterLspId));
 
         enforceSelfEditGuards(user, actorUsername, resolvedStatus, resolvedRoleCodes);
 
@@ -195,7 +233,9 @@ public class UserAdminService {
         if (statusChanged) {
             user.changeStatus(resolvedStatus);
         }
-        AppUser saved = appUserRepository.save(user);
+        // Flush caller edits before the revocation fence: the fence re-reads the
+        // locked row to latest committed state and would discard unflushed mutations.
+        AppUser saved = appUserRepository.saveAndFlush(user);
 
         UserAuditSnapshot afterSnapshot = toAuditSnapshot(saved);
         writeUserAuditEvent(
@@ -209,8 +249,8 @@ public class UserAdminService {
         );
 
         if (rolesChanged) {
-            sessionRevocationService.revokeAllSessions(
-                    saved,
+            sessionRevocationService.revokeAllSessionsById(
+                    saved.getId(),
                     actorUsername,
                     "Role change",
                     actorIp,
@@ -220,8 +260,8 @@ public class UserAdminService {
         }
 
         if (statusChanged) {
-            sessionRevocationService.revokeAllSessions(
-                    saved,
+            sessionRevocationService.revokeAllSessionsById(
+                    saved.getId(),
                     actorUsername,
                     "Status change",
                     actorIp,
@@ -230,27 +270,17 @@ public class UserAdminService {
             );
         }
 
-        return saved;
-    }
-
-    @Transactional
-    public AppUser completeRequiredPasswordChange(String username, String newPassword) {
-        AppUser user = appUserRepository.findByUsername(username)
-                .orElseThrow(() -> new IllegalArgumentException("Password changes are only supported for managed users."));
-
-        if (!user.isPasswordChangeRequired()) {
-            throw new IllegalArgumentException("Password change is not required for this account.");
+        if (lspChanged) {
+            sessionRevocationService.revokeAllSessionsById(
+                    saved.getId(),
+                    actorUsername,
+                    "LSP assignment change",
+                    actorIp,
+                    CorrelationIdHolder.get(),
+                    RevocationSource.LSP_ASSIGNMENT_CHANGE
+            );
         }
 
-        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
-            throw new IllegalArgumentException("New password must differ from the temporary password.");
-        }
-
-        user.changePassword(passwordEncoder.encode(newPassword));
-        AppUser saved = appUserRepository.save(user);
-        // changePassword bumps the token version / passwordChangedAt; drop the cached snapshot so the
-        // freshly minted token validates against current state instead of the pre-change snapshot.
-        authPrincipalCache.evictAppUser(saved.getUsername());
         return saved;
     }
 
@@ -261,8 +291,13 @@ public class UserAdminService {
             String actorIp,
             String correlationId
     ) {
-        AppUser user = appUserRepository.findById(userId)
+        // Principal lock first; the all-user fence below re-locks the same row.
+        // Refresh this row only before snapshotting/mutating: in a joined transaction the
+        // row may already be managed (and stale) from the caller's earlier read, and a
+        // concurrent commit must not be overwritten by the saveAndFlush below.
+        AppUser user = appUserRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown user id: " + userId));
+        entityManager.refresh(user);
 
         UserAuditSnapshot beforeSnapshot = toAuditSnapshot(user);
 
@@ -274,7 +309,7 @@ public class UserAdminService {
 
         String temporaryPassword = generateTemporaryPassword();
         user.requirePasswordChange(passwordEncoder.encode(temporaryPassword));
-        AppUser saved = appUserRepository.save(user);
+        AppUser saved = appUserRepository.saveAndFlush(user);
 
         UserAuditSnapshot afterSnapshot = toAuditSnapshot(saved);
         writeUserAuditEvent(
@@ -289,8 +324,8 @@ public class UserAdminService {
                 priorLockReason
         );
 
-        sessionRevocationService.revokeAllSessions(
-                saved,
+        sessionRevocationService.revokeAllSessionsById(
+                saved.getId(),
                 actorUsername,
                 "Password reset by admin",
                 actorIp,
@@ -309,10 +344,11 @@ public class UserAdminService {
             String actorIp,
             String correlationId
     ) {
-        AppUser user = appUserRepository.findById(userId)
+        // Explicit revocation is an all-user fence; principal lock first.
+        AppUser user = appUserRepository.findByIdForUpdate(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown user id: " + userId));
-        return sessionRevocationService.revokeAllSessions(
-                user,
+        return sessionRevocationService.revokeAllSessionsById(
+                user.getId(),
                 actorUsername,
                 reasonOrNull,
                 actorIp,
@@ -477,5 +513,8 @@ public class UserAdminService {
     }
 
     public record ResetPasswordResult(AppUser user, String temporaryPassword) {
+    }
+
+    public record CreateUserResult(AppUser user, String temporaryPassword) {
     }
 }

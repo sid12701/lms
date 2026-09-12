@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
@@ -102,7 +103,7 @@ class ReportAdminControllerDownloadAuditTest extends MinioTestSupport {
 
         MvcResult downloadResult = mockMvc.perform(get("/api/v1/internal/reports/portfolio-mis")
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .queryParam("lspId", apex.id())
                         .queryParam("disbursalDateFrom", "2026-03-01")
                         .queryParam("disbursalDateTo", "2026-03-31"))
@@ -153,7 +154,7 @@ class ReportAdminControllerDownloadAuditTest extends MinioTestSupport {
 
         MvcResult downloadResult = mockMvc.perform(get("/api/v1/internal/reports/requests/{requestId}/download", requestId)
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP))
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP)))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -315,7 +316,7 @@ class ReportAdminControllerDownloadAuditTest extends MinioTestSupport {
     }
 
     private void disburseLoan(String applicationId) throws Exception {
-        // C04: durable intent is the only initiation path — seed the frozen beneficiary
+        // Durable intent is the only initiation path — seed the frozen beneficiary
         // instruction, raise the intent, then execute it (IMPS success disburses atomically).
         UUID borrowerId = jdbcTemplate.queryForObject(
                 "SELECT borrower_id FROM loan_application WHERE id = ?",

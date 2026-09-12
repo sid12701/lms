@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
@@ -78,7 +79,7 @@ class LoanApplicationOpsControllerDocumentDownloadAuditTest {
                         applicationId,
                         "PAN_CARD")
                         .with(opsUser())
-                        .header("X-Forwarded-For", CLIENT_IP))
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP)))
                 .andExpect(status().isOk())
                 .andReturn();
 
@@ -107,7 +108,7 @@ class LoanApplicationOpsControllerDocumentDownloadAuditTest {
                         "PAN_CARD")
                         .param("disposition", "inline")
                         .with(opsUser())
-                        .header("X-Forwarded-For", CLIENT_IP))
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP)))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.startsWith("inline")))
                 .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")))
@@ -153,7 +154,7 @@ class LoanApplicationOpsControllerDocumentDownloadAuditTest {
                         "/api/v1/internal/ops/loan-applications/{applicationId}/kyc-documents/download-all",
                         applicationId)
                         .with(opsUser())
-                        .header("X-Forwarded-For", CLIENT_IP))
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP)))
                 .andExpect(status().isOk())
                 .andReturn();
 

@@ -16,6 +16,8 @@ import type { RevealedTemporaryPassword, UserDialogState } from "../types";
 export interface UsersDialogsProps {
   dialog: UserDialogState;
   revealedTempPassword: RevealedTemporaryPassword | null;
+  /** Replay-recovery notice for create/reset (null credential, no rotation). */
+  credentialRecoveryNotice: string | null;
   lspOptions: readonly UserCreateDialogLspOption[];
   onCreateOpenChange: (open: boolean) => void;
   onCreateConfirm: (args: UserCreateConfirmArgs) => Promise<void> | void;
@@ -42,6 +44,7 @@ export interface UsersDialogsProps {
 export function UsersDialogs({
   dialog,
   revealedTempPassword,
+  credentialRecoveryNotice,
   lspOptions,
   onCreateOpenChange,
   onCreateConfirm,
@@ -82,6 +85,7 @@ export function UsersDialogs({
         onAcknowledgePassword={onCreateAcknowledge}
         loading={createLoading}
         errorMessage={createErrorMessage}
+        recoveryNotice={credentialRecoveryNotice}
       />
 
       <UserEditDialog
@@ -103,6 +107,7 @@ export function UsersDialogs({
         onAcknowledgePassword={onResetAcknowledge}
         loading={resetLoading}
         errorMessage={resetErrorMessage}
+        recoveryNotice={credentialRecoveryNotice}
       />
 
       <RevokeSessionsDialog

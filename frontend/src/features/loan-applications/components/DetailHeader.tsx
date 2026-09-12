@@ -5,11 +5,20 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { StatusBadge } from "@/components/app/status/StatusBadge";
 import { ActionBar } from "@/components/app/lifecycle/ActionBar";
+import { ManualStatusOverrideDialog } from "@/components/app/lifecycle/ManualStatusOverrideDialog";
 import { EscalateToAdminDialog } from "@/components/app/lifecycle/EscalateToAdminDialog";
 import { useSession } from "@/features/auth/session-context";
 import { escalateAlert } from "@/features/alerts/api";
-import { useInitiateDisbursement, useTransitionStatus } from "../hooks/useLoanApplicationMutations";
-import { fetchLatestDisbursementReference } from "../api-detail";
+import {
+  useInitiateDisbursement,
+  useManualStatusOverride,
+  useTransitionStatus,
+} from "../hooks/useLoanApplicationMutations";
+import {
+  fetchLatestDisbursementReference,
+  isManualOverrideSourceBlocked,
+  manualOverrideTargetsFor,
+} from "../api-detail";
 import type { LoanApplicationDetail, TransitionStatusInput } from "../types";
 import { mapApiErrorMessage, formatLoanStatusLabel } from "@/lib/api/user-messages";
 import { shortId } from "@/lib/short-id";
@@ -36,6 +45,10 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
   const showsForeclosurePanel = role === "SYSTEM_ADMIN";
   const mutation = useTransitionStatus(detail.application.id);
   const disbursementMutation = useInitiateDisbursement(detail.application.id);
+  const overrideMutation = useManualStatusOverride(detail.application.id);
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideBusy, setOverrideBusy] = useState(false);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
   const [escalateOpen, setEscalateOpen] = useState(false);
   const [escalateBusy, setEscalateBusy] = useState(false);
 
@@ -69,6 +82,18 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
 
   const fullName = detail.borrower.fullName;
   const externalLabel = detail.application.externalLoanId ?? "—";
+
+  // Hide the Override action for sources the backend is known to block
+  // (approval/invalid/servicing/closed/foreclosed, or a submitted/parked
+  // disbursement account). No new eligibility endpoint — the server stays
+  // authoritative for races; this only removes a known-dead affordance.
+  const overrideHiddenForSource = isManualOverrideSourceBlocked(
+    detail.application.status,
+    detail.account?.accountStatus ?? null,
+  );
+  const canOfferOverride = role === "SYSTEM_ADMIN" && !overrideHiddenForSource;
+  // Never offer the status the application is already in.
+  const overrideTargets = manualOverrideTargetsFor(detail.application.status);
 
   const handleConfirm = async ({
     action,
@@ -113,6 +138,44 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
       toast.error(`Could not ${action.label.toLowerCase()}: ${detailMsg}`);
       // Re-throw so ActionBar surfaces the failure in its aria-live region.
       throw err;
+    }
+  };
+
+  const handleOverrideConfirm = async ({
+    toStatus,
+    reason,
+    reasonCode,
+    idempotencyKey,
+  }: {
+    toStatus: TransitionStatusInput["to"];
+    reason: string;
+    reasonCode: string;
+    idempotencyKey: string;
+  }) => {
+    setOverrideBusy(true);
+    setOverrideError(null);
+    try {
+      // Key comes from the dialog session (reused on identical retry,
+      // fresh for a changed payload) — never the failed standard key.
+      const result = await overrideMutation.mutateAsync({
+        to: toStatus,
+        reason,
+        reasonCode,
+        idempotencyKey,
+      });
+      // Show the resulting status from the server response.
+      toast.success(
+        `Application moved to ${formatLoanStatusLabel(result.application.status)} (override).`,
+      );
+      setOverrideOpen(false);
+      onTransitionSuccess?.();
+    } catch (err) {
+      const detailMsg = mapApiErrorMessage(err);
+      toast.error(`Could not override status: ${detailMsg}`);
+      // Keep the dialog open with the failure where the admin is looking.
+      setOverrideError(detailMsg);
+    } finally {
+      setOverrideBusy(false);
     }
   };
 
@@ -162,20 +225,50 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
           />
         </div>
       ) : role ? (
-        <ActionBar
-          currentStatus={detail.application.status}
-          role={role}
-          applicationId={detail.application.id}
-          gates={{
-            docsComplete: detail.docsComplete,
-            scheduleValid: detail.scheduleValid,
-          }}
-          onConfirm={handleConfirm}
-          // Only relocate foreclosure when the panel that owns it is actually
-          // rendered below; otherwise the bar would hide an action nothing else
-          // offers.
-          hiddenTargetStatuses={showsForeclosurePanel ? FORECLOSURE_OWNED_BY_PANEL : undefined}
-        />
+        <>
+          <ActionBar
+            currentStatus={detail.application.status}
+            role={role}
+            applicationId={detail.application.id}
+            gates={{
+              docsComplete: detail.docsComplete,
+              scheduleValid: detail.scheduleValid,
+            }}
+            onConfirm={handleConfirm}
+            // Only relocate foreclosure when the panel that owns it is actually
+            // rendered below; otherwise the bar would hide an action nothing else
+            // offers.
+            hiddenTargetStatuses={showsForeclosurePanel ? FORECLOSURE_OWNED_BY_PANEL : undefined}
+          />
+          {canOfferOverride ? (
+            <div data-slot="admin-override-bar" className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setOverrideError(null);
+                  setOverrideOpen(true);
+                }}
+                data-action-id="MANUAL_STATUS_OVERRIDE"
+              >
+                <AlertTriangle aria-hidden="true" className="size-4" />
+                <span>Override status</span>
+              </Button>
+              <ManualStatusOverrideDialog
+                open={overrideOpen}
+                onOpenChange={(next) => {
+                  if (overrideBusy) return;
+                  setOverrideOpen(next);
+                  if (!next) setOverrideError(null);
+                }}
+                allowedTargets={overrideTargets}
+                onConfirm={handleOverrideConfirm}
+                loading={overrideBusy}
+                errorMessage={overrideError}
+              />
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       {showsForeclosurePanel ? (

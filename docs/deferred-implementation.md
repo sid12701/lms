@@ -6,7 +6,7 @@ Production-readiness and architecture items that are **approved in principle** b
 
 **Implemented fixes:** `docs/implementation-log.md` (and §19.6 of the report).
 
-**Last register update:** 2026-07-15 — Specs S5, S6, S13, S14, S15, S16, and S18 deferred; **S19 Slice A** closed (relationship table + dual-write + grant API lockdown; access-collection drop / normalizer remain as S19 residual). Specs S7–S12 and **S20** already implemented. Next free Flyway: **V114**.
+**Last register update:** 2026-09-12 — H27 Prometheus/observability deferred in full (below). Prior: 2026-07-15 — Specs S5, S6, S13, S14, S15, S16, and S18 deferred; **S19 Slice A** closed (relationship table + dual-write + grant API lockdown; access-collection drop / normalizer remain as S19 residual). Specs S7–S12 and **S20** already implemented. Next free Flyway: **V114**.
 
 **How to use:** When picking up deferred work, re-audit the cited code paths first — the tree may have moved since the deferral date. Remove an entry only after the spec's acceptance criteria are met and validation evidence is recorded in the implementation log.
 
@@ -117,6 +117,19 @@ Production-readiness and architecture items that are **approved in principle** b
 | **Prerequisite / related** | Decision D7 schedule remains the target when resumed. Idempotency purge stays as-is. S5/S14/S16 are independently deferred. |
 | **Resume when** | Before partner pilot scale, compliance retention audits, or when storage/query latency on append streams becomes observable; partition attach no later than real-money capacity planning. |
 | **On resume** | Prefer Slice A first (webhook/token/report purges + manifests + legal_hold, disabled-by-default); treat partition conversion + 8y financial archive as a separate maintenance-window milestone. Confirm next free Flyway version. |
+
+### H27 / OBS-01 — Prometheus and observability (full deferral)
+
+| | |
+|---|---|
+| **Canonical spec** | 06/09 audit H27 (operational metrics / job health / production exporter) |
+| **Deferred** | 2026-09-12 |
+| **Severity if left open** | Ops visibility gap — no collector-backed alerts, dashboards, or structured-log correlation in production |
+| **Why deferred** | Owner requested full deferral for the current pass. No further Prometheus/collector, dashboard, alert-rule, runbook, or log-correlation work is scheduled now. |
+| **Residual risk (accepted for now)** | Disbursement metrics/gauges and `SYSTEM_ADMIN`-only `/actuator/prometheus` from the 2026-09-09 disbursement pass remain in code but unwired to any collector. `docs/observability/` dashboard, alert rules, and runbook stay on disk, untracked/ignored (not in repo). No alert ownership or staging-collector verification until resumed. |
+| **Prerequisite / related** | Independent of financial-correctness fixes (C05, H06–H09). Resume before production pilot / real-money ops. |
+| **Resume when** | Before production pilot; or when ops needs collector-backed failure/stuck-intent signals. |
+| **On resume** | Re-audit metrics/actuator config and worker run IDs/MDC; pick exporter (Prometheus or OTLP), secure transport, add last-success/failure/queue-age/provider-latency/pool metrics, dashboards, alert ownership, and staging-collector proof per H27 acceptance. |
 
 ---
 

@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.security.MachinePrincipalLspResolver;
 import java.util.UUID;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -20,10 +21,7 @@ final class LspAuthenticationSupport {
 
     static UUID tryAuthenticatedLspId(Authentication authentication) {
         if (authentication.getPrincipal() instanceof Jwt jwt) {
-            String rawLspId = jwt.getClaimAsString("lspId");
-            if (rawLspId != null && !rawLspId.isBlank()) {
-                return UUID.fromString(rawLspId);
-            }
+            return MachinePrincipalLspResolver.resolveLspId(jwt).orElse(null);
         }
         return null;
     }

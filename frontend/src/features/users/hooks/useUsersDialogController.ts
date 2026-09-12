@@ -8,17 +8,37 @@ import { useResetUserPassword } from "./useResetUserPassword";
 import { useRevokeUserSessions } from "./useRevokeUserSessions";
 import { useUpdateUser } from "./useUpdateUser";
 
+export const REPLAYED_CREATE_NOTICE =
+  "This request was already processed, so no new password was issued and the existing one was left untouched. " +
+  "If the original password was lost, run Reset password for the user with a new request to issue a fresh one.";
+
+export function replayedResetNotice(username: string): string {
+  return (
+    `This reset was already processed for ${username}, so the password was not changed again. ` +
+    "If the original password was lost, run Reset password again with a new request to issue a fresh one."
+  );
+}
+
 export function useUsersDialogController() {
   const [dialog, setDialog] = useState<UserDialogState>({ kind: "none" });
   const [revealedTempPassword, setRevealedTempPassword] =
     useState<RevealedTemporaryPassword | null>(null);
+  // Replay recovery: when a create/reset request replays an
+  // already-processed idempotency key the server returns a null credential
+  // WITHOUT rotating it. The notice tells the operator to issue a deliberate
+  // Reset password (new key) instead of silently showing nothing.
+  const [credentialRecoveryNotice, setCredentialRecoveryNotice] = useState<string | null>(null);
   const create = useCreateUser();
   const update = useUpdateUser();
   const reset = useResetUserPassword();
   const revokeSessions = useRevokeUserSessions();
 
   const clearRevealed = () => setRevealedTempPassword(null);
-  const openCreate = () => setDialog({ kind: "create" });
+  const clearCredentialRecoveryNotice = () => setCredentialRecoveryNotice(null);
+  const openCreate = () => {
+    clearCredentialRecoveryNotice();
+    setDialog({ kind: "create" });
+  };
 
   /*
     The row-action handlers below are memoised because `UsersTable` lists them in
@@ -29,15 +49,18 @@ export function useUsersDialogController() {
     to. `setDialog` is a `useState` setter and `update.mutate` is stable, so these
     genuinely never need to change.
   */
-  const openEdit = useCallback((user: UserRow) => setDialog({ kind: "edit", user }), []);
-  const openResetPassword = useCallback(
-    (user: UserRow) => setDialog({ kind: "reset-password", user }),
-    [],
-  );
-  const openRevokeSessions = useCallback(
-    (user: UserRow) => setDialog({ kind: "revoke-sessions", user }),
-    [],
-  );
+  const openEdit = useCallback((user: UserRow) => {
+    setCredentialRecoveryNotice(null);
+    setDialog({ kind: "edit", user });
+  }, []);
+  const openResetPassword = useCallback((user: UserRow) => {
+    setCredentialRecoveryNotice(null);
+    setDialog({ kind: "reset-password", user });
+  }, []);
+  const openRevokeSessions = useCallback((user: UserRow) => {
+    setCredentialRecoveryNotice(null);
+    setDialog({ kind: "revoke-sessions", user });
+  }, []);
 
   const editTarget = dialog.kind === "edit" ? dialog.user : null;
   const resetTarget = dialog.kind === "reset-password" ? dialog.user : null;
@@ -53,6 +76,7 @@ export function useUsersDialogController() {
     setDialog({ kind: "none" });
     create.reset();
     clearRevealed();
+    clearCredentialRecoveryNotice();
   };
 
   const handleCreateConfirm = async ({
@@ -68,6 +92,7 @@ export function useUsersDialogController() {
     lspId: string | null;
     idempotencyKey: string;
   }) => {
+    clearCredentialRecoveryNotice();
     try {
       const result = await create.mutateAsync({
         username,
@@ -76,6 +101,14 @@ export function useUsersDialogController() {
         lspId,
         idempotencyKey,
       });
+      if (result.temporaryPassword == null) {
+        // Replay: the credential is unavailable AND must not linger — a
+        // previously revealed value is cleared so it cannot sit exposed
+        // behind the recovery notice.
+        clearRevealed();
+        setCredentialRecoveryNotice(REPLAYED_CREATE_NOTICE);
+        return;
+      }
       setRevealedTempPassword({
         username: result.user.username,
         password: result.temporaryPassword,
@@ -89,6 +122,7 @@ export function useUsersDialogController() {
     setDialog({ kind: "none" });
     create.reset();
     clearRevealed();
+    clearCredentialRecoveryNotice();
   };
 
   const handleEditOpenChange = (open: boolean) => {
@@ -132,15 +166,22 @@ export function useUsersDialogController() {
     setDialog({ kind: "none" });
     reset.reset();
     clearRevealed();
+    clearCredentialRecoveryNotice();
   };
 
   const handleResetConfirm = async ({ idempotencyKey }: { idempotencyKey: string }) => {
     if (!resetTarget) return;
+    clearCredentialRecoveryNotice();
     try {
       const result = await reset.mutateAsync({
         id: resetTarget.id,
         idempotencyKey,
       });
+      if (result.temporaryPassword == null) {
+        clearRevealed();
+        setCredentialRecoveryNotice(replayedResetNotice(resetTarget.username));
+        return;
+      }
       setRevealedTempPassword({
         username: resetTarget.username,
         password: result.temporaryPassword,
@@ -154,6 +195,7 @@ export function useUsersDialogController() {
     setDialog({ kind: "none" });
     reset.reset();
     clearRevealed();
+    clearCredentialRecoveryNotice();
   };
 
   const handleRevokeOpenChange = (open: boolean) => {
@@ -232,6 +274,8 @@ export function useUsersDialogController() {
     dialog,
     revealedTempPassword,
     clearRevealed,
+    credentialRecoveryNotice,
+    clearCredentialRecoveryNotice,
     openCreate,
     openEdit,
     openResetPassword,

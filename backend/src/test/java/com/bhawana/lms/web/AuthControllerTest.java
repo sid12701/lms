@@ -5,6 +5,7 @@ import org.springframework.test.context.TestExecutionListeners;
 
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -21,6 +22,7 @@ import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.repo.RefreshTokenRepository;
 import com.bhawana.lms.service.ApiClientManagementService;
 import com.bhawana.lms.service.SystemContextService;
 import com.bhawana.lms.service.UserAdminService;
@@ -29,6 +31,9 @@ import com.bhawana.lms.tenant.TenantDataAccessContextHolder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -78,6 +83,9 @@ class AuthControllerTest {
     private ApiClientManagementService apiClientManagementService;
 
     @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
+
+    @Autowired
     private LspRepository lspRepository;
 
     @Autowired
@@ -86,9 +94,26 @@ class AuthControllerTest {
     @Autowired
     private EntityManager entityManager;
 
+    @Autowired
+    private com.bhawana.lms.security.SecurityProperties securityProperties;
+
     @BeforeEach
     void setUpManagedUser() {
         integrationTestDatabaseCleaner.cleanIntegrationTestData();
+
+        // Password login requires a real managed row (no configuration fallback), so the
+        // bootstrap admin is seeded explicitly like startup create-if-absent does.
+        AppRole systemAdminRole = appRoleRepository.findByCodeIn(List.of(RoleCode.SYSTEM_ADMIN)).stream()
+                .findFirst()
+                .orElseThrow();
+        appUserRepository.save(new AppUser(
+                securityProperties.getBootstrapUser().getUsername().trim().toLowerCase(),
+                securityProperties.getBootstrapUser().getEmail(),
+                passwordEncoder.encode(securityProperties.getBootstrapUser().getPassword()),
+                UserStatus.ACTIVE,
+                null,
+                Set.of(systemAdminRole)
+        ));
 
         AppRole opsUserRole = appRoleRepository.findByCodeIn(List.of(RoleCode.OPS_USER)).stream()
                 .findFirst()
@@ -470,7 +495,7 @@ class AuthControllerTest {
     }
 
     @Test
-    void apiClientRefreshCookieMintsFreshAccessToken() throws Exception {
+    void apiClientTokenEndpointDoesNotIssueRefreshCookie() throws Exception {
         Lsp lsp = lspRepository.save(new Lsp("APEX-MACHINE", "Apex Machine Tenant", LspStatus.ACTIVE));
         ApiClientManagementService.CreatedApiClient created = apiClientManagementService.createClient(
                 "Apex Machine Client",
@@ -490,24 +515,30 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        String originalToken = objectMapper.readTree(tokenResult.getResponse().getContentAsString())
-                .get("accessToken").asText();
-        Cookie refreshCookie = tokenResult.getResponse().getCookie("lms-refresh");
-        assert refreshCookie != null : "Token response must include lms-refresh cookie";
+        assertNull(tokenResult.getResponse().getCookie("lms-refresh"));
+        assertNull(tokenResult.getResponse().getHeader("Set-Cookie"));
+    }
 
-        MvcResult refreshResult = mockMvc.perform(post("/api/v1/auth/refresh")
-                        .cookie(refreshCookie))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tokenType").value("Bearer"))
-                .andReturn();
+    @Test
+    void legacyApiClientRefreshCookieIsRejected() throws Exception {
+        Lsp lsp = lspRepository.save(new Lsp("APEX-LEGACY", "Apex Legacy", LspStatus.ACTIVE));
+        ApiClientManagementService.CreatedApiClient created = apiClientManagementService.createClient(
+                "Legacy Machine Client",
+                null,
+                lsp.getId(),
+                com.bhawana.lms.domain.ApiClientStatus.ACTIVE,
+                "test.setup",
+                null
+        );
+        String rawToken = "legacy-api-client-refresh-token";
+        refreshTokenRepository.save(new com.bhawana.lms.domain.RefreshToken(
+                sha256Hex(rawToken),
+                created.client(),
+                java.time.Instant.now().plusSeconds(3600)
+        ));
 
-        String refreshedToken = objectMapper.readTree(refreshResult.getResponse().getContentAsString())
-                .get("accessToken").asText();
-        assertNotEquals(originalToken, refreshedToken);
-
-        mockMvc.perform(get("/api/v1/lsp/loan-applications")
-                        .header("Authorization", "Bearer " + refreshedToken))
-                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("lms-refresh", rawToken)))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -529,5 +560,15 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .cookie(refreshCookie))
                 .andExpect(status().isUnauthorized());
+    }
+
+    private static String sha256Hex(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 }

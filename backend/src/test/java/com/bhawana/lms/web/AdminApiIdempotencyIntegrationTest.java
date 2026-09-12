@@ -29,6 +29,7 @@ import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.repo.ReportRequestRepository;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.bhawana.lms.tenant.TenantScopedExecution;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -170,7 +171,7 @@ class AdminApiIdempotencyIntegrationTest {
                         .header("Idempotency-Key", key))
                 .andExpect(status().isOk());
 
-        // C04: initiation commits one durable intent (the provider log appears only once the
+        // Initiation commits one durable intent (the provider log appears only once the
         // worker executes it); the replayed key must not raise a second intent.
         UUID accountId = loanAccountRepository.findByLoanApplication_Id(UUID.fromString(applicationId))
                 .orElseThrow().getId();
@@ -385,7 +386,7 @@ class AdminApiIdempotencyIntegrationTest {
         MvcResult first = mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/reset-password", user.getId())
                         .with(systemAdmin())
                         .header("Idempotency-Key", key)
-                        .header("X-Forwarded-For", "203.0.113.10"))
+                        .with(IpTestSupport.remoteAddr("203.0.113.10")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.temporaryPassword").isString())
                 .andReturn();
@@ -393,7 +394,7 @@ class AdminApiIdempotencyIntegrationTest {
         MvcResult replay = mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/reset-password", user.getId())
                         .with(systemAdmin())
                         .header("Idempotency-Key", key)
-                        .header("X-Forwarded-For", "203.0.113.10"))
+                        .with(IpTestSupport.remoteAddr("203.0.113.10")))
                 .andExpect(status().isOk())
                 .andReturn();
 

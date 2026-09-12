@@ -25,6 +25,7 @@ import com.bhawana.lms.repo.AuthEventAuditRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
 import com.bhawana.lms.service.AlertRuleEvaluationWorker;
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -125,11 +126,9 @@ class AuthBruteForceLockoutIntegrationTest {
                     .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
         }
 
-        alertRuleEvaluationWorker.evaluateScheduledRules();
-
         entityManager.clear();
         AppUser lockedUser = appUserRepository.findByUsername("sarah.user").orElseThrow();
-        assertNotNull(lockedUser.getLockedAt());
+        assertNotNull(lockedUser.getLockedAt(), "lock must be immediate without scheduler tick");
         assertEquals(AppUser.LOCK_REASON_BRUTE_FORCE, lockedUser.getLockReason());
 
         mockMvc.perform(get("/api/v1/internal/system/context")
@@ -167,8 +166,6 @@ class AuthBruteForceLockoutIntegrationTest {
                     .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
         }
 
-        alertRuleEvaluationWorker.evaluateScheduledRules();
-
         entityManager.clear();
         AppUser user = appUserRepository.findByUsername("sarah.user").orElseThrow();
         assertNull(user.getLockedAt());
@@ -178,15 +175,13 @@ class AuthBruteForceLockoutIntegrationTest {
     }
 
     @Test
-    void failed_logins_split_across_two_ips_below_strict_threshold_do_not_trigger_strict_lockout() throws Exception {
-        for (int attempt = 0; attempt < 4; attempt++) {
+    void failed_logins_split_across_two_ips_below_per_user_threshold_do_not_lock() throws Exception {
+        for (int attempt = 0; attempt < 2; attempt++) {
             attemptLogin("sarah.user", "WrongPassword!", "198.51.100.10")
                     .andExpect(status().isUnauthorized());
             attemptLogin("sarah.user", "WrongPassword!", "198.51.100.11")
                     .andExpect(status().isUnauthorized());
         }
-
-        alertRuleEvaluationWorker.evaluateScheduledRules();
 
         entityManager.clear();
         AppUser user = appUserRepository.findByUsername("sarah.user").orElseThrow();
@@ -199,6 +194,23 @@ class AuthBruteForceLockoutIntegrationTest {
     }
 
     @Test
+    void failed_logins_split_across_two_ips_reach_per_user_threshold_and_lock_immediately() throws Exception {
+        for (int attempt = 0; attempt < 3; attempt++) {
+            attemptLogin("sarah.user", "WrongPassword!", "198.51.100.10")
+                    .andExpect(status().isUnauthorized());
+        }
+        for (int attempt = 0; attempt < 2; attempt++) {
+            attemptLogin("sarah.user", "WrongPassword!", "198.51.100.11")
+                    .andExpect(status().isUnauthorized());
+        }
+
+        entityManager.clear();
+        AppUser user = appUserRepository.findByUsername("sarah.user").orElseThrow();
+        assertNotNull(user.getLockedAt());
+        assertEquals(AppUser.LOCK_REASON_BRUTE_FORCE, user.getLockReason());
+    }
+
+    @Test
     void correct_login_from_different_ip_against_locked_user_also_returns_same_401_shape() throws Exception {
         lockUserViaBruteForce();
 
@@ -208,7 +220,8 @@ class AuthBruteForceLockoutIntegrationTest {
     }
 
     @Test
-    void twenty_failed_logins_across_five_distinct_ips_fires_distributed_alert_but_does_not_lock() throws Exception {
+    void twenty_failed_logins_across_five_distinct_ips_locks_at_five_and_scheduler_emits_distributed_alert()
+            throws Exception {
         String[] ips = {
                 "198.51.100.21",
                 "198.51.100.22",
@@ -223,19 +236,23 @@ class AuthBruteForceLockoutIntegrationTest {
             }
         }
 
-        alertRuleEvaluationWorker.evaluateScheduledRules();
-
         entityManager.clear();
         AppUser user = appUserRepository.findByUsername("sarah.user").orElseThrow();
-        assertNull(user.getLockedAt());
+        assertNotNull(user.getLockedAt(), "per-user threshold locks before distributed scheduler runs");
         assertTrue(opsAlertRepository.existsByTypeAndSubjectIdAndStatus(
-                OpsAlertType.AUTH_BRUTE_FORCE_DISTRIBUTED,
+                OpsAlertType.AUTH_BRUTE_FORCE,
                 user.getId(),
                 OpsAlertStatus.NEW
         ));
-        assertFalse(opsAlertRepository.existsByTypeAndSubjectIdAndStatus(
-                OpsAlertType.AUTH_BRUTE_FORCE,
-                user.getId(),
+
+        alertRuleEvaluationWorker.evaluateScheduledRules();
+
+        entityManager.clear();
+        AppUser stillLocked = appUserRepository.findByUsername("sarah.user").orElseThrow();
+        assertNotNull(stillLocked.getLockedAt());
+        assertTrue(opsAlertRepository.existsByTypeAndSubjectIdAndStatus(
+                OpsAlertType.AUTH_BRUTE_FORCE_DISTRIBUTED,
+                stillLocked.getId(),
                 OpsAlertStatus.NEW
         ));
     }
@@ -363,12 +380,47 @@ class AuthBruteForceLockoutIntegrationTest {
         assertFalse(auditEvent.getAfterStateJson().has("priorLockReason"));
     }
 
+    @Test
+    void fifth_failed_login_commits_counter_audit_and_lock_without_outer_transaction() throws Exception {
+        long usersBefore = appUserRepository.count();
+        long loginFailedBefore = countLoginFailedEvents("sarah.user");
+
+        for (int attempt = 0; attempt < 5; attempt++) {
+            attemptLogin("sarah.user", "WrongPassword!", CLIENT_IP)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+        }
+
+        entityManager.clear();
+        assertEquals(usersBefore, appUserRepository.count());
+        assertEquals(loginFailedBefore + 5, countLoginFailedEvents("sarah.user"));
+        AppUser locked = appUserRepository.findByUsername("sarah.user").orElseThrow();
+        assertNotNull(locked.getLockedAt());
+        assertEquals(AppUser.LOCK_REASON_BRUTE_FORCE, locked.getLockReason());
+    }
+
+    @Test
+    void unknown_email_login_does_not_create_user_row() throws Exception {
+        long usersBefore = appUserRepository.count();
+
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("email", "nobody@bhawana.local");
+        body.put("password", "WrongPassword!");
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-Forwarded-For", CLIENT_IP)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.toString()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+
+        assertEquals(usersBefore, appUserRepository.count());
+    }
+
     private AppUser lockUserViaBruteForce() throws Exception {
         for (int attempt = 0; attempt < 5; attempt++) {
             attemptLogin("sarah.user", "WrongPassword!", CLIENT_IP)
                     .andExpect(status().isUnauthorized());
         }
-        alertRuleEvaluationWorker.evaluateScheduledRules();
         entityManager.clear();
         return appUserRepository.findByUsername("sarah.user").orElseThrow();
     }
@@ -404,7 +456,7 @@ class AuthBruteForceLockoutIntegrationTest {
         body.put("password", password);
 
         return mockMvc.perform(post("/api/v1/auth/login")
-                .header("X-Forwarded-For", clientIp)
+                .with(IpTestSupport.remoteAddr(clientIp))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body.toString()));
     }

@@ -32,6 +32,26 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 /**
  * HTTP security wiring: the stateless resource-server filter chain, route authorization, the
  * custom 401/403/428 JSON error writers, CORS, and registration of the LSP payload-size filter.
+ *
+ * <p>Human vs machine surface policy (see also {@link HumanMachineSurfaceGuard}):
+ * <ul>
+ *   <li>Human surfaces ({@code /api/v1/internal/**}, {@code POST /api/v1/auth/password}) require
+ *       human-audience tokens for a live managed user. {@code /internal/system/context} additionally
+ *       carries a human-role {@code @PreAuthorize}, so an authenticated machine token is denied at
+ *       the method guard; {@code /auth/password} has no role guard and instead calls
+ *       {@code HumanMachineSurfaceGuard.requireHuman}, so a machine token whose clientId collides
+ *       with a human username is denied before it can reset that human's password.</li>
+ *   <li>Machine surfaces ({@code /api/v1/lsp/**} with {@code hasRole('LSP_API_CLIENT')}) require
+ *       machine-audience API-client tokens. Human-audience tokens never carry
+ *       {@code ROLE_LSP_API_CLIENT} (stripped at authority mapping), so even a managed row that
+ *       stores the machine role cannot cross to the machine API.</li>
+ *   <li>Role separation alone is not the argument for the generic {@code .authenticated()} routes:
+ *       each such route has either a typed method guard or an explicit typed controller guard as
+ *       listed above, proven by signed-token HTTP tests.</li>
+ * </ul>
+ *
+ * <p>The OpenAPI document describes the full internal + LSP surface and is served to
+ * authenticated principals only; it does not itself authorize either surface.
  */
 @Configuration
 public class SecurityFilterChainConfig {
@@ -47,6 +67,7 @@ public class SecurityFilterChainConfig {
             Converter<Jwt, ? extends AbstractAuthenticationToken> jwtAuthenticationConverter,
             ObjectMapper objectMapper,
             ObjectProvider<RateLimitFilter> rateLimitFilterProvider,
+            ClientIpResolutionFilter clientIpResolutionFilter,
             LspSurfaceIpAllowlistFilter lspSurfaceIpAllowlistFilter,
             AuthenticationTenantScopeFilter authenticationTenantScopeFilter,
             LspApiPayloadSizeFilter lspApiPayloadSizeFilter
@@ -81,7 +102,7 @@ public class SecurityFilterChainConfig {
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").authenticated()
                         .requestMatchers("/api/v1/auth/password").authenticated()
                         .requestMatchers("/api/v1/internal/system/context").authenticated()
-                        // H27: Prometheus exposition is authenticated AND role-restricted.
+                        // Prometheus exposition is authenticated AND role-restricted.
                         // Only SYSTEM_ADMIN may scrape; unrelated auth behavior is out of scope.
                         .requestMatchers("/actuator/prometheus").hasRole("SYSTEM_ADMIN")
                         .requestMatchers("/api/v1/**").access((authentication, context) -> {
@@ -138,6 +159,9 @@ public class SecurityFilterChainConfig {
                         }))
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
+                .addFilterBefore(
+                        clientIpResolutionFilter,
+                        org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class)
                 .addFilterBefore(
                         lspApiPayloadSizeFilter,
                         org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter.class)

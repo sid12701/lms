@@ -72,11 +72,65 @@ describe("createUser", () => {
       roles: ["OPS_USER"],
       passwordChangeRequired: true,
       createdAt: "2026-06-08T10:00:00.000Z",
+      temporaryPassword: "server-minted-secret",
     });
 
     const result = await createUser(makeCreateUserInput());
 
     expect(result.user.mustChangePassword).toBe(true);
+  });
+
+  it("sends no browser-minted password and maps the server temporary password", async () => {
+    requestJsonMock.mockResolvedValue({
+      id: "22222222-2222-2222-2222-222222222222",
+      username: "created.user",
+      email: "created.user@bhawana.local",
+      status: "ACTIVE",
+      lspId: null,
+      lspName: "All LSPs",
+      roles: ["OPS_USER"],
+      passwordChangeRequired: true,
+      createdAt: "2026-06-08T10:00:00.000Z",
+      temporaryPassword: "server-minted-secret",
+    });
+
+    const result = await createUser(makeCreateUserInput());
+
+    expect(requestJsonMock).toHaveBeenCalledOnce();
+    const init = requestJsonMock.mock.calls[0]?.[1];
+    expect(init).toEqual(expect.objectContaining({ body: expect.any(String) }));
+    const sentBody = JSON.parse(String(init?.body));
+    expect(sentBody).not.toHaveProperty("password");
+    expect(sentBody).toMatchObject({
+      username: "created.user",
+      email: "created.user@bhawana.local",
+      status: "ACTIVE",
+      roles: ["OPS_USER"],
+    });
+    expect(result.temporaryPassword).toBe("server-minted-secret");
+    expect(result.user.username).toBe("created.user");
+  });
+
+  it("passes through a null credential on idempotent replay without rotating", async () => {
+    requestJsonMock.mockResolvedValue({
+      id: "22222222-2222-2222-2222-222222222222",
+      username: "created.user",
+      email: "created.user@bhawana.local",
+      status: "ACTIVE",
+      lspId: null,
+      lspName: "All LSPs",
+      roles: ["OPS_USER"],
+      passwordChangeRequired: true,
+      createdAt: "2026-06-08T10:00:00.000Z",
+      temporaryPassword: null,
+    });
+
+    const result = await createUser(makeCreateUserInput());
+
+    // Null means "already processed, not rotated" — the operator recovers via
+    // a deliberate reset-password command, never a silent re-mint.
+    expect(result.temporaryPassword).toBeNull();
+    expect(result.user.username).toBe("created.user");
   });
 });
 

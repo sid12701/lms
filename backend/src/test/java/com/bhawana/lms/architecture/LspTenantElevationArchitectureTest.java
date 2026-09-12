@@ -71,6 +71,10 @@ class LspTenantElevationArchitectureTest {
             Map.entry(
                     "com.bhawana.lms.service.BorrowerPiiRevealAuditService",
                     "PII reveal audit rows are admin-owned (V45)."
+            ),
+            Map.entry(
+                    "com.bhawana.lms.security.EntraMachineIdentityMappingService",
+                    "verified Entra app→local api_client mapping runs before tenant scope is set (JWT validator)."
             )
     );
 

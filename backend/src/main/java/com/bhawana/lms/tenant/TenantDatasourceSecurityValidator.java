@@ -1,5 +1,6 @@
 package com.bhawana.lms.tenant;
 
+import com.bhawana.lms.config.DeploymentProfiles;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -37,16 +38,26 @@ public class TenantDatasourceSecurityValidator implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        if (isLocalOrTestProfile()) {
+        // Exemptions require a nonempty explicitly active all-local/test profile set.
+        // Unset, misspelled, production-like and mixed (e.g. local+prod) profiles all validate.
+        if (DeploymentProfiles.isDevExempt(environment)) {
             return;
         }
 
-        validateTenantPassword();
+        validateTenantCredentials(tenantProperties.getUsername(), tenantProperties.getPassword());
         assertTenantConnectionIdentity();
     }
 
-    private void validateTenantPassword() {
-        String password = tenantProperties.getPassword();
+    /**
+     * Fail-fast credential rules shared by startup validation and unit tests. The live connection
+     * identity probe in {@link #assertTenantConnectionIdentity()} runs separately at startup.
+     */
+    static void validateTenantCredentials(String username, String password) {
+        if (!StringUtils.hasText(username)) {
+            throw new IllegalStateException(
+                    "APP_TENANT_DATASOURCE_USERNAME is required outside the local profile."
+            );
+        }
         if (!StringUtils.hasText(password)) {
             throw new IllegalStateException(
                     "APP_TENANT_DATASOURCE_PASSWORD is required outside the local profile. "
@@ -113,18 +124,5 @@ public class TenantDatasourceSecurityValidator implements ApplicationRunner {
             }
             return resultSet.getString(1);
         }
-    }
-
-    private boolean isLocalOrTestProfile() {
-        String[] activeProfiles = environment.getActiveProfiles();
-        String[] profilesToCheck = activeProfiles.length == 0
-                ? environment.getDefaultProfiles()
-                : activeProfiles;
-        for (String profile : profilesToCheck) {
-            if ("local".equals(profile) || "test".equals(profile)) {
-                return true;
-            }
-        }
-        return false;
     }
 }

@@ -1,3 +1,4 @@
+import { captureAuthIntent } from "@/features/auth/auth-coordinator";
 import { useMemo, useReducer, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Loader2, Eye, EyeOff, AlertCircle } from "lucide-react";
@@ -120,8 +121,10 @@ export function LoginPage() {
     event.preventDefault();
     dispatch({ type: "submit-started" });
     try {
-      const next = await login({ email, password });
-      signIn(next);
+      const pending = login({ email, password });
+      const intent = captureAuthIntent();
+      const next = await pending;
+      if (!signIn(next, intent)) return;
       const target = next.user.mustChangePassword
         ? "/change-password"
         : defaultLandingFor(next.user.role);

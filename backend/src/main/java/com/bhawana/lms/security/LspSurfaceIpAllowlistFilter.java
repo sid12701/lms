@@ -144,29 +144,22 @@ public class LspSurfaceIpAllowlistFilter extends OncePerRequestFilter {
         if (authentication == null || !(authentication.getPrincipal() instanceof Jwt jwt)) {
             return null;
         }
-        String rawLspId = jwt.getClaimAsString("lspId");
-        if (rawLspId == null || rawLspId.isBlank()) {
-            return null;
-        }
-        try {
-            return UUID.fromString(rawLspId);
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
+        return MachinePrincipalLspResolver.resolveLspId(jwt).orElse(null);
     }
 
     private static LspIpAllowlistSurface resolveSurface(Authentication authentication) {
-        if (authentication == null || !(authentication.getPrincipal() instanceof Jwt jwt)) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof Jwt)) {
             return null;
         }
-        List<String> roles = jwt.getClaimAsStringList("roles");
-        if (roles == null || roles.isEmpty()) {
-            return null;
-        }
-        if (roles.contains("LSP_API_CLIENT")) {
+        // Authority mapping establishes local identity. External app-role strings (or a
+        // stripped human machine-role claim) must not choose or bypass the IP surface.
+        List<String> roles = authentication.getAuthorities().stream()
+                .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .toList();
+        if (roles.contains("ROLE_LSP_API_CLIENT")) {
             return LspIpAllowlistSurface.API;
         }
-        if (roles.stream().anyMatch(LspSurfaceIpAllowlistService::isLspUiRole)) {
+        if (roles.contains("ROLE_LSP_UI_READ") || roles.contains("ROLE_LSP_UI_WRITE")) {
             return LspIpAllowlistSurface.UI;
         }
         return null;

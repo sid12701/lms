@@ -29,6 +29,8 @@ export interface ResetPasswordDialogProps {
   onAcknowledgePassword: () => void;
   loading?: boolean;
   errorMessage?: string | null;
+  /** Replay recovery: shown when the reset replayed (no rotation happened). */
+  recoveryNotice?: string | null;
 }
 
 /**
@@ -45,6 +47,7 @@ export function ResetPasswordDialog({
   onAcknowledgePassword,
   loading = false,
   errorMessage = null,
+  recoveryNotice = null,
 }: ResetPasswordDialogProps) {
   const confirmRef = useRef<HTMLButtonElement | null>(null);
   const [revealed, setRevealed] = useState<boolean>(false);
@@ -85,6 +88,15 @@ export function ResetPasswordDialog({
           </div>
         ) : (
           <>
+            {recoveryNotice ? (
+              <div
+                role="status"
+                data-slot="reset-password-recovery-notice"
+                className="rounded-container border-warning/40 bg-warning/5 border p-3 text-sm"
+              >
+                {recoveryNotice}
+              </div>
+            ) : null}
             {errorMessage ? (
               <div
                 role="alert"

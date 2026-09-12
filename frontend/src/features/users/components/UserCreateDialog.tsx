@@ -75,6 +75,8 @@ export interface UserCreateDialogProps {
   onAcknowledgePassword: () => void;
   loading?: boolean;
   errorMessage?: string | null;
+  /** Replay recovery: shown when the create replayed (no rotation happened). */
+  recoveryNotice?: string | null;
 }
 
 /**
@@ -95,6 +97,7 @@ export function UserCreateDialog({
   onAcknowledgePassword,
   loading = false,
   errorMessage = null,
+  recoveryNotice = null,
 }: UserCreateDialogProps) {
   const form = useForm<CreateUserFormValues>({
     resolver: zodResolver(CreateUserFormSchema),
@@ -163,6 +166,15 @@ export function UserCreateDialog({
           </div>
         ) : (
           <FormShell form={form} onSubmit={handleSubmit}>
+            {recoveryNotice ? (
+              <div
+                role="status"
+                data-slot="user-create-recovery-notice"
+                className="rounded-container border-warning/40 bg-warning/5 border p-3 text-sm"
+              >
+                {recoveryNotice}
+              </div>
+            ) : null}
             <FormField
               control={form.control}
               name="username"

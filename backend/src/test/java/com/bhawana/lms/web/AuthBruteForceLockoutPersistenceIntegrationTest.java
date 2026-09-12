@@ -14,6 +14,7 @@ import com.bhawana.lms.repo.AuthEventAuditRepository;
 import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
 import com.bhawana.lms.service.AlertRuleEvaluationWorker;
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -108,7 +109,6 @@ class AuthBruteForceLockoutPersistenceIntegrationTest {
             attemptLogin("sarah.user", "WrongPassword!", CLIENT_IP)
                     .andExpect(status().isUnauthorized());
         }
-        alertRuleEvaluationWorker.evaluateScheduledRules();
 
         AppUser lockedUser = appUserRepository.findByUsername("sarah.user").orElseThrow();
         assertNotNull(lockedUser.getLockedAt());
@@ -139,7 +139,7 @@ class AuthBruteForceLockoutPersistenceIntegrationTest {
         body.put("password", password);
 
         return mockMvc.perform(post("/api/v1/auth/login")
-                .header("X-Forwarded-For", clientIp)
+                .with(IpTestSupport.remoteAddr(clientIp))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body.toString()));
     }

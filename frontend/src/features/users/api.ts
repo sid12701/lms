@@ -34,7 +34,6 @@ import type {
 } from "./types";
 
 const BASE = "/api/v1/internal/admin/users";
-const TEMP_PASSWORD_LEN = 14;
 
 const ROLE_PRIORITY: Role[] = [
   "SYSTEM_ADMIN",
@@ -75,7 +74,27 @@ interface BackendUserResponse {
   createdAt: string;
 }
 
-function toUserRow(payload: BackendUserResponse): UserRow {
+interface BackendCreateUserResponse {
+  id: string;
+  username: string;
+  email: string;
+  status: string;
+  lspId: string | null;
+  lspName: string | null;
+  roles: string[];
+  lockedAt?: string | null;
+  lockReason?: string | null;
+  passwordChangeRequired?: boolean;
+  createdAt: string;
+  /**
+   * One-time temporary password, present only in the first authorized create
+   * response. Replays under the same idempotency key return null without
+   * rotating the credential — recover via a deliberate reset-password command.
+   */
+  temporaryPassword: string | null;
+}
+
+function toUserRow(payload: BackendUserResponse | BackendCreateUserResponse): UserRow {
   const user: User = {
     id: payload.id,
     username: payload.username,
@@ -91,13 +110,26 @@ function toUserRow(payload: BackendUserResponse): UserRow {
   return { ...user, lspName: payload.lspName ?? null };
 }
 
-function mintTemporaryPassword(): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@";
-  let out = "";
-  for (let i = 0; i < TEMP_PASSWORD_LEN; i += 1) {
-    out += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-  }
-  return out;
+export async function createUser(input: CreateUserInput): Promise<CreateUserResponse> {
+  // The server mints the temporary password (SecureRandom) and reveals it
+  // once in the create response. The browser never mints or sends a password —
+  // the request below intentionally carries no `password` field (generated mode).
+  const body = {
+    username: input.username,
+    email: input.email,
+    status: "ACTIVE",
+    lspId: input.lspId,
+    roles: [input.role],
+  };
+  const payload = await requestJson<BackendCreateUserResponse>(
+    BASE,
+    { method: "POST", body: JSON.stringify(body) },
+    { idempotencyKey: input.idempotencyKey },
+  );
+  return {
+    user: { ...toUserRow(payload), mustChangePassword: payload.passwordChangeRequired ?? true },
+    temporaryPassword: payload.temporaryPassword,
+  };
 }
 
 export async function listUsers(filters: UsersListFilters = {}): Promise<UsersListResponse> {
@@ -119,24 +151,6 @@ export async function listUsers(filters: UsersListFilters = {}): Promise<UsersLi
   });
   const result = paginate(filtered, filters);
   return { ...result, items: result.items.map(toUserRow) };
-}
-
-export async function createUser(input: CreateUserInput): Promise<CreateUserResponse> {
-  const temporaryPassword = mintTemporaryPassword();
-  const body = {
-    username: input.username,
-    email: input.email,
-    password: temporaryPassword,
-    status: "ACTIVE",
-    lspId: input.lspId,
-    roles: [input.role],
-  };
-  const payload = await requestJson<BackendUserResponse>(
-    BASE,
-    { method: "POST", body: JSON.stringify(body) },
-    { idempotencyKey: input.idempotencyKey },
-  );
-  return { user: { ...toUserRow(payload), mustChangePassword: true }, temporaryPassword };
 }
 
 export async function updateUser(
@@ -176,11 +190,11 @@ export async function resetUserPassword(
   id: string,
   _input: ResetUserPasswordInput,
 ): Promise<ResetUserPasswordResponse> {
-  const payload = await requestJson<{ id: string; username: string; temporaryPassword: string }>(
-    `${BASE}/${id}/reset-password`,
-    { method: "POST" },
-    { idempotencyKey: _input.idempotencyKey },
-  );
+  const payload = await requestJson<{
+    id: string;
+    username: string;
+    temporaryPassword: string | null;
+  }>(`${BASE}/${id}/reset-password`, { method: "POST" }, { idempotencyKey: _input.idempotencyKey });
   return {
     temporaryPassword: payload.temporaryPassword,
   };

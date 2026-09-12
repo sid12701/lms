@@ -53,8 +53,8 @@ export function AlertRulesPanel({ rules, isLoading }: AlertRulesPanelProps) {
 
       <div className="px-4 pb-4">
         <p className="text-foreground-muted mb-3 text-xs leading-relaxed">
-          Scheduled checks run every few minutes; event-driven rules fire on intake and rate
-          limits. Open alerts below were emitted by these rules.
+          Scheduled checks run every few minutes; event-driven rules fire on intake and rate limits.
+          Open alerts below were emitted by these rules.
         </p>
         <ul className="divide-border border-border divide-y border-t">
           {rules.map((rule) => {

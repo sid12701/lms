@@ -23,6 +23,7 @@ import type {
   LoanApplicationActivityResponse,
   LoanApplicationDetail,
   LoanForeclosureQuote,
+  ManualStatusOverrideInput,
   RequestForeclosureQuoteInput,
   TransitionStatusInput,
 } from "./types";
@@ -36,14 +37,23 @@ function isSystemAdmin(): boolean {
   return loadStoredSession()?.user.role === "SYSTEM_ADMIN";
 }
 
+/**
+ * The authoritative audit timeline lives in the `audit-events` query
+ * (invalidated alongside detail on every mutation). Mutation responses carry
+ * NO event association — associating a timeline row here would misattribute
+ * concurrent history, and a timeline GET must never convert an already
+ * committed POST into an apparent failure.
+ */
 export interface TransitionResponse {
   application: LoanApplication;
-  event: ApplicationAuditEvent;
+  /** Present only when the server explicitly correlates an event. */
+  event?: ApplicationAuditEvent | null;
 }
 
 export interface DisbursementResponse {
   application: LoanApplication;
-  events: readonly ApplicationAuditEvent[];
+  /** Authoritative timeline comes from the invalidated activity query. */
+  events?: readonly ApplicationAuditEvent[];
 }
 
 interface BackendLoanForeclosureQuoteResponse {
@@ -361,80 +371,139 @@ export async function executeForeclosureQuote(
   return toForeclosureQuote(row);
 }
 
-function synthesiseTransitionEvent(
-  detail: LoanApplicationDetail,
-  fromStatus: LoanApplication["status"] | null,
-  reason: string | null,
-): ApplicationAuditEvent {
-  return {
-    id: `transition-${detail.application.id}-${Date.now()}`,
-    applicationId: detail.application.id,
-    fromStatus,
-    toStatus: detail.application.status,
-    action: "transition",
-    actorId: "current-session",
-    actorRole: "OPS_USER" as ApplicationAuditEvent["actorRole"],
-    channel: "UI" as ApplicationAuditEvent["channel"],
-    correlationId: detail.application.id,
-    reason,
-    createdAt: detail.application.updatedAt,
-  };
+/**
+ * Backend `ALLOWED_MANUAL_OVERRIDE_TARGETS`. Mirrors
+ * `LoanApplicationStatus.ALLOWED_MANUAL_OVERRIDE_TARGETS`; the server
+ * remains authoritative (source/financial/in-flight guards), this is only
+ * the client-side guard so the UI never submits a blocked target.
+ */
+export const ALLOWED_MANUAL_OVERRIDE_TARGETS: ReadonlySet<LoanApplication["status"]> = new Set([
+  "INITIALIZED",
+  "AWAITING_APPROVAL",
+  "DISBURSEMENT_RETRY",
+  "REJECTED",
+]);
+
+/**
+ * Sources the backend refuses to override from. Mirrors
+ * `MANUAL_OVERRIDE_SOURCE_BLOCKED` ∪ servicing
+ * (`APPROVED_PENDING_DISBURSAL`, `INVALID`, `DISBURSED`, `UNDER_REPAYMENT`,
+ * `CLOSED`, `FORECLOSED`). Client-side hide/disable only; the server stays
+ * authoritative for races.
+ */
+const MANUAL_OVERRIDE_SOURCE_BLOCKED: ReadonlySet<LoanApplication["status"]> = new Set([
+  "APPROVED_PENDING_DISBURSAL",
+  "INVALID",
+  "DISBURSED",
+  "UNDER_REPAYMENT",
+  "CLOSED",
+  "FORECLOSED",
+]);
+
+/**
+ * Account states matching the backend in-flight guard
+ * (`DISBURSEMENT_REQUESTED` / `DISBURSEMENT_PENDING_RECONCILIATION`): a
+ * submitted disbursement or parked reconciliation means the only forward
+ * path is reconciling the original reference, never a manual override.
+ */
+const ACCOUNT_IN_FLIGHT_STATUSES: ReadonlySet<string> = new Set([
+  "DISBURSEMENT_REQUESTED",
+  "DISBURSEMENT_PENDING_RECONCILIATION",
+]);
+
+/** Client-side hide/disable check for the Override action. */
+export function isManualOverrideSourceBlocked(
+  applicationStatus: LoanApplication["status"],
+  accountStatus: string | null | undefined,
+): boolean {
+  if (MANUAL_OVERRIDE_SOURCE_BLOCKED.has(applicationStatus)) return true;
+  if (accountStatus != null && ACCOUNT_IN_FLIGHT_STATUSES.has(accountStatus)) return true;
+  return false;
 }
 
-async function postBackendTransition(
+/** Override targets offered for `currentStatus` (never the status it is in). */
+export function manualOverrideTargetsFor(
+  currentStatus: LoanApplication["status"],
+): readonly LoanApplication["status"][] {
+  return [...ALLOWED_MANUAL_OVERRIDE_TARGETS].filter((target) => target !== currentStatus);
+}
+
+async function postStandardTransition(
   id: string,
   input: TransitionStatusInput,
   idempotencyKey: string,
 ): Promise<TransitionResponse> {
-  const targetStatus = input.to;
-  const body = {
-    targetStatus,
-    note: input.reason ?? null,
-    reasonCode: input.reasonCode ?? null,
-  };
+  // Exactly ONE command. A 400/403 from the standard state machine is
+  // surfaced verbatim — even when local session metadata claims
+  // SYSTEM_ADMIN (that metadata is forgeable; the server is authoritative).
+  // Admin recovery is the separate `postManualStatusOverride` action below.
+  const payload = await requestJson<OpsLoanApplicationDetailResponse>(
+    `${BACKEND_BASE}/${encodeURIComponent(id)}/status-transitions`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        targetStatus: input.to,
+        note: input.reason ?? null,
+        reasonCode: input.reasonCode ?? null,
+      }),
+    },
+    { idempotencyKey },
+  );
 
-  const tryEndpoint = async (endpoint: "status-transitions" | "manual-status") => {
-    // manual-status always requires a code; MANUAL_ADMIN_OVERRIDE is the
-    // backend enum member for that path ("OTHER" is not a valid code).
-    const requestBody =
-      endpoint === "manual-status"
-        ? {
-            ...body,
-            note: body.note ?? "Manual override",
-            reasonCode: body.reasonCode ?? "MANUAL_ADMIN_OVERRIDE",
-          }
-        : body;
-    return requestJson<OpsLoanApplicationDetailResponse>(
-      `${BACKEND_BASE}/${encodeURIComponent(id)}/${endpoint}`,
-      { method: "POST", body: JSON.stringify(requestBody) },
-      { idempotencyKey },
+  // Project the POST response directly — no follow-up GET. A KYC
+  // checklist (or audit) 500 after a committed POST must never convert the
+  // success into an apparent failure. Authoritative detail/checklist refresh
+  // via the invalidated queries; no audit row is attributed to this command.
+  return { application: toApplication(payload, payload.createdAt ?? nowIso()) };
+}
+
+/**
+ * Deliberate admin override — a SEPARATE visible action, never an
+ * automatic fallback. Posts exactly one `manual-status` command with the
+ * operator-entered reason code + explanation under the caller-supplied key.
+ * Cancel/dismiss sends nothing (the caller only invokes this on confirm).
+ */
+export async function postManualStatusOverride(
+  id: string,
+  input: ManualStatusOverrideInput,
+): Promise<TransitionResponse> {
+  if (!ALLOWED_MANUAL_OVERRIDE_TARGETS.has(input.to)) {
+    throw new ApiError(
+      `Manual override is not supported for ${input.to}.`,
+      400,
+      "",
+      "MANUAL_OVERRIDE_NOT_ALLOWED",
     );
-  };
-
-  let payload: OpsLoanApplicationDetailResponse;
-  try {
-    payload = await tryEndpoint("status-transitions");
-  } catch (error) {
-    // Backend rejects out-of-state transitions with 400/403. For
-    // SYSTEM_ADMIN, fall through to /manual-status which bypasses the
-    // simple state machine. For OPS_USER, surface the error.
-    if (
-      error instanceof ApiError &&
-      (error.status === 400 || error.status === 403) &&
-      isSystemAdmin()
-    ) {
-      payload = await tryEndpoint("manual-status");
-    } else {
-      throw error;
-    }
+  }
+  const reason = (input.reason ?? "").trim();
+  const reasonCode = (input.reasonCode ?? "").trim();
+  if (!reason) {
+    throw new ApiError("Manual override requires an explanation.", 400, "", "NOTE_REQUIRED");
+  }
+  if (!reasonCode) {
+    throw new ApiError("Manual override requires a reason code.", 400, "", "REASON_CODE_REQUIRED");
+  }
+  if (!input.idempotencyKey) {
+    throw new ApiError(
+      "Manual override requires an idempotency key.",
+      400,
+      "",
+      "IDEMPOTENCY_KEY_REQUIRED",
+    );
   }
 
-  const checklist = await fetchChecklist(id);
-  const detail = backendToDetail(payload, checklist);
-  return {
-    application: detail.application,
-    event: synthesiseTransitionEvent(detail, null, input.reason),
-  };
+  const payload = await requestJson<OpsLoanApplicationDetailResponse>(
+    `${BACKEND_BASE}/${encodeURIComponent(id)}/manual-status`,
+    {
+      method: "POST",
+      body: JSON.stringify({ targetStatus: input.to, note: reason, reasonCode }),
+    },
+    { idempotencyKey: input.idempotencyKey },
+  );
+
+  // Same post-commit rule as the standard path — project the POST
+  // response directly, no follow-up GET (see `postStandardTransition`).
+  return { application: toApplication(payload, payload.createdAt ?? nowIso()) };
 }
 
 /**
@@ -452,7 +521,7 @@ export async function postTransition(
       ? input.idempotencyKey
       : newIdempotencyKey();
 
-  return postBackendTransition(id, input, idempotencyKey);
+  return postStandardTransition(id, input, idempotencyKey);
 }
 
 /** Initiate disbursement (SYSTEM_ADMIN only on the live backend). */
@@ -565,17 +634,13 @@ export async function postDisbursement(
     );
   }
 
-  const [payload, checklist] = await Promise.all([
-    requestJson<OpsLoanApplicationDetailResponse>(
-      `${BACKEND_BASE}/${encodeURIComponent(id)}/disbursement-requests`,
-      { method: "POST", body: JSON.stringify({}) },
-      { idempotencyKey },
-    ),
-    fetchChecklist(id),
-  ]);
-  const detail = backendToDetail(payload, checklist);
-  return {
-    application: detail.application,
-    events: [synthesiseTransitionEvent(detail, null, input.note)],
-  };
+  const payload = await requestJson<OpsLoanApplicationDetailResponse>(
+    `${BACKEND_BASE}/${encodeURIComponent(id)}/disbursement-requests`,
+    { method: "POST", body: JSON.stringify({}) },
+    { idempotencyKey },
+  );
+  // Same post-commit rule — project the POST response directly, no
+  // follow-up GET and no synthesised event. The audit timeline refreshes via
+  // the invalidated activity query (see `TransitionResponse`).
+  return { application: toApplication(payload, payload.createdAt ?? nowIso()) };
 }

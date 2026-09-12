@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
@@ -79,7 +80,7 @@ class AuditExplorerControllerReportAccessStreamTest {
         .perform(
             get("/api/v1/internal/reports/portfolio-mis")
                 .with(systemAdmin())
-                .header("X-Forwarded-For", "203.0.113.77")
+                .with(IpTestSupport.remoteAddr("203.0.113.77"))
                 .queryParam("lspId", lspId)
                 .queryParam("disbursalDateFrom", "2026-03-01")
                 .queryParam("disbursalDateTo", "2026-03-31"))
@@ -137,7 +138,7 @@ class AuditExplorerControllerReportAccessStreamTest {
     transition(applicationId, "AWAITING_APPROVAL", "Ready");
     markAllRequiredKycDocumentsVerified(applicationId);
     transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved");
-    // C04: durable intent is the only initiation path — seed the frozen beneficiary
+    // Durable intent is the only initiation path — seed the frozen beneficiary
     // instruction, raise the intent, then execute it (IMPS success disburses atomically).
     seedBorrowerBankDetails(applicationId);
     mockMvc

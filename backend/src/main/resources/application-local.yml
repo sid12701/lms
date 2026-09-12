@@ -60,9 +60,11 @@ app:
     auth-brute-force-distributed-threshold: ${APP_ALERT_RULES_AUTH_BRUTE_FORCE_DISTRIBUTED_THRESHOLD:1000}
   security:
     bootstrap-user:
-      username: ${APP_SECURITY_BOOTSTRAP_USERNAME}
-      email: ${APP_SECURITY_BOOTSTRAP_EMAIL:${APP_SECURITY_BOOTSTRAP_USERNAME}@bhawana.local}
-      password: ${APP_SECURITY_BOOTSTRAP_PASSWORD}
+      # Explicit local-only example identities. These defaults apply only when the local
+      # profile is explicitly active; no other profile inherits them.
+      username: ${APP_SECURITY_BOOTSTRAP_USERNAME:ops.admin}
+      email: ${APP_SECURITY_BOOTSTRAP_EMAIL:ops.admin@bhawana.local}
+      password: ${APP_SECURITY_BOOTSTRAP_PASSWORD:ChangeMe123!}
       roles:
         - SYSTEM_ADMIN
         - OPS_USER

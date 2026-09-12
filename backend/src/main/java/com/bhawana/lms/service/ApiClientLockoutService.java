@@ -37,7 +37,7 @@ public class ApiClientLockoutService {
 
     public void registerFailedAttempt(UUID apiClientId, Instant now) {
         requiresNewTransactionTemplate.executeWithoutResult(status ->
-                apiClientRepository.findById(apiClientId).ifPresent(client -> {
+                apiClientRepository.findByIdForUpdate(apiClientId).ifPresent(client -> {
                     client.registerFailedAuth(now, MAX_FAILED_ATTEMPTS, LOCK_DURATION);
                     apiClientRepository.save(client);
                 }));

@@ -1,3 +1,4 @@
+import { captureAuthIntent } from "@/features/auth/auth-coordinator";
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useForm, useWatch } from "react-hook-form";
@@ -82,8 +83,10 @@ export function ChangePasswordPage() {
   async function onSubmit(values: ChangePasswordValues): Promise<void> {
     setSubmitError(null);
     try {
-      const next = await completePasswordChange({ newPassword: values.newPassword });
-      signIn(next);
+      const pending = completePasswordChange({ newPassword: values.newPassword });
+      const intent = captureAuthIntent();
+      const next = await pending;
+      if (!signIn(next, intent)) return;
       navigate(defaultLandingFor(next.user.role), { replace: true });
     } catch (err) {
       const message = mapApiErrorMessage(err, "Could not update password.");

@@ -13,6 +13,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -70,6 +71,12 @@ public class AppUser {
 
     @Column(name = "lock_reason", length = 64)
     private String lockReason;
+
+    @Column(name = "failed_login_attempts", nullable = false)
+    private int failedLoginAttempts;
+
+    @Column(name = "failed_login_window_started_at")
+    private Instant failedLoginWindowStartedAt;
 
     public static final String LOCK_REASON_BRUTE_FORCE = "BRUTE_FORCE";
 
@@ -161,18 +168,6 @@ public class AppUser {
         this.passwordChangedAt = Instant.now();
     }
 
-    public void synchronizeBootstrapAccount(String email, String newPasswordHash, Set<AppRole> roles) {
-        this.email = email;
-        if (newPasswordHash != null) {
-            this.passwordHash = newPasswordHash;
-            this.passwordChangedAt = Instant.now();
-        }
-        this.passwordChangeRequired = false;
-        this.status = UserStatus.ACTIVE;
-        this.lsp = null;
-        this.roles = new LinkedHashSet<>(roles);
-    }
-
     public void updateManagedProfile(
             String email,
             Lsp lsp,
@@ -215,5 +210,40 @@ public class AppUser {
     public void unlockForReset() {
         this.lockedAt = null;
         this.lockReason = null;
+        clearFailedLoginWindow();
+    }
+
+    public int getFailedLoginAttempts() {
+        return failedLoginAttempts;
+    }
+
+    public Instant getFailedLoginWindowStartedAt() {
+        return failedLoginWindowStartedAt;
+    }
+
+    /** Clears the rolling failed-login counter after a successful credential check. */
+    public void clearFailedLoginWindow() {
+        this.failedLoginAttempts = 0;
+        this.failedLoginWindowStartedAt = null;
+    }
+
+    /**
+     * Records a failed login against an existing user. Returns {@code true} when the live count
+     * reaches {@code threshold} inside the current window (caller applies brute-force lockout).
+     * An elapsed window resets the count before this failure is applied.
+     */
+    public boolean registerFailedLogin(Instant now, int threshold, Duration windowDuration) {
+        if (isLocked()) {
+            return false;
+        }
+        if (failedLoginWindowStartedAt != null
+                && now.isAfter(failedLoginWindowStartedAt.plus(windowDuration))) {
+            clearFailedLoginWindow();
+        }
+        if (failedLoginAttempts == 0) {
+            failedLoginWindowStartedAt = now;
+        }
+        failedLoginAttempts++;
+        return failedLoginAttempts >= threshold;
     }
 }

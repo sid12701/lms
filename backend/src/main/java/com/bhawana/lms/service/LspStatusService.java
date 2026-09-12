@@ -28,6 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class LspStatusService {
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     private final LspRepository lspRepository;
     private final ApiClientRepository apiClientRepository;
     private final AppUserRepository appUserRepository;
@@ -104,16 +107,23 @@ public class LspStatusService {
         lsp.revokeAllSessions();
 
         List<ApiClient> clients = apiClientRepository.findByLsp_Id(lsp.getId());
-        for (ApiClient client : clients) {
+        // Lock each machine principal before mutation, refreshing any entity loaded by
+        // the list query so a concurrent credential rotation cannot be overwritten.
+        clients.sort(java.util.Comparator.comparing(ApiClient::getId));
+        for (ApiClient probe : clients) {
+            ApiClient client = apiClientRepository.findByIdForUpdate(probe.getId()).orElseThrow();
+            entityManager.refresh(client);
             client.deactivate();
             client.revokeAllSessions();
         }
         apiClientRepository.saveAll(clients);
 
         List<AppUser> users = appUserRepository.findByLsp_IdOrderByUsernameAsc(lsp.getId());
+        // Pass ids only — the revoker locks each principal fresh (lock + refresh)
+        // rather than trusting these pre-loaded rows across the interleaving window.
         for (AppUser user : users) {
-            sessionRevocationService.revokeAllSessions(
-                    user,
+            sessionRevocationService.revokeAllSessionsById(
+                    user.getId(),
                     actorUsername,
                     "LSP disabled",
                     null,

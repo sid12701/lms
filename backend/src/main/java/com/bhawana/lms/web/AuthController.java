@@ -3,6 +3,7 @@ package com.bhawana.lms.web;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.AuthEventFailureReason;
+import com.bhawana.lms.security.HumanMachineSurfaceGuard;
 import com.bhawana.lms.service.AuthAuditService;
 import com.bhawana.lms.service.AuthAuthenticationService;
 import com.bhawana.lms.service.AuthTokenService;
@@ -35,19 +36,22 @@ public class AuthController {
     private final AuthTokenService authTokenService;
     private final RefreshCookieFactory refreshCookieFactory;
     private final UserAdminService userAdminService;
+    private final com.bhawana.lms.service.HumanSessionService humanSessionService;
 
     public AuthController(
             AuthAuthenticationService authAuthenticationService,
             AuthAuditService authAuditService,
             AuthTokenService authTokenService,
             RefreshCookieFactory refreshCookieFactory,
-            UserAdminService userAdminService
+            UserAdminService userAdminService,
+            com.bhawana.lms.service.HumanSessionService humanSessionService
     ) {
         this.authAuthenticationService = authAuthenticationService;
         this.authAuditService = authAuditService;
         this.authTokenService = authTokenService;
         this.refreshCookieFactory = refreshCookieFactory;
         this.userAdminService = userAdminService;
+        this.humanSessionService = humanSessionService;
     }
 
     @PostMapping("/login")
@@ -55,13 +59,19 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest httpRequest
     ) {
+        // Access plus refresh come from one principal-fenced issuance TX; no
+        // separate controller-side mint exists, closing the stale-proof gap.
         AuthAuthenticationService.PasswordLoginResult result = authAuthenticationService.login(
                 request.email(),
                 request.password(),
                 ClientIpAddresses.resolve(httpRequest)
         );
         return ResponseEntity.ok()
-                .headers(headers -> issueRefreshCookieForUsername(result.username(), headers))
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        refreshCookieFactory.build(
+                                result.rawRefreshToken(), refreshCookieFactory.refreshTtlSeconds()).toString()
+                )
                 .body(result.tokenResponse());
     }
 
@@ -70,15 +80,13 @@ public class AuthController {
             @Valid @RequestBody ClientCredentialsRequest request,
             HttpServletRequest httpRequest
     ) {
+        // Machine clients receive access only; refresh credentials are not issued.
         AuthAuthenticationService.ClientCredentialsResult result = authAuthenticationService.issueClientCredentialsToken(
                 request.clientId(),
                 request.clientSecret(),
                 ClientIpAddresses.resolve(httpRequest)
         );
-        String rawRefreshToken = authTokenService.generateAndStoreRefreshTokenForApiClient(result.apiClient());
-        return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.build(rawRefreshToken, refreshCookieFactory.refreshTtlSeconds()).toString())
-                .body(result.tokenResponse());
+        return ResponseEntity.ok(result.tokenResponse());
     }
 
     @PostMapping("/refresh")
@@ -102,12 +110,17 @@ public class AuthController {
         AuthTokenService.RefreshOutcome outcome =
                 authAuthenticationService.refreshSession(refreshCookie, actorIp, correlationId);
         if (!outcome.success()) {
-            authAuditService.recordTokenRefreshFailure(
-                    outcome.subjectUsername(),
-                    outcome.failureReason(),
-                    actorIp,
-                    correlationId
-            );
+            // Family-reuse failures are already audited inside the committing fencing
+            // transaction (revocation + failure row commit together); all other failures
+            // carry no state change and are audited here by the caller.
+            if (!outcome.failureAuditedInTx()) {
+                authAuditService.recordTokenRefreshFailure(
+                        outcome.subjectUsername(),
+                        outcome.failureReason(),
+                        actorIp,
+                        correlationId
+                );
+            }
             return unauthorizedRefresh(outcome.failureReason());
         }
 
@@ -125,20 +138,30 @@ public class AuthController {
             @Valid @RequestBody ChangePasswordRequest request,
             HttpServletRequest httpRequest
     ) {
-        var user = userAdminService.completeRequiredPasswordChange(
-                authentication.getName(),
-                request.newPassword()
-        );
-        authAuditService.recordPasswordChanged(
-                user,
-                ClientIpAddresses.resolve(httpRequest),
-                CorrelationIdHolder.get()
-        );
-
-        TokenResponse tokenResponse = authTokenService.mintTokenResponse(authentication);
+        // Human-only surface: a machine API_CLIENT token whose clientId collides with a human
+        // username would otherwise reset that human's password via authentication.getName().
+        // Denied here (403) before any managed-user mutation; see HumanMachineSurfaceGuard.
+        HumanMachineSurfaceGuard.requireHuman(authentication);
+        // Self-service password change is an all-user fence with single-TX re-issuance
+        // from the post-change snapshot (never from the pre-change Authentication). The
+        // presented bearer material (sid/tv/pwdv) is extracted from the live JWT and
+        // revalidated inside the fence, so a deferred request cannot overwrite an
+        // intervening admin reset/disable and mint a fresh session.
+        com.bhawana.lms.service.HumanSessionService.PasswordLoginIssued issued =
+                humanSessionService.changePasswordAndIssue(
+                        authentication.getName(),
+                        request.newPassword(),
+                        presentedSession(authentication),
+                        ClientIpAddresses.resolve(httpRequest),
+                        CorrelationIdHolder.get()
+                );
         return ResponseEntity.ok()
-                .headers(headers -> issueRefreshCookieForUsername(authentication.getName(), headers))
-                .body(tokenResponse);
+                .header(
+                        HttpHeaders.SET_COOKIE,
+                        refreshCookieFactory.build(
+                                issued.rawRefreshToken(), refreshCookieFactory.refreshTtlSeconds()).toString()
+                )
+                .body(issued.tokenResponse());
     }
 
     @PostMapping("/logout")
@@ -146,32 +169,22 @@ public class AuthController {
             @CookieValue(name = RefreshCookieFactory.COOKIE_NAME, required = false) String refreshCookie,
             HttpServletRequest httpRequest
     ) {
-        String logoutUsername = AuthAuditService.ANONYMOUS_USERNAME;
-        UUID logoutUserId = null;
-
-        Authentication securityAuthentication = SecurityContextHolder.getContext().getAuthentication();
-        if (securityAuthentication != null
-                && securityAuthentication.isAuthenticated()
-                && securityAuthentication.getName() != null
-                && !"anonymousUser".equals(securityAuthentication.getName())) {
-            logoutUsername = securityAuthentication.getName();
-            logoutUserId = authAuthenticationService.findManagedUserId(logoutUsername).orElse(null);
-        }
-
+        // Per-family revoke in one TX with the logout audit; sibling families survive.
+        // The clearing cookie is Path-exact in all paths, garbage cookie included.
         if (refreshCookie != null && !refreshCookie.isBlank()) {
-            AuthTokenService.RevokeOutcome revokeOutcome = authTokenService.revokeRefreshToken(refreshCookie);
-            if (revokeOutcome.found()) {
-                logoutUsername = revokeOutcome.subjectUsername();
-                logoutUserId = revokeOutcome.userId();
-            }
+            authAuthenticationService.logoutFamily(
+                    refreshCookie,
+                    ClientIpAddresses.resolve(httpRequest),
+                    CorrelationIdHolder.get()
+            );
+        } else {
+            authAuditService.recordLogout(
+                    AuthAuditService.ANONYMOUS_USERNAME,
+                    null,
+                    ClientIpAddresses.resolve(httpRequest),
+                    CorrelationIdHolder.get()
+            );
         }
-
-        authAuditService.recordLogout(
-                logoutUsername,
-                logoutUserId,
-                ClientIpAddresses.resolve(httpRequest),
-                CorrelationIdHolder.get()
-        );
 
         return ResponseEntity.noContent()
                 .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.build("", 0).toString())
@@ -196,6 +209,10 @@ public class AuthController {
                     "TOKEN_REVOKED",
                     "Refresh token was revoked"
             );
+            case TOKEN_ROTATED -> new RefreshFailureResponse(
+                    "TOKEN_ROTATED",
+                    "Refresh token was already rotated"
+            );
             case USER_INACTIVE -> new RefreshFailureResponse(
                     "USER_INACTIVE",
                     "User is not active"
@@ -219,12 +236,25 @@ public class AuthController {
         };
     }
 
-    private void issueRefreshCookieForUsername(String username, HttpHeaders headers) {
-        authTokenService.generateAndStoreRefreshTokenForUsername(username).ifPresent(rawToken ->
-                headers.add(
-                        HttpHeaders.SET_COOKIE,
-                        refreshCookieFactory.build(rawToken, refreshCookieFactory.refreshTtlSeconds()).toString()
-                )
+    /**
+     * Extracts the presented bearer material (sid/tv/pwdv) from the live request JWT
+     * for in-fence revalidation. Missing or partial material is rejected by the service.
+     */
+    private static com.bhawana.lms.service.HumanSessionService.PresentedSession presentedSession(
+            Authentication authentication
+    ) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof org.springframework.security.oauth2.jwt.Jwt jwt)) {
+            return new com.bhawana.lms.service.HumanSessionService.PresentedSession(null, null, null);
+        }
+        return new com.bhawana.lms.service.HumanSessionService.PresentedSession(
+                jwt.getClaimAsString("sid"),
+                longClaim(jwt, "tv"),
+                longClaim(jwt, "pwdv")
         );
+    }
+
+    private static Long longClaim(org.springframework.security.oauth2.jwt.Jwt jwt, String name) {
+        Object value = jwt.getClaims().get(name);
+        return value instanceof Number number ? number.longValue() : null;
     }
 }

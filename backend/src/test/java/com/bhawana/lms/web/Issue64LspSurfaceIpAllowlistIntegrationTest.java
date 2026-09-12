@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.bhawana.lms.security.EdgeProperties;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -42,6 +43,7 @@ class Issue64LspSurfaceIpAllowlistIntegrationTest {
 
   @Autowired private MockMvc mockMvc;
   @Autowired private ObjectMapper objectMapper;
+  @Autowired private EdgeProperties edgeProperties;
   @Test
   void apiClientTokenIssuanceFromNonAllowedIpIsRejectedWhenEnforcementIsOn() throws Exception {
     Seed seed = seedLspAndApiClient();
@@ -113,7 +115,10 @@ class Issue64LspSurfaceIpAllowlistIntegrationTest {
   }
 
   @Test
-  void apiClientTokenRejectsXForwardedForWhenRemoteAddrWouldPass() throws Exception {
+  void apiClientTokenIgnoresSpoofedXForwardedForWhenPeerIsUntrusted() throws Exception {
+    // Strict single-XFF contract: with no trusted proxy configured, forwarding input
+    // is attacker-controlled bytes and must be ignored — the socket peer (ALLOWED_IP)
+    // decides. X-Real-IP/Forwarded are never evaluated at all.
     Seed seed = seedLspAndApiClient();
     addApiCidr(seed.lspId(), "10.0.0.0/24");
     enableApiEnforcement(seed.lspId());
@@ -123,6 +128,29 @@ class Issue64LspSurfaceIpAllowlistIntegrationTest {
             post("/api/v1/auth/token")
                 .with(remoteAddr(ALLOWED_IP))
                 .header("X-Forwarded-For", BLOCKED_IP)
+                .header("X-Real-IP", BLOCKED_IP)
+                .header("Forwarded", "for=" + BLOCKED_IP)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    objectMapper.writeValueAsString(
+                        new AuthApiResponses.ClientCredentialsRequest(
+                            seed.clientId(), seed.clientSecret()))))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.accessToken").isString());
+  }
+
+  @Test
+  void apiClientTokenIgnoresSpoofedAllowlistedXForwardedForWhenPeerIsBlocked() throws Exception {
+    // Converse: a blocked peer cannot smuggle itself into the allowlist via headers.
+    Seed seed = seedLspAndApiClient();
+    addApiCidr(seed.lspId(), "10.0.0.0/24");
+    enableApiEnforcement(seed.lspId());
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/token")
+                .with(remoteAddr(BLOCKED_IP))
+                .header("X-Forwarded-For", ALLOWED_IP)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     objectMapper.writeValueAsString(
@@ -130,6 +158,109 @@ class Issue64LspSurfaceIpAllowlistIntegrationTest {
                             seed.clientId(), seed.clientSecret()))))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.error").value("API_CLIENT_IP_NOT_ALLOWED"));
+  }
+
+  @Test
+  void trustedProxySingleXffAttributesAllowlistedClient() throws Exception {
+    // Explicit trust fixture: the MockMvc socket peer (127.0.0.1) plays the edge proxy.
+    Seed seed = seedLspAndApiClient();
+    addApiCidr(seed.lspId(), "10.0.0.0/24");
+    enableApiEnforcement(seed.lspId());
+
+    withTrustedProxies(List.of("127.0.0.1/32"), () ->
+        mockMvc
+            .perform(
+                post("/api/v1/auth/token")
+                    .with(remoteAddr("127.0.0.1"))
+                    .header("X-Forwarded-For", ALLOWED_IP)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        objectMapper.writeValueAsString(
+                            new AuthApiResponses.ClientCredentialsRequest(
+                                seed.clientId(), seed.clientSecret()))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.accessToken").isString()));
+  }
+
+  @Test
+  void trustedProxyMalformedXffIsRejectedNotAuthorizedAsProxy() throws Exception {
+    // Attribution bypass guard: the proxy peer itself is allowlisted here. A forged
+    // malformed XFF must be rejected (400) — never silently attributed to the proxy,
+    // which would authorize as the allowlisted address.
+    Seed seed = seedLspAndApiClient();
+    addApiCidr(seed.lspId(), "127.0.0.1/32");
+    enableApiEnforcement(seed.lspId());
+
+    withTrustedProxies(List.of("127.0.0.1/32"), () ->
+        mockMvc
+            .perform(
+                post("/api/v1/auth/token")
+                    .with(remoteAddr("127.0.0.1"))
+                    .header("X-Forwarded-For", "not-an-ip!!!")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        objectMapper.writeValueAsString(
+                            new AuthApiResponses.ClientCredentialsRequest(
+                                seed.clientId(), seed.clientSecret()))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("INVALID_FORWARDED_HEADER")));
+  }
+
+  @Test
+  void trustedProxyDuplicateXffIsRejected() throws Exception {
+    Seed seed = seedLspAndApiClient();
+    addApiCidr(seed.lspId(), "127.0.0.1/32");
+    enableApiEnforcement(seed.lspId());
+
+    withTrustedProxies(List.of("127.0.0.1/32"), () ->
+        mockMvc
+            .perform(
+                post("/api/v1/auth/token")
+                    .with(remoteAddr("127.0.0.1"))
+                    .header("X-Forwarded-For", ALLOWED_IP)
+                    .header("X-Forwarded-For", BLOCKED_IP)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        objectMapper.writeValueAsString(
+                            new AuthApiResponses.ClientCredentialsRequest(
+                                seed.clientId(), seed.clientSecret()))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("INVALID_FORWARDED_HEADER")));
+  }
+
+  @Test
+  void trustedAllowlistedProxyMissingXffIsRejected() throws Exception {
+    // No XFF line at all from a trusted peer: reject, never attribute the proxy itself.
+    Seed seed = seedLspAndApiClient();
+    addApiCidr(seed.lspId(), "127.0.0.1/32");
+    enableApiEnforcement(seed.lspId());
+
+    withTrustedProxies(List.of("127.0.0.1/32"), () ->
+        mockMvc
+            .perform(
+                post("/api/v1/auth/token")
+                    .with(remoteAddr("127.0.0.1"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        objectMapper.writeValueAsString(
+                            new AuthApiResponses.ClientCredentialsRequest(
+                                seed.clientId(), seed.clientSecret()))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("INVALID_FORWARDED_HEADER")));
+  }
+
+  private void withTrustedProxies(List<String> cidrs, ThrowingAction action) throws Exception {
+    List<String> previous = List.copyOf(edgeProperties.getTrustedProxies());
+    edgeProperties.setTrustedProxies(cidrs);
+    try {
+      action.run();
+    } finally {
+      edgeProperties.setTrustedProxies(previous);
+    }
+  }
+
+  private interface ThrowingAction {
+    void run() throws Exception;
   }
 
   @Test

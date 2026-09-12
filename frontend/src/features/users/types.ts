@@ -70,8 +70,12 @@ export interface CreateUserInput {
 
 export interface CreateUserResponse {
   user: UserRow;
-  /** Cleartext temp password — shown exactly once, never persisted. */
-  temporaryPassword: string;
+  /**
+   * Cleartext temp password — shown exactly once, never persisted.
+   * Null when the request replayed an already-processed idempotency key (no
+   * rotation happened): recover with a deliberate reset-password command.
+   */
+  temporaryPassword: string | null;
 }
 
 export interface UpdateUserInput {
@@ -92,7 +96,11 @@ export interface ResetUserPasswordInput {
 }
 
 export interface ResetUserPasswordResponse {
-  temporaryPassword: string;
+  /**
+   * Fresh temp password on first processing; null on idempotent replay (the
+   * credential is NOT rotated — issue a deliberate new reset for a new one).
+   */
+  temporaryPassword: string | null;
 }
 
 export interface RevokeUserSessionsInput {

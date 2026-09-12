@@ -13,7 +13,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.bhawana.lms.repo.ApiClientRepository;
+import com.bhawana.lms.repo.RefreshTokenRepository;
 import jakarta.servlet.http.Cookie;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -47,6 +52,12 @@ class LspStatusKillChainIntegrationTest {
 
     @Autowired
     private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
+
+    @Autowired
+    private ApiClientRepository apiClientRepository;
+
+    @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
 
     @BeforeEach
     void setUp() {
@@ -313,19 +324,15 @@ class LspStatusKillChainIntegrationTest {
     }
 
     @Test
-    void apiClientRefreshTokenPathRejectsInactiveLsp() throws Exception {
+    void legacyApiClientRefreshTokenPathRejectsInactiveLsp() throws Exception {
         String lspId = createLsp("ACTIVE");
         JsonNode apiClient = createApiClient(lspId, "Refresh client");
-        MvcResult tokenResult = mockMvc.perform(post("/api/v1/auth/token")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new AuthApiResponses.ClientCredentialsRequest(
-                                apiClient.get("clientId").asText(),
-                                apiClient.get("clientSecret").asText()
-                        ))))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        Cookie refreshCookie = tokenResult.getResponse().getCookie("lms-refresh");
+        String rawRefresh = "kill-chain-legacy-machine-refresh";
+        com.bhawana.lms.domain.ApiClient client = apiClientRepository.findByClientId(
+                apiClient.get("clientId").asText()).orElseThrow();
+        refreshTokenRepository.save(new com.bhawana.lms.domain.RefreshToken(
+                sha256Hex(rawRefresh), client, java.time.Instant.now().plusSeconds(3600)));
+        Cookie refreshCookie = new Cookie("lms-refresh", rawRefresh);
         disableLsp(lspId, "SECURITY_INCIDENT", "Kill refresh path.");
 
         mockMvc.perform(post("/api/v1/auth/refresh").cookie(refreshCookie))
@@ -523,5 +530,15 @@ class LspStatusKillChainIntegrationTest {
     }
 
     private record LoginArtifacts(String accessToken, Cookie refreshCookie) {
+    }
+
+    private static String sha256Hex(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 }

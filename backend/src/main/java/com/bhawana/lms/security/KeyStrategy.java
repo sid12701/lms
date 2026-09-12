@@ -1,5 +1,6 @@
 package com.bhawana.lms.security;
 
+import com.bhawana.lms.common.web.ClientIpAddresses;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -104,7 +105,9 @@ public enum KeyStrategy {
     }
 
     private static String clientIp(HttpServletRequest request) {
-        String ip = request.getRemoteAddr();
+        // Shares the canonical edge IP with auth/allowlist/audit so a forged header
+        // cannot put the rate limiter in a different bucket than enforcement observes.
+        String ip = ClientIpAddresses.resolve(request);
         if (ip == null || ip.isBlank()) {
             return null;
         }
@@ -129,15 +132,7 @@ public enum KeyStrategy {
         if (authentication == null || !(authentication.getPrincipal() instanceof Jwt jwt)) {
             return null;
         }
-        String rawLspId = jwt.getClaimAsString("lspId");
-        if (rawLspId == null || rawLspId.isBlank()) {
-            return null;
-        }
-        try {
-            return UUID.fromString(rawLspId);
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
+        return MachinePrincipalLspResolver.resolveLspId(jwt).orElse(null);
     }
 
     private static String extractPathVariable(String requestUri, String rulePath, String variableName) {

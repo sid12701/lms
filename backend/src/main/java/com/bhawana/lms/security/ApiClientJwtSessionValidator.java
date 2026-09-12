@@ -25,21 +25,34 @@ public class ApiClientJwtSessionValidator implements OAuth2TokenValidator<Jwt> {
     private final ApiClientRepository apiClientRepository;
     private final AuthPrincipalCache authPrincipalCache;
     private final SessionValidityPolicy sessionValidityPolicy;
+    private final EntraMachineIdentityMappingService entraMappingService;
 
     public ApiClientJwtSessionValidator(
             ApiClientRepository apiClientRepository,
             AuthPrincipalCache authPrincipalCache,
-            SessionValidityPolicy sessionValidityPolicy
+            SessionValidityPolicy sessionValidityPolicy,
+            EntraMachineIdentityMappingService entraMappingService
     ) {
         this.apiClientRepository = apiClientRepository;
         this.authPrincipalCache = authPrincipalCache;
         this.sessionValidityPolicy = sessionValidityPolicy;
+        this.entraMappingService = entraMappingService;
     }
 
     @Override
     public OAuth2TokenValidatorResult validate(Jwt jwt) {
-        if (!AUTH_TYPE_API_CLIENT.equals(jwt.getClaimAsString(AUTH_TYPE_CLAIM))) {
+        if (entraMappingService.isEntraMachineToken(jwt)) {
+            return entraMappingService.resolve(jwt)
+                    .map(resolved -> OAuth2TokenValidatorResult.success())
+                    .orElseGet(() -> failure("API_CLIENT_TOKEN_REVOKED", "Entra app mapping is not valid."));
+        }
+        String authType = jwt.getClaimAsString(AUTH_TYPE_CLAIM);
+        if (authType == null || ManagedUserJwtPrincipalResolver.AUTH_TYPE_HUMAN.equals(authType)) {
+            // Human branch: owned by ManagedUserJwtPrincipalResolver in the same validator chain.
             return OAuth2TokenValidatorResult.success();
+        }
+        if (!AUTH_TYPE_API_CLIENT.equals(authType)) {
+            return failure("invalid_token", "Unrecognized token type.");
         }
 
         String clientId = jwt.getSubject();

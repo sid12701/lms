@@ -15,6 +15,8 @@ Maven is provided via the wrapper (`mvnw` / `mvnw.cmd`) — no system Maven requ
 
 2. Start the API from `backend/` (explicitly activate `local` to load **repo-root** `.env` via `application-local.yml` and allow simulation):
 
+Booting **without** an explicitly active profile fails closed (no implicit local default): production safety checks require strong secrets, secure cookies, wired storage and rotated tenant credentials unless every active profile is `local`/`test`.
+
 ```bash
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local        # macOS/Linux/Git Bash
 mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local      # Windows PowerShell/cmd
@@ -106,13 +108,34 @@ Partner contract and violation codes: `docs/partner-schedule-validation.md`. Pla
 
 The service exposes `POST /api/v1/auth/login` for local user sign-in and `POST /api/v1/auth/token` for API client token issuance.
 
+### Machine access tokens (H20)
+
+`POST /api/v1/auth/token` returns an **access token only** — no refresh cookie. Machine clients reacquire access through client credentials (or, when G02 is explicitly enabled and provisioned, Entra app tokens). Access TTL is `app.security.jwt.ttl` (default 30 minutes). Secret rotation bumps `token_version` and invalidates outstanding access tokens immediately; the previous secret remains valid only for the configured grace window on the **token** endpoint, not via refresh. Legacy API-client refresh rows are rejected and revoked (migration V127).
+
+### Entra machine identity (G02, disabled by default)
+
+`app.security.entra-machine-identity.enabled` defaults to `false`. Enabling requires real tenant/API/client identifiers, trusted JWKS URI, assigned app role and signed-off mappings to enabled local `api_client` rows — see `application.yml` comments. Full partner cutover is a separate staged step.
+
+The authentication converter attaches the verified local client/LSP identity to each request; external `lspId` and internal-role claims never select tenant or IP-allowlist scope. Setting a mapping's `revoked-at` rejects all its tokens until explicitly cleared. `not-before` is a separate minimum token issuance time. Client deactivation/revocation also invalidates older external credentials.
+
+JWKS connect/read timeouts must be positive whole-millisecond values. The defaults are 2 seconds each; failed retrievals consume the configured `unknown-kid-min-interval` retry budget. Expired keys are not used through an outage. Real provisioning must supply an approved secure JWKS endpoint; token-supplied key URLs are ignored.
+
+### Human session cutover and recovery
+
+Human tokens require the configured human audience and a live session family. Legacy tokens/refresh rows without the required family metadata force a new login. Replacing the local signing key, issuer or audiences also changes the refresh policy epoch and forces reauthentication; there is no key-overlap compatibility window. Logout revokes one family; password reset/change, disablement and role/LSP reassignment revoke the intended user's sessions.
+
+Human credential failures are counted immediately under a database row lock. The failure window uses the configured auth brute-force threshold/window; successful login and an explicit administrator password reset clear it. Account-status or IP-policy rejections do not consume credential failures. The scheduler is secondary.
+
+The browser requires Web Locks and functioning coordination storage. Cookie exchanges remain blocked after an uncertain response or a peer disappearing mid-exchange. Recovery requires closing all app tabs and establishing a clean browser context/site state. Reloading or automatically deleting the in-flight marker is not safe recovery.
+
+
 Local credentials are defined in the repo-root `.env`:
 
 - `APP_SECURITY_BOOTSTRAP_USERNAME` (default in `backend/.env.example`: `ops.admin`)
-- `APP_SECURITY_BOOTSTRAP_EMAIL` (optional; defaults from username)
+- `APP_SECURITY_BOOTSTRAP_EMAIL` (set explicitly outside development profiles)
 - `APP_SECURITY_BOOTSTRAP_PASSWORD` (single password input — do not use deprecated `APP_SECURITY_BOOTSTRAP_LOGIN_PASSWORD`)
 
-On-demand heal without restart (Spec S10): `POST /api/v1/internal/system/bootstrap-sync` (SYSTEM_ADMIN) re-runs `LocalBootstrapAdminSyncService`.
+On-demand bootstrap recovery: `POST /api/v1/internal/system/bootstrap-sync` requires an active SYSTEM_ADMIN and creates a missing bootstrap user. Routine startup/sync preserves an existing password, roles and status; use the explicit audited administrator reset workflow to replace credentials.
 
 ## Production / staging
 

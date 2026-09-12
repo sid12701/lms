@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
@@ -81,7 +82,7 @@ class AuditExplorerControllerAppUserStreamTest {
 
         mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/reset-password", managedUser.getId())
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP))
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP)))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/internal/admin/audit-events")
@@ -102,7 +103,7 @@ class AuditExplorerControllerAppUserStreamTest {
 
         mockMvc.perform(put("/api/v1/internal/admin/users/{userId}", managedUser.getId())
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"explorer-app-user@bhawana.local\"}"))
                 .andExpect(status().isOk());

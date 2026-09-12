@@ -2,152 +2,53 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.api.TokenResponse;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.common.api.error.LspSurfaceIpAccessDeniedException;
 import com.bhawana.lms.domain.ApiClient;
-import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.AuthEventFailureReason;
-import com.bhawana.lms.domain.LspStatus;
-import com.bhawana.lms.domain.RoleCode;
-import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppUserRepository;
-import com.bhawana.lms.security.ApiClientJwtSessionValidator;
-import com.bhawana.lms.security.LspInactiveAuthenticationException;
-import com.bhawana.lms.security.SecurityProperties;
-import java.time.Instant;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthAuthenticationService {
 
-    private final AuthenticationManager authenticationManager;
     private final AppUserRepository appUserRepository;
-    private final ApiClientAuthenticationService apiClientAuthenticationService;
-    private final ApiClientRepository apiClientRepository;
-    private final LspSurfaceIpAllowlistService lspSurfaceIpAllowlistService;
     private final AuthAuditService authAuditService;
     private final AuthTokenService authTokenService;
-    private final SecurityProperties securityProperties;
+    private final HumanSessionService humanSessionService;
 
     public AuthAuthenticationService(
-            AuthenticationManager authenticationManager,
             AppUserRepository appUserRepository,
-            ApiClientAuthenticationService apiClientAuthenticationService,
-            ApiClientRepository apiClientRepository,
-            LspSurfaceIpAllowlistService lspSurfaceIpAllowlistService,
             AuthAuditService authAuditService,
             AuthTokenService authTokenService,
-            SecurityProperties securityProperties
+            HumanSessionService humanSessionService
     ) {
-        this.authenticationManager = authenticationManager;
         this.appUserRepository = appUserRepository;
-        this.apiClientAuthenticationService = apiClientAuthenticationService;
-        this.apiClientRepository = apiClientRepository;
-        this.lspSurfaceIpAllowlistService = lspSurfaceIpAllowlistService;
         this.authAuditService = authAuditService;
         this.authTokenService = authTokenService;
-        this.securityProperties = securityProperties;
+        this.humanSessionService = humanSessionService;
     }
 
     public PasswordLoginResult login(String email, String password, String remoteAddress) {
-        String normalizedEmail = requireField(email, "email").toLowerCase();
-        requireField(password, "password");
-        String correlationId = CorrelationIdHolder.get();
-        AppUser user = appUserRepository.findByEmail(normalizedEmail).orElse(null);
-        String username = resolveLoginUsername(normalizedEmail, user);
-        String auditUsername = user != null ? user.getUsername() : username;
-        if (user != null && user.isLocked()) {
-            authAuditService.recordLoginFailure(
-                    auditUsername,
-                    AuthEventFailureReason.INVALID_CREDENTIALS,
-                    remoteAddress,
-                    correlationId
-            );
-            throw new BadCredentialsException("Invalid credentials");
-        }
-        try {
-            Authentication authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(username, password)
-            );
-            AppUser authenticatedUser = appUserRepository.findByUsername(authentication.getName()).orElse(user);
-            if (authenticatedUser != null
-                    && authenticatedUser.getLsp() != null
-                    && authenticatedUser.getLsp().getStatus() != LspStatus.ACTIVE) {
-                authAuditService.recordLoginFailure(
-                        authentication.getName(),
-                        AuthEventFailureReason.LSP_INACTIVE,
-                        remoteAddress,
-                        correlationId
-                );
-                throw new LspInactiveAuthenticationException();
-            }
-            try {
-                if (authenticatedUser != null && authenticatedUser.getLsp() != null && hasLspUiRole(authenticatedUser)) {
-                    lspSurfaceIpAllowlistService.assertUiLoginAllowed(authenticatedUser.getLsp().getId(), remoteAddress);
-                }
-            } catch (LspSurfaceIpAccessDeniedException exception) {
-                authAuditService.recordLoginFailure(
-                        authentication.getName(),
-                        AuthEventFailureReason.OTHER,
-                        remoteAddress,
-                        correlationId
-                );
-                throw exception;
-            }
-            authAuditService.recordLoginSuccess(authentication.getName(), authenticatedUser, remoteAddress, correlationId);
-            return new PasswordLoginResult(
-                    authTokenService.mintTokenResponse(authentication),
-                    authentication.getName()
-            );
-        } catch (AuthenticationException exception) {
-            authAuditService.recordLoginFailureFromException(
-                    auditUsername,
-                    exception,
-                    remoteAddress,
-                    correlationId
-            );
-            throw exception;
-        }
+        HumanSessionService.PasswordLoginIssued issued =
+                humanSessionService.login(email, password, remoteAddress);
+        return new PasswordLoginResult(
+                issued.tokenResponse(),
+                issued.username(),
+                issued.rawRefreshToken()
+        );
     }
 
     public ClientCredentialsResult issueClientCredentialsToken(String clientId, String clientSecret, String remoteAddress) {
         String correlationId = CorrelationIdHolder.get();
-        String normalizedClientId = requireField(clientId, "clientId");
+        String normalizedClientId = requireLoginField(clientId, "clientId");
         try {
-            ApiClientAuthenticationService.AuthenticatedApiClient apiClient = apiClientAuthenticationService.authenticate(
-                    normalizedClientId,
-                    clientSecret
-            );
-            ApiClient freshClient = apiClientRepository.findByClientId(apiClient.clientId())
-                    .orElseThrow(() -> new IllegalStateException("API client missing after authentication."));
-            lspSurfaceIpAllowlistService.assertApiTokenIssuanceAllowed(freshClient.getLsp().getId(), remoteAddress);
-            authAuditService.recordApiClientTokenSuccess(freshClient, remoteAddress, correlationId);
-            TokenResponse tokenResponse = authTokenService.mintTokenResponse(
-                    apiClient.clientId(),
-                    List.of("LSP_API_CLIENT"),
-                    new AuthTokenService.ManagedUserState(false, Instant.EPOCH, 0L),
-                    Map.of(
-                            ApiClientJwtSessionValidator.AUTH_TYPE_CLAIM,
-                            ApiClientJwtSessionValidator.AUTH_TYPE_API_CLIENT,
-                            "clientId", apiClient.clientId(),
-                            "clientName", apiClient.clientName(),
-                            "lspId", apiClient.lspId().toString(),
-                            "lspCode", apiClient.lspCode(),
-                            ApiClientJwtSessionValidator.TV_LSP_CLAIM, freshClient.getLsp().getTokenVersion(),
-                            ApiClientJwtSessionValidator.TV_API_CLIENT_CLAIM, freshClient.getTokenVersion()
-                    )
-            );
-            return new ClientCredentialsResult(tokenResponse, freshClient);
+            HumanSessionService.ClientCredentialsIssued issued = humanSessionService.issueClientCredentials(
+                    normalizedClientId, clientSecret, remoteAddress, correlationId);
+            return new ClientCredentialsResult(issued.tokenResponse(), issued.apiClient());
         } catch (BadCredentialsException exception) {
             authAuditService.recordApiClientTokenFailure(
                     normalizedClientId,
@@ -165,51 +66,44 @@ public class AuthAuthenticationService {
     }
 
     /**
-     * Rotates the refresh token and records the success audit in a single transaction, so a failed
-     * audit write rolls the rotation back and the caller's existing token stays valid rather than
-     * being silently revoked. The failure path does not rotate, so its audit is left to the caller.
+     * Fenced refresh rotation for both branches. The routing probe runs outside any
+     * fence; the shared coordinator takes the fence in principal-first order with a
+     * single-TX classification (human: user → family → token; machine: api_client →
+     * token, no family). Failure audits for paths with no state change stay with the
+     * caller (AuthController), except family-reuse failures already audited in-TX.
      */
-    @Transactional
     public AuthTokenService.RefreshOutcome refreshSession(
             String rawRefreshToken,
             String actorIp,
             String correlationId
     ) {
-        AuthTokenService.RefreshOutcome outcome = authTokenService.rotateRefreshToken(rawRefreshToken);
-        if (outcome.success()) {
-            authAuditService.recordTokenRefreshSuccess(
-                    outcome.subjectUsername(),
-                    outcome.userId(),
-                    outcome.apiClientId(),
-                    actorIp,
-                    correlationId
-            );
+        AuthTokenService.RefreshSubjectProbe probe =
+                authTokenService.classifyRefreshSubject(rawRefreshToken);
+        if (probe.kind() == AuthTokenService.RefreshSubjectKind.MACHINE) {
+            return humanSessionService.refreshMachine(probe, rawRefreshToken, actorIp, correlationId);
         }
-        return outcome;
+        return humanSessionService.refresh(probe, rawRefreshToken, actorIp, correlationId);
     }
 
-    private String resolveLoginUsername(String email, AppUser user) {
-        if (user != null) {
-            return user.getUsername();
+    /**
+     * Fenced logout for both branches. Human logout revokes only the presented
+     * session family (sibling families survive); machine logout revokes the single
+     * presented row. Unknown or garbage cookies revoke nothing.
+     */
+    public AuthTokenService.RevokeOutcome logoutFamily(
+            String rawRefreshToken,
+            String actorIp,
+            String correlationId
+    ) {
+        AuthTokenService.RefreshSubjectProbe probe =
+                authTokenService.classifyRefreshSubject(rawRefreshToken);
+        if (probe.kind() == AuthTokenService.RefreshSubjectKind.MACHINE) {
+            return humanSessionService.logoutMachine(probe, rawRefreshToken, actorIp, correlationId);
         }
-        SecurityProperties.BootstrapUser bootstrapUser = securityProperties.getBootstrapUser();
-        if (email.equalsIgnoreCase(bootstrapUser.getEmail())) {
-            return bootstrapUser.getUsername().trim().toLowerCase();
-        }
-        return email;
+        return humanSessionService.logoutFamily(probe, rawRefreshToken, actorIp, correlationId);
     }
 
-    private static boolean hasLspUiRole(AppUser user) {
-        for (AppRole role : user.getRoles()) {
-            RoleCode code = role.getCode();
-            if (code == RoleCode.LSP_UI_READ || code == RoleCode.LSP_UI_WRITE) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static String requireField(String value, String fieldName) {
+    private static String requireLoginField(String value, String fieldName) {
         if (value == null || value.trim().isBlank()) {
             throw new IllegalArgumentException(fieldName + " is required.");
         }
@@ -219,10 +113,12 @@ public class AuthAuthenticationService {
     public static final class PasswordLoginResult {
         private final TokenResponse tokenResponse;
         private final String username;
+        private final String rawRefreshToken;
 
-        public PasswordLoginResult(TokenResponse tokenResponse, String username) {
+        public PasswordLoginResult(TokenResponse tokenResponse, String username, String rawRefreshToken) {
             this.tokenResponse = tokenResponse;
             this.username = username;
+            this.rawRefreshToken = rawRefreshToken;
         }
 
         public TokenResponse tokenResponse() {
@@ -231,6 +127,10 @@ public class AuthAuthenticationService {
 
         public String username() {
             return username;
+        }
+
+        public String rawRefreshToken() {
+            return rawRefreshToken;
         }
     }
 

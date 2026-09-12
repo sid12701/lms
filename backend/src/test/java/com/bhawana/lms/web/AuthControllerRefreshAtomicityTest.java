@@ -1,6 +1,7 @@
 package com.bhawana.lms.web;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
@@ -10,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
+import com.bhawana.lms.domain.AuthSession;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.domain.RefreshToken;
@@ -20,8 +22,10 @@ import com.bhawana.lms.repo.ApiClientRepository;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.AuthEventAuditRepository;
+import com.bhawana.lms.repo.AuthSessionRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
+import com.bhawana.lms.security.SessionPolicyEpochProvider;
 import com.bhawana.lms.service.ApiClientManagementService;
 import com.bhawana.lms.service.AuthAuditService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
@@ -90,6 +94,12 @@ class AuthControllerRefreshAtomicityTest {
     @Autowired
     private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
 
+    @Autowired
+    private AuthSessionRepository authSessionRepository;
+
+    @Autowired
+    private SessionPolicyEpochProvider sessionPolicyEpochProvider;
+
     @MockitoBean
     private JwtEncoder jwtEncoder;
 
@@ -155,7 +165,7 @@ class AuthControllerRefreshAtomicityTest {
     }
 
     @Test
-    void apiClientRefreshThrowsDuringMintAndOldTokenRemainsUnrevoked() throws Exception {
+    void apiClientRefreshIsRejectedWithoutMintingAccess() throws Exception {
         Lsp lsp = lspRepository.save(new Lsp("APEX-MACHINE", "Apex Machine Tenant", LspStatus.ACTIVE));
         ApiClientManagementService.CreatedApiClient created = apiClientManagementService.createClient(
                 "Apex Machine Client",
@@ -174,32 +184,29 @@ class AuthControllerRefreshAtomicityTest {
         ));
         Cookie refreshCookie = new Cookie("lms-refresh", rawToken);
 
-        when(jwtEncoder.encode(any(JwtEncoderParameters.class)))
-                .thenThrow(new RuntimeException("mint failure"));
-
         mockMvc.perform(post("/api/v1/auth/refresh").cookie(refreshCookie))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isUnauthorized());
 
         RefreshToken existing = refreshTokenRepository.findByTokenHash(sha256Hex(refreshCookie.getValue()))
                 .orElseThrow();
-        assertFalse(existing.isRevoked());
-
-        when(jwtEncoder.encode(any(JwtEncoderParameters.class)))
-                .thenReturn(encodedJwt("replacement-api-access-token"));
-
-        mockMvc.perform(post("/api/v1/auth/refresh").cookie(refreshCookie))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").value("replacement-api-access-token"));
+        assertTrue(existing.isRevoked());
     }
 
     private Cookie seedAppUserRefreshCookie(String username) {
         AppUser user = appUserRepository.findByUsername(username).orElseThrow();
+        // Seeded rows carry a real family with version/epoch lineage (legacy
+        // null-family rows force reauth and cannot prove rotation atomicity).
+        String epoch = sessionPolicyEpochProvider.currentEpoch();
+        AuthSession session = authSessionRepository.save(new AuthSession(user, epoch));
         String rawToken = "seeded-refresh-token-" + username;
-        refreshTokenRepository.save(new RefreshToken(
+        RefreshToken row = new RefreshToken(
                 sha256Hex(rawToken),
                 user,
                 Instant.now().plusSeconds(3600)
-        ));
+        );
+        row.attachFamily(
+                session, user.getTokenVersion(), user.getPasswordChangedAt().toEpochMilli(), epoch);
+        refreshTokenRepository.save(row);
         return new Cookie("lms-refresh", rawToken);
     }
 

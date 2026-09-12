@@ -31,4 +31,12 @@ public interface ApiClientRepository extends JpaRepository<ApiClient, UUID> {
     @Override
     @EntityGraph(attributePaths = "lsp")
     java.util.List<ApiClient> findAll();
+
+    /**
+     * Machine-principal row lock (no outer-join FOR UPDATE). Human family logic
+     * never touches this branch; machine refresh keeps its own lock-first path.
+     */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select c from ApiClient c where c.id = :id")
+    java.util.Optional<ApiClient> findByIdForUpdate(@org.springframework.data.repository.query.Param("id") UUID id);
 }

@@ -514,6 +514,40 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
+    void deliberateOverrideRetryKeepsOneAuditWithEnteredReason() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+        JsonNode created = createApplication(lsp.id(), product.id(), "EXT-RETRY-001", "API", "ABCDE1234F");
+        String applicationId = created.get("id").asText();
+        String commandKey = UUID.randomUUID().toString();
+        String body = objectMapper.writeValueAsString(Map.of(
+                "targetStatus", "REJECTED",
+                "note", "Verified by phone; borrower confirmed withdrawal.",
+                "reasonCode", "MANUAL_ADMIN_OVERRIDE"
+        ));
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/manual-status", applicationId)
+                            .with(systemAdmin())
+                            .header("Idempotency-Key", commandKey)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("REJECTED"));
+        }
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/audit-events", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].action").value("MANUAL_STATUS_OVERRIDE"))
+                .andExpect(jsonPath("$[0].reasonCode").value("MANUAL_ADMIN_OVERRIDE"))
+                .andExpect(jsonPath("$[0].note", containsString("Verified by phone; borrower confirmed withdrawal.")))
+                .andExpect(jsonPath("$[0].actorUsername").value("ops.admin"));
+    }
+
+    @Test
     void opsUserCanInspectChecklistAndPutVerifyRejectEndpointIsRemoved() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
@@ -1212,7 +1246,7 @@ class LoanApplicationOpsControllerTest {
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
-        // C04: initiation commits the intent only; the provider log appears once the worker
+        // Initiation commits the intent only; the provider log appears once the worker
         // executes the committed intent outside any transaction.
         seedBorrowerBankDetails(applicationId, "HDFC0001234");
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
@@ -1231,7 +1265,7 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(jsonPath("$[0].amount").value(43987.50))
                 .andExpect(jsonPath("$[0].providerName").value("MOCK_ICICI"))
                 .andExpect(jsonPath("$[0].providerRequestId", containsString("ICI")))
-                // C04/C02: the terminal verdict and its loan application commit together, so the
+                // The terminal verdict and its loan application commit together, so the
                 // stored log carries the applied outcome (DISBURSED), not the raw adapter status.
                 .andExpect(jsonPath("$[0].providerStatus").value("DISBURSED"))
                 .andExpect(jsonPath("$[0].requestPayloadJson", containsString("\"externalLoanId\":\"EXT-968\"")))
@@ -1262,7 +1296,7 @@ class LoanApplicationOpsControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.loanAccount.status").value("DISBURSEMENT_REQUESTED"));
 
-        // C04: re-initiation while REQUESTED is rejected — reconcile, never re-initiate.
+        // Re-initiation while REQUESTED is rejected — reconcile, never re-initiate.
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isConflict())
@@ -1318,7 +1352,7 @@ class LoanApplicationOpsControllerTest {
         markAllRequiredKycDocumentsVerified(applicationId);
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
 
-        // C04: mock outcomes resolve a raised provider attempt — seed a pending attempt first
+        // Mock outcomes resolve a raised provider attempt — seed a pending attempt first
         // (MOCK0PENDOK stays PENDING after execution), then apply the forced verdict.
         seedBorrowerBankDetails(applicationId, "MOCK0PENDOK");
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
@@ -1902,7 +1936,7 @@ class LoanApplicationOpsControllerTest {
     }
 
     private void disburseLoan(String applicationId) throws Exception {
-        // C04: durable intent is the only initiation path — seed the frozen beneficiary
+        // Durable intent is the only initiation path — seed the frozen beneficiary
         // instruction, raise the intent, then execute it (IMPS success disburses atomically).
         seedBorrowerBankDetails(applicationId, "HDFC0001234");
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)

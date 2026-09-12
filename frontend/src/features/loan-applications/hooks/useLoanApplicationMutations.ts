@@ -12,11 +12,16 @@
 import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/react-query";
 import {
   postDisbursement,
+  postManualStatusOverride,
   postTransition,
   type DisbursementResponse,
   type TransitionResponse,
 } from "../api-detail";
-import type { InitiateDisbursementInput, TransitionStatusInput } from "../types";
+import type {
+  InitiateDisbursementInput,
+  ManualStatusOverrideInput,
+  TransitionStatusInput,
+} from "../types";
 import {
   LOAN_APPLICATION_DETAIL_QUERY_KEY,
   loanApplicationDetailQueryKey,
@@ -51,6 +56,22 @@ export function useTransitionStatus(
   const queryClient = useQueryClient();
   return useMutation<TransitionResponse, Error, TransitionStatusInput>({
     mutationFn: (input) => postTransition(id, input),
+    onSuccess: () => invalidateLoanApplicationDetailCaches(queryClient, id),
+  });
+}
+
+/**
+ * Hook wrapping `postManualStatusOverride`. Separate from the ordinary
+ * transition: the caller passes a deliberately entered reason + reason code
+ * with a NEW idempotency key. Same cache invalidation so the resulting
+ * status + real audit timeline refresh together.
+ */
+export function useManualStatusOverride(
+  id: string,
+): UseMutationResult<TransitionResponse, Error, ManualStatusOverrideInput> {
+  const queryClient = useQueryClient();
+  return useMutation<TransitionResponse, Error, ManualStatusOverrideInput>({
+    mutationFn: (input) => postManualStatusOverride(id, input),
     onSuccess: () => invalidateLoanApplicationDetailCaches(queryClient, id),
   });
 }

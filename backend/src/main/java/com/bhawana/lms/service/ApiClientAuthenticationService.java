@@ -29,7 +29,7 @@ public class ApiClientAuthenticationService {
         this.apiClientLockoutService = apiClientLockoutService;
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public AuthenticatedApiClient authenticate(String clientId, String clientSecret) {
         String normalizedClientId = requireField(clientId, "clientId");
         String normalizedClientSecret = requireField(clientSecret, "clientSecret");
@@ -46,15 +46,14 @@ public class ApiClientAuthenticationService {
 
         validateActive(apiClient);
 
-        apiClient.clearExpiredPreviousSecret(now);
         if (!matchesAnyActiveSecret(apiClient, normalizedClientSecret)) {
             apiClientLockoutService.registerFailedAttempt(apiClient.getId(), now);
             throw new BadCredentialsException("Invalid credentials");
         }
 
-        apiClient.registerSuccessfulAuth();
-        apiClient.markUsed();
-        ApiClient savedClient = apiClientRepository.save(apiClient);
+        // This is a detached credential proof only. Usage/counter mutations belong to
+        // the issuance fence; flushing this snapshot could undo a concurrent rotation.
+        ApiClient savedClient = apiClient;
         return new AuthenticatedApiClient(
                 savedClient.getClientId(),
                 savedClient.getName(),
@@ -84,6 +83,15 @@ public class ApiClientAuthenticationService {
         if (lsp == null || lsp.getStatus() != LspStatus.ACTIVE) {
             throw new BadCredentialsException("Invalid credentials");
         }
+    }
+
+    /**
+     * Re-verify a presented secret against the locked api_client row inside a fencing
+     * transaction (proof may be stale if rotation/disable committed in the auth→mint gap).
+     */
+    boolean verifyClientSecret(ApiClient apiClient, String clientSecret) {
+        apiClient.clearExpiredPreviousSecret(Instant.now());
+        return matchesAnyActiveSecret(apiClient, clientSecret);
     }
 
     private boolean matchesAnyActiveSecret(ApiClient apiClient, String clientSecret) {

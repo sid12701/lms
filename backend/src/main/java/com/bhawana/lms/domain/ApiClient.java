@@ -62,6 +62,9 @@ public class ApiClient {
     @Column(name = "token_version", nullable = false)
     private long tokenVersion;
 
+    @Column(name = "credentials_invalidated_at")
+    private Instant credentialsInvalidatedAt;
+
     @Column(name = "failed_auth_attempts", nullable = false)
     private int failedAuthAttempts;
 
@@ -129,6 +132,10 @@ public class ApiClient {
         return tokenVersion;
     }
 
+    public Instant getCredentialsInvalidatedAt() {
+        return credentialsInvalidatedAt;
+    }
+
     public String getSecretHash() {
         return secretHash;
     }
@@ -170,15 +177,20 @@ public class ApiClient {
         }
         if (status != null) {
             this.status = status;
+            if (status == ApiClientStatus.INACTIVE) {
+                this.credentialsInvalidatedAt = Instant.now();
+            }
         }
     }
 
     public void deactivate() {
         this.status = ApiClientStatus.INACTIVE;
+        this.credentialsInvalidatedAt = Instant.now();
     }
 
     public void revokeAllSessions() {
         this.tokenVersion++;
+        this.credentialsInvalidatedAt = Instant.now();
     }
 
     public void rotateSecret(String newSecretHash, String previousSecretHash, Instant previousSecretValidUntil) {

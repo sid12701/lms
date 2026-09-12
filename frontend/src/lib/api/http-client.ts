@@ -10,6 +10,7 @@
  * - Sends cookies (refresh token lives in an httpOnly cookie set by the backend).
  */
 import { getStoredAccessToken } from "@/lib/api/session-storage";
+import { captureAuthIntent, isStaleIntent } from "@/features/auth/auth-coordinator";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 const API_ORIGIN = new URL(API_BASE_URL).origin;
@@ -28,6 +29,14 @@ export class ApiError extends Error {
   body: string;
   code: string | null;
   retryAfterSeconds: number | null;
+  /**
+   * Transport settlement evidence: true only when this error was built
+   * from an actually received HTTP response (headers observed, browser
+   * cookie jar already updated). Locally constructed errors (validation,
+   * unsettled flows) leave this false so cookie ordering treats them as
+   * network-uncertain and retains the orphan marker.
+   */
+  settled: boolean;
 
   constructor(
     message: string,
@@ -35,6 +44,7 @@ export class ApiError extends Error {
     body: string,
     code: string | null,
     retryAfterSeconds: number | null = null,
+    settled = false,
   ) {
     super(message);
     this.name = "ApiError";
@@ -42,7 +52,38 @@ export class ApiError extends Error {
     this.body = body;
     this.code = code;
     this.retryAfterSeconds = retryAfterSeconds;
+    this.settled = settled;
   }
+}
+
+const HTTP_SETTLED = Symbol.for("bhawana.lms.httpSettled");
+
+/**
+ * Mark a non-ApiError throw as observed AFTER a real HTTP response was
+ * received (e.g. JSON parse/contract failure while reading the body). The
+ * cookie jar already reflects that response, so ordering may settle.
+ */
+export function markHttpSettled<T>(error: T): T {
+  if (error && typeof error === "object") {
+    try {
+      (error as Record<symbol, unknown>)[HTTP_SETTLED] = true;
+    } catch {
+      // Best effort only.
+    }
+  }
+  return error;
+}
+
+/**
+ * Explicit transport settlement evidence from the actual response boundary.
+ * Walks the cause chain (SessionRestoreError wraps the root cause).
+ */
+export function isHttpSettled(error: unknown, depth = 0): boolean {
+  if (!error || typeof error !== "object" || depth > 5) return false;
+  const record = error as Record<symbol, unknown> & { cause?: unknown };
+  if (record[HTTP_SETTLED] === true) return true;
+  if (error instanceof ApiError && error.settled) return true;
+  return record.cause !== undefined ? isHttpSettled(record.cause, depth + 1) : false;
 }
 
 function readRetryAfterSeconds(response: Response): number | null {
@@ -177,6 +218,11 @@ async function performFetch(
   // All API-client traffic (including cookie-bearing unauthenticated calls) must stay same-origin.
   assertSameOriginApiUrl(url);
 
+  // Capture the original operation's full owning intent (Lamport epoch
+  // + writer) before async work. Every 401/428/success/failure replay path
+  // obeys it — epoch-only fencing would let a same-epoch different-writer
+  // identity slip through.
+  const requestIntent = captureAuthIntent();
   const headers = new Headers(init.headers);
   const { authenticated } = applyAuthHeaders(headers, options, init);
 
@@ -189,13 +235,30 @@ async function performFetch(
     !options._retried &&
     onUnauthorizedRefresh
   ) {
+    // Stale 401s never trigger refresh or retry for a new identity.
+    if (isStaleIntent(requestIntent)) return response;
     const newToken = await onUnauthorizedRefresh();
+    // The refresh may have resolved for a superseded identity (logout/login
+    // advanced while it was in flight). Never issue authenticated retry work
+    // for the new identity from a stale operation.
+    if (isStaleIntent(requestIntent)) return response;
     if (newToken) {
       return performFetch(path, init, { ...options, accessToken: newToken, _retried: true });
     }
   }
 
   if (response.status === 428 && authenticated && typeof window !== "undefined") {
+    // Stale 428s must not redirect the new identity to change-password.
+    if (isStaleIntent(requestIntent)) {
+      throw new ApiError(
+        "Password change required before continuing.",
+        428,
+        await response.text(),
+        "PASSWORD_CHANGE_REQUIRED",
+        null,
+        true,
+      );
+    }
     if (!window.location.pathname.startsWith("/change-password")) {
       window.location.assign("/change-password");
     }
@@ -204,6 +267,8 @@ async function performFetch(
       428,
       await response.text(),
       "PASSWORD_CHANGE_REQUIRED",
+      null,
+      true,
     );
   }
 
@@ -215,12 +280,14 @@ async function throwIfNotOk(response: Response): Promise<void> {
   const errorBody = await response.text();
   const { message, code } = readResponseError(errorBody);
   const retryAfterSeconds = response.status === 429 ? readRetryAfterSeconds(response) : null;
+  // Built from a received response: settled transport evidence.
   throw new ApiError(
     message || `Request failed with status ${response.status}`,
     response.status,
     errorBody,
     code,
     retryAfterSeconds,
+    true,
   );
 }
 
@@ -266,9 +333,15 @@ async function performJsonRequestWithHeaders<T>(
   options: RequestOptions = {},
 ): Promise<JsonWithHeaders<T>> {
   const response = await performFetch(path, init, { ...options, responseType: "json" });
-  await throwIfNotOk(response);
-  const data = await readJsonBody<T>(response);
-  return { data, headers: response.headers };
+  try {
+    await throwIfNotOk(response);
+    const data = await readJsonBody<T>(response);
+    return { data, headers: response.headers };
+  } catch (error) {
+    // A response was received (jar already updated); even local
+    // parse/contract failures afterwards must not look network-uncertain.
+    throw markHttpSettled(error);
+  }
 }
 
 export function requestJson<T>(
@@ -303,8 +376,12 @@ async function performJsonRequest<T>(
   options: RequestOptions = {},
 ): Promise<T> {
   const response = await performFetch(path, init, { ...options, responseType: "json" });
-  await throwIfNotOk(response);
-  return readJsonBody<T>(response);
+  try {
+    await throwIfNotOk(response);
+    return await readJsonBody<T>(response);
+  } catch (error) {
+    throw markHttpSettled(error);
+  }
 }
 
 export async function requestBlob(
@@ -313,10 +390,14 @@ export async function requestBlob(
   options: RequestOptions = {},
 ): Promise<{ blob: Blob; filename: string | null }> {
   const response = await performFetch(path, init, { ...options, responseType: "blob" });
-  await throwIfNotOk(response);
+  try {
+    await throwIfNotOk(response);
 
-  return {
-    blob: await response.blob(),
-    filename: readFilenameFromContentDisposition(response.headers.get("content-disposition")),
-  };
+    return {
+      blob: await response.blob(),
+      filename: readFilenameFromContentDisposition(response.headers.get("content-disposition")),
+    };
+  } catch (error) {
+    throw markHttpSettled(error);
+  }
 }

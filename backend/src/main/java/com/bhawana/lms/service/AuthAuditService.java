@@ -92,7 +92,11 @@ public class AuthAuditService {
             String actorIp,
             String correlationId
     ) {
-        recordLoginFailure(username, mapAuthenticationFailure(exception), actorIp, correlationId);
+        recordLoginFailure(username, resolveAuthenticationFailureReason(exception), actorIp, correlationId);
+    }
+
+    public AuthEventFailureReason resolveAuthenticationFailureReason(AuthenticationException exception) {
+        return mapAuthenticationFailure(exception);
     }
 
     @Transactional

@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
@@ -86,7 +87,7 @@ class LoanApplicationOpsControllerMockOutcomeAuditTest {
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome", applicationId)
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .header("X-Correlation-Id", "corr-mock-outcome-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("outcome", "DISBURSED"))))
@@ -166,7 +167,7 @@ class LoanApplicationOpsControllerMockOutcomeAuditTest {
     private UUID seedDisbursementRequestedApplication() throws Exception {
         UUID applicationId = createInitializedApplication();
         approveForDisbursement(applicationId);
-        // C04: mock outcomes resolve a raised provider attempt — seed a pending attempt first
+        // Mock outcomes resolve a raised provider attempt — seed a pending attempt first
         // (MOCK0PENDOK stays PENDING after execution), then apply the forced verdict.
         seedBorrowerBankDetails(applicationId);
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)

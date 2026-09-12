@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
@@ -54,7 +55,7 @@ class ApiClientAdminControllerCreateAuditTest {
 
         MvcResult createdResult = mockMvc.perform(post("/api/v1/internal/admin/api-clients")
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "name", "Audit Create Client",
@@ -94,7 +95,7 @@ class ApiClientAdminControllerCreateAuditTest {
 
         mockMvc.perform(put("/api/v1/internal/admin/api-clients/{id}", fixture.id())
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "name", "Renamed client",
@@ -113,7 +114,7 @@ class ApiClientAdminControllerCreateAuditTest {
 
         mockMvc.perform(put("/api/v1/internal/admin/api-clients/{id}", fixture.id())
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "status", "DISABLED"
@@ -138,7 +139,7 @@ class ApiClientAdminControllerCreateAuditTest {
 
         mockMvc.perform(put("/api/v1/internal/admin/api-clients/{id}", fixture.id())
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("status", "ACTIVE"))))
                 .andExpect(status().isOk());
@@ -154,7 +155,7 @@ class ApiClientAdminControllerCreateAuditTest {
 
         MvcResult rotateResult = mockMvc.perform(post("/api/v1/internal/admin/api-clients/{id}/rotate-secret", fixture.id())
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("graceSeconds", 0))))
                 .andExpect(status().isOk())

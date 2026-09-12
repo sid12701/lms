@@ -1,3 +1,4 @@
+import type { AuthIntent } from "@/features/auth/auth-coordinator";
 import { createContext } from "react";
 import type { SessionRestoreFailureKind } from "@/features/auth/auth-service";
 import type { Session } from "@/features/auth/session-types";
@@ -9,7 +10,7 @@ export interface SessionContextValue {
   lastRefreshFailureCode: string | null;
   /** Set when authentication could not be verified because restoration failed transiently. */
   sessionRestoreError: SessionRestoreFailureKind | null;
-  signIn: (s: Session) => void;
+  signIn: (s: Session, expectedIntent?: AuthIntent) => boolean;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
 }

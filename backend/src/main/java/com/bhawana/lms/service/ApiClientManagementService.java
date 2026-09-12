@@ -31,6 +31,9 @@ public class ApiClientManagementService {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     private final ApiClientRepository apiClientRepository;
     private final ApiClientAuditEventRepository apiClientAuditEventRepository;
     private final LspRepository lspRepository;
@@ -125,8 +128,9 @@ public class ApiClientManagementService {
             String description,
             ApiClientStatus status
     ) {
-        ApiClient client = apiClientRepository.findById(id)
+        ApiClient client = apiClientRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown API client id: " + id));
+        entityManager.refresh(client);
 
         Map<String, Object> before = auditSnapshot(client);
 
@@ -158,8 +162,9 @@ public class ApiClientManagementService {
             String actorIp,
             Integer graceSeconds
     ) {
-        ApiClient client = apiClientRepository.findById(id)
+        ApiClient client = apiClientRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown API client id: " + id));
+        entityManager.refresh(client);
 
         int effectiveGraceSeconds = graceSeconds == null ? DEFAULT_ROTATE_GRACE_SECONDS : graceSeconds;
         if (effectiveGraceSeconds < 0) {

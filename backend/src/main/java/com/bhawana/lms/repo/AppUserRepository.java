@@ -7,8 +7,10 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
 
@@ -40,6 +42,15 @@ public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
     // predicate a constant so the unique email index satisfies the lookup.
     @Query("select u from AppUser u where u.email = lower(:email)")
     Optional<AppUser> findByEmail(@Param("email") String email);
+
+    /**
+     * Principal-row lock without a nullable outer-join FOR UPDATE. Locks only the
+     * base {@code app_user} row (no EntityGraph here); callers initialize roles/LSP
+     * with separate selects under the same transaction after holding this lock.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from AppUser u where u.id = :id")
+    Optional<AppUser> findByIdForUpdate(@Param("id") UUID id);
 
     @Query("""
             select count(distinct u)

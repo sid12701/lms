@@ -15,6 +15,7 @@ class TenantDatasourceSecurityValidatorTest {
     @Test
     void rejectsLegacyDefaultPasswordOutsideLocalProfile() {
         TenantAwareDataSourceProperties properties = new TenantAwareDataSourceProperties();
+        properties.setUsername("lms_tenant_app");
         properties.setPassword(TenantDatasourceSecurityValidator.LEGACY_DEFAULT_PASSWORD);
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles("prod");
@@ -51,8 +52,10 @@ class TenantDatasourceSecurityValidatorTest {
     }
 
     @Test
-    void allowsLegacyDefaultPasswordWhenLocalIsDefaultProfile() {
+    void rejectsLegacyDefaultPasswordWhenLocalIsOnlyDefaultProfile() {
+        // Default profiles never exempt: with no explicitly active profile, safety checks run.
         TenantAwareDataSourceProperties properties = new TenantAwareDataSourceProperties();
+        properties.setUsername("lms_tenant_app");
         properties.setPassword(TenantDatasourceSecurityValidator.LEGACY_DEFAULT_PASSWORD);
         MockEnvironment environment = new MockEnvironment();
         environment.setDefaultProfiles("local");
@@ -64,7 +67,11 @@ class TenantDatasourceSecurityValidatorTest {
                 environment
         );
 
-        validator.run(new DefaultApplicationArguments(new String[0]));
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> validator.run(new DefaultApplicationArguments(new String[0]))
+        );
+        assertTrue(exception.getMessage().contains("legacy default"));
     }
 
     @Test

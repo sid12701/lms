@@ -164,6 +164,21 @@ export interface TransitionStatusInput {
   idempotencyKey: string;
 }
 
+/**
+ * Deliberate admin override. Separate from the ordinary transition:
+ * the caller mints a NEW idempotency key (never the failed standard key),
+ * and both reason + reasonCode are required explanations recorded verbatim.
+ * Targets are limited to the backend `ALLOWED_MANUAL_OVERRIDE_TARGETS`
+ * (INITIALIZED, AWAITING_APPROVAL, DISBURSEMENT_RETRY, REJECTED) — the
+ * server remains authoritative for source/financial/in-flight guards.
+ */
+export interface ManualStatusOverrideInput {
+  to: LoanApplication["status"];
+  reason: string | null;
+  reasonCode: string | null;
+  idempotencyKey: string;
+}
+
 export interface PostRepaymentInput {
   installmentId: string;
   amount: number;

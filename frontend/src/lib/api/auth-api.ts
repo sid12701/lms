@@ -42,11 +42,26 @@ export function refreshAccessToken(): Promise<BackendTokenResponse> {
   );
 }
 
-export function completePasswordChange(newPassword: string): Promise<BackendTokenResponse> {
-  return requestJson<BackendTokenResponse>("/api/v1/auth/password", {
-    method: "POST",
-    body: JSON.stringify({ newPassword }),
-  });
+export function completePasswordChange(
+  newPassword: string,
+  options: { accessToken?: string } = {},
+): Promise<BackendTokenResponse> {
+  // The caller passes the EXPLICIT bearer captured before the
+  // intent-start clear. Never fall back to ambient storage here: a stale A
+  // password request must not grab B's bearer at execution time. Refresh is
+  // disabled: a 401 must reject directly — invoking the global refresh from
+  // inside a lock-held cookie exchange would deadlock the coordinator queue.
+  return requestJson<BackendTokenResponse>(
+    "/api/v1/auth/password",
+    {
+      method: "POST",
+      body: JSON.stringify({ newPassword }),
+    },
+    {
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+      refreshOnUnauthorized: false,
+    },
+  );
 }
 
 export function logoutSession(): Promise<void> {

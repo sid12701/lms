@@ -6,13 +6,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
+import com.bhawana.lms.domain.AuthSession;
 import com.bhawana.lms.domain.RefreshToken;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.repo.AppRoleRepository;
 import com.bhawana.lms.repo.AppUserRepository;
 import com.bhawana.lms.repo.AuthEventAuditRepository;
+import com.bhawana.lms.repo.AuthSessionRepository;
 import com.bhawana.lms.repo.RefreshTokenRepository;
+import com.bhawana.lms.security.SessionPolicyEpochProvider;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
@@ -69,6 +72,12 @@ class AuthControllerRefreshFailureBodyTest {
     private PasswordEncoder passwordEncoder;
 
     @Autowired
+    private AuthSessionRepository authSessionRepository;
+
+    @Autowired
+    private com.bhawana.lms.security.SessionPolicyEpochProvider sessionPolicyEpochProvider;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
@@ -103,12 +112,14 @@ class AuthControllerRefreshFailureBodyTest {
     }
 
     @Test
-    void refresh401WithUnknownCookieReturnsCodeTokenExpiredInBody() throws Exception {
+    void refresh401WithUnknownCookieReturnsCodeRefreshInvalidInBody() throws Exception {
+        // An unknown hash identifies no family and revokes nothing; the code is
+        // distinct from TOKEN_EXPIRED by contract.
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .cookie(new Cookie("lms-refresh", "unknown-refresh-token-value")))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("TOKEN_EXPIRED"))
-                .andExpect(jsonPath("$.message").value("Refresh token has expired"));
+                .andExpect(jsonPath("$.code").value("REFRESH_INVALID"))
+                .andExpect(jsonPath("$.message").value("Refresh token is invalid"));
     }
 
     @Test
@@ -128,13 +139,20 @@ class AuthControllerRefreshFailureBodyTest {
 
     @Test
     void refresh401WithExpiredCookieReturnsCodeTokenExpiredInBody() throws Exception {
+        // The expired row carries a real family with version/epoch lineage (legacy
+        // null-family rows force reauth with SESSION_INVALID_STATUS instead).
         AppUser user = appUserRepository.findByUsername("test.user").orElseThrow();
+        String epoch = sessionPolicyEpochProvider.currentEpoch();
+        AuthSession session = authSessionRepository.save(new AuthSession(user, epoch));
         String rawToken = "expired-refresh-token-" + UUID.randomUUID();
-        refreshTokenRepository.save(new RefreshToken(
+        RefreshToken row = new RefreshToken(
                 sha256Hex(rawToken),
                 user,
                 Instant.now().minusSeconds(60)
-        ));
+        );
+        row.attachFamily(
+                session, user.getTokenVersion(), user.getPasswordChangedAt().toEpochMilli(), epoch);
+        refreshTokenRepository.save(row);
 
         mockMvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("lms-refresh", rawToken)))
                 .andExpect(status().isUnauthorized())
@@ -143,13 +161,13 @@ class AuthControllerRefreshFailureBodyTest {
     }
 
     @Test
-    void refresh401WithUnknownTokenReturnsCodeTokenExpiredInBody() throws Exception {
+    void refresh401WithUnknownTokenReturnsCodeRefreshInvalidInBody() throws Exception {
         String rawToken = "unknown-refresh-token-" + UUID.randomUUID();
 
         mockMvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("lms-refresh", rawToken)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("TOKEN_EXPIRED"))
-                .andExpect(jsonPath("$.message").value("Refresh token has expired"));
+                .andExpect(jsonPath("$.code").value("REFRESH_INVALID"))
+                .andExpect(jsonPath("$.message").value("Refresh token is invalid"));
     }
 
     private Cookie loginAndCaptureRefreshCookie() throws Exception {

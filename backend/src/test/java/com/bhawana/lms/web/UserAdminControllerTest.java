@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import com.bhawana.lms.support.IpTestSupport;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -314,10 +315,11 @@ class UserAdminControllerTest {
 
     @Test
     void createUserValidationUsesFriendlyMessages() throws Exception {
+        // An absent password requests server-generated mode, so validation
+        // only complains about username/email/roles here.
         ObjectNode body = objectMapper.createObjectNode();
         body.put("username", "");
         body.put("email", "not-an-email");
-        body.put("password", "");
         body.set("roles", objectMapper.createArrayNode());
 
         mockMvc.perform(post("/api/v1/internal/admin/users")
@@ -327,8 +329,6 @@ class UserAdminControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.violations[?(@.field=='username')].message")
-                        .value(org.hamcrest.Matchers.hasItem("This field is required.")))
-                .andExpect(jsonPath("$.violations[?(@.field=='password')].message")
                         .value(org.hamcrest.Matchers.hasItem("This field is required.")))
                 .andExpect(jsonPath("$.violations[?(@.field=='roles')].message")
                         .value(org.hamcrest.Matchers.hasItem("This field is required.")))
@@ -343,7 +343,7 @@ class UserAdminControllerTest {
 
         mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/reset-password", managedUser.getId())
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP))
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.temporaryPassword").isString());
 
@@ -368,7 +368,7 @@ class UserAdminControllerTest {
 
         mockMvc.perform(put("/api/v1/internal/admin/users/{userId}", managedUser.getId())
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP)
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("email", "updated.user@bhawana.local"))))
                 .andExpect(status().isOk());
@@ -387,7 +387,7 @@ class UserAdminControllerTest {
 
         MvcResult resetResult = mockMvc.perform(post("/api/v1/internal/admin/users/{userId}/reset-password", managedUser.getId())
                         .with(systemAdmin())
-                        .header("X-Forwarded-For", CLIENT_IP))
+                        .with(IpTestSupport.remoteAddr(CLIENT_IP)))
                 .andExpect(status().isOk())
                 .andReturn();
 

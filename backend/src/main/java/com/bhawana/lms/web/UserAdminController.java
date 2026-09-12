@@ -8,6 +8,7 @@ import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.service.AdminApiIdempotencyService;
 import com.bhawana.lms.service.UserAdminService;
 import com.bhawana.lms.service.SessionRevocationService;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -58,23 +59,62 @@ public class UserAdminController {
     }
 
     @PostMapping
-    public UserResponse createUser(
+    public CreateUserResponse createUser(
             @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody CreateUserRequest request
     ) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return doCreateUser(request);
         }
-        return adminApiIdempotencyService.execute(
+        // Reveal-once: the persisted idempotent response carries only safe user
+        // identity with a null credential, mirroring the reset-password flow below.
+        // The request itself is the fingerprint source so a different payload under
+        // the same key conflicts; only its SHA-256 hex is persisted, never the
+        // cleartext password, and the transient value is never logged.
+        AtomicReference<String> temporaryPasswordHolder = new AtomicReference<>();
+        CreateUserResponse stored = adminApiIdempotencyService.execute(
                 USER_CREATE,
                 idempotencyKey,
                 request,
-                UserResponse.class,
-                () -> doCreateUser(request)
+                CreateUserResponse.class,
+                () -> {
+                    UserAdminService.CreateUserResult result = performCreateUser(request);
+                    temporaryPasswordHolder.set(result.temporaryPassword());
+                    return toCreateResponse(result.user(), null);
+                }
+        );
+        return new CreateUserResponse(
+                stored.id(),
+                stored.username(),
+                stored.email(),
+                stored.status(),
+                stored.lspId(),
+                stored.lspName(),
+                stored.roles(),
+                stored.passwordChangeRequired(),
+                stored.createdAt(),
+                temporaryPasswordHolder.get()
         );
     }
 
-    private UserResponse doCreateUser(CreateUserRequest request) {
+    private CreateUserResponse doCreateUser(CreateUserRequest request) {
+        UserAdminService.CreateUserResult result = performCreateUser(request);
+        return toCreateResponse(result.user(), result.temporaryPassword());
+    }
+
+    private UserAdminService.CreateUserResult performCreateUser(CreateUserRequest request) {
+        if (request.password() == null || request.password().isBlank()) {
+            return userAdminService.createUserWithGeneratedPassword(
+                    request.username(),
+                    request.email(),
+                    request.status(),
+                    request.lspId(),
+                    request.roles()
+            );
+        }
+        // Explicit compatibility mode for callers that mint their own secret: the
+        // caller already holds the value, so there is nothing to reveal — the
+        // response credential stays null and only the hash is persisted.
         AppUser user = userAdminService.createUser(
                 request.username(),
                 request.email(),
@@ -83,7 +123,7 @@ public class UserAdminController {
                 request.lspId(),
                 request.roles()
         );
-        return toResponse(user);
+        return new UserAdminService.CreateUserResult(user, null);
     }
 
     @PutMapping("/{userId}")
@@ -218,6 +258,21 @@ public class UserAdminController {
         );
     }
 
+    private static CreateUserResponse toCreateResponse(AppUser user, String temporaryPassword) {
+        return new CreateUserResponse(
+                user.getId().toString(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getStatus().name(),
+                user.getLsp() == null ? null : user.getLsp().getId().toString(),
+                user.getLsp() == null ? "All LSPs" : user.getLsp().getName(),
+                user.getRoles().stream().map(role -> role.getCode().name()).sorted().toList(),
+                user.isPasswordChangeRequired(),
+                user.getCreatedAt().toString(),
+                temporaryPassword
+        );
+    }
+
     public record UpdateUserRequest(
             @Email String email,
             Set<RoleCode> roles,
@@ -239,7 +294,15 @@ public class UserAdminController {
     public record CreateUserRequest(
             @NotBlank String username,
             @Email @NotBlank String email,
-            @NotBlank String password,
+            @Schema(
+                    description = "Optional caller-supplied secret for explicit compatibility mode. "
+                            + "Absent or blank requests server-generated mode: the server mints a "
+                            + "SecureRandom temporary password, persists only its hash, and reveals "
+                            + "it once in CreateUserResponse. The preferred UI never sends this field.",
+                    nullable = true,
+                    accessMode = Schema.AccessMode.WRITE_ONLY
+            )
+            String password,
             UserStatus status,
             UUID lspId,
             @NotEmpty Set<RoleCode> roles
@@ -249,6 +312,30 @@ public class UserAdminController {
                 status = UserStatus.ACTIVE;
             }
         }
+    }
+
+    public record CreateUserResponse(
+            String id,
+            String username,
+            String email,
+            String status,
+            String lspId,
+            String lspName,
+            List<String> roles,
+            boolean passwordChangeRequired,
+            String createdAt,
+            @Schema(
+                    description = "One-time temporary password, present only in the first authorized "
+                            + "create response of server-generated mode. Replays under the same "
+                            + "Idempotency-Key, compatibility-mode creates, ordinary reads, errors, "
+                            + "audit events, and persisted idempotency payloads never carry it. "
+                            + "A lost value is recovered only via a deliberate reset-password "
+                            + "command with a new key — replays never rotate the credential.",
+                    nullable = true,
+                    accessMode = Schema.AccessMode.READ_ONLY
+            )
+            String temporaryPassword
+    ) {
     }
 
     public record UserResponse(
@@ -269,6 +356,15 @@ public class UserAdminController {
     public record ResetPasswordResponse(
             String id,
             String username,
+            @Schema(
+                    description = "One-time temporary password, present only in the first authorized "
+                            + "reset response for an Idempotency-Key. Replays return null without "
+                            + "rotating the credential; a lost value requires a deliberate new "
+                            + "reset command. Never persisted in audit events, logs, or the stored "
+                            + "idempotency payload.",
+                    nullable = true,
+                    accessMode = Schema.AccessMode.READ_ONLY
+            )
             String temporaryPassword
     ) {
     }

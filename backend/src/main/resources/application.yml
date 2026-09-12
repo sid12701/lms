@@ -1,5 +1,12 @@
 server:
-  forward-headers-strategy: NATIVE
+  # NONE disables implicit container forwarding (Tomcat's NATIVE strategy rewrote
+  # getRemoteAddr() from X-Forwarded-For before application code ran, making even
+  # "use getRemoteAddr()" spoofable). The raw socket peer is the trust anchor; configured
+  # trusted proxies are evaluated explicitly in ClientIpResolutionFilter over a strict
+  # single-XFF contract (docs/edge-proxy-contract.md): the edge MUST strip any
+  # client-supplied X-Forwarded-For/X-Real-IP/Forwarded and set exactly one X-Forwarded-For
+  # line of bare IP literals. Malformed/ambiguous trusted input is rejected with 400.
+  forward-headers-strategy: NONE
   tomcat:
     # JSON bodies above this limit are rejected with 413 before controller dispatch.
     max-http-post-size: 10MB
@@ -7,8 +14,10 @@ server:
 spring:
   application:
     name: lms-backend
-  profiles:
-    default: local
+  # No implicit default profile. Booting without an explicitly active profile enforces
+  # production safety checks (UnsafeDeploymentConfigurationValidator + TenantDatasourceSecurityValidator
+  # + DisbursementSimulationGuard all fail closed on unset profiles). Local development must
+  # activate the local profile explicitly (see backend/README.md).
   servlet:
     multipart:
       # Above DocumentUploadPolicy's 10MB cap so oversized files reach the
@@ -31,7 +40,7 @@ management:
   endpoints:
     web:
       exposure:
-        # H27: prometheus exposition for the deployment-selected collector
+        # Prometheus exposition for the deployment-selected collector
         # (docs/architecture/deployment-strategy.md). Scraping is authenticated;
         # see SecurityFilterChainConfig — SYSTEM_ADMIN only.
         include: health,info,prometheus
@@ -57,10 +66,22 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  edge:
+    # Explicit trusted proxy ranges, literal IP/CIDR only (hostnames rejected at
+    # startup; no DNS). Empty = never trust forwarding input; the socket peer is always
+    # the client IP. No implicit private-range trust.
+    # Env: comma-separated CIDRs, e.g. "10.0.0.0/24,2001:db8::/32".
+    trusted-proxies: ${APP_EDGE_TRUSTED_PROXIES:}
+    # Bound on accepted XFF hops; overlong trusted chains are rejected with 400.
+    max-forwarded-hops: ${APP_EDGE_MAX_FORWARDED_HOPS:8}
   security:
     bootstrap-user:
-      username: ${APP_SECURITY_BOOTSTRAP_USERNAME:ops.admin}
-      email: ${APP_SECURITY_BOOTSTRAP_EMAIL:siddhant@bhawanafinance.com}
+      # No default identities. Every profile must configure these explicitly
+      # (application-local.yml carries the explicit local example; all other deployments set
+      # APP_SECURITY_BOOTSTRAP_* via the secret store). Missing values fail closed at bind time
+      # and in UnsafeDeploymentConfigurationValidator.
+      username: ${APP_SECURITY_BOOTSTRAP_USERNAME:}
+      email: ${APP_SECURITY_BOOTSTRAP_EMAIL:}
       password: ${APP_SECURITY_BOOTSTRAP_PASSWORD:}
       roles:
         - SYSTEM_ADMIN
@@ -68,9 +89,29 @@ app:
     jwt:
       secret: ${APP_SECURITY_JWT_SECRET:}
       issuer: ${APP_SECURITY_JWT_ISSUER:bhawana-lms}
+      # Distinct audiences for locally minted human vs machine tokens. Tokens minted
+      # before audiences existed (missing aud) are rejected with no compatibility window;
+      # rotating the secret or audience forces reauthentication (see JwtSecurityBeans).
+      human-audience: ${APP_SECURITY_JWT_HUMAN_AUDIENCE:bhawana-lms-human}
+      machine-audience: ${APP_SECURITY_JWT_MACHINE_AUDIENCE:bhawana-lms-machine}
       ttl: ${APP_SECURITY_JWT_TTL:PT30M}
       refresh-ttl: ${APP_SECURITY_JWT_REFRESH_TTL:P7D}
       secure-cookies: ${APP_SECURITY_JWT_SECURE_COOKIES:true}
+    # Entra v2 app-only machine identity (disabled by default). When enabled, configure
+    # real tenant/API/client IDs, JWKS URI, required app role and explicit mappings to enabled
+    # local api_client rows. Local client-credentials (/auth/token) remain until partner cutover.
+    entra-machine-identity:
+      enabled: ${APP_SECURITY_ENTRA_MACHINE_ENABLED:false}
+      trusted-tenant-id: ${APP_SECURITY_ENTRA_TRUSTED_TENANT_ID:}
+      issuer: ${APP_SECURITY_ENTRA_ISSUER:}
+      api-audience: ${APP_SECURITY_ENTRA_API_AUDIENCE:}
+      jwks-uri: ${APP_SECURITY_ENTRA_JWKS_URI:}
+      required-app-role: ${APP_SECURITY_ENTRA_REQUIRED_APP_ROLE:}
+      connect-timeout: ${APP_SECURITY_ENTRA_JWKS_CONNECT_TIMEOUT:PT2S}
+      read-timeout: ${APP_SECURITY_ENTRA_JWKS_READ_TIMEOUT:PT2S}
+      jwks-cache-ttl: ${APP_SECURITY_ENTRA_JWKS_CACHE_TTL:PT10M}
+      unknown-kid-min-interval: ${APP_SECURITY_ENTRA_UNKNOWN_KID_MIN_INTERVAL:PT30S}
+      mappings: []
   seed:
     sample-data:
       enabled: false
@@ -186,7 +227,7 @@ app:
       max-attempts: ${APP_DISBURSEMENT_WORKER_MAX_ATTEMPTS:5}
       auto-resolve-mock-outcome: ${APP_DISBURSEMENT_WORKER_AUTO_RESOLVE_MOCK:true}
     intent-workflow:
-      # C04: durable intent is the only disbursement initiation path (no enable/disable flag).
+      # Durable intent is the only disbursement initiation path (no enable/disable flag).
       lease-duration-seconds: ${APP_DISBURSEMENT_INTENT_LEASE_SECONDS:120}
       claim-batch-size: ${APP_DISBURSEMENT_INTENT_CLAIM_BATCH_SIZE:10}
       lease-owner: ${APP_DISBURSEMENT_INTENT_LEASE_OWNER:disbursement-worker}

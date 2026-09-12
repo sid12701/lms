@@ -16,7 +16,6 @@ import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.OpsAlert;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertType;
-import com.bhawana.lms.domain.RevocationSource;
 import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.repo.AlertRuleSetQueryRepository;
@@ -383,22 +382,24 @@ public class AlertRuleEvaluationWorker {
         int emitted = 0;
         for (AuthEventAuditRepository.UsernameIpFailureProjection candidate
                 : authEventAuditRepository.findLoginFailureGroupsAtOrAboveThreshold(since, threshold)) {
-            AppUser user = appUserRepository.findByUsername(candidate.getUsername()).orElse(null);
-            if (user == null || user.isLocked()) {
+            // Detached probe only (no mutation before the fence). The lockout fence
+            // locks the principal fresh, re-checks, mutates, revokes and audits in one TX.
+            AppUser probe = appUserRepository.findByUsername(candidate.getUsername()).orElse(null);
+            if (probe == null || probe.isLocked()) {
                 continue;
             }
-            user.lockForBruteForce(evaluatedAt);
-            sessionRevocationService.revokeAllSessions(
-                    user,
+            UUID userId = probe.getId();
+            String username = probe.getUsername();
+            sessionRevocationService.applyBruteForceLockout(
+                    userId,
                     AUTO_LOCKOUT_ACTOR,
                     AppUser.LOCK_REASON_BRUTE_FORCE,
                     candidate.getActorIp(),
-                    "auth-brute-force:" + user.getId(),
-                    RevocationSource.BRUTE_FORCE_LOCKOUT
+                    "auth-brute-force:" + userId
             );
             String contextJson = alertContext(Map.of(
-                    "userId", user.getId().toString(),
-                    "username", user.getUsername(),
+                    "userId", userId.toString(),
+                    "username", username,
                     "actorIp", candidate.getActorIp(),
                     "failureCount", candidate.getFailureCount(),
                     "windowMinutes", properties.getAuthBruteForceWindowMinutes()
@@ -406,9 +407,9 @@ public class AlertRuleEvaluationWorker {
             OpsAlert created = opsAlertService.createAlertIfAbsent(
                     OpsAlertType.AUTH_BRUTE_FORCE,
                     OpsAlertSeverity.HIGH,
-                    "Auth brute-force lockout: " + user.getUsername(),
+                    "Auth brute-force lockout: " + username,
                     "User "
-                            + user.getUsername()
+                            + username
                             + " was locked after "
                             + candidate.getFailureCount()
                             + " failed "
@@ -421,8 +422,8 @@ public class AlertRuleEvaluationWorker {
                             + Strings.pluralize(properties.getAuthBruteForceWindowMinutes(), "minute")
                             + ".",
                     "APP_USER",
-                    user.getId(),
-                    "auth-brute-force:" + user.getId(),
+                    userId,
+                    "auth-brute-force:" + userId,
                     contextJson
             );
             if (created != null) {
@@ -447,7 +448,7 @@ public class AlertRuleEvaluationWorker {
                         distinctIpMin
                 )) {
             AppUser user = appUserRepository.findByUsername(candidate.getUsername()).orElse(null);
-            if (user == null || user.isLocked()) {
+            if (user == null) {
                 continue;
             }
             String contextJson = alertContext(Map.of(

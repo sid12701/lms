@@ -436,6 +436,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/reconcile": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["reconcileDisbursement"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests/mock-outcome": {
     parameters: {
       query?: never;
@@ -446,6 +462,22 @@ export interface paths {
     get?: never;
     put?: never;
     post: operations["applyMockDisbursementOutcome"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/internal/ops/disbursement-reconciliation/queue/{loanAccountId}/claim": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["claimEntry"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1132,6 +1164,38 @@ export interface paths {
       cookie?: never;
     };
     get: operations["listAuditEvents"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/internal/ops/disbursement-reconciliation/queue": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["queue"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/internal/ops/disbursement-reconciliation/queue/summary": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["queueSummary"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2216,9 +2280,16 @@ export interface components {
       reference: string;
       note?: string;
     };
+    ReconcileDisbursementRequest: {
+      /** Format: uuid */
+      observationId: string;
+    };
     MockDisbursementOutcomeRequest: {
       /** @enum {string} */
       outcome: "DISBURSED" | "FAILED" | "PENDING_RECONCILIATION";
+    };
+    ClaimEntryRequest: {
+      owner?: string;
     };
     AcknowledgeAlertRequest: {
       note?: string;
@@ -2249,7 +2320,8 @@ export interface components {
       username: string;
       /** Format: email */
       email: string;
-      password: string;
+      /** @description Optional caller-supplied secret for explicit compatibility mode. Absent or blank requests server-generated mode: the server mints a SecureRandom temporary password, persists only its hash, and reveals it once in CreateUserResponse. The preferred UI never sends this field. */
+      password?: string;
       /** @enum {string} */
       status?: "ACTIVE" | "INACTIVE";
       /** Format: uuid */
@@ -2262,6 +2334,19 @@ export interface components {
         | "LSP_UI_WRITE"
         | "LSP_API_CLIENT"
       )[];
+    };
+    CreateUserResponse: {
+      id?: string;
+      username?: string;
+      email?: string;
+      status?: string;
+      lspId?: string;
+      lspName?: string;
+      roles?: string[];
+      passwordChangeRequired?: boolean;
+      createdAt?: string;
+      /** @description One-time temporary password, present only in the first authorized create response of server-generated mode. Replays under the same Idempotency-Key, compatibility-mode creates, ordinary reads, errors, audit events, and persisted idempotency payloads never carry it. A lost value is recovered only via a deliberate reset-password command with a new key — replays never rotate the credential. */
+      readonly temporaryPassword?: string;
     };
     RevokeSessionsRequest: {
       reason?: string;
@@ -2278,7 +2363,8 @@ export interface components {
     ResetPasswordResponse: {
       id?: string;
       username?: string;
-      temporaryPassword?: string;
+      /** @description One-time temporary password, present only in the first authorized reset response for an Idempotency-Key. Replays return null without rotating the credential; a lost value requires a deliberate new reset command. Never persisted in audit events, logs, or the stored idempotency payload. */
+      readonly temporaryPassword?: string;
     };
     UpsertProductLspMappingRequest: {
       /** Format: uuid */
@@ -2745,6 +2831,47 @@ export interface components {
       correlationId?: string;
       /** Format: date-time */
       createdAt?: string;
+    };
+    QueueEntryView: {
+      /** Format: uuid */
+      loanAccountId?: string;
+      /** Format: uuid */
+      applicationId?: string;
+      /** Format: uuid */
+      intentId?: string;
+      tranRefNo?: string;
+      /** @enum {string} */
+      reason?:
+        | "UNKNOWN"
+        | "REQUESTED"
+        | "PARKED"
+        | "LEGACY_MISMATCH"
+        | "STRANDED_TERMINAL"
+        | "CONFLICTING_EVIDENCE";
+      /** Format: date-time */
+      nextPollAt?: string;
+      /** Format: int32 */
+      pollCount?: number;
+      /** Format: date-time */
+      firstSeenAt?: string;
+      /** Format: date-time */
+      lastObservationAt?: string;
+      owner?: string;
+      escalated?: boolean;
+      /** Format: int64 */
+      ageSeconds?: number;
+      details?: string;
+    };
+    QueueSummary: {
+      /** Format: int64 */
+      total?: number;
+      byReason?: {
+        [key: string]: number;
+      };
+      /** Format: int64 */
+      oldestAgeSeconds?: number;
+      /** Format: date-time */
+      oldestFirstSeenAt?: string;
     };
     AuthAuditEventResponse: {
       /** Format: uuid */
@@ -4061,6 +4188,34 @@ export interface operations {
       };
     };
   };
+  reconcileDisbursement: {
+    parameters: {
+      query?: never;
+      header?: {
+        "Idempotency-Key"?: string;
+      };
+      path: {
+        applicationId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReconcileDisbursementRequest"];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["LoanApplicationDetailResponse"];
+        };
+      };
+    };
+  };
   applyMockDisbursementOutcome: {
     parameters: {
       query?: never;
@@ -4086,6 +4241,30 @@ export interface operations {
         content: {
           "*/*": components["schemas"]["LoanApplicationDetailResponse"];
         };
+      };
+    };
+  };
+  claimEntry: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        loanAccountId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ClaimEntryRequest"];
+      };
+    };
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
@@ -4184,7 +4363,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "*/*": components["schemas"]["UserResponse"];
+          "*/*": components["schemas"]["CreateUserResponse"];
         };
       };
     };
@@ -5272,6 +5451,49 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LoanApplicationAuditEventResponse"][];
+        };
+      };
+    };
+  };
+  queue: {
+    parameters: {
+      query?: {
+        limit?: number;
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["QueueEntryView"][];
+        };
+      };
+    };
+  };
+  queueSummary: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description OK */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "*/*": components["schemas"]["QueueSummary"];
         };
       };
     };
