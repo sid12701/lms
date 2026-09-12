@@ -175,11 +175,11 @@ public class LoanAccount {
     }
 
     /**
-     * C04 — single guarded transition into {@code DISBURSEMENT_REQUESTED}.
+     * Single guarded transition into {@code DISBURSEMENT_REQUESTED}.
      *
      * <p>A new disbursement attempt is only safe from {@code PENDING_DISBURSEMENT} or from a
      * definitively failed attempt ({@code DISBURSEMENT_FAILED}, where the bank contract proves no
-     * debit happened or funds were confirmed returned — narrowed further under G01). Re-initiation
+     * debit happened or funds were confirmed returned). Re-initiation
      * from {@code DISBURSEMENT_REQUESTED} (in flight) or
      * {@code DISBURSEMENT_PENDING_RECONCILIATION} (uncertain money) is rejected: the only forward
      * path there is reconciliation of the original reference, never a fresh bank reference.

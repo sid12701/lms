@@ -65,16 +65,16 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
- * H31 generic in-flight guard — the narrow money-safety correction for the generic
+ * Generic in-flight guard — the narrow money-safety correction for the generic
  * status endpoints.
  *
  * <p>Root cause: {@code LoanApplicationLifecycleService.transitionStatus} with a generic
- * {@code INVALID} target called the status writer directly instead of the C01 invalidation
+ * {@code INVALID} target called the status writer directly instead of the invalidation
  * guard, and {@code manuallyOverrideStatus} could mutate a parked
- * {@code DISBURSEMENT_RETRY} loan to {@code REJECTED}, hiding it from C02 recovery.
- * The existing H31 {@code FINANCIAL_STATUS_REQUIRES_EVIDENCE} guard protects only
+ * {@code DISBURSEMENT_RETRY} loan to {@code REJECTED}, hiding it from terminal-outcome recovery.
+ * The existing {@code FINANCIAL_STATUS_REQUIRES_EVIDENCE} guard protects only
  * {@code DISBURSED}/{@code CLOSED} direct writes. This test proves both generic endpoints
- * now share the C01 cancellation boundary: borrower → application → account → live
+ * now share the invalidation cancellation boundary: borrower → application → account → live
  * intent, rejecting with stable {@code DISBURSEMENT_IN_PROGRESS} while an account is
  * {@code REQUESTED}/{@code PENDING_RECONCILIATION} or a live intent exists.
  */
@@ -85,7 +85,7 @@ import org.springframework.test.web.servlet.MvcResult;
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class H31GenericInFlightGuardIntegrationTest {
+class GenericInFlightGuardIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -512,7 +512,7 @@ class H31GenericInFlightGuardIntegrationTest {
         String applicationId = createApplicationViaOps(lspId, productId, requestedAmount);
         transition(applicationId, "AWAITING_APPROVAL", "Ready for approval");
         markKycComplete(applicationId);
-        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for H31 in-flight guard test");
+        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for in-flight guard test");
         seedBorrowerBankDetails(applicationId, ifsc);
         return UUID.fromString(applicationId);
     }
@@ -525,9 +525,9 @@ class H31GenericInFlightGuardIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "H31 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", ifsc,
-                                "accountHolderName", "H31 Borrower"))))
+                                "accountHolderName", "Test Borrower"))))
                 .andExpect(status().isOk());
     }
 
@@ -537,7 +537,7 @@ class H31GenericInFlightGuardIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", "LSP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
-                                "name", "H31 LSP",
+                                "name", "Test LSP",
                                 "status", "ACTIVE"))))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -551,7 +551,7 @@ class H31GenericInFlightGuardIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", code,
-                                "name", "H31 product " + code,
+                                "name", "Test product " + code,
                                 "minPrincipal", new BigDecimal("5000.00"),
                                 "maxPrincipal", new BigDecimal("1000000.00"),
                                 "interestRate", new BigDecimal("18.50"),
@@ -581,7 +581,7 @@ class H31GenericInFlightGuardIntegrationTest {
         payload.put("externalLoanId", "EXT-" + UUID.randomUUID().toString().substring(0, 8));
         payload.put("sourceChannel", "API");
         payload.put("borrowerPan", borrowerPan);
-        payload.put("borrowerFullName", "H31 Borrower");
+        payload.put("borrowerFullName", "Test Borrower");
         payload.put("borrowerMobile", mobileForPan(borrowerPan));
         payload.put("borrowerEmail", "h31inflight+" + borrowerPan.toLowerCase() + "@example.com");
         payload.put("borrowerDateOfBirth", LocalDate.of(1990, 1, 1));
@@ -621,7 +621,7 @@ class H31GenericInFlightGuardIntegrationTest {
                     String documentKey = item.getDocumentType().name().toLowerCase();
                     item.update(
                             LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                            "Uploaded for H31 in-flight guard test",
+                            "Uploaded for in-flight guard test",
                             "ops.user",
                             documentKey + ".pdf",
                             "storage://" + applicationId + "/" + documentKey + ".pdf",

@@ -161,7 +161,7 @@ class ProductVersioningIntegrationTest {
         String applicationId = createAndApproveApplication(lspId, productId, "FEE-EXT-001");
         updateProduct(productId, "VER-FEE-PROD", "Fee Product", RATE_A, FEE_F2);
 
-        // C04: the intent snapshot carries the beneficiary instruction — seed it, raise the
+        // The intent snapshot carries the beneficiary instruction — seed it, raise the
         // intent, then execute it (IMPS success disburses atomically, preserving the fee
         // snapshot assertion without a mock outcome).
         seedBorrowerBankDetails(applicationId);

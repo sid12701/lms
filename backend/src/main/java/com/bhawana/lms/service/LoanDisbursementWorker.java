@@ -45,7 +45,7 @@ public class LoanDisbursementWorker {
     }
 
     /**
-     * H27/H02 — bounded reconciliation sweep on its own schedule. Gated by the same existing
+     * Bounded reconciliation sweep on its own schedule. Gated by the same existing
      * worker {@code enabled} flag; normal disbursement and status-check ticks are untouched.
      */
     @Scheduled(fixedDelayString = "${app.disbursement.worker.reconciliation-delay-ms:60000}")

@@ -74,7 +74,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * H15 — schedule replacement shares the disbursement locks and the frozen schedule hash.
+ * Schedule replacement shares the disbursement locks and the frozen schedule hash.
  *
  * <p>Generated and provided replacements lock application → account → intent and recheck the
  * live intent before deleting anything, so a replacement cannot commit after the disbursement
@@ -90,7 +90,7 @@ import org.springframework.transaction.support.TransactionTemplate;
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class H15ScheduleReplacementFreezeIntegrationTest {
+class ScheduleReplacementFreezeIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -255,14 +255,14 @@ class H15ScheduleReplacementFreezeIntegrationTest {
         loanPaymentTransactionRepository.save(new LoanPaymentTransaction(
                 attached,
                 firstInstallment,
-                "h15.test",
+                "t15.test",
                 new BigDecimal("1000.00"),
                 LocalDate.now(),
-                "H15-RCPT-001",
+                "RCPT-001",
                 LoanPaymentChannel.UPI,
                 LoanPaymentStatus.RECEIVED,
                 "receipt guard seed",
-                "h15-receipt",
+                "t15-receipt",
                 UUID.randomUUID().toString()));
 
         ApiConflictException generatedConflict = assertThrows(
@@ -331,10 +331,10 @@ class H15ScheduleReplacementFreezeIntegrationTest {
                         "0", "Check Transaction Successful",
                         DisbursementDisposition.SUCCESS,
                         DisbursementDeclineKind.NONE,
-                        "0", "RRN-H15-LEGACY", "recovered", "{}"))
+                        "0", "RRN-LEGACY-001", "recovered", "{}"))
                 .when(loanDisbursementAdapter).checkStatus(any());
         assertTrue(TenantScopedExecution.callAsAdmin(() -> loanDisbursementCommandService
-                .pollPendingDisbursement(reconciledApp, "worker", null, "h15-legacy")));
+                .pollPendingDisbursement(reconciledApp, "worker", null, "t15-legacy")));
         assertEquals(LoanAccountStatus.DISBURSED, loanAccountOf(reconciledApp).getStatus());
         assertEquals(DisbursementIntentState.SUCCEEDED,
                 disbursementIntentRepository.findById(reconciledIntent).orElseThrow().getState());
@@ -366,7 +366,7 @@ class H15ScheduleReplacementFreezeIntegrationTest {
             AtomicReference<Object> loserOutcome = new AtomicReference<>();
             Future<?> loser = firstExecutor.submit(() -> TenantScopedExecution.callAsAdmin(() -> {
                 try {
-                    loanDisbursementCommandService.initiateDisbursement(firstApp, "h15.contention");
+                    loanDisbursementCommandService.initiateDisbursement(firstApp, "t15.contention");
                     loserOutcome.set("SUCCESS");
                 } catch (RuntimeException exception) {
                     loserOutcome.set(exception);
@@ -403,7 +403,7 @@ class H15ScheduleReplacementFreezeIntegrationTest {
         try {
             Future<?> winner = secondExecutor.submit(() -> TenantScopedExecution.callAsAdmin(() ->
                     transactionTemplate.execute(tx -> {
-                        loanDisbursementCommandService.initiateDisbursement(secondApp, "h15.contention");
+                        loanDisbursementCommandService.initiateDisbursement(secondApp, "t15.contention");
                         winnerHolding2.countDown();
                         await(releaseWinner2);
                         return null;
@@ -464,7 +464,7 @@ class H15ScheduleReplacementFreezeIntegrationTest {
             AtomicReference<Object> loserOutcome = new AtomicReference<>();
             Future<?> loser = firstExecutor.submit(() -> TenantScopedExecution.callAsAdmin(() -> {
                 try {
-                    loanDisbursementCommandService.initiateDisbursement(firstApp, "h15.contention");
+                    loanDisbursementCommandService.initiateDisbursement(firstApp, "t15.contention");
                     loserOutcome.set("SUCCESS");
                 } catch (RuntimeException exception) {
                     loserOutcome.set(exception);
@@ -502,7 +502,7 @@ class H15ScheduleReplacementFreezeIntegrationTest {
         try {
             Future<?> winner = secondExecutor.submit(() -> TenantScopedExecution.callAsAdmin(() ->
                     transactionTemplate.execute(tx -> {
-                        loanDisbursementCommandService.initiateDisbursement(secondApp, "h15.contention");
+                        loanDisbursementCommandService.initiateDisbursement(secondApp, "t15.contention");
                         winnerHolding2.countDown();
                         await(releaseWinner2);
                         return null;
@@ -867,7 +867,7 @@ class H15ScheduleReplacementFreezeIntegrationTest {
         String applicationId = createApplicationViaOps(lspId, productId, requestedAmount);
         transition(applicationId, "AWAITING_APPROVAL", "Ready for approval");
         markKycComplete(applicationId);
-        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for H15 freeze test");
+        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for freeze test");
         seedBorrowerBankDetails(applicationId, ifsc);
         return UUID.fromString(applicationId);
     }
@@ -880,9 +880,9 @@ class H15ScheduleReplacementFreezeIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "H15 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", ifsc,
-                                "accountHolderName", "H15 Borrower"
+                                "accountHolderName", "Test Borrower"
                         ))))
                 .andExpect(status().isOk());
     }
@@ -893,7 +893,7 @@ class H15ScheduleReplacementFreezeIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", "LSP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
-                                "name", "H15 LSP",
+                                "name", "Test LSP",
                                 "status", "ACTIVE"
                         ))))
                 .andExpect(status().isOk())
@@ -908,7 +908,7 @@ class H15ScheduleReplacementFreezeIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", code,
-                                "name", "H15 product " + code,
+                                "name", "Test product " + code,
                                 "minPrincipal", new BigDecimal("5000.00"),
                                 "maxPrincipal", new BigDecimal("1000000.00"),
                                 "interestRate", new BigDecimal("18.50"),
@@ -938,9 +938,9 @@ class H15ScheduleReplacementFreezeIntegrationTest {
         payload.put("externalLoanId", "EXT-" + UUID.randomUUID().toString().substring(0, 8));
         payload.put("sourceChannel", "API");
         payload.put("borrowerPan", borrowerPan);
-        payload.put("borrowerFullName", "H15 Borrower");
+        payload.put("borrowerFullName", "Test Borrower");
         payload.put("borrowerMobile", mobileForPan(borrowerPan));
-        payload.put("borrowerEmail", "h15+" + borrowerPan.toLowerCase() + "@example.com");
+        payload.put("borrowerEmail", "t15+" + borrowerPan.toLowerCase() + "@example.com");
         payload.put("borrowerDateOfBirth", LocalDate.of(1990, 1, 1));
         payload.put("borrowerCity", "Mumbai");
         payload.put("borrowerState", "Maharashtra");
@@ -979,7 +979,7 @@ class H15ScheduleReplacementFreezeIntegrationTest {
                     String documentKey = item.getDocumentType().name().toLowerCase();
                     item.update(
                             LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                            "Uploaded for H15 freeze test",
+                            "Uploaded for freeze test",
                             "ops.user",
                             documentKey + ".pdf",
                             "storage://" + applicationId + "/" + documentKey + ".pdf",

@@ -17,7 +17,7 @@ import org.hibernate.type.SqlTypes;
 import com.fasterxml.jackson.databind.JsonNode;
 
 /**
- * H02 — immutable canonical provider evidence. One row per attempted initiate/poll, including
+ * Immutable canonical provider evidence. One row per attempted initiate/poll, including
  * timeouts (disposition {@code UNKNOWN}), unresolved status queries, duplicates observed after
  * a terminal outcome ({@code isDuplicate}) and stale responses.
  *

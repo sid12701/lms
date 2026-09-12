@@ -686,7 +686,7 @@ class LspLoanEventFeedApiIntegrationTest {
      * lands on the partner's feed in per-loan order, as ADR 0007's Consequences section names it:
      * {@code DISBURSEMENT_REQUESTED -> DISBURSEMENT_PENDING_RECONCILIATION}.
      *
-     * <p>It deliberately stops at the park. Since C04 the command path rejects re-initiation for
+     * <p>It deliberately stops at the park. The command path rejects re-initiation for
      * a parked account — a parked attempt is in flight and past the point of no return, per
      * CONTEXT.md § Disbursement — so the only forward path is reconciliation of the original
      * reference. The terminal path is covered by {@link #disbursementAndRepaymentReachTheFeed()}
@@ -1158,7 +1158,7 @@ class LspLoanEventFeedApiIntegrationTest {
     }
 
     private void requestDisbursement(String applicationId) throws Exception {
-        // C04: POST commits the durable intent only; execute it here the way the worker does
+        // POST commits the durable intent only; execute it here the way the worker does
         // (IMPS-success fixtures disburse atomically on execution, so no mock outcome follows).
         mockMvc.perform(post(
                         "/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests",
@@ -1174,7 +1174,7 @@ class LspLoanEventFeedApiIntegrationTest {
     }
 
     private void requestAndParkDisbursement(String applicationId) throws Exception {
-        // C04: a stuck attempt (MOCK0STUCK0) stays PENDING after execution, then parks once the
+        // A stuck attempt (MOCK0STUCK0) stays PENDING after execution, then parks once the
         // poll cap is reached — the runAsAdmin scope mirrors the status-check worker.
         mockMvc.perform(post(
                         "/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests",

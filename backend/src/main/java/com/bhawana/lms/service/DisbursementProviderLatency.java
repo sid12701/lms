@@ -6,7 +6,7 @@ import java.util.function.Supplier;
 import org.springframework.stereotype.Component;
 
 /**
- * H27 — provider-call latency timers for the two bank network calls (payment request and status
+ * Provider-call latency timers for the two bank network calls (payment request and status
  * check). No tags: latency is aggregated across LSPs so no tenant, borrower, account, or reference
  * identifier ever becomes a metric label. Wired at both network call sites, outside every
  * transaction; {@code Timer.record} captures timeouts as well as verdicts.

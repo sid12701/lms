@@ -362,7 +362,7 @@ class Issue74LspForeclosureExecuteIntegrationTest {
         transitionToAwaitingApproval(applicationId);
         transitionToApproved(applicationId);
         requestDisbursement(applicationId);
-        // C04: HDFC fixtures disburse atomically on intent execution — no mock outcome follows.
+        // HDFC fixtures disburse atomically on intent execution — no mock outcome follows.
         disbursementIntentWorkflowService.executeForApplication(UUID.fromString(applicationId));
         loanDisbursementCommandService.autoResolveAfterInitiate(
                 UUID.fromString(applicationId), "ops.admin", null, "foreclosure-test");

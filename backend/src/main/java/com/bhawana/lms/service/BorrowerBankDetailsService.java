@@ -262,7 +262,7 @@ public class BorrowerBankDetailsService {
             String actorType,
             String clientIp
     ) {
-        // C06-phase-2 borrower-first order: the borrower row lock comes before every
+        // Borrower-first order: the borrower row lock comes before every
         // application/account/intent touch, and the entity is refreshed after the wait so a
         // cached copy can never overwrite a concurrently committed instruction.
         Borrower borrower = borrowerRepository.findByIdForUpdate(borrowerId)

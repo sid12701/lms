@@ -12,7 +12,7 @@ import java.util.HexFormat;
 import java.util.List;
 
 /**
- * H15: canonical hash of a loan's persisted repayment schedule.
+ * Canonical hash of a loan's persisted repayment schedule.
  *
  * <p>The hash is frozen on the disbursement intent at creation and re-validated before
  * submission preparation, so a schedule replacement that commits after the eligibility check

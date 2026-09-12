@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
 
 /**
- * G01 — guard matrix. Simulation is permitted only by explicit simulation active profiles;
+ * Guard matrix. Simulation is permitted only by explicit simulation active profiles;
  * production-like, default (no active profile) and mixed contexts fail closed.
  */
 class DisbursementSimulationGuardTest {

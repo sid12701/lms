@@ -55,7 +55,7 @@ app:
     worker:
       enabled: false
     intent-workflow:
-      # C04: durable intent is the only path; test profile uses the same path as production.
+      # Durable intent is the only path; test profile uses the same path as production.
       lease-duration-seconds: 120
       claim-batch-size: 10
       lease-owner: disbursement-worker

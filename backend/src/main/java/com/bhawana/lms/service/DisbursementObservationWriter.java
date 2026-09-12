@@ -24,7 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * H02 — leaf writer for the append-only observation trail and the explicit reconciliation
+ * Leaf writer for the append-only observation trail and the explicit reconciliation
  * queue. Called inside the caller's result transaction so the observed result and the
  * accepted outcome commit atomically; a failed local apply rolls both back together and the
  * original reference stays recoverable by polling.
@@ -150,7 +150,7 @@ public class DisbursementObservationWriter {
     }
 
     /**
-     * H02/C06 — earliest durable original evidence for an account (first stored request or
+     * Earliest durable original evidence for an account (first stored request or
      * intent {@code createdAt}), so a newly discovered queue row ages from when the money
      * moved, not from discovery. Uses only durable request/intent rows — never live borrower
      * fields. Falls back to now only when no durable evidence exists at all.
@@ -172,7 +172,7 @@ public class DisbursementObservationWriter {
     }
 
     /**
-     * H02 — creation path that seeds {@code firstSeenAt} from the original evidence instead of
+     * Creation path that seeds {@code firstSeenAt} from the original evidence instead of
      * discovery time (legacy rows discovered long after the money moved). Refreshes never
      * rewrite first-seen, and a held {@code CONFLICTING_EVIDENCE} row is never rewritten at
      * all: its reason, reference, identities and details stand until explicit operator
@@ -204,7 +204,7 @@ public class DisbursementObservationWriter {
                     loanAccount, intent, tranRefNo, reason,
                     properties.nextPollAt(0), details, firstSeenAt);
             maybeEscalate(entry);
-            // H02: explicit persist — the @MapsId assigned identifier makes Spring Data's
+            // Explicit persist — the @MapsId assigned identifier makes Spring Data's
             // save() take the merge path, which misreads a brand-new row as detached and
             // fails. Managed-then-saved updates above are unaffected.
             entityManager.persist(entry);
@@ -214,7 +214,7 @@ public class DisbursementObservationWriter {
     }
 
     /**
-     * H02 — advances the backoff after an actually attempted poll. This is the only writer path
+     * Advances the backoff after an actually attempted poll. This is the only writer path
      * that moves {@code next_poll_at}/{@code poll_count}; observation refreshes never do, so
      * repeated evidence cannot starve due work, while every real attempt backs off.
      */
@@ -227,7 +227,7 @@ public class DisbursementObservationWriter {
     }
 
     /**
-     * H02 — clears the queue row on an accepted outcome, unless it is held for conflicting
+     * Clears the queue row on an accepted outcome, unless it is held for conflicting
      * evidence: real contradictions stay operator-visible after acceptance. No dismissal API
      * exists in this scope — the hold persists alongside the immutable trail, and operator
      * ownership (claim) stays available.
@@ -237,7 +237,7 @@ public class DisbursementObservationWriter {
     }
 
     /**
-     * H02 — conditional clear for no-outcome paths (duplicates, replays): a terminal duplicate
+     * Conditional clear for no-outcome paths (duplicates, replays): a terminal duplicate
      * observation must never wipe a conflicting-evidence queue entry. Only a row that is not
      * being held for conflicting evidence is dismissed.
      */

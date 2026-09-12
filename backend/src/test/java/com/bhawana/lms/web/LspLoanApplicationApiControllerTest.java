@@ -2148,7 +2148,7 @@ class LspLoanApplicationApiControllerTest {
     }
 
     private void requestDisbursement(String applicationId) throws Exception {
-        // C04: POST commits the durable intent only; execute it here the way the worker does
+        // POST commits the durable intent only; execute it here the way the worker does
         // (IMPS-success fixtures disburse atomically on execution).
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))

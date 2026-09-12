@@ -78,7 +78,7 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
                 new ObjectMapper()
         );
         LoanDisbursementMockProperties mockProperties = new LoanDisbursementMockProperties();
-        // C04: durable intent is the only initiation path — no flag, no inline adapter call.
+        // Durable intent is the only initiation path — no flag, no inline adapter call.
         service = new LoanDisbursementCommandService(
                 loanApplicationRepository,
                 loanAccountRepository,
@@ -92,7 +92,7 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
                 disbursementIntentWorkflowService,
                 new DisbursementPaymentModeSelector(mockProperties),
                 simulationGuard,
-                // H02: observation writer + intent repo + mapper for the poll evidence path.
+                // Observation writer + intent repo + mapper for the poll evidence path.
                 mock(DisbursementObservationWriter.class),
                 disbursementIntentRepository,
                 new ObjectMapper(),
@@ -132,7 +132,7 @@ class LoanDisbursementCommandServiceProcessingFeeTest {
         // 150000 - (150000 * 1.5%) = 150000 - 2250 = 147750.00 net cash to borrower
         assertEquals(new BigDecimal("147750.00"), amountCaptor.getValue());
         assertEquals(DisbursementPaymentMode.IMPS, modeCaptor.getValue());
-        // C04: the command service never calls the bank itself — the worker executes the
+        // The command service never calls the bank itself — the worker executes the
         // committed intent outside any transaction.
         verify(loanDisbursementAdapter, never()).requestDisbursement(any());
     }

@@ -539,8 +539,8 @@ public class LoanApplicationOpsController {
     }
 
     /**
-     * H02 — privileged evidence-backed manual resolution. Consumes one stored definitive
-     * matching provider observation through the single C02 applier; replay-safe. Any
+     * Privileged evidence-backed manual resolution. Consumes one stored definitive
+     * matching provider observation through the single terminal-result applier; replay-safe. Any
      * missing, non-definitive or mismatched evidence is rejected — outcomes are never
      * invented.
      */

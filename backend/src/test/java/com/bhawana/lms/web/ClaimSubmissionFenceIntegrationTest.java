@@ -67,7 +67,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * C03 — intent ownership and submission are claimed atomically.
+ * Intent ownership and submission are claimed atomically.
  *
  * <p>Fast (single) and batch claims share one conditional primitive returning a
  * ClaimToken(intentId, owner, attemptCount). Preparation only grants submission permission when
@@ -82,7 +82,7 @@ import org.springframework.transaction.support.TransactionTemplate;
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class C03ClaimSubmissionFenceIntegrationTest {
+class ClaimSubmissionFenceIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -213,10 +213,10 @@ class C03ClaimSubmissionFenceIntegrationTest {
                         "0", "Check Transaction Successful",
                         com.bhawana.lms.domain.DisbursementDisposition.SUCCESS,
                         com.bhawana.lms.domain.DisbursementDeclineKind.NONE,
-                        "0", "RRN-C03-CRASH", "recovered", "{}"))
+                        "0", "RRN-CRASH-001", "recovered", "{}"))
                 .when(loanDisbursementAdapter).checkStatus(any());
         assertTrue(loanDisbursementCommandService.pollPendingDisbursement(
-                applicationId, "worker", null, "c03-crash"));
+                applicationId, "worker", null, "t03-crash"));
         assertEquals(LoanAccountStatus.DISBURSED,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
         assertEquals(tranRefNo, disbursementIntentRepository.findById(intentId).orElseThrow().getTranRefNo());
@@ -392,7 +392,7 @@ class C03ClaimSubmissionFenceIntegrationTest {
         String applicationId = createApplicationViaOps(lspId, productId, requestedAmount);
         transition(applicationId, "AWAITING_APPROVAL", "Ready for approval");
         markKycComplete(applicationId);
-        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for C03 fence test");
+        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for fence test");
         seedBorrowerBankDetails(applicationId, ifsc);
         return UUID.fromString(applicationId);
     }
@@ -405,9 +405,9 @@ class C03ClaimSubmissionFenceIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "C03 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", ifsc,
-                                "accountHolderName", "C03 Borrower"
+                                "accountHolderName", "Test Borrower"
                         ))))
                 .andExpect(status().isOk());
     }
@@ -418,7 +418,7 @@ class C03ClaimSubmissionFenceIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", "LSP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
-                                "name", "C03 LSP",
+                                "name", "Test LSP",
                                 "status", "ACTIVE"
                         ))))
                 .andExpect(status().isOk())
@@ -433,7 +433,7 @@ class C03ClaimSubmissionFenceIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", code,
-                                "name", "C03 product " + code,
+                                "name", "Test product " + code,
                                 "minPrincipal", new BigDecimal("5000.00"),
                                 "maxPrincipal", new BigDecimal("1000000.00"),
                                 "interestRate", new BigDecimal("18.50"),
@@ -463,9 +463,9 @@ class C03ClaimSubmissionFenceIntegrationTest {
         payload.put("externalLoanId", "EXT-" + UUID.randomUUID().toString().substring(0, 8));
         payload.put("sourceChannel", "API");
         payload.put("borrowerPan", borrowerPan);
-        payload.put("borrowerFullName", "C03 Borrower");
+        payload.put("borrowerFullName", "Test Borrower");
         payload.put("borrowerMobile", mobileForPan(borrowerPan));
-        payload.put("borrowerEmail", "c03+" + borrowerPan.toLowerCase() + "@example.com");
+        payload.put("borrowerEmail", "t03+" + borrowerPan.toLowerCase() + "@example.com");
         payload.put("borrowerDateOfBirth", LocalDate.of(1990, 1, 1));
         payload.put("borrowerCity", "Mumbai");
         payload.put("borrowerState", "Maharashtra");
@@ -504,7 +504,7 @@ class C03ClaimSubmissionFenceIntegrationTest {
                     String documentKey = item.getDocumentType().name().toLowerCase();
                     item.update(
                             LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                            "Uploaded for C03 fence test",
+                            "Uploaded for fence test",
                             "ops.user",
                             documentKey + ".pdf",
                             "storage://" + applicationId + "/" + documentKey + ".pdf",

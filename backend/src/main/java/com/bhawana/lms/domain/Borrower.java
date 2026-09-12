@@ -309,7 +309,7 @@ public class Borrower {
     }
 
     /**
-     * C06-phase-2: merges every profile field except the shared bank instruction, which must
+     * Merges every profile field except the shared bank instruction, which must
      * flow through {@code BorrowerBankUpdatePolicy} so it is gated and audited like an
      * explicit edit. Callers capture the bank delta separately via the policy.
      */

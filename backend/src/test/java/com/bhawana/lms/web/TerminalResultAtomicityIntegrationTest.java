@@ -1,10 +1,13 @@
 package com.bhawana.lms.web;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
@@ -13,21 +16,25 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.bhawana.lms.common.api.error.ApiConflictException;
+import com.bhawana.lms.domain.DisbursementDeclineKind;
+import com.bhawana.lms.domain.DisbursementDisposition;
+import com.bhawana.lms.domain.DisbursementIntent;
 import com.bhawana.lms.domain.DisbursementIntentState;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationStatus;
+import com.bhawana.lms.domain.LoanDisbursementRequestLog;
 import com.bhawana.lms.repo.DisbursementIntentRepository;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
+import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanDisbursementRequestLogRepository;
 import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.LoanApplicationStatusWriter;
 import com.bhawana.lms.service.LoanDisbursementAdapter;
 import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.service.LoanDisbursementWorkerService;
@@ -42,6 +49,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -53,9 +61,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
- * C04 — the durable intent is the only money-movement path. Initiation never calls the bank
- * synchronously, re-initiation from REQUESTED/PENDING_RECONCILIATION is rejected with no new
- * reference, and no configuration can re-enable the removed inline path.
+ * Terminal bank results are applied to the loan atomically: crash-before-commit rolls back
+ * observation and application together, stranded terminal evidence is repaired once from stored
+ * evidence with zero re-initiations, and a delayed failed poll cannot undo an accepted success.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -64,7 +72,7 @@ import org.springframework.test.web.servlet.MvcResult;
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class C04DurableIntentOnlyPathIntegrationTest {
+class TerminalResultAtomicityIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -73,6 +81,7 @@ class C04DurableIntentOnlyPathIntegrationTest {
     @Autowired private LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     @Autowired private DisbursementIntentRepository disbursementIntentRepository;
     @Autowired private LoanDisbursementRequestLogRepository loanDisbursementRequestLogRepository;
+    @Autowired private LoanApplicationStatusTransitionRepository loanApplicationStatusTransitionRepository;
     @Autowired private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
     @Autowired private LoanDisbursementCommandService loanDisbursementCommandService;
     @Autowired private LoanDisbursementWorkerService loanDisbursementWorkerService;
@@ -80,183 +89,191 @@ class C04DurableIntentOnlyPathIntegrationTest {
     @MockitoSpyBean
     private LoanDisbursementAdapter loanDisbursementAdapter;
 
+    @MockitoSpyBean
+    private LoanApplicationStatusWriter loanApplicationStatusWriter;
+
     @BeforeEach
     void resetMocks() {
-        reset(loanDisbursementAdapter);
+        reset(loanDisbursementAdapter, loanApplicationStatusWriter);
     }
 
     @Test
-    void initiateCreatesIntentWithoutCallingBank() throws Exception {
+    void terminalInitiateAppliesLoanAtomicallyAndAutoResolveIsANoOp() throws Exception {
         UUID applicationId = seedApproved("HDFC0001234", new BigDecimal("45000.00"));
-
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
 
-        // C04: initiation commits Tx-A only — the bank is contacted by the worker afterwards.
+        // No provider contact until the worker executes the committed intent.
         verify(loanDisbursementAdapter, never()).requestDisbursement(any());
 
+        disbursementIntentWorkflowService.executeForApplication(applicationId);
+
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
-        assertEquals(LoanAccountStatus.DISBURSEMENT_REQUESTED, account.getStatus());
-        var intent = disbursementIntentRepository.findLiveByLoanAccountId(account.getId()).orElseThrow();
-        assertEquals(DisbursementIntentState.CREATED, intent.getState());
-        assertEquals(1, intentsForAccount(account.getId()));
-        // Tx-A persists no provider log; the log is written when the worker executes the intent.
-        assertEquals(0, loanDisbursementRequestLogRepository.countByLoanAccount_Id(account.getId()));
+        DisbursementIntent intent =
+                disbursementIntentRepository.findTopByLoanAccount_IdAndStateOrderByCreatedAtDesc(
+                        account.getId(), DisbursementIntentState.SUCCEEDED).orElseThrow();
+        assertEquals(DisbursementIntentState.SUCCEEDED, intent.getState());
+        assertEquals(LoanAccountStatus.DISBURSED, account.getStatus());
+        assertEquals(LoanApplicationStatus.DISBURSED,
+                loanApplicationRepository.findById(applicationId).orElseThrow().getStatus());
+        verify(loanDisbursementAdapter, times(1)).requestDisbursement(any());
+
+        int disbursedTransitions = loanApplicationStatusTransitionRepository
+                .findByLoanApplication_IdAndToStatusOrderByCreatedAtAsc(applicationId, LoanApplicationStatus.DISBURSED)
+                .size();
+
+        // The old second commit is now a harmless no-op: nothing left to resolve.
+        assertNull(loanDisbursementCommandService.autoResolveAfterInitiate(
+                applicationId, "ops.admin", null, "t02-noop"));
+        assertEquals(disbursedTransitions, loanApplicationStatusTransitionRepository
+                .findByLoanApplication_IdAndToStatusOrderByCreatedAtAsc(applicationId, LoanApplicationStatus.DISBURSED)
+                .size());
+        verify(loanDisbursementAdapter, times(1)).requestDisbursement(any());
     }
 
     @Test
-    void reInitiationFromRequestedIsRejectedWithNoNewReference() throws Exception {
-        // MOCK0PENDOK stays PENDING after execution: account remains REQUESTED (in flight).
-        UUID applicationId = seedApproved("MOCK0PENDOK", new BigDecimal("45000.00"));
+    void crashBeforeResultCommitRollsBackObservationAndApplicationTogether() throws Exception {
+        UUID applicationId = seedApproved("HDFC0001234", new BigDecimal("45000.00"));
+        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
+                        .with(systemAdmin()))
+                .andExpect(status().isOk());
 
+        // Fail inside the atomic result transaction, before it can commit.
+        doThrow(new IllegalStateException("simulated crash before result commit"))
+                .when(loanApplicationStatusWriter).updateStatus(any(), any());
+
+        assertThrows(IllegalStateException.class,
+                () -> disbursementIntentWorkflowService.executeForApplication(applicationId));
+
+        // Observation and application rolled back as a unit: no terminal intent, no moved loan.
+        LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
+        assertEquals(LoanAccountStatus.DISBURSEMENT_REQUESTED, account.getStatus());
+        assertEquals(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
+                loanApplicationRepository.findById(applicationId).orElseThrow().getStatus());
+        DisbursementIntent intent =
+                disbursementIntentRepository.findLiveByLoanAccountId(account.getId()).orElseThrow();
+        assertEquals(DisbursementIntentState.REQUESTED, intent.getState());
+        LoanDisbursementRequestLog latest = loanDisbursementRequestLogRepository
+                .findTopByLoanAccount_IdOrderByCreatedAtDesc(account.getId()).orElseThrow();
+        assertEquals(DisbursementDisposition.PENDING.name(), latest.getProviderStatus());
+
+        // Recovery polls the ORIGINAL reference and never initiates again.
+        Mockito.doCallRealMethod().when(loanApplicationStatusWriter).updateStatus(any(), any());
+        doAnswer(invocation -> {
+            LoanDisbursementAdapter.DisbursementStatusQuery query = invocation.getArgument(0);
+            return new LoanDisbursementAdapter.DisbursementStatusResult(
+                    "0", "Check Transaction Successful",
+                    DisbursementDisposition.SUCCESS, DisbursementDeclineKind.NONE,
+                    "0", "RRN-RECOVERY-001", "recovered terminal success", "{}");
+        }).when(loanDisbursementAdapter).checkStatus(any());
+
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(
+                applicationId, "worker", null, "t02-recovery"));
+        assertEquals(LoanAccountStatus.DISBURSED,
+                loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
+        verify(loanDisbursementAdapter, times(1)).requestDisbursement(any());
+    }
+
+    @Test
+    void strandedTerminalIntentIsRepairedOnceWithOriginalReference() throws Exception {
+        // Seed a PENDING acceptance (IMPS timeout codes stay PENDING on the payment call).
+        UUID applicationId = seedApproved("MOCK0PENDOK", new BigDecimal("45000.00"));
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
         disbursementIntentWorkflowService.executeForApplication(applicationId);
 
-        LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
-        assertEquals(LoanAccountStatus.DISBURSEMENT_REQUESTED, account.getStatus());
-        assertEquals(1, intentsForAccount(account.getId()));
-        long logsAfterFirst = loanDisbursementRequestLogRepository.countByLoanAccount_Id(account.getId());
-        verify(loanDisbursementAdapter, times(1)).requestDisbursement(any());
+        LoanAccount accepted = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
+        DisbursementIntent pendingIntent =
+                disbursementIntentRepository.findLiveByLoanAccountId(accepted.getId()).orElseThrow();
+        assertEquals(DisbursementIntentState.REQUESTED, pendingIntent.getState());
+        String tranRefNo = pendingIntent.getTranRefNo();
 
-        ApiConflictException conflict = assertThrows(
-                ApiConflictException.class,
-                () -> loanDisbursementCommandService.initiateDisbursement(applicationId, "ops.admin"));
-        assertEquals("DISBURSEMENT_ALREADY_REQUESTED", conflict.getErrorCode());
-
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
-                        .with(systemAdmin()))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errorCode").value("DISBURSEMENT_ALREADY_REQUESTED"));
-
-        // No second reference, no second bank call: the only forward path is status polling.
-        assertEquals(1, intentsForAccount(account.getId()));
-        assertEquals(logsAfterFirst, loanDisbursementRequestLogRepository.countByLoanAccount_Id(account.getId()));
-        verify(loanDisbursementAdapter, times(1)).requestDisbursement(any());
+        // Simulate stored terminal evidence without the loan move. Only the stored evidence
+        // is touched — never a new initiation.
+        DisbursementIntent storedIntent =
+                disbursementIntentRepository.findById(pendingIntent.getId()).orElseThrow();
+        storedIntent.recordProviderResponse(DisbursementIntentState.SUCCEEDED, tranRefNo, "0", "RRN-STRANDED-001",
+                DisbursementDeclineKind.NONE);
+        disbursementIntentRepository.save(storedIntent);
+        LoanDisbursementRequestLog storedLog = loanDisbursementRequestLogRepository
+                .findTopByLoanAccount_IdOrderByCreatedAtDesc(accepted.getId()).orElseThrow();
+        storedLog.updateProviderSubmission("MOCK_ICICI", tranRefNo, "SUCCESS",
+                storedLog.getPaymentMode(), "0", "RRN-STRANDED-001", DisbursementDeclineKind.NONE,
+                "{\"disposition\":\"SUCCESS\",\"tranRefNo\":\"" + tranRefNo + "\"}");
+        loanDisbursementRequestLogRepository.save(storedLog);
         assertEquals(LoanAccountStatus.DISBURSEMENT_REQUESTED,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
+
+        int providerCallsBeforeRepair = Mockito.mockingDetails(loanDisbursementAdapter).getInvocations().size();
+
+        int repaired = disbursementIntentWorkflowService.repairStrandedTerminalDisbursements(10);
+        assertEquals(1, repaired);
+        assertEquals(LoanAccountStatus.DISBURSED,
+                loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
+        assertEquals(LoanApplicationStatus.DISBURSED,
+                loanApplicationRepository.findById(applicationId).orElseThrow().getStatus());
+
+        // Original provider evidence is preserved under its original reference.
+        DisbursementIntent repairedIntent = disbursementIntentRepository.findById(pendingIntent.getId()).orElseThrow();
+        assertEquals(DisbursementIntentState.SUCCEEDED, repairedIntent.getState());
+        assertEquals(tranRefNo, repairedIntent.getTranRefNo());
+        LoanDisbursementRequestLog repairedLog = loanDisbursementRequestLogRepository
+                .findTopByLoanAccount_IdOrderByCreatedAtDesc(accepted.getId()).orElseThrow();
+        assertEquals(tranRefNo, repairedLog.getTranRefNo());
+        assertEquals("RRN-STRANDED-001", repairedLog.getBankRrn());
+        assertEquals("0", repairedLog.getProviderActCode());
+
+        // Exactly one DISBURSED transition; repeat repair is a no-op with zero new bank calls.
+        assertEquals(1, loanApplicationStatusTransitionRepository
+                .findByLoanApplication_IdAndToStatusOrderByCreatedAtAsc(applicationId, LoanApplicationStatus.DISBURSED)
+                .size());
+        assertEquals(0, disbursementIntentWorkflowService.repairStrandedTerminalDisbursements(10));
+        assertEquals(1, loanApplicationStatusTransitionRepository
+                .findByLoanApplication_IdAndToStatusOrderByCreatedAtAsc(applicationId, LoanApplicationStatus.DISBURSED)
+                .size());
+        assertEquals(providerCallsBeforeRepair,
+                Mockito.mockingDetails(loanDisbursementAdapter).getInvocations().size());
     }
 
     @Test
-    void reInitiationFromPendingReconciliationIsRejected() throws Exception {
-        // MOCK0STUCK0 parks after the poll cap (test profile max-polls = 2).
-        UUID applicationId = seedApproved("MOCK0STUCK0", new BigDecimal("45000.00"));
-
+    void delayedFailedPollCannotUndoAcceptedSuccess() throws Exception {
+        UUID applicationId = seedApproved("HDFC0001234", new BigDecimal("45000.00"));
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
         disbursementIntentWorkflowService.executeForApplication(applicationId);
-        loanDisbursementWorkerService.processPendingStatusChecks();
-        loanDisbursementWorkerService.processPendingStatusChecks();
-
-        LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
-        assertEquals(LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION, account.getStatus());
-        assertEquals(1, intentsForAccount(account.getId()));
-        long logsAfterPark = loanDisbursementRequestLogRepository.countByLoanAccount_Id(account.getId());
-        int providerCallsAfterPark = providerCallCount();
-
-        ApiConflictException conflict = assertThrows(
-                ApiConflictException.class,
-                () -> loanDisbursementCommandService.initiateDisbursement(applicationId, "ops.admin"));
-        assertEquals("DISBURSEMENT_ALREADY_REQUESTED", conflict.getErrorCode());
-
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
-                        .with(systemAdmin()))
-                .andExpect(status().isConflict());
-
-        assertEquals(1, intentsForAccount(account.getId()));
-        assertEquals(logsAfterPark, loanDisbursementRequestLogRepository.countByLoanAccount_Id(account.getId()));
-        assertEquals(providerCallsAfterPark, providerCallCount());
-        assertEquals(LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION,
+        assertEquals(LoanAccountStatus.DISBURSED,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
-    }
 
-    @Test
-    void failedAttemptMayInitiateAgainWhileDisbursedMayNot() throws Exception {
-        // Technical decline -> DISBURSEMENT_FAILED: a new attempt is the safe forward path.
-        UUID retryId = seedApproved("MOCK0NPCIDN", new BigDecimal("45000.00"));
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", retryId)
-                        .with(systemAdmin()))
-                .andExpect(status().isOk());
-        disbursementIntentWorkflowService.executeForApplication(retryId);
-        loanDisbursementCommandService.autoResolveAfterInitiate(retryId, "ops.admin", null, "c04-failed");
-        assertEquals(LoanAccountStatus.DISBURSEMENT_FAILED,
-                loanAccountRepository.findByLoanApplication_Id(retryId).orElseThrow().getStatus());
+        LoanAccount disbursed = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
+        String successRrn = loanDisbursementRequestLogRepository
+                .findTopByLoanAccount_IdOrderByCreatedAtDesc(disbursed.getId()).orElseThrow().getBankRrn();
+        assertNotNull(successRrn);
 
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", retryId)
-                        .with(systemAdmin()))
-                .andExpect(status().isOk());
-        LoanAccount retryAccount = loanAccountRepository.findByLoanApplication_Id(retryId).orElseThrow();
-        assertEquals(LoanAccountStatus.DISBURSEMENT_REQUESTED, retryAccount.getStatus());
-        assertEquals(2, intentsForAccount(retryAccount.getId()));
+        // A delayed FAILED status for the same loan arrives after SUCCESS was accepted.
+        doAnswer(invocation -> new LoanDisbursementAdapter.DisbursementStatusResult(
+                "0", "Check Transaction Successful",
+                DisbursementDisposition.FAILED, DisbursementDeclineKind.TECHNICAL,
+                "11", null, "delayed failure must not regress success", "{}"))
+                .when(loanDisbursementAdapter).checkStatus(any());
 
-        // Successful funding -> DISBURSED: further initiation is a harmless no-op that must
-        // never mint a new reference or debit (completed loans return the application as-is).
-        UUID fundedId = seedApproved("HDFC0001234", new BigDecimal("45000.00"));
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", fundedId)
-                        .with(systemAdmin()))
-                .andExpect(status().isOk());
-        disbursementIntentWorkflowService.executeForApplication(fundedId);
-        loanDisbursementCommandService.autoResolveAfterInitiate(fundedId, "ops.admin", null, "c04-funded");
+        loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-ordering");
+
         assertEquals(LoanAccountStatus.DISBURSED,
-                loanAccountRepository.findByLoanApplication_Id(fundedId).orElseThrow().getStatus());
-        LoanAccount fundedAccount = loanAccountRepository.findByLoanApplication_Id(fundedId).orElseThrow();
-        long fundedIntents = intentsForAccount(fundedAccount.getId());
-        long fundedLogs = loanDisbursementRequestLogRepository.countByLoanAccount_Id(fundedAccount.getId());
-        int callsBefore = providerCallCount();
-
-        loanDisbursementCommandService.initiateDisbursement(fundedId, "ops.admin");
-        mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", fundedId)
-                        .with(systemAdmin()))
-                .andExpect(status().isOk());
-        assertEquals(fundedIntents, intentsForAccount(fundedAccount.getId()));
-        assertEquals(fundedLogs, loanDisbursementRequestLogRepository.countByLoanAccount_Id(fundedAccount.getId()));
-        assertEquals(callsBefore, providerCallCount());
-        assertEquals(LoanAccountStatus.DISBURSED,
-                loanAccountRepository.findByLoanApplication_Id(fundedId).orElseThrow().getStatus());
-    }
-
-    @Test
-    void noInlineInitiationPathOrFlagRemains() {
-        // Configuration regression: the second money path is deleted, not disabled.
-        assertTrue(noDeclaredMethod(LoanDisbursementCommandService.class, "initiateDisbursementInline"),
-                "initiateDisbursementInline must be removed");
-        assertTrue(noDeclaredMethod(LoanDisbursementCommandService.class, "pollPendingDisbursementInline"),
-                "pollPendingDisbursementInline must be removed");
-        assertTrue(noDeclaredMethod(
-                com.bhawana.lms.service.DisbursementIntentWorkflowProperties.class, "isEnabled"),
-                "intent-workflow enabled flag must be removed");
-        assertTrue(noDeclaredMethod(
-                com.bhawana.lms.service.DisbursementIntentWorkflowProperties.class, "setEnabled"),
-                "intent-workflow enabled setter must be removed");
-        // The single guarded transition owns the disbursement-state rules.
-        assertFalse(noDeclaredMethod(LoanAccount.class, "requestDisbursement"),
-                "LoanAccount.requestDisbursement must exist as the single transition guard");
-    }
-
-    // --- helpers ---
-
-    private long intentsForAccount(UUID accountId) {
-        return disbursementIntentRepository.findAll().stream()
-                .filter(intent -> intent.getLoanAccount().getId().equals(accountId))
-                .count();
-    }
-
-    private int providerCallCount() {
-        return (int) org.mockito.Mockito.mockingDetails(loanDisbursementAdapter).getInvocations().stream()
-                .filter(invocation -> invocation.getMethod().getName().equals("requestDisbursement"))
-                .count();
-    }
-
-    private static boolean noDeclaredMethod(Class<?> type, String name) {
-        for (var method : type.getDeclaredMethods()) {
-            if (method.getName().equals(name)) {
-                return false;
-            }
-        }
-        return true;
+                loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
+        assertEquals(LoanApplicationStatus.DISBURSED,
+                loanApplicationRepository.findById(applicationId).orElseThrow().getStatus());
+        LoanAccount stillDisbursed = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
+        DisbursementIntent intent = disbursementIntentRepository.findById(
+                disbursementIntentRepository.findTopByLoanAccount_IdAndStateOrderByCreatedAtDesc(
+                        stillDisbursed.getId(), DisbursementIntentState.SUCCEEDED).orElseThrow().getId())
+                .orElseThrow();
+        assertEquals(DisbursementIntentState.SUCCEEDED, intent.getState());
+        assertEquals(successRrn, loanDisbursementRequestLogRepository
+                .findTopByLoanAccount_IdOrderByCreatedAtDesc(stillDisbursed.getId()).orElseThrow().getBankRrn());
+        verify(loanDisbursementAdapter, times(1)).requestDisbursement(any());
     }
 
     private UUID seedApproved(String ifsc, BigDecimal requestedAmount) throws Exception {
@@ -266,7 +283,7 @@ class C04DurableIntentOnlyPathIntegrationTest {
         String applicationId = createApplicationViaOps(lspId, productId, requestedAmount);
         transition(applicationId, "AWAITING_APPROVAL", "Ready for approval");
         markKycComplete(applicationId);
-        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for C04 single-path test");
+        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for atomicity test");
         seedBorrowerBankDetails(applicationId, ifsc);
         return UUID.fromString(applicationId);
     }
@@ -279,9 +296,9 @@ class C04DurableIntentOnlyPathIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "C04 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", ifsc,
-                                "accountHolderName", "C04 Borrower"
+                                "accountHolderName", "Test Borrower"
                         ))))
                 .andExpect(status().isOk());
     }
@@ -292,7 +309,7 @@ class C04DurableIntentOnlyPathIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", "LSP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
-                                "name", "C04 LSP",
+                                "name", "Test LSP",
                                 "status", "ACTIVE"
                         ))))
                 .andExpect(status().isOk())
@@ -307,7 +324,7 @@ class C04DurableIntentOnlyPathIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", code,
-                                "name", "C04 product " + code,
+                                "name", "Test product " + code,
                                 "minPrincipal", new BigDecimal("5000.00"),
                                 "maxPrincipal", new BigDecimal("1000000.00"),
                                 "interestRate", new BigDecimal("18.50"),
@@ -337,9 +354,9 @@ class C04DurableIntentOnlyPathIntegrationTest {
         payload.put("externalLoanId", "EXT-" + UUID.randomUUID().toString().substring(0, 8));
         payload.put("sourceChannel", "API");
         payload.put("borrowerPan", borrowerPan);
-        payload.put("borrowerFullName", "C04 Borrower");
+        payload.put("borrowerFullName", "Test Borrower");
         payload.put("borrowerMobile", mobileForPan(borrowerPan));
-        payload.put("borrowerEmail", "c04+" + borrowerPan.toLowerCase() + "@example.com");
+        payload.put("borrowerEmail", "t02+" + borrowerPan.toLowerCase() + "@example.com");
         payload.put("borrowerDateOfBirth", LocalDate.of(1990, 1, 1));
         payload.put("borrowerCity", "Mumbai");
         payload.put("borrowerState", "Maharashtra");
@@ -378,7 +395,7 @@ class C04DurableIntentOnlyPathIntegrationTest {
                     String documentKey = item.getDocumentType().name().toLowerCase();
                     item.update(
                             LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                            "Uploaded for C04 single-path test",
+                            "Uploaded for atomicity test",
                             "ops.user",
                             documentKey + ".pdf",
                             "storage://" + applicationId + "/" + documentKey + ".pdf",

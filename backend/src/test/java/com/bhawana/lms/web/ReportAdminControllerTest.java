@@ -458,7 +458,7 @@ class ReportAdminControllerTest extends MinioTestSupport {
     }
 
     private void disburseLoan(String applicationId) throws Exception {
-        // C04: durable intent is the only initiation path — seed the frozen beneficiary
+        // Durable intent is the only initiation path — seed the frozen beneficiary
         // instruction, raise the intent, then execute it (IMPS success disburses atomically).
         seedBorrowerBankDetails(applicationId);
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)

@@ -52,8 +52,8 @@ public class LoanDisbursementWorkerService {
         this.disbursementIntentWorkflowService = disbursementIntentWorkflowService;
         this.reconciliationService = reconciliationService;
         this.properties = properties;
-        // H01: low-cardinality failure counters only — never application, account, or
-        // request identifiers in tags. Gauges for intent backlogs stay with H27's
+        // Low-cardinality failure counters only — never application, account, or
+        // request identifiers in tags. Gauges for intent backlogs stay with the
         // DisbursementIntentMetrics; these counters record worker-side failures.
         this.itemFailureCounter = Counter.builder("lms.disbursement.worker.item.failures")
                 .description("Disbursement worker per-item failures; the tick continues with the next item")
@@ -69,7 +69,7 @@ public class LoanDisbursementWorkerService {
      * the committed intent is executed here, outside any transaction (the provider call
      * must never share the initiating transaction).
      *
-     * <p>H01: the catch below runs only AFTER the processor transaction has ended — never
+     * <p>The catch below runs only AFTER the processor transaction has ended — never
      * inside a rollback-only transaction. A failure returns false (never processed) and
      * increments the failure counter, so one parked or conflicted loan can never abort
      * the rest of the tick.
@@ -108,7 +108,7 @@ public class LoanDisbursementWorkerService {
     }
 
     /**
-     * H01: each phase isolates its own scan and per-item failures and contributes zero
+     * Each phase isolates its own scan and per-item failures and contributes zero
      * on failure, so application scanning and bounded intent recovery (claimable
      * execution, stranded repair) always run independently in the same tick.
      */
@@ -125,7 +125,7 @@ public class LoanDisbursementWorkerService {
 
     public int processClaimableIntents() {
         return TenantScopedExecution.callAsAdmin(() -> {
-            // Scan and per-item isolation live in executeClaimableIntents (C03 fenced,
+            // Scan and per-item isolation live in executeClaimableIntents (claim-fenced,
             // CREATED-only); only the mock auto-resolve loop needs a per-item guard here.
             List<UUID> applicationIds = disbursementIntentWorkflowService.executeClaimableIntents();
             int resolved = 0;
@@ -161,7 +161,7 @@ public class LoanDisbursementWorkerService {
     }
 
     /**
-     * H27/H02 — bounded reconciliation sweep phase, invoked from its own schedule (never from
+     * Bounded reconciliation sweep phase, invoked from its own schedule (never from
      * the normal disbursement/status-check ticks, whose behavior is unchanged). Admin scope is
      * entered before any transaction; per-item isolation lives in
      * {@link DisbursementReconciliationService#pollDueQueue}. A sweep-level failure contributes

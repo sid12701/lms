@@ -95,7 +95,7 @@ public class BorrowerOnboardingService {
             }
             validateImmutableBorrowerIdentity(lsp, borrowerByPan, profile, actorUsername);
             raiseActiveLoanDuplicateIfPresent(lsp, borrowerByPan, profile, actorUsername);
-            // C06-phase-2 atomic existing-borrower path, all in this tenant transaction:
+            // Atomic existing-borrower path, all in this tenant transaction:
             // 1. insert only our own access row (V43 permits lsp_id = self) — no detached
             //    full-entity merge, no separately committed admin write;
             // 2. lock and refresh the borrower so the post-wait row is authoritative;
@@ -323,7 +323,7 @@ public class BorrowerOnboardingService {
     }
 
     /**
-     * C06-phase-2 merge contract: an omitted (blank) incoming bank field preserves the
+     * Merge contract: an omitted (blank) incoming bank field preserves the
      * existing instruction instead of clearing it — clearing would both surprise the other
      * LSP sharing the instruction and violate the audit row's NOT NULL beneficiary columns.
      * Explicit edits keep their own null semantics in {@code BorrowerBankDetailsService}.

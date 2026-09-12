@@ -17,7 +17,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * H02 — explicit bounded unresolved queue. One row per loan account with uncertain money:
+ * Explicit bounded unresolved queue. One row per loan account with uncertain money:
  * in-flight ({@code UNKNOWN}/{@code REQUESTED}), parked, legacy mismatches, stranded
  * terminals and conflicting definitive evidence.
  *
@@ -138,7 +138,7 @@ public class DisbursementReconciliationQueueEntry {
     }
 
     /**
-     * H02 — observation-driven refresh: updates identity/reason/evidence timestamp but keeps
+     * Observation-driven refresh: updates identity/reason/evidence timestamp but keeps
      * the polling schedule ({@code nextPollAt}/{@code pollCount}) and the original
      * {@code firstSeenAt}. Only {@link #recordPollAttempt} advances the backoff.
      */
@@ -164,7 +164,7 @@ public class DisbursementReconciliationQueueEntry {
     }
 
     /**
-     * H02 — evidence heartbeat for a held row: records that fresh evidence arrived and drives
+     * Evidence heartbeat for a held row: records that fresh evidence arrived and drives
      * age escalation without touching reason, reference, identities, details, owner or schedule.
      */
     public void touchForObservation() {

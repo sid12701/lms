@@ -25,13 +25,13 @@ import org.springframework.mock.env.MockEnvironment;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * G01 — the mock-outcome and auto-resolve simulation boundary lives on the command service
+ * The mock-outcome and auto-resolve simulation boundary lives on the command service
  * methods themselves, independent of which {@link LoanDisbursementAdapter} is wired, so a
  * future real bank adapter cannot silently re-enable simulation paths. No real adapter is
  * fabricated here: the denial is proven with the mock adapter type still wired.
  */
 @ExtendWith(MockitoExtension.class)
-class G01SimulationMethodGuardTest {
+class SimulationMethodGuardTest {
 
     @Mock private LoanApplicationRepository loanApplicationRepository;
     @Mock private LoanAccountRepository loanAccountRepository;
@@ -55,7 +55,7 @@ class G01SimulationMethodGuardTest {
 
         BusinessRuleViolationException failure = assertThrows(BusinessRuleViolationException.class,
                 () -> service.resolveMockDisbursementOutcome(
-                        applicationId, "ops.admin", null, "g01", MockDisbursementOutcome.DISBURSED));
+                        applicationId, "ops.admin", null, "t01", MockDisbursementOutcome.DISBURSED));
         assertEquals(DisbursementSimulationGuard.SIMULATION_NOT_ALLOWED, failure.getErrorCode());
         verifyNoInteractions(
                 loanApplicationQueryService, loanAccountRepository, loanDisbursementRequestLogRepository,
@@ -67,7 +67,7 @@ class G01SimulationMethodGuardTest {
         LoanDisbursementCommandService service = serviceWithProfiles();
 
         BusinessRuleViolationException failure = assertThrows(BusinessRuleViolationException.class,
-                () -> service.autoResolveAfterInitiate(applicationId, "worker", null, "g01"));
+                () -> service.autoResolveAfterInitiate(applicationId, "worker", null, "t01"));
         assertEquals(DisbursementSimulationGuard.SIMULATION_NOT_ALLOWED, failure.getErrorCode());
         verifyNoInteractions(
                 loanApplicationQueryService, loanAccountRepository, loanDisbursementRequestLogRepository,
@@ -82,7 +82,7 @@ class G01SimulationMethodGuardTest {
                 .thenReturn(Optional.of(loanAccount));
         when(loanAccount.getStatus()).thenReturn(LoanAccountStatus.PENDING_DISBURSEMENT);
 
-        assertNull(service.autoResolveAfterInitiate(applicationId, "worker", null, "g01"));
+        assertNull(service.autoResolveAfterInitiate(applicationId, "worker", null, "t01"));
         verifyNoInteractions(disbursementOutcomeApplier, loanDisbursementAdapter);
     }
 

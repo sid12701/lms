@@ -274,7 +274,7 @@ class Issue86RepaymentIdempotencyIntegrationTest {
     }
 
     private void disburseLoan(String applicationId) throws Exception {
-        // C04: durable intent is the only initiation path — seed the frozen beneficiary
+        // Durable intent is the only initiation path — seed the frozen beneficiary
         // instruction, raise the intent, then execute it (IMPS success disburses atomically).
         String borrowerId = loanApplicationRepository.findById(UUID.fromString(applicationId)).orElseThrow()
                 .getBorrower().getId().toString();

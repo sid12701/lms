@@ -15,7 +15,7 @@ public interface DisbursementReconciliationQueueRepository
         extends JpaRepository<DisbursementReconciliationQueueEntry, UUID> {
 
     /**
-     * H02 — due rows for the automatic sweep, oldest first. Held
+     * Due rows for the automatic sweep, oldest first. Held
      * {@code CONFLICTING_EVIDENCE} rows are excluded: contradictions need explicit operator
      * resolution and must never be auto-polled — selecting them by age would let a stale
      * conflict starve every recoverable entry behind it. They stay visible via the queue
@@ -43,7 +43,7 @@ public interface DisbursementReconciliationQueueRepository
     Optional<Instant> findOldestFirstSeenAt();
 
     /**
-     * H02 — true offset page for operators, oldest first with a stable id tie-break so
+     * True offset page for operators, oldest first with a stable id tie-break so
      * non-multiple offsets page deterministically. Bind the row offset directly instead
      * of converting it to a page number and losing the remainder.
      */

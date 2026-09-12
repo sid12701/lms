@@ -89,7 +89,7 @@ class DisbursementIntentRepositoryImpl implements DisbursementIntentRepositoryCu
         if (row instanceof Object[] columns && columns.length >= 2) {
             return new ClaimToken(toUuid(columns[0]), leaseOwner, toAttempt(columns[1]));
         }
-        // Defensive: older projection returning id only (should not happen after C03).
+        // Defensive: older projection returning id only (should not happen after the claim fence was introduced).
         return new ClaimToken(toUuid(row), leaseOwner, -1);
     }
 

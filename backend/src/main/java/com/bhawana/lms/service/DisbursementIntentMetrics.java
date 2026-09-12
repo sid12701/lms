@@ -8,7 +8,7 @@ import java.util.function.Supplier;
 import org.springframework.stereotype.Component;
 
 /**
- * H27 — operational gauges for disbursement work that must be reconciled, never reissued. Counts
+ * Operational gauges for disbursement work that must be reconciled, never reissued. Counts
  * and oldest ages come from {@link DisbursementVisibilityQueries} bounded aggregates; ages use the
  * stable creation timestamps so polls and retries cannot reset the clock. Labels carry only the
  * bucket — never borrower, account, or request identifiers.

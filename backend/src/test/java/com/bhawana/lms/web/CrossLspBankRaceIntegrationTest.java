@@ -67,14 +67,14 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * C06-phase-2: the shared borrower bank instruction is stable across LSPs.
+ * The shared borrower bank instruction is stable across LSPs.
  *
  * <p>Two LSPs onboard the same global borrower (same PAN/mobile) before either loan is
  * approved. Approving and initiating A's disbursement freezes A's instruction; B's edit must
  * then be rejected atomically (no borrower, access or audit delta). Both commit orderings are
  * covered, plus a true concurrent approval-vs-edit race, failed-onboarding rollback, audit
  * failure rollback, a permitted edit after terminal evidence, and a negative tenant-scope
- * probe. C06-phase-1 frozen polling is left intact and exercised end to end.
+ * probe. Frozen-snapshot polling is left intact and exercised end to end.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -83,7 +83,7 @@ import org.springframework.transaction.support.TransactionTemplate;
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class C06Phase2CrossLspBankRaceIntegrationTest {
+class CrossLspBankRaceIntegrationTest {
 
     private static final String FROZEN_IFSC = "MOCK0PENDOK";
     private static final String EDITED_IFSC = "MOCK0PENDFL";
@@ -432,7 +432,7 @@ class C06Phase2CrossLspBankRaceIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "C06 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", FROZEN_IFSC.toLowerCase(),
                                 "accountHolderName", "Shared Borrower"
                         ))))
@@ -738,7 +738,7 @@ class C06Phase2CrossLspBankRaceIntegrationTest {
     private void approve(String applicationId) throws Exception {
         transition(applicationId, "AWAITING_APPROVAL", "Ready for approval");
         markKycComplete(applicationId);
-        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for C06 phase-2 test");
+        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for phase-2 test");
     }
 
     private void initiate(String applicationId) throws Exception {
@@ -754,7 +754,7 @@ class C06Phase2CrossLspBankRaceIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "C06 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", ifsc,
                                 "accountHolderName", "Shared Borrower"
                         ))))
@@ -957,7 +957,7 @@ class C06Phase2CrossLspBankRaceIntegrationTest {
                     String documentKey = item.getDocumentType().name().toLowerCase();
                     item.update(
                             LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                            "Uploaded for C06 phase-2 test",
+                            "Uploaded for phase-2 test",
                             "ops.user",
                             documentKey + ".pdf",
                             "storage://" + applicationId + "/" + documentKey + ".pdf",
@@ -977,7 +977,7 @@ class C06Phase2CrossLspBankRaceIntegrationTest {
                         .with(systemAdmin())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "name", "C06 phase-2 client",
+                                "name", "Test phase-2 client",
                                 "lspId", lspId,
                                 "status", "ACTIVE"
                         ))))
@@ -1004,7 +1004,7 @@ class C06Phase2CrossLspBankRaceIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", "LSP-" + codeSuffix,
-                                "name", "C06 phase-2 LSP " + codeSuffix,
+                                "name", "Test phase-2 LSP " + codeSuffix,
                                 "status", "ACTIVE"
                         ))))
                 .andExpect(status().isOk())
@@ -1019,7 +1019,7 @@ class C06Phase2CrossLspBankRaceIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", code,
-                                "name", "C06 phase-2 product " + code,
+                                "name", "Test phase-2 product " + code,
                                 "minPrincipal", new BigDecimal("5000.00"),
                                 "maxPrincipal", new BigDecimal("250000.00"),
                                 "interestRate", new BigDecimal("18.50"),

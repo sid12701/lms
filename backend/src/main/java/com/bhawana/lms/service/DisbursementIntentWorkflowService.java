@@ -46,7 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Durable disbursement intent workflow (Spec S3, C04: the only disbursement initiation path):
+ * Durable disbursement intent workflow (the only disbursement initiation path):
  * Tx-A intent creation, out-of-transaction provider calls, and Tx-B outcome persistence.
  * {@link LoanDisbursementCommandService} always delegates here.
  */
@@ -75,7 +75,7 @@ public class DisbursementIntentWorkflowService {
     private final Counter repairScanFailureCounter;
     private final EntityManager entityManager;
     /**
-     * C03: process-unique claim owner (configured prefix + host + startup UUID). All claims from
+     * process-unique claim owner (configured prefix + host + startup UUID). All claims from
      * this process share it; the attempt count distinguishes generations. Two threads in the same
      * process share the owner and must still pass the attempt/state checks.
      */
@@ -113,8 +113,8 @@ public class DisbursementIntentWorkflowService {
         this.objectMapper = objectMapper;
         this.transactionTemplate = transactionTemplate;
         this.providerLatency = providerLatency;
-        // H01: low-cardinality recovery failure counters (scope tag is scan|item only —
-        // never intent, account, or request identifiers). Backlog gauges stay with H27's
+        // low-cardinality recovery failure counters (scope tag is scan|item only —
+        // never intent, account, or request identifiers). Backlog gauges stay with the
         // DisbursementIntentMetrics.
         this.claimFailureCounter = Counter.builder("lms.disbursement.workflow.claim.failures")
                 .description("Claimable-intent recovery failures; later intents still execute")
@@ -148,7 +148,7 @@ public class DisbursementIntentWorkflowService {
         return prefix + "-" + hostname + "-" + shortId;
     }
 
-    /** Process-unique owner used for the C03 claim fence; exposed for tests and ops logs. */
+    /** Process-unique owner used for the claim fence; exposed for tests and ops logs. */
     public String workerOwner() {
         return workerOwner;
     }
@@ -161,7 +161,7 @@ public class DisbursementIntentWorkflowService {
             DisbursementPaymentMode paymentMode,
             String actorUsername
     ) {
-        // Shared loan-command lock order (C01 + C06-phase-2): borrower → application → account → intent.
+        // Shared loan-command lock order: borrower → application → account → intent.
         // The borrower lock comes first so a concurrent cross-LSP bank edit (which also locks
         // the borrower first) serializes instead of interleaving; direct callers are covered too.
         // The caller (initiateDisbursement) already holds these row locks; re-acquiring them is
@@ -188,7 +188,7 @@ public class DisbursementIntentWorkflowService {
         }
         LoanAccount lockedAccount = loanAccountRepository.findByIdForUpdate(loanAccount.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Unknown loan account id: " + loanAccount.getId()));
-        // C04: the intent snapshot is the immutable payment instruction — it cannot be built
+        // the intent snapshot is the immutable payment instruction — it cannot be built
         // without verified beneficiary details on file. Reject cleanly instead of leaking a
         // database constraint violation to the caller. The locked borrower (post-wait refresh
         // above) is authoritative, never a stale cached association.
@@ -236,7 +236,7 @@ public class DisbursementIntentWorkflowService {
                 Strings.normalizeActor(actorUsername),
                 CorrelationIdHolder.get()
         );
-        // H15: freeze the canonical repayment-schedule hash while holding the shared
+        // freeze the canonical repayment-schedule hash while holding the shared
         // application → account → intent locks, so a replacement racing this creation either
         // commits first (and is reflected here) or loses on its own live-intent recheck.
         intent.freezeScheduleHash(loanRepaymentScheduleService.currentScheduleHash(lockedAccount.getId()));
@@ -246,7 +246,7 @@ public class DisbursementIntentWorkflowService {
     }
 
     /**
-     * H01: bounded intent recovery runs independently of application scanning. The claim
+     * bounded intent recovery runs independently of application scanning. The claim
      * scan and every claimed item are isolated: one failure contributes zero for that
      * item while later items still execute and commit in their own transactions. Never
      * re-initiates — only CREATED claims execute, and UNKNOWN/submitted work is left for
@@ -300,7 +300,7 @@ public class DisbursementIntentWorkflowService {
         if (intent.isEmpty()) {
             return Optional.empty();
         }
-        // C03: fast path uses the same conditional claim primitive as batch — atomic UPDATE with
+        // fast path uses the same conditional claim primitive as batch — atomic UPDATE with
         // RETURNING attempt — so fast-vs-fast, fast-vs-batch and batch-vs-batch all fence on
         // owner + attempt, not on a shared owner string.
         Optional<ClaimToken> claimed = transactionTemplate.execute(
@@ -316,7 +316,7 @@ public class DisbursementIntentWorkflowService {
     }
 
     public Optional<UUID> executeClaimedIntent(ClaimToken claim) {
-        // C03: resolve owning IDs OUTSIDE the prepare transaction. The prepare Tx must start with
+        // resolve owning IDs OUTSIDE the prepare transaction. The prepare Tx must start with
         // an empty persistence context so its FOR UPDATE reads hit the database fresh; an unlocked
         // probe inside the same Tx would cache CREATED and let two concurrent preparers both win.
         DisbursementIntent probe = disbursementIntentRepository.findDetailedById(claim.intentId()).orElse(null);
@@ -337,7 +337,7 @@ public class DisbursementIntentWorkflowService {
         UUID intentId = claim.intentId();
         LoanDisbursementAdapter.DisbursementResult result;
         try {
-            // H27/H02: the bank call stays outside every transaction; latency is recorded
+            // The bank call stays outside every transaction; latency is recorded
             // even when the call throws (timeout path persists UNKNOWN below).
             result = providerLatency.timeInitiate(() -> loanDisbursementAdapter.requestDisbursement(context.command()));
         } catch (RuntimeException exception) {
@@ -351,7 +351,7 @@ public class DisbursementIntentWorkflowService {
     }
 
     /**
-     * @deprecated C03 compat: claims atomically then executes. Prefer
+     * @deprecated Compatibility: claims atomically then executes. Prefer
      * {@link #executeClaimedIntent(ClaimToken)} with an explicit token so stale claims cannot
      * proceed. Retained for operational callers that only hold an id.
      */
@@ -374,7 +374,7 @@ public class DisbursementIntentWorkflowService {
     }
 
     /**
-     * H02 — reconciliation poll context. Same frozen instruction as the normal path (intent
+     * reconciliation poll context. Same frozen instruction as the normal path (intent
      * snapshot or original stored payload, never the live borrower row), but open to parked
      * ({@code DISBURSEMENT_PENDING_RECONCILIATION}) loans so an exhausted poll keeps polling
      * the <em>original</em> reference to success instead of re-initiating. Empty means either
@@ -391,11 +391,11 @@ public class DisbursementIntentWorkflowService {
         if (loanAccount == null) {
             return Optional.empty();
         }
-        // C06-phase-1: normal polling reconciles only still-REQUESTED loans. Terminal or parked
-        // accounts must not trigger a provider call here; stranded terminals belong to the C02
-        // repair path and parked loans to H02 reconciliation. Returning empty before the adapter
+        // normal polling reconciles only still-REQUESTED loans. Terminal or parked
+        // accounts must not trigger a provider call here; stranded terminals belong to the repair path
+        // and parked loans to reconciliation. Returning empty before the adapter
         // call guarantees zero calls, zero poll-count increments and zero mutations for them.
-        // H02 reconciliation polling (allowParked) additionally serves parked loans, still on
+        // Reconciliation polling (allowParked) additionally serves parked loans, still on
         // the frozen original reference — never a fresh initiation.
         if (allowParked
                 ? loanAccount.getStatus() != LoanAccountStatus.DISBURSEMENT_REQUESTED
@@ -440,7 +440,7 @@ public class DisbursementIntentWorkflowService {
             return;
         }
         DisbursementIntent intent = live.get();
-        // C06-phase-1: never mark a different live instruction with this poll verdict. A tranRefNo
+        // never mark a different live instruction with this poll verdict. A tranRefNo
         // mismatch means the poll evidence does not belong to the current live intent; the verdict
         // is still applied to the loan via the applier, but the unrelated intent row is left alone.
         if (!Objects.equals(intent.getTranRefNo(), expectedTranRefNo)) {
@@ -461,7 +461,7 @@ public class DisbursementIntentWorkflowService {
 
     @Transactional
     DisbursementIntent claimIntent(UUID intentId) {
-        // C03 compat: the fast path must use the same atomic primitive as batch. The old
+        // Compatibility: the fast path must use the same atomic primitive as batch. The old
         // read-then-write allowed two concurrent claimants to both stamp the same row.
         Instant now = Instant.now();
         Optional<ClaimToken> token = disbursementIntentRepository.claimSingle(
@@ -474,7 +474,7 @@ public class DisbursementIntentWorkflowService {
 
     ProviderCallContext loadProviderCallContext(ClaimToken claim, UUID applicationId, UUID loanAccountId) {
         UUID intentId = claim.intentId();
-        // Shared lock order (C01: application → account → intent) — honored by invalidation, so no
+        // Shared lock order (application → account → intent) — honored by invalidation, so no
         // deadlock. This Tx starts with an empty persistence context (probe happened outside), so
         // every FOR UPDATE below reads the committed row fresh; a concurrent winner's REQUESTED
         // commit is always observed and loses here on state.
@@ -490,7 +490,7 @@ public class DisbursementIntentWorkflowService {
         Instant now = Instant.now();
         if (intent == null
                 || !intent.getState().isClaimable()
-                // C03 fence: owner + attempt + live lease must still match the captured token.
+                // Claim fence: owner + attempt + live lease must still match the captured token.
                 // A stale claim (same shared owner string, older attempt) loses here, as does a
                 // claim taken over by another process after lease expiry. Threads in the same
                 // process share the owner, so the attempt check is what separates them.
@@ -514,12 +514,12 @@ public class DisbursementIntentWorkflowService {
         if (loanAccount.getStatus() == LoanAccountStatus.INVALID) {
             return null;
         }
-        // H15: the frozen schedule hash must still match the persisted schedule. A replacement
+        // the frozen schedule hash must still match the persisted schedule. A replacement
         // that committed after intent creation (or after the last eligibility check) changes the
         // terms the provider call would execute against, so preparation grants no submission
         // permission. Missing legacy evidence is never invented: a CREATED intent without a
         // frozen hash stays blocked, while an already-submitted instruction remains
-        // reconcilable through the existing C02/H02 paths (which never pass through here).
+        // reconcilable through the existing repair/reconciliation paths (which never pass through here).
         String frozenScheduleHash = intent.getScheduleHash();
         if (frozenScheduleHash == null) {
             log.warn("Disbursement submission blocked reason=schedule_evidence_missing intentId={} loanAccountId={}.",
@@ -587,7 +587,7 @@ public class DisbursementIntentWorkflowService {
                 .findById(context.requestLogId())
                 .orElseThrow(() -> new IllegalArgumentException("Unknown disbursement request log id: " + context.requestLogId()));
 
-        // H02: the INITIATE observation is recorded in every path — including terminal/stale
+        // the INITIATE observation is recorded in every path — including terminal/stale
         // duplicates — in the same transaction as the outcome decision, so the observed result
         // and the accepted outcome commit atomically and a failed local apply rolls both back
         // together, staying recoverable by the original reference.
@@ -646,7 +646,7 @@ public class DisbursementIntentWorkflowService {
                 log.warn("Ignoring duplicate/stale provider outcome for intent {} (state {}, account {}).",
                         intentId, intent.getState(), loanAccount.getStatus());
             } else {
-                // H02: terminal duplicate — the observation above is preserved, the accepted
+                // terminal duplicate — the observation above is preserved, the accepted
                 // outcome stands, and the queue is left untouched: a conflicting-evidence entry
                 // held for operators must never be dismissed by a late duplicate.
                 log.warn("Ignoring duplicate provider outcome for already-terminal intent {} (state {}, account {}).",
@@ -702,10 +702,10 @@ public class DisbursementIntentWorkflowService {
                     null,
                     intent.getCorrelationId()
             );
-            // H02: terminal outcome accepted — the loan is resolved, clear any queue entry.
+            // terminal outcome accepted — the loan is resolved, clear any queue entry.
             observationWriter.clear(loanAccount.getId());
         } else {
-            // H02: still in flight — the loan stays visible in the reconciliation queue on its
+            // still in flight — the loan stays visible in the reconciliation queue on its
             // original reference until polling or manual evidence resolves it.
             observationWriter.enqueue(
                     loanAccount,
@@ -725,7 +725,7 @@ public class DisbursementIntentWorkflowService {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown loan account id: " + context.loanAccountId()));
         DisbursementIntent intent = disbursementIntentRepository.findByIdForUpdate(intentId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown disbursement intent id: " + intentId));
-        // H02: timeouts are PENDING observations with an unresolved query — recorded in every
+        // timeouts are PENDING observations with an unresolved query — recorded in every
         // path, including already-terminal duplicates, so no attempt is ever lost.
         String unknownRequestJson = serializeDisbursementRequest(context.command());
         String unknownResponseJson = serializeUnknownResponse(message);
@@ -780,7 +780,7 @@ public class DisbursementIntentWorkflowService {
         );
         disbursementIntentRepository.save(intent);
 
-        // H02: an UNKNOWN instruction is unresolved money — visible in the queue until a
+        // an UNKNOWN instruction is unresolved money — visible in the queue until a
         // definitive observation arrives via polling or evidence-backed manual resolution.
         observationWriter.enqueue(
                 loanAccount,
@@ -835,7 +835,7 @@ public class DisbursementIntentWorkflowService {
         if (latestRequest == null || !Objects.equals(latestRequest.getTranRefNo(), intent.getTranRefNo())) {
             log.warn("Stranded intent {} has no trustworthy stored request for reference {}; flagging for manual reconciliation.",
                     intentId, intent.getTranRefNo());
-            // H02: missing evidence is an operator-queue item, never fabricated history.
+            // missing evidence is an operator-queue item, never fabricated history.
             observationWriter.enqueue(
                     loanAccount,
                     intent,
@@ -864,13 +864,13 @@ public class DisbursementIntentWorkflowService {
                 null,
                 intent.getCorrelationId()
         );
-        // H02: stranded terminal applied — the loan is resolved, drop its queue entry.
+        // stranded terminal applied — the loan is resolved, drop its queue entry.
         observationWriter.clear(loanAccount.getId());
         return true;
     }
 
     /**
-     * H01: stranded-terminal repair is bounded recovery without re-initiation. Scan
+     * stranded-terminal repair is bounded recovery without re-initiation. Scan
      * failures repair zero while per-item failures are isolated with per-item counters,
      * so one bad intent never starves the rest of the batch.
      */
@@ -912,7 +912,7 @@ public class DisbursementIntentWorkflowService {
     }
 
     /**
-     * H02 — queue reason for still-unresolved money: UNKNOWN instructions, parked loans,
+     * queue reason for still-unresolved money: UNKNOWN instructions, parked loans,
      * stranded terminals (terminal intent, loan still REQUESTED), else plain in-flight.
      */
     static DisbursementReconciliationReason queueReasonFor(
@@ -931,7 +931,7 @@ public class DisbursementIntentWorkflowService {
     }
 
     /**
-     * H02 — true when a late definitive verdict disagrees with the already-accepted outcome, so
+     * true when a late definitive verdict disagrees with the already-accepted outcome, so
      * it must surface as conflicting evidence instead of regressing the loan. Terminal
      * precedence: an accepted SUCCESS is only contradicted by FAILED and vice versa. A null
      * intent state (no live intent, e.g. legacy rows) falls back to the account status alone.
@@ -1012,7 +1012,7 @@ public class DisbursementIntentWorkflowService {
             DisbursementPaymentMode frozenPaymentMode
     ) {
         public LoanDisbursementAdapter.DisbursementStatusQuery query() {
-            // C06-phase-1: the status query reuses the frozen payment instruction (intent snapshot
+            // the status query reuses the frozen payment instruction (intent snapshot
             // or, for legacy rows without an intent, the original stored request payload) — never
             // the borrower's current IFSC. The photo is taken at intent creation, not at approval.
             return new LoanDisbursementAdapter.DisbursementStatusQuery(
@@ -1025,13 +1025,13 @@ public class DisbursementIntentWorkflowService {
     }
 
     /**
-     * C06-phase-1 frozen-instruction resolution.
+     * Frozen-instruction resolution.
      *
      * <p>Modern rows: the live intent and the latest stored request must agree on loan account,
      * reference and rail, and on the beneficiary IFSC. The frozen query then uses the intent's
      * snapshot.
      *
-     * <p>Legacy rows without a live intent (pre-C04 inline requests, stranded terminals with no
+     * <p>Legacy rows without a live intent (early inline requests, stranded terminals with no
      * live intent): the original stored request payload is the only verifiable instruction and
      * drives polling.
      *

@@ -56,7 +56,7 @@ public interface DisbursementIntentRepository extends JpaRepository<Disbursement
     Optional<DisbursementIntent> findLiveByLoanAccountIdForUpdate(@Param("loanAccountId") UUID loanAccountId);
 
     /**
-     * C06-phase-2: cross-LSP live-instruction probe for the bank-edit gate. Any non-terminal
+     * Cross-LSP live-instruction probe for the bank-edit gate. Any non-terminal
      * intent (CREATED, REQUESTED, UNKNOWN) attached to any of the borrower's accounts means
      * money may already have left an LSP disbursal account, so shared bank details are frozen.
      */
@@ -79,7 +79,7 @@ public interface DisbursementIntentRepository extends JpaRepository<Disbursement
             DisbursementIntentState state
     );
 
-    /** H02 — earliest intent per account (original-evidence aging). */
+    /** Earliest intent per account (original-evidence aging). */
     Optional<DisbursementIntent> findTopByLoanAccount_IdOrderByCreatedAtAsc(UUID loanAccountId);
 
     @Query("""

@@ -91,7 +91,7 @@ class DisbursementPreviewIntegrationTest {
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
 
-        // C04: initiation commits the intent only — the previewed amount reaches the bank when
+        // Initiation commits the intent only — the previewed amount reaches the bank when
         // the worker executes the committed intent outside any transaction.
         verify(loanDisbursementAdapter, never()).requestDisbursement(any());
         disbursementIntentWorkflowService.executeForApplication(applicationId);

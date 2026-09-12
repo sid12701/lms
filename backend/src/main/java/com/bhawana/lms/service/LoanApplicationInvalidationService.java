@@ -79,7 +79,7 @@ public class LoanApplicationInvalidationService {
             throw new IllegalArgumentException("Loan application is required.");
         }
 
-        // Shared loan-command lock order (C01): application → account → intent.
+        // Shared loan-command lock order: application → account → intent.
         // Intent creation (Tx-A) and submission preparation both acquire the application
         // row lock first, so invalidation serializes against them: whichever transaction
         // commits first is visible to the other before it makes a decision.

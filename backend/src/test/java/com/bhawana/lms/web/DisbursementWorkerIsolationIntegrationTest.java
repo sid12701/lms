@@ -71,7 +71,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
- * H01 — a parked/conflicted loan must never abort a disbursement tick or starve
+ * A parked/conflicted loan must never abort a disbursement tick or starve
  * recovery. All tests run against the real PostgreSQL Testcontainers database (never
  * H2): failures below roll back real transactions, and the assertions prove later
  * eligible items plus expired-intent recovery still run and commit.
@@ -83,7 +83,7 @@ import org.springframework.test.web.servlet.MvcResult;
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class H01DisbursementWorkerIsolationIntegrationTest {
+class DisbursementWorkerIsolationIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -137,11 +137,11 @@ class H01DisbursementWorkerIsolationIntegrationTest {
         // Expired-lease recovery candidate: a committed CREATED intent whose lease has
         // lapsed, claimed by the batch path in the same tick.
         UUID expiredId = seedApproved("HDFC0001234", new BigDecimal("45000.00"));
-        loanDisbursementCommandService.initiateDisbursement(expiredId, "h01.setup");
+        loanDisbursementCommandService.initiateDisbursement(expiredId, "t01.setup");
         DisbursementIntent expiredIntent = disbursementIntentRepository
                 .findLiveByLoanAccountId(loanAccountRepository.findByLoanApplication_Id(expiredId).orElseThrow().getId())
                 .orElseThrow();
-        expiredIntent.stampLease("h01-stale-owner", Instant.now().minusSeconds(3600));
+        expiredIntent.stampLease("t01-stale-owner", Instant.now().minusSeconds(3600));
         disbursementIntentRepository.save(expiredIntent);
 
         // Snapshots BEFORE the tick: seeding already wrote transitions/audits/events, so
@@ -165,7 +165,7 @@ class H01DisbursementWorkerIsolationIntegrationTest {
             Object result = invocation.callRealMethod();
             if (poisonedId.equals(candidateId)) {
                 realInitiateCompleted.set(true);
-                throw new IllegalStateException("H01 post-save rollback probe");
+                throw new IllegalStateException("post-save rollback probe");
             }
             return result;
         }).when(loanDisbursementCommandService).initiateDisbursement(any(UUID.class), any());
@@ -228,16 +228,16 @@ class H01DisbursementWorkerIsolationIntegrationTest {
     @Test
     void scanFailureInOnePhaseDoesNotStopOtherPhases() throws Exception {
         UUID recoveryId = seedApproved("HDFC0001234", new BigDecimal("45000.00"));
-        loanDisbursementCommandService.initiateDisbursement(recoveryId, "h01.setup");
+        loanDisbursementCommandService.initiateDisbursement(recoveryId, "t01.setup");
         DisbursementIntent recoveryIntent = disbursementIntentRepository
                 .findLiveByLoanAccountId(loanAccountRepository.findByLoanApplication_Id(recoveryId).orElseThrow().getId())
                 .orElseThrow();
-        recoveryIntent.stampLease("h01-stale-owner", Instant.now().minusSeconds(3600));
+        recoveryIntent.stampLease("t01-stale-owner", Instant.now().minusSeconds(3600));
         disbursementIntentRepository.save(recoveryIntent);
 
         // The APPROVED scan fails outright; the RETRY scan plus claimable and repair
         // recovery must still run and commit in the same tick.
-        doThrow(new IllegalStateException("H01 scan probe"))
+        doThrow(new IllegalStateException("scan probe"))
                 .when(loanApplicationRepository)
                 .findByStatus(eq(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL));
 
@@ -260,21 +260,21 @@ class H01DisbursementWorkerIsolationIntegrationTest {
         UUID probeFailedId = seedApproved("HDFC0001234", new BigDecimal("45000.00"));
         UUID unknownId = seedApproved("HDFC0001234", new BigDecimal("45000.00"));
         UUID healthyId = seedApproved("HDFC0001234", new BigDecimal("45000.00"));
-        loanDisbursementCommandService.initiateDisbursement(probeFailedId, "h01.setup");
-        loanDisbursementCommandService.initiateDisbursement(unknownId, "h01.setup");
-        loanDisbursementCommandService.initiateDisbursement(healthyId, "h01.setup");
+        loanDisbursementCommandService.initiateDisbursement(probeFailedId, "t01.setup");
+        loanDisbursementCommandService.initiateDisbursement(unknownId, "t01.setup");
+        loanDisbursementCommandService.initiateDisbursement(healthyId, "t01.setup");
         UUID probeIntentId = liveIntentIdFor(probeFailedId);
         String unknownRef = liveIntentRefFor(unknownId);
 
         // Per-item failure inside the claim batch (outside the provider-call guard):
         // the probe read itself throws for one intent while the rest of the batch runs.
         // Targeted doThrow: unstubbed ids delegate to the real bean by default.
-        doThrow(new IllegalStateException("H01 claim probe failure"))
+        doThrow(new IllegalStateException("claim probe failure"))
                 .when(disbursementIntentRepository).findDetailedById(eq(probeIntentId));
 
         // Provider-side failure for another intent: persisted as UNKNOWN in its own fresh
         // transaction and still reported (not counted as a batch failure).
-        doThrow(new IllegalStateException("H01 provider probe failure"))
+        doThrow(new IllegalStateException("provider probe failure"))
                 .when(loanDisbursementAdapter).requestDisbursement(
                         argThat(command -> command != null && unknownRef.equals(command.tranRefNo())));
 
@@ -301,7 +301,7 @@ class H01DisbursementWorkerIsolationIntegrationTest {
         reset(disbursementIntentRepository, loanDisbursementAdapter);
         DisbursementIntent probeIntent =
                 disbursementIntentRepository.findById(probeIntentId).orElseThrow();
-        probeIntent.stampLease("h01-stale-owner", Instant.now().minusSeconds(3600));
+        probeIntent.stampLease("t01-stale-owner", Instant.now().minusSeconds(3600));
         disbursementIntentRepository.save(probeIntent);
         disbursementIntentWorkflowService.executeClaimableIntents();
         loanDisbursementWorkerService.processPendingStatusChecks();
@@ -324,7 +324,7 @@ class H01DisbursementWorkerIsolationIntegrationTest {
         // Per-item failure inside the repair batch: the latest-request read itself
         // throws for one stranded intent while the other still repairs and commits.
         // Targeted doThrow: unstubbed accounts delegate to the real bean by default.
-        doThrow(new IllegalStateException("H01 repair probe failure"))
+        doThrow(new IllegalStateException("repair probe failure"))
                 .when(loanDisbursementRequestLogRepository)
                 .findTopByLoanAccount_IdOrderByCreatedAtDesc(eq(failedAccountId));
 
@@ -342,7 +342,7 @@ class H01DisbursementWorkerIsolationIntegrationTest {
 
         // Isolation cleanup (owned row only): with the probe stub restored, recover the
         // failed stranded item through the production repair path so no stranded fixture
-        // leaks into later suites (e.g. C02's exact repair-count assertion).
+        // leaks into later suites (e.g. the exact repair-count assertion).
         reset(loanDisbursementRequestLogRepository);
         loanDisbursementWorkerService.processStrandedTerminalResults();
         assertEquals(LoanAccountStatus.DISBURSED,
@@ -352,7 +352,7 @@ class H01DisbursementWorkerIsolationIntegrationTest {
     @Test
     void repeatedParkedProcessingCreatesZeroNewReferences() throws Exception {
         UUID parkedId = seedApproved("MOCK0STUCK0", new BigDecimal("45000.00"));
-        loanDisbursementCommandService.initiateDisbursement(parkedId, "h01.setup");
+        loanDisbursementCommandService.initiateDisbursement(parkedId, "t01.setup");
         disbursementIntentWorkflowService.executeForApplication(parkedId);
         loanDisbursementWorkerService.processPendingStatusChecks();
         loanDisbursementWorkerService.processPendingStatusChecks();
@@ -410,7 +410,7 @@ class H01DisbursementWorkerIsolationIntegrationTest {
             // A concurrent submission commits while the worker is parked BEFORE it acquires
             // any lock. The worker's locked rechecks must then observe the live intent and
             // skip — never reject, never mint a second reference.
-            loanDisbursementCommandService.initiateDisbursement(raceId, "h01.race");
+            loanDisbursementCommandService.initiateDisbursement(raceId, "t01.race");
         } finally {
             releaseWorker.countDown();
         }
@@ -427,7 +427,7 @@ class H01DisbursementWorkerIsolationIntegrationTest {
         // production path so no claimable fixture leaks into later suites.
         reset(loanDisbursementWorkerProcessor);
         disbursementIntentWorkflowService.executeForApplication(raceId);
-        loanDisbursementCommandService.autoResolveAfterInitiate(raceId, "h01.cleanup", null, "h01-cleanup");
+        loanDisbursementCommandService.autoResolveAfterInitiate(raceId, "t01.cleanup", null, "t01-cleanup");
         assertEquals(LoanApplicationStatus.DISBURSED,
                 loanApplicationRepository.findById(raceId).orElseThrow().getStatus());
     }
@@ -471,9 +471,9 @@ class H01DisbursementWorkerIsolationIntegrationTest {
      * terminal-intent commit and the outcome application that the repair path exists for.
      */
     private void strandTerminalIntent(UUID applicationId) throws Exception {
-        loanDisbursementCommandService.initiateDisbursement(applicationId, "h01.setup");
+        loanDisbursementCommandService.initiateDisbursement(applicationId, "t01.setup");
         disbursementIntentWorkflowService.executeForApplication(applicationId);
-        loanDisbursementCommandService.autoResolveAfterInitiate(applicationId, "h01.setup", null, "h01-strand");
+        loanDisbursementCommandService.autoResolveAfterInitiate(applicationId, "t01.setup", null, "t01-strand");
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         assertEquals(LoanAccountStatus.DISBURSED, account.getStatus());
         account.updateDisbursementStatus(LoanAccountStatus.DISBURSEMENT_REQUESTED, Instant.now());
@@ -501,7 +501,7 @@ class H01DisbursementWorkerIsolationIntegrationTest {
         String applicationId = createApplicationViaOps(lspId, productId, requestedAmount);
         transition(applicationId, "AWAITING_APPROVAL", "Ready for approval");
         markKycComplete(applicationId);
-        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for H01 isolation test");
+        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for isolation test");
         seedBorrowerBankDetails(applicationId, ifsc);
         return UUID.fromString(applicationId);
     }
@@ -514,9 +514,9 @@ class H01DisbursementWorkerIsolationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "H01 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", ifsc,
-                                "accountHolderName", "H01 Borrower"
+                                "accountHolderName", "Test Borrower"
                         ))))
                 .andExpect(status().isOk());
     }
@@ -527,7 +527,7 @@ class H01DisbursementWorkerIsolationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", "LSP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
-                                "name", "H01 LSP",
+                                "name", "Test LSP",
                                 "status", "ACTIVE"
                         ))))
                 .andExpect(status().isOk())
@@ -542,7 +542,7 @@ class H01DisbursementWorkerIsolationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", code,
-                                "name", "H01 product " + code,
+                                "name", "Test product " + code,
                                 "minPrincipal", new BigDecimal("5000.00"),
                                 "maxPrincipal", new BigDecimal("1000000.00"),
                                 "interestRate", new BigDecimal("18.50"),
@@ -572,9 +572,9 @@ class H01DisbursementWorkerIsolationIntegrationTest {
         payload.put("externalLoanId", "EXT-" + UUID.randomUUID().toString().substring(0, 8));
         payload.put("sourceChannel", "API");
         payload.put("borrowerPan", borrowerPan);
-        payload.put("borrowerFullName", "H01 Borrower");
+        payload.put("borrowerFullName", "Test Borrower");
         payload.put("borrowerMobile", mobileForPan(borrowerPan));
-        payload.put("borrowerEmail", "h01+" + borrowerPan.toLowerCase() + "@example.com");
+        payload.put("borrowerEmail", "t01+" + borrowerPan.toLowerCase() + "@example.com");
         payload.put("borrowerDateOfBirth", LocalDate.of(1990, 1, 1));
         payload.put("borrowerCity", "Mumbai");
         payload.put("borrowerState", "Maharashtra");
@@ -613,7 +613,7 @@ class H01DisbursementWorkerIsolationIntegrationTest {
                     String documentKey = item.getDocumentType().name().toLowerCase();
                     item.update(
                             LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                            "Uploaded for H01 isolation test",
+                            "Uploaded for isolation test",
                             "ops.user",
                             documentKey + ".pdf",
                             "storage://" + applicationId + "/" + documentKey + ".pdf",

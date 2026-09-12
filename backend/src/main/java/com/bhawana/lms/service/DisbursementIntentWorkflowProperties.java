@@ -5,9 +5,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app.disbursement.intent-workflow")
 public class DisbursementIntentWorkflowProperties {
 
-    // C04: the durable intent path is the only disbursement initiation path. There is no
+    // The durable intent path is the only disbursement initiation path. There is no
     // enable/disable flag — money movement always goes through DisbursementIntentWorkflowService.
-    // C03: leaseOwner is a configured prefix; the service appends host + startup UUID so every
+    // leaseOwner is a configured prefix; the service appends host + startup UUID so every
     // process has a distinct owner for the claim fence. Do not set the same fully-qualified owner
     // on two processes. Tests may set a fixed prefix; uniqueness still comes from the suffix.
     private int leaseDurationSeconds = 120;

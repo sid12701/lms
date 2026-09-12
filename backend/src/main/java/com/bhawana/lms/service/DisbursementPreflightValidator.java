@@ -90,7 +90,7 @@ public class DisbursementPreflightValidator {
         if (loanAccount == null) {
             throw new ResourceNotFoundException("Loan account is not available for disbursement.");
         }
-        // C04: single guarded transition — no copied allow-list. REQUESTED/PENDING_RECONCILIATION
+        // Single guarded transition — no copied allow-list. REQUESTED/PENDING_RECONCILIATION
         // reject; only PENDING_DISBURSEMENT / definitively FAILED may start a new attempt.
         // This is a pre-flight check only; the state-changing call is LoanAccount.requestDisbursement().
         if (loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED

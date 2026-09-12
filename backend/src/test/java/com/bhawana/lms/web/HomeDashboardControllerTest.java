@@ -290,7 +290,7 @@ class HomeDashboardControllerTest {
     }
 
     private void disburseLoan(String applicationId) throws Exception {
-        // C04: durable intent is the only initiation path — seed the frozen beneficiary
+        // Durable intent is the only initiation path — seed the frozen beneficiary
         // instruction, raise the intent, then execute it (IMPS success disburses atomically).
         UUID borrowerId = jdbcTemplate.queryForObject(
                 "SELECT borrower_id FROM loan_application WHERE id = ?",

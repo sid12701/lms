@@ -9,7 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * H27 — bounded aggregate reads behind the disbursement visibility gauges. Each method issues a
+ * Bounded aggregate reads behind the disbursement visibility gauges. Each method issues a
  * single aggregate SQL statement (counts plus the oldest stable creation timestamp); no entities
  * are loaded and no borrower/bank identifiers leave the database.
  *
@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
  *   <li>pending — live {@code CREATED}/{@code REQUESTED} intents (normal pipeline);</li>
  *   <li>unknown — {@code UNKNOWN} intents awaiting reconciliation;</li>
  *   <li>unapplied — terminal {@code SUCCEEDED}/{@code FAILED} intent still joined to a
- *       {@code DISBURSEMENT_REQUESTED} account (the C02 repair backlog);</li>
+ *       {@code DISBURSEMENT_REQUESTED} account (the stranded-terminal repair backlog);</li>
  *   <li>parked without intent — {@code DISBURSEMENT_REQUESTED}/
  *       {@code DISBURSEMENT_PENDING_RECONCILIATION} accounts with no live intent (parked loans
  *       and legacy mismatches, including pre-intent rows). Terminal intents
@@ -27,7 +27,7 @@ import org.springframework.stereotype.Component;
  * </ul>
  * Ages come from the stable {@code created_at} timestamp (intent creation, account creation),
  * never from {@code updated_at}, so polls/retries cannot reset the clock. This component defines
- * no queue semantics of its own; the H02 reconciliation queue, when it lands, remains the owner
+ * no queue semantics of its own; the reconciliation queue remains the owner
  * of recovery selection.
  */
 @Component
@@ -56,7 +56,7 @@ public class DisbursementVisibilityQueries {
         return TenantScopedExecution.callAsAdmin(() -> singleStateBucket("UNKNOWN"));
     }
 
-    /** Recorded terminal evidence whose loan move is still missing (C02 repair backlog). */
+    /** Recorded terminal evidence whose loan move is still missing (stranded-terminal repair backlog). */
     public BucketSnapshot unappliedTerminalIntents() {
         return TenantScopedExecution.callAsAdmin(() -> jdbcTemplate.query(
                 """

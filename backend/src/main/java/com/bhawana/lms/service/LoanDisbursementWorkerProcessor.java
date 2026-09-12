@@ -66,7 +66,7 @@ public class LoanDisbursementWorkerProcessor {
     }
 
     /**
-     * H01: ONE atomic transaction for guarded validation plus initiation. There is
+     * ONE atomic transaction for guarded validation plus initiation. There is
      * deliberately NO catch here — any failure rolls this item's transaction back and
      * propagates through the Spring proxy to {@link LoanDisbursementWorkerService},
      * which catches only AFTER the transaction has ended. Catching inside would leave
@@ -104,7 +104,7 @@ public class LoanDisbursementWorkerProcessor {
             rejectForBoundViolation(application, "MISSING_LOAN_ACCOUNT", "Loan account is not available for disbursement.");
             return true;
         }
-        // H01/C04: skip both submitted (in-flight REQUESTED) and parked (uncertain-money
+        // Skip both submitted (in-flight REQUESTED) and parked (uncertain-money
         // PENDING_RECONCILIATION) states BEFORE any validation or initiation attempt, and
         // never re-initiate while a live intent exists. The only forward path for them is
         // reconciliation of the original reference — never a new intent.
@@ -157,7 +157,7 @@ public class LoanDisbursementWorkerProcessor {
             return true;
         }
 
-        // Tx-A joins this transaction (C04: the intent workflow is the only path; the provider
+        // Tx-A joins this transaction (the intent workflow is the only path; the provider
         // call happens after this transaction commits — WorkerService executes it). No catch:
         // a failure rolls back and is reported by the caller, never as success.
         loanDisbursementCommandService.initiateDisbursement(applicationId, LoanDisbursementWorkerService.WORKER_ACTOR);

@@ -20,7 +20,7 @@ public interface BorrowerRepository extends JpaRepository<Borrower, UUID> {
     Optional<Borrower> findById(UUID id);
 
     /**
-     * C06-phase-2: borrower-first lock. Bank edits, approvals and initiation acquire this
+     * Borrower-first lock. Bank edits, approvals and initiation acquire this
      * before any application/account/intent lock so concurrent commands for the same shared
      * borrower serialize on one row instead of racing past each other in reverse order.
      */

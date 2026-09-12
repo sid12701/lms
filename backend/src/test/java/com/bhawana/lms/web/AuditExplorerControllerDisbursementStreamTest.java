@@ -88,7 +88,7 @@ class AuditExplorerControllerDisbursementStreamTest {
         transition(applicationId, "AWAITING_APPROVAL", "Ready");
         markAllRequiredKycDocumentsVerified(applicationId);
         transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved");
-        // C04: mock outcomes resolve a raised provider attempt — seed a pending attempt first
+        // Mock outcomes resolve a raised provider attempt — seed a pending attempt first
         // (MOCK0PENDOK stays PENDING after execution), then apply the forced verdict.
         seedBorrowerBankDetails(applicationId, "MOCK0PENDOK");
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)

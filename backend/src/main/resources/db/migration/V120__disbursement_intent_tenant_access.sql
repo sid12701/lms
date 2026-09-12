@@ -1,4 +1,4 @@
--- C01: the LSP-facing invalidation guard reads live disbursement intents through the
+-- The LSP-facing invalidation guard reads live disbursement intents through the
 -- tenant connection, but disbursement_intent (V111) never received tenant grants or a
 -- row-level security policy, so any tenant-scoped access fails with "permission denied
 -- for table disbursement_intent". Mirror the sibling disbursement tables

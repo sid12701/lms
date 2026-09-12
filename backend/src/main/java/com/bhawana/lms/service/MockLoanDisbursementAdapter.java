@@ -16,7 +16,7 @@ import org.springframework.stereotype.Service;
  * resolves the terminal status. Outcomes are deterministic, keyed off the beneficiary IFSC via
  * {@link MockIciciDisbursementScenario}. The production adapter will replace this behind the same seam.
  *
- * <p>G01: simulation-only. Construction fails closed outside explicit simulation profiles, so a
+ * <p>Simulation-only. Construction fails closed outside explicit simulation profiles, so a
  * production-like boot with only this adapter wired cannot start.
  */
 @Service

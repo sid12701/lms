@@ -16,7 +16,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
- * H27 (disbursement slice) — the Prometheus exposition is scraped through the real registry and
+ * (Disbursement slice) — the Prometheus exposition is scraped through the real registry and
  * the real authentication boundary: anonymous callers get 401, non-admin roles get 403, and
  * SYSTEM_ADMIN receives the exposition including a known disbursement meter.
  *
@@ -29,7 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @TestPropertySource(properties = "management.prometheus.metrics.export.enabled=true")
-class H27PrometheusScrapeTest {
+class PrometheusScrapeTest {
 
     @Autowired private MockMvc mockMvc;
 

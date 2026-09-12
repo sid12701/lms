@@ -13,7 +13,7 @@ public interface DisbursementObservationRepository extends JpaRepository<Disburs
 
     List<DisbursementObservation> findTop50ByLoanAccount_IdOrderByObservedAtDesc(UUID loanAccountId);
 
-    /** H02 — POLL observations for one reference (per-call identity / crash-gap analysis). */
+    /** POLL observations for one reference (per-call identity / crash-gap analysis). */
     List<DisbursementObservation> findByLoanAccount_IdAndTranRefNoAndKind(
             UUID loanAccountId,
             String tranRefNo,

@@ -1,6 +1,6 @@
--- H02 — immutable disbursement observation trail + explicit bounded reconciliation queue.
+-- Immutable disbursement observation trail + explicit bounded reconciliation queue.
 --
--- Additive only (V122/V123 reserved for C06 follow-ups, V124 reserved for H15):
+-- Additive only (V122/V123 reserved for borrower-bank follow-ups, V124 reserved for the schedule hash):
 -- no change to disbursement_intent, loan_disbursement_request_log or loan_account.
 -- The mutable request log stays the compatibility state; disbursement_observation is the
 -- separate canonical evidence (one immutable row per attempted initiate/poll, including
@@ -20,7 +20,7 @@ CREATE TABLE disbursement_observation (
     id UUID PRIMARY KEY,
     loan_account_id UUID NOT NULL REFERENCES loan_account (id),
     -- Call identity/evidence association. Test databases truncate this table before
-    -- fixture-shaping intent deletes (see IntegrationTestDatabaseCleaner and the C06 test
+    -- fixture-shaping intent deletes (see IntegrationTestDatabaseCleaner and the cross-LSP bank test
     -- cleanup); production never deletes intent rows.
     intent_id UUID REFERENCES disbursement_intent (id),
     -- NULL means the stored evidence carries no reference: operator-only, never invented.
@@ -95,7 +95,7 @@ CREATE INDEX idx_disbursement_recon_next_poll
 CREATE INDEX idx_disbursement_recon_reason
     ON disbursement_reconciliation_queue (reason, first_seen_at ASC);
 
--- H02-BACKFILL-OBSERVATION-START
+-- BACKFILL-OBSERVATION-START
 -- Legacy backfill: one observation per loan account from the actual latest stored
 -- request-log row only, extracted with ->> from the stored payload. Missing history stays
 -- NULL; the live intent contributes only its id (call association), never its beneficiary
@@ -167,14 +167,14 @@ WHERE log.id IN (
     ORDER BY l2.loan_account_id, l2.created_at DESC
 )
 ON CONFLICT DO NOTHING;
--- H02-BACKFILL-OBSERVATION-END
+-- BACKFILL-OBSERVATION-END
 
--- H02-BACKFILL-QUEUE-START
+-- BACKFILL-QUEUE-START
 -- Queue backfill: every account with uncertain money becomes visible to operators, including
 -- accounts whose stored evidence carries no reference at all. Stranded terminals are queued
--- first so the C02 repair path owns them; the in-flight sweep then skips already-queued
+-- first so the accepted-outcome repair path owns them; the in-flight sweep then skips already-queued
 -- accounts. first_seen_at is the earliest original request/intent stamp per account.
--- (b) Stranded terminals: terminal intent whose loan still reads REQUESTED (C02 repair path).
+-- (b) Stranded terminals: terminal intent whose loan still reads REQUESTED (accepted-outcome repair path).
 INSERT INTO disbursement_reconciliation_queue (
     loan_account_id, intent_id, tran_ref_no, reason, next_poll_at,
     poll_count, first_seen_at, last_observation_at, details
@@ -188,7 +188,7 @@ SELECT
     0,
     COALESCE(stamps.first_seen, di.created_at, NOW()),
     COALESCE(stamps.last_seen, di.updated_at, NOW()),
-    'H02 V121 backfill: terminal intent result not yet applied to the loan; repair from stored evidence without re-initiation.'
+    'Backfill: terminal intent result not yet applied to the loan; repair from stored evidence without re-initiation.'
 FROM loan_account la
 JOIN disbursement_intent di ON di.loan_account_id = la.id
 LEFT JOIN LATERAL (
@@ -232,7 +232,7 @@ SELECT
     0,
     COALESCE(stamps.first_seen, live_intent.created_at, latest_log.created_at, NOW()),
     COALESCE(stamps.last_seen, latest_log.updated_at, live_intent.updated_at, NOW()),
-    'H02 V121 backfill: unresolved money carried forward; poll the original reference, never re-initiate.'
+    'Backfill: unresolved money carried forward; poll the original reference, never re-initiate.'
 FROM loan_account la
 LEFT JOIN LATERAL (
     SELECT di.id, di.tran_ref_no, di.state, di.created_at, di.updated_at
@@ -262,7 +262,7 @@ LEFT JOIN LATERAL (
 ) stamps ON TRUE
 WHERE la.status IN ('DISBURSEMENT_REQUESTED', 'DISBURSEMENT_PENDING_RECONCILIATION')
 ON CONFLICT (loan_account_id) DO NOTHING;
--- H02-BACKFILL-QUEUE-END
+-- BACKFILL-QUEUE-END
 
 -- Immutability: observations are append-only canonical evidence (loan_event pattern).
 -- UPDATE/DELETE are rejected in production. Integration-test cleanup runs through

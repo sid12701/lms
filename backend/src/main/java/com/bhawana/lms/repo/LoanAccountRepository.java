@@ -60,7 +60,7 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
     List<LoanAccount> findByStatus(LoanAccountStatus status);
 
     /**
-     * H02 — bounded discovery for the reconciliation sweep: in-flight or parked accounts that
+     * Bounded discovery for the reconciliation sweep: in-flight or parked accounts that
      * already submitted at least one provider call (a stored request row exists) but hold no
      * queue entry yet — typically legacy evidence. Fresh CREATED intents with no submitted
      * call are excluded: the worker still owns their first execution, and queueing them as
@@ -98,7 +98,7 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
     boolean existsByBorrower_IdAndStatusIn(UUID borrowerId, Collection<LoanAccountStatus> statuses);
 
     /**
-     * C06-phase-2: the duplicate-loan alert serializes lsp/application details after the
+     * The duplicate-loan alert serializes lsp/application details after the
      * admin read transaction has closed, so those associations must be fetched eagerly here.
      */
     @EntityGraph(attributePaths = {"lsp", "loanApplication"})

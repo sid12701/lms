@@ -1,4 +1,4 @@
--- C06-phase-2: let the tenant connection write its own bank-detail audit rows in the
+-- Let the tenant connection write its own bank-detail audit rows in the
 -- same transaction as the borrower mutation, so the two commit or roll back together.
 -- Previously the LSP path persisted the audit through a separate REQUIRES_NEW admin
 -- transaction, which could commit the audit without the mutation (or vice versa).

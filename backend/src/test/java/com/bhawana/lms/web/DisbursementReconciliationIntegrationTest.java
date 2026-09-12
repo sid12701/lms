@@ -82,7 +82,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
- * H02 — immutable per-call observation evidence plus the explicit bounded reconciliation
+ * Immutable per-call observation evidence plus the explicit bounded reconciliation
  * queue, against real PostgreSQL. Covers: N polls produce N observations on the original
  * reference; timeouts/duplicates are preserved without regressing accepted outcomes;
  * evidence-free manual resolution is rejected; crash-rollback stays recoverable by the
@@ -97,7 +97,7 @@ import org.springframework.test.web.servlet.MvcResult;
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class H02DisbursementReconciliationIntegrationTest {
+class DisbursementReconciliationIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -150,8 +150,8 @@ class H02DisbursementReconciliationIntegrationTest {
         assertEquals(1L, observationRepository.countByLoanAccount_Id(account.getId()));
 
         // Test profile min-polls=1: first poll is not yet queryable, second resolves terminally.
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-p1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-p2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-p1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-p2"));
 
         assertEquals(LoanAccountStatus.DISBURSED,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
@@ -181,7 +181,7 @@ class H02DisbursementReconciliationIntegrationTest {
 
         doThrow(new RuntimeException("simulated provider timeout"))
                 .when(loanDisbursementAdapter).checkStatus(any());
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-t1"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-t1"));
 
         // Attempted-call provenance survived: count bumped pre-call, observation stored unresolved.
         assertEquals(1, loanDisbursementRequestLogRepository
@@ -202,7 +202,7 @@ class H02DisbursementReconciliationIntegrationTest {
 
         // Recovery re-polls the same reference exactly once more (prior count 1 is queryable).
         Mockito.doCallRealMethod().when(loanDisbursementAdapter).checkStatus(any());
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-t2"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-t2"));
         assertEquals(LoanAccountStatus.DISBURSED,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
         assertEquals(3L, observationRepository.countByLoanAccount_Id(account.getId()));
@@ -237,11 +237,11 @@ class H02DisbursementReconciliationIntegrationTest {
         doAnswer(invocation -> new LoanDisbursementAdapter.DisbursementStatusResult(
                         "0", "Check Transaction Successful",
                         DisbursementDisposition.SUCCESS, DisbursementDeclineKind.NONE,
-                        "0", "RRN-H02-CRASH-RECOVER", "recovered terminal success",
+                        "0", "RRN-CRASH-RECOVER-001", "recovered terminal success",
                         "{\"disposition\":\"SUCCESS\"}"))
                 .when(loanDisbursementAdapter).checkStatus(any());
         assertTrue(loanDisbursementCommandService.pollPendingDisbursement(
-                applicationId, "worker", null, "h02-crash-recover"));
+                applicationId, "worker", null, "t02-crash-recover"));
         assertEquals(LoanAccountStatus.DISBURSED,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
         assertEquals(ref, jdbcTemplate.queryForObject(
@@ -256,10 +256,10 @@ class H02DisbursementReconciliationIntegrationTest {
         UUID applicationId = seedApproved("MOCK0PENDOK", new BigDecimal("45000.00"));
         initiate(applicationId);
         disbursementIntentWorkflowService.executeForApplication(applicationId);
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-d1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-d2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-d1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-d2"));
         // Late poll after terminal: blocked with no provider call and no new observation.
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-d3"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-d3"));
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         DisbursementObservation success = observationRepository
                 .findTop50ByLoanAccount_IdOrderByObservedAtDesc(account.getId()).stream()
@@ -269,15 +269,15 @@ class H02DisbursementReconciliationIntegrationTest {
 
         // Late poll after terminal: no provider call, no new observation, outcome preserved.
         reset(loanDisbursementAdapter);
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-dup"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-dup"));
         verify(loanDisbursementAdapter, times(0)).checkStatus(any());
         assertEquals(observations, observationRepository.countByLoanAccount_Id(account.getId()));
 
         // Manual replay of the same definitive evidence succeeds without a second application.
         assertTrue(reconciliationService.resolveManually(
-                applicationId, success.getId(), "ops.admin", null, "h02-replay-1"));
+                applicationId, success.getId(), "ops.admin", null, "t02-replay-1"));
         assertTrue(reconciliationService.resolveManually(
-                applicationId, success.getId(), "ops.admin", null, "h02-replay-2"));
+                applicationId, success.getId(), "ops.admin", null, "t02-replay-2"));
         assertEquals(1, loanApplicationStatusTransitionRepository
                 .findByLoanApplication_IdAndToStatusOrderByCreatedAtAsc(applicationId, LoanApplicationStatus.DISBURSED)
                 .size());
@@ -289,8 +289,8 @@ class H02DisbursementReconciliationIntegrationTest {
         UUID applicationId = seedApproved("MOCK0PENDOK", new BigDecimal("45000.00"));
         initiate(applicationId);
         disbursementIntentWorkflowService.executeForApplication(applicationId);
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-c1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-c2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-c1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-c2"));
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         UUID successId = observationRepository.findTop50ByLoanAccount_IdOrderByObservedAtDesc(account.getId())
                 .stream()
@@ -303,10 +303,10 @@ class H02DisbursementReconciliationIntegrationTest {
             // mirroring how the worker wraps its own execution.
             Future<Boolean> poll = pool.submit(() -> TenantScopedExecution.callAsAdmin(
                     () -> loanDisbursementCommandService.pollPendingDisbursement(
-                            applicationId, "worker", null, "h02-conc-poll")));
+                            applicationId, "worker", null, "t02-conc-poll")));
             Future<Boolean> manual = pool.submit(() -> TenantScopedExecution.callAsAdmin(
                     () -> reconciliationService.resolveManually(
-                            applicationId, successId, "ops.admin", null, "h02-conc-manual")));
+                            applicationId, successId, "ops.admin", null, "t02-conc-manual")));
             assertFalse(poll.get());
             assertTrue(manual.get());
         } finally {
@@ -324,8 +324,8 @@ class H02DisbursementReconciliationIntegrationTest {
         UUID applicationId = seedApproved("MOCK0PENDOK", new BigDecimal("45000.00"));
         initiate(applicationId);
         disbursementIntentWorkflowService.executeForApplication(applicationId);
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-q1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-q2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-q1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-q2"));
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         String ref = jdbcTemplate.queryForObject(
                 "SELECT tran_ref_no FROM disbursement_observation WHERE loan_account_id = ? "
@@ -336,20 +336,20 @@ class H02DisbursementReconciliationIntegrationTest {
         // like every production writer path).
         transactionTemplate.executeWithoutResult(tx -> observationWriter.enqueue(
                 loanAccountRepository.findById(account.getId()).orElseThrow(), null, ref,
-                DisbursementReconciliationReason.CONFLICTING_EVIDENCE, "H02 test conflict hold."));
+                DisbursementReconciliationReason.CONFLICTING_EVIDENCE, "test conflict hold."));
         assertEquals(DisbursementReconciliationReason.CONFLICTING_EVIDENCE,
                 queueRepository.findById(account.getId()).orElseThrow().getReason());
 
         // Late duplicate traffic (blocked poll, manual replay) must preserve the held entry.
         reset(loanDisbursementAdapter);
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-qdup"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-qdup"));
         verify(loanDisbursementAdapter, times(0)).checkStatus(any());
         UUID successId = observationRepository.findTop50ByLoanAccount_IdOrderByObservedAtDesc(account.getId())
                 .stream()
                 .filter(o -> o.getDisposition() == DisbursementDisposition.SUCCESS && !o.isDuplicate())
                 .findFirst().orElseThrow().getId();
         assertTrue(reconciliationService.resolveManually(
-                applicationId, successId, "ops.admin", null, "h02-qreplay"));
+                applicationId, successId, "ops.admin", null, "t02-qreplay"));
         assertEquals(DisbursementReconciliationReason.CONFLICTING_EVIDENCE,
                 queueRepository.findById(account.getId()).orElseThrow().getReason());
     }
@@ -373,13 +373,13 @@ class H02DisbursementReconciliationIntegrationTest {
         // Unknown outcome: not definitive evidence.
         ApiConflictException notDefinitive = assertThrows(ApiConflictException.class, () ->
                 reconciliationService.resolveManually(
-                        applicationId, unknownObservation.getId(), "ops.admin", null, "h02-m1"));
+                        applicationId, unknownObservation.getId(), "ops.admin", null, "t02-m1"));
         assertEquals("RECONCILIATION_EVIDENCE_NOT_DEFINITIVE", notDefinitive.getErrorCode());
 
         // Nothing stored under this id at all.
         ApiConflictException missing = assertThrows(ApiConflictException.class, () ->
                 reconciliationService.resolveManually(
-                        applicationId, UUID.randomUUID(), "ops.admin", null, "h02-m2"));
+                        applicationId, UUID.randomUUID(), "ops.admin", null, "t02-m2"));
         assertEquals("RECONCILIATION_EVIDENCE_MISSING", missing.getErrorCode());
 
         // Privileged endpoint agrees: 409, never an invented outcome.
@@ -421,19 +421,19 @@ class H02DisbursementReconciliationIntegrationTest {
                 "MOCK_ICICI",
                 intent.getTranRefNo(),
                 "0",
-                "RRN-H02-MANUAL",
+                "RRN-MANUAL-001",
                 DisbursementDeclineKind.NONE,
                 intent.getBeneficiaryIfsc(),
                 intent.getBeneficiaryAccountNumber(),
                 intent.getPaymentMode(),
                 "{\"tranRefNo\":\"" + intent.getTranRefNo() + "\"}",
-                "{\"disposition\":\"SUCCESS\",\"BankRRN\":\"RRN-H02-MANUAL\"}",
-                "h02-manual-apply",
+                "{\"disposition\":\"SUCCESS\",\"BankRRN\":\"RRN-MANUAL-001\"}",
+                "t02-manual-apply",
                 DisbursementObservationProvenance.LIVE,
                 "bank.evidence"));
 
         assertTrue(reconciliationService.resolveManually(
-                applicationId, bankEvidence.getId(), "ops.admin", null, "h02-manual-apply"));
+                applicationId, bankEvidence.getId(), "ops.admin", null, "t02-manual-apply"));
         assertEquals(LoanAccountStatus.DISBURSED,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
         assertTrue(queueRepository.findById(account.getId()).isEmpty());
@@ -460,8 +460,8 @@ class H02DisbursementReconciliationIntegrationTest {
         String ref = liveRef(account.getId());
 
         // Test profile max-polls=2: two unresolved polls exhaust normal polling into PARKED.
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-e1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-e2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-e1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-e2"));
         assertEquals(LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
         DisbursementReconciliationQueueEntry parked =
@@ -479,7 +479,7 @@ class H02DisbursementReconciliationIntegrationTest {
                 "UPDATE disbursement_reconciliation_queue SET next_poll_at = NOW() - INTERVAL '1 second' "
                         + "WHERE loan_account_id = ?",
                 account.getId());
-        reconciliationService.pollDueQueue("worker", null, "h02-esweep");
+        reconciliationService.pollDueQueue("worker", null, "t02-esweep");
         DisbursementReconciliationQueueEntry afterSweep =
                 queueRepository.findById(account.getId()).orElseThrow();
         assertEquals(DisbursementReconciliationReason.PARKED, afterSweep.getReason());
@@ -497,14 +497,14 @@ class H02DisbursementReconciliationIntegrationTest {
         doAnswer(invocation -> new LoanDisbursementAdapter.DisbursementStatusResult(
                         "0", "Check Transaction Successful",
                         DisbursementDisposition.SUCCESS, DisbursementDeclineKind.NONE,
-                        "0", "RRN-H02-EXHAUST", "recovered terminal success", "{\"disposition\":\"SUCCESS\"}"))
+                        "0", "RRN-EXHAUST-001", "recovered terminal success", "{\"disposition\":\"SUCCESS\"}"))
                 .when(loanDisbursementAdapter).checkStatus(any());
         // Force the entry due again (backoff pushed it out) without touching first_seen.
         jdbcTemplate.update(
                 "UPDATE disbursement_reconciliation_queue SET next_poll_at = NOW() - INTERVAL '1 second' "
                         + "WHERE loan_account_id = ?",
                 account.getId());
-        assertTrue(reconciliationService.pollDueQueue("worker", null, "h02-erecover") >= 1);
+        assertTrue(reconciliationService.pollDueQueue("worker", null, "t02-erecover") >= 1);
         assertEquals(LoanAccountStatus.DISBURSED,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
         assertTrue(queueRepository.findById(account.getId()).isEmpty());
@@ -539,12 +539,12 @@ class H02DisbursementReconciliationIntegrationTest {
         // Normal polling is blocked (no trustworthy instruction): zero provider calls.
         reset(loanDisbursementAdapter);
         assertFalse(loanDisbursementCommandService.pollPendingDisbursement(
-                applicationId, "worker", null, "h02-leg"));
+                applicationId, "worker", null, "t02-leg"));
         verify(loanDisbursementAdapter, times(0)).checkStatus(any());
 
         // The reconciliation sweep queues it operator-only with a NULL reference — visible,
         // never fabricated.
-        reconciliationService.pollDueQueue("worker", null, "h02-legsweep");
+        reconciliationService.pollDueQueue("worker", null, "t02-legsweep");
         DisbursementReconciliationQueueEntry entry =
                 queueRepository.findById(account.getId()).orElseThrow();
         assertEquals(DisbursementReconciliationReason.LEGACY_MISMATCH, entry.getReason());
@@ -563,8 +563,8 @@ class H02DisbursementReconciliationIntegrationTest {
         UUID stuckId = seedApproved("MOCK0STUCK0", new BigDecimal("45000.00"));
         initiate(stuckId);
         disbursementIntentWorkflowService.executeForApplication(stuckId);
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(stuckId, "worker", null, "h02-qe1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(stuckId, "worker", null, "h02-qe2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(stuckId, "worker", null, "t02-qe1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(stuckId, "worker", null, "t02-qe2"));
 
         UUID unknownId = seedApproved("MOCK0PENDOK", new BigDecimal("45000.00"));
         initiate(unknownId);
@@ -614,8 +614,8 @@ class H02DisbursementReconciliationIntegrationTest {
             UUID appId = seedApproved("MOCK0PENDOK", new BigDecimal("45000.00"));
             initiate(appId);
             disbursementIntentWorkflowService.executeForApplication(appId);
-            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(appId, "worker", null, "h02-cb" + i));
-            assertTrue(loanDisbursementCommandService.pollPendingDisbursement(appId, "worker", null, "h02-cb" + i));
+            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(appId, "worker", null, "t02-cb" + i));
+            assertTrue(loanDisbursementCommandService.pollPendingDisbursement(appId, "worker", null, "t02-cb" + i));
             LoanAccount done = loanAccountRepository.findByLoanApplication_Id(appId).orElseThrow();
             conflictAccountIds.add(done.getId());
             String doneRef = jdbcTemplate.queryForObject(
@@ -627,7 +627,7 @@ class H02DisbursementReconciliationIntegrationTest {
             transactionTemplate.executeWithoutResult(tx -> observationWriter.enqueue(
                     loanAccountRepository.findById(doneId).orElseThrow(), null, doneRef,
                     DisbursementReconciliationReason.CONFLICTING_EVIDENCE,
-                    "H02 starvation probe " + probeIndex + "."));
+                    "starvation probe " + probeIndex + "."));
         }
         // One recoverable loan still in flight.
         UUID liveApp = seedApproved("MOCK0PENDOK", new BigDecimal("45000.00"));
@@ -652,7 +652,7 @@ class H02DisbursementReconciliationIntegrationTest {
                             + "WHERE loan_account_id = ?",
                     id));
         }
-        reconciliationService.pollDueQueue("worker", null, "h02-cbsweep");
+        reconciliationService.pollDueQueue("worker", null, "t02-cbsweep");
 
         assertEquals(liveObsBefore + 1, observationRepository.countByLoanAccount_Id(live.getId()));
         for (UUID id : conflictAccountIds) {
@@ -669,8 +669,8 @@ class H02DisbursementReconciliationIntegrationTest {
         UUID applicationId = seedApproved("MOCK0STUCK0", new BigDecimal("45000.00"));
         initiate(applicationId);
         disbursementIntentWorkflowService.executeForApplication(applicationId);
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-b1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-b2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-b1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-b2"));
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         long obsBefore = observationRepository.countByLoanAccount_Id(account.getId());
         jdbcTemplate.update(
@@ -697,7 +697,7 @@ class H02DisbursementReconciliationIntegrationTest {
         reconciliationProperties.setQueuePollBatchSize(1);
         try {
             assertEquals(2, reconciliationProperties.getQueuePollBatchSize());
-            reconciliationService.pollDueQueue("worker", null, "h02-b1sweep");
+            reconciliationService.pollDueQueue("worker", null, "t02-b1sweep");
         } finally {
             reconciliationProperties.setQueuePollBatchSize(configured);
         }
@@ -717,8 +717,8 @@ class H02DisbursementReconciliationIntegrationTest {
         UUID applicationId = seedApproved("MOCK0STUCK0", new BigDecimal("45000.00"));
         initiate(applicationId);
         disbursementIntentWorkflowService.executeForApplication(applicationId);
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-cc1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-cc2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-cc1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-cc2"));
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
 
         List<String> owners = List.of("owner-a", "owner-b", "owner-c", "owner-d");
@@ -756,14 +756,14 @@ class H02DisbursementReconciliationIntegrationTest {
         DisbursementObservation wrongRef = observationRepository.save(new DisbursementObservation(
                 loanAccountRepository.findById(account.getId()).orElseThrow(), null, "ICI-OTHER-1", 0, null,
                 DisbursementObservationKind.POLL, DisbursementDisposition.SUCCESS, true, false,
-                "MOCK_ICICI", "ICI-OTHER-1", "0", "RRN-H02-OTHER",
+                "MOCK_ICICI", "ICI-OTHER-1", "0", "RRN-OTHER-001",
                 DisbursementDeclineKind.NONE, intent.getBeneficiaryIfsc(),
                 intent.getBeneficiaryAccountNumber(), intent.getPaymentMode(),
-                "{\"tranRefNo\":\"ICI-OTHER-1\"}", "{\"disposition\":\"SUCCESS\"}", "h02-hold",
+                "{\"tranRefNo\":\"ICI-OTHER-1\"}", "{\"disposition\":\"SUCCESS\"}", "t02-hold",
                 DisbursementObservationProvenance.LIVE, "bank.evidence"));
         ApiConflictException rejected = assertThrows(ApiConflictException.class, () ->
                 reconciliationService.resolveManually(
-                        applicationId, wrongRef.getId(), "ops.admin", null, "h02-hold"));
+                        applicationId, wrongRef.getId(), "ops.admin", null, "t02-hold"));
         assertEquals("RECONCILIATION_REFERENCE_MISMATCH", rejected.getErrorCode());
         DisbursementReconciliationQueueEntry held =
                 queueRepository.findById(account.getId()).orElseThrow();
@@ -772,7 +772,7 @@ class H02DisbursementReconciliationIntegrationTest {
         String heldRef = held.getTranRefNo();
 
         // A later pending poll refreshes evidence but must not rewrite the held conflict.
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-h1"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-h1"));
         DisbursementReconciliationQueueEntry afterRefresh =
                 queueRepository.findById(account.getId()).orElseThrow();
         assertEquals(DisbursementReconciliationReason.CONFLICTING_EVIDENCE, afterRefresh.getReason());
@@ -781,7 +781,7 @@ class H02DisbursementReconciliationIntegrationTest {
 
         // Genuine terminal acceptance still leaves the real conflict operator-visible, with
         // no dismissal path in this scope: the hold persists alongside the immutable trail.
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-h2"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-h2"));
         assertEquals(LoanAccountStatus.DISBURSED,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
         DisbursementReconciliationQueueEntry afterAccept =
@@ -805,11 +805,11 @@ class H02DisbursementReconciliationIntegrationTest {
                 loanAccountRepository.findById(account.getId()).orElseThrow(), null,
                 intent.getTranRefNo(), intent.getAttemptCount(), null,
                 DisbursementObservationKind.POLL, DisbursementDisposition.SUCCESS, true, false,
-                "MOCK_ICICI", intent.getTranRefNo(), "0", "RRN-H02-XCHECK",
+                "MOCK_ICICI", intent.getTranRefNo(), "0", "RRN-XCHECK-001",
                 DisbursementDeclineKind.NONE, intent.getBeneficiaryIfsc(),
                 intent.getBeneficiaryAccountNumber(), intent.getPaymentMode(),
                 "{\"tranRefNo\":\"" + intent.getTranRefNo() + "\"}",
-                "{\"disposition\":\"SUCCESS\"}", "h02-xcheck",
+                "{\"disposition\":\"SUCCESS\"}", "t02-xcheck",
                 DisbursementObservationProvenance.LIVE, "bank.evidence"));
         // ...but the original stored request now carries a different beneficiary: the manual
         // path must enforce the same conjunction as the poll loader and reject.
@@ -824,7 +824,7 @@ class H02DisbursementReconciliationIntegrationTest {
 
         ApiConflictException rejected = assertThrows(ApiConflictException.class, () ->
                 reconciliationService.resolveManually(
-                        applicationId, bankEvidence.getId(), "ops.admin", null, "h02-xcheck"));
+                        applicationId, bankEvidence.getId(), "ops.admin", null, "t02-xcheck"));
         assertEquals("RECONCILIATION_REFERENCE_MISMATCH", rejected.getErrorCode());
         assertEquals(DisbursementReconciliationReason.CONFLICTING_EVIDENCE,
                 queueRepository.findById(account.getId()).orElseThrow().getReason());
@@ -837,8 +837,8 @@ class H02DisbursementReconciliationIntegrationTest {
         UUID applicationId = seedApproved("MOCK0PENDOK", new BigDecimal("45000.00"));
         initiate(applicationId);
         disbursementIntentWorkflowService.executeForApplication(applicationId);
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-s1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-s2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-s1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-s2"));
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         String ref = jdbcTemplate.queryForObject(
                 "SELECT tran_ref_no FROM disbursement_observation WHERE loan_account_id = ? "
@@ -847,10 +847,10 @@ class H02DisbursementReconciliationIntegrationTest {
 
         transactionTemplate.executeWithoutResult(tx -> observationWriter.enqueue(
                 loanAccountRepository.findById(account.getId()).orElseThrow(), null, ref,
-                DisbursementReconciliationReason.CONFLICTING_EVIDENCE, "H02 sweep-retention probe."));
+                DisbursementReconciliationReason.CONFLICTING_EVIDENCE, "sweep-retention probe."));
 
         // The sweep must neither apply anything nor dismiss/overwrite the held conflict.
-        reconciliationService.pollDueQueue("worker", null, "h02-ssweep");
+        reconciliationService.pollDueQueue("worker", null, "t02-ssweep");
         DisbursementReconciliationQueueEntry held =
                 queueRepository.findById(account.getId()).orElseThrow();
         assertEquals(DisbursementReconciliationReason.CONFLICTING_EVIDENCE, held.getReason());
@@ -874,8 +874,8 @@ class H02DisbursementReconciliationIntegrationTest {
         String ifsc = intent.getBeneficiaryIfsc();
         String beneficiaryAccount = intent.getBeneficiaryAccountNumber();
         DisbursementPaymentMode mode = intent.getPaymentMode();
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-r1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-r2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-r1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-r2"));
 
         // Contradictory terminal evidence (FAILED on a DISBURSED loan): rejected, stays visible.
         DisbursementObservation contradiction = observationRepository.save(new DisbursementObservation(
@@ -884,11 +884,11 @@ class H02DisbursementReconciliationIntegrationTest {
                 "MOCK_ICICI", ref, "18", null, DisbursementDeclineKind.TECHNICAL,
                 ifsc, beneficiaryAccount, mode,
                 "{\"tranRefNo\":\"" + ref + "\"}",
-                "{\"disposition\":\"FAILED\"}", "h02-contradiction",
+                "{\"disposition\":\"FAILED\"}", "t02-contradiction",
                 DisbursementObservationProvenance.LIVE, "bank.evidence"));
         ApiConflictException rejected = assertThrows(ApiConflictException.class, () ->
                 reconciliationService.resolveManually(
-                        applicationId, contradiction.getId(), "ops.admin", null, "h02-rcontra"));
+                        applicationId, contradiction.getId(), "ops.admin", null, "t02-rcontra"));
         assertEquals("RECONCILIATION_REFERENCE_MISMATCH", rejected.getErrorCode());
         assertEquals(DisbursementReconciliationReason.CONFLICTING_EVIDENCE,
                 queueRepository.findById(account.getId()).orElseThrow().getReason());
@@ -900,11 +900,11 @@ class H02DisbursementReconciliationIntegrationTest {
                 "MOCK_ICICI", ref, "11", null, DisbursementDeclineKind.NONE,
                 ifsc, beneficiaryAccount, mode,
                 "{\"tranRefNo\":\"" + ref + "\"}",
-                "{\"disposition\":\"PENDING\"}", "h02-pending-replay",
+                "{\"disposition\":\"PENDING\"}", "t02-pending-replay",
                 DisbursementObservationProvenance.LIVE, "bank.evidence"));
         ApiConflictException notDefinitive = assertThrows(ApiConflictException.class, () ->
                 reconciliationService.resolveManually(
-                        applicationId, pendingReplay.getId(), "ops.admin", null, "h02-rpending"));
+                        applicationId, pendingReplay.getId(), "ops.admin", null, "t02-rpending"));
         assertEquals("RECONCILIATION_EVIDENCE_NOT_DEFINITIVE", notDefinitive.getErrorCode());
         assertEquals(DisbursementReconciliationReason.CONFLICTING_EVIDENCE,
                 queueRepository.findById(account.getId()).orElseThrow().getReason());
@@ -940,16 +940,16 @@ class H02DisbursementReconciliationIntegrationTest {
                         DisbursementDeclineKind.NONE,
                         "{\"tranRefNo\":\"ICI-NEWER-1\",\"beneficiaryIfsc\":\"MOCK0PENDOK\","
                                 + "\"beneficiaryAccountNumber\":\"123456789012\",\"paymentMode\":\"IMPS\"}",
-                        "{\"disposition\":\"PENDING\"}", "h02-stale"));
+                        "{\"disposition\":\"PENDING\"}", "t02-stale"));
             });
             return new LoanDisbursementAdapter.DisbursementStatusResult(
                     "0", "Check Transaction Successful",
                     DisbursementDisposition.SUCCESS, DisbursementDeclineKind.NONE,
-                    "0", "RRN-H02-STALE", "late success for superseded capture", "{\"disposition\":\"SUCCESS\"}");
+                    "0", "RRN-STALE-001", "late success for superseded capture", "{\"disposition\":\"SUCCESS\"}");
         }).when(loanDisbursementAdapter).checkStatus(any());
 
         assertFalse(loanDisbursementCommandService.pollPendingDisbursement(
-                applicationId, "worker", null, "h02-stale"));
+                applicationId, "worker", null, "t02-stale"));
         // Stale identity: verdict kept as duplicate evidence, nothing applied, operator queued.
         assertEquals(LoanAccountStatus.DISBURSEMENT_REQUESTED,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
@@ -978,7 +978,7 @@ class H02DisbursementReconciliationIntegrationTest {
             DisbursementIntent stored = disbursementIntentRepository
                     .findLiveByLoanAccountId(account.getId()).orElseThrow();
             stored.recordProviderResponse(DisbursementIntentState.SUCCEEDED, stored.getTranRefNo(),
-                    "0", "RRN-H02-STRANDED-" + accountIds.size(), DisbursementDeclineKind.NONE);
+                    "0", "RRN-STRANDED-" + accountIds.size(), DisbursementDeclineKind.NONE);
             disbursementIntentRepository.save(stored);
         }
         UUID targetAccountId = accountIds.get(0);
@@ -991,7 +991,7 @@ class H02DisbursementReconciliationIntegrationTest {
                         jdbcTemplate.queryForObject(
                                 "SELECT tran_ref_no FROM disbursement_intent WHERE loan_account_id = ? "
                                         + "AND state = 'SUCCEEDED' LIMIT 1", String.class, id),
-                        DisbursementReconciliationReason.STRANDED_TERMINAL, "H02 targeting probe.");
+                        DisbursementReconciliationReason.STRANDED_TERMINAL, "targeting probe.");
             }
         });
         jdbcTemplate.update(
@@ -999,7 +999,7 @@ class H02DisbursementReconciliationIntegrationTest {
                         + "WHERE loan_account_id = ?",
                 targetAccountId);
 
-        reconciliationService.pollDueQueue("worker", null, "h02-target");
+        reconciliationService.pollDueQueue("worker", null, "t02-target");
 
         UUID targetApp = applicationIds.get(0);
         assertEquals(LoanAccountStatus.DISBURSED,
@@ -1021,7 +1021,7 @@ class H02DisbursementReconciliationIntegrationTest {
         // Warmup poll consumes sequence 1 (unresolved); the race is over sequences 2 and 3.
         // Gate the provider call so both racers are in flight simultaneously: each claims its
         // durable sequence before either result commits, forcing the duplicate path on one side.
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-w1"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-w1"));
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         CountDownLatch bothInCall = new CountDownLatch(2);
         doAnswer(invocation -> {
@@ -1045,7 +1045,7 @@ class H02DisbursementReconciliationIntegrationTest {
                     throw new RuntimeException(e);
                 }
                 return loanDisbursementCommandService.pollPendingDisbursement(
-                        applicationId, "worker", null, "h02-race-a");
+                        applicationId, "worker", null, "t02-race-a");
             }));
             Future<Boolean> second = pool.submit(() -> TenantScopedExecution.callAsAdmin(() -> {
                 ready.countDown();
@@ -1056,7 +1056,7 @@ class H02DisbursementReconciliationIntegrationTest {
                     throw new RuntimeException(e);
                 }
                 return loanDisbursementCommandService.pollPendingDisbursement(
-                        applicationId, "worker", null, "h02-race-b");
+                        applicationId, "worker", null, "t02-race-b");
             }));
             assertTrue(ready.await(30, TimeUnit.SECONDS));
             go.countDown();
@@ -1087,7 +1087,7 @@ class H02DisbursementReconciliationIntegrationTest {
         UUID applicationId = seedApproved("MOCK0PENDOK", new BigDecimal("45000.00"));
         initiate(applicationId);
         disbursementIntentWorkflowService.executeForApplication(applicationId);
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-v1"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-v1"));
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         String ref = liveRef(account.getId());
 
@@ -1106,7 +1106,7 @@ class H02DisbursementReconciliationIntegrationTest {
             return new LoanDisbursementAdapter.DisbursementStatusResult(
                     "0", "Check Transaction Successful",
                     DisbursementDisposition.FAILED, DisbursementDeclineKind.TECHNICAL,
-                    "18", "RRN-H02-RACE", "late technical failure", "{\"disposition\":\"FAILED\"}");
+                    "18", "RRN-RACE-001", "late technical failure", "{\"disposition\":\"FAILED\"}");
         }).when(loanDisbursementAdapter).checkStatus(any());
 
         CountDownLatch ready = new CountDownLatch(2);
@@ -1122,7 +1122,7 @@ class H02DisbursementReconciliationIntegrationTest {
                     throw new RuntimeException(e);
                 }
                 return loanDisbursementCommandService.pollPendingDisbursement(
-                        applicationId, "worker", null, "h02-race-v1");
+                        applicationId, "worker", null, "t02-race-v1");
             }));
             Future<Boolean> second = pool.submit(() -> TenantScopedExecution.callAsAdmin(() -> {
                 ready.countDown();
@@ -1133,7 +1133,7 @@ class H02DisbursementReconciliationIntegrationTest {
                     throw new RuntimeException(e);
                 }
                 return loanDisbursementCommandService.pollPendingDisbursement(
-                        applicationId, "worker", null, "h02-race-v2");
+                        applicationId, "worker", null, "t02-race-v2");
             }));
             assertTrue(ready.await(30, TimeUnit.SECONDS));
             go.countDown();
@@ -1170,13 +1170,13 @@ class H02DisbursementReconciliationIntegrationTest {
         // Warmup poll consumes sequence 1 (unresolved with min-polls=1); the crash lands on a
         // queryable sequence so the failure actually happens inside the atomic apply.
         assertFalse(loanDisbursementCommandService.pollPendingDisbursement(
-                applicationId, "worker", null, "h02-gap-warm"));
+                applicationId, "worker", null, "t02-gap-warm"));
 
         // Crash inside the atomic apply: the claimed sequence commits, the result does not.
         doThrow(new IllegalStateException("simulated crash inside poll apply"))
                 .when(loanApplicationStatusWriter).updateStatus(any(), any());
         try {
-            loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "h02-gap");
+            loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t02-gap");
             org.junit.jupiter.api.Assertions.fail("expected the simulated crash to propagate");
         } catch (IllegalStateException expected) {
             assertEquals("simulated crash inside poll apply", expected.getMessage());
@@ -1191,7 +1191,7 @@ class H02DisbursementReconciliationIntegrationTest {
         // Recovery claims a fresh sequence and applies; the crashed gap stays visible forever.
         Mockito.doCallRealMethod().when(loanApplicationStatusWriter).updateStatus(any(), any());
         assertTrue(loanDisbursementCommandService.pollPendingDisbursement(
-                applicationId, "worker", null, "h02-gap-recover"));
+                applicationId, "worker", null, "t02-gap-recover"));
         assertEquals(LoanAccountStatus.DISBURSED,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
         List<DisbursementObservation> observations =
@@ -1227,7 +1227,7 @@ class H02DisbursementReconciliationIntegrationTest {
         String applicationId = createApplicationViaOps(lspId, productId, requestedAmount);
         transition(applicationId, "AWAITING_APPROVAL", "Ready for approval");
         markKycComplete(applicationId);
-        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for H02 test");
+        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for reconciliation test");
         seedBorrowerBankDetails(applicationId, ifsc);
         return UUID.fromString(applicationId);
     }
@@ -1240,9 +1240,9 @@ class H02DisbursementReconciliationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "H02 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", ifsc,
-                                "accountHolderName", "H02 Borrower"
+                                "accountHolderName", "Test Borrower"
                         ))))
                 .andExpect(status().isOk());
     }
@@ -1253,7 +1253,7 @@ class H02DisbursementReconciliationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", "LSP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
-                                "name", "H02 LSP",
+                                "name", "Test LSP",
                                 "status", "ACTIVE"
                         ))))
                 .andExpect(status().isOk())
@@ -1268,7 +1268,7 @@ class H02DisbursementReconciliationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", code,
-                                "name", "H02 product " + code,
+                                "name", "Test product " + code,
                                 "minPrincipal", new BigDecimal("5000.00"),
                                 "maxPrincipal", new BigDecimal("1000000.00"),
                                 "interestRate", new BigDecimal("18.50"),
@@ -1298,9 +1298,9 @@ class H02DisbursementReconciliationIntegrationTest {
         payload.put("externalLoanId", "EXT-" + UUID.randomUUID().toString().substring(0, 8));
         payload.put("sourceChannel", "API");
         payload.put("borrowerPan", borrowerPan);
-        payload.put("borrowerFullName", "H02 Borrower");
+        payload.put("borrowerFullName", "Test Borrower");
         payload.put("borrowerMobile", mobileForPan(borrowerPan));
-        payload.put("borrowerEmail", "h02+" + borrowerPan.toLowerCase() + "@example.com");
+        payload.put("borrowerEmail", "t02+" + borrowerPan.toLowerCase() + "@example.com");
         payload.put("borrowerDateOfBirth", LocalDate.of(1990, 1, 1));
         payload.put("borrowerCity", "Mumbai");
         payload.put("borrowerState", "Maharashtra");
@@ -1339,7 +1339,7 @@ class H02DisbursementReconciliationIntegrationTest {
                     String documentKey = item.getDocumentType().name().toLowerCase();
                     item.update(
                             LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                            "Uploaded for H02 test",
+                            "Uploaded for reconciliation test",
                             "ops.user",
                             documentKey + ".pdf",
                             "storage://" + applicationId + "/" + documentKey + ".pdf",

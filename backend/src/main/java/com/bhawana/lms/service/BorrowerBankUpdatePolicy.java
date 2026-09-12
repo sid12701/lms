@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * C06-phase-2: the single audited policy for shared borrower bank fields. Both explicit bank
+ * The single audited policy for shared borrower bank fields. Both explicit bank
  * edits and onboarding profile merges route changed bank fields through here, so the mutation
  * and its audit row commit (or roll back) in the caller's transaction — never a split
  * REQUIRES_NEW afterthought. Unchanged (no-op) submissions write nothing: no save, no audit

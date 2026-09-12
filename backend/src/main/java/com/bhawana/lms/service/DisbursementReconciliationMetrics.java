@@ -9,8 +9,8 @@ import java.time.Instant;
 import org.springframework.stereotype.Component;
 
 /**
- * H02 — operational gauges for the explicit reconciliation queue: counts AND oldest age for
- * all unresolved states (the H27 exporter consumes the queue API built on the same source).
+ * Operational gauges for the explicit reconciliation queue: counts AND oldest age for
+ * all unresolved states (a metrics exporter consumes the queue API built on the same source).
  */
 @Component
 public class DisbursementReconciliationMetrics {

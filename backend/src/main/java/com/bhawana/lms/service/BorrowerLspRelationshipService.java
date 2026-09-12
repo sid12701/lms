@@ -78,7 +78,7 @@ public class BorrowerLspRelationshipService {
     }
 
     /**
-     * C06-phase-2 narrow access insertion for the atomic existing-borrower onboarding path.
+     * Narrow access insertion for the atomic existing-borrower onboarding path.
      * Inserts only the caller's own {@code borrower_lsp_access} row in the current tenant
      * transaction (V43 permits {@code lsp_id = self}) — no detached full-entity merge, no
      * admin write. The caller must lock and refresh the borrower next, then merge the
@@ -97,7 +97,7 @@ public class BorrowerLspRelationshipService {
     }
 
     /**
-     * C06-phase-2 relationship upsert by id, without merging borrower state. References are
+     * Relationship upsert by id, without merging borrower state. References are
      * lazy proxies (FK values only); the borrower's profile is owned by the caller's locked
      * and refreshed entity, never by this write.
      */

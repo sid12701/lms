@@ -18,11 +18,11 @@ import org.springframework.core.env.Environment;
 import org.springframework.mock.env.MockEnvironment;
 
 /**
- * G01 (production mock guard) — actual Spring contexts booted with simulator-only wiring.
+ * (Production mock guard) — actual Spring contexts booted with simulator-only wiring.
  * Production-like, default (no explicit profile) and mixed profiles fail closed; only explicit
  * simulation profiles (test/local/dev) boot the simulator.
  */
-class G01ProductionMockGuardSliceTest {
+class ProductionMockGuardSliceTest {
 
     @Configuration
     static class SimulatorOnlyConfig {

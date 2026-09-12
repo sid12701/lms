@@ -32,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Owns disbursement <em>initiation</em> (creating the durable intent; C04: the only
+ * Owns disbursement <em>initiation</em> (creating the durable intent; the only
  * money-movement path — the worker executes the committed intent outside any transaction)
  * and the orchestration of the resolution flows (manual mock outcome, worker auto-resolve,
  * status-check poll). The terminal verdict is normalised into a
@@ -110,7 +110,7 @@ public class LoanDisbursementCommandService {
             return application;
         }
         LoanAccount loanAccount = resolveLoanAccountForDisbursement(application);
-        // C04: no silent idempotent return — REQUESTED/PENDING_RECONCILIATION must reconcile,
+        // no silent idempotent return — REQUESTED/PENDING_RECONCILIATION must reconcile,
         // never re-initiate. The detailed guard lives in the overload below + the domain method.
         return initiateDisbursement(
                 applicationId,
@@ -142,7 +142,7 @@ public class LoanDisbursementCommandService {
         loanApplicationDocumentChecklistService.validateRequiredDocumentsUploadedBeforeDisbursement(applicationId);
 
         LoanAccount loanAccount = resolveLoanAccountForDisbursement(application);
-        // C04: the durable intent is the only money-movement path. Re-initiation from an
+        // the durable intent is the only money-movement path. Re-initiation from an
         // in-flight (REQUESTED) or uncertain (PENDING_RECONCILIATION) loan is rejected — the
         // only forward path there is reconciliation of the original reference.
         if (loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_REQUESTED
@@ -163,7 +163,7 @@ public class LoanDisbursementCommandService {
         BigDecimal scaledDisbursementAmount = Money.scale(Money.requirePositive(disbursementAmount, "Disbursement amount"));
         DisbursementPaymentMode paymentMode = paymentModeSelector.selectPaymentMode(scaledDisbursementAmount);
 
-        // C04: durable intent is mandatory — no inline provider call, no flag branch.
+        // durable intent is mandatory — no inline provider call, no flag branch.
         disbursementIntentWorkflowService.createIntent(
                 application,
                 loanAccount,
@@ -179,7 +179,7 @@ public class LoanDisbursementCommandService {
      * verdict (IMPS success / decline) inline. PENDING transactions are left for the status-check
      * worker. Returns the disposition observed, or {@code null} when there is nothing to resolve.
      *
-     * <p>G01: mock auto-resolve is simulation-only. The guard is enforced here — not on the wired
+     * <p>Mock auto-resolve is simulation-only. The guard is enforced here — not on the wired
      * adapter type — so the boundary holds even after a real bank adapter replaces the mock.
      */
     @Transactional
@@ -222,7 +222,7 @@ public class LoanDisbursementCommandService {
      * Status-check worker hook: polls a PENDING transaction (ICICI {@code /composite-status}) and
      * resolves it once terminal, or parks it for reconciliation once the poll cap is reached.
      *
-     * <p>C04: single reconciliation path — no flag branch. The provider call stays outside the
+     * <p>Single reconciliation path — no flag branch. The provider call stays outside the
      * transaction; the verdict, account/application transition, loan event and outcome audit commit
      * together. Rows created before the inline-initiation removal (legacy logs without an intent)
      * remain pollable through the same method; when a live intent exists it is marked from the
@@ -245,7 +245,7 @@ public class LoanDisbursementCommandService {
     }
 
     /**
-     * H02 — shared poll engine behind both the normal status-check path (still-REQUESTED loans)
+     * shared poll engine behind both the normal status-check path (still-REQUESTED loans)
      * and the reconciliation sweep (REQUESTED plus parked loans, same frozen original
      * reference). The network call stays outside the transaction; the captured
      * reference/instruction is revalidated under locks before anything is applied.
@@ -258,11 +258,11 @@ public class LoanDisbursementCommandService {
     ) {
         // Provider call stays outside the transaction: resolving it holds no database work, and a
         // slow or hung provider must not pin a pooled connection for the worker's whole serial loop.
-        // H02: the captured frozen reference/instruction travels with the call and is revalidated
+        // the captured frozen reference/instruction travels with the call and is revalidated
         // under locks after the network before anything is applied.
         String capturedRef = captured.latestRequest().getTranRefNo();
         LoanDisbursementAdapter.DisbursementStatusQuery capturedQuery = captured.query();
-        // H02 — durable per-call identity BEFORE the network: the claim commits the poll
+        // durable per-call identity BEFORE the network: the claim commits the poll
         // sequence on the stored request before the provider is touched. The sequence travels
         // into the immutable result (including timeouts); a crash after the call but before
         // the result commit leaves the claimed sequence with no result row — a crashed
@@ -275,11 +275,11 @@ public class LoanDisbursementCommandService {
         int callSeq = pollSeq.get();
         LoanDisbursementAdapter.DisbursementStatusResult statusResult;
         try {
-            // H27/H02: the bank call stays outside every transaction; latency is recorded
+            // The bank call stays outside every transaction; latency is recorded
             // even on timeout (the timeout observation path below still runs).
             statusResult = providerLatency.timeStatusCheck(() -> loanDisbursementAdapter.checkStatus(capturedQuery));
         } catch (RuntimeException timeout) {
-            // H02: timeouts are POLL observations too — carrying the claimed sequence, the
+            // timeouts are POLL observations too — carrying the claimed sequence, the
             // original reference stays queued, and nothing is re-initiated.
             recordPollTimeout(captured, callSeq, actorUsername, correlationId, timeout.getMessage());
             return false;
@@ -305,14 +305,14 @@ public class LoanDisbursementCommandService {
             if (lockedApplication == null || lockedAccount == null || capturedRequest == null) {
                 return false;
             }
-            // H02: reread the actual latest stored request under the locks. The captured row
+            // reread the actual latest stored request under the locks. The captured row
             // is evidence of what was polled — but if a newer request row appeared while the
             // provider call was in flight, this capture is stale: record the verdict as
             // duplicate evidence against the captured identity and apply nothing.
             LoanDisbursementRequestLog topRequest = loanDisbursementRequestLogRepository
                     .findTopByLoanAccount_IdOrderByCreatedAtDesc(lockedAccount.getId()).orElse(null);
             boolean staleIdentity = topRequest == null || !topRequest.getId().equals(capturedRequest.getId());
-            // H02 revalidation: the captured reference and frozen instruction are rechecked under
+            // Revalidation: the captured reference and frozen instruction are rechecked under
             // the application→account→intent locks AFTER the network. A loan that resolved
             // concurrently keeps terminal precedence; a changed live instruction, a superseded
             // capture, or a definitive verdict contradicting the accepted outcome surfaces as
@@ -361,7 +361,7 @@ public class LoanDisbursementCommandService {
                                 resolvedResult.disposition(),
                                 lockedAccount.getStatus(),
                                 liveIntent == null ? null : liveIntent.getState())) {
-                    // H02: a delayed definitive verdict contradicts the accepted terminal
+                    // a delayed definitive verdict contradicts the accepted terminal
                     // outcome — preserved above and held operator-visible, never applied.
                     observationWriter.enqueue(
                             lockedAccount, liveIntent, capturedRef,
@@ -370,11 +370,11 @@ public class LoanDisbursementCommandService {
                                     + capturedRef + " contradicts the accepted "
                                     + lockedAccount.getStatus() + " outcome; operator review required.");
                 }
-                // H02: terminal duplicate — evidence kept above, accepted outcome and queue left
+                // terminal duplicate — evidence kept above, accepted outcome and queue left
                 // untouched so a conflicting-evidence entry is never dismissed by a late poll.
                 return false;
             }
-            // C04/C02: a delayed poll must never regress an accepted result. Revalidation above
+            // A delayed poll must never regress an accepted result. Revalidation above
             // already rejected anything but still-REQUESTED (normal path) or parked
             // (reconciliation sweep on the original reference); stranded terminals belong to
             // the repair path.
@@ -391,7 +391,7 @@ public class LoanDisbursementCommandService {
                     correlationId
             );
             if (resolvedResult.isQueryResolved() && resolvedResult.disposition() != DisbursementDisposition.PENDING) {
-                // C06-phase-1: only the intent owning this reference may be marked; a different live
+                // Only the intent owning this reference may be marked; a different live
                 // intent must never receive another instruction's verdict.
                 disbursementIntentWorkflowService.markIntentFromStatusPoll(
                         lockedAccount.getId(), capturedRequest.getTranRefNo(), resolvedResult);
@@ -401,7 +401,7 @@ public class LoanDisbursementCommandService {
     }
 
     /**
-     * H02 — commits the attempted-poll marker before any network I/O: locks the account and
+     * commits the attempted-poll marker before any network I/O: locks the account and
      * the captured stored request, rechecks they still carry the captured reference in a
      * pollable state, and bumps the poll count. Returns the assigned durable per-call
      * sequence (the post-increment count, unique per attempted call on this request), or
@@ -441,7 +441,7 @@ public class LoanDisbursementCommandService {
     }
 
     /**
-     * H02 — revalidates the pre-network capture under locks. Accepted only when the latest
+     * revalidates the pre-network capture under locks. Accepted only when the latest
      * stored request still carries the captured reference, the live intent (when present) still
      * owns it, and the frozen beneficiary instruction is unchanged. Anything else is a stale or
      * contradictory capture: the observation is kept as duplicate evidence and the loan either
@@ -491,7 +491,7 @@ public class LoanDisbursementCommandService {
                     "Account already " + lockedAccount.getStatus() + " when poll for reference "
                             + capturedRef + " returned; accepted outcome preserved.");
         }
-        // H02: both still-REQUESTED and already-parked loans are accepted here. Parked loans
+        // both still-REQUESTED and already-parked loans are accepted here. Parked loans
         // arrive only via the reconciliation sweep polling the original reference; the apply
         // step refreshes their queue entry without emitting a new transition/event.
         return Revalidation.accepted();
@@ -535,10 +535,10 @@ public class LoanDisbursementCommandService {
             String actorIp,
             String correlationId
     ) {
-        // H02: the poll count was already committed pre-call (claimPollAttempt) as the durable
+        // the poll count was already committed pre-call (claimPollAttempt) as the durable
         // attempted-call marker, so it is not bumped again here: one attempted poll consumes
         // exactly one count whether the result commits, times out, or crashes mid-apply.
-        // H02: every poll attempt is an immutable observation in the same atomic boundary as the
+        // every poll attempt is an immutable observation in the same atomic boundary as the
         // outcome decision — N polls produce N observations, including unresolved queries.
         boolean queryResolvedTerminal = statusResult.isQueryResolved()
                 && statusResult.disposition() != DisbursementDisposition.PENDING;
@@ -581,13 +581,13 @@ public class LoanDisbursementCommandService {
                     actorIp,
                     correlationId
             );
-            // H02: terminal outcome accepted — resolved, clear the queue.
+            // terminal outcome accepted — resolved, clear the queue.
             observationWriter.clear(loanAccount.getId());
             return true;
         }
 
         if (loanAccount.getStatus() == LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION) {
-            // H02 reconciliation re-poll confirmed still pending on an already-parked loan:
+            // Reconciliation re-poll confirmed still pending on an already-parked loan:
             // refresh the queue entry for age, advance the backoff for the attempt just made,
             // but emit no new transition/event.
             observationWriter.enqueue(
@@ -617,7 +617,7 @@ public class LoanDisbursementCommandService {
                     actorIp,
                     correlationId
             );
-            // H02: normal polling is exhausted — the loan parks with its original reference and
+            // normal polling is exhausted — the loan parks with its original reference and
             // stays in the queue; reconciliation keeps polling it, never re-initiating.
             observationWriter.enqueue(
                     loanAccount,
@@ -629,7 +629,7 @@ public class LoanDisbursementCommandService {
             observationWriter.recordAttempt(loanAccount.getId());
             return true;
         }
-        // H02: still pending — refresh the queue entry and advance the backoff for the attempt.
+        // still pending — refresh the queue entry and advance the backoff for the attempt.
         observationWriter.enqueue(
                 loanAccount,
                 liveIntent,
@@ -644,7 +644,7 @@ public class LoanDisbursementCommandService {
     }
 
     /**
-     * H02 — a hung/failed status call is still evidence: the poll counts, the observation is
+     * a hung/failed status call is still evidence: the poll counts, the observation is
      * stored with an unresolved query, and the original reference stays queued.
      */
     private void recordPollTimeout(
@@ -683,13 +683,13 @@ public class LoanDisbursementCommandService {
                         serializeStatusQuery(captured.query()),
                         timeoutResponseJson(message),
                         correlationId, actorUsername);
-                // H02: resolved concurrently — timeout kept as duplicate evidence above; the
+                // resolved concurrently — timeout kept as duplicate evidence above; the
                 // accepted outcome and any held conflicting-evidence queue entry stand.
                 return false;
             }
             DisbursementIntent liveIntent = disbursementIntentRepository
                     .findLiveByLoanAccountId(lockedAccount.getId()).orElse(null);
-            // H02: the attempt was already counted pre-call; the timeout only needs its
+            // the attempt was already counted pre-call; the timeout only needs its
             // observation plus the retained queue entry.
             observationWriter.recordPoll(
                     lockedAccount, liveIntent, latestRequest.getTranRefNo(),
@@ -783,7 +783,7 @@ public class LoanDisbursementCommandService {
             String correlationId,
             MockDisbursementOutcome outcome
     ) {
-        // G01: mock outcomes are simulation-only. Enforced here — not on the wired adapter type —
+        // Mock outcomes are simulation-only. Enforced here — not on the wired adapter type —
         // so the boundary holds even after a real bank adapter replaces the mock.
         simulationGuard.requireSimulationAllowed("mock-disbursement-outcome");
         if (outcome == null) {
@@ -861,7 +861,7 @@ public class LoanDisbursementCommandService {
     }
 
     /**
-     * C06-phase-2 borrower-first prefix: initiation serializes against cross-LSP bank edits
+     * Borrower-first prefix: initiation serializes against cross-LSP bank edits
      * on the shared borrower row before touching application/account/intent state. The
      * refresh discards any cached borrower copy that predates the lock wait.
      */

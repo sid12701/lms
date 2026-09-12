@@ -17,8 +17,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * H02 — explicit reconciliation queue API. Exposes bounded queue pages plus counts AND oldest
- * age for all unresolved states (the H27 exporter builds on this surface; no exporter here).
+ * Explicit reconciliation queue API. Exposes bounded queue pages plus counts AND oldest
+ * age for all unresolved states (an external metrics exporter may build on this surface; no exporter here).
  */
 @RestController
 @RequestMapping("/api/v1/internal/ops/disbursement-reconciliation")

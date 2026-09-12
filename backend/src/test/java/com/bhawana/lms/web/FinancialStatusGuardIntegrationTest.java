@@ -40,7 +40,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
- * H31 — generic status commands must not write financial lifecycle states without the
+ * Generic status commands must not write financial lifecycle states without the
  * bank/receipt evidence that makes those states true. Direct DISBURSED/CLOSED targets are
  * rejected from both the standard and the manual generic endpoints, while the legitimate
  * writers (accepted bank outcome, final EMI, foreclosure settlement) keep working.
@@ -52,7 +52,7 @@ import org.springframework.test.web.servlet.MvcResult;
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class H31FinancialStatusGuardIntegrationTest {
+class FinancialStatusGuardIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -197,7 +197,6 @@ class H31FinancialStatusGuardIntegrationTest {
         // so the mock-outcome route resolves it — the legitimate evidence-backed writer.
         UUID applicationId = seedApproved("MOCK0PENDOK", new BigDecimal("45000.00"));
 
-        // C02's legitimate writer: accepted bank outcome via the mock-outcome route.
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
@@ -227,7 +226,7 @@ class H31FinancialStatusGuardIntegrationTest {
             body.put("amount", new BigDecimal(installment.get("outstandingAmount").asText()));
             body.put("postedAt", LocalDate.now().minusDays(schedule.size() - index).toString());
             body.put("channel", "BANK_TRANSFER");
-            body.put("reference", "PAY-H31-CLOSE-" + String.format("%03d", index + 1));
+            body.put("reference", "PAY-CLOSE-" + String.format("%03d", index + 1));
             mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
                             .with(systemAdmin())
                             .header("Idempotency-Key", UUID.randomUUID().toString())
@@ -252,16 +251,16 @@ class H31FinancialStatusGuardIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "H31 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", ifsc,
-                                "accountHolderName", "H31 Borrower"
+                                "accountHolderName", "Test Borrower"
                         ))))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
         disbursementIntentWorkflowService.executeForApplication(applicationId);
-        loanDisbursementCommandService.autoResolveAfterInitiate(applicationId, "ops.admin", null, "h31-seed");
+        loanDisbursementCommandService.autoResolveAfterInitiate(applicationId, "ops.admin", null, "t31-seed");
         assertEquals(LoanApplicationStatus.DISBURSED,
                 loanApplicationRepository.findById(applicationId).orElseThrow().getStatus());
         return applicationId;
@@ -274,7 +273,7 @@ class H31FinancialStatusGuardIntegrationTest {
         String applicationId = createApplicationViaOps(lspId, productId, requestedAmount);
         transition(applicationId, "AWAITING_APPROVAL", "Ready for approval");
         markKycComplete(applicationId);
-        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for H31 guard test");
+        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for guard test");
         seedBorrowerBankDetails(applicationId, ifsc);
         return UUID.fromString(applicationId);
     }
@@ -296,9 +295,9 @@ class H31FinancialStatusGuardIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "H31 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", ifsc,
-                                "accountHolderName", "H31 Borrower"
+                                "accountHolderName", "Test Borrower"
                         ))))
                 .andExpect(status().isOk());
     }
@@ -309,7 +308,7 @@ class H31FinancialStatusGuardIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", "LSP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
-                                "name", "H31 LSP",
+                                "name", "Test LSP",
                                 "status", "ACTIVE"
                         ))))
                 .andExpect(status().isOk())
@@ -324,7 +323,7 @@ class H31FinancialStatusGuardIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", code,
-                                "name", "H31 product " + code,
+                                "name", "Test product " + code,
                                 "minPrincipal", new BigDecimal("5000.00"),
                                 "maxPrincipal", new BigDecimal("1000000.00"),
                                 "interestRate", new BigDecimal("18.50"),
@@ -355,9 +354,9 @@ class H31FinancialStatusGuardIntegrationTest {
         payload.put("externalLoanId", "EXT-" + UUID.randomUUID().toString().substring(0, 8));
         payload.put("sourceChannel", "API");
         payload.put("borrowerPan", borrowerPan);
-        payload.put("borrowerFullName", "H31 Borrower");
+        payload.put("borrowerFullName", "Test Borrower");
         payload.put("borrowerMobile", mobileForPan(borrowerPan));
-        payload.put("borrowerEmail", "h31+" + borrowerPan.toLowerCase() + "@example.com");
+        payload.put("borrowerEmail", "t31+" + borrowerPan.toLowerCase() + "@example.com");
         payload.put("borrowerDateOfBirth", LocalDate.of(1990, 1, 1));
         payload.put("borrowerCity", "Mumbai");
         payload.put("borrowerState", "Maharashtra");
@@ -396,7 +395,7 @@ class H31FinancialStatusGuardIntegrationTest {
                     String documentKey = item.getDocumentType().name().toLowerCase();
                     item.update(
                             LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                            "Uploaded for H31 guard test",
+                            "Uploaded for guard test",
                             "ops.user",
                             documentKey + ".pdf",
                             "storage://" + applicationId + "/" + documentKey + ".pdf",

@@ -3,7 +3,7 @@ package com.bhawana.lms.repo;
 import java.util.UUID;
 
 /**
- * C03 — atomic claim fence token.
+ * Atomic claim fence token.
  *
  * <p>Issued by the single conditional claim primitive (fast single + batch) and checked at
  * submission preparation. {@code attemptCount} is the existing {@code attempt_count} column used

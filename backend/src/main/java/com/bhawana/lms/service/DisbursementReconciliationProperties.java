@@ -3,7 +3,7 @@ package com.bhawana.lms.service;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * H02 — bounded reconciliation queue tuning. Backoff keeps provider load constant no matter
+ * Bounded reconciliation queue tuning. Backoff keeps provider load constant no matter
  * how many loans park: {@code next_poll_at = now + min(maxDelay, initialDelay * 2^pollCount)}.
  * {@code escalationAge} surfaces stale money to operators; the queue page size bounds every
  * poll sweep and every API response.
@@ -46,7 +46,7 @@ public class DisbursementReconciliationProperties {
     }
 
     public void setQueuePollBatchSize(int queuePollBatchSize) {
-        // H02: floor at two — the sweep always slices a discovery reserve off this size, and a
+        // Floor at two — the sweep always slices a discovery reserve off this size, and a
         // batch of one would silently disable inventory of never-queued accounts forever.
         this.queuePollBatchSize = Math.max(2, queuePollBatchSize);
     }

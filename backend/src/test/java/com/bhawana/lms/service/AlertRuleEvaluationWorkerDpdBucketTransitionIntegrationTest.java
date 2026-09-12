@@ -256,7 +256,7 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
 
-        // C04: HDFC fixtures disburse atomically on intent execution — no mock outcome follows.
+        // HDFC fixtures disburse atomically on intent execution — no mock outcome follows.
         disbursementIntentWorkflowService.executeForApplication(applicationId);
         loanDisbursementCommandService.autoResolveAfterInitiate(
                 applicationId, "ops.admin", null, "dpd-test");

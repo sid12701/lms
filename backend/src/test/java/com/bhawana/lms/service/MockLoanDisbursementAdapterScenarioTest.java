@@ -19,7 +19,7 @@ import org.springframework.mock.env.MockEnvironment;
 
 class MockLoanDisbursementAdapterScenarioTest {
 
-    // G01: the simulator requires an explicit simulation profile, even in unit tests.
+    // The simulator requires an explicit simulation profile, even in unit tests.
     private final MockLoanDisbursementAdapter adapter = new MockLoanDisbursementAdapter(
             new ObjectMapper(), new LoanDisbursementMockProperties(), simulationGuard());
 

@@ -63,7 +63,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
- * C06-phase-1: status polling reuses the frozen payment instruction (intent snapshot, or the
+ * Status polling reuses the frozen payment instruction (intent snapshot, or the
  * original stored request for legacy rows without an intent) — never the borrower's live IFSC.
  *
  * <p>The frozen photo is taken at intent creation. Direct repository mutation of the borrower is a
@@ -78,7 +78,7 @@ import org.springframework.test.web.servlet.MvcResult;
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class C06Phase1SnapshotPollingIntegrationTest {
+class SnapshotPollingIntegrationTest {
 
     private static final String FROZEN_IFSC = "MOCK0PENDOK";
     private static final String MUTATED_IFSC = "MOCK0PENDFL";
@@ -104,11 +104,11 @@ class C06Phase1SnapshotPollingIntegrationTest {
     }
 
     /**
-     * H02 evidence cleanup for legacy-shape fixtures (test databases only): the observation
+     * Evidence cleanup for legacy-shape fixtures (test databases only): the observation
      * trail is append-only (row deletes rejected), so truncate before removing intent rows.
      * No test assertion reads the trail; production cleanup paths are untouched.
      */
-    private void truncateH02Evidence() {
+    private void truncateReconciliationEvidence() {
         jdbcTemplate.execute("TRUNCATE TABLE disbursement_reconciliation_queue");
         jdbcTemplate.execute("TRUNCATE TABLE disbursement_observation");
     }
@@ -133,10 +133,10 @@ class C06Phase1SnapshotPollingIntegrationTest {
         assertEquals(MUTATED_IFSC, liveBorrowerIfsc(applicationId));
 
         // Test profile min-polls=1: first poll is not yet queryable, second resolves terminally.
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-frozen-1"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-frozen-1"));
         assertEquals(LoanAccountStatus.DISBURSEMENT_REQUESTED,
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getStatus());
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-frozen-2"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-frozen-2"));
 
         List<LoanDisbursementAdapter.DisbursementStatusQuery> queries = captureStatusQueries(2);
         assertEquals(2, queries.size());
@@ -164,8 +164,8 @@ class C06Phase1SnapshotPollingIntegrationTest {
         DisbursementIntent intent = disbursementIntentRepository.findLiveByLoanAccountId(
                 loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getId()).orElseThrow();
 
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-happy-1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-happy-2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-happy-1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-happy-2"));
 
         List<LoanDisbursementAdapter.DisbursementStatusQuery> queries = captureStatusQueries(2);
         for (LoanDisbursementAdapter.DisbursementStatusQuery query : queries) {
@@ -190,18 +190,18 @@ class C06Phase1SnapshotPollingIntegrationTest {
         String originalRef = originalLog.getTranRefNo();
         DisbursementPaymentMode originalMode = originalLog.getPaymentMode();
 
-        // Simulate a pre-C04 legacy row: the intent never existed, only the stored request.
-        // H02 evidence (test databases only): truncate the append-only trail first — the
+        // Simulate a legacy pre-intent row: the intent never existed, only the stored request.
+        // Evidence (test databases only): truncate the append-only trail first — the
         // trigger rejects row deletes, and the intent FK must not block legacy shaping.
         DisbursementIntent live = disbursementIntentRepository.findLiveByLoanAccountId(account.getId()).orElseThrow();
-        truncateH02Evidence();
+        truncateReconciliationEvidence();
         disbursementIntentRepository.delete(live);
 
         mutateBorrowerIfscDirect(applicationId, MUTATED_IFSC);
 
         assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(applicationId).isPresent());
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-legacy-1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-legacy-2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-legacy-1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-legacy-2"));
 
         List<LoanDisbursementAdapter.DisbursementStatusQuery> queries = captureStatusQueries(2);
         for (LoanDisbursementAdapter.DisbursementStatusQuery query : queries) {
@@ -238,7 +238,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
         // backfill copied the *current* borrower IFSC into a new UNKNOWN intent while the stored
         // request still carries the original instruction. Same reference, conflicting beneficiary.
         mutateBorrowerIfscDirect(applicationId, MUTATED_IFSC);
-        truncateH02Evidence();
+        truncateReconciliationEvidence();
         disbursementIntentRepository.delete(modern);
         LoanAccount attachedAccount = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         DisbursementIntent backfilled = new DisbursementIntent(
@@ -250,7 +250,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
 
         List<String> diagnostics = captureWarns(() -> {
             assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(applicationId).isEmpty());
-            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-v111"));
+            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-v111"));
         });
         assertTrue(diagnostics.stream().anyMatch(message -> message.contains("frozen_instruction_conflict")),
                 "Expected a frozen_instruction_conflict diagnostic, got: " + diagnostics);
@@ -294,7 +294,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
 
         List<String> diagnostics = captureWarns(() -> {
             assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(applicationId).isEmpty());
-            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-conflict-ref"));
+            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-conflict-ref"));
         });
         assertTrue(diagnostics.stream().anyMatch(message -> message.contains("live_intent_reference_mismatch")),
                 "Expected a live_intent_reference_mismatch diagnostic, got: " + diagnostics);
@@ -316,10 +316,10 @@ class C06Phase1SnapshotPollingIntegrationTest {
 
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         // Isolate payload validation: no live intent, so the stored request is the only evidence.
-        // H02 evidence (test databases only): see truncateH02Evidence.
+        // Evidence (test databases only): see truncateReconciliationEvidence.
         disbursementIntentRepository.findLiveByLoanAccountId(account.getId())
                 .ifPresent(intent -> {
-                    truncateH02Evidence();
+                    truncateReconciliationEvidence();
                     disbursementIntentRepository.delete(intent);
                 });
         LoanDisbursementRequestLog validBase = loanDisbursementRequestLogRepository
@@ -337,7 +337,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
             List<String> diagnostics = captureWarns(() -> {
                 assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(applicationId).isEmpty(),
                         "Payload override should block polling: " + override);
-                assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-bad-ifsc"));
+                assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-bad-ifsc"));
             });
             assertTrue(diagnostics.stream().anyMatch(message -> message.contains("request_ifsc_missing")),
                     "Expected request_ifsc_missing for " + override + ", got: " + diagnostics);
@@ -349,7 +349,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
         insertLatestLogWithRawPayload(account, validBase, payloadWithNullIfsc(validBase));
         List<String> nullDiagnostics = captureWarns(() -> {
             assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(applicationId).isEmpty());
-            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-null-ifsc"));
+            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-null-ifsc"));
         });
         assertTrue(nullDiagnostics.stream().anyMatch(message -> message.contains("request_ifsc_missing")));
         verify(loanDisbursementAdapter, never()).checkStatus(any());
@@ -358,7 +358,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
         insertLatestLogWithRawPayload(account, validBase, payloadWithNumericIfsc(validBase));
         List<String> numericDiagnostics = captureWarns(() -> {
             assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(applicationId).isEmpty());
-            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-numeric-ifsc"));
+            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-numeric-ifsc"));
         });
         assertTrue(numericDiagnostics.stream().anyMatch(message -> message.contains("request_ifsc_missing")));
         verify(loanDisbursementAdapter, never()).checkStatus(any());
@@ -378,7 +378,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         disbursementIntentRepository.findLiveByLoanAccountId(account.getId())
                 .ifPresent(intent -> {
-                    truncateH02Evidence();
+                    truncateReconciliationEvidence();
                     disbursementIntentRepository.delete(intent);
                 });
         LoanDisbursementRequestLog validBase = loanDisbursementRequestLogRepository
@@ -389,7 +389,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
         insertLatestLogWithPayload(account, validBase, Map.of("__remove__tranRefNo", true));
         List<String> missingRef = captureWarns(() -> {
             assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(applicationId).isEmpty());
-            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-missing-ref"));
+            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-missing-ref"));
         });
         assertTrue(missingRef.stream().anyMatch(message -> message.contains("request_reference_missing")), "got: " + missingRef);
         verify(loanDisbursementAdapter, never()).checkStatus(any());
@@ -399,7 +399,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
         insertLatestLogWithPayload(account, validBase, Map.of("__remove__paymentMode", true));
         List<String> missingMode = captureWarns(() -> {
             assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(applicationId).isEmpty());
-            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-missing-mode"));
+            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-missing-mode"));
         });
         assertTrue(missingMode.stream().anyMatch(message -> message.contains("request_mode_missing")), "got: " + missingMode);
         verify(loanDisbursementAdapter, never()).checkStatus(any());
@@ -409,7 +409,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
         insertLatestLogWithPayload(account, validBase, Map.of("tranRefNo", validBase.getTranRefNo() + "-OTHER"));
         List<String> contradictoryRef = captureWarns(() -> {
             assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(applicationId).isEmpty());
-            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-contra-ref"));
+            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-contra-ref"));
         });
         assertTrue(contradictoryRef.stream().anyMatch(message -> message.contains("payload_reference_mismatch")), "got: " + contradictoryRef);
         verify(loanDisbursementAdapter, never()).checkStatus(any());
@@ -421,7 +421,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
         insertLatestLogWithPayload(account, validBase, Map.of("paymentMode", otherMode.name()));
         List<String> contradictoryMode = captureWarns(() -> {
             assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(applicationId).isEmpty());
-            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-contra-mode"));
+            assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-contra-mode"));
         });
         assertTrue(contradictoryMode.stream().anyMatch(message -> message.contains("payload_mode_mismatch")), "got: " + contradictoryMode);
         verify(loanDisbursementAdapter, never()).checkStatus(any());
@@ -451,8 +451,8 @@ class C06Phase1SnapshotPollingIntegrationTest {
         mutateBorrowerIfscDirect(applicationId, MUTATED_IFSC);
 
         assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(applicationId).isPresent());
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-unknown-1"));
-        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "c06-unknown-2"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-unknown-1"));
+        assertTrue(loanDisbursementCommandService.pollPendingDisbursement(applicationId, "worker", null, "t06-unknown-2"));
 
         List<LoanDisbursementAdapter.DisbursementStatusQuery> queries = captureStatusQueries(2);
         for (LoanDisbursementAdapter.DisbursementStatusQuery query : queries) {
@@ -477,24 +477,24 @@ class C06Phase1SnapshotPollingIntegrationTest {
 
         reset(loanDisbursementAdapter);
         assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(disbursedId).isEmpty());
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(disbursedId, "worker", null, "c06-terminal"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(disbursedId, "worker", null, "t06-terminal"));
         verify(loanDisbursementAdapter, never()).checkStatus(any());
         verify(loanDisbursementAdapter, never()).requestDisbursement(any());
 
-        // Parked reconciliation: the normal poll path is closed; H02 owns recovery.
+        // Parked reconciliation: the normal poll path is closed; the reconciliation queue owns recovery.
         UUID parkedId = seedApproved("MOCK0STUCK0", new BigDecimal("45000.00"));
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{parkedId}/disbursement-requests", parkedId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
         disbursementIntentWorkflowService.executeForApplication(parkedId);
-        loanDisbursementCommandService.pollPendingDisbursement(parkedId, "worker", null, "c06-park-1");
-        loanDisbursementCommandService.pollPendingDisbursement(parkedId, "worker", null, "c06-park-2");
+        loanDisbursementCommandService.pollPendingDisbursement(parkedId, "worker", null, "t06-park-1");
+        loanDisbursementCommandService.pollPendingDisbursement(parkedId, "worker", null, "t06-park-2");
         assertEquals(LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION,
                 loanAccountRepository.findByLoanApplication_Id(parkedId).orElseThrow().getStatus());
 
         reset(loanDisbursementAdapter);
         assertTrue(disbursementIntentWorkflowService.loadStatusPollContext(parkedId).isEmpty());
-        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(parkedId, "worker", null, "c06-parked-poll"));
+        assertFalse(loanDisbursementCommandService.pollPendingDisbursement(parkedId, "worker", null, "t06-parked-poll"));
         verify(loanDisbursementAdapter, never()).checkStatus(any());
     }
 
@@ -633,7 +633,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
         String applicationId = createApplicationViaOps(lspId, productId, requestedAmount);
         transition(applicationId, "AWAITING_APPROVAL", "Ready for approval");
         markKycComplete(applicationId);
-        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for C06 phase-1 test");
+        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for phase-1 test");
         seedBorrowerBankDetails(applicationId, ifsc);
         return UUID.fromString(applicationId);
     }
@@ -646,9 +646,9 @@ class C06Phase1SnapshotPollingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "C06 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", ifsc,
-                                "accountHolderName", "C06 Borrower"
+                                "accountHolderName", "Test Borrower"
                         ))))
                 .andExpect(status().isOk());
     }
@@ -659,7 +659,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", "LSP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
-                                "name", "C06 LSP",
+                                "name", "Test LSP",
                                 "status", "ACTIVE"
                         ))))
                 .andExpect(status().isOk())
@@ -674,7 +674,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", code,
-                                "name", "C06 product " + code,
+                                "name", "Test product " + code,
                                 "minPrincipal", new BigDecimal("5000.00"),
                                 "maxPrincipal", new BigDecimal("1000000.00"),
                                 "interestRate", new BigDecimal("18.50"),
@@ -704,9 +704,9 @@ class C06Phase1SnapshotPollingIntegrationTest {
         payload.put("externalLoanId", "EXT-" + UUID.randomUUID().toString().substring(0, 8));
         payload.put("sourceChannel", "API");
         payload.put("borrowerPan", borrowerPan);
-        payload.put("borrowerFullName", "C06 Borrower");
+        payload.put("borrowerFullName", "Test Borrower");
         payload.put("borrowerMobile", mobileForPan(borrowerPan));
-        payload.put("borrowerEmail", "c06+" + borrowerPan.toLowerCase() + "@example.com");
+        payload.put("borrowerEmail", "t06+" + borrowerPan.toLowerCase() + "@example.com");
         payload.put("borrowerDateOfBirth", LocalDate.of(1990, 1, 1));
         payload.put("borrowerCity", "Mumbai");
         payload.put("borrowerState", "Maharashtra");
@@ -745,7 +745,7 @@ class C06Phase1SnapshotPollingIntegrationTest {
                     String documentKey = item.getDocumentType().name().toLowerCase();
                     item.update(
                             LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                            "Uploaded for C06 phase-1 test",
+                            "Uploaded for phase-1 test",
                             "ops.user",
                             documentKey + ".pdf",
                             "storage://" + applicationId + "/" + documentKey + ".pdf",

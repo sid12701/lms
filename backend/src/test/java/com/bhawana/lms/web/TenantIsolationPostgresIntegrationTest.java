@@ -182,7 +182,7 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
     private void deleteCommittedRows() {
         jdbcTemplate.execute("delete from report_access_audit");
         jdbcTemplate.execute("delete from report_request");
-        // H02 evidence (test databases only): the observation trail is append-only, so
+        // Evidence (test databases only): the observation trail is append-only, so
         // truncate it and the queue before intent/account deletes.
         jdbcTemplate.execute("TRUNCATE TABLE disbursement_reconciliation_queue");
         jdbcTemplate.execute("TRUNCATE TABLE disbursement_observation");
@@ -192,7 +192,7 @@ class TenantIsolationPostgresIntegrationTest extends PostgresDataJpaTestSupport 
         loanForeclosureQuoteRepository.deleteAllInBatch();
         loanPaymentTransactionRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
-        // C04: intents reference loan_account — delete them before the accounts they belong to.
+        // Intents reference loan_account — delete them before the accounts they belong to.
         disbursementIntentRepository.deleteAllInBatch();
         loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
         loanAccountRepository.deleteAllInBatch();

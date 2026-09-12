@@ -7,7 +7,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 /**
- * G01 — production mock guard. The simulator adapter, the mock-outcome route and the worker
+ * Production mock guard. The simulator adapter, the mock-outcome route and the worker
  * auto-resolve exist only for explicit simulation profiles. Every other context (production-like
  * profiles, the default profile set, or a mix containing a non-simulation profile) fails closed.
  *

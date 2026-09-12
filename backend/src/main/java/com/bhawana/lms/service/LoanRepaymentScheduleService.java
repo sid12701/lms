@@ -66,7 +66,7 @@ public class LoanRepaymentScheduleService {
      * Generates and persists a repayment schedule when none exists yet for the loan account.
      * Used by the ops approval path so schedule math stays in one place.
      *
-     * <p>H15: an empty schedule is only (re)built while the loan is still eligible. If the
+     * <p>An empty schedule is only (re)built while the loan is still eligible. If the
      * account already carries a live disbursement intent, receipts, or a post-request status,
      * generation is skipped: rebuilding terms under a submitted instruction would silently
      * rebase what the frozen schedule hash protects. New-account approval (PENDING, no
@@ -80,7 +80,7 @@ public class LoanRepaymentScheduleService {
                 .isEmpty()) {
             return;
         }
-        // Shared loan-command lock order (C01: application → account → intent; borrower first
+        // Shared loan-command lock order (application → account → intent; borrower first
         // only where the caller already holds it, e.g. approval). Rechecked under lock so a
         // concurrent intent creation cannot slip between the emptiness check and the insert.
         UUID applicationId = applicationIdOf(loanAccount);
@@ -199,7 +199,7 @@ public class LoanRepaymentScheduleService {
 
     private LoanAccount getMutableLoanAccountForLsp(UUID lspId, UUID applicationId) {
         loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
-        // H15: shared loan-command lock order (C01: application → account → intent). Both
+        // Shared loan-command lock order (application → account → intent). Both
         // replacement paths serialize against intent creation/submission on the same rows, so a
         // replacement cannot commit after the disbursement eligibility check without observing
         // the committed intent, and vice versa.
@@ -238,7 +238,7 @@ public class LoanRepaymentScheduleService {
     }
 
     /**
-     * H15: canonical hash of the currently persisted schedule for an account, frozen on the
+     * Canonical hash of the currently persisted schedule for an account, frozen on the
      * disbursement intent at creation and re-validated before submission preparation.
      */
     public String currentScheduleHash(UUID loanAccountId) {

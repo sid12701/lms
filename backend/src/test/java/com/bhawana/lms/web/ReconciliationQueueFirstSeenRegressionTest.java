@@ -48,7 +48,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
- * H02/C06 — queue-age regression: a submitted account with old original evidence and no
+ * Queue-age regression: a submitted account with old original evidence and no
  * queue row that polls pending must seed {@code firstSeenAt} from the original durable
  * evidence, not from discovery time — and repeats must never reset it. Covers both the
  * modern shape (live intent present) and the true legacy shape (valid stored request,
@@ -62,7 +62,7 @@ import org.springframework.test.web.servlet.MvcResult;
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class H02QueueFirstSeenRegressionTest {
+class ReconciliationQueueFirstSeenRegressionTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -120,7 +120,7 @@ class H02QueueFirstSeenRegressionTest {
 
         // First pending poll creates the queue row seeded from the old evidence.
         assertFalse(loanDisbursementCommandService.pollPendingDisbursement(
-                applicationId, "worker", null, "h02-age-1"));
+                applicationId, "worker", null, "t02-age-1"));
         DisbursementReconciliationQueueEntry created =
                 queueRepository.findById(account.getId()).orElseThrow();
         assertEquals(DisbursementReconciliationReason.REQUESTED, created.getReason());
@@ -129,7 +129,7 @@ class H02QueueFirstSeenRegressionTest {
         // Repeat pending poll refreshes evidence but never resets the original age
         // (test profile parks on the second poll — either way the age must stand).
         loanDisbursementCommandService.pollPendingDisbursement(
-                applicationId, "worker", null, "h02-age-2");
+                applicationId, "worker", null, "t02-age-2");
         DisbursementReconciliationQueueEntry repeated =
                 queueRepository.findById(account.getId()).orElseThrow();
         assertEquals(originalEvidence, repeated.getFirstSeenAt());
@@ -141,14 +141,14 @@ class H02QueueFirstSeenRegressionTest {
         transactionTemplate.executeWithoutResult(tx -> observationWriter.enqueue(
                 loanAccountRepository.findById(accountId).orElseThrow(), null, ref,
                 DisbursementReconciliationReason.CONFLICTING_EVIDENCE,
-                "H02 age probe: held conflict."));
+                "Age probe: held conflict."));
         DisbursementReconciliationQueueEntry held =
                 queueRepository.findById(accountId).orElseThrow();
         assertEquals(DisbursementReconciliationReason.CONFLICTING_EVIDENCE, held.getReason());
         transactionTemplate.executeWithoutResult(tx -> observationWriter.enqueue(
                 loanAccountRepository.findById(accountId).orElseThrow(), null, ref,
                 DisbursementReconciliationReason.REQUESTED,
-                "H02 age probe: pending refresh must not overwrite the hold."));
+                "Age probe: pending refresh must not overwrite the hold."));
         DisbursementReconciliationQueueEntry afterHold =
                 queueRepository.findById(accountId).orElseThrow();
         assertEquals(DisbursementReconciliationReason.CONFLICTING_EVIDENCE, afterHold.getReason());
@@ -168,8 +168,8 @@ class H02QueueFirstSeenRegressionTest {
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         String originalRef = disbursementIntentRepository.findLiveByLoanAccountId(account.getId())
                 .orElseThrow().getTranRefNo();
-        // Shape the pre-C04 legacy row (test databases only): truncate the append-only
-        // H02 trail first — the trigger rejects row deletes — then drop the intent. The
+        // Shape the legacy pre-intent row (test databases only): truncate the append-only
+        // Trail first — the trigger rejects row deletes — then drop the intent. The
         // stored request keeps its valid instruction, so polling stays trustworthy.
         jdbcTemplate.execute("TRUNCATE TABLE disbursement_reconciliation_queue");
         jdbcTemplate.execute("TRUNCATE TABLE disbursement_observation");
@@ -186,7 +186,7 @@ class H02QueueFirstSeenRegressionTest {
         // Discovery poll stays pending on the original reference and ages from the
         // original request — and a repeat never resets it.
         assertFalse(loanDisbursementCommandService.pollPendingDisbursement(
-                applicationId, "worker", null, "h02-legacy-age-1"));
+                applicationId, "worker", null, "t02-legacy-age-1"));
         DisbursementReconciliationQueueEntry created =
                 queueRepository.findById(account.getId()).orElseThrow();
         assertEquals(DisbursementReconciliationReason.REQUESTED, created.getReason());
@@ -194,7 +194,7 @@ class H02QueueFirstSeenRegressionTest {
         assertEquals(originalEvidence, created.getFirstSeenAt());
 
         loanDisbursementCommandService.pollPendingDisbursement(
-                applicationId, "worker", null, "h02-legacy-age-2");
+                applicationId, "worker", null, "t02-legacy-age-2");
         assertEquals(originalEvidence,
                 queueRepository.findById(account.getId()).orElseThrow().getFirstSeenAt());
     }
@@ -216,7 +216,7 @@ class H02QueueFirstSeenRegressionTest {
             disbursementIntentWorkflowService.executeForApplication(applicationId);
             LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
             assertFalse(loanDisbursementCommandService.pollPendingDisbursement(
-                    applicationId, "worker", null, "h02-page-" + i));
+                    applicationId, "worker", null, "t02-page-" + i));
             accountIds[i] = account.getId();
             jdbcTemplate.update(
                     "UPDATE disbursement_reconciliation_queue SET first_seen_at = ? WHERE loan_account_id = ?",
@@ -236,7 +236,7 @@ class H02QueueFirstSeenRegressionTest {
         assertTrue(reconciliationService.queuePage(2, 3).isEmpty());
     }
 
-    // --- helpers (mirrors H02DisbursementReconciliationIntegrationTest seeding) ---
+    // --- helpers (mirrors DisbursementReconciliationIntegrationTest seeding) ---
 
     private UUID seedApproved(String ifsc, BigDecimal requestedAmount) throws Exception {
         String lspId = createLspViaAdmin();
@@ -245,7 +245,7 @@ class H02QueueFirstSeenRegressionTest {
         String applicationId = createApplicationViaOps(lspId, productId, requestedAmount);
         transition(applicationId, "AWAITING_APPROVAL", "Ready for approval");
         markKycComplete(applicationId);
-        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for H02 age test");
+        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for age test");
         seedBorrowerBankDetails(applicationId, ifsc);
         return UUID.fromString(applicationId);
     }
@@ -258,9 +258,9 @@ class H02QueueFirstSeenRegressionTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "H02 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", ifsc,
-                                "accountHolderName", "H02 Borrower"
+                                "accountHolderName", "Test Borrower"
                         ))))
                 .andExpect(status().isOk());
     }
@@ -271,7 +271,7 @@ class H02QueueFirstSeenRegressionTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", "LSP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
-                                "name", "H02 LSP",
+                                "name", "Test LSP",
                                 "status", "ACTIVE"
                         ))))
                 .andExpect(status().isOk())
@@ -286,7 +286,7 @@ class H02QueueFirstSeenRegressionTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", code,
-                                "name", "H02 product " + code,
+                                "name", "Test product " + code,
                                 "minPrincipal", new BigDecimal("5000.00"),
                                 "maxPrincipal", new BigDecimal("1000000.00"),
                                 "interestRate", new BigDecimal("18.50"),
@@ -316,9 +316,9 @@ class H02QueueFirstSeenRegressionTest {
         payload.put("externalLoanId", "EXT-" + UUID.randomUUID().toString().substring(0, 8));
         payload.put("sourceChannel", "API");
         payload.put("borrowerPan", borrowerPan);
-        payload.put("borrowerFullName", "H02 Borrower");
+        payload.put("borrowerFullName", "Test Borrower");
         payload.put("borrowerMobile", mobileForPan(borrowerPan));
-        payload.put("borrowerEmail", "h02age+" + borrowerPan.toLowerCase() + "@example.com");
+        payload.put("borrowerEmail", "t02age+" + borrowerPan.toLowerCase() + "@example.com");
         payload.put("borrowerDateOfBirth", LocalDate.of(1990, 1, 1));
         payload.put("borrowerCity", "Mumbai");
         payload.put("borrowerState", "Maharashtra");
@@ -357,7 +357,7 @@ class H02QueueFirstSeenRegressionTest {
                     String documentKey = item.getDocumentType().name().toLowerCase();
                     item.update(
                             LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                            "Uploaded for H02 age test",
+                            "Uploaded for age test",
                             "ops.user",
                             documentKey + ".pdf",
                             "storage://" + applicationId + "/" + documentKey + ".pdf",

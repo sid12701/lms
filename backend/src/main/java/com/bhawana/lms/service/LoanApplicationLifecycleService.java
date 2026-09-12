@@ -44,8 +44,8 @@ public class LoanApplicationLifecycleService {
     private final DisbursementIntentRepository disbursementIntentRepository;
 
     /**
-     * H31 — financial lifecycle states that a generic status request must never write directly.
-     * DISBURSED is written only by the accepted bank-outcome path (C02's
+     * Financial lifecycle states that a generic status request must never write directly.
+     * DISBURSED is written only by the accepted bank-outcome path (the
      * {@link DisbursementOutcomeApplier}, which bypasses this façade via the status writer);
      * CLOSED/FORECLOSED only by a validated settlement command (final EMI / foreclosure).
      * An admin reason is not financial evidence.
@@ -108,7 +108,7 @@ public class LoanApplicationLifecycleService {
         }
         rejectDirectFinancialTarget(targetStatus);
 
-        // H31 generic in-flight guard: shared loan-command lock order
+        // Generic in-flight guard: shared loan-command lock order
         // borrower → application → account → live intent. No generic mutation while the
         // account is REQUESTED/PENDING_RECONCILIATION or a live intent exists; the only
         // forward path there is reconciliation of the original reference.
@@ -158,12 +158,12 @@ public class LoanApplicationLifecycleService {
         if (targetStatus == null) {
             throw new IllegalArgumentException("Target status is required.");
         }
-        // H31 first: a manual override is never financial evidence, even for otherwise
+        // A manual override is never financial evidence, even for otherwise
         // override-eligible sources. This precedes the MANUAL_OVERRIDE_NOT_ALLOWED checks so the
         // failure reason is stable and names the missing evidence.
         rejectDirectFinancialTarget(targetStatus);
 
-        // H31 generic in-flight guard (same shared order as above): a parked
+        // Generic in-flight guard (same shared order as above): a parked
         // DISBURSEMENT_RETRY loan must stay recoverable under its original bank
         // reference instead of being hidden by a manual REJECTED.
         LoanApplication application = lockAndRecheckInFlight(applicationId);
@@ -386,7 +386,7 @@ public class LoanApplicationLifecycleService {
     }
 
     /**
-     * H31 generic in-flight guard: shared loan-command lock order
+     * Generic in-flight guard: shared loan-command lock order
      * borrower → application → account → live intent.
      *
      * <p>The borrower lock comes first so approval decisions and generic mutations

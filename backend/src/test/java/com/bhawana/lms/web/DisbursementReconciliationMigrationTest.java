@@ -49,7 +49,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 
 /**
- * H02 V121 — the legacy backfill runs against populated evidence, not an empty database.
+ * V121 — the legacy backfill runs against populated evidence, not an empty database.
  * Covers every stored status, null reference/mode/payload keys, a mismatched V111-style
  * backfilled intent, later terminal history, earliest-stamp first_seen, stranded terminals,
  * and observation immutability. Nothing is invented: missing history stays NULL and routes
@@ -62,7 +62,7 @@ import com.bhawana.lms.support.TenantContextTestExecutionListener;
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
 )
-class V121DisbursementReconciliationMigrationTest {
+class DisbursementReconciliationMigrationTest {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
@@ -75,15 +75,15 @@ class V121DisbursementReconciliationMigrationTest {
 
     @BeforeEach
     void cleanBefore() {
-        cleanH02();
+        cleanReconciliationEvidence();
     }
 
     @AfterEach
     void cleanAfter() {
-        cleanH02();
+        cleanReconciliationEvidence();
     }
 
-    private void cleanH02() {
+    private void cleanReconciliationEvidence() {
         jdbcTemplate.execute("TRUNCATE TABLE disbursement_reconciliation_queue");
         jdbcTemplate.execute("TRUNCATE TABLE disbursement_observation");
         loanDisbursementRequestLogRepository.deleteAllInBatch();
@@ -249,7 +249,7 @@ class V121DisbursementReconciliationMigrationTest {
                 payloadJson(liveIntent.getTranRefNo(), liveIntent.getBeneficiaryIfsc(),
                         liveIntent.getBeneficiaryAccountNumber(), liveIntent.getPaymentMode().name()),
                 "{\"disposition\":\"SUCCESS\"}");
-        // Stored terminal evidence applied to the intent row, loan still REQUESTED (C02 repair path).
+        // Stored terminal evidence applied to the intent row, loan still REQUESTED (accepted-outcome repair path).
         DisbursementIntent stored =
                 disbursementIntentRepository.findById(liveIntent.getId()).orElseThrow();
         stored.recordProviderResponse(DisbursementIntentState.SUCCEEDED, liveIntent.getTranRefNo(),
@@ -302,11 +302,11 @@ class V121DisbursementReconciliationMigrationTest {
     }
 
     private void runBackfillObservationSection() {
-        executeMigrationSection("H02-BACKFILL-OBSERVATION");
+        executeMigrationSection("BACKFILL-OBSERVATION");
     }
 
     private void runBackfillQueueSection() {
-        executeMigrationSection("H02-BACKFILL-QUEUE");
+        executeMigrationSection("BACKFILL-QUEUE");
     }
 
     private void executeMigrationSection(String marker) {
@@ -342,7 +342,7 @@ class V121DisbursementReconciliationMigrationTest {
 
     /**
      * Splits a SQL script on semicolons that terminate statements, ignoring semicolons inside
-     * full-line comments (already stripped) and inside single-quoted string literals — the H02
+     * full-line comments (already stripped) and inside single-quoted string literals — the backfill
      * backfill details prose contains both.
      */
     private static List<String> splitStatements(String script) {
@@ -472,7 +472,7 @@ class V121DisbursementReconciliationMigrationTest {
         String applicationId = createApplicationViaOps(lspId, productId, requestedAmount);
         transition(applicationId, "AWAITING_APPROVAL", "Ready for approval");
         markKycComplete(applicationId);
-        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for H02 test");
+        transition(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for reconciliation test");
         seedBorrowerBankDetails(applicationId, ifsc);
         return UUID.fromString(applicationId);
     }
@@ -485,9 +485,9 @@ class V121DisbursementReconciliationMigrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "bankAccountNumber", "123456789012",
-                                "bankName", "H02 Bank",
+                                "bankName", "Test Bank",
                                 "ifscCode", ifsc,
-                                "accountHolderName", "H02 Borrower"
+                                "accountHolderName", "Test Borrower"
                         ))))
                 .andExpect(status().isOk());
     }
@@ -498,7 +498,7 @@ class V121DisbursementReconciliationMigrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", "LSP-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
-                                "name", "H02 LSP",
+                                "name", "Test LSP",
                                 "status", "ACTIVE"
                         ))))
                 .andExpect(status().isOk())
@@ -513,7 +513,7 @@ class V121DisbursementReconciliationMigrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "code", code,
-                                "name", "H02 product " + code,
+                                "name", "Test product " + code,
                                 "minPrincipal", new BigDecimal("5000.00"),
                                 "maxPrincipal", new BigDecimal("1000000.00"),
                                 "interestRate", new BigDecimal("18.50"),
@@ -543,9 +543,9 @@ class V121DisbursementReconciliationMigrationTest {
         payload.put("externalLoanId", "EXT-" + UUID.randomUUID().toString().substring(0, 8));
         payload.put("sourceChannel", "API");
         payload.put("borrowerPan", borrowerPan);
-        payload.put("borrowerFullName", "H02 Borrower");
+        payload.put("borrowerFullName", "Test Borrower");
         payload.put("borrowerMobile", mobileForPan(borrowerPan));
-        payload.put("borrowerEmail", "h02+" + borrowerPan.toLowerCase() + "@example.com");
+        payload.put("borrowerEmail", "t02+" + borrowerPan.toLowerCase() + "@example.com");
         payload.put("borrowerDateOfBirth", LocalDate.of(1990, 1, 1));
         payload.put("borrowerCity", "Mumbai");
         payload.put("borrowerState", "Maharashtra");
@@ -584,7 +584,7 @@ class V121DisbursementReconciliationMigrationTest {
                     String documentKey = item.getDocumentType().name().toLowerCase();
                     item.update(
                             LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                            "Uploaded for H02 test",
+                            "Uploaded for reconciliation test",
                             "ops.user",
                             documentKey + ".pdf",
                             "storage://" + applicationId + "/" + documentKey + ".pdf",

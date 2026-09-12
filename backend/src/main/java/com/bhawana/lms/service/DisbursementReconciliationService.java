@@ -34,7 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * H02 — bounded reconciliation for unresolved money. Owns the explicit per-account queue
+ * Bounded reconciliation for unresolved money. Owns the explicit per-account queue
  * (UNKNOWN/REQUESTED/parked plus legacy mismatches, stranded terminals and conflicting
  * evidence), the backoff-bounded re-poll of the <em>original</em> reference to success, and
  * the evidence-backed manual resolution path.
@@ -42,9 +42,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p>Invariants: no re-initiation past the point of no return (no fresh reference, no reset
  * to an eligible initiation state); missing/contradictory instructions stay queued for
  * operators, never fabricated; manual resolution consumes a stored definitive matching
- * provider observation through the single C02 applier and is replay-safe.
+ * provider observation through the single terminal-result applier and is replay-safe.
  *
- * <p>H01 owns worker batch-loop isolation: this service exposes {@link #pollDueQueue} for the
+ * <p>Worker batch-loop isolation: this service exposes {@link #pollDueQueue} for the
  * parent to invoke and keeps every item failure isolated so one bad loan cannot poison a sweep.
  */
 @Service
@@ -97,7 +97,7 @@ public class DisbursementReconciliationService {
         this.transactionTemplate = transactionTemplate;
     }
 
-    /** Queue counts by reason plus the oldest unresolved age (H27 consumes this API later). */
+    /** Queue counts by reason plus the oldest unresolved age (consumed by a metrics exporter). */
     @Transactional(readOnly = true)
     public QueueSummary queueSummary() {
         Map<DisbursementReconciliationReason, Long> byReason =
@@ -147,7 +147,7 @@ public class DisbursementReconciliationService {
     /** Operator takes ownership of a queue entry. */
     public void claimEntry(UUID loanAccountId, String owner) {
         transactionTemplate.executeWithoutResult(tx -> {
-            // H02: same app→account lock order as every other queue mutation so concurrent
+            // Same app→account lock order as every other queue mutation so concurrent
             // claim/backoff/reject/apply updates serialize instead of colliding.
             LoanAccount probe = loanAccountRepository.findById(loanAccountId).orElseThrow(
                     () -> new ResourceNotFoundException(
@@ -167,7 +167,7 @@ public class DisbursementReconciliationService {
     }
 
     /**
-     * Bounded sweep over due entries: stranded terminals go through the C02 repair path,
+     * Bounded sweep over due entries: stranded terminals go through the stranded-terminal repair path,
      * pollable entries re-poll their original reference (REQUESTED and parked alike — never a
      * fresh initiation), and blocked entries back off in the queue with their reason intact.
      * Each item runs isolated; one failure never aborts the sweep.
@@ -176,7 +176,7 @@ public class DisbursementReconciliationService {
      */
     public int pollDueQueue(String actorUsername, String actorIp, String correlationId) {
         int batchSize = Math.max(2, properties.getQueuePollBatchSize());
-        // H02 — bounded discovery reserve: inventory of never-queued submitted accounts gets a
+        // Bounded discovery reserve: inventory of never-queued submitted accounts gets a
         // fixed slice of every sweep so a permanently full due batch cannot starve it forever.
         // The batch floor of two guarantees the reserve below is always at least one.
         int reserve = Math.max(1, batchSize / 4);
@@ -185,7 +185,7 @@ public class DisbursementReconciliationService {
             List<UUID> ids = new java.util.ArrayList<>(queueRepository
                     .findDueForPoll(Instant.now(), PageRequest.of(0, dueLimit))
                     .stream().map(DisbursementReconciliationQueueEntry::getLoanAccountId).toList());
-            // H02 — bounded discovery: submitted but never-queued accounts (legacy evidence)
+            // Bounded discovery: submitted but never-queued accounts (legacy evidence)
             // join the same sweep so missing/contradictory instructions become visible instead
             // of lingering outside the queue. Fresh intents with no submitted call are excluded
             // by the query itself. The batch floor keeps this slice non-empty.
@@ -226,7 +226,7 @@ public class DisbursementReconciliationService {
         UUID appId = applicationId.get();
 
         // Stranded terminals: a terminal intent of THIS account whose loan still reads
-        // REQUESTED — repaired from stored evidence without re-initiation (C02 path owns
+        // REQUESTED — repaired from stored evidence without re-initiation (the repair path owns
         // application). Only this account's intents are ever repaired here; unrelated
         // stranded rows wait for their own sweep turn.
         Boolean stranded = transactionTemplate.execute(tx -> {
@@ -337,7 +337,7 @@ public class DisbursementReconciliationService {
     private void backoffBlockedEntry(
             UUID loanAccountId, DisbursementReconciliationReason reason, String details) {
         transactionTemplate.executeWithoutResult(tx -> {
-            // H02: app→account lock order (never reversed) so this competes cleanly with the
+            // App→account lock order (never reversed) so this competes cleanly with the
             // locked poll/apply paths mutating the same row.
             LoanAccount probe = loanAccountRepository.findById(loanAccountId).orElse(null);
             if (probe == null) {
@@ -350,7 +350,7 @@ public class DisbursementReconciliationService {
                 queueRepository.findById(loanAccountId).ifPresent(queueRepository::delete);
                 return;
             }
-            // H02: a blocked sweep must leave operator-visible state even when no queue row
+            // A blocked sweep must leave operator-visible state even when no queue row
             // exists yet (e.g. legacy evidence with no prior observation). A held
             // conflicting-evidence reason is never overwritten by backoff. The refresh keeps
             // the schedule; exactly one attempt advance bounds the next sweep. New rows seed
@@ -378,7 +378,7 @@ public class DisbursementReconciliationService {
     }
 
     /**
-     * H02 — earliest original evidence stamp for an account, consolidated on the writer so the
+     * Earliest original evidence stamp for an account, consolidated on the writer so the
      * default queue insert and blocked-discovery insert share one durable-only source (first
      * stored request or intent {@code createdAt}, never live borrower fields).
      */
@@ -387,7 +387,7 @@ public class DisbursementReconciliationService {
     }
 
     /**
-     * H02 — claimed poll sequences on the latest stored request that have no result
+     * Claimed poll sequences on the latest stored request that have no result
      * observation for the current reference: crashed attempts stay visible as
      * attempted-with-missing-result. Recovery claims a fresh sequence; the gap is never
      * backfilled with a fabricated response.
@@ -417,9 +417,9 @@ public class DisbursementReconciliationService {
     }
 
     /**
-     * H02 — evidence-backed manual resolution. Consumes one stored definitive matching provider
+     * Evidence-backed manual resolution. Consumes one stored definitive matching provider
      * observation (resolved SUCCESS/FAILED for this loan's current reference and frozen
-     * instruction) through the single C02 applier, under application→account→intent locks.
+     * instruction) through the single terminal-result applier, under application→account→intent locks.
      *
      * <p>Replay-safe: re-presenting the accepted evidence after the loan resolved returns
      * success without a second transition/event — but only for definitive evidence whose
@@ -562,7 +562,7 @@ public class DisbursementReconciliationService {
     }
 
     /**
-     * H02 — replay on an already-resolved loan. Succeeds idempotently only for definitive
+     * Replay on an already-resolved loan. Succeeds idempotently only for definitive
      * evidence whose verdict matches the accepted outcome on the applied reference with a
      * matching frozen instruction. Anything else — a PENDING observation or a contradictory
      * terminal verdict — is rejected, and contradictions stay operator-visible.
@@ -622,9 +622,9 @@ public class DisbursementReconciliationService {
     }
 
     /**
-     * H02 — frozen-instruction match for manual evidence. The observation must agree with the
+     * Frozen-instruction match for manual evidence. The observation must agree with the
      * live intent when one exists AND with the original stored request's own keys — the same
-     * conjunction the common poll loader enforces (C06). A V111-synthesized intent alone can
+     * conjunction the common poll loader enforces. A V111-synthesized intent alone can
      * never authorize an outcome: when the stored request contradicts the intent, the evidence
      * is rejected. A missing verifiable side cannot prove a match, so it rejects rather than
      * assumes.
@@ -694,7 +694,7 @@ public class DisbursementReconciliationService {
     }
 
     /**
-     * H02 — persists a manual-resolution rejection decision in its own committed transaction
+     * Persists a manual-resolution rejection decision in its own committed transaction
      * after the decision transaction rolled back. Financial writes from the rejected attempt
      * stay rolled back; only the operator-queue signal commits.
      */
@@ -703,7 +703,7 @@ public class DisbursementReconciliationService {
             return;
         }
         transactionTemplate.executeWithoutResult(tx -> {
-            // H02: same app→account lock order as the decision path, so the rejection signal
+            // Same app→account lock order as the decision path, so the rejection signal
             // cannot collide with (or silently lose to) a concurrent outcome application.
             LoanAccount probe = loanAccountRepository.findById(rejection.accountId()).orElse(null);
             if (probe == null) {

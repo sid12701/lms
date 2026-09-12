@@ -30,7 +30,7 @@ public class BorrowerActiveLoanChecker {
     );
 
     /**
-     * C06-phase-2: cross-LSP disbursement gate. REQUESTED (submitted, awaiting verdict),
+     * Cross-LSP disbursement gate. REQUESTED (submitted, awaiting verdict),
      * PENDING_RECONCILIATION (parked) and any live intent (CREATED/REQUESTED/UNKNOWN) mean
      * the shared bank instruction is frozen — a tenant-scoped lookup cannot see another
      * LSP's accounts, so this narrow boolean read runs on the admin datasource like the
@@ -79,7 +79,7 @@ public class BorrowerActiveLoanChecker {
     }
 
     /**
-     * C06-phase-2: global bank-update velocity aggregate. The tenant connection only sees its
+     * Global bank-update velocity aggregate. The tenant connection only sees its
      * own audit rows (V122), which would silently narrow the pre-existing global velocity
      * semantics — so this narrow count runs on the admin datasource. Read-only aggregate;
      * the audit writes themselves stay in the caller's transaction.

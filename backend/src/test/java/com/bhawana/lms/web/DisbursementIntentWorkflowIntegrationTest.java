@@ -161,7 +161,7 @@ class DisbursementIntentWorkflowIntegrationTest {
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
-        // C04: re-initiation while REQUESTED is rejected — same single intent, no second bank call.
+        // Re-initiation while REQUESTED is rejected — same single intent, no second bank call.
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
                 .andExpect(status().isConflict())
