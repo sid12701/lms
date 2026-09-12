@@ -11,10 +11,21 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
+# Sourced through a temp file rather than `source <(...)`, which silently sets nothing
+# under the bash 3.2 that macOS ships (see repair-supabase.sh).
+ENV_TMP="$(mktemp)"
+trap 'rm -f "$ENV_TMP"' EXIT
+grep -E '^(LMS_DB_URL|LMS_DB_USERNAME|LMS_DB_PASSWORD|APP_TENANT_DATASOURCE_PASSWORD)=' "$ENV_FILE" | sed 's/\r$//' > "$ENV_TMP"
+
 # shellcheck disable=SC1090
 set -a
-source <(grep -E '^(LMS_DB_URL|LMS_DB_USERNAME|LMS_DB_PASSWORD|APP_TENANT_DATASOURCE_PASSWORD)=' "$ENV_FILE" | sed 's/\r$//')
+source "$ENV_TMP"
 set +a
+
+if [[ -z "${LMS_DB_URL:-}" || -z "${LMS_DB_USERNAME:-}" || -z "${LMS_DB_PASSWORD:-}" ]]; then
+  echo "LMS_DB_URL / LMS_DB_USERNAME / LMS_DB_PASSWORD must all be set in $ENV_FILE" >&2
+  exit 1
+fi
 
 to_docker_volume_path() {
   local path="$1"
@@ -41,7 +52,7 @@ docker run --rm \
   -user="$LMS_DB_USERNAME" \
   -password="$LMS_DB_PASSWORD" \
   -placeholders.tenant_app_role=lms_tenant_app \
-  -placeholders.tenant_app_password="$APP_TENANT_DATASOURCE_PASSWORD" \
+  -placeholders.tenant_app_password="${APP_TENANT_DATASOURCE_PASSWORD:-unused}" \
   migrate
 
 echo "Flyway migrate completed."
