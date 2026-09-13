@@ -24,7 +24,7 @@ mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local      # Windows PowerSh
 
 Rate limiting is **off** by default in `local` (`app.rate-limit.enabled=false`) so the API starts without Redis. Set `APP_RATE_LIMIT_ENABLED=true` in the repo-root `.env` when Redis is up (`docker compose -f infra/docker-compose.yml up -d redis`).
 
-RabbitMQ and mail still default to localhost unless overridden in the root `.env`. PostgreSQL comes from `LMS_DB_URL`, `LMS_DB_USERNAME`, and `LMS_DB_PASSWORD` in the **repo-root** `.env`.
+Mail defaults to localhost unless overridden in the root `.env`. PostgreSQL comes from `LMS_DB_URL`, `LMS_DB_USERNAME`, and `LMS_DB_PASSWORD` in the **repo-root** `.env`.
 
 ### Supabase (remote PostgreSQL)
 

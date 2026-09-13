@@ -30,7 +30,7 @@
 | Postgres | Docker / Supabase | Seed + migrations applied |
 | Redis | Docker | Rate limit + session store |
 | MinIO / filesystem | Per `application-local` | Document uploads |
-| RabbitMQ | Docker | Disbursement worker (EC-049, EC-027) |
+| PostgreSQL work tables | Existing database | Disbursement worker (EC-049, EC-027) |
 
 ### 1.2 Tooling
 

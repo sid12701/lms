@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
@@ -183,12 +184,15 @@ class DisbursementIntentWorkflowIntegrationTest {
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
 
+        LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
+        String targetAccountNumber = account.getAccountNumber();
+
         doAnswer(invocation -> {
             throw new IllegalStateException("provider response lost");
-        }).when(loanDisbursementAdapter).requestDisbursement(any());
+        }).when(loanDisbursementAdapter).requestDisbursement(argThat(
+                command -> targetAccountNumber.equals(command.loanAccountNumber())));
 
         disbursementIntentWorkflowService.executeForApplication(applicationId);
-        LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         assertEquals(
                 DisbursementIntentState.UNKNOWN,
                 disbursementIntentRepository.findLiveByLoanAccountId(account.getId()).orElseThrow().getState());
@@ -196,7 +200,8 @@ class DisbursementIntentWorkflowIntegrationTest {
 
         disbursementIntentWorkflowService.executeClaimableIntents();
 
-        verify(loanDisbursementAdapter, times(1)).requestDisbursement(any());
+        verify(loanDisbursementAdapter, times(1)).requestDisbursement(argThat(
+                command -> targetAccountNumber.equals(command.loanAccountNumber())));
     }
 
     @Test
@@ -206,13 +211,16 @@ class DisbursementIntentWorkflowIntegrationTest {
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
 
+        LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
+        String targetAccountNumber = account.getAccountNumber();
+
         doAnswer(invocation -> {
             throw new AssertionError("simulated process death after provider accepted request");
-        }).when(loanDisbursementAdapter).requestDisbursement(any());
+        }).when(loanDisbursementAdapter).requestDisbursement(argThat(
+                command -> targetAccountNumber.equals(command.loanAccountNumber())));
 
         assertThrows(AssertionError.class, () -> disbursementIntentWorkflowService.executeForApplication(applicationId));
 
-        LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         assertEquals(
                 DisbursementIntentState.REQUESTED,
                 disbursementIntentRepository.findLiveByLoanAccountId(account.getId()).orElseThrow().getState());
@@ -220,7 +228,8 @@ class DisbursementIntentWorkflowIntegrationTest {
 
         disbursementIntentWorkflowService.executeClaimableIntents();
 
-        verify(loanDisbursementAdapter, times(1)).requestDisbursement(any());
+        verify(loanDisbursementAdapter, times(1)).requestDisbursement(argThat(
+                command -> targetAccountNumber.equals(command.loanAccountNumber())));
     }
 
     private UUID seedApproved(String ifsc, BigDecimal requestedAmount) throws Exception {

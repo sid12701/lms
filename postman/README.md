@@ -19,7 +19,7 @@ Importable Postman collection that drives the full Bhawana LMS loan lifecycle en
    ```bash
    cd backend && ./mvnw spring-boot:run
    ```
-   Profile `local`, Postgres on Supabase (see `backend/src/main/resources/application-local.yml`), Redis on `localhost:6379`, RabbitMQ on `localhost:5672`, MailHog/SMTP on `localhost:1025`.
+   Profile `local`, Postgres on Supabase (see `backend/src/main/resources/application-local.yml`), Redis on `localhost:6379`, MailHog/SMTP on `localhost:1025`.
 2. **Frontend running** on `http://127.0.0.1:5173`:
    ```bash
    cd frontend && npm run dev

@@ -19,15 +19,19 @@ import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanProductRepository;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.security.SecurityProperties;
+import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
+import com.bhawana.lms.tenant.TenantScopedExecution;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 @Component
 @Profile("local")
@@ -37,6 +41,10 @@ public class LocalDemoPortfolioSeedService {
     private static final String DEMO_PRODUCT_CODE = "SUPA-FLEX";
     private static final String DEFAULT_USER_PASSWORD = "DemoPass123!";
     private static final String INTERNAL_ACTOR = "ops.admin";
+
+    private static final Logger log = LoggerFactory.getLogger(LocalDemoPortfolioSeedService.class);
+    private static final int RESET_MAX_ATTEMPTS = 5;
+    private static final long RESET_RETRY_BACKOFF_MILLIS = 250L;
 
     private final LspDirectoryService lspDirectoryService;
     private final UserAdminService userAdminService;
@@ -53,6 +61,7 @@ public class LocalDemoPortfolioSeedService {
     private final LoanApplicationRepository loanApplicationRepository;
     private final JdbcTemplate jdbcTemplate;
     private final SecurityProperties securityProperties;
+    private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
 
     public LocalDemoPortfolioSeedService(
             LspDirectoryService lspDirectoryService,
@@ -69,7 +78,8 @@ public class LocalDemoPortfolioSeedService {
             LoanProductRepository loanProductRepository,
             LoanApplicationRepository loanApplicationRepository,
             JdbcTemplate jdbcTemplate,
-            SecurityProperties securityProperties
+            SecurityProperties securityProperties,
+            AdminScopedTransactionExecutor adminScopedTransactionExecutor
     ) {
         this.lspDirectoryService = lspDirectoryService;
         this.userAdminService = userAdminService;
@@ -86,15 +96,62 @@ public class LocalDemoPortfolioSeedService {
         this.loanApplicationRepository = loanApplicationRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.securityProperties = securityProperties;
+        this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
     }
 
-    @Transactional
     public void seedDemoPortfolio() {
-        resetBusinessData();
-        Lsp lsp = ensureLsp();
-        LoanProduct product = ensureProduct(lsp);
-        seedUsers(lsp.getId());
-        seedLoans(lsp, product);
+        // Two scopes on purpose, and the split is what keeps startup from deadlocking.
+        //
+        // The reset truncates business tables and must COMMIT before anything else runs. The
+        // services called below open REQUIRES_NEW transactions of their own; while the truncate
+        // was still open in an enclosing transaction those children blocked forever on its table
+        // locks, so the application never reported ready.
+        resetBusinessDataWithRetry();
+
+        // The remaining steps still write across tenants, so they need admin data-access scope —
+        // but each service call must own its transaction. runAsAdmin sets the scope without
+        // opening one, so no parent transaction holds locks while those children commit.
+        TenantScopedExecution.runAsAdmin(() -> {
+            Lsp lsp = ensureLsp();
+            LoanProduct product = ensureProduct(lsp);
+            seedUsers(lsp.getId());
+            seedLoans(lsp, product);
+        });
+    }
+
+    /**
+     * Scheduled workers begin polling when the context refreshes, which is before this
+     * ApplicationRunner executes. PortfolioKpiSnapshotWorker in particular scans every LSP on its
+     * first tick. That reader and this TRUNCATE take locks on the same tables in opposite orders,
+     * so PostgreSQL detects a genuine deadlock and aborts one side — observed as
+     * "deadlock detected" on the TRUNCATE during a cold start.
+     *
+     * <p>PostgreSQL guarantees the surviving side makes progress, so a bounded retry lets the
+     * seeder win a later round instead of failing startup. The retry belongs here rather than
+     * inside {@link #resetBusinessData()} because a deadlock aborts the whole transaction.
+     */
+    private void resetBusinessDataWithRetry() {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                adminScopedTransactionExecutor.run(this::resetBusinessData);
+                return;
+            } catch (PessimisticLockingFailureException exception) {
+                if (attempt >= RESET_MAX_ATTEMPTS) {
+                    throw exception;
+                }
+                log.warn(
+                        "demo_seed_reset_lock_conflict attempt={} of {}; retrying",
+                        attempt,
+                        RESET_MAX_ATTEMPTS
+                );
+                try {
+                    Thread.sleep(RESET_RETRY_BACKOFF_MILLIS * attempt);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw exception;
+                }
+            }
+        }
     }
 
     private void resetBusinessData() {
@@ -392,7 +449,15 @@ public class LocalDemoPortfolioSeedService {
                     null
             );
         }
-        verifyRequiredDocuments(applicationId, actorUsername);
+        // Every intake-required document must be submitted before approval, not just the six
+        // KYC ones. validateKycCompletionBeforeApproval filters on
+        // LoanApplicationDocumentRequirements.isIntakeRequired, which also covers KFS and the
+        // loan agreement. Submitting those two after the transition left approval permanently
+        // blocked on documents the seed had not uploaded yet.
+        submitRequiredDocuments(applicationId, actorUsername);
+
+        // Completing the checklist can trigger auto-approval, so re-read the status rather than
+        // assuming the application is still awaiting a manual transition.
         application = loanApplicationQueryService.getApplication(applicationId);
         if (application.getStatus() == LoanApplicationStatus.AWAITING_APPROVAL) {
             loanApplicationLifecycleService.transitionStatus(
@@ -403,42 +468,17 @@ public class LocalDemoPortfolioSeedService {
                     null
             );
         }
-        uploadRequiredDisbursementDocuments(applicationId, actorUsername);
     }
 
-    private void verifyRequiredDocuments(UUID applicationId, String actorUsername) {
-        List<LoanApplicationDocumentType> requiredDocs = List.of(
-                LoanApplicationDocumentType.PAN_CARD,
-                LoanApplicationDocumentType.AADHAAR_FILE,
-                LoanApplicationDocumentType.ADDRESS_PROOF,
-                LoanApplicationDocumentType.INCOME_PROOF,
-                LoanApplicationDocumentType.BANK_STATEMENT,
-                LoanApplicationDocumentType.SELFIE_PHOTOGRAPH
-        );
-        for (LoanApplicationDocumentType documentType : requiredDocs) {
-            loanApplicationLifecycleService.updateDocumentChecklistItem(
-                    applicationId,
-                    documentType,
-                    actorUsername,
-                    LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                    "Uploaded during demo seed",
-                    documentType.name().toLowerCase() + ".pdf",
-                    "seed://" + documentType.name().toLowerCase(),
-                    "seed",
-                    "application/pdf",
-                    null,
-                    null,
-                    null,
-                    false
-            );
-        }
-    }
-
-    private void uploadRequiredDisbursementDocuments(UUID applicationId, String actorUsername) {
-        for (LoanApplicationDocumentType documentType : List.of(
-                LoanApplicationDocumentType.KFS,
-                LoanApplicationDocumentType.LOAN_AGREEMENT
-        )) {
+    /**
+     * Submits every document the approval gate requires, derived from the same predicate that
+     * gate uses. Two hand-maintained lists previously drifted from the rule and blocked the seed.
+     */
+    private void submitRequiredDocuments(UUID applicationId, String actorUsername) {
+        for (LoanApplicationDocumentType documentType : LoanApplicationDocumentType.values()) {
+            if (!LoanApplicationDocumentRequirements.isIntakeRequired(documentType)) {
+                continue;
+            }
             loanApplicationLifecycleService.updateDocumentChecklistItem(
                     applicationId,
                     documentType,

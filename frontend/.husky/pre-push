@@ -1,0 +1,10 @@
+# Stop buggy code before it reaches GitHub.
+#
+# Fast tier only, scoped to what changed — typically well under two minutes. CI still runs the
+# full suite, coverage ratchet, contract drift and the journey stack after the push lands.
+#
+# Bypass with `git push --no-verify` when you genuinely need to (pushing a WIP branch for a
+# colleague, say). Bypassing to get a red gate out of the way is how the gate stops meaning
+# anything, so if it fires, read it.
+cd "$(git rev-parse --show-toplevel)"
+./scripts/quality/gate.sh

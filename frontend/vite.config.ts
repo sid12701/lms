@@ -61,6 +61,15 @@ export default defineConfig({
         "src/vite-env.d.ts",
         "src/test/**",
       ],
+      // Measured baseline on 2026-09-13: 67.18 statements, 59.52 branches,
+      // 63.21 functions, 69.64 lines. These are ratchets: raise them when coverage
+      // improves; do not lower them to make a change pass.
+      thresholds: {
+        statements: 65,
+        branches: 57,
+        functions: 61,
+        lines: 68,
+      },
     },
   },
 });

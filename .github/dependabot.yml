@@ -1,0 +1,34 @@
+# Dependency updates for a system that holds PAN, Aadhaar and bank account numbers.
+# There was no supply-chain gate of any kind before this file: no Dependabot, no audit step,
+# no secret scanning. A transitive CVE could sit in the tree indefinitely with CI fully green.
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Spring Boot's modules move in lockstep; one PR per module is noise nobody reads.
+      spring:
+        patterns: ["org.springframework*", "org.springdoc*"]
+      test-tooling:
+        patterns: ["org.testcontainers*", "com.tngtech.archunit*", "org.mockito*"]
+
+  - package-ecosystem: npm
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+      tooling:
+        patterns: ["eslint*", "@eslint/*", "prettier", "vite", "vitest", "@vitest/*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

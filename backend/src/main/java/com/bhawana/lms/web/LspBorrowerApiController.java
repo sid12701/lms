@@ -2,6 +2,7 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.common.api.StrictJson;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.service.BorrowerBankDetailsService;
 import com.bhawana.lms.service.BorrowerBankDetailsService.BorrowerBankDetailsCommand;
@@ -51,7 +52,7 @@ public class LspBorrowerApiController {
                 lspId,
                 authentication.getName(),
                 resolveActorType(authentication),
-                httpServletRequest.getRemoteAddr(),
+                ClientIpAddresses.resolve(httpServletRequest),
                 CorrelationIdHolder.get()
         );
         return BorrowerBankDetailsResponse.from(borrower);
@@ -70,7 +71,7 @@ public class LspBorrowerApiController {
                 borrowerId,
                 request.toCommand(),
                 authentication.getName(),
-                httpServletRequest.getRemoteAddr()
+                ClientIpAddresses.resolve(httpServletRequest)
         );
         return BorrowerBankDetailsResponse.from(borrower);
     }

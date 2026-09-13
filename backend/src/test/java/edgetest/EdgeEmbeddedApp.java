@@ -5,7 +5,6 @@ import com.bhawana.lms.security.EdgeProperties;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration;
 import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
 import org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
@@ -35,7 +34,6 @@ import org.springframework.context.annotation.Import;
         TransactionAutoConfiguration.class,
         SecurityAutoConfiguration.class,
         ManagementWebSecurityAutoConfiguration.class,
-        RabbitAutoConfiguration.class,
         RedisAutoConfiguration.class,
         RedisRepositoriesAutoConfiguration.class
 })

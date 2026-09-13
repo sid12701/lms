@@ -3,6 +3,7 @@ package com.bhawana.lms.web;
 import com.bhawana.lms.common.api.PagedResult;
 import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.common.pii.BankAccountMasking;
+import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.service.BorrowerDirectoryService;
 import com.bhawana.lms.service.BorrowerDirectoryService.BorrowerDelinquencyAggregate;
@@ -89,7 +90,7 @@ public class BorrowerAdminController {
                         request.toCommand(),
                         authentication.getName(),
                         "SYSTEM_ADMIN",
-                        httpServletRequest.getRemoteAddr()
+                        ClientIpAddresses.resolve(httpServletRequest)
                 )
         );
     }

@@ -1,17 +1,18 @@
 name: Frontend CI
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "frontend/**"
-      - "openapi/**"
-      - ".github/workflows/frontend-ci.yml"
-  pull_request:
-    paths:
-      - "frontend/**"
-      - "openapi/**"
-      - ".github/workflows/frontend-ci.yml"
+  # Required-check workflows must always emit their checks; path-filtering the whole workflow
+  # can leave a protected pull request stuck in a permanent "Expected" state.
+  push: {}
+  pull_request: {}
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: true
 
 defaults:
   run:
@@ -19,23 +20,39 @@ defaults:
 
 jobs:
   verify:
+    name: Typecheck, lint, format, coverage, build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run verify
+      - name: Upload coverage evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          retention-days: 7
+          if-no-files-found: ignore
 
-  e2e:
+  smoke:
+    name: Browser smoke
     needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: npm
@@ -43,7 +60,35 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
-      # C13 asks for the full Playwright suite in CI. Specs beyond smoke still need a live
-      # backend in the workflow (webServer only boots Vite). Keep smoke green until that
-      # stack is wired; do not expand here and turn CI red.
+      # Deliberately still just smoke. The specs beyond this need a live backend, and that stack
+      # now has its own workflow (journey-e2e.yml) rather than being wedged in here. Keep this
+      # job fast and always-green; the real coverage question is answered over there.
       - run: npm run e2e -- e2e/smoke.spec.ts
+
+  browser-session-transport:
+    name: Cookie transport (H22)
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      # These are real-browser tests over actual cookie jars, two tabs, held response bodies and
+      # owner-write failure. They were run by hand during the H22 review and then never wired up,
+      # which means the session-integrity guarantees they prove are currently unguarded.
+      - run: npx playwright test --config playwright.h22.config.ts
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: h22-playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore

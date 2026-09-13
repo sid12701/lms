@@ -29,23 +29,6 @@ services:
     volumes:
       - redis-data:/data
 
-  rabbitmq:
-    image: rabbitmq:4.1-management
-    container_name: lms-rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-lms}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-lms}
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
-
   minio:
     image: quay.io/minio/minio:latest
     container_name: lms-minio
@@ -88,5 +71,4 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  rabbitmq-data:
   minio-data:

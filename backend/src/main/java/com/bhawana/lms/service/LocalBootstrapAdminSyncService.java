@@ -85,7 +85,14 @@ public class LocalBootstrapAdminSyncService implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        adminScopedTransactionExecutor.run(this::bootstrapAdmin);
+        BootstrapSyncResult result = adminScopedTransactionExecutor.call(this::bootstrapAdmin);
+        if (!result.userExisted()
+                && environment.getProperty("app.seed.demo-portfolio.enabled", Boolean.class, false)) {
+            // The demo reset cannot run inside the bootstrap transaction: it truncates business
+            // tables and then calls services that intentionally open REQUIRES_NEW transactions.
+            // Keeping it outside prevents those child transactions waiting on the parent's locks.
+            localDemoPortfolioSeedServiceProvider.ifAvailable(LocalDemoPortfolioSeedService::seedDemoPortfolio);
+        }
     }
 
     /**
@@ -161,9 +168,6 @@ public class LocalBootstrapAdminSyncService implements ApplicationRunner {
                 roles
         ));
 
-        if (environment.getProperty("app.seed.demo-portfolio.enabled", Boolean.class, false)) {
-            localDemoPortfolioSeedServiceProvider.ifAvailable(LocalDemoPortfolioSeedService::seedDemoPortfolio);
-        }
         return new BootstrapSyncResult(created, false);
     }
 

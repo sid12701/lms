@@ -218,7 +218,7 @@ All workers are Spring `@Scheduled` `fixedDelay` jobs in-process today. DB-table
 | Object storage | AWS SDK v2 S3 client | Cloudflare **R2** (prod default) / **MinIO** (local) | Documents + report files; provider configurable (`APP_STORAGE_DOCUMENTS_PROVIDER`) |
 | Email | SMTP (`spring-boot-starter-mail`) | MailHog (local); SMTP relay/SES (prod) | Report-ready notifications |
 | Cache / rate limit | Redis (Lettuce) | Redis 7.4 + Bucket4j 8.14 | Rate-limit buckets only — **not on the money path** |
-| Message broker | AMQP (`spring-boot-starter-amqp`) | RabbitMQ present in compose but **unused** | Retired in favour of DB-table queues (deployment D10); removal tracked |
+| Async work | PostgreSQL work tables | Leased / `SKIP LOCKED` row claims | No external message broker (deployment D10) |
 | API docs | springdoc-openapi 2.8.16 | OpenAPI at `/v3/api-docs` | Source of generated frontend types; UI disabled by default |
 
 ## 1.8 Key data flows (sequences)
@@ -479,7 +479,6 @@ Demand: ~100K creates + ~100K disbursements + ~300–500K repayments/day; sustai
 | Object storage | AWS SDK v2 `s3` | 2.31.60 — against R2 (prod) / MinIO (local) |
 | Email | Spring Mail (SMTP) | MailHog local |
 | API docs | springdoc-openapi | 2.8.16; `/v3/api-docs` |
-| Messaging | spring-boot-starter-amqp (RabbitMQ) | **present but unused** (DB-table queues used instead) |
 | Observability | Spring Boot Actuator + Micrometer | only `health,info` exposed today |
 | Testing (BE) | JUnit 5, Testcontainers (PG, MinIO), ArchUnit 1.4.1, spring-security-test, H2 | |
 | Frontend | React 19 + Vite 5 + TypeScript 5.9 | single SPA |
@@ -488,7 +487,7 @@ Demand: ~100K creates + ~100K disbursements + ~300–500K repayments/day; sustai
 | FE routing | react-router-dom 6 | |
 | FE codegen | openapi-typescript 7 | types from backend OpenAPI |
 | Testing (FE) | Vitest 2, Playwright 1.59, axe-core, Testing Library | |
-| Local infra | docker-compose: Postgres 17, Redis 7.4, RabbitMQ 4.1, MinIO, MailHog | |
+| Local infra | docker-compose: Postgres 17, Redis 7.4, MinIO, MailHog | |
 
 ## 3.2 Recommended additions (for the target volume)
 
@@ -499,7 +498,7 @@ Demand: ~100K creates + ~100K disbursements + ~300–500K repayments/day; sustai
 | Read scaling | PG read replica (trigger-based) | offload ops/reporting reads |
 | Resilience | resilience4j (circuit breaker / bulkhead) | bank/storage/Redis adapters (audit F-ISO-02) |
 | Observability | Prometheus + Grafana + Alertmanager; structured JSON logging; OpenTelemetry traces | autoscaling signals + incident scoping (#217–#220) |
-| Messaging | **keep DB-table queues**; remove RabbitMQ | no broker to operate; simpler portability (D10/#226) |
+| Messaging | **keep DB-table queues**; no external broker | no broker to operate; simpler portability (D10/#226) |
 | Secrets | provider secret store + thin loader | 12-factor injection |
 | IaC | Terraform modules per provider | confine provider surface |
 | Security tooling | image scanning + upload AV (#221) + SAST/dependency scan in CI | supply-chain + partner-file safety |
@@ -662,7 +661,7 @@ Derived from `docs/scalability-audit-report-2026-06-14.md` and the deployment ga
 | Security | **#224** API-client lockout |
 
 ## 6.3 Phase P2 — Operational excellence
-Test bed & multi-instance staging (**#197–#200**), bulk repayment inbox (**#231**), reporting automation (**#232–#233**), Grafana dashboards (**#219**), CORS externalization (**#237**), upload AV (**#221**), RabbitMQ removal (**#226**), read replica / CQRS (trigger-driven).
+Test bed & multi-instance staging (**#197–#200**), bulk repayment inbox (**#231**), reporting automation (**#232–#233**), Grafana dashboards (**#219**), CORS externalization (**#237**), upload AV (**#221**), read replica / CQRS (trigger-driven).
 
 ## 6.4 Bank go-live gate
 Real **ICICI adapter** hardening (**#210** ADR) — circuit breaker, contract tests, reconciliation — depends on **#203/#204** landing first.
@@ -781,7 +780,7 @@ Replace the diagram body with the XML below to import the same model as native d
 ## B.1 Assumptions
 1. Target load is **100K loans/day, 10+ LSPs** (per audit re-scope), not the original ~8K/day sizing.
 2. The repository mapping tooling report (2026-06-12) predates the `frontend-2 → frontend` consolidation (ADR 0001 completed 2026-06); the live tree has a **single** `frontend/`.
-3. RabbitMQ remains deployed in local infra but carries **no production responsibility**; DB-table queues are the queueing mechanism.
+3. DB-table queues are the queueing mechanism; no external message broker is deployed.
 4. The disbursement adapter is a **deterministic mock**; all money-path risk statements assume the real ICICI adapter will eventually replace it.
 5. Prod runs on Kubernetes with a transaction-mode pooler; no provider chosen yet.
 
@@ -803,7 +802,7 @@ Replace the diagram body with the XML below to import the same model as native d
 3. **RPO/RTO** confirmation with the business (proposals: RPO ≤ 5 min, RTO ≤ 1 h).
 4. **Whale-tenant isolation:** dedicated node-pool/Deployment for any large launch partner? (default: no).
 5. **LSP self-serve reports API** scope and timing (#215).
-6. **RabbitMQ removal** vs retain-for-future (#226).
+6. **External broker policy:** retain PostgreSQL work queues unless measured load proves a broker is necessary.
 7. **Shared LSP API contract** open items from blueprint §19 still warranting confirmation: exact auth scheme nuances, document-storage ownership (LMS owns binaries — confirmed by R2/MinIO usage), LSP-UI launch scope (confirmed read-mostly by ADR 0003).
 8. Formal **RACI** and on-call ownership of the worker tier.
 

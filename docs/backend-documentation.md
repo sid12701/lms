@@ -71,7 +71,7 @@ backend/
 |---|---|---|---|---|
 | `backend/pom.xml` | Build | Maven dependencies, Java version, Spring Boot plugin | Maven project config | All backend modules |
 | `backend/src/main/java/com/bhawana/lms/LmsApplication.java` | Entry point | Starts Spring Boot app, enables config properties, scheduling, entity scan, JPA repositories | `LmsApplication` | `domain`, `repo`, `service` scheduled workers |
-| `backend/src/main/resources/application.yml` | Config | Datasource, Flyway, JPA, Redis, RabbitMQ, mail, JWT, reports, webhooks, storage, rate limits | Spring properties | Security, services, integrations |
+| `backend/src/main/resources/application.yml` | Config | Datasource, Flyway, JPA, Redis, mail, JWT, reports, webhooks, storage, rate limits | Spring properties | Security, services, integrations |
 | `backend/src/main/resources/application-local.yml` | Config | Local profile defaults for database, mail, JWT, bootstrap user, seed data | Spring local properties | Local development |
 | `backend/src/main/java/com/bhawana/lms/security/SecurityConfig.java` | Security | Main security filter chain, URL authorization, JWT decoder, CORS, password encoder | `SecurityConfig` | Controllers, JWT auth, `AppUserDetailsService` |
 | `backend/src/main/java/com/bhawana/lms/security/SecurityProperties.java` | Security config | Binds app security settings, bootstrap credentials, JWT cookie settings | `SecurityProperties` | `SecurityConfig`, auth services |
@@ -1149,7 +1149,6 @@ Business event
 | R2/S3-compatible storage | `R2LoanDocumentStorageService`, `DocumentStorageService`, `application.yml` | `APP_STORAGE_DOCUMENTS_R2_*`, provider setting | Stores LMS-managed loan documents | Document bytes and metadata | Access/secret keys are sensitive; object keys and bucket permissions need review |
 | Local filesystem storage | `FileSystemLoanDocumentStorageService` | `APP_STORAGE_DOCUMENTS_PROVIDER`, `APP_STORAGE_DOCUMENTS_ROOT_PATH` | Local document storage | Document bytes | Path normalization and storage key integrity should be reviewed |
 | Outbound webhooks | `WebhookOutboxService`, `HttpWebhookDeliveryClient`, `SsrfSafeUrlValidator` | LSP webhook fields in DB; `app.webhooks.delivery.*` | Sends lifecycle events to LSPs | JSON payloads, HMAC headers, delivery ids | SSRF validator exists; DNS failure/rebinding behavior needs review |
-| RabbitMQ | `application.yml`, `pom.xml`, infra config | `LMS_RABBITMQ_*` | Dependency/config present | No active listener/publisher found in inspected runtime code | Needs review. Appears configured but unused |
 | MinIO/local S3 infra | Infra/docker config and S3-compatible storage support | S3/R2 storage env properties | Local object storage candidate | Document bytes | Needs explicit provider configuration |
 
 ## 12. Environment Variables
@@ -1165,10 +1164,6 @@ Do not expose secret values. The table lists variable names and observed usage.
 | `APP_TENANT_DATASOURCE_PASSWORD` | Tenant datasource config | Tenant/RLS datasource password | Required when tenant datasource override used | Secret |
 | `LMS_REDIS_HOST` | Redis/rate limit config | Redis host | Required if rate limiting enabled | Infrastructure setting |
 | `LMS_REDIS_PORT` | Redis/rate limit config | Redis port | Required if rate limiting enabled | Infrastructure setting |
-| `LMS_RABBITMQ_HOST` | RabbitMQ config | RabbitMQ host | Optional/unused in inspected code | Needs review |
-| `LMS_RABBITMQ_PORT` | RabbitMQ config | RabbitMQ port | Optional/unused in inspected code | Needs review |
-| `LMS_RABBITMQ_USERNAME` | RabbitMQ config | RabbitMQ username | Optional/unused in inspected code | Secret-like |
-| `LMS_RABBITMQ_PASSWORD` | RabbitMQ config | RabbitMQ password | Optional/unused in inspected code | Secret |
 | `LMS_MAIL_HOST` | Mail config | SMTP host | Required if report email enabled | Infrastructure setting |
 | `LMS_MAIL_PORT` | Mail config | SMTP port | Required if report email enabled | Infrastructure setting |
 | `APP_SECURITY_BOOTSTRAP_USERNAME` | `SecurityProperties`, local bootstrap | Bootstrap admin username | Optional/local bootstrap | Avoid production defaults |
@@ -1278,7 +1273,6 @@ Global error handling is centralized in `GlobalExceptionHandler` and standard er
 | Local bootstrap admin sync | Application startup runner/local config | `LocalBootstrapAdminSyncService` | `app_user`, roles | Syncs configured local/bootstrap admin | Ensure not active with weak defaults in production |
 | Sample catalog seed | Application startup runner/property gated | `SampleCatalogSeedService` | LSP/product/mapping tables | Seeds sample catalog data | Controlled by seed property |
 | Local demo portfolio seed | Application startup runner/property gated | `LocalDemoPortfolioSeedService` | Borrower/loan/product/account tables | Seeds demo portfolio data | Local/demo only |
-| RabbitMQ workers | None found | RabbitMQ dependency/config present | None found | None found | Needs review; queue config exists but no listener/publisher was found in inspected runtime code |
 
 ## 16. Module Dependency Map
 
@@ -1399,7 +1393,6 @@ These are code-supported observations only.
 | Production secret posture | Local/default config contains sensitive-looking values | Move all secrets to environment/secret manager and scrub committed config |
 | File upload controls | Upload endpoints store files without clear size/type/malware controls | Add or document maximum size, content validation, extension allowlist, and scanning strategy |
 | Webhook SSRF edge cases | Validator exists but DNS failure/rebinding behavior needs deeper review | Add tests for private IP DNS, multiple A/AAAA records, redirects, and DNS rebinding |
-| RabbitMQ usage | Dependency/config exists but no active runtime usage found | Remove unused config/dependency or document planned queue usage |
 | Refresh-cookie CSRF model | CSRF disabled with cookie-based refresh/logout | Confirm SameSite/secure-cookie assumptions for all deployed clients |
 | Response standard consistency | Success responses are not uniformly enveloped; some binary 404s bypass `ApiError` | Decide and document API response standard |
 | RLS route coverage | Tenant isolation is strong but depends on interceptor and datasource mode | Add/verify tests for every `/api/v1/lsp/**` route and repository path |

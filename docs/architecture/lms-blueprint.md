@@ -39,7 +39,7 @@ Start with a **modular monolith backend** and a **separate React SPA frontend**.
 - Frontend: React, React Router, shadcn-style components, and Tailwind CSS
 - Database: PostgreSQL
 - Cache and rate limiting: Redis
-- Async processing: RabbitMQ
+- Async processing: PostgreSQL durable work tables with leased / `SKIP LOCKED` claims
 - Document storage: S3-compatible storage such as MinIO or AWS S3
 - Email: SMTP or provider such as SES
 - Observability: OpenTelemetry, Prometheus, Grafana, centralized logs
@@ -53,7 +53,7 @@ Ops["Internal Ops / Admin UI"] -->|HTTPS| UI["React Frontend"]
     UI -->|JWT| API
     API --> DB["PostgreSQL"]
     API --> Cache["Redis"]
-    API --> MQ["RabbitMQ"]
+    API --> Queue["PostgreSQL work queues"]
     API --> Docs["S3 / MinIO"]
     API --> ICICI["ICICI Disbursement API"]
     API --> Mail["Email Provider"]

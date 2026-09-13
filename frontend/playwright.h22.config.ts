@@ -2,9 +2,9 @@ import { defineConfig } from "@playwright/test";
 
 /**
  * H22 isolated cookie-transport config. Uses installed Google Chrome
- * (channel: chrome) so no browser download is required, starts no
- * frontend webServer and no backend fixture seeding — the spec boots its
- * own same-origin Vite + HTTP harness on ephemeral ports.
+ * (channel: chrome), starts no frontend webServer and does no backend
+ * fixture seeding — the spec boots its own same-origin Vite + HTTP harness
+ * on ephemeral ports.
  */
 export default defineConfig({
   testDir: "./e2e",
