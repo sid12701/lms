@@ -79,6 +79,9 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
     private LoanDisbursementCommandService loanDisbursementCommandService;
 
     @Autowired
+    private LoanApplicationServicingReadService loanApplicationServicingReadService;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -238,7 +241,167 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
         assertThat(latest.getContextJson()).contains("\"previousBucket\":\"CURRENT\"");
     }
 
-    private UUID seedUnderRepaymentLoan() throws Exception {
+    @Test
+    void fundedDisbursedLoanThatMissedItsFirstInstallmentEntersDelinquencyExactlyOnce() throws Exception {
+        // H10: the borrower never paid, so the application is still DISBURSED, not UNDER_REPAYMENT.
+        // The sweep used to skip this loan entirely even though the read API reported it overdue.
+        UUID applicationId = seedDisbursedLoan();
+        assertThat(applicationStatusOf(applicationId)).isEqualTo("DISBURSED");
+        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(10));
+
+        alertRuleEvaluationWorker.evaluateScheduledRules();
+
+        LoanDelinquencySummary apiSummary = apiDelinquencySummary(applicationId);
+        assertThat(apiSummary.maxDaysPastDue()).isEqualTo(10);
+        assertThat(apiSummary.bucket()).isEqualTo(LoanDelinquencyBucket.DPD_1_30);
+
+        assertThat(countDpdAlerts(applicationId)).isEqualTo(1);
+        var state = loanDelinquencyStateRepository.findByLoanApplication_Id(applicationId).orElseThrow();
+        assertThat(state.getLastBucket()).isEqualTo(apiSummary.bucket());
+        assertThat(state.getLastMaxDaysPastDue()).isEqualTo(apiSummary.maxDaysPastDue());
+
+        // Idempotence: the sweep is a catch-up pass over a whole population, so re-running it must
+        // not append a second alert or a second transition for the same unchanged delinquency.
+        AlertRuleEvaluationWorker.EvaluationSummary secondPass = alertRuleEvaluationWorker.evaluateScheduledRules();
+        assertThat(secondPass.alertsEmitted()).isZero();
+        assertThat(countDpdAlerts(applicationId)).isEqualTo(1);
+        assertThat(loanDelinquencyStateRepository.findByLoanApplication_Id(applicationId).orElseThrow()
+                .getLastMaxDaysPastDue()).isEqualTo(10);
+    }
+
+    @Test
+    void fundedDisbursedLoanWhoseFirstInstallmentIsNotYetDueIsNotFlagged() throws Exception {
+        UUID applicationId = seedDisbursedLoan();
+        setFirstInstallmentDueDate(applicationId, LocalDate.now().plusDays(5));
+
+        alertRuleEvaluationWorker.evaluateScheduledRules();
+
+        assertThat(apiDelinquencySummary(applicationId).maxDaysPastDue()).isZero();
+        assertThat(countDpdAlerts(applicationId)).isZero();
+        assertThat(loanDelinquencyStateRepository.findByLoanApplication_Id(applicationId)).isEmpty();
+    }
+
+    @Test
+    void fundedDisbursedLoanWithASettledInstallmentIsNotFlagged() throws Exception {
+        UUID applicationId = seedDisbursedLoan();
+        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(10));
+        settleFirstInstallment(applicationId);
+
+        alertRuleEvaluationWorker.evaluateScheduledRules();
+
+        assertThat(apiDelinquencySummary(applicationId).maxDaysPastDue()).isZero();
+        assertThat(countDpdAlerts(applicationId)).isZero();
+        assertThat(loanDelinquencyStateRepository.findByLoanApplication_Id(applicationId)).isEmpty();
+    }
+
+    @Test
+    void unfundedApprovedLoanIsExcludedEvenWhenItsGeneratedScheduleIsOverdue() throws Exception {
+        // The schedule is generated at approval, so an unfunded account can carry overdue rows.
+        // No money moved, so there is nothing to be delinquent about.
+        UUID applicationId = seedApprovedLoan();
+        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(45));
+
+        alertRuleEvaluationWorker.evaluateScheduledRules();
+
+        assertThat(countDpdAlerts(applicationId)).isZero();
+        assertThat(loanDelinquencyStateRepository.findByLoanApplication_Id(applicationId)).isEmpty();
+    }
+
+    @Test
+    void invalidatedLoanIsExcluded() throws Exception {
+        UUID applicationId = seedApprovedLoan();
+        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(45));
+        forceLoanState(applicationId, "INVALID", "INVALID");
+
+        alertRuleEvaluationWorker.evaluateScheduledRules();
+
+        assertThat(countDpdAlerts(applicationId)).isZero();
+        assertThat(loanDelinquencyStateRepository.findByLoanApplication_Id(applicationId)).isEmpty();
+    }
+
+    @Test
+    void closedLoanIsExcluded() throws Exception {
+        UUID applicationId = seedDisbursedLoan();
+        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(45));
+        forceLoanState(applicationId, "CLOSED", "CLOSED");
+
+        alertRuleEvaluationWorker.evaluateScheduledRules();
+
+        assertThat(countDpdAlerts(applicationId)).isZero();
+        assertThat(loanDelinquencyStateRepository.findByLoanApplication_Id(applicationId)).isEmpty();
+    }
+
+    @Test
+    void bucketBoundaryDueDatesResolveToTheExpectedBuckets() throws Exception {
+        // 30 days past due is the last day of DPD_1_30; 31 is the first day of DPD_31_60.
+        UUID lastDayOfFirstBucket = seedDisbursedLoan();
+        setFirstInstallmentDueDate(lastDayOfFirstBucket, LocalDate.now().minusDays(30));
+        UUID firstDayOfSecondBucket = seedDisbursedLoan();
+        setFirstInstallmentDueDate(firstDayOfSecondBucket, LocalDate.now().minusDays(31));
+
+        alertRuleEvaluationWorker.evaluateScheduledRules();
+
+        assertThat(loanDelinquencyStateRepository.findByLoanApplication_Id(lastDayOfFirstBucket).orElseThrow()
+                .getLastBucket()).isEqualTo(LoanDelinquencyBucket.DPD_1_30);
+        assertThat(loanDelinquencyStateRepository.findByLoanApplication_Id(firstDayOfSecondBucket).orElseThrow()
+                .getLastBucket()).isEqualTo(LoanDelinquencyBucket.DPD_31_60);
+        assertThat(findLatestDpdAlert(lastDayOfFirstBucket).getTitle())
+                .isEqualTo("Delinquency bucket DPD_1_30");
+        assertThat(findLatestDpdAlert(firstDayOfSecondBucket).getTitle())
+                .isEqualTo("Delinquency bucket DPD_31_60");
+    }
+
+    /** The days past due the read APIs report, computed by the same shared support the sweep uses. */
+    private LoanDelinquencySummary apiDelinquencySummary(UUID applicationId) {
+        return TenantScopedExecution.callAsAdmin(
+                () -> loanApplicationServicingReadService.getLoanDelinquencySummary(applicationId).orElseThrow());
+    }
+
+    private String applicationStatusOf(UUID applicationId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT status FROM loan_application WHERE id = ?", String.class, applicationId);
+    }
+
+    /**
+     * Forces a population edge that the happy-path fixtures cannot reach here (invalidation and
+     * closure have their own guarded command paths); only the two status columns the delinquency
+     * population predicate reads are touched.
+     */
+    private void forceLoanState(UUID applicationId, String accountStatus, String applicationStatus) {
+        jdbcTemplate.update(
+                "UPDATE loan_account SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE loan_application_id = ?",
+                accountStatus,
+                applicationId
+        );
+        jdbcTemplate.update(
+                "UPDATE loan_application SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                applicationStatus,
+                applicationId
+        );
+    }
+
+    private void settleFirstInstallment(UUID applicationId) {
+        UUID loanAccountId = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow().getId();
+        jdbcTemplate.update(
+                """
+                        UPDATE loan_repayment_schedule_installment
+                        SET outstanding_amount = 0,
+                            paid_amount = installment_amount,
+                            paid_principal = principal_due,
+                            paid_interest = interest_due,
+                            status = 'PAID',
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE loan_account_id = ? AND installment_number = 1
+                        """,
+                loanAccountId
+        );
+    }
+
+    /**
+     * An approved, unfunded loan: the account exists and its schedule is already generated
+     * (approval generates it), but no money has moved. The delinquency sweep must never see it.
+     */
+    private UUID seedApprovedLoan() throws Exception {
         LspFixture lsp = createLsp();
         ProductFixture product = createProduct();
         mapProductToLsp(product.id(), lsp.id());
@@ -251,6 +414,15 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved for DPD test");
 
         seedBorrowerBankDetails(applicationId);
+        return applicationId;
+    }
+
+    /**
+     * A funded loan on which the borrower has never paid: the application stays DISBURSED because
+     * only an allocated receipt moves it to UNDER_REPAYMENT. This is the H10 population.
+     */
+    private UUID seedDisbursedLoan() throws Exception {
+        UUID applicationId = seedApprovedLoan();
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/disbursement-requests", applicationId)
                         .with(systemAdmin()))
@@ -260,7 +432,11 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
         disbursementIntentWorkflowService.executeForApplication(applicationId);
         loanDisbursementCommandService.autoResolveAfterInitiate(
                 applicationId, "ops.admin", null, "dpd-test");
+        return applicationId;
+    }
 
+    private UUID seedUnderRepaymentLoan() throws Exception {
+        UUID applicationId = seedDisbursedLoan();
         jdbcTemplate.update(
                 "UPDATE loan_application SET status = 'UNDER_REPAYMENT', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 applicationId
@@ -410,14 +586,17 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
     private static Map<String, Object> loanApplicationPayload(String lspId, String productId, String externalLoanId) {
         Map<String, Object> payload = new LinkedHashMap<>();
         String pan = "ABCDE" + String.format("%04d", Math.abs(externalLoanId.hashCode() % 10000)) + "F";
+        // Borrower identity (PAN, mobile, email) must be unique per application: a test that seeds
+        // more than one loan otherwise trips BORROWER_IDENTITY_CONFLICT on the shared contact details.
+        String mobile = "9" + String.format("%09d", Math.abs(externalLoanId.hashCode() % 1_000_000_000));
         payload.put("lspId", lspId);
         payload.put("productId", productId);
         payload.put("externalLoanId", externalLoanId);
         payload.put("sourceChannel", "API");
         payload.put("borrowerPan", pan);
         payload.put("borrowerFullName", "DPD Test Borrower");
-        payload.put("borrowerMobile", "9876543210");
-        payload.put("borrowerEmail", "dpd.test@example.com");
+        payload.put("borrowerMobile", mobile);
+        payload.put("borrowerEmail", externalLoanId.toLowerCase() + "@example.com");
         payload.put("borrowerDateOfBirth", LocalDate.of(1990, 1, 15));
         payload.put("borrowerCity", "Mumbai");
         payload.put("borrowerState", "Maharashtra");
