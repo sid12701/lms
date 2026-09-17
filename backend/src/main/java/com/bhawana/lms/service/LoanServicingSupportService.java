@@ -12,7 +12,6 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanPaymentChannel;
-import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallmentStatus;
@@ -237,41 +236,36 @@ public class LoanServicingSupportService {
         return payment;
     }
 
-    public void recomputePaymentAllocation(LoanAccount loanAccount) {
-        List<LoanRepaymentScheduleInstallment> installments = loanRepaymentScheduleInstallmentRepository
-                .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId());
-        installments.forEach(LoanRepaymentScheduleInstallment::resetAllocation);
+    /**
+     * Applies one new receipt across whatever the schedule still owes, oldest installment first.
+     * Earlier receipts keep the installments they were recorded against: this never replays
+     * payment history, so a receipt targeted at installment 3 stays allocated to installment 3
+     * (H09). {@code installments} is the caller's already-locked schedule in installment-number
+     * order.
+     */
+    public void allocateReceiptAcrossOutstanding(
+            List<LoanRepaymentScheduleInstallment> installments,
+            LoanPaymentTransaction receipt
+    ) {
+        BigDecimal remainingAmount = scaleCurrency(receipt.getAmount());
+        BigDecimal allocatedAmount = BigDecimal.ZERO.setScale(2);
 
-        List<LoanPaymentTransaction> payments = loanPaymentTransactionRepository
-                .findByLoanAccount_IdOrderByPaymentDateAscCreatedAtAsc(loanAccount.getId());
-
-        for (LoanPaymentTransaction payment : payments) {
-            if (payment.getStatus() != LoanPaymentStatus.RECEIVED) {
-                payment.updateAllocation(BigDecimal.ZERO.setScale(2), scaleCurrency(payment.getAmount()));
+        for (LoanRepaymentScheduleInstallment installment : installments) {
+            if (remainingAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                break;
+            }
+            if (installment.getStatus() == LoanRepaymentScheduleInstallmentStatus.PAID) {
                 continue;
             }
 
-            BigDecimal remainingAmount = scaleCurrency(payment.getAmount());
-            BigDecimal allocatedAmount = BigDecimal.ZERO.setScale(2);
-
-            for (LoanRepaymentScheduleInstallment installment : installments) {
-                if (remainingAmount.compareTo(BigDecimal.ZERO) <= 0) {
-                    break;
-                }
-                if (installment.getStatus() == LoanRepaymentScheduleInstallmentStatus.PAID) {
-                    continue;
-                }
-
-                BigDecimal appliedAmount = installment.applyPayment(remainingAmount);
-                remainingAmount = scaleCurrency(remainingAmount.subtract(appliedAmount));
-                allocatedAmount = scaleCurrency(allocatedAmount.add(appliedAmount));
-            }
-
-            payment.updateAllocation(allocatedAmount, remainingAmount);
+            BigDecimal appliedAmount = installment.applyPayment(remainingAmount);
+            remainingAmount = scaleCurrency(remainingAmount.subtract(appliedAmount));
+            allocatedAmount = scaleCurrency(allocatedAmount.add(appliedAmount));
         }
 
+        receipt.updateAllocation(allocatedAmount, remainingAmount);
         loanRepaymentScheduleInstallmentRepository.saveAll(installments);
-        loanPaymentTransactionRepository.saveAll(payments);
+        loanPaymentTransactionRepository.save(receipt);
     }
 
     public void synchronizeLoanAccountClosureState(

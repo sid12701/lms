@@ -5,6 +5,7 @@ package com.bhawana.lms.service;
  */
 public enum ForeclosureViolationType {
     QUOTE_NOT_ACTIVE,
+    FORECLOSURE_QUOTE_STALE,
     QUOTE_OWNERSHIP_MISMATCH,
     SETTLEMENT_DATE_MISMATCH,
     LOAN_ACCOUNT_NOT_DISBURSED,

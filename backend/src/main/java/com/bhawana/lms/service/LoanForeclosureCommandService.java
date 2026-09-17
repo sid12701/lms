@@ -12,11 +12,11 @@ import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.domain.LoanForeclosureQuoteStatus;
-import com.bhawana.lms.domain.LoanPaymentChannel;
-import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.LoanEventType;
+import com.bhawana.lms.repo.LoanAccountRepository;
+import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanForeclosureQuoteRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
@@ -32,6 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class LoanForeclosureCommandService {
 
+    private final LoanApplicationRepository loanApplicationRepository;
+    private final LoanAccountRepository loanAccountRepository;
     private final LoanForeclosureQuoteRepository loanForeclosureQuoteRepository;
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
@@ -41,6 +43,8 @@ public class LoanForeclosureCommandService {
     private final OpsAlertEmitters opsAlertEmitters;
 
     public LoanForeclosureCommandService(
+            LoanApplicationRepository loanApplicationRepository,
+            LoanAccountRepository loanAccountRepository,
             LoanForeclosureQuoteRepository loanForeclosureQuoteRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
@@ -49,6 +53,8 @@ public class LoanForeclosureCommandService {
             LoanEventLog loanEventLog,
             OpsAlertEmitters opsAlertEmitters
     ) {
+        this.loanApplicationRepository = loanApplicationRepository;
+        this.loanAccountRepository = loanAccountRepository;
         this.loanForeclosureQuoteRepository = loanForeclosureQuoteRepository;
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.loanRepaymentScheduleInstallmentRepository = loanRepaymentScheduleInstallmentRepository;
@@ -60,7 +66,11 @@ public class LoanForeclosureCommandService {
 
     @Transactional
     public LoanForeclosureQuote requestForeclosureQuote(UUID applicationId, String actorUsername, LocalDate effectiveDate) {
-        LoanApplication application = loanServicingSupportService.getApplication(applicationId);
+        if (effectiveDate == null) {
+            throw new IllegalArgumentException("Foreclosure effective date is required.");
+        }
+
+        LoanApplication application = lockApplication(applicationId);
         if (application.getStatus() != LoanApplicationStatus.DISBURSED
                 && application.getStatus() != LoanApplicationStatus.UNDER_REPAYMENT) {
             throw new BusinessRuleViolationException(
@@ -69,11 +79,9 @@ public class LoanForeclosureCommandService {
                     Map.of("status", application.getStatus().name())
             );
         }
-        if (effectiveDate == null) {
-            throw new IllegalArgumentException("Foreclosure effective date is required.");
-        }
 
-        LoanAccount loanAccount = loanServicingSupportService.getRequiredLoanAccount(applicationId);
+        LockedLoan loan = lockAccountAndSchedule(applicationId);
+        LoanAccount loanAccount = loan.loanAccount();
         if (loanAccount.getStatus() != LoanAccountStatus.DISBURSED) {
             throw new BusinessRuleViolationException(
                     "LOAN_ACCOUNT_NOT_DISBURSED",
@@ -82,26 +90,15 @@ public class LoanForeclosureCommandService {
             );
         }
 
-        List<LoanRepaymentScheduleInstallment> installments = loanRepaymentScheduleInstallmentRepository
-                .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId());
-        BigDecimal outstandingPrincipal = installments.stream()
-                .map(installment -> loanServicingSupportService.scaleCurrency(
-                        installment.getPrincipalDue().subtract(installment.getPaidPrincipal()).max(BigDecimal.ZERO)
-                ))
-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        BigDecimal outstandingInterest = installments.stream()
-                .map(installment -> loanServicingSupportService.scaleCurrency(
-                        installment.getInterestDue().subtract(installment.getPaidInterest()).max(BigDecimal.ZERO)
-                ))
-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        BigDecimal settlementAmount = loanServicingSupportService.scaleCurrency(outstandingPrincipal.add(outstandingInterest));
-        if (settlementAmount.compareTo(BigDecimal.ZERO) <= 0) {
+        SettlementBalance balance = settlementBalance(loan.installments());
+        if (balance.settlementAmount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApiConflictException(
                     "LOAN_ALREADY_SETTLED",
                     "Foreclosure quote is not available because the loan is already fully settled."
             );
         }
 
+        // Under the account lock, so concurrent requests cannot leave two ACTIVE quotes behind.
         List<LoanForeclosureQuote> existingQuotes = loanForeclosureQuoteRepository.findByLoanAccount_IdOrderByVersionDesc(
                 loanAccount.getId()
         );
@@ -122,9 +119,9 @@ public class LoanForeclosureCommandService {
                 nextVersion,
                 loanServicingSupportService.normalizeActorUsername(actorUsername),
                 effectiveDate,
-                loanServicingSupportService.scaleCurrency(outstandingPrincipal),
-                loanServicingSupportService.scaleCurrency(outstandingInterest),
-                settlementAmount
+                balance.outstandingPrincipal(),
+                balance.outstandingInterest(),
+                balance.settlementAmount()
         ));
         loanEventLog.append(
                 application.getLsp(),
@@ -197,6 +194,16 @@ public class LoanForeclosureCommandService {
         }
     }
 
+    /**
+     * Ownership, then duplicate resolution, then balance freshness, then the write — all under the
+     * loan lock taken in the shared application → account → quote → installment order.
+     *
+     * <p>Freshness is the quote's own stored snapshot used as a balance fingerprint: the quote is
+     * only redeemable while the schedule still owes exactly what it quoted. Any receipt, reversal
+     * or schedule change in between makes it stale, and the caller must request a new quote. The
+     * quote and the schedule are read for the first time inside the lock, so the comparison never
+     * runs against balances another transaction has already moved.
+     */
     @Transactional
     public LoanForeclosureQuote executeForeclosureQuote(
             UUID applicationId,
@@ -210,26 +217,30 @@ public class LoanForeclosureCommandService {
             throw new IllegalArgumentException("Settlement date is required.");
         }
 
-        LoanApplication application = loanServicingSupportService.getApplication(applicationId);
-        LoanAccount loanAccount = loanServicingSupportService.getRequiredLoanAccount(applicationId);
-        if (loanAccount.getStatus() != LoanAccountStatus.DISBURSED) {
-            throw new BusinessRuleViolationException(
-                    "LOAN_ACCOUNT_NOT_DISBURSED",
-                    "Foreclosure can only be executed for an active disbursed loan account.",
-                    Map.of("loanAccountStatus", loanAccount.getStatus().name())
-            );
-        }
+        LoanApplication application = lockApplication(applicationId);
+        LockedLoan loan = lockAccountAndSchedule(applicationId);
+        LoanAccount loanAccount = loan.loanAccount();
 
-        LoanForeclosureQuote quote = loanForeclosureQuoteRepository.findById(quoteId)
+        LoanForeclosureQuote quote = loanForeclosureQuoteRepository.findByIdForUpdate(quoteId)
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown foreclosure quote id: " + quoteId));
         if (!quote.getLoanAccount().getId().equals(loanAccount.getId())) {
             throw new ResourceNotFoundException("Foreclosure quote does not belong to the selected loan account.");
         }
+        // A quote leaves ACTIVE exactly once, so this also rejects a second execution of one that
+        // already settled. The partial unique index on the settlement receipt's quote link is the
+        // backstop: one quote can never back two settlements.
         if (quote.getStatus() != LoanForeclosureQuoteStatus.ACTIVE) {
             throw new BusinessRuleViolationException(
                     "QUOTE_NOT_ACTIVE",
                     "Only an active foreclosure quote can be executed.",
                     Map.of("quoteId", quoteId.toString())
+            );
+        }
+        if (loanAccount.getStatus() != LoanAccountStatus.DISBURSED) {
+            throw new BusinessRuleViolationException(
+                    "LOAN_ACCOUNT_NOT_DISBURSED",
+                    "Foreclosure can only be executed for an active disbursed loan account.",
+                    Map.of("loanAccountStatus", loanAccount.getStatus().name())
             );
         }
         if (!settlementDate.equals(quote.getEffectiveDate())) {
@@ -242,25 +253,26 @@ public class LoanForeclosureCommandService {
                     )
             );
         }
+        requireFreshQuote(quote, settlementBalance(loan.installments()));
 
         String normalizedActorUsername = loanServicingSupportService.normalizeActorUsername(actorUsername);
         String requiredReference = loanServicingSupportService.requireReference(reference);
         String resolvedNote = loanServicingSupportService.normalizeNote(note);
-        loanPaymentTransactionRepository.save(new LoanPaymentTransaction(
-                loanAccount,
-                null,
-                normalizedActorUsername,
-                quote.getSettlementAmount(),
-                settlementDate,
-                requiredReference,
-                LoanPaymentChannel.FORECLOSURE_SETTLEMENT,
-                LoanPaymentStatus.RECEIVED,
-                resolvedNote == null ? "Foreclosure settlement for quote v" + quote.getVersion() : resolvedNote,
-                CorrelationIdHolder.get(),
-                null
-        ));
-        loanServicingSupportService.recomputePaymentAllocation(loanAccount);
+        LoanPaymentTransaction settlement = loanPaymentTransactionRepository.save(
+                LoanPaymentTransaction.foreclosureSettlement(
+                        loanAccount,
+                        quote,
+                        normalizedActorUsername,
+                        settlementDate,
+                        requiredReference,
+                        resolvedNote == null ? "Foreclosure settlement for quote v" + quote.getVersion() : resolvedNote,
+                        CorrelationIdHolder.get()
+                )
+        );
+        loanServicingSupportService.allocateReceiptAcrossOutstanding(loan.installments(), settlement);
 
+        // Invariant, not a control path: the freshness check above already proved the quote pays
+        // out exactly what the schedule owes.
         if (!loanServicingSupportService.allInstallmentsSettled(loanAccount)) {
             throw new IllegalStateException("Foreclosure settlement did not fully settle the repayment schedule.");
         }
@@ -298,6 +310,77 @@ public class LoanForeclosureCommandService {
                 LoanEventPayloads.foreclosure(application, loanAccount, quote)
         );
         return quote;
+    }
+
+    // Shared loan-command lock order: application → account → quote → installments in
+    // installment-number order. Every foreclosure command takes the same rows in the same
+    // sequence, and each locked read is the command's first sight of that state.
+    private LoanApplication lockApplication(UUID applicationId) {
+        loanApplicationRepository.findByIdForUpdate(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
+        return loanServicingSupportService.getApplication(applicationId);
+    }
+
+    private LockedLoan lockAccountAndSchedule(UUID applicationId) {
+        loanAccountRepository.findByLoanApplication_IdForUpdate(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Loan account is not available for application id: " + applicationId
+                ));
+        LoanAccount loanAccount = loanServicingSupportService.getRequiredLoanAccount(applicationId);
+        return new LockedLoan(
+                loanAccount,
+                loanRepaymentScheduleInstallmentRepository.findByLoanAccountIdForUpdateOrderByInstallmentNumberAsc(
+                        loanAccount.getId()
+                )
+        );
+    }
+
+    private SettlementBalance settlementBalance(List<LoanRepaymentScheduleInstallment> installments) {
+        BigDecimal outstandingPrincipal = installments.stream()
+                .map(installment -> loanServicingSupportService.scaleCurrency(
+                        installment.getPrincipalDue().subtract(installment.getPaidPrincipal()).max(BigDecimal.ZERO)
+                ))
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        BigDecimal outstandingInterest = installments.stream()
+                .map(installment -> loanServicingSupportService.scaleCurrency(
+                        installment.getInterestDue().subtract(installment.getPaidInterest()).max(BigDecimal.ZERO)
+                ))
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        return new SettlementBalance(
+                outstandingPrincipal,
+                outstandingInterest,
+                loanServicingSupportService.scaleCurrency(outstandingPrincipal.add(outstandingInterest))
+        );
+    }
+
+    private static void requireFreshQuote(LoanForeclosureQuote quote, SettlementBalance current) {
+        if (current.settlementAmount().compareTo(quote.getSettlementAmount()) == 0
+                && current.outstandingPrincipal().compareTo(quote.getOutstandingPrincipal()) == 0
+                && current.outstandingInterest().compareTo(quote.getOutstandingInterest()) == 0) {
+            return;
+        }
+        Map<String, String> details = new LinkedHashMap<>();
+        details.put("quoteId", quote.getId().toString());
+        details.put("quotedSettlementAmount", quote.getSettlementAmount().toPlainString());
+        details.put("currentSettlementAmount", current.settlementAmount().toPlainString());
+        throw new BusinessRuleViolationException(
+                "FORECLOSURE_QUOTE_STALE",
+                "The loan balance changed after this foreclosure quote was issued. Request a new quote.",
+                details
+        );
+    }
+
+    private record LockedLoan(
+            LoanAccount loanAccount,
+            List<LoanRepaymentScheduleInstallment> installments
+    ) {
+    }
+
+    private record SettlementBalance(
+            BigDecimal outstandingPrincipal,
+            BigDecimal outstandingInterest,
+            BigDecimal settlementAmount
+    ) {
     }
 
     private static ForeclosureViolationType resolveForeclosureViolationType(RuntimeException exception) {

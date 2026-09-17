@@ -31,6 +31,14 @@ public class LoanPaymentTransaction {
     @JoinColumn(name = "repayment_installment_id")
     private LoanRepaymentScheduleInstallment repaymentInstallment;
 
+    /**
+     * Set only on a foreclosure settlement receipt, by {@link #foreclosureSettlement}. A partial
+     * unique index on the column makes one quote redeemable exactly once (C05).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "foreclosure_quote_id")
+    private LoanForeclosureQuote foreclosureQuote;
+
     @Column(name = "actor_username", nullable = false, length = 255)
     private String actorUsername;
 
@@ -138,6 +146,36 @@ public class LoanPaymentTransaction {
         this.requestFingerprint = requestFingerprint;
     }
 
+    /**
+     * The settlement receipt for an executed foreclosure quote: it targets no single installment
+     * and carries the quote it redeems instead of an idempotency key.
+     */
+    public static LoanPaymentTransaction foreclosureSettlement(
+            LoanAccount loanAccount,
+            LoanForeclosureQuote foreclosureQuote,
+            String actorUsername,
+            LocalDate settlementDate,
+            String reference,
+            String note,
+            String correlationId
+    ) {
+        LoanPaymentTransaction settlement = new LoanPaymentTransaction(
+                loanAccount,
+                null,
+                actorUsername,
+                foreclosureQuote.getSettlementAmount(),
+                settlementDate,
+                reference,
+                LoanPaymentChannel.FORECLOSURE_SETTLEMENT,
+                LoanPaymentStatus.RECEIVED,
+                note,
+                correlationId,
+                null
+        );
+        settlement.foreclosureQuote = foreclosureQuote;
+        return settlement;
+    }
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
@@ -160,6 +198,10 @@ public class LoanPaymentTransaction {
 
     public LoanRepaymentScheduleInstallment getRepaymentInstallment() {
         return repaymentInstallment;
+    }
+
+    public LoanForeclosureQuote getForeclosureQuote() {
+        return foreclosureQuote;
     }
 
     public String getActorUsername() {
