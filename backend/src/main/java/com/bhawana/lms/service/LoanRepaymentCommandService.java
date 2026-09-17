@@ -19,17 +19,24 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class LoanRepaymentCommandService {
+
+    /**
+     * Contenders on one loan are serialized by its lock and settle within a single attempt, so the
+     * retries are for the two cases the lock cannot cover: a version clash with another command
+     * writing the application, and the same key raced across two different loans. Either is decided
+     * by one committed winner, so a couple of replays is a bound, not a budget.
+     */
+    private static final int MAX_CONCURRENT_WRITE_ATTEMPTS = 3;
 
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository;
@@ -39,7 +46,6 @@ public class LoanRepaymentCommandService {
     private final ObjectMapper objectMapper;
     private final IdempotencyClaimService idempotencyClaimService;
     private final TransactionTemplate transactionTemplate;
-    private final TransactionTemplate readOnlyRequiresNewTemplate;
 
     public LoanRepaymentCommandService(
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
@@ -59,11 +65,15 @@ public class LoanRepaymentCommandService {
         this.objectMapper = objectMapper;
         this.idempotencyClaimService = idempotencyClaimService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
-        this.readOnlyRequiresNewTemplate = new TransactionTemplate(transactionManager);
-        this.readOnlyRequiresNewTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        this.readOnlyRequiresNewTemplate.setReadOnly(true);
     }
 
+    /**
+     * Records a payment, retrying the complete command when a concurrent writer wins the race.
+     *
+     * <p>Every retry starts from the replay lookup, so a contender that lost the unique
+     * idempotency key returns the winner's committed receipt, and one whose winner rolled back
+     * re-executes its own payment instead of reading a receipt that does not exist.
+     */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public LoanPaymentTransaction recordPaymentTransactionWithRecovery(
             UUID applicationId,
@@ -75,31 +85,11 @@ public class LoanRepaymentCommandService {
             String reference,
             LoanPaymentChannel channel
     ) {
-        try {
-            return recordPaymentTransaction(
-                    applicationId,
-                    actorUsername,
-                    idempotencyKey,
-                    targetInstallmentId,
-                    amount,
-                    postedAt,
-                    reference,
-                    channel
-            );
-        } catch (ObjectOptimisticLockingFailureException exception) {
-            return recoverPaymentAfterConcurrentWrite(
-                    applicationId,
-                    idempotencyKey,
-                    targetInstallmentId,
-                    amount,
-                    postedAt,
-                    reference,
-                    channel
-            );
-        } catch (DataIntegrityViolationException exception) {
-            if (isPaymentIdempotencyKeyViolation(exception)) {
-                return recoverPaymentAfterConcurrentWrite(
+        for (int attempt = 1; attempt <= MAX_CONCURRENT_WRITE_ATTEMPTS; attempt++) {
+            try {
+                return recordPaymentTransaction(
                         applicationId,
+                        actorUsername,
                         idempotencyKey,
                         targetInstallmentId,
                         amount,
@@ -107,9 +97,19 @@ public class LoanRepaymentCommandService {
                         reference,
                         channel
                 );
+            } catch (ConcurrencyFailureException exception) {
+                // Optimistic version clash or a lock the database refused: nothing was written.
+            } catch (DataIntegrityViolationException exception) {
+                if (!isPaymentIdempotencyKeyViolation(exception)) {
+                    throw exception;
+                }
+                // Another request claimed this key first; the retry resolves it as a replay.
             }
-            throw exception;
         }
+        throw new ApiConflictException(
+                "CONCURRENT_MODIFICATION",
+                "The resource was modified by another request. Retry the operation."
+        );
     }
 
     public LoanPaymentTransaction recordPaymentTransaction(
@@ -125,10 +125,9 @@ public class LoanRepaymentCommandService {
         String normalizedIdempotencyKey = loanServicingSupportService.requireIdempotencyKey(idempotencyKey);
         loanServicingSupportService.validateInstallmentPaymentInputs(amount, postedAt, channel);
 
-        LoanApplication application = loanServicingSupportService.getApplication(applicationId);
-        LoanAccount loanAccount = loanServicingSupportService.getRequiredLoanAccount(applicationId);
-        loanServicingSupportService.validateRepaymentEligibility(application, loanAccount);
-
+        // Ownership before replay: an unknown application fails here, so reusing someone else's
+        // key can never reveal that a receipt exists on a loan the caller cannot reach.
+        UUID loanAccountId = loanServicingSupportService.getRequiredLoanAccount(applicationId).getId();
         String requestFingerprint = fingerprintPaymentRequest(
                 applicationId,
                 targetInstallmentId,
@@ -138,9 +137,17 @@ public class LoanRepaymentCommandService {
                 channel
         );
 
-        return createInstallmentPaymentWithClaim(
-                application,
-                loanAccount,
+        // Replay before eligibility: the final receipt closes the loan, so re-checking whether the
+        // loan still accepts payments first would reject the legitimate retry of a payment that
+        // already succeeded.
+        Optional<LoanPaymentTransaction> committedReceipt = loanPaymentTransactionRepository
+                .findFirstByIdempotencyKeyOrderByCreatedAtAsc(normalizedIdempotencyKey);
+        if (committedReceipt.isPresent()) {
+            return resolveExistingPayment(committedReceipt.get(), loanAccountId, requestFingerprint);
+        }
+
+        return transactionTemplate.execute(status -> createInstallmentPayment(
+                applicationId,
                 actorUsername,
                 normalizedIdempotencyKey,
                 requestFingerprint,
@@ -149,73 +156,11 @@ public class LoanRepaymentCommandService {
                 postedAt,
                 reference,
                 channel
-        );
-    }
-
-    private LoanPaymentTransaction createInstallmentPaymentWithClaim(
-            LoanApplication application,
-            LoanAccount loanAccount,
-            String actorUsername,
-            String idempotencyKey,
-            String requestFingerprint,
-            UUID targetInstallmentId,
-            BigDecimal amount,
-            LocalDate postedAt,
-            String reference,
-            LoanPaymentChannel channel
-    ) {
-        synchronized (idempotencyKey.intern()) {
-            Optional<LoanPaymentTransaction> existingPayment = readOnlyRequiresNewTemplate.execute(
-                    status -> loanPaymentTransactionRepository.findFirstByIdempotencyKeyOrderByCreatedAtAsc(idempotencyKey)
-            );
-            if (existingPayment.isPresent()) {
-                return resolveExistingPayment(existingPayment.get(), application.getId(), requestFingerprint);
-            }
-            return transactionTemplate.execute(status -> createInstallmentPayment(
-                    application,
-                    loanAccount,
-                    actorUsername,
-                    idempotencyKey,
-                    requestFingerprint,
-                    targetInstallmentId,
-                    amount,
-                    postedAt,
-                    reference,
-                    channel
-            ));
-        }
-    }
-
-    private LoanPaymentTransaction recoverPaymentAfterConcurrentWrite(
-            UUID applicationId,
-            String idempotencyKey,
-            UUID targetInstallmentId,
-            BigDecimal amount,
-            LocalDate postedAt,
-            String reference,
-            LoanPaymentChannel channel
-    ) {
-        return transactionTemplate.execute(status -> {
-            String normalizedIdempotencyKey = loanServicingSupportService.requireIdempotencyKey(idempotencyKey);
-            String requestFingerprint = fingerprintPaymentRequest(
-                    applicationId,
-                    targetInstallmentId,
-                    amount,
-                    postedAt,
-                    reference,
-                    channel
-            );
-            return loanPaymentTransactionRepository.findFirstByIdempotencyKeyOrderByCreatedAtAsc(normalizedIdempotencyKey)
-                    .map(existing -> resolveExistingPayment(existing, applicationId, requestFingerprint))
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Payment row missing after concurrent write for key " + normalizedIdempotencyKey
-                    ));
-        });
+        ));
     }
 
     private LoanPaymentTransaction createInstallmentPayment(
-            LoanApplication application,
-            LoanAccount loanAccount,
+            UUID applicationId,
             String actorUsername,
             String idempotencyKey,
             String requestFingerprint,
@@ -225,6 +170,23 @@ public class LoanRepaymentCommandService {
             String reference,
             LoanPaymentChannel channel
     ) {
+        // Shared loan-command lock order (application → account → installment). The locked rows are
+        // the state this command decides on, so they are read here rather than carried in from the
+        // caller's earlier, unlocked read.
+        LoanAccount loanAccount = loanServicingSupportService.lockLoanForUpdate(applicationId);
+
+        // Re-read under the lock: a request carrying this key may have committed while this one
+        // waited for it. Settling that here returns the same receipt without spending a rollback
+        // on the unique key and a whole retry to reach the same answer.
+        Optional<LoanPaymentTransaction> committedReceipt = loanPaymentTransactionRepository
+                .findFirstByIdempotencyKeyOrderByCreatedAtAsc(idempotencyKey);
+        if (committedReceipt.isPresent()) {
+            return resolveExistingPayment(committedReceipt.get(), loanAccount.getId(), requestFingerprint);
+        }
+
+        LoanApplication application = loanAccount.getLoanApplication();
+        loanServicingSupportService.validateRepaymentEligibility(application, loanAccount);
+
         LoanRepaymentScheduleInstallment installment = loanServicingSupportService.resolveTargetInstallmentForUpdate(
                 loanAccount,
                 targetInstallmentId
@@ -247,38 +209,35 @@ public class LoanRepaymentCommandService {
                 requestFingerprint
         ));
 
-        LoanApplication applicationForUpdate = loanServicingSupportService.getApplication(application.getId());
-        LoanAccount loanAccountForUpdate = loanServicingSupportService.getRequiredLoanAccount(application.getId());
         loanServicingSupportService.applyFullInstallmentPayment(installment, normalizedAmount);
         loanRepaymentScheduleInstallmentRepository.save(installment);
         paymentTransaction.updateAllocation(normalizedAmount, BigDecimal.ZERO.setScale(2));
         LoanPaymentTransaction savedPaymentTransaction = loanPaymentTransactionRepository.save(paymentTransaction);
 
-        boolean wasFullyRepaid = loanAccountForUpdate.getClosureReason() == LoanAccountClosureReason.FULLY_REPAID;
+        boolean wasFullyRepaid = loanAccount.getClosureReason() == LoanAccountClosureReason.FULLY_REPAID;
         loanServicingSupportService.synchronizeLoanAccountClosureState(
-                applicationForUpdate,
-                loanAccountForUpdate,
+                application,
+                loanAccount,
                 normalizedActorUsername,
                 LoanAccountClosureReason.FULLY_REPAID
         );
         transitionToUnderRepaymentIfNeeded(
-                applicationForUpdate,
+                application,
                 actorUsername,
                 "Loan moved under repayment after the first posted payment."
         );
-        recordPaymentAudit(applicationForUpdate, savedPaymentTransaction, installment, idempotencyKey);
-        appendRepaymentEvent(applicationForUpdate, loanAccountForUpdate, savedPaymentTransaction);
-        appendFullyRepaidEventIfClosed(applicationForUpdate, loanAccountForUpdate, wasFullyRepaid);
+        recordPaymentAudit(application, savedPaymentTransaction, installment, idempotencyKey);
+        appendRepaymentEvent(application, loanAccount, savedPaymentTransaction);
+        appendFullyRepaidEventIfClosed(application, loanAccount, wasFullyRepaid);
         return savedPaymentTransaction;
     }
 
     private LoanPaymentTransaction resolveExistingPayment(
             LoanPaymentTransaction existing,
-            UUID applicationId,
+            UUID expectedLoanAccountId,
             String requestFingerprint
     ) {
-        LoanAccount expectedAccount = loanServicingSupportService.getRequiredLoanAccount(applicationId);
-        if (!existing.getLoanAccount().getId().equals(expectedAccount.getId())) {
+        if (!existing.getLoanAccount().getId().equals(expectedLoanAccountId)) {
             throw new ApiConflictException(
                     "IDEMPOTENCY_CONFLICT",
                     "Idempotency-Key has already been used for a different loan application."
