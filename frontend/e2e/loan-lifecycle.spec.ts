@@ -81,7 +81,12 @@ async function postNextRepayment(page: Page): Promise<void> {
   await expect(dialog).toBeHidden({ timeout: 15_000 });
 }
 
-async function assertBr13RejectsPartial(page: Page): Promise<void> {
+/**
+ * The dialog enforces BR-13 directly: the amount field is read-only and fixed
+ * to the full outstanding amount, so a partial payment cannot be entered at
+ * all. The backend rejection path is covered by backend tests.
+ */
+async function assertBr13LocksAmountToOutstanding(page: Page): Promise<void> {
   const outstanding = await readNextDueOutstanding(page);
   expect(outstanding).toBeGreaterThan(0);
 
@@ -94,12 +99,10 @@ async function assertBr13RejectsPartial(page: Page): Promise<void> {
   await expect(dialog).toBeVisible();
 
   const amountInput = dialog.getByLabel("Amount (INR)");
-  const wrong = Math.max(1, Math.round(outstanding) - 1);
-  await amountInput.fill(String(wrong));
-  await dialog.getByRole("button", { name: /Post repayment/i }).click();
-  await expect(
-    dialog.getByText(/Repayment must equal the outstanding amount.*BR-13/i).first(),
-  ).toBeVisible();
+  await expect(amountInput).not.toBeEditable();
+  expect(parseInr(await amountInput.inputValue())).toBe(outstanding);
+  await expect(dialog.getByText(/Partial payments are not accepted/i).first()).toBeVisible();
+
   await dialog.getByRole("button", { name: /^Cancel$/i }).click();
   await expect(dialog).toBeHidden();
 }
@@ -113,7 +116,7 @@ test.describe("loan-application lifecycle", () => {
     await signInAsSystemAdmin(page);
     await openScheduleForRepayableLoan(page);
 
-    await assertBr13RejectsPartial(page);
+    await assertBr13LocksAmountToOutstanding(page);
     await postNextRepayment(page);
 
     // After a payment, status should be Disbursed or Under repayment depending on seed state.
