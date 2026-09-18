@@ -2,6 +2,7 @@ import type { FullConfig } from "@playwright/test";
 import {
   E2E_ADMIN_STORAGE_PATH,
   buildAdminStorageState,
+  ensureAdminPasswordReady,
   isBackendHealthy,
   readFixturesFile,
   requiredAdminCredentials,
@@ -51,6 +52,12 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     writeFixturesFile(payload);
     try {
       const { email, password } = requiredAdminCredentials();
+      await ensureAdminPasswordReady(
+        apiBase,
+        email,
+        password,
+        process.env["E2E_ADMIN_INITIAL_PASSWORD"]?.trim(),
+      );
       await buildAdminStorageState(
         apiBase,
         frontendOrigin,
@@ -77,6 +84,12 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     return;
   }
 
+  await ensureAdminPasswordReady(
+    apiBase,
+    email,
+    password,
+    process.env["E2E_ADMIN_INITIAL_PASSWORD"]?.trim(),
+  );
   const fixtures = await seedLoanApplicationFixture(apiBase, email, password);
   writeFixturesFile(fixtures);
   await buildAdminStorageState(apiBase, frontendOrigin, email, password, E2E_ADMIN_STORAGE_PATH);

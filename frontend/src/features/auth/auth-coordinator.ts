@@ -45,6 +45,7 @@ export const COOKIE_INFLIGHT_STORAGE_KEY = "bhawana-lms-auth-cookie-inflight";
 export const COOKIE_JAR_OWNER_STORAGE_KEY = "bhawana-lms-cookie-jar-owner";
 export const COOKIE_LOCK_NAME = "lms-auth-cookie";
 export const GENERATION_BROADCAST_CHANNEL = "lms-auth-generation";
+const COOKIE_MARKER_PROPAGATION_WAIT_MS = 1000;
 
 export type CookieOpKind = "login" | "refresh" | "logout" | "password";
 
@@ -548,6 +549,65 @@ function removeCookieInFlightMarker(): void {
   }
 }
 
+/**
+ * A Web Lock handoff can beat cross-renderer localStorage propagation: the
+ * next lock owner may briefly read the marker that the previous owner
+ * removed before releasing the lock. Wait only for that removal event, then
+ * re-read. The timeout never clears or ignores a marker; a real orphan still
+ * fails closed below.
+ */
+async function readCookieInFlightMarkerAfterLockHandoff(): Promise<CookieInFlightMarker | null> {
+  const initial = readCookieInFlightMarker();
+  if (!initial || typeof window === "undefined") return initial;
+
+  return new Promise<CookieInFlightMarker | null>((resolve, reject) => {
+    let finished = false;
+
+    const cleanup = (): void => {
+      window.removeEventListener("storage", onStorage);
+      window.clearTimeout(timeoutId);
+    };
+    const finish = (marker: CookieInFlightMarker | null): void => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      resolve(marker);
+    };
+    const readCurrent = (): CookieInFlightMarker | null | undefined => {
+      try {
+        return readCookieInFlightMarker();
+      } catch (error) {
+        if (!finished) {
+          finished = true;
+          cleanup();
+          reject(error);
+        }
+        return undefined;
+      }
+    };
+    const onStorage = (event: StorageEvent): void => {
+      if (event.key !== COOKIE_INFLIGHT_STORAGE_KEY) return;
+      const current = readCurrent();
+      if (current === null) finish(null);
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      const finalMarker = readCurrent();
+      if (finalMarker !== undefined) finish(finalMarker);
+    }, COOKIE_MARKER_PROPAGATION_WAIT_MS);
+
+    window.addEventListener("storage", onStorage);
+
+    // Close the listener-registration race: removal may have propagated
+    // between the first read and addEventListener.
+    const current = readCurrent();
+    if (current === null || current === undefined) {
+      if (current === null) finish(null);
+      return;
+    }
+  });
+}
+
 /** True when a persistent orphan marker blocks new cookie-affecting ops. */
 export function isCookieExchangeBlocked(): boolean {
   try {
@@ -712,7 +772,7 @@ async function runCookieExchange<T>(
     // A pre-existing marker belongs to a peer that did not settle (closed
     // tab with outstanding response). It is an orphan — fail closed; B is
     // never sent. (Unavailable/corrupt storage also throws.)
-    const orphan = readCookieInFlightMarker();
+    const orphan = await readCookieInFlightMarkerAfterLockHandoff();
     if (orphan) {
       throw new AuthCookieBlockedError(
         "A prior cookie-affecting exchange is unsettled. Close all app tabs and establish a clean browser context/site state before retrying.",

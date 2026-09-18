@@ -4,17 +4,9 @@ name: Journey E2E
 # deferred because the stack was not wired, and frontend-ci.yml still carries the comment saying
 # so. The specs already existed but were only being run on a developer machine.
 #
-# SOAKING — NON-BLOCKING. This job reports but does not fail the build, and must stay that way
-# until it passes reliably. Making it required today would block every merge, because the demo
-# seeder it depends on cannot currently complete a cold start (see below).
-#
-# Known blocker: app.seed.demo-portfolio.enabled defaults to false in every profile, so
-# LocalDemoPortfolioSeedService is dormant code that drifted from the durable-intent disbursement
-# architecture landed in 60ffc6fd. initiateDisbursement now only records an intent; the request
-# log the seeder immediately resolves against is created later, by the worker. On top of that,
-# app.disbursement.worker.auto-resolve-mock-outcome defaults to true, so a running worker resolves
-# outcomes on its own and the seeder cannot stage DISBURSEMENT_REQUESTED or FAILED deterministically.
-# Reconciling the seeder with that architecture is product work, tracked separately.
+# SOAKING — NON-BLOCKING. This job reports but does not fail the build while its cold-start path
+# accumulates reliability evidence. The former durable-intent seeder race and bootstrap-password
+# setup mismatch now have explicit synchronization below and in globalSetup.
 #
 # Promote to blocking by deleting the continue-on-error line below, once a cold start seeds
 # cleanly and the suite has been green for a couple of weeks.
@@ -73,7 +65,11 @@ jobs:
       APP_SEED_DEMO_PORTFOLIO_ENABLED: "true"
       E2E_API_BASE: http://localhost:8080
       E2E_ADMIN_EMAIL: ops.admin@bhawana.local
-      E2E_ADMIN_PASSWORD: ChangeMe123!
+      # The bootstrap credential is deliberately one-time. Global setup uses
+      # it only to complete the required first-login rotation; specs use the
+      # stable post-rotation credential below.
+      E2E_ADMIN_INITIAL_PASSWORD: ChangeMe123!
+      E2E_ADMIN_PASSWORD: JourneyAdmin456!
       E2E_LSP_UI_READ_EMAIL: lsp.read1@supaone.local
       E2E_LSP_PASSWORD: DemoPass123!
 

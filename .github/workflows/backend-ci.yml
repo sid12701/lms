@@ -92,4 +92,5 @@ jobs:
       - name: Verify reference schema artifact matches migrations
         run: |
           chmod +x scripts/schema-diff/*.sh
+          ./scripts/schema-diff/test-postgres-readiness.sh
           ./scripts/schema-diff/check-reference.sh
