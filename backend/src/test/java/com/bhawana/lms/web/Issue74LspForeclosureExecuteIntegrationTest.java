@@ -40,12 +40,12 @@ import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.bhawana.lms.tenant.TenantScopedExecution;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityManager;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -281,7 +281,7 @@ class Issue74LspForeclosureExecuteIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        assertEquals(
+        assertSameSettlement(
                 first.getResponse().getContentAsString(),
                 second.getResponse().getContentAsString()
         );
@@ -523,10 +523,7 @@ class Issue74LspForeclosureExecuteIntegrationTest {
 
         assertEquals(200, race.winner().getStatus(), race.winner().getContentAsString());
         assertEquals(200, race.loser().getStatus(), race.loser().getContentAsString());
-        assertEquals(
-                withoutUpdatedAt(race.winner().getContentAsString()),
-                withoutUpdatedAt(race.loser().getContentAsString())
-        );
+        assertSameSettlement(race.winner().getContentAsString(), race.loser().getContentAsString());
         assertEquals(1, settlementReceipts(fixture.loanAccountId()).size());
         assertEquals(1, foreclosureExecutedAuditCount(fixture.applicationId()));
         verifyForeclosureCompletedEvents(1);
@@ -571,9 +568,8 @@ class Issue74LspForeclosureExecuteIntegrationTest {
                 fixture, quoteId, effectiveDate, "BNK-REPLAY-001", UUID.randomUUID().toString())
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
-        // updatedAt is left out: the first response is rendered before its own commit-time flush
-        // stamps the row once more. The replay itself writes nothing, as the row comparison shows.
-        assertEquals(withoutUpdatedAt(original), withoutUpdatedAt(replayed));
+        // The replay itself writes nothing, as the row comparison below shows.
+        assertSameSettlement(original, replayed);
         executeForeclosureAsAdmin(fixture, quoteId, effectiveDate, "BNK-REPLAY-001")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(quoteId))
@@ -1098,10 +1094,30 @@ class Issue74LspForeclosureExecuteIntegrationTest {
         return jdbcTemplate.queryForMap("select * from loan_foreclosure_quote where id = ?", UUID.fromString(quoteId));
     }
 
-    private JsonNode withoutUpdatedAt(String quoteResponse) throws Exception {
-        ObjectNode body = (ObjectNode) objectMapper.readTree(quoteResponse);
-        body.remove("updatedAt");
-        return body;
+    /**
+     * Compares two execute responses as the same settlement rather than as the same bytes: a live
+     * response renders the in-memory executedAt at nanosecond precision, while a replay re-reads the
+     * row PostgreSQL stored at microseconds; updatedAt is left out because the live response is
+     * rendered before its own commit-time flush stamps the row once more.
+     */
+    private void assertSameSettlement(String expectedResponse, String actualResponse) throws Exception {
+        JsonNode expected = objectMapper.readTree(expectedResponse);
+        JsonNode actual = objectMapper.readTree(actualResponse);
+        for (String field : List.of(
+                "id", "loanAccountId", "version", "requestedByUsername", "executedByUsername",
+                "effectiveDate", "status")) {
+            assertEquals(expected.get(field).asText(), actual.get(field).asText(), field);
+        }
+        assertEquals("EXECUTED", actual.get("status").asText());
+        for (String field : List.of("outstandingPrincipal", "outstandingInterest", "settlementAmount")) {
+            assertEquals(0, expected.get(field).decimalValue().compareTo(actual.get(field).decimalValue()), field);
+        }
+        for (String field : List.of("executedAt", "createdAt")) {
+            Duration drift = Duration.between(
+                    Instant.parse(expected.get(field).asText()), Instant.parse(actual.get(field).asText()));
+            // PostgreSQL rounds to the microsecond, so the two renderings agree to within one.
+            assertTrue(drift.abs().toNanos() < 1_000, field + " drifted by " + drift);
+        }
     }
 
     private Map<String, Object> paymentRow(String reference) {
