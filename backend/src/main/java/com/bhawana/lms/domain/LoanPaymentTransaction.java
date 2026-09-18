@@ -148,7 +148,9 @@ public class LoanPaymentTransaction {
 
     /**
      * The settlement receipt for an executed foreclosure quote: it targets no single installment
-     * and carries the quote it redeems instead of an idempotency key.
+     * and carries the quote it redeems instead of an idempotency key. {@code requestFingerprint}
+     * identifies the execution request, so a later execution of the same quote can be told apart
+     * from a replay of this one.
      */
     public static LoanPaymentTransaction foreclosureSettlement(
             LoanAccount loanAccount,
@@ -157,7 +159,8 @@ public class LoanPaymentTransaction {
             LocalDate settlementDate,
             String reference,
             String note,
-            String correlationId
+            String correlationId,
+            String requestFingerprint
     ) {
         LoanPaymentTransaction settlement = new LoanPaymentTransaction(
                 loanAccount,
@@ -170,7 +173,8 @@ public class LoanPaymentTransaction {
                 LoanPaymentStatus.RECEIVED,
                 note,
                 correlationId,
-                null
+                null,
+                requestFingerprint
         );
         settlement.foreclosureQuote = foreclosureQuote;
         return settlement;

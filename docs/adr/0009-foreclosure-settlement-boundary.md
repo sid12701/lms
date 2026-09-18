@@ -22,38 +22,54 @@ was still the one quoted, and no lock serialized the command, so:
 1. **Freshness is a fingerprint, not a counter.** Under the loan lock, execution recomputes
    outstanding principal, outstanding interest and settlement amount from the current schedule and
    compares them exactly to the quote's own stored snapshot. A mismatch is
-   `FORECLOSURE_QUOTE_STALE` and the caller must request a new quote. No revision column is added
-   and no quote is superseded by migration: a quote's stored amounts already are its fingerprint,
-   which is what makes quotes written before this decision safe to evaluate rather than guess at.
+   `FORECLOSURE_QUOTE_STALE` and the caller must request a new quote. No revision column is added:
+   a quote's stored amounts already are its fingerprint.
 
-2. **Expiry stays the date equality that already existed.** `settlementDate == effectiveDate` is
-   the validity policy. Pricing (H08) is a separate concern and this ADR does not touch how a
+2. **Legacy quotes are superseded, not evaluated.** A quote issued before V130 was never checked
+   for freshness or date validity and has no execution fingerprint, so V130 supersedes every
+   still-`ACTIVE` quote instead of inferring that its history can be trusted. The borrower
+   requests a new quote under the rules below.
+
+3. **Interim validity is same-day only (fail closed).** There is no expiry window yet. A quote can
+   only be requested for the current business date (`BusinessCalendar`, Asia/Kolkata), and it can
+   only be executed on that same date with `settlementDate == effectiveDate`; anything else is
+   `FORECLOSURE_QUOTE_DATE_INVALID` or `SETTLEMENT_DATE_MISMATCH`. Backdated and future-dated
+   quotes are therefore refused. This holds until the H08 pricing/validity policy (D8) defines a
+   real validity window. Pricing is a separate concern, and this ADR does not change how a
    quote amount is computed.
 
-3. **Settlement is exact; there is no excess route.** The recorded receipt is always the quoted
+4. **Settlement is exact; there is no excess route.** The recorded receipt is always the quoted
    amount, and it is only recorded once freshness has passed — so it settles the schedule exactly.
    There is no caller-supplied amount and no over-receipt, refund or excess machinery.
 
-4. **One quote backs at most one settlement.** The settlement receipt carries
-   `loan_payment_transaction.foreclosure_quote_id` under a partial unique index (V130). The service
-   also refuses a non-`ACTIVE` quote; the index is the guarantee that survives any service-layer
-   race. Historical settlements are left `NULL` — a link inferred from amount and date coincidence
-   would be invented evidence.
+5. **One quote backs at most one settlement, and replay is decided by the settlement.** The
+   settlement receipt carries `loan_payment_transaction.foreclosure_quote_id` under a partial
+   unique index (V130), plus a fingerprint of the execution request (quote, settlement date,
+   reference, channel). Executing an already-executed quote with the same request returns the
+   original result with no new writes; any other request is `IDEMPOTENCY_CONFLICT`. Because this
+   is read from the receipt rather than an HTTP idempotency cache, it holds for direct callers
+   and after cache retention expires. Historical settlements are left `NULL` — a link inferred
+   from amount and date coincidence would be invented evidence.
 
-5. **Payment history is never replayed.** Foreclosure allocates only its own receipt across the
+6. **Payment history is never replayed.** Foreclosure allocates only its own receipt across the
    installments that are still unpaid, in installment-number order. Earlier receipts keep their
    installment targeting and their rows are not rewritten. `amount = allocated + unallocated` and
    the principal/interest components are conserved.
 
-6. **One lock order:** application → account → quote → installments (installment-number order).
-   Both the quote request and the execution take it, which is also what makes quote superseding
-   atomic — concurrent requests cannot leave two `ACTIVE` quotes behind.
+7. **One lock order:** application → account → installments (installment-number order) → quote.
+   The quote request takes the first three (it supersedes quotes under the account lock), and the
+   execution takes all four. This is also what makes quote superseding atomic — concurrent
+   requests cannot leave two `ACTIVE` quotes behind.
 
 ## Consequences
 
-- A client that lets a quote go stale gets a 422 and must re-quote. This is the intended cost;
-  the alternative was settling loans for the wrong amount.
+- A client that lets a quote go stale, or tries to use it on another day, gets a 422 and must
+  re-quote. This is the intended cost; the alternative was settling loans for the wrong amount.
+- Any quote that was `ACTIVE` at deploy time must be requested again.
 - `recomputePaymentAllocation` is removed rather than left unused: a routine that rewrites
   financial history is not a tool to keep around for the next caller.
 - Reconciliation, not migration, owns pre-V130 settlements: they are identifiable as
-  `FORECLOSURE_SETTLEMENT` receipts with no quote link.
+  `FORECLOSURE_SETTLEMENT` receipts with no quote link. Allocation damage left by the old replay
+  is inventoried by `LoanPaymentTransactionRepository.findReceiptsExceedingTheirInstallmentPayment`
+  (targeted receipts whose installment was paid less than they claim) and is never repaired
+  automatically.

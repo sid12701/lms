@@ -71,6 +71,9 @@ describe("alert-display", () => {
     ];
     const foreclosureViolationTypes = [
       "QUOTE_NOT_ACTIVE",
+      "FORECLOSURE_QUOTE_STALE",
+      "FORECLOSURE_QUOTE_DATE_INVALID",
+      "IDEMPOTENCY_CONFLICT",
       "QUOTE_OWNERSHIP_MISMATCH",
       "SETTLEMENT_DATE_MISMATCH",
       "LOAN_ACCOUNT_NOT_DISBURSED",

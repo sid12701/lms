@@ -14,3 +14,15 @@ ALTER TABLE loan_payment_transaction
 CREATE UNIQUE INDEX uk_loan_payment_transaction_foreclosure_quote
     ON loan_payment_transaction (foreclosure_quote_id)
     WHERE foreclosure_quote_id IS NOT NULL;
+
+-- SUPERSEDE-LEGACY-QUOTES-START
+-- A quote issued before this migration was never checked for freshness, carries no request
+-- fingerprint for its settlement and may be dated for any day. Nothing about it can be
+-- trusted retroactively, so every still-ACTIVE one is superseded rather than evaluated; the
+-- borrower requests a new quote, which is issued under the current rules. EXECUTED and
+-- already-SUPERSEDED quotes are history and are left untouched.
+UPDATE loan_foreclosure_quote
+SET status = 'SUPERSEDED',
+    updated_at = CURRENT_TIMESTAMP
+WHERE status = 'ACTIVE';
+-- SUPERSEDE-LEGACY-QUOTES-END

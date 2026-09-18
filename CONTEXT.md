@@ -75,18 +75,18 @@ The permanent record of who changed what — `loan_application_status_transition
 ### Foreclosure and settlement
 
 **Foreclosure quote**:
-A snapshot of what a loan must pay to close early: outstanding principal, outstanding interest and the settlement amount they add up to, on one effective date. A loan has at most one `ACTIVE` quote — requesting a new one supersedes the last.
+A snapshot of what a loan must pay to close early: outstanding principal, outstanding interest and the settlement amount they add up to, on one effective date. The effective date must be the current business date, and the quote is redeemable only on that date (`FORECLOSURE_QUOTE_DATE_INVALID` otherwise) — an interim same-day validity policy until the H08 pricing policy defines a real validity window. A loan has at most one `ACTIVE` quote — requesting a new one supersedes the last.
 _Avoid_: payoff amount, quotation
 
 **Quote freshness**:
-A quote is redeemable only while the schedule still owes exactly what it quoted. Its own stored amounts are the fingerprint: execution recomputes them under the loan lock and compares. A receipt or schedule change in between makes the quote **stale** (`FORECLOSURE_QUOTE_STALE`) and the caller must request a new one. Freshness is not expiry — expiry is the settlement date having to equal the quote's effective date — and neither is pricing.
+A quote is redeemable only while the schedule still owes exactly what it quoted. Its own stored amounts are the fingerprint: execution recomputes them under the loan lock and compares. A receipt or schedule change in between makes the quote **stale** (`FORECLOSURE_QUOTE_STALE`) and the caller must request a new one. Freshness is not the same-day validity rule, and neither is pricing.
 _Avoid_: quote version, revision (the display version is not evidence of freshness)
 
 **Settlement receipt**:
-The single receipt that redeems a quote, recorded for the quoted amount and linked to that quote. One quote backs at most one settlement receipt, enforced in the database. It is allocated across the installments still unpaid; it never re-targets earlier receipts, which keep the installments they were recorded against.
+The single receipt that redeems a quote, recorded for the quoted amount and linked to that quote. One quote backs at most one settlement receipt, enforced in the database. It carries the fingerprint of the execution request, so re-executing an executed quote with the same request returns the original settlement and any other request is `IDEMPOTENCY_CONFLICT`. It is allocated across the installments still unpaid; it never re-targets earlier receipts, which keep the installments they were recorded against.
 _Avoid_: foreclosure payment, closure payment
 
-**Settlement boundary (C05/H09, 2026-09-18):** See [ADR 0009](docs/adr/0009-foreclosure-settlement-boundary.md). Lock order for foreclosure commands is application → account → quote → installments.
+**Settlement boundary (C05/H09, 2026-09-18):** See [ADR 0009](docs/adr/0009-foreclosure-settlement-boundary.md). Lock order for foreclosure commands is application → account → installments (installment-number order) → quote.
 
 ## Example dialogue
 

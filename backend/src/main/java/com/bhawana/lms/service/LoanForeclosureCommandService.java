@@ -1,6 +1,7 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanAccountStatus;
@@ -12,6 +13,7 @@ import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.domain.LoanForeclosureQuoteStatus;
+import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.LoanEventType;
@@ -20,11 +22,13 @@ import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanForeclosureQuoteRepository;
 import com.bhawana.lms.repo.LoanPaymentTransactionRepository;
 import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +45,8 @@ public class LoanForeclosureCommandService {
     private final LoanApplicationStatusWriter loanApplicationStatusWriter;
     private final LoanEventLog loanEventLog;
     private final OpsAlertEmitters opsAlertEmitters;
+    private final BusinessCalendar businessCalendar;
+    private final ObjectMapper objectMapper;
 
     public LoanForeclosureCommandService(
             LoanApplicationRepository loanApplicationRepository,
@@ -51,7 +57,9 @@ public class LoanForeclosureCommandService {
             LoanServicingSupportService loanServicingSupportService,
             LoanApplicationStatusWriter loanApplicationStatusWriter,
             LoanEventLog loanEventLog,
-            OpsAlertEmitters opsAlertEmitters
+            OpsAlertEmitters opsAlertEmitters,
+            BusinessCalendar businessCalendar,
+            ObjectMapper objectMapper
     ) {
         this.loanApplicationRepository = loanApplicationRepository;
         this.loanAccountRepository = loanAccountRepository;
@@ -62,6 +70,8 @@ public class LoanForeclosureCommandService {
         this.loanApplicationStatusWriter = loanApplicationStatusWriter;
         this.loanEventLog = loanEventLog;
         this.opsAlertEmitters = opsAlertEmitters;
+        this.businessCalendar = businessCalendar;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -69,6 +79,7 @@ public class LoanForeclosureCommandService {
         if (effectiveDate == null) {
             throw new IllegalArgumentException("Foreclosure effective date is required.");
         }
+        requireCurrentBusinessDate(effectiveDate);
 
         LoanApplication application = lockApplication(applicationId);
         if (application.getStatus() != LoanApplicationStatus.DISBURSED
@@ -141,8 +152,7 @@ public class LoanForeclosureCommandService {
             String actorUsername,
             LocalDate effectiveDate
     ) {
-        LoanAccount loanAccount = loanServicingSupportService.getLoanAccountForLsp(lspId, loanAccountId);
-        return requestForeclosureQuote(loanAccount.getLoanApplication().getId(), actorUsername, effectiveDate);
+        return requestForeclosureQuote(applicationIdForLsp(lspId, loanAccountId), actorUsername, effectiveDate);
     }
 
     @Transactional
@@ -155,11 +165,10 @@ public class LoanForeclosureCommandService {
             String reference,
             String note
     ) {
-        LoanAccount loanAccount = loanServicingSupportService.getLoanAccountForLsp(lspId, loanAccountId);
-        LoanApplication application = loanAccount.getLoanApplication();
+        UUID applicationId = applicationIdForLsp(lspId, loanAccountId);
         try {
             return executeForeclosureQuote(
-                    application.getId(),
+                    applicationId,
                     quoteId,
                     actorUsername,
                     settlementDate,
@@ -179,7 +188,7 @@ public class LoanForeclosureCommandService {
                 details.put("reference", reference);
             }
             opsAlertEmitters.emitLspForeclosureViolation(
-                    application,
+                    loanServicingSupportService.getApplication(applicationId),
                     violationType,
                     exception.getMessage(),
                     details
@@ -195,8 +204,14 @@ public class LoanForeclosureCommandService {
     }
 
     /**
-     * Ownership, then duplicate resolution, then balance freshness, then the write — all under the
-     * loan lock taken in the shared application → account → quote → installment order.
+     * Ownership, then replay resolution, then new-execution eligibility and balance freshness,
+     * then the write — all under the loan lock taken in the shared application → account →
+     * installments → quote order.
+     *
+     * <p>An already-executed quote resolves to its committed settlement when the request matches
+     * the one that settled it, and to {@code IDEMPOTENCY_CONFLICT} otherwise. This is decided from
+     * the settlement receipt itself, so it holds for direct callers and outlives any HTTP
+     * idempotency-cache retention.
      *
      * <p>Freshness is the quote's own stored snapshot used as a balance fingerprint: the quote is
      * only redeemable while the schedule still owes exactly what it quoted. Any receipt, reversal
@@ -226,9 +241,16 @@ public class LoanForeclosureCommandService {
         if (!quote.getLoanAccount().getId().equals(loanAccount.getId())) {
             throw new ResourceNotFoundException("Foreclosure quote does not belong to the selected loan account.");
         }
-        // A quote leaves ACTIVE exactly once, so this also rejects a second execution of one that
-        // already settled. The partial unique index on the settlement receipt's quote link is the
-        // backstop: one quote can never back two settlements.
+        String requiredReference = loanServicingSupportService.requireReference(reference);
+        String requestFingerprint = fingerprintSettlementRequest(quoteId, settlementDate, requiredReference);
+        if (quote.getStatus() == LoanForeclosureQuoteStatus.EXECUTED) {
+            Optional<LoanPaymentTransaction> settlement = loanPaymentTransactionRepository.findByForeclosureQuote_Id(quoteId);
+            if (settlement.isPresent()) {
+                return replayExecutedQuote(quote, settlement.get(), requestFingerprint);
+            }
+        }
+        // A quote leaves ACTIVE exactly once. The partial unique index on the settlement receipt's
+        // quote link is the backstop: one quote can never back two settlements.
         if (quote.getStatus() != LoanForeclosureQuoteStatus.ACTIVE) {
             throw new BusinessRuleViolationException(
                     "QUOTE_NOT_ACTIVE",
@@ -253,10 +275,10 @@ public class LoanForeclosureCommandService {
                     )
             );
         }
+        requireCurrentBusinessDate(quote.getEffectiveDate());
         requireFreshQuote(quote, settlementBalance(loan.installments()));
 
         String normalizedActorUsername = loanServicingSupportService.normalizeActorUsername(actorUsername);
-        String requiredReference = loanServicingSupportService.requireReference(reference);
         String resolvedNote = loanServicingSupportService.normalizeNote(note);
         LoanPaymentTransaction settlement = loanPaymentTransactionRepository.save(
                 LoanPaymentTransaction.foreclosureSettlement(
@@ -266,7 +288,8 @@ public class LoanForeclosureCommandService {
                         settlementDate,
                         requiredReference,
                         resolvedNote == null ? "Foreclosure settlement for quote v" + quote.getVersion() : resolvedNote,
-                        CorrelationIdHolder.get()
+                        CorrelationIdHolder.get(),
+                        requestFingerprint
                 )
         );
         loanServicingSupportService.allocateReceiptAcrossOutstanding(loan.installments(), settlement);
@@ -312,8 +335,15 @@ public class LoanForeclosureCommandService {
         return quote;
     }
 
-    // Shared loan-command lock order: application → account → quote → installments in
-    // installment-number order. Every foreclosure command takes the same rows in the same
+    // LSP scope without loading the account: the command's locked reads must be its first sight
+    // of the loan, or a concurrent commit leaves a stale versioned entity in this transaction.
+    private UUID applicationIdForLsp(UUID lspId, UUID loanAccountId) {
+        return loanAccountRepository.findLoanApplicationIdForLsp(loanAccountId, lspId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan id: " + loanAccountId));
+    }
+
+    // Shared foreclosure lock order: application → account → installments in installment-number
+    // order → quote (execution only). Every foreclosure command takes the same rows in the same
     // sequence, and each locked read is the command's first sight of that state.
     private LoanApplication lockApplication(UUID applicationId) {
         loanApplicationRepository.findByIdForUpdate(applicationId)
@@ -331,6 +361,51 @@ public class LoanForeclosureCommandService {
                 loanAccount,
                 loanRepaymentScheduleInstallmentRepository.findByLoanAccountIdForUpdateOrderByInstallmentNumberAsc(
                         loanAccount.getId()
+                )
+        );
+    }
+
+    /**
+     * Interim validity policy until the H08 pricing policy lands: a quote is issued for, and
+     * redeemable on, the current business date only. It is not an expiry window — there is none
+     * yet — so anything else fails closed.
+     */
+    private void requireCurrentBusinessDate(LocalDate effectiveDate) {
+        LocalDate businessDate = businessCalendar.today();
+        if (!effectiveDate.equals(businessDate)) {
+            throw new BusinessRuleViolationException(
+                    "FORECLOSURE_QUOTE_DATE_INVALID",
+                    "Foreclosure quotes are only valid on the current business date. Request a new quote.",
+                    Map.of(
+                            "effectiveDate", effectiveDate.toString(),
+                            "businessDate", businessDate.toString()
+                    )
+            );
+        }
+    }
+
+    private LoanForeclosureQuote replayExecutedQuote(
+            LoanForeclosureQuote quote,
+            LoanPaymentTransaction settlement,
+            String requestFingerprint
+    ) {
+        if (!requestFingerprint.equals(settlement.getRequestFingerprint())) {
+            throw new ApiConflictException(
+                    "IDEMPOTENCY_CONFLICT",
+                    "This foreclosure quote was already executed by a different request."
+            );
+        }
+        return quote;
+    }
+
+    private String fingerprintSettlementRequest(UUID quoteId, LocalDate settlementDate, String reference) {
+        return IdempotencyFingerprinter.fingerprint(
+                objectMapper,
+                new SettlementRequestFingerprint(
+                        quoteId,
+                        settlementDate,
+                        reference,
+                        LoanPaymentChannel.FORECLOSURE_SETTLEMENT
                 )
         );
     }
@@ -376,6 +451,14 @@ public class LoanForeclosureCommandService {
     ) {
     }
 
+    private record SettlementRequestFingerprint(
+            UUID quoteId,
+            LocalDate settlementDate,
+            String reference,
+            LoanPaymentChannel channel
+    ) {
+    }
+
     private record SettlementBalance(
             BigDecimal outstandingPrincipal,
             BigDecimal outstandingInterest,
@@ -391,8 +474,10 @@ public class LoanForeclosureCommandService {
                 return ForeclosureViolationType.FORECLOSURE_GENERIC;
             }
         }
-        if (exception instanceof ApiConflictException) {
-            return ForeclosureViolationType.FORECLOSURE_GENERIC;
+        if (exception instanceof ApiConflictException conflict) {
+            return "IDEMPOTENCY_CONFLICT".equals(conflict.getErrorCode())
+                    ? ForeclosureViolationType.IDEMPOTENCY_CONFLICT
+                    : ForeclosureViolationType.FORECLOSURE_GENERIC;
         }
         String message = exception.getMessage();
         if (message == null) {
