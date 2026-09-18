@@ -7,7 +7,9 @@ const MANIFEST_PATH = path.join(DIST_DIR, ".vite", "manifest.json");
 const HOME_MODULE = "src/features/home/page.tsx";
 const CHART_MODULE = "src/features/home/components/LoansByDpdBucketCard.tsx";
 const MAX_INITIAL_GZIP_BYTES = 220_000;
-const MAX_HOME_SHELL_GZIP_BYTES = 250_000;
+// Raised 250_000 → 255_000 for the react-router 6→7 security bump (+237 gzip
+// bytes); ~2% headroom keeps the guardrail without flaking on minor dep churn.
+const MAX_HOME_SHELL_GZIP_BYTES = 255_000;
 
 if (!fs.existsSync(MANIFEST_PATH)) {
   throw new Error("The Vite manifest is missing. Run the production build before check:bundle.");
