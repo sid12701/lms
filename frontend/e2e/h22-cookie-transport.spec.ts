@@ -108,6 +108,24 @@ async function waitForPeerGone(
   }
 }
 
+/**
+ * Wait until a tab holds no in-flight cookie marker — i.e. its last
+ * cookie-affecting exchange completed AND settled (headers alone only prove
+ * dispatch). A peer whose held exchange died under load never settles, so
+ * this times out with attribution instead of letting the next queued op
+ * fail closed on the orphan further down.
+ */
+async function waitForUnblocked(page: Page, timeoutMs = 15000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (!(await isBlocked(page))) return;
+    if (Date.now() > deadline) {
+      throw new Error("timed out waiting for the tab's cookie marker to settle");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 async function doRefresh(page: Page): Promise<void> {
   return page.evaluate(() => {
     const w = window as unknown as HarnessWindow;
@@ -522,6 +540,14 @@ test.describe("H22 cookie transport (real Set-Cookie jar)", () => {
           return w.__harness.dispatchStaleLogout(stale);
         }, staleSnapshot);
         await releaseBody(harness.url, "login");
+        // Event-driven settle gate: B's marker removal proves B's exchange
+        // completed AND settled (the jar poll above only proved headers
+        // arrived). TabA's queued stale op therefore provably enters a clean
+        // lock and loses on jar ownership — no assumption about how fast B
+        // settles after release. If B's held exchange died under load, its
+        // orphan marker never clears and this times out here with attribution
+        // instead of surfacing as B-blocked below.
+        await waitForUnblocked(tabB);
         const [staleResult, bResult] = await Promise.all([staleP, loginP]);
         expect(staleResult).toBe("rejected:AuthStaleResultError");
         expect(bResult).toContain("aaaaaaaa-bbbb-4aaa-8aaa-aaaaaaaaaaaa");
