@@ -69,6 +69,24 @@ public class AlertRuleSetQueryRepository {
         );
     }
 
+    /**
+     * The funded servicing population: every loan whose money has actually left the LSP's
+     * disbursal account and whose schedule is still live.
+     *
+     * {@code DISBURSED} belongs here alongside {@code UNDER_REPAYMENT}. An application only
+     * reaches {@code UNDER_REPAYMENT} once a receipt has been allocated, so a borrower who
+     * never pays at all stays {@code DISBURSED} forever — scoping this sweep to
+     * {@code UNDER_REPAYMENT} alone silently excluded exactly the first-payment defaults the
+     * rule exists to catch, even though the read APIs happily computed their days past due.
+     *
+     * The application status alone is not enough to prove funding, so the account is checked
+     * too: {@code loan_account.status = 'DISBURSED'} with a non-null {@code disbursed_at} is
+     * the funded state (both are written together by the single disbursement-outcome path).
+     * That pair also does the excluding — an unfunded account is still
+     * {@code PENDING_DISBURSEMENT}/{@code DISBURSEMENT_*}, a cancelled one is {@code INVALID},
+     * and a settled one is {@code CLOSED}/{@code FORECLOSED}; none of them are servicing
+     * anything and none of them should produce delinquency transitions.
+     */
     public List<DelinquencyEvaluationRow> findServicingDelinquencyRows(LocalDate today) {
         return jdbc.query("""
                 select
@@ -92,7 +110,9 @@ public class AlertRuleSetQueryRepository {
                 join loan_account acc on acc.loan_application_id = app.id
                 left join loan_repayment_schedule_installment inst on inst.loan_account_id = acc.id
                 left join loan_delinquency_state ds on ds.loan_application_id = app.id
-                where app.status = 'UNDER_REPAYMENT'
+                where app.status in ('DISBURSED', 'UNDER_REPAYMENT')
+                  and acc.status = 'DISBURSED'
+                  and acc.disbursed_at is not null
                 group by app.id, app.external_loan_id, app.lsp_id, ds.id, ds.last_bucket, ds.last_max_days_past_due
                 """,
                 new MapSqlParameterSource("today", today),

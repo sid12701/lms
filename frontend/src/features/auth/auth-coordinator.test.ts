@@ -182,6 +182,36 @@ describe("auth-coordinator generation + cookie ordering", () => {
     ).resolves.toBe("b-token");
   });
 
+  it("waits for a prior owner's marker removal to propagate after lock handoff", async () => {
+    window.localStorage.setItem(
+      "bhawana-lms-auth-cookie-inflight",
+      JSON.stringify({
+        generation: 1,
+        kind: "login",
+        owner: "settled-peer-owner",
+        startedAt: new Date().toISOString(),
+      }),
+    );
+
+    const exchange = vi.fn(async () => "b-token");
+    const queued = enqueueCookieOp("login", captureAuthIntent(), exchange);
+
+    window.setTimeout(() => {
+      window.localStorage.removeItem("bhawana-lms-auth-cookie-inflight");
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "bhawana-lms-auth-cookie-inflight",
+          oldValue: JSON.stringify({ owner: "settled-peer-owner" }),
+          newValue: null,
+        }),
+      );
+    }, 0);
+
+    await expect(queued).resolves.toBe("b-token");
+    expect(exchange).toHaveBeenCalledTimes(1);
+    expect(isCookieExchangeBlocked()).toBe(false);
+  });
+
   it("leaves the marker blocked on no-response/abort, settles on HTTP error or post-response parse failure", async () => {
     await expect(
       enqueueCookieOp("refresh", captureAuthIntent(), async () => {

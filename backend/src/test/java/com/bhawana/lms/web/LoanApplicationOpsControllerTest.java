@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
@@ -857,7 +858,7 @@ class LoanApplicationOpsControllerTest {
         transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
         disburseLoan(applicationId);
 
-        LocalDate effectiveDate = LocalDate.now();
+        LocalDate effectiveDate = LocalDate.now(TimeConfig.BUSINESS_ZONE);
 
         MvcResult quoteResult = mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/foreclosure-quotes", applicationId)
                         .with(systemAdmin())
@@ -993,8 +994,9 @@ class LoanApplicationOpsControllerTest {
                         LocalDate.now().minusDays(2)))
                 .andExpect(status().isOk());
 
-        LocalDate firstEffectiveDate = LocalDate.now().minusDays(1);
-        LocalDate secondEffectiveDate = LocalDate.now();
+        // Quotes are same-day only, so both versions carry today's business date.
+        LocalDate firstEffectiveDate = LocalDate.now(TimeConfig.BUSINESS_ZONE);
+        LocalDate secondEffectiveDate = firstEffectiveDate;
 
         MvcResult firstQuoteResult = mockMvc.perform(
                         post("/api/v1/internal/ops/loan-applications/{applicationId}/foreclosure-quotes", applicationId)

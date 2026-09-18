@@ -446,9 +446,24 @@ test.describe("H22 cookie transport (real Set-Cookie jar)", () => {
         // held exchange completed against a live peer and settled its marker,
         // which is what makes B's queued success below deterministic. If A's
         // exchange died instead (loaded-runner tab/connection loss), B must
-        // fail closed on the orphan — and this line, not B's, reports it.
-        await expect(loginAP).resolves.toMatch(/AuthStaleResultError/);
+        // fail closed on the orphan — the network-uncertain branch below
+        // proves B was never dispatched instead of misclassifying that result.
+        const aResult = await loginAP;
         const bResult = await loginBP;
+
+        if (!aResult.includes("AuthStaleResultError")) {
+          // Under a loaded browser runner the held fetch can lose its client
+          // connection. That outcome is network-uncertain, so retaining A's
+          // marker and blocking B before dispatch is the required safe result.
+          expect(aResult).toMatch(/Failed to fetch/);
+          expect(bResult).toMatch(/AuthCookieBlockedError/);
+          const uncertain = await milestones(harness.url);
+          expect(uncertain.arrivals.filter((a) => a.type === "login")).toHaveLength(1);
+          expect(await sessionUserId(tabB)).toBeNull();
+          expect(await isBlocked(tabB)).toBe(true);
+          return;
+        }
+
         expect(bResult).toContain("aaaaaaaa-cccc-4aaa-8aaa-aaaaaaaaaaaa");
 
         const ms = await milestones(harness.url);

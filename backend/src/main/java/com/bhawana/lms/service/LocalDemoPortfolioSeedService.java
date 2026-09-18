@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.BorrowerProfile;
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
@@ -71,6 +72,7 @@ public class LocalDemoPortfolioSeedService {
     private final JdbcTemplate jdbcTemplate;
     private final SecurityProperties securityProperties;
     private final AdminScopedTransactionExecutor adminScopedTransactionExecutor;
+    private final BusinessCalendar businessCalendar;
 
     public LocalDemoPortfolioSeedService(
             LspDirectoryService lspDirectoryService,
@@ -89,7 +91,8 @@ public class LocalDemoPortfolioSeedService {
             LoanApplicationRepository loanApplicationRepository,
             JdbcTemplate jdbcTemplate,
             SecurityProperties securityProperties,
-            AdminScopedTransactionExecutor adminScopedTransactionExecutor
+            AdminScopedTransactionExecutor adminScopedTransactionExecutor,
+            BusinessCalendar businessCalendar
     ) {
         this.lspDirectoryService = lspDirectoryService;
         this.userAdminService = userAdminService;
@@ -108,6 +111,7 @@ public class LocalDemoPortfolioSeedService {
         this.jdbcTemplate = jdbcTemplate;
         this.securityProperties = securityProperties;
         this.adminScopedTransactionExecutor = adminScopedTransactionExecutor;
+        this.businessCalendar = businessCalendar;
     }
 
     public void seedDemoPortfolio() {
@@ -372,7 +376,7 @@ public class LocalDemoPortfolioSeedService {
         LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("390000.00"), 24);
         moveToApproved(application.getId(), "ops.risk");
         executeDisbursement(application.getId(), LoanApplicationStatus.DISBURSED);
-        LocalDate settlementDate = LocalDate.now();
+        LocalDate settlementDate = businessCalendar.today();
         var quote = loanForeclosureCommandService.requestForeclosureQuote(application.getId(), INTERNAL_ACTOR, settlementDate);
         loanForeclosureCommandService.executeForeclosureQuote(
                 application.getId(),

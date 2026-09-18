@@ -201,16 +201,68 @@ export async function adminLogin(
   apiBase: string,
   email: string,
   password: string,
-): Promise<{ accessToken: string; setCookies: string[] }> {
+): Promise<{ accessToken: string; passwordChangeRequired: boolean; setCookies: string[] }> {
   const res = await fetch(`${apiBase}/api/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  const body = await parseJson<{ accessToken: string }>(res, "Admin login");
+  const body = await parseJson<{ accessToken: string; passwordChangeRequired?: boolean }>(
+    res,
+    "Admin login",
+  );
   const setCookies =
     typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
-  return { accessToken: body.accessToken, setCookies };
+  return {
+    accessToken: body.accessToken,
+    passwordChangeRequired: Boolean(body.passwordChangeRequired),
+    setCookies,
+  };
+}
+
+/**
+ * Cold-start bootstrap users must change their configured initial password
+ * before internal routes are available. Journey CI supplies that initial
+ * credential separately from the stable password used by the specs. The
+ * fallback makes reruns idempotent when the database already has the changed
+ * password.
+ */
+export async function ensureBootstrapPasswordReady(
+  apiBase: string,
+  email: string,
+  password: string,
+  initialPassword: string | undefined,
+): Promise<void> {
+  if (!initialPassword) return;
+
+  let initialLogin: Awaited<ReturnType<typeof adminLogin>>;
+  try {
+    initialLogin = await adminLogin(apiBase, email, initialPassword);
+  } catch (initialError) {
+    const currentLogin = await adminLogin(apiBase, email, password).catch(() => {
+      throw initialError;
+    });
+    if (currentLogin.passwordChangeRequired) {
+      throw new Error(`The configured E2E password for ${email} still requires rotation.`);
+    }
+    return;
+  }
+
+  if (initialPassword === password) {
+    if (initialLogin.passwordChangeRequired) {
+      throw new Error(
+        `The stable E2E password for ${email} must differ from its initial password.`,
+      );
+    }
+    return;
+  }
+
+  const changeRes = await fetch(`${apiBase}/api/v1/auth/password`, {
+    method: "POST",
+    headers: authHeaders(initialLogin.accessToken),
+    body: JSON.stringify({ newPassword: password }),
+  });
+  await parseJson<{ accessToken: string }>(changeRes, `Rotate bootstrap password for ${email}`);
 }
 
 export async function buildAdminStorageState(

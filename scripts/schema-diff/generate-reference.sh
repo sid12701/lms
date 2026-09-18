@@ -4,6 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+source "$ROOT/scripts/schema-diff/postgres-readiness.sh"
 MIGRATIONS="$ROOT/backend/src/main/resources/db/migration"
 ARTIFACTS="$ROOT/scripts/schema-diff/artifacts"
 REFERENCE="$ARTIFACTS/reference-schema.normalized.sql"
@@ -47,14 +48,11 @@ docker run -d --name "$CONTAINER" \
   "$POSTGRES_IMAGE" >/dev/null
 
 echo "Waiting for Postgres..."
-for _ in $(seq 1 60); do
-  if docker exec "$CONTAINER" pg_isready -U lms -d lms >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
-
-docker exec "$CONTAINER" pg_isready -U lms -d lms >/dev/null
+if ! wait_for_stable_postgres "$CONTAINER" 60 3 1; then
+  echo "Postgres did not become stably ready; container logs follow:" >&2
+  docker logs "$CONTAINER" >&2 || true
+  exit 1
+fi
 
 echo "Running Flyway migrate from $MIGRATIONS_DOCKER ..."
 docker run --rm --network "container:$CONTAINER" \

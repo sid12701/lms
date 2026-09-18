@@ -19,11 +19,8 @@ test.describe("protected-route canary @canary", () => {
 
     await page.goto("/audit");
     await expect(page.getByTestId("audit-page")).toBeVisible({ timeout: 30_000 });
-    await expect(
-      page
-        .locator("table tbody tr")
-        .first()
-        .or(page.getByText(/No audit|No events|Nothing to show|0 events/i)),
-    ).toBeVisible({ timeout: 30_000 });
+    // The empty state is rendered as a table row too, so one row proves that
+    // either audit data or its terminal empty state has loaded.
+    await expect(page.locator("table tbody tr").first()).toBeVisible({ timeout: 30_000 });
   });
 });

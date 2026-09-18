@@ -713,6 +713,7 @@ CREATE TABLE public.loan_payment_transaction (
     repayment_installment_id uuid,
     idempotency_key character varying(36),
     request_fingerprint character varying(64),
+    foreclosure_quote_id uuid,
     CONSTRAINT chk_loan_payment_allocated_non_negative CHECK ((allocated_amount >= (0)::numeric)),
     CONSTRAINT chk_loan_payment_allocation_total CHECK (((allocated_amount + unallocated_amount) = amount)),
     CONSTRAINT chk_loan_payment_amount_non_negative CHECK ((amount >= (0)::numeric)),
@@ -1213,6 +1214,7 @@ CREATE UNIQUE INDEX uk_admin_api_idempotency_scope ON public.admin_api_idempoten
 CREATE UNIQUE INDEX uk_borrower_pan ON public.borrower USING btree (pan);
 CREATE UNIQUE INDEX uk_disbursement_intent_live_account ON public.disbursement_intent USING btree (loan_account_id) WHERE ((state)::text <> ALL ((ARRAY['SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELLED'::character varying])::text[]));
 CREATE UNIQUE INDEX uk_disbursement_intent_tran_ref_no ON public.disbursement_intent USING btree (tran_ref_no);
+CREATE UNIQUE INDEX uk_loan_payment_transaction_foreclosure_quote ON public.loan_payment_transaction USING btree (foreclosure_quote_id) WHERE (foreclosure_quote_id IS NOT NULL);
 CREATE UNIQUE INDEX uk_lsp_api_idempotency_scope ON public.lsp_api_idempotency_record USING btree (lsp_id, operation_key, idempotency_key);
 CREATE UNIQUE INDEX uq_refresh_token_live_family_head ON public.refresh_token USING btree (family_id) WHERE ((revoked = false) AND (family_id IS NOT NULL));
 ALTER INDEX public.idx_loan_event_application_time ATTACH PARTITION public.loan_event_2026_08_loan_application_id_occurred_at_idx;
@@ -1338,6 +1340,8 @@ ALTER TABLE public.loan_event
     ADD CONSTRAINT loan_event_lsp_id_fkey FOREIGN KEY (lsp_id) REFERENCES public.lsp(id);
 ALTER TABLE ONLY public.loan_foreclosure_quote
     ADD CONSTRAINT loan_foreclosure_quote_loan_account_id_fkey FOREIGN KEY (loan_account_id) REFERENCES public.loan_account(id);
+ALTER TABLE ONLY public.loan_payment_transaction
+    ADD CONSTRAINT loan_payment_transaction_foreclosure_quote_id_fkey FOREIGN KEY (foreclosure_quote_id) REFERENCES public.loan_foreclosure_quote(id);
 ALTER TABLE ONLY public.loan_payment_transaction
     ADD CONSTRAINT loan_payment_transaction_loan_account_id_fkey FOREIGN KEY (loan_account_id) REFERENCES public.loan_account(id);
 ALTER TABLE ONLY public.loan_payment_transaction

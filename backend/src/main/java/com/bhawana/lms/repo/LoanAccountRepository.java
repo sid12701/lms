@@ -28,6 +28,20 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
     @Query("select account from LoanAccount account where account.loanApplication.id = :applicationId")
     Optional<LoanAccount> findByLoanApplication_IdForUpdate(@Param("applicationId") UUID applicationId);
 
+    /**
+     * The owning application of an LSP's loan account, as a scalar: resolving LSP scope this way
+     * loads no entity, so a command that locks the loan afterwards still gets its first sight of
+     * the rows from the locked read.
+     */
+    @Query("""
+            select account.loanApplication.id from LoanAccount account
+            where account.id = :loanAccountId and account.lsp.id = :lspId
+            """)
+    Optional<UUID> findLoanApplicationIdForLsp(
+            @Param("loanAccountId") UUID loanAccountId,
+            @Param("lspId") UUID lspId
+    );
+
     @EntityGraph(attributePaths = {
             "loanApplication",
             "loanApplication.borrower",

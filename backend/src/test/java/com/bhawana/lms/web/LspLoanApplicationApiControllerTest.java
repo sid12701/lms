@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.repo.BorrowerRepository;
@@ -967,7 +968,7 @@ class LspLoanApplicationApiControllerTest {
                         .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
-                                "effectiveDate", LocalDate.now().toString()
+                                "effectiveDate", LocalDate.now(TimeConfig.BUSINESS_ZONE).toString()
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.loanAccountId").value(loanId))

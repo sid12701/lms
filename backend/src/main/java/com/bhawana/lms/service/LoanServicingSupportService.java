@@ -12,7 +12,6 @@ import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanPaymentChannel;
-import com.bhawana.lms.domain.LoanPaymentStatus;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallmentStatus;
@@ -29,6 +28,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -63,6 +63,28 @@ public class LoanServicingSupportService {
     @Transactional(readOnly = true)
     public LoanAccount getRequiredLoanAccount(UUID applicationId) {
         return loanAccountRepository.findDetailedByLoanApplication_Id(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Loan account is not available for application id: " + applicationId
+                ));
+    }
+
+    /**
+     * Shared loan-command lock order (application → account), taken before any balance is read so
+     * that every writer on one loan is serialized. Installment rows are locked after this pair, and
+     * no command may acquire an earlier lock once it holds a later one.
+     *
+     * <p>Locking the account is what keeps a decision over the whole schedule — closure above all —
+     * from being made on a view another writer is about to invalidate. Locking the application is
+     * what keeps a payment from losing a version clash against any other command writing it.
+     *
+     * <p>Requires the caller's transaction: row locks taken in a transaction of their own would be
+     * released before the balances they are meant to protect are read.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public LoanAccount lockLoanForUpdate(UUID applicationId) {
+        loanApplicationRepository.findByIdForUpdate(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
+        return loanAccountRepository.findByLoanApplication_IdForUpdate(applicationId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Loan account is not available for application id: " + applicationId
                 ));
@@ -237,41 +259,36 @@ public class LoanServicingSupportService {
         return payment;
     }
 
-    public void recomputePaymentAllocation(LoanAccount loanAccount) {
-        List<LoanRepaymentScheduleInstallment> installments = loanRepaymentScheduleInstallmentRepository
-                .findByLoanAccount_IdOrderByInstallmentNumberAsc(loanAccount.getId());
-        installments.forEach(LoanRepaymentScheduleInstallment::resetAllocation);
+    /**
+     * Applies one new receipt across whatever the schedule still owes, oldest installment first.
+     * Earlier receipts keep the installments they were recorded against: this never replays
+     * payment history, so a receipt targeted at installment 3 stays allocated to installment 3
+     * (H09). {@code installments} is the caller's already-locked schedule in installment-number
+     * order.
+     */
+    public void allocateReceiptAcrossOutstanding(
+            List<LoanRepaymentScheduleInstallment> installments,
+            LoanPaymentTransaction receipt
+    ) {
+        BigDecimal remainingAmount = scaleCurrency(receipt.getAmount());
+        BigDecimal allocatedAmount = BigDecimal.ZERO.setScale(2);
 
-        List<LoanPaymentTransaction> payments = loanPaymentTransactionRepository
-                .findByLoanAccount_IdOrderByPaymentDateAscCreatedAtAsc(loanAccount.getId());
-
-        for (LoanPaymentTransaction payment : payments) {
-            if (payment.getStatus() != LoanPaymentStatus.RECEIVED) {
-                payment.updateAllocation(BigDecimal.ZERO.setScale(2), scaleCurrency(payment.getAmount()));
+        for (LoanRepaymentScheduleInstallment installment : installments) {
+            if (remainingAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                break;
+            }
+            if (installment.getStatus() == LoanRepaymentScheduleInstallmentStatus.PAID) {
                 continue;
             }
 
-            BigDecimal remainingAmount = scaleCurrency(payment.getAmount());
-            BigDecimal allocatedAmount = BigDecimal.ZERO.setScale(2);
-
-            for (LoanRepaymentScheduleInstallment installment : installments) {
-                if (remainingAmount.compareTo(BigDecimal.ZERO) <= 0) {
-                    break;
-                }
-                if (installment.getStatus() == LoanRepaymentScheduleInstallmentStatus.PAID) {
-                    continue;
-                }
-
-                BigDecimal appliedAmount = installment.applyPayment(remainingAmount);
-                remainingAmount = scaleCurrency(remainingAmount.subtract(appliedAmount));
-                allocatedAmount = scaleCurrency(allocatedAmount.add(appliedAmount));
-            }
-
-            payment.updateAllocation(allocatedAmount, remainingAmount);
+            BigDecimal appliedAmount = installment.applyPayment(remainingAmount);
+            remainingAmount = scaleCurrency(remainingAmount.subtract(appliedAmount));
+            allocatedAmount = scaleCurrency(allocatedAmount.add(appliedAmount));
         }
 
+        receipt.updateAllocation(allocatedAmount, remainingAmount);
         loanRepaymentScheduleInstallmentRepository.saveAll(installments);
-        loanPaymentTransactionRepository.saveAll(payments);
+        loanPaymentTransactionRepository.save(receipt);
     }
 
     public void synchronizeLoanAccountClosureState(
