@@ -11,7 +11,6 @@ import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductStatus;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LspStatus;
-import com.bhawana.lms.domain.MockDisbursementOutcome;
 import com.bhawana.lms.domain.RoleCode;
 import com.bhawana.lms.domain.UserStatus;
 import com.bhawana.lms.repo.AppUserRepository;
@@ -41,6 +40,15 @@ public class LocalDemoPortfolioSeedService {
     private static final String DEMO_PRODUCT_CODE = "SUPA-FLEX";
     private static final String DEFAULT_USER_PASSWORD = "DemoPass123!";
     private static final String INTERNAL_ACTOR = "ops.admin";
+    private static final String DEFAULT_BORROWER_IFSC = "HDFC0001234";
+    // Reserved mock-provider marker (see MockIciciDisbursementScenario): an NPCI-down response is a
+    // technical decline, so the synchronous worker-path execution records FAILED while the application
+    // lands in DISBURSEMENT_RETRY — the same terminal state the mock override used to produce.
+    private static final String FAILED_DISBURSEMENT_BORROWER_IFSC = "MOCK0NPCIDN";
+    // Safety net for the corner where the scheduled worker wins the intent claim first and owns
+    // completion; the seed thread then observes rather than drives the terminal state.
+    private static final long DISBURSEMENT_SETTLE_TIMEOUT_MILLIS = 30_000L;
+    private static final long DISBURSEMENT_SETTLE_POLL_MILLIS = 100L;
 
     private static final Logger log = LoggerFactory.getLogger(LocalDemoPortfolioSeedService.class);
     private static final int RESET_MAX_ATTEMPTS = 5;
@@ -53,6 +61,7 @@ public class LocalDemoPortfolioSeedService {
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationServicingReadService loanApplicationServicingReadService;
     private final LoanDisbursementCommandService loanDisbursementCommandService;
+    private final DisbursementIntentWorkflowService disbursementIntentWorkflowService;
     private final LoanRepaymentCommandService loanRepaymentCommandService;
     private final LoanForeclosureCommandService loanForeclosureCommandService;
     private final AppUserRepository appUserRepository;
@@ -71,6 +80,7 @@ public class LocalDemoPortfolioSeedService {
             LoanApplicationQueryService loanApplicationQueryService,
             LoanApplicationServicingReadService loanApplicationServicingReadService,
             LoanDisbursementCommandService loanDisbursementCommandService,
+            DisbursementIntentWorkflowService disbursementIntentWorkflowService,
             LoanRepaymentCommandService loanRepaymentCommandService,
             LoanForeclosureCommandService loanForeclosureCommandService,
             AppUserRepository appUserRepository,
@@ -88,6 +98,7 @@ public class LocalDemoPortfolioSeedService {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanApplicationServicingReadService = loanApplicationServicingReadService;
         this.loanDisbursementCommandService = loanDisbursementCommandService;
+        this.disbursementIntentWorkflowService = disbursementIntentWorkflowService;
         this.loanRepaymentCommandService = loanRepaymentCommandService;
         this.loanForeclosureCommandService = loanForeclosureCommandService;
         this.appUserRepository = appUserRepository;
@@ -308,8 +319,7 @@ public class LocalDemoPortfolioSeedService {
         }
         LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("98000.00"), 12);
         moveToApproved(application.getId(), "ops.reviewer2");
-        loanDisbursementCommandService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
-        loanDisbursementCommandService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.DISBURSED);
+        executeDisbursement(application.getId(), LoanApplicationStatus.DISBURSED);
         var firstInstallment = loanApplicationServicingReadService.listRepaymentSchedule(application.getId()).stream()
                 .findFirst()
                 .orElseThrow();
@@ -329,10 +339,9 @@ public class LocalDemoPortfolioSeedService {
         if (loanExists(lsp.getId(), externalId)) {
             return;
         }
-        LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("305000.00"), 24);
+        LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("305000.00"), 24, FAILED_DISBURSEMENT_BORROWER_IFSC);
         moveToApproved(application.getId(), "ops.risk");
-        loanDisbursementCommandService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
-        loanDisbursementCommandService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.FAILED);
+        executeDisbursement(application.getId(), LoanApplicationStatus.DISBURSEMENT_RETRY);
     }
 
     private void createClosedLoan(Lsp lsp, LoanProduct product, String externalId, String name, String pan, String mobile, String email) {
@@ -341,8 +350,7 @@ public class LocalDemoPortfolioSeedService {
         }
         LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("112000.00"), 12);
         moveToApproved(application.getId(), "ops.reviewer1");
-        loanDisbursementCommandService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
-        loanDisbursementCommandService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.DISBURSED);
+        executeDisbursement(application.getId(), LoanApplicationStatus.DISBURSED);
         for (var installment : loanApplicationServicingReadService.listRepaymentSchedule(application.getId())) {
             loanRepaymentCommandService.recordPaymentTransactionWithRecovery(
                     application.getId(),
@@ -363,8 +371,7 @@ public class LocalDemoPortfolioSeedService {
         }
         LoanApplication application = createBaseLoan(lsp, product, externalId, name, pan, mobile, email, new BigDecimal("390000.00"), 24);
         moveToApproved(application.getId(), "ops.risk");
-        loanDisbursementCommandService.initiateDisbursement(application.getId(), INTERNAL_ACTOR);
-        loanDisbursementCommandService.resolveMockDisbursementOutcome(application.getId(), INTERNAL_ACTOR, MockDisbursementOutcome.DISBURSED);
+        executeDisbursement(application.getId(), LoanApplicationStatus.DISBURSED);
         LocalDate settlementDate = LocalDate.now();
         var quote = loanForeclosureCommandService.requestForeclosureQuote(application.getId(), INTERNAL_ACTOR, settlementDate);
         loanForeclosureCommandService.executeForeclosureQuote(
@@ -377,6 +384,45 @@ public class LocalDemoPortfolioSeedService {
         );
     }
 
+    /**
+     * Initiates disbursement and drives the committed intent through the worker's own
+     * claim-and-execute path in this thread, so the request log and terminal outcome exist before
+     * any dependent seed step reads them. Resolving the legacy mock outcome immediately after
+     * initiation raced the scheduled worker that writes the log asynchronously and failed startup
+     * on loaded runners. The claim fence is atomic: if the scheduled worker wins it on a
+     * concurrent tick, it owns completion and the bounded wait below observes the terminal state.
+     */
+    private void executeDisbursement(UUID applicationId, LoanApplicationStatus terminalStatus) {
+        loanDisbursementCommandService.initiateDisbursement(applicationId, INTERNAL_ACTOR);
+        disbursementIntentWorkflowService.executeForApplication(applicationId);
+        awaitApplicationStatus(applicationId, terminalStatus);
+    }
+
+    private void awaitApplicationStatus(UUID applicationId, LoanApplicationStatus terminalStatus) {
+        // No enclosing transaction here (runAsAdmin sets scope only), so each read observes the
+        // worker's commits even when the worker owns completion.
+        long deadline = System.currentTimeMillis() + DISBURSEMENT_SETTLE_TIMEOUT_MILLIS;
+        for (;;) {
+            LoanApplicationStatus current = loanApplicationQueryService.getApplication(applicationId).getStatus();
+            if (current == terminalStatus) {
+                return;
+            }
+            if (System.currentTimeMillis() > deadline) {
+                throw new IllegalStateException(
+                        "Demo seed timed out waiting for disbursement of application " + applicationId
+                                + " to reach " + terminalStatus + "; last observed " + current);
+            }
+            try {
+                Thread.sleep(DISBURSEMENT_SETTLE_POLL_MILLIS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(
+                        "Demo seed interrupted while awaiting disbursement of application " + applicationId,
+                        interrupted);
+            }
+        }
+    }
+
     private LoanApplication createBaseLoan(
             Lsp lsp,
             LoanProduct product,
@@ -387,6 +433,21 @@ public class LocalDemoPortfolioSeedService {
             String email,
             BigDecimal amount,
             int tenureMonths
+    ) {
+        return createBaseLoan(lsp, product, externalId, name, pan, mobile, email, amount, tenureMonths, DEFAULT_BORROWER_IFSC);
+    }
+
+    private LoanApplication createBaseLoan(
+            Lsp lsp,
+            LoanProduct product,
+            String externalId,
+            String name,
+            String pan,
+            String mobile,
+            String email,
+            BigDecimal amount,
+            int tenureMonths,
+            String ifscCode
     ) {
         return loanApplicationRepository.findByLsp_IdAndExternalLoanIdIgnoreCase(lsp.getId(), externalId)
                 .orElseGet(() -> loanApplicationLifecycleService.createApplication(
@@ -425,7 +486,7 @@ public class LocalDemoPortfolioSeedService {
                                         .annualIncome(new BigDecimal("1020000.00"))
                                         .bankAccountNumber("123456789012")
                                         .bankName("Demo Bank")
-                                        .ifscCode("HDFC0001234")
+                                        .ifscCode(ifscCode)
                                         .accountHolderName(name)
                                         .referencePersonName("Demo Reference")
                                         .referencePersonNumber("9898989898")

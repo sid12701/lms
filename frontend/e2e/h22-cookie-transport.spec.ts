@@ -38,6 +38,7 @@ type HarnessWindow = {
 interface Milestones {
   arrivals: Array<{ type: string; at: string; receivedCookie: string }>;
   responses: Array<{ type: string; at: string; setCookie: string | null; status: number }>;
+  peerGone: Array<{ type: string; at: string }>;
 }
 
 async function milestones(origin: string): Promise<Milestones> {
@@ -85,6 +86,23 @@ async function waitForArrival(
     if (ms.arrivals.filter((a) => a.type === type).length >= count) return;
     if (Date.now() > deadline) {
       throw new Error(`timed out waiting for ${count} ${type} arrival(s)`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+async function waitForPeerGone(
+  origin: string,
+  type: string,
+  count = 1,
+  timeoutMs = 15000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const ms = await milestones(origin);
+    if (ms.peerGone.filter((p) => p.type === type).length >= count) return;
+    if (Date.now() > deadline) {
+      throw new Error(`timed out waiting for ${count} ${type} peerGone milestone(s)`);
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
@@ -446,10 +464,13 @@ test.describe("H22 cookie transport (real Set-Cookie jar)", () => {
         await tabA.close();
         await expect(pending).resolves.toBe("peer-closed");
 
+        // Event-driven ordering: the harness records the socket teardown while
+        // the headers are still withheld, so the post-release clientGone guard
+        // is guaranteed to observe the dead peer — no sleep-after-release race.
+        await waitForPeerGone(harness.url, "refresh");
+        await release(harness.url, "refresh");
         // The held response now has no live peer; the server records no
         // response for the destroyed request.
-        await release(harness.url, "refresh");
-        await new Promise((resolve) => setTimeout(resolve, 300));
         const afterClose = await milestones(harness.url);
         expect(afterClose.arrivals.filter((a) => a.type === "refresh")).toHaveLength(1);
         expect(afterClose.responses.filter((r) => r.type === "refresh")).toHaveLength(0);
