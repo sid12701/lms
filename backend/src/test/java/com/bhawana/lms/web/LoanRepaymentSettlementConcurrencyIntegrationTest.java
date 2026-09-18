@@ -11,8 +11,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.domain.LoanPaymentChannel;
+import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.service.DisbursementIntentWorkflowService;
+import com.bhawana.lms.service.IdempotencyClaimService;
 import com.bhawana.lms.service.LoanDisbursementCommandService;
 import com.bhawana.lms.service.LoanRepaymentCommandService;
 import com.bhawana.lms.service.LoanServicingSupportService;
@@ -38,6 +40,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -106,10 +109,13 @@ class LoanRepaymentSettlementConcurrencyIntegrationTest {
     @MockitoSpyBean
     private LoanServicingSupportService loanServicingSupportService;
 
+    @MockitoSpyBean
+    private IdempotencyClaimService idempotencyClaimService;
+
     @BeforeEach
     void setUp() {
         integrationTestDatabaseCleaner.cleanIntegrationTestData();
-        Mockito.reset(loanServicingSupportService);
+        Mockito.reset(loanServicingSupportService, idempotencyClaimService);
     }
 
     @Test
@@ -294,10 +300,10 @@ class LoanRepaymentSettlementConcurrencyIntegrationTest {
      * Any other command that writes the loan application bumps its version. The payment used to
      * lose that clash, roll its own receipt back, and then hand recovery an idempotency key no
      * transaction ever committed — an unexplained 500. Under the loan lock the competing write
-     * waits instead, and a clash that still happens costs a retry, not a receipt.
+     * waits for the payment instead, so no clash happens at all.
      */
     @Test
-    void concurrentApplicationWriteCostsARetryRatherThanAReceiptThatWasNeverCommitted() throws Exception {
+    void concurrentApplicationWriteWaitsForThePaymentInsteadOfOrphaningItsReceipt() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan("H06-NOWINNER");
         LocalDate postedAt = LocalDate.now().minusDays(1);
         CountDownLatch parked = new CountDownLatch(1);
@@ -317,6 +323,209 @@ class LoanRepaymentSettlementConcurrencyIntegrationTest {
         assertEquals(1, paymentRowCount(fixture.applicationId()));
         assertEquals("UNDER_REPAYMENT", applicationStatus(fixture.applicationId()));
         assertEquals(1, eventCount(fixture.applicationId(), "LOAN_REPAYMENT_RECORDED"));
+    }
+
+    /**
+     * Receipts from before request fingerprints were stored have none, and must still refuse a
+     * reused key carrying another payload rather than treat the missing fingerprint as a match.
+     */
+    @Test
+    void legacyReceiptWithoutFingerprintReplaysOnlyAnIdenticalRequest() throws Exception {
+        DisbursedLoanFixture fixture = seedDisbursedLoan("H07-LEGACY");
+        LocalDate postedAt = LocalDate.now().minusDays(1);
+        String idempotencyKey = UUID.randomUUID().toString();
+        MvcResult original = postOpsPayment(
+                fixture.applicationId(),
+                fixture.installmentId(1),
+                fixture.dueAmount(1),
+                "PAY-LEGACY",
+                idempotencyKey,
+                postedAt
+        ).andExpect(status().isOk()).andReturn();
+        assertEquals(
+                1,
+                jdbcTemplate.update(
+                        "update loan_payment_transaction set request_fingerprint = null where idempotency_key = ?",
+                        idempotencyKey
+                )
+        );
+
+        expectIdempotencyConflict(postOpsPayment(
+                fixture.applicationId(),
+                fixture.installmentId(1),
+                fixture.dueAmount(1).add(BigDecimal.ONE),
+                "PAY-LEGACY",
+                idempotencyKey,
+                postedAt
+        ));
+        expectIdempotencyConflict(postOpsPayment(
+                fixture.applicationId(),
+                fixture.installmentId(1),
+                fixture.dueAmount(1),
+                "PAY-LEGACY",
+                idempotencyKey,
+                postedAt.minusDays(1)
+        ));
+        expectIdempotencyConflict(postOpsPayment(
+                fixture.applicationId(),
+                fixture.installmentId(1),
+                fixture.dueAmount(1),
+                "PAY-OTHER",
+                idempotencyKey,
+                postedAt
+        ));
+        expectIdempotencyConflict(postOpsPayment(
+                fixture.applicationId(),
+                fixture.installmentId(2),
+                fixture.dueAmount(2),
+                "PAY-LEGACY",
+                idempotencyKey,
+                postedAt
+        ));
+
+        MvcResult replay = postOpsPayment(
+                fixture.applicationId(),
+                fixture.installmentId(1),
+                fixture.dueAmount(1),
+                "PAY-LEGACY",
+                idempotencyKey,
+                postedAt
+        ).andExpect(status().isOk()).andReturn();
+        assertEquals(jsonField(original, "id"), jsonField(replay, "id"));
+        assertEquals(1, paymentRowCount(fixture.applicationId()));
+    }
+
+    /**
+     * Different loans take different locks, so nothing but the unique key orders two requests
+     * reusing one key across them. Both are held past every replay lookup until each is about to
+     * write its receipt; the loser must come back as the documented conflict, not a server error.
+     */
+    @Test
+    void sameKeyRacedAcrossTwoLoansCommitsOneReceiptAndConflictsTheOther() throws Exception {
+        DisbursedLoanFixture first = seedDisbursedLoan("H06-KEYRACE-A");
+        DisbursedLoanFixture second = seedDisbursedLoan("H06-KEYRACE-B");
+        LocalDate postedAt = LocalDate.now().minusDays(1);
+        String idempotencyKey = UUID.randomUUID().toString();
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        Mockito.doAnswer(invocation -> {
+            barrier.await(30, TimeUnit.SECONDS);
+            return invocation.callRealMethod();
+        }).when(idempotencyClaimService).claimLoanPaymentRow(Mockito.any());
+
+        List<PaymentAttempt> attempts = new ArrayList<>();
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            List<Callable<PaymentAttempt>> tasks = List.of(
+                    opsPaymentTask(first, 1, postedAt, idempotencyKey),
+                    opsPaymentTask(second, 1, postedAt, idempotencyKey)
+            );
+            for (Future<PaymentAttempt> future : executor.invokeAll(tasks)) {
+                attempts.add(future.get());
+            }
+        }
+
+        assertEquals(
+                List.of(200, 409),
+                attempts.stream().map(PaymentAttempt::status).sorted().toList(),
+                attempts.toString()
+        );
+        PaymentAttempt loser = attempts.stream().filter(attempt -> attempt.status() == 409).findFirst().orElseThrow();
+        JsonNode conflict = objectMapper.readTree(loser.body());
+        assertEquals("IDEMPOTENCY_CONFLICT", conflict.get("error").asText());
+        // Settled by the retry reading the winner's receipt, not by the key violation escaping it.
+        assertEquals(
+                "Idempotency-Key has already been used for a different loan application.",
+                conflict.get("message").asText()
+        );
+        assertEquals(1, paymentRowCount(first.applicationId()) + paymentRowCount(second.applicationId()));
+        assertEquals(1, eventCount(first.applicationId(), "LOAN_REPAYMENT_RECORDED")
+                + eventCount(second.applicationId(), "LOAN_REPAYMENT_RECORDED"));
+    }
+
+    /**
+     * The loan lock settles same-key contenders on one loan before either writes, so the unique key
+     * is only reached by a receipt committed without it. One is committed at the last moment — past
+     * the payment's replay lookups, just before its own insert — and the payment must resolve to it
+     * as a replay: no error, no second receipt, no second event.
+     */
+    @Test
+    void receiptCommittedJustBeforeTheInsertResolvesAsAReplay() throws Exception {
+        DisbursedLoanFixture fixture = seedDisbursedLoan("H06-LATEWIN");
+        LocalDate postedAt = LocalDate.now().minusDays(1);
+        String idempotencyKey = UUID.randomUUID().toString();
+        UUID winnerReceiptId = UUID.randomUUID();
+        CountDownLatch parked = new CountDownLatch(1);
+        CountDownLatch resume = new CountDownLatch(1);
+        AtomicBoolean firstClaim = new AtomicBoolean(true);
+        AtomicReference<String> requestFingerprint = new AtomicReference<>();
+        Mockito.doAnswer(invocation -> {
+            if (firstClaim.compareAndSet(true, false)) {
+                LoanPaymentTransaction claim = invocation.getArgument(0);
+                requestFingerprint.set(claim.getRequestFingerprint());
+                parked.countDown();
+                assertTrue(resume.await(30, TimeUnit.SECONDS), "winner receipt was never committed");
+            }
+            return invocation.callRealMethod();
+        }).when(idempotencyClaimService).claimLoanPaymentRow(Mockito.any());
+
+        PaymentAttempt attempt;
+        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+            Future<PaymentAttempt> payment = executor.submit(opsPaymentTask(fixture, 1, postedAt, idempotencyKey));
+            assertTrue(parked.await(30, TimeUnit.SECONDS), "payment never reached its insert");
+            commitReceiptOutsideTheLoanLock(
+                    winnerReceiptId,
+                    fixture,
+                    1,
+                    "PAY-RACE-1",
+                    idempotencyKey,
+                    requestFingerprint.get(),
+                    postedAt
+            );
+            resume.countDown();
+            attempt = payment.get(60, TimeUnit.SECONDS);
+        }
+
+        assertEquals(200, attempt.status(), attempt.body());
+        assertEquals(winnerReceiptId.toString(), objectMapper.readTree(attempt.body()).get("id").asText());
+        assertEquals(1, paymentRowCount(fixture.applicationId()));
+        assertEquals(0, eventCount(fixture.applicationId(), "LOAN_REPAYMENT_RECORDED"));
+        Mockito.verify(idempotencyClaimService, Mockito.times(1)).claimLoanPaymentRow(Mockito.any());
+    }
+
+    /**
+     * A committed receipt row for {@code installmentNumber}, written on its own connection. Nothing
+     * else about the loan changes: only the unique key can now tell the payment it lost.
+     */
+    private void commitReceiptOutsideTheLoanLock(
+            UUID receiptId,
+            DisbursedLoanFixture fixture,
+            int installmentNumber,
+            String reference,
+            String idempotencyKey,
+            String requestFingerprint,
+            LocalDate postedAt
+    ) {
+        assertEquals(
+                1,
+                jdbcTemplate.update(
+                        """
+                                insert into loan_payment_transaction (
+                                    id, loan_account_id, repayment_installment_id, actor_username, amount,
+                                    payment_date, reference, idempotency_key, request_fingerprint, channel,
+                                    status, allocated_amount, unallocated_amount, created_at, updated_at
+                                )
+                                values (?, ?, ?, 'ops.admin', ?, ?, ?, ?, ?, 'UPI', 'RECEIVED', ?, 0, now(), now())
+                                """,
+                        receiptId,
+                        UUID.fromString(fixture.loanAccountId()),
+                        UUID.fromString(fixture.installmentId(installmentNumber)),
+                        fixture.dueAmount(installmentNumber),
+                        postedAt,
+                        reference,
+                        idempotencyKey,
+                        requestFingerprint,
+                        fixture.dueAmount(installmentNumber)
+                )
+        );
     }
 
     /**
@@ -401,7 +610,15 @@ class LoanRepaymentSettlementConcurrencyIntegrationTest {
             int installmentNumber,
             LocalDate postedAt
     ) {
-        String idempotencyKey = UUID.randomUUID().toString();
+        return opsPaymentTask(fixture, installmentNumber, postedAt, UUID.randomUUID().toString());
+    }
+
+    private Callable<PaymentAttempt> opsPaymentTask(
+            DisbursedLoanFixture fixture,
+            int installmentNumber,
+            LocalDate postedAt,
+            String idempotencyKey
+    ) {
         return () -> TenantScopedExecution.callAsAdmin(() -> {
             try {
                 MvcResult result = postOpsPayment(

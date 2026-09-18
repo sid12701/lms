@@ -17,6 +17,7 @@ import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.ConcurrencyFailureException;
@@ -128,12 +129,12 @@ public class LoanRepaymentCommandService {
         // Ownership before replay: an unknown application fails here, so reusing someone else's
         // key can never reveal that a receipt exists on a loan the caller cannot reach.
         UUID loanAccountId = loanServicingSupportService.getRequiredLoanAccount(applicationId).getId();
-        String requestFingerprint = fingerprintPaymentRequest(
+        PaymentIdempotencyFingerprint paymentRequest = new PaymentIdempotencyFingerprint(
                 applicationId,
                 targetInstallmentId,
-                amount,
+                loanServicingSupportService.scaleCurrency(amount),
                 postedAt,
-                reference,
+                loanServicingSupportService.normalizeReference(reference),
                 channel
         );
 
@@ -143,14 +144,14 @@ public class LoanRepaymentCommandService {
         Optional<LoanPaymentTransaction> committedReceipt = loanPaymentTransactionRepository
                 .findFirstByIdempotencyKeyOrderByCreatedAtAsc(normalizedIdempotencyKey);
         if (committedReceipt.isPresent()) {
-            return resolveExistingPayment(committedReceipt.get(), loanAccountId, requestFingerprint);
+            return resolveExistingPayment(committedReceipt.get(), loanAccountId, paymentRequest);
         }
 
         return transactionTemplate.execute(status -> createInstallmentPayment(
                 applicationId,
                 actorUsername,
                 normalizedIdempotencyKey,
-                requestFingerprint,
+                paymentRequest,
                 targetInstallmentId,
                 amount,
                 postedAt,
@@ -163,7 +164,7 @@ public class LoanRepaymentCommandService {
             UUID applicationId,
             String actorUsername,
             String idempotencyKey,
-            String requestFingerprint,
+            PaymentIdempotencyFingerprint paymentRequest,
             UUID targetInstallmentId,
             BigDecimal amount,
             LocalDate postedAt,
@@ -181,7 +182,7 @@ public class LoanRepaymentCommandService {
         Optional<LoanPaymentTransaction> committedReceipt = loanPaymentTransactionRepository
                 .findFirstByIdempotencyKeyOrderByCreatedAtAsc(idempotencyKey);
         if (committedReceipt.isPresent()) {
-            return resolveExistingPayment(committedReceipt.get(), loanAccount.getId(), requestFingerprint);
+            return resolveExistingPayment(committedReceipt.get(), loanAccount.getId(), paymentRequest);
         }
 
         LoanApplication application = loanAccount.getLoanApplication();
@@ -206,7 +207,7 @@ public class LoanRepaymentCommandService {
                 null,
                 CorrelationIdHolder.get(),
                 idempotencyKey,
-                requestFingerprint
+                IdempotencyFingerprinter.fingerprint(objectMapper, paymentRequest)
         ));
 
         loanServicingSupportService.applyFullInstallmentPayment(installment, normalizedAmount);
@@ -235,7 +236,7 @@ public class LoanRepaymentCommandService {
     private LoanPaymentTransaction resolveExistingPayment(
             LoanPaymentTransaction existing,
             UUID expectedLoanAccountId,
-            String requestFingerprint
+            PaymentIdempotencyFingerprint paymentRequest
     ) {
         if (!existing.getLoanAccount().getId().equals(expectedLoanAccountId)) {
             throw new ApiConflictException(
@@ -244,7 +245,10 @@ public class LoanRepaymentCommandService {
             );
         }
         String storedFingerprint = existing.getRequestFingerprint();
-        if (storedFingerprint != null && !storedFingerprint.equals(requestFingerprint)) {
+        boolean samePayload = storedFingerprint == null
+                ? matchesReceiptFields(existing, paymentRequest)
+                : storedFingerprint.equals(IdempotencyFingerprinter.fingerprint(objectMapper, paymentRequest));
+        if (!samePayload) {
             throw new ApiConflictException(
                     "IDEMPOTENCY_CONFLICT",
                     "Idempotency-Key has already been used for a different request."
@@ -253,25 +257,21 @@ public class LoanRepaymentCommandService {
         return existing;
     }
 
-    private String fingerprintPaymentRequest(
-            UUID applicationId,
-            UUID targetInstallmentId,
-            BigDecimal amount,
-            LocalDate postedAt,
-            String reference,
-            LoanPaymentChannel channel
+    /**
+     * Receipts written before request fingerprints were stored carry none, so their payload is
+     * compared field by field instead; the request is already normalized the way the receipt was.
+     */
+    private static boolean matchesReceiptFields(
+            LoanPaymentTransaction existing,
+            PaymentIdempotencyFingerprint paymentRequest
     ) {
-        return IdempotencyFingerprinter.fingerprint(
-                objectMapper,
-                new PaymentIdempotencyFingerprint(
-                        applicationId,
-                        targetInstallmentId,
-                        loanServicingSupportService.scaleCurrency(amount),
-                        postedAt,
-                        loanServicingSupportService.normalizeReference(reference),
-                        channel
-                )
-        );
+        LoanRepaymentScheduleInstallment installment = existing.getRepaymentInstallment();
+        return installment != null
+                && installment.getId().equals(paymentRequest.targetInstallmentId())
+                && existing.getAmount().compareTo(paymentRequest.amount()) == 0
+                && existing.getPaymentDate().equals(paymentRequest.postedAt())
+                && Objects.equals(existing.getReference(), paymentRequest.reference())
+                && existing.getChannel() == paymentRequest.channel();
     }
 
     private void recordPaymentAudit(
@@ -354,15 +354,15 @@ public class LoanRepaymentCommandService {
     }
 
     private static boolean isPaymentIdempotencyKeyViolation(DataIntegrityViolationException exception) {
-        Throwable cause = exception.getMostSpecificCause();
-        if (!(cause instanceof org.hibernate.exception.ConstraintViolationException constraintViolation)) {
-            return false;
+        // Hibernate's violation sits between Spring's wrapper and the driver's exception, so the
+        // most specific cause is the driver's and never carries the parsed constraint name.
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException constraintViolation) {
+                String constraintName = constraintViolation.getConstraintName();
+                return constraintName != null && constraintName.toLowerCase().replace("\"", "")
+                        .contains("uk_loan_payment_transaction_idempotency_key");
+            }
         }
-        String constraintName = constraintViolation.getConstraintName();
-        if (constraintName == null) {
-            return false;
-        }
-        return constraintName.toLowerCase().replace("\"", "")
-                .contains("uk_loan_payment_transaction_idempotency_key");
+        return false;
     }
 }
