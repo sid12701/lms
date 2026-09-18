@@ -423,8 +423,13 @@ test.describe("H22 cookie transport (real Set-Cookie jar)", () => {
 
         await release(harness.url, "login");
         // A's HTTP exchange succeeds but its owning intent is superseded by
-        // B's later advance, so A fails stale and never publishes.
-        await expect(loginAP).resolves.toMatch(/^rejected:/);
+        // B's later advance, so A fails stale and never publishes. Assert the
+        // designed stale-loser outcome (not just any rejection): it proves A's
+        // held exchange completed against a live peer and settled its marker,
+        // which is what makes B's queued success below deterministic. If A's
+        // exchange died instead (loaded-runner tab/connection loss), B must
+        // fail closed on the orphan — and this line, not B's, reports it.
+        await expect(loginAP).resolves.toMatch(/AuthStaleResultError/);
         const bResult = await loginBP;
         expect(bResult).toContain("aaaaaaaa-cccc-4aaa-8aaa-aaaaaaaaaaaa");
 
