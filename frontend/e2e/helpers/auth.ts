@@ -22,9 +22,10 @@ export async function signInWithCredentials(
   await page.getByLabel(/^Password$/i).fill(password);
   await page.getByRole("button", { name: /^Sign in$/i }).click();
   await page.waitForURL(landingUrl, { timeout: 30_000 });
-  await expect(page.getByRole("complementary", { name: /Primary navigation/i })).toBeVisible({
-    timeout: 15_000,
-  });
+  // The desktop sidebar is intentionally absent at mobile/tablet widths.
+  // The protected AppShell main landmark is the breakpoint-independent
+  // signal that authentication and route rendering both completed.
+  await expect(page.getByRole("main")).toBeVisible({ timeout: 15_000 });
 }
 
 /** Sign in as the bootstrap system administrator. Requires E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD. */

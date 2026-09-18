@@ -42,7 +42,9 @@ async function openScheduleForRepayableLoan(page: Page): Promise<void> {
     .filter({ hasText: /Disbursed|Under repayment/i })
     .first();
   await expect(repayableRow).toBeVisible({ timeout: 15_000 });
-  await repayableRow.getByRole("link").first().click();
+  // Interactive entity rows retain table row semantics; the row itself is
+  // the accessible click/Enter target and no longer contains a detail link.
+  await repayableRow.click();
 
   await expect(page.getByText(/LOAN APPLICATION ·/i).first()).toBeVisible({ timeout: 15_000 });
   await page.getByRole("tab", { name: /Schedule/i }).click();
