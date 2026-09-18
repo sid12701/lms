@@ -7,9 +7,15 @@ import com.bhawana.lms.tenant.TenantScopedExecution;
 import java.util.Map;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+// This runner is the only app_role provisioner — no Flyway migration inserts role rows.
+// ApplicationRunner execution order is bean-registration order unless declared, which varies
+// across packaged-jar builds, so seeders that resolve roles (the demo portfolio under
+// LocalBootstrapAdminSyncService) could hit an empty catalog and die with ROLE_UNAVAILABLE.
 @Component
+@Order(0)
 public class RoleBootstrapService implements ApplicationRunner {
 
     private static final Map<RoleCode, String> DEFAULT_ROLES = Map.of(
