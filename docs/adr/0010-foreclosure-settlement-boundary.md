@@ -1,4 +1,4 @@
-# ADR 0009 — Foreclosure settlement boundary
+# ADR 0010 — Foreclosure settlement boundary
 
 - **Status:** Accepted (2026-09-18)
 - **Source:** Consolidated audit `docs/audits/lms-consolidated-audit-and-fix-specs-2026-09-06.md` — C05 (stale quotes and excess settlement), H09 (foreclosure reallocates earlier receipts), shared contract B (financial settlement boundary)

@@ -86,7 +86,7 @@ _Avoid_: quote version, revision (the display version is not evidence of freshne
 The single receipt that redeems a quote, recorded for the quoted amount and linked to that quote. One quote backs at most one settlement receipt, enforced in the database. It carries the fingerprint of the execution request, so re-executing an executed quote with the same request returns the original settlement and any other request is `IDEMPOTENCY_CONFLICT`. It is allocated across the installments still unpaid; it never re-targets earlier receipts, which keep the installments they were recorded against.
 _Avoid_: foreclosure payment, closure payment
 
-**Settlement boundary (C05/H09, 2026-09-18):** See [ADR 0009](docs/adr/0009-foreclosure-settlement-boundary.md). Lock order for foreclosure commands is application → account → installments (installment-number order) → quote.
+**Settlement boundary (C05/H09, 2026-09-18):** See [ADR 0010](docs/adr/0010-foreclosure-settlement-boundary.md). Lock order for foreclosure commands is application → account → installments (installment-number order) → quote.
 
 ## Example dialogue
 
