@@ -12,8 +12,9 @@
  *   request of that slot ("refresh" | "logout" | "login"). The request's
  *   RESPONSE HEADERS are withheld until `POST /__harness/release {slot}`.
  * - `GET /__harness/milestones` returns server-observed request ARRIVALS
- *   (proving what was/wasn't sent and when) and RESPONSES (proving header
- *   order). Ordering proof comes from these timestamps, not client sleeps.
+ *   (proving what was/wasn't sent and when), RESPONSES (proving header
+ *   order), and PEERGONE (peer teardowns observed while a hold was consumed).
+ *   Ordering proof comes from these timestamps, not client sleeps.
  */
 import http from "node:http";
 import fs from "node:fs";
@@ -37,6 +38,11 @@ export interface HarnessResponse {
   at: string;
   setCookie: string | null;
   status: number;
+}
+
+export interface HarnessPeerGone {
+  type: HarnessSlot;
+  at: string;
 }
 
 export interface HarnessUser {
@@ -87,6 +93,8 @@ export interface HarnessState {
   tokens: Map<string, HarnessUser>;
   arrivals: HarnessArrival[];
   responses: HarnessResponse[];
+  /** Peer teardowns observed while a one-shot hold withheld the response. */
+  peerGone: HarnessPeerGone[];
   /** Armed one-shot holds per slot (consumed by the next request). */
   armed: Record<HarnessSlot, number>;
   /** Waiters blocked on a consumed header hold, per slot. */
@@ -105,6 +113,7 @@ export function createHarnessState(): HarnessState {
     tokens: new Map(),
     arrivals: [],
     responses: [],
+    peerGone: [],
     armed: { refresh: 0, logout: 0, login: 0 },
     waiters: { refresh: [], logout: [], login: [] },
     bodyArmed: { refresh: 0, logout: 0, login: 0 },
@@ -172,12 +181,29 @@ export async function startH22Harness(port = 0): Promise<{
   const state = createHarnessState();
   let vite: ViteDevServer | null = null;
 
-  /** Withhold response headers while a one-shot hold armed for slot is consumed. */
-  async function gateFor(slot: HarnessSlot): Promise<void> {
+  /** Withhold response headers while a one-shot hold armed for slot is consumed.
+   * While held, a peer teardown is recorded as a `peerGone` milestone on the
+   * request socket — the same `socket.destroyed` predicate `clientGone` checks
+   * after release — so tests can wait for the teardown BEFORE releasing instead
+   * of racing it. */
+  async function gateFor(slot: HarnessSlot, req: http.IncomingMessage): Promise<void> {
     if (state.armed[slot] === 0) return;
     state.armed[slot] -= 1;
+    const socket = req.socket;
+    const recordPeerGone = (): void => {
+      state.peerGone.push({ type: slot, at: new Date().toISOString() });
+    };
+    if (socket.destroyed) {
+      // Teardown already propagated before the hold was consumed.
+      recordPeerGone();
+    } else {
+      socket.once("close", recordPeerGone);
+    }
     await new Promise<void>((resolve) => {
-      state.waiters[slot].push(resolve);
+      state.waiters[slot].push(() => {
+        socket.removeListener("close", recordPeerGone);
+        resolve();
+      });
     });
   }
 
@@ -236,7 +262,7 @@ export async function startH22Harness(port = 0): Promise<{
     if (req.method === "POST" && url.pathname === "/api/v1/auth/refresh") {
       await readBody(req);
       state.arrivals.push({ type: "refresh", at: new Date().toISOString(), receivedCookie });
-      await gateFor("refresh");
+      await gateFor("refresh", req);
       if (clientGone(req, res)) return;
       if (state.refreshMode === "rotated") {
         state.responses.push({
@@ -289,7 +315,7 @@ export async function startH22Harness(port = 0): Promise<{
     if (req.method === "POST" && url.pathname === "/api/v1/auth/logout") {
       await readBody(req);
       state.arrivals.push({ type: "logout", at: new Date().toISOString(), receivedCookie });
-      await gateFor("logout");
+      await gateFor("logout", req);
       if (clientGone(req, res)) return;
       const setCookie = `lms-refresh=; Path=/api/v1/auth; Max-Age=0; HttpOnly; SameSite=Strict`;
       state.responses.push({
@@ -306,7 +332,7 @@ export async function startH22Harness(port = 0): Promise<{
     if (req.method === "POST" && url.pathname === "/api/v1/auth/login") {
       const raw = await readBody(req);
       state.arrivals.push({ type: "login", at: new Date().toISOString(), receivedCookie });
-      await gateFor("login");
+      await gateFor("login", req);
       if (clientGone(req, res)) return;
       let email = "";
       try {
@@ -400,7 +426,11 @@ export async function startH22Harness(port = 0): Promise<{
     }
 
     if (req.method === "GET" && url.pathname === "/__harness/milestones") {
-      sendJson(res, 200, { arrivals: state.arrivals, responses: state.responses });
+      sendJson(res, 200, {
+        arrivals: state.arrivals,
+        responses: state.responses,
+        peerGone: state.peerGone,
+      });
       return;
     }
 
@@ -422,6 +452,7 @@ export async function startH22Harness(port = 0): Promise<{
       state.tokens = fresh.tokens;
       state.arrivals = fresh.arrivals;
       state.responses = fresh.responses;
+      state.peerGone = fresh.peerGone;
       state.armed = fresh.armed;
       state.waiters = fresh.waiters;
       state.bodyArmed = fresh.bodyArmed;
