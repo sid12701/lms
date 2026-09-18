@@ -38,6 +38,9 @@ const LSP_BOUND_VIOLATION_LABELS: Record<string, string> = {
   SCHEDULE_GENERIC: "Schedule validation failed",
   // ForeclosureViolationType (backend: com.bhawana.lms.service.ForeclosureViolationType)
   QUOTE_NOT_ACTIVE: "Foreclosure quote not active",
+  FORECLOSURE_QUOTE_STALE: "Foreclosure quote stale",
+  FORECLOSURE_QUOTE_DATE_INVALID: "Foreclosure quote date invalid",
+  IDEMPOTENCY_CONFLICT: "Foreclosure already executed by a different request",
   QUOTE_OWNERSHIP_MISMATCH: "Foreclosure quote ownership mismatch",
   SETTLEMENT_DATE_MISMATCH: "Settlement date mismatch",
   LOAN_ACCOUNT_NOT_DISBURSED: "Loan account not disbursed",

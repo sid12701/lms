@@ -29,6 +29,20 @@ public interface LoanRepaymentScheduleInstallmentRepository extends JpaRepositor
     @Query("select i from LoanRepaymentScheduleInstallment i where i.id = :id")
     Optional<LoanRepaymentScheduleInstallment> findByIdForUpdate(@Param("id") UUID id);
 
+    /**
+     * The whole schedule locked in installment-number order, so settlement commands acquire the
+     * rows in one stable order and read balances no concurrent receipt can still change.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select i from LoanRepaymentScheduleInstallment i
+            where i.loanAccount.id = :loanAccountId
+            order by i.installmentNumber asc
+            """)
+    List<LoanRepaymentScheduleInstallment> findByLoanAccountIdForUpdateOrderByInstallmentNumberAsc(
+            @Param("loanAccountId") UUID loanAccountId
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @EntityGraph(attributePaths = "loanAccount")
     @Query("select i from LoanRepaymentScheduleInstallment i where i.loanAccount.id = :loanAccountId and i.installmentNumber = :installmentNumber")

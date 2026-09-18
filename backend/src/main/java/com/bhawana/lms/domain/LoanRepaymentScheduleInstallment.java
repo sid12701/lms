@@ -184,14 +184,6 @@ public class LoanRepaymentScheduleInstallment {
         return entityVersion;
     }
 
-    public void resetAllocation() {
-        this.status = LoanRepaymentScheduleInstallmentStatus.PENDING;
-        this.paidPrincipal = BigDecimal.ZERO.setScale(2);
-        this.paidInterest = BigDecimal.ZERO.setScale(2);
-        this.paidAmount = BigDecimal.ZERO.setScale(2);
-        this.outstandingAmount = installmentAmount;
-    }
-
     public BigDecimal applyPayment(BigDecimal amount) {
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO.setScale(2);

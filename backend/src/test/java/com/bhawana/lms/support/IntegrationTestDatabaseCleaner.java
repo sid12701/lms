@@ -198,8 +198,9 @@ public class IntegrationTestDatabaseCleaner {
         disbursementOutcomeAuditRepository.deleteAllInBatch();
         loanDisbursementBankMismatchLogRepository.deleteAllInBatch();
         borrowerBankDetailsUpdateAuditRepository.deleteAllInBatch();
-        loanForeclosureQuoteRepository.deleteAllInBatch();
+        // Settlement receipts reference their foreclosure quote (V130): receipts first.
         loanPaymentTransactionRepository.deleteAllInBatch();
+        loanForeclosureQuoteRepository.deleteAllInBatch();
         loanDisbursementRequestLogRepository.deleteAllInBatch();
         disbursementIntentRepository.deleteAllInBatch();
         loanRepaymentScheduleInstallmentRepository.deleteAllInBatch();
