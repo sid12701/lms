@@ -50,12 +50,14 @@ Skip fixture seeding (suite continues; Phase 8 skips):
 |----------|---------|
 | `E2E_ADMIN_EMAIL` | Admin login + globalSetup fixture seed |
 | `E2E_ADMIN_PASSWORD` | Admin login + globalSetup fixture seed |
+| `E2E_ADMIN_INITIAL_PASSWORD` | Optional one-time admin password rotated by globalSetup |
 | `E2E_API_BASE` | globalSetup API calls (default `http://localhost:8080`) |
 | `E2E_SKIP_FIXTURES` | When `true`, skip API fixture seed entirely |
 | `E2E_APPLICATION_ID` | Optional override; otherwise read from `e2e-fixtures.json` |
 | `E2E_EC111_APPLICATION_ID` | Optional EC-111 disbursed fixture override |
 | `E2E_LSP_UI_READ_EMAIL` | LSP UI read flows (optional until those specs run) |
 | `E2E_LSP_PASSWORD` | LSP UI read flows |
+| `E2E_LSP_INITIAL_PASSWORD` | Optional one-time LSP password rotated by globalSetup |
 
 Missing admin credentials fail fast inside specs that sign in (not dozens of cascading selector failures).
 

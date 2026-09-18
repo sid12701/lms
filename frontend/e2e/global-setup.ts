@@ -2,7 +2,7 @@ import type { FullConfig } from "@playwright/test";
 import {
   E2E_ADMIN_STORAGE_PATH,
   buildAdminStorageState,
-  ensureAdminPasswordReady,
+  ensureBootstrapPasswordReady,
   isBackendHealthy,
   readFixturesFile,
   requiredAdminCredentials,
@@ -12,6 +12,25 @@ import {
   writeFixturesFile,
   type E2eFixturesFile,
 } from "./helpers/e2e-fixtures";
+
+async function ensureJourneyPasswordsReady(
+  apiBase: string,
+  admin: { email: string; password: string },
+): Promise<void> {
+  await ensureBootstrapPasswordReady(
+    apiBase,
+    admin.email,
+    admin.password,
+    process.env["E2E_ADMIN_INITIAL_PASSWORD"]?.trim(),
+  );
+
+  const lspEmail = process.env["E2E_LSP_UI_READ_EMAIL"]?.trim();
+  const lspPassword = process.env["E2E_LSP_PASSWORD"]?.trim();
+  const lspInitialPassword = process.env["E2E_LSP_INITIAL_PASSWORD"]?.trim();
+  if (lspEmail && lspPassword && lspInitialPassword) {
+    await ensureBootstrapPasswordReady(apiBase, lspEmail, lspPassword, lspInitialPassword);
+  }
+}
 
 function skipFixtures(reason: string): E2eFixturesFile {
   const existing = readFixturesFile();
@@ -52,12 +71,7 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     writeFixturesFile(payload);
     try {
       const { email, password } = requiredAdminCredentials();
-      await ensureAdminPasswordReady(
-        apiBase,
-        email,
-        password,
-        process.env["E2E_ADMIN_INITIAL_PASSWORD"]?.trim(),
-      );
+      await ensureJourneyPasswordsReady(apiBase, { email, password });
       await buildAdminStorageState(
         apiBase,
         frontendOrigin,
@@ -84,12 +98,7 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     return;
   }
 
-  await ensureAdminPasswordReady(
-    apiBase,
-    email,
-    password,
-    process.env["E2E_ADMIN_INITIAL_PASSWORD"]?.trim(),
-  );
+  await ensureJourneyPasswordsReady(apiBase, { email, password });
   const fixtures = await seedLoanApplicationFixture(apiBase, email, password);
   writeFixturesFile(fixtures);
   await buildAdminStorageState(apiBase, frontendOrigin, email, password, E2E_ADMIN_STORAGE_PATH);

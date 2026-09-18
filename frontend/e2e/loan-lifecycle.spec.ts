@@ -16,9 +16,12 @@ async function readNextDueOutstanding(page: Page): Promise<number> {
   const recordButton = page
     .getByRole("button", { name: /^Record payment for installment/ })
     .first();
+  const table = recordButton.locator("xpath=ancestor::table[1]");
   const row = recordButton.locator("xpath=ancestor::tr[1]");
-  const cells = row.locator("td");
-  const text = (await cells.nth(5).innerText()).trim();
+  const outstandingColumnIndex = await table
+    .getByRole("columnheader", { name: "Outstanding", exact: true })
+    .evaluate((cell) => (cell as HTMLTableCellElement).cellIndex);
+  const text = (await row.getByRole("cell").nth(outstandingColumnIndex).innerText()).trim();
   return parseInr(text);
 }
 

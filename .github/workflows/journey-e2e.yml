@@ -71,7 +71,7 @@ jobs:
       E2E_ADMIN_INITIAL_PASSWORD: ChangeMe123!
       E2E_ADMIN_PASSWORD: JourneyAdmin456!
       E2E_LSP_UI_READ_EMAIL: lsp.read1@supaone.local
-      E2E_LSP_PASSWORD: DemoPass123!
+      E2E_LSP_INITIAL_PASSWORD: DemoPass123!
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -128,6 +128,10 @@ jobs:
       # a green run over zero executed journeys.
       - name: Run stable backend-connected journeys
         working-directory: frontend
+        env:
+          # Both are ephemeral seeded CI users; reuse the established stable
+          # credential at runtime instead of adding another password literal.
+          E2E_LSP_PASSWORD: ${{ env.E2E_ADMIN_PASSWORD }}
         run: >-
           npm run e2e --
           e2e/canary.spec.ts

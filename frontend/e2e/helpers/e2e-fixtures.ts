@@ -227,7 +227,7 @@ export async function adminLogin(
  * fallback makes reruns idempotent when the database already has the changed
  * password.
  */
-export async function ensureAdminPasswordReady(
+export async function ensureBootstrapPasswordReady(
   apiBase: string,
   email: string,
   password: string,
@@ -243,7 +243,7 @@ export async function ensureAdminPasswordReady(
       throw initialError;
     });
     if (currentLogin.passwordChangeRequired) {
-      throw new Error("The configured E2E admin password still requires rotation.");
+      throw new Error(`The configured E2E password for ${email} still requires rotation.`);
     }
     return;
   }
@@ -251,7 +251,7 @@ export async function ensureAdminPasswordReady(
   if (initialPassword === password) {
     if (initialLogin.passwordChangeRequired) {
       throw new Error(
-        "E2E_ADMIN_PASSWORD must differ from E2E_ADMIN_INITIAL_PASSWORD for bootstrap rotation.",
+        `The stable E2E password for ${email} must differ from its initial password.`,
       );
     }
     return;
@@ -262,7 +262,7 @@ export async function ensureAdminPasswordReady(
     headers: authHeaders(initialLogin.accessToken),
     body: JSON.stringify({ newPassword: password }),
   });
-  await parseJson<{ accessToken: string }>(changeRes, "Rotate bootstrap admin password");
+  await parseJson<{ accessToken: string }>(changeRes, `Rotate bootstrap password for ${email}`);
 }
 
 export async function buildAdminStorageState(
