@@ -17,11 +17,16 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+// Ordered after LocalBootstrapAdminSyncService: when the demo portfolio seed is also enabled,
+// its reset truncates lsp/loan_product on a cold boot — running earlier would discard these
+// rows before the application ever reported ready.
 @Component
 @Profile({"local", "test"})
 @ConditionalOnProperty(prefix = "app.seed.sample-data", name = "enabled", havingValue = "true")
+@Order(20)
 public class SampleCatalogSeedService implements ApplicationRunner {
 
     private static final List<SampleLsp> SAMPLE_LSPS = List.of(

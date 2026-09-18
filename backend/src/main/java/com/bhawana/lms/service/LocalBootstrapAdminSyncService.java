@@ -19,6 +19,7 @@ import java.util.Set;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -36,7 +37,14 @@ import org.springframework.util.StringUtils;
 // startup reset boolean. Recovery after deletion requires another active SYSTEM_ADMIN: the
 // sync route re-checks actor liveness instead of trusting a cached snapshot, so a deleted
 // subject cannot restore itself (not even inside the principal-cache staleness bound).
+//
+// Ordered after RoleBootstrapService: ensureRolesExist below only provisions the bootstrap
+// user's configured roles, while the demo portfolio seeds users across the whole catalog via
+// UserAdminService.createUser, which rejects codes missing from app_role. It must also precede
+// SampleCatalogSeedService — the demo reset truncates lsp/loan_product, so a sample catalog
+// seeded earlier on a cold boot would be silently discarded.
 @Component
+@Order(10)
 public class LocalBootstrapAdminSyncService implements ApplicationRunner {
 
     private static final Map<RoleCode, String> DEFAULT_ROLE_DESCRIPTIONS = Map.of(
