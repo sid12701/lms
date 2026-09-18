@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -63,6 +64,28 @@ public class LoanServicingSupportService {
     @Transactional(readOnly = true)
     public LoanAccount getRequiredLoanAccount(UUID applicationId) {
         return loanAccountRepository.findDetailedByLoanApplication_Id(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Loan account is not available for application id: " + applicationId
+                ));
+    }
+
+    /**
+     * Shared loan-command lock order (application → account), taken before any balance is read so
+     * that every writer on one loan is serialized. Installment rows are locked after this pair, and
+     * no command may acquire an earlier lock once it holds a later one.
+     *
+     * <p>Locking the account is what keeps a decision over the whole schedule — closure above all —
+     * from being made on a view another writer is about to invalidate. Locking the application is
+     * what keeps a payment from losing a version clash against any other command writing it.
+     *
+     * <p>Requires the caller's transaction: row locks taken in a transaction of their own would be
+     * released before the balances they are meant to protect are read.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public LoanAccount lockLoanForUpdate(UUID applicationId) {
+        loanApplicationRepository.findByIdForUpdate(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown loan application id: " + applicationId));
+        return loanAccountRepository.findByLoanApplication_IdForUpdate(applicationId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Loan account is not available for application id: " + applicationId
                 ));
