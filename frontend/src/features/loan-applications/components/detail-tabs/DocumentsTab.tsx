@@ -18,7 +18,7 @@ import { DocumentChecklistGroup, DocumentPreviewModal } from "@/components/app/d
 import { ApiError, requestBlob } from "@/lib/api/http-client";
 import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { DOCUMENT_KIND_LABELS, type Document } from "@/schemas/document";
-import type { LoanStatus } from "@/types";
+import type { LoanStatusOrUnknown } from "@/lib/loan-application-status";
 import type { LoanDocument, LoanDocumentType } from "@/types";
 import { useLoanApplicationDocuments } from "../../hooks/useLoanApplicationDocuments";
 import { adaptLoanDocumentToDocument } from "./document-adapter";
@@ -43,7 +43,7 @@ export interface DocumentsTabProps {
    * Loan lifecycle status, so the checklist can stop describing a gate the loan
    * has already passed. Optional for callers that do not have it to hand.
    */
-  loanStatus?: LoanStatus;
+  loanStatus?: LoanStatusOrUnknown;
 }
 
 function filenameFromPathLike(value: string | null | undefined): string | null {

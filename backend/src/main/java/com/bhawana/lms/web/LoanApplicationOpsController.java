@@ -122,28 +122,36 @@ public class LoanApplicationOpsController {
     public ResponseEntity<List<LoanApplicationResponse>> listApplications(
             @RequestParam(required = false) UUID lspId,
             @RequestParam(required = false) UUID productId,
-            @RequestParam(required = false) String status,
+            @RequestParam(required = false, name = "status") List<String> statuses,
             @RequestParam(required = false) String sourceChannel,
             @RequestParam(required = false, name = "q") String query,
             @RequestParam(required = false) String lspLoanId,
             @RequestParam(required = false) String bhawLoanId,
             @RequestParam(required = false) LocalDate disbursalDateFrom,
             @RequestParam(required = false) LocalDate disbursalDateTo,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDir,
             @RequestParam(required = false) @Min(0) Integer offset,
             @RequestParam(required = false) @Min(1) @Max(200) Integer limit,
             @RequestParam(required = false) String paginationDetails
     ) {
         boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
-        PagedResult<LoanApplication> applicationsPage = loanApplicationQueryService.listApplicationsPage(
+        // H29 — every selected status filters with OR semantics and the sort
+        // choice is applied by the server before pagination; unknown
+        // statuses/sorts fail with a clear 422 rather than silently
+        // narrowing or misordering the page.
+        PagedResult<LoanApplication> applicationsPage = loanApplicationQueryService.listApplicationsPageStrict(
                 lspId,
                 productId,
-                status,
+                statuses,
                 sourceChannel,
                 query,
                 lspLoanId,
                 bhawLoanId,
                 disbursalDateFrom,
                 disbursalDateTo,
+                sortBy,
+                sortDir,
                 offset,
                 limit,
                 includePaginationDetails

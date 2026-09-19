@@ -3862,13 +3862,15 @@ export interface operations {
       query?: {
         lspId?: string;
         productId?: string;
-        status?: string;
+        status?: string[];
         sourceChannel?: string;
         q?: string;
         lspLoanId?: string;
         bhawLoanId?: string;
         disbursalDateFrom?: string;
         disbursalDateTo?: string;
+        sortBy?: string;
+        sortDir?: string;
         offset?: number;
         limit?: number;
         paginationDetails?: string;
@@ -5549,6 +5551,9 @@ export interface operations {
     parameters: {
       query?: {
         status?: "NEW" | "ACKNOWLEDGED";
+        severity?: string[];
+        subjectType?: string;
+        q?: string;
         offset?: number;
         limit?: number;
         paginationDetails?: string;

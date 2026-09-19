@@ -6,8 +6,8 @@
  * acknowledge endpoint accepts an optional `note` (max 500 chars) and
  * round-trips it on the response.
  */
-import { requestJson, buildQueryPath } from "@/lib/api/http-client";
-import { paginate } from "@/lib/pagination";
+import { requestJson, requestJsonWithHeaders, buildQueryPath } from "@/lib/api/http-client";
+import { readPaginationHeaders } from "@/lib/api/pagination-headers";
 import type {
   AlertRow,
   AlertRuleRow,
@@ -18,22 +18,10 @@ import type {
   EscalateAlertInput,
   EscalateAlertResponse,
 } from "./types";
-import type { AlertSeverity, AlertStatus, AlertSubjectType } from "@/schemas/alert";
+import type { AlertStatus } from "@/schemas/alert";
+import { apiAlertSeverity, apiAlertSubjectType } from "@/schemas/alert";
 
 const BASE = "/api/v1/internal/alerts";
-const FALLBACK_UUID = "00000000-0000-4000-8000-000000000000";
-const FALLBACK_SUBJECT_TYPE: AlertSubjectType = "SYSTEM";
-const FALLBACK_SEVERITY: AlertSeverity = "MEDIUM";
-
-const KNOWN_SUBJECT_TYPES = new Set<AlertSubjectType>([
-  "LOAN_APPLICATION",
-  "LOAN_ACCOUNT",
-  "BORROWER",
-  "REPORT_REQUEST",
-  "SYSTEM",
-]);
-
-const KNOWN_SEVERITIES = new Set<AlertSeverity>(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
 
 function backendStatus(value: AlertStatus | undefined): string | undefined {
   if (!value) return undefined;
@@ -42,18 +30,6 @@ function backendStatus(value: AlertStatus | undefined): string | undefined {
 
 function frontendStatus(value: string): AlertStatus {
   return value === "ACKNOWLEDGED" ? "ACKNOWLEDGED" : "OPEN";
-}
-
-function frontendSubject(value: string): AlertSubjectType {
-  return KNOWN_SUBJECT_TYPES.has(value as AlertSubjectType)
-    ? (value as AlertSubjectType)
-    : FALLBACK_SUBJECT_TYPE;
-}
-
-function frontendSeverity(value: string): AlertSeverity {
-  return KNOWN_SEVERITIES.has(value as AlertSeverity)
-    ? (value as AlertSeverity)
-    : FALLBACK_SEVERITY;
 }
 
 interface BackendAlertResponse {
@@ -77,13 +53,17 @@ function toAlertRow(payload: BackendAlertResponse): AlertRow {
   return {
     id: payload.id,
     type: payload.type,
-    severity: frontendSeverity(payload.severity),
+    // H28 — unknown severities/subjects stay visible as UNKNOWN:<raw>.
+    severity: apiAlertSeverity(payload.severity),
     status: frontendStatus(payload.status),
     title: payload.title,
     message: payload.message,
-    subjectType: frontendSubject(payload.subjectType),
-    subjectId: payload.subjectId ?? "unknown",
-    correlationId: payload.correlationId || FALLBACK_UUID,
+    subjectType: apiAlertSubjectType(payload.subjectType),
+    // H28 — a null subject id means "no subject", not a subject literally
+    // called "unknown"; a missing correlation id stays missing, never a
+    // fabricated zero UUID.
+    subjectId: payload.subjectId ?? null,
+    correlationId: payload.correlationId?.trim() ? payload.correlationId : null,
     contextJson: payload.contextJson ?? undefined,
     createdAt: payload.createdAt,
     acknowledgedAt: payload.acknowledgedAt,
@@ -93,32 +73,34 @@ function toAlertRow(payload: BackendAlertResponse): AlertRow {
   };
 }
 
+/**
+ * H30 — the inbox is server-paginated and server-filtered. Every filter
+ * (status, severities, subject type, text) travels to the backend, which
+ * applies it to the full dataset before paginating with stable ordering; the
+ * total comes from the pagination headers. Filtering/paginating only the
+ * first fetched page locally hid older matching alerts and understated
+ * totals, so the local path is gone.
+ */
 export async function listAlerts(filters: AlertsListFilters = {}): Promise<AlertsListResponse> {
+  const pageSize = filters.pageSize ?? 25;
+  const page = filters.page ?? 0;
   const path = buildQueryPath(BASE, {
     status: backendStatus(filters.status),
+    severity: filters.severity && filters.severity.length > 0 ? [...filters.severity] : undefined,
+    subjectType: filters.subjectType,
+    q: filters.q,
+    offset: page * pageSize,
+    limit: pageSize,
+    paginationDetails: "ON",
   });
-  const all = await requestJson<BackendAlertResponse[]>(path);
-  const selectedSeverities = new Set(filters.severity ?? []);
-  const filtered = all.filter((row) => {
-    if (selectedSeverities.size > 0) {
-      if (!selectedSeverities.has(frontendSeverity(row.severity))) return false;
-    }
-    if (filters.subjectType && frontendSubject(row.subjectType) !== filters.subjectType) {
-      return false;
-    }
-    if (filters.q) {
-      const needle = filters.q.toLowerCase();
-      if (
-        !row.title.toLowerCase().includes(needle) &&
-        !row.message.toLowerCase().includes(needle)
-      ) {
-        return false;
-      }
-    }
-    return true;
-  });
-  const result = paginate(filtered, filters);
-  return { ...result, items: result.items.map(toAlertRow) };
+  const { data, headers } = await requestJsonWithHeaders<BackendAlertResponse[]>(path);
+  const pagination = readPaginationHeaders(headers);
+  return {
+    items: data.map(toAlertRow),
+    total: pagination.totalCount ?? data.length,
+    page,
+    pageSize,
+  };
 }
 
 export async function acknowledgeAlert(

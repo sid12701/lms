@@ -10,11 +10,24 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public class LoanApplicationReadRepository {
+
+    /**
+     * H29 — sortable columns the ops triage list may order by. Anything else
+     * is rejected by the query service before it reaches JPQL, so the order
+     * clause below is never built from raw request input.
+     */
+    public static final Set<String> ALLOWED_SORT_FIELDS = Set.of(
+            "createdAt",
+            "updatedAt",
+            "requestedAmount",
+            "status"
+    );
 
     private final EntityManager entityManager;
 
@@ -92,6 +105,49 @@ public class LoanApplicationReadRepository {
             int limit,
             boolean includePaginationDetails
     ) {
+        return findApplications(
+                lspId,
+                productId,
+                status == null ? Set.of() : Set.of(status),
+                sourceChannel,
+                queryText,
+                queryApplicationId,
+                lspLoanIdText,
+                bhawLoanIdText,
+                disbursalDateFrom,
+                disbursalDateTo,
+                "createdAt",
+                true,
+                paginationRequested,
+                offset,
+                limit,
+                includePaginationDetails
+        );
+    }
+
+    /**
+     * H29 — multi-status (OR) + validated server sort. Every selected status
+     * filters with OR semantics, and ordering applies a stable id tie-breaker
+     * before pagination so rows cannot slip between pages.
+     */
+    public PagedResult<LoanApplication> findApplications(
+            UUID lspId,
+            UUID productId,
+            Set<LoanApplicationStatus> statuses,
+            String sourceChannel,
+            String queryText,
+            UUID queryApplicationId,
+            String lspLoanIdText,
+            String bhawLoanIdText,
+            Instant disbursalDateFrom,
+            Instant disbursalDateTo,
+            String sortBy,
+            boolean sortDescending,
+            boolean paginationRequested,
+            int offset,
+            int limit,
+            boolean includePaginationDetails
+    ) {
         StringBuilder filters = new StringBuilder();
         Map<String, Object> parameters = new LinkedHashMap<>();
         appendFilters(
@@ -99,7 +155,7 @@ public class LoanApplicationReadRepository {
                 parameters,
                 lspId,
                 productId,
-                status,
+                statuses,
                 sourceChannel,
                 queryText,
                 queryApplicationId,
@@ -123,7 +179,7 @@ public class LoanApplicationReadRepository {
                 """ + accountJoin + """
                 where 1 = 1
                 """ + filters + """
-                 order by application.createdAt desc
+                """ + orderClause(sortBy, sortDescending) + """
                 """;
 
         TypedQuery<LoanApplication> query = entityManager.createQuery(selectJpql, LoanApplication.class);
@@ -140,6 +196,14 @@ public class LoanApplicationReadRepository {
         int pageOffset = paginationRequested ? offset : 0;
         int pageLimit = paginationRequested ? limit : applications.size();
         return new PagedResult<>(applications, totalCount, pageOffset, pageLimit);
+    }
+
+    private static String orderClause(String sortBy, boolean sortDescending) {
+        String field = ALLOWED_SORT_FIELDS.contains(sortBy) ? sortBy : "createdAt";
+        String direction = sortDescending ? "desc" : "asc";
+        // Stable id tie-breaker before pagination: rows sharing the primary
+        // key cannot drift between pages across requests.
+        return " order by application." + field + " " + direction + ", application.id asc\n";
     }
 
     private long countApplications(String filters, Map<String, Object> parameters) {
@@ -170,7 +234,7 @@ public class LoanApplicationReadRepository {
             Map<String, Object> parameters,
             UUID lspId,
             UUID productId,
-            LoanApplicationStatus status,
+            Set<LoanApplicationStatus> statuses,
             String sourceChannel,
             String queryText,
             UUID queryApplicationId,
@@ -187,9 +251,9 @@ public class LoanApplicationReadRepository {
             jpql.append(" and product.id = :productId");
             parameters.put("productId", productId);
         }
-        if (status != null) {
-            jpql.append(" and application.status = :status");
-            parameters.put("status", status);
+        if (statuses != null && !statuses.isEmpty()) {
+            jpql.append(" and application.status in :statuses");
+            parameters.put("statuses", statuses);
         }
         if (sourceChannel != null) {
             jpql.append(" and upper(application.sourceChannel) = :sourceChannel");

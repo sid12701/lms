@@ -1,9 +1,10 @@
 import { lazy, Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { DelinquencyBucket } from "@/schemas/loan-account";
+import type { DpdBucketSummary } from "../types";
 
 export interface DpdChartDatum {
-  bucket: DelinquencyBucket;
+  /** H28 — includes the explicit "UNKNOWN" bucket for unrecognized wire values. */
+  bucket: DpdBucketSummary["bucket"];
   label: string;
   count: number;
   fill: string;

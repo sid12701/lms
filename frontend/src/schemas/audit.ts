@@ -14,8 +14,12 @@ import { LoanStatus } from "./loan-application";
 export const ApplicationAuditEvent = z.object({
   id: Uuid,
   applicationId: Uuid,
-  fromStatus: LoanStatus.nullable(),
-  toStatus: LoanStatus,
+  /**
+   * H28 — unknown wire statuses are preserved as `UNKNOWN:<raw>` (rendered as
+   * Unknown by the timeline), never folded into a canonical lifecycle state.
+   */
+  fromStatus: z.union([LoanStatus, z.string().regex(/^UNKNOWN:/u)]).nullable(),
+  toStatus: z.union([LoanStatus, z.string().regex(/^UNKNOWN:/u)]),
   /** Verb that produced the transition (e.g. "submit-for-review"). */
   action: z.string().min(1).max(80),
   actorId: Uuid,

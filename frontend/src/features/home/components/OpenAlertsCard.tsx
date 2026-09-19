@@ -8,7 +8,7 @@ import { alertSubjectTypeLabel, humanizeAlertTitle } from "@/lib/alert-display";
 import { resolveAlertSubjectHref } from "@/lib/alert-links";
 import { shortId } from "@/lib/short-id";
 import { cn } from "@/lib/utils";
-import type { AlertSeverity } from "@/schemas/alert";
+import { unknownAlertValueLabel, type AlertSeverity } from "@/schemas/alert";
 import type { HomeAlertSummary } from "../types";
 import type { OpenAlertsSeverityToken } from "./openAlertsSeverity";
 
@@ -56,12 +56,34 @@ const SEVERITY_META: Record<AlertSeverity, SeverityMeta> = {
   },
 };
 
+/**
+ * H28 — an unrecognized severity renders with the neutral token and an
+ * explicit Unknown label, never as Medium.
+ */
+function severityMetaFor(severity: HomeAlertSummary["severity"]): SeverityMeta {
+  const known = (SEVERITY_META as Partial<Record<string, SeverityMeta>>)[severity];
+  if (known) return known;
+  const raw = severity.startsWith("UNKNOWN:") ? severity.slice("UNKNOWN:".length) : severity;
+  return {
+    icon: Info,
+    token: "neutral",
+    label: unknownAlertValueLabel(raw),
+    classes: "border-border bg-surface-muted text-foreground-muted",
+    iconClass: "text-foreground-muted",
+  };
+}
+
 function AlertSubjectLink({ alert }: { alert: HomeAlertSummary }) {
   const subjectLabel = alertSubjectTypeLabel(alert.subjectType);
   const href = resolveAlertSubjectHref(alert.subjectType, alert.subjectId, alert.id);
-  const displayId = shortId(alert.subjectId);
+  const displayId = alert.subjectId ? shortId(alert.subjectId) : null;
 
-  if (alert.subjectType === "LOAN_APPLICATION" || alert.subjectType === "BORROWER") {
+  // H28 — without a subject id there is nothing to link to: render the label
+  // without inventing a destination.
+  if (
+    displayId != null &&
+    (alert.subjectType === "LOAN_APPLICATION" || alert.subjectType === "BORROWER")
+  ) {
     return (
       <Link to={href} className="text-info hover:underline">
         {subjectLabel} · {displayId}
@@ -71,7 +93,13 @@ function AlertSubjectLink({ alert }: { alert: HomeAlertSummary }) {
 
   return (
     <span>
-      {subjectLabel} · <span className="font-mono">{displayId}</span>
+      {subjectLabel}
+      {displayId != null ? (
+        <>
+          {" "}
+          · <span className="font-mono">{displayId}</span>
+        </>
+      ) : null}
     </span>
   );
 }
@@ -89,7 +117,7 @@ export const OpenAlertsCard = forwardRef<HTMLDivElement, OpenAlertsCardProps>(
           ) : (
             <ul className="flex flex-col gap-2" data-slot="open-alerts-list">
               {alerts.map((alert) => {
-                const meta = SEVERITY_META[alert.severity];
+                const meta = severityMetaFor(alert.severity);
                 const Icon = meta.icon;
                 return (
                   <li

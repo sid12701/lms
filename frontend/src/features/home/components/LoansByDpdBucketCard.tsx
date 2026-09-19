@@ -4,7 +4,6 @@ import { StatBreakdownCardFrame } from "./StatBreakdownCardFrame";
 import { delinquencyBucketShortLabel } from "@/lib/delinquency-display";
 import { prefersReducedMotion } from "@/lib/prefers-reduced-motion";
 import { ChartSkeleton } from "@/components/app/feedback/Skeletons";
-import type { DelinquencyBucket } from "@/schemas/loan-account";
 import type { DpdBucketSummary } from "../types";
 import { DpdBucketChart, type DpdChartDatum } from "./DpdBucketChart";
 
@@ -14,12 +13,14 @@ interface LoansByDpdBucketCardProps {
   className?: string;
 }
 
-const BUCKET_FILL: Record<DelinquencyBucket, string> = {
+const BUCKET_FILL: Record<DpdBucketSummary["bucket"], string> = {
   B0: "var(--color-success)",
   B1_30: "var(--color-info)",
   B31_60: "var(--color-warning)",
   B61_90: "color-mix(in srgb, var(--color-warning) 72%, var(--color-danger))",
   B90_PLUS: "var(--color-danger)",
+  // H28 — unclassified loans render in neutral, never in Current's green.
+  UNKNOWN: "var(--color-foreground-muted)",
 };
 
 /**
