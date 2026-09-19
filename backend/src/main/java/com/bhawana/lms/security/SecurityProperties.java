@@ -26,6 +26,9 @@ public class SecurityProperties {
     @Valid
     private final EntraMachineIdentity entraMachineIdentity = new EntraMachineIdentity();
 
+    @Valid
+    private final Cors cors = new Cors();
+
     public BootstrapUser getBootstrapUser() {
         return bootstrapUser;
     }
@@ -36,6 +39,10 @@ public class SecurityProperties {
 
     public EntraMachineIdentity getEntraMachineIdentity() {
         return entraMachineIdentity;
+    }
+
+    public Cors getCors() {
+        return cors;
     }
 
     public static class BootstrapUser {
@@ -410,6 +417,43 @@ public class SecurityProperties {
             public void setRevokedAt(Instant revokedAt) {
                 this.revokedAt = revokedAt;
             }
+        }
+    }
+
+    /**
+     * Credentialed cross-origin browser allowlist for the separately hosted SPA.
+     *
+     * <p>Bound from {@code app.security.cors.allowed-origins} (env
+     * {@code APP_SECURITY_CORS_ALLOWED_ORIGINS}, comma separated). No code defaults: an
+     * empty list fails closed — every cross-origin browser call is denied — which is the
+     * correct posture for a deployment that never configured an SPA origin. Local
+     * dev-server origins live only in {@code application-local.yml}; real deployments set
+     * the env var explicitly. Wildcard origins are rejected where the CORS source is built
+     * ({@code SecurityFilterChainConfig}) because {@code allowCredentials=true} requires
+     * explicit origins. See {@code docs/spa-deployment-contract.md}.
+     */
+    public static class Cors {
+
+        private List<String> allowedOrigins = new ArrayList<>();
+
+        public List<String> getAllowedOrigins() {
+            return allowedOrigins;
+        }
+
+        public void setAllowedOrigins(List<String> allowedOrigins) {
+            if (allowedOrigins == null) {
+                this.allowedOrigins = new ArrayList<>();
+                return;
+            }
+            // Drop blank entries so an unset env placeholder binds to "no allowed origins"
+            // instead of a phantom blank origin (same convention as EdgeProperties).
+            List<String> cleaned = new ArrayList<>();
+            for (String entry : allowedOrigins) {
+                if (entry != null && !entry.isBlank()) {
+                    cleaned.add(entry.trim());
+                }
+            }
+            this.allowedOrigins = cleaned;
         }
     }
 }
