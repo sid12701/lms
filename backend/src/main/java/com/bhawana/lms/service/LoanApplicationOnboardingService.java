@@ -164,8 +164,9 @@ public class LoanApplicationOnboardingService {
         }
 
         BigDecimal scaledRequestedAmount = Money.scale(Money.requirePositive(command.loanAmount(), "Loan amount"));
-        if (scaledRequestedAmount.compareTo(loanProduct.getMinPrincipal()) < 0
-                || scaledRequestedAmount.compareTo(loanProduct.getMaxPrincipal()) > 0) {
+        // H16: validate against the version being pinned, so intake and approval share one policy.
+        if (scaledRequestedAmount.compareTo(latestVersion.getMinPrincipal()) < 0
+                || scaledRequestedAmount.compareTo(latestVersion.getMaxPrincipal()) > 0) {
             throw new BusinessRuleViolationException(
                     "AMOUNT_OUT_OF_RANGE",
                     "Requested amount is outside the configured product principal range.",
@@ -174,7 +175,7 @@ public class LoanApplicationOnboardingService {
         }
 
         int tenureMonths = requireTenure(command.loanTenure());
-        if (tenureMonths < loanProduct.getMinTenureMonths() || tenureMonths > loanProduct.getMaxTenureMonths()) {
+        if (tenureMonths < latestVersion.getMinTenureMonths() || tenureMonths > latestVersion.getMaxTenureMonths()) {
             throw new BusinessRuleViolationException(
                     "TENURE_OUT_OF_RANGE",
                     "Requested tenure is outside the configured product tenure range.",
