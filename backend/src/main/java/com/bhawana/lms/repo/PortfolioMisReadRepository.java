@@ -244,7 +244,11 @@ public class PortfolioMisReadRepository {
             parameters.put("disbursalDateTo", disbursalDateTo);
         }
         if (asOf != null) {
-            whereClause.append(" and account.disbursedAt <= :asOf");
+            // Bound the row set to accounts that existed at the cutoff — createdAt, not
+            // disbursedAt: approved-but-undisbursed loans belong in the export and have a
+            // null disbursedAt. Rows created mid-run sort past the keyset cursor anyway,
+            // so this is also what keeps the page stream from growing under the reader.
+            whereClause.append(" and account.createdAt <= :asOf");
             parameters.put("asOf", asOf);
         }
 

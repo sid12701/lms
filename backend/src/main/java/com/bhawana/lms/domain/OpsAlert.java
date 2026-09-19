@@ -47,6 +47,15 @@ public class OpsAlert {
     @Column(name = "correlation_id", length = 128)
     private String correlationId;
 
+    /**
+     * Whether this row participates in the active-alert dedupe keys (V134). Only alerts
+     * written through {@code createAlertIfAbsent} are protected; occurrence-recording alerts
+     * (LSP bound violations, manual escalations, onboarding conflicts) stay unprotected so a
+     * repeat can always file a fresh row.
+     */
+    @Column(name = "dedupe_protected", nullable = false)
+    private boolean dedupeProtected;
+
     @Column(name = "context_json", columnDefinition = "jsonb")
     @JdbcTypeCode(SqlTypes.JSON)
     private JsonNode contextJson;
@@ -86,6 +95,15 @@ public class OpsAlert {
         this.subjectId = subjectId;
         this.correlationId = normalize(correlationId);
         this.contextJson = JsonPayloads.optionalObject(normalize(contextJson), "contextJson");
+    }
+
+    public OpsAlert markDedupeProtected() {
+        this.dedupeProtected = true;
+        return this;
+    }
+
+    public boolean isDedupeProtected() {
+        return dedupeProtected;
     }
 
     @PrePersist

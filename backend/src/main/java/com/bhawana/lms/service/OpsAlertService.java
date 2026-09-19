@@ -77,11 +77,35 @@ public class OpsAlertService {
                         subjectId,
                         correlationId,
                         contextJson
-                ));
+                ).markDedupeProtected());
             });
-        } catch (DataIntegrityViolationException lostDedupeRace) {
-            return null;
+        } catch (RuntimeException lostDedupeRace) {
+            // A fence hit can surface at insert flush (DataIntegrityViolationException) or at
+            // commit when the winner row committed after our existence check
+            // (TransactionSystemException wrapping the constraint violation). Both mean the
+            // canonical key is already held — report "alert exists" and let the caller move on.
+            if (isUniqueViolation(lostDedupeRace)) {
+                return null;
+            }
+            throw lostDedupeRace;
         }
+    }
+
+    private static boolean isUniqueViolation(Throwable throwable) {
+        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
+            if (cause instanceof DataIntegrityViolationException) {
+                return true;
+            }
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException constraintViolation
+                    && "23505".equals(constraintViolation.getSQLState())) {
+                return true;
+            }
+            if (cause instanceof java.sql.SQLException sqlException
+                    && "23505".equals(sqlException.getSQLState())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public OpsAlert createAlert(

@@ -63,6 +63,7 @@ class MockIciciDisbursementLifecycleIntegrationTest {
     @Autowired private LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     @Autowired private LoanDisbursementWorkerService loanDisbursementWorkerService;
     @Autowired private OpsAlertRepository opsAlertRepository;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @Test
     void defaultIfscDisbursesSynchronouslyOverImps() {
@@ -110,9 +111,12 @@ class MockIciciDisbursementLifecycleIntegrationTest {
         assertEquals(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL, applicationStatus(applicationId));
 
         // First poll is too early (CheckStatusCode 100); the second resolves to success.
-        loanDisbursementWorkerService.processPendingStatusChecks();
+        // Submission already enqueued the account, so both polls ride the queue sweep.
+        makeAllQueueRowsDue();
+        loanDisbursementWorkerService.processReconciliationQueue();
         assertEquals(LoanAccountStatus.DISBURSEMENT_REQUESTED, accountStatus(applicationId));
-        loanDisbursementWorkerService.processPendingStatusChecks();
+        makeAllQueueRowsDue();
+        loanDisbursementWorkerService.processReconciliationQueue();
 
         assertEquals(LoanApplicationStatus.DISBURSED, applicationStatus(applicationId));
         assertEquals(LoanAccountStatus.DISBURSED, accountStatus(applicationId));
@@ -126,8 +130,10 @@ class MockIciciDisbursementLifecycleIntegrationTest {
         assertEquals(LoanAccountStatus.DISBURSEMENT_REQUESTED, accountStatus(applicationId));
         assertEquals(DisbursementPaymentMode.NEFT, latestLog(applicationId).getPaymentMode());
 
-        loanDisbursementWorkerService.processPendingStatusChecks();
-        loanDisbursementWorkerService.processPendingStatusChecks();
+        makeAllQueueRowsDue();
+        loanDisbursementWorkerService.processReconciliationQueue();
+        makeAllQueueRowsDue();
+        loanDisbursementWorkerService.processReconciliationQueue();
 
         assertEquals(LoanApplicationStatus.DISBURSED, applicationStatus(applicationId));
         assertEquals(LoanAccountStatus.DISBURSED, accountStatus(applicationId));
@@ -141,8 +147,10 @@ class MockIciciDisbursementLifecycleIntegrationTest {
         assertEquals(LoanAccountStatus.DISBURSEMENT_REQUESTED, accountStatus(applicationId));
 
         // Poll until the cap (test profile max-polls = 2) is reached.
-        loanDisbursementWorkerService.processPendingStatusChecks();
-        loanDisbursementWorkerService.processPendingStatusChecks();
+        makeAllQueueRowsDue();
+        loanDisbursementWorkerService.processReconciliationQueue();
+        makeAllQueueRowsDue();
+        loanDisbursementWorkerService.processReconciliationQueue();
 
         assertEquals(LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION, accountStatus(applicationId));
         assertEquals(LoanApplicationStatus.DISBURSEMENT_RETRY, applicationStatus(applicationId));
@@ -333,5 +341,15 @@ class MockIciciDisbursementLifecycleIntegrationTest {
     private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor opsUser() {
         return jwt().jwt(token -> token.subject("ops.user").claim("roles", List.of("OPS_USER")))
                 .authorities(() -> "ROLE_OPS_USER");
+    }
+
+    /**
+     * Simulates the queue backoff lapsing: pulls every entry's {@code next_poll_at} into the
+     * past so the reconciliation sweep polls it immediately — the test doesn't wait on the
+     * real exponential schedule.
+     */
+    private void makeAllQueueRowsDue() {
+        jdbcTemplate.update(
+                "update disbursement_reconciliation_queue set next_poll_at = now() - interval '1 second'");
     }
 }

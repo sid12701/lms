@@ -191,6 +191,40 @@ class OpsAlertDedupeIntegrationTest {
         assertThat(activeAlerts()).hasSize(3);
     }
 
+    @Test
+    void alwaysCreateAlertsBypassTheDedupeFence() {
+        // V134: occurrence-recording emitters (LSP bound violations, manual escalations,
+        // onboarding conflicts) intentionally file one alert per occurrence — the dedupe
+        // fence must not swallow or reject their repeats for the same subject.
+        UUID subjectId = UUID.randomUUID();
+
+        OpsAlert first = opsAlertService.createAlert(
+                OpsAlertType.LSP_BOUND_VIOLATION,
+                OpsAlertSeverity.HIGH,
+                "LSP bound violation: FORECLOSURE_QUOTE_DATE_INVALID",
+                "First occurrence.",
+                "LOAN_APPLICATION",
+                subjectId,
+                "corr-occurrence-1",
+                null
+        );
+        OpsAlert second = opsAlertService.createAlert(
+                OpsAlertType.LSP_BOUND_VIOLATION,
+                OpsAlertSeverity.HIGH,
+                "LSP bound violation: SETTLEMENT_DATE_MISMATCH",
+                "Second occurrence for the same application must file its own alert.",
+                "LOAN_APPLICATION",
+                subjectId,
+                "corr-occurrence-2",
+                null
+        );
+
+        assertThat(first).isNotNull();
+        assertThat(second).isNotNull();
+        assertThat(second.getId()).isNotEqualTo(first.getId());
+        assertThat(activeAlertCount(subjectId)).isEqualTo(2);
+    }
+
     private OpsAlert createSubjectAlert(UUID subjectId) {
         return opsAlertService.createAlertIfAbsent(
                 OpsAlertType.DPD_BUCKET_TRANSITION,
@@ -209,8 +243,8 @@ class OpsAlertDedupeIntegrationTest {
                 """
                 INSERT INTO ops_alert
                     (id, type, severity, status, title, message, subject_type, subject_id,
-                     correlation_id, context_json, created_at)
-                VALUES (?, ?, ?, 'NEW', ?, ?, ?, ?, ?, NULL, ?)
+                     correlation_id, context_json, created_at, dedupe_protected)
+                VALUES (?, ?, ?, 'NEW', ?, ?, ?, ?, ?, NULL, ?, true)
                 """,
                 UUID.randomUUID(),
                 OpsAlertType.DPD_BUCKET_TRANSITION.name(),

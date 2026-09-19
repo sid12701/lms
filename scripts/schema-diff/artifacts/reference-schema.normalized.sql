@@ -876,6 +876,7 @@ CREATE TABLE public.ops_alert (
     acknowledged_at timestamp with time zone,
     acknowledged_by_username character varying(255),
     acknowledgement_note character varying(500),
+    dedupe_protected boolean DEFAULT false NOT NULL,
     CONSTRAINT chk_ops_alert_context_json_object CHECK (((context_json IS NULL) OR (jsonb_typeof(context_json) = 'object'::text)))
 );
 CREATE TABLE public.portfolio_kpi_snapshot (
@@ -1232,8 +1233,8 @@ CREATE UNIQUE INDEX uk_disbursement_intent_live_account ON public.disbursement_i
 CREATE UNIQUE INDEX uk_disbursement_intent_tran_ref_no ON public.disbursement_intent USING btree (tran_ref_no);
 CREATE UNIQUE INDEX uk_loan_payment_transaction_foreclosure_quote ON public.loan_payment_transaction USING btree (foreclosure_quote_id) WHERE (foreclosure_quote_id IS NOT NULL);
 CREATE UNIQUE INDEX uk_lsp_api_idempotency_scope ON public.lsp_api_idempotency_record USING btree (lsp_id, operation_key, idempotency_key);
-CREATE UNIQUE INDEX uk_ops_alert_active_correlation ON public.ops_alert USING btree (type, correlation_id) WHERE (((status)::text = 'NEW'::text) AND (subject_id IS NULL) AND (correlation_id IS NOT NULL));
-CREATE UNIQUE INDEX uk_ops_alert_active_subject ON public.ops_alert USING btree (type, subject_type, subject_id) NULLS NOT DISTINCT WHERE (((status)::text = 'NEW'::text) AND (subject_id IS NOT NULL));
+CREATE UNIQUE INDEX uk_ops_alert_active_correlation ON public.ops_alert USING btree (type, correlation_id) WHERE (((status)::text = 'NEW'::text) AND (subject_id IS NULL) AND (correlation_id IS NOT NULL) AND dedupe_protected);
+CREATE UNIQUE INDEX uk_ops_alert_active_subject ON public.ops_alert USING btree (type, subject_type, subject_id) NULLS NOT DISTINCT WHERE (((status)::text = 'NEW'::text) AND (subject_id IS NOT NULL) AND dedupe_protected);
 CREATE UNIQUE INDEX uq_refresh_token_live_family_head ON public.refresh_token USING btree (family_id) WHERE ((revoked = false) AND (family_id IS NOT NULL));
 ALTER INDEX public.idx_loan_event_application_time ATTACH PARTITION public.loan_event_2026_08_loan_application_id_occurred_at_idx;
 ALTER INDEX public.idx_loan_event_feed_order ATTACH PARTITION public.loan_event_2026_08_lsp_id_transaction_id_position_idx;
