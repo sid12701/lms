@@ -177,6 +177,11 @@ public class AlertRuleEvaluationWorker {
             } catch (EvaluationLeaseLostException displaced) {
                 log.warn("Alert rule evaluation aborted mid-run: {}", displaced.getMessage());
             }
+            // Feed-lag observability (M07): the feed watermark is delayed by the oldest open
+            // transaction — publish its age every run so lag is a metric, not just an alert.
+            alertRuleSetQueryRepository.findOldestOpenTransaction().ifPresentOrElse(
+                    oldest -> oldestOpenTransactionAgeSeconds.set(oldest.ageSeconds()),
+                    () -> oldestOpenTransactionAgeSeconds.set(0));
             return new EvaluationSummary(emitted, evaluatedAt);
         } finally {
             workerLeaseRepository.release(EVALUATION_LEASE_JOB, workerOwner, fencingSeq);
