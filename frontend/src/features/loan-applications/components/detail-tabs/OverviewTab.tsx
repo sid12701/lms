@@ -112,11 +112,17 @@ export function OverviewTab({ detail, borrowerDetail }: OverviewTabProps) {
       <BlockingIssuesPanel detail={detail} borrowerDetail={borrowerDetail} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Section title="Loan terms">
-          <Row label="Requested amount">{formatINR(application.requestedAmount)}</Row>
+          {/* H28 — a missing amount/tenure renders as unknown via Row's
+              "Not provided" fallback, never as ₹0 / "0 months". */}
+          <Row label="Requested amount">
+            {application.requestedAmount != null ? formatINR(application.requestedAmount) : null}
+          </Row>
           <Row label="Interest rate">
             {detail.interestRate != null ? `${detail.interestRate}%` : null}
           </Row>
-          <Row label="Tenure">{application.tenureMonths} months</Row>
+          <Row label="Tenure">
+            {application.tenureMonths != null ? `${application.tenureMonths} months` : null}
+          </Row>
           <Row label="Product">{product.name}</Row>
           <Row label="Source channel">{application.sourceChannel}</Row>
           <Row label="Created">{formatDateTime(application.createdAt)}</Row>

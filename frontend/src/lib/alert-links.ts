@@ -1,4 +1,4 @@
-import type { AlertSubjectType } from "@/schemas/alert";
+import type { AlertSubjectTypeOrUnknown } from "@/schemas/alert";
 
 function parseContextJson(contextJson: unknown): Record<string, unknown> | null {
   if (!contextJson) return null;
@@ -24,26 +24,31 @@ function readApplicationIdFromContext(contextJson: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-/** Deep-link target for an operational alert row. */
+/**
+ * Deep-link target for an operational alert row. H28 — a missing subject id
+ * (or an unrecognized subject type) resolves to the audit trail, never to a
+ * fabricated `/loan-applications/unknown`-style identity.
+ */
 export function resolveAlertSubjectHref(
-  subjectType: AlertSubjectType,
-  subjectId: string,
-  correlationId: string,
+  subjectType: AlertSubjectTypeOrUnknown,
+  subjectId: string | null,
+  correlationId: string | null,
   contextJson?: unknown,
 ): string {
-  switch (subjectType) {
-    case "LOAN_APPLICATION":
-      return `/loan-applications/${subjectId}`;
-    case "LOAN_ACCOUNT": {
-      const applicationId = readApplicationIdFromContext(contextJson);
-      if (applicationId) return `/loan-applications/${applicationId}`;
-      return `/loan-applications/${subjectId}`;
+  if (subjectId != null && subjectId !== "") {
+    switch (subjectType) {
+      case "LOAN_APPLICATION":
+        return `/loan-applications/${subjectId}`;
+      case "LOAN_ACCOUNT": {
+        const applicationId = readApplicationIdFromContext(contextJson);
+        if (applicationId) return `/loan-applications/${applicationId}`;
+        return `/loan-applications/${subjectId}`;
+      }
+      case "BORROWER":
+        return `/borrowers/${subjectId}`;
+      default:
+        break;
     }
-    case "BORROWER":
-      return `/borrowers/${subjectId}`;
-    case "REPORT_REQUEST":
-    case "SYSTEM":
-    default:
-      return `/audit?correlationId=${encodeURIComponent(correlationId)}`;
   }
+  return correlationId ? `/audit?correlationId=${encodeURIComponent(correlationId)}` : "/audit";
 }

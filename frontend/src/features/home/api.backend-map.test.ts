@@ -99,3 +99,70 @@ describe("mapBackendHomeOverviewToInternalKpis (Gap #7)", () => {
     expect(kpis.recentApplications).toEqual([]);
   });
 });
+
+describe("mapBackendHomeOverviewToInternalKpis (H28 honesty)", () => {
+  it("routes an unrecognized DPD bucket to an explicit UNKNOWN bucket, never B0", () => {
+    const kpis = mapBackendHomeOverviewToInternalKpis({
+      ...OVERVIEW,
+      dpdBuckets: [...OVERVIEW.dpdBuckets, { bucket: "DPD_999", count: 4 }],
+    });
+    expect(kpis.dpdBuckets).toContainEqual({ bucket: "UNKNOWN", count: 4 });
+    expect(kpis.dpdBuckets).toContainEqual({ bucket: "B0", count: 8 });
+  });
+
+  it("omits the UNKNOWN bucket when every bucket is recognized", () => {
+    const kpis = mapBackendHomeOverviewToInternalKpis(OVERVIEW);
+    expect(kpis.dpdBuckets.map((b) => b.bucket)).toEqual([
+      "B0",
+      "B1_30",
+      "B31_60",
+      "B61_90",
+      "B90_PLUS",
+    ]);
+  });
+
+  it("accumulates repeated bucket rows instead of overwriting them", () => {
+    const kpis = mapBackendHomeOverviewToInternalKpis({
+      ...OVERVIEW,
+      dpdBuckets: [
+        { bucket: "CURRENT", count: 5 },
+        { bucket: "CURRENT", count: 3 },
+      ],
+    });
+    expect(kpis.dpdBuckets.find((b) => b.bucket === "B0")).toEqual({ bucket: "B0", count: 8 });
+  });
+
+  it("preserves an unrecognized alert severity instead of MEDIUM", () => {
+    const kpis = mapBackendHomeOverviewToInternalKpis({
+      ...OVERVIEW,
+      openAlertSummaries: [{ ...OVERVIEW.openAlertSummaries[0]!, severity: "URGENT" }],
+    });
+    expect(kpis.openAlerts[0]?.severity).toBe("UNKNOWN:URGENT");
+  });
+
+  it("preserves an unrecognized alert subject type instead of SYSTEM", () => {
+    const kpis = mapBackendHomeOverviewToInternalKpis({
+      ...OVERVIEW,
+      openAlertSummaries: [{ ...OVERVIEW.openAlertSummaries[0]!, subjectType: "SPACE_LASER" }],
+    });
+    expect(kpis.openAlerts[0]?.subjectType).toBe("UNKNOWN:SPACE_LASER");
+  });
+
+  it("keeps a missing alert subject id missing instead of reusing the alert id", () => {
+    const kpis = mapBackendHomeOverviewToInternalKpis({
+      ...OVERVIEW,
+      openAlertSummaries: [{ ...OVERVIEW.openAlertSummaries[0]!, subjectId: "" }],
+    });
+    expect(kpis.openAlerts[0]?.subjectId).toBeNull();
+  });
+
+  it("preserves unrecognized application statuses instead of casting them away", () => {
+    const kpis = mapBackendHomeOverviewToInternalKpis({
+      ...OVERVIEW,
+      applicationsByStatus: [{ status: "SOME_FUTURE_STATUS", count: 2 }],
+      recentApplications: [{ ...OVERVIEW.recentApplications[0]!, status: "SOME_FUTURE_STATUS" }],
+    });
+    expect(kpis.applicationsByStatus).toEqual([{ status: "UNKNOWN:SOME_FUTURE_STATUS", count: 2 }]);
+    expect(kpis.recentApplications[0]?.status).toBe("UNKNOWN:SOME_FUTURE_STATUS");
+  });
+});

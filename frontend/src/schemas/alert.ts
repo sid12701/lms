@@ -19,6 +19,36 @@ export const AlertSubjectType = z.enum([
 ]);
 export type AlertSubjectType = z.infer<typeof AlertSubjectType>;
 
+/**
+ * H28 — unknown/absent alert metadata is modelled explicitly, mirroring the
+ * loan-status `UNKNOWN:<raw>` pattern. A backend value outside the known
+ * vocabulary (or a legacy row the backend enum no longer names) must stay
+ * visible as unknown — never fold into MEDIUM/SYSTEM, which read as measured
+ * triage facts.
+ */
+export type AlertSeverityOrUnknown = AlertSeverity | `UNKNOWN:${string}`;
+export type AlertSubjectTypeOrUnknown = AlertSubjectType | `UNKNOWN:${string}`;
+
+/** Map a wire severity without folding unknown values into MEDIUM. */
+export function apiAlertSeverity(raw: string | null | undefined): AlertSeverityOrUnknown {
+  const trimmed = raw?.trim() ?? "";
+  const parsed = AlertSeverity.safeParse(trimmed);
+  return parsed.success ? parsed.data : `UNKNOWN:${trimmed}`;
+}
+
+/** Map a wire subject type without folding unknown values into SYSTEM. */
+export function apiAlertSubjectType(raw: string | null | undefined): AlertSubjectTypeOrUnknown {
+  const trimmed = raw?.trim() ?? "";
+  const parsed = AlertSubjectType.safeParse(trimmed);
+  return parsed.success ? parsed.data : `UNKNOWN:${trimmed}`;
+}
+
+/** Label for an unknown severity/subject raw value (drift stays visible). */
+export function unknownAlertValueLabel(raw: string): string {
+  const trimmed = raw.trim();
+  return trimmed ? `Unknown (${trimmed})` : "Unknown";
+}
+
 const OperationalAlert = z.object({
   id: Uuid,
   type: z.string().min(1).max(80),

@@ -6,7 +6,7 @@ import type { Document } from "@/schemas/document";
 import { DocumentChecklistRow, type DocumentChecklistRowPermissions } from "./DocumentChecklistRow";
 import { DocumentUploadRow } from "./DocumentUploadRow";
 import { isDisbursementGatePassed } from "./disbursement-gate";
-import type { LoanStatus } from "@/types";
+import type { LoanStatusOrUnknown } from "@/lib/loan-application-status";
 
 export interface DocumentChecklistGroupProps {
   docs: Document[];
@@ -18,8 +18,10 @@ export interface DocumentChecklistGroupProps {
   /**
    * Loan lifecycle status. When the loan is past disbursement the section reads
    * as a record of what was required rather than a gate still to clear.
+   * H28 — an unrecognized status keeps the pre-disbursement wording: the gate
+   * must not be treated as passed on unknown state.
    */
-  loanStatus?: LoanStatus;
+  loanStatus?: LoanStatusOrUnknown;
   className?: string;
 }
 

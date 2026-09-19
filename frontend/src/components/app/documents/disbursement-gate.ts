@@ -1,4 +1,4 @@
-import type { LoanStatus } from "@/types";
+import type { LoanStatusOrUnknown } from "@/lib/loan-application-status";
 
 /**
  * Statuses at which the money has already moved, so the pre-disbursement
@@ -8,7 +8,7 @@ import type { LoanStatus } from "@/types";
  * state reachable only by completing disbursement, and nothing after it can
  * return to a pre-disbursal status.
  */
-const POST_DISBURSEMENT: ReadonlySet<LoanStatus> = new Set<LoanStatus>([
+const POST_DISBURSEMENT: ReadonlySet<string> = new Set([
   "DISBURSED",
   "UNDER_REPAYMENT",
   "CLOSED",
@@ -22,8 +22,10 @@ const POST_DISBURSEMENT: ReadonlySet<LoanStatus> = new Set<LoanStatus>([
  * a gate the loan has yet to clear; repeating it on a loan whose funds are with
  * the borrower asserts a blocker that no longer exists and that nobody can act
  * on. `undefined` means the caller does not know the status, in which case the
- * pre-disbursement wording is the safe default.
+ * pre-disbursement wording is the safe default. H28 — an unrecognized status
+ * likewise keeps the pre-disbursement wording: passing the gate must be proven
+ * by a known post-disbursement state, never assumed.
  */
-export function isDisbursementGatePassed(status: LoanStatus | undefined): boolean {
+export function isDisbursementGatePassed(status: LoanStatusOrUnknown | undefined): boolean {
   return status !== undefined && POST_DISBURSEMENT.has(status);
 }

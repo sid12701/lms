@@ -16,7 +16,9 @@ import type {
 import { ApiError, requestJson } from "@/lib/api/http-client";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import { newIdempotencyKey } from "@/lib/idempotency";
-import { LoanAccountStatus } from "@/schemas/loan-account";
+import { isLoanAccountStatus } from "@/schemas/loan-account";
+import { EmploymentType } from "@/schemas/borrower";
+import { finiteNumberOrNull } from "@/lib/number";
 import type {
   InitiateDisbursementInput,
   ExecuteForeclosureQuoteInput,
@@ -29,7 +31,11 @@ import type {
 } from "./types";
 import type { ApplicationAuditEvent, LoanApplication } from "@/types";
 import { isSatisfiedBackendChecklistStatus } from "@/schemas/document";
-import { parseLoanApplicationStatus } from "@/lib/loan-application-status";
+import {
+  apiLoanStatus,
+  isLoanApplicationStatus,
+  type LoanStatusOrUnknown,
+} from "@/lib/loan-application-status";
 
 const BACKEND_BASE = "/api/v1/internal/ops/loan-applications";
 
@@ -45,13 +51,13 @@ function isSystemAdmin(): boolean {
  * committed POST into an apparent failure.
  */
 export interface TransitionResponse {
-  application: LoanApplication;
+  application: LoanApplicationDetail["application"];
   /** Present only when the server explicitly correlates an event. */
   event?: ApplicationAuditEvent | null;
 }
 
 export interface DisbursementResponse {
-  application: LoanApplication;
+  application: LoanApplicationDetail["application"];
   /** Authoritative timeline comes from the invalidated activity query. */
   events?: readonly ApplicationAuditEvent[];
 }
@@ -112,16 +118,18 @@ function safeChannel(value: string | null | undefined): "UI" | "API" | "WEBHOOK"
 function toApplication(
   payload: OpsLoanApplicationDetailResponse,
   createdAt: string,
-): LoanApplication {
+): LoanApplicationDetail["application"] {
   return {
     id: payload.id ?? "",
     externalLoanId: payload.externalLoanId ?? null,
     borrowerId: payload.borrowerId ?? "",
     lspId: payload.lspId ?? "",
     productId: payload.productId ?? "",
-    requestedAmount: toAmount(payload.requestedAmount),
-    tenureMonths: payload.tenureMonths ?? 0,
-    status: parseLoanApplicationStatus(payload.status ?? "") ?? "INITIALIZED",
+    // H28 — null means "not supplied", never ₹0 of debt / 0 months.
+    requestedAmount: finiteNumberOrNull(payload.requestedAmount ?? null),
+    tenureMonths: payload.tenureMonths ?? null,
+    // H28 — unknown wire statuses stay visible as UNKNOWN:<raw>.
+    status: apiLoanStatus(payload.status ?? ""),
     sourceChannel: safeChannel(payload.sourceChannel),
     createdAt,
     updatedAt: payload.updatedAt ?? createdAt,
@@ -131,89 +139,81 @@ function toApplication(
 }
 
 function toBorrower(payload: OpsLoanApplicationDetailResponse): LoanApplicationDetail["borrower"] {
-  // Borrower: the backend embeds a thin projection inline. Full Borrower
-  // master data (Aadhaar, banking, references, address parts) requires
-  // a separate `/internal/admin/borrowers/{id}` call (wired in #7) — for
-  // the detail surface we project what's in the payload and leave the
-  // rest empty so the OverviewTab and DetailHeader can render.
+  // H28 — the backend embeds only the identity/contact leftovers below. It
+  // does NOT supply gender, marital status, KYC state, Aadhaar, a full
+  // address, banking, references or employment detail, so every such field
+  // is null ("not available") — never M / SINGLE / SALARIED / false, which
+  // all read as measured facts about the borrower.
+  const monthlyIncome = finiteNumberOrNull(payload.borrowerMonthlyIncome ?? null);
+  // The endpoint carries employment type as a free-form string; keep it only
+  // when it names a known employment type, otherwise unknown (null).
+  const employmentType = EmploymentType.safeParse(payload.borrowerEmploymentType ?? null);
   return {
     id: payload.borrowerId ?? "",
     fullName: payload.borrowerFullName ?? "",
-    pan: payload.borrowerPan ?? "",
-    aadhaar: "",
-    mobile: payload.borrowerMobile ?? "",
-    email: payload.borrowerEmail,
-    dob: payload.borrowerDateOfBirth ?? "",
-    gender: "M" as const,
-    maritalStatus: "SINGLE" as const,
-    fathersName: "",
-    spouseName: null,
-    address: {
-      residential: "",
-      city: payload.borrowerCity ?? "",
-      state: payload.borrowerState ?? "",
-      zip: "",
-    },
-    employment: {
-      type: "SALARIED" as const,
-      organization: null,
-      employeeId: null,
-      location: null,
-      monthlyIncome: toAmount(payload.borrowerMonthlyIncome),
-      annualIncome: toAmount(payload.borrowerMonthlyIncome) * 12,
-    },
-    banking: {
-      bank: "",
-      accountHolder: "",
-      accountNumber: "",
-      ifsc: "",
-    },
-    references: [],
-    kycComplete: false,
-    visibleLspIds: [payload.lspId ?? ""],
-  } as LoanApplicationDetail["borrower"];
+    pan: payload.borrowerPan ?? null,
+    aadhaar: null,
+    mobile: payload.borrowerMobile ?? null,
+    email: payload.borrowerEmail ?? null,
+    dob: payload.borrowerDateOfBirth ?? null,
+    gender: null,
+    maritalStatus: null,
+    city: payload.borrowerCity ?? null,
+    state: payload.borrowerState ?? null,
+    employmentType: employmentType.success ? employmentType.data : null,
+    monthlyIncome,
+    annualIncome: monthlyIncome == null ? null : monthlyIncome * 12,
+    kycComplete: null,
+    visibleLspIds: payload.lspId != null ? [payload.lspId] : [],
+  };
 }
 
 function toLsp(payload: OpsLoanApplicationDetailResponse): LoanApplicationDetail["lsp"] {
+  // H28 — the endpoint sends id/code/name only; operational status is unknown.
   return {
     id: payload.lspId ?? "",
-    code: payload.lspCode ?? "",
+    code: payload.lspCode ?? null,
     name: payload.lspName ?? "",
-    status: "ACTIVE" as const,
-  } as LoanApplicationDetail["lsp"];
+    status: null,
+  };
 }
 
 function toProduct(payload: OpsLoanApplicationDetailResponse): LoanApplicationDetail["product"] {
+  // H28 — the endpoint sends id/code/name only; operational status is unknown.
   return {
     id: payload.productId ?? "",
-    code: payload.productCode ?? "",
+    code: payload.productCode ?? null,
     name: payload.productName ?? "",
-    status: "ACTIVE" as const,
-  } as LoanApplicationDetail["product"];
+    status: null,
+  };
 }
 
 function toAccount(
   payload: OpsLoanApplicationDetailResponse,
-  application: LoanApplication,
+  application: LoanApplicationDetail["application"],
 ): LoanApplicationDetail["account"] {
   const account = payload.loanAccount;
   if (!account) return null;
+  const rawStatus = (account.status ?? "").trim();
   return {
     id: account.id ?? "",
     applicationId: application.id,
     accountNumber: account.accountNumber ?? "",
-    accountStatus: LoanAccountStatus.parse(account.status ?? "PENDING_DISBURSEMENT"),
-    principal: toAmount(account.principalAmount),
-    tenureMonths: account.tenureMonths ?? application.tenureMonths,
+    // H28 — the account's own status, kept distinct from the application
+    // lifecycle status. Unknown wire values stay UNKNOWN:<raw>; a missing
+    // status is unknown, never PENDING_DISBURSEMENT.
+    accountStatus: isLoanAccountStatus(rawStatus) ? rawStatus : `UNKNOWN:${rawStatus}`,
+    principal: finiteNumberOrNull(account.principalAmount ?? null),
+    tenureMonths: account.tenureMonths ?? application.tenureMonths ?? null,
     approvedAt: account.approvedAt ?? application.createdAt,
     createdAt: account.createdAt ?? application.createdAt,
-    closedAt: account.closedAt,
+    closedAt: account.closedAt ?? null,
     closureReason: (account.closureReason ?? null) as
       | "FULLY_REPAID"
       | "FORECLOSED"
       | "CANCELLED"
       | null,
-  } as LoanApplicationDetail["account"];
+  };
 }
 
 function areRequiredDocumentsComplete(
@@ -305,12 +305,10 @@ function toAuditEvent(row: BackendAuditEvent): ApplicationAuditEvent {
   return {
     id: row.id,
     applicationId: row.loanApplicationId,
-    fromStatus: row.fromStatus
-      ? (parseLoanApplicationStatus(row.fromStatus) as ApplicationAuditEvent["fromStatus"])
-      : null,
-    toStatus:
-      parseLoanApplicationStatus(row.toStatus) ??
-      ("INITIALIZED" as ApplicationAuditEvent["toStatus"]),
+    // H28 — unknown transition endpoints stay visible as UNKNOWN:<raw>, never
+    // folded into INITIALIZED (which would rewrite history as "started here").
+    fromStatus: row.fromStatus ? apiLoanStatus(row.fromStatus) : null,
+    toStatus: apiLoanStatus(row.toStatus),
     action: row.action || "transition",
     actorId: row.actorUsername ?? "system",
     actorRole: APPLICATION_ROLE_FALLBACK as ApplicationAuditEvent["actorRole"],
@@ -411,11 +409,17 @@ const ACCOUNT_IN_FLIGHT_STATUSES: ReadonlySet<string> = new Set([
   "DISBURSEMENT_PENDING_RECONCILIATION",
 ]);
 
-/** Client-side hide/disable check for the Override action. */
+/**
+ * Client-side hide/disable check for the Override action. An unrecognized
+ * application status blocks the affordance: with no known source state the
+ * client cannot prove the override is legal, so it offers nothing and leaves
+ * the decision to the server.
+ */
 export function isManualOverrideSourceBlocked(
-  applicationStatus: LoanApplication["status"],
+  applicationStatus: LoanStatusOrUnknown,
   accountStatus: string | null | undefined,
 ): boolean {
+  if (!isLoanApplicationStatus(applicationStatus)) return true;
   if (MANUAL_OVERRIDE_SOURCE_BLOCKED.has(applicationStatus)) return true;
   if (accountStatus != null && ACCOUNT_IN_FLIGHT_STATUSES.has(accountStatus)) return true;
   return false;
@@ -423,7 +427,7 @@ export function isManualOverrideSourceBlocked(
 
 /** Override targets offered for `currentStatus` (never the status it is in). */
 export function manualOverrideTargetsFor(
-  currentStatus: LoanApplication["status"],
+  currentStatus: LoanStatusOrUnknown,
 ): readonly LoanApplication["status"][] {
   return [...ALLOWED_MANUAL_OVERRIDE_TARGETS].filter((target) => target !== currentStatus);
 }

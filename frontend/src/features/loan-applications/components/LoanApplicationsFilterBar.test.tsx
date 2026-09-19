@@ -85,7 +85,7 @@ describe("LoanApplicationsFilterBar", () => {
     expect(screen.getByLabelText(/Bhawana loan ID/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Disbursed from/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Disbursed to/i)).toBeInTheDocument();
-    expect(screen.getByLabelText("Status filter")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Status" })).toBeInTheDocument();
     expect(screen.getByLabelText("LSP filter")).toBeInTheDocument();
     expect(screen.getByLabelText("Product filter")).toBeInTheDocument();
   });
@@ -97,12 +97,13 @@ describe("LoanApplicationsFilterBar", () => {
     expect(screen.queryByRole("button", { name: /Clear all/i })).not.toBeInTheDocument();
   });
 
-  it("marks a set control as set, and leaves an unset one alone", async () => {
+  it("names the selected statuses on the trigger, and leaves an unset one alone", async () => {
     vi.useRealTimers();
     renderBar({ initialPath: "/loan-applications?status=INITIALIZED" });
     // The core P0: a set control and an unset one used to render identical
-    // colour, fill, border and weight.
-    expect(screen.getByLabelText("Status filter")).toHaveAttribute("data-filter-set", "true");
+    // colour, fill, border and weight. The multi-select trigger names its
+    // selection in its accessible label.
+    expect(screen.getByRole("button", { name: "Status: Initialized" })).toBeInTheDocument();
     expect(screen.getByLabelText("LSP filter")).not.toHaveAttribute("data-filter-set");
   });
 
@@ -165,16 +166,55 @@ describe("LoanApplicationsFilterBar", () => {
     expect(input.value).toBe("hello");
   });
 
-  // Single-select on purpose: the ops list endpoint accepts one `status`
-  // param (audit F5) — the dropdown mirrors that contract.
-  it("opens the status dropdown and exposes options", async () => {
+  // H29 — multi-select with OR semantics: every checked status reaches the
+  // URL as a repeated `status` param, which the endpoint filters on.
+  it("opens the status multi-select and exposes options", async () => {
     vi.useRealTimers();
     const user = userEvent.setup();
     renderBar();
-    const statusTrigger = screen.getByLabelText("Status filter");
+    const statusTrigger = screen.getByRole("button", { name: "Status" });
     await user.click(statusTrigger);
     const opt = await screen.findByRole("option", { name: /Initialized/i });
     expect(opt).toBeInTheDocument();
+  }, 15000);
+
+  it("emits repeated status params when two statuses are checked", async () => {
+    vi.useRealTimers();
+    const user = userEvent.setup();
+    const { latestSearch } = renderBar();
+    await user.click(screen.getByRole("button", { name: "Status" }));
+    await user.click(await screen.findByRole("option", { name: "Awaiting approval" }));
+    await user.click(await screen.findByRole("option", { name: "Initialized" }));
+    await waitFor(() => {
+      const s = latestSearch();
+      expect(s).toContain("status=AWAITING_APPROVAL");
+      expect(s).toContain("status=INITIALIZED");
+    });
+  }, 15000);
+
+  it("clears one status chip while keeping the other selected", async () => {
+    vi.useRealTimers();
+    const user = userEvent.setup();
+    const { container, latestSearch } = renderBar({
+      initialPath: "/loan-applications?status=INITIALIZED&status=AWAITING_APPROVAL",
+    });
+
+    // Two "Remove Status filter" buttons exist — pick the chip naming
+    // Initialized and clear only it.
+    const chips = Array.from(
+      container.querySelectorAll('[data-slot="loan-applications-applied-filters-chip"]'),
+    );
+    const initializedChip = chips.find((chip) => chip.textContent?.includes("Initialized"));
+    expect(initializedChip).toBeDefined();
+    const remove = initializedChip!.querySelector("button");
+    expect(remove).not.toBeNull();
+    await user.click(remove as HTMLButtonElement);
+
+    await waitFor(() => {
+      const s = latestSearch();
+      expect(s).not.toContain("status=INITIALIZED");
+      expect(s).toContain("status=AWAITING_APPROVAL");
+    });
   }, 15000);
 
   it("surfaces the applied-filter row once a filter is set", async () => {

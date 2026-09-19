@@ -77,4 +77,33 @@ describe("MisPreviewTable (Gap #10)", () => {
     expect(screen.queryByText("EMI 1")).not.toBeInTheDocument();
     expect(document.querySelector('[data-pii="aadhaar"]')).toBeNull();
   });
+
+  it("renders missing money as unknown and unknown statuses as Unknown (H28)", () => {
+    renderWithProviders(
+      <MisPreviewTable
+        data={{
+          ...PREVIEW,
+          items: [
+            {
+              ...PREVIEW.items[0]!,
+              amount: null,
+              status: "UNKNOWN:SOME_FUTURE_STATUS",
+              loanStatusDisplay: null,
+              emiAmount: null,
+              overdueAmount: null,
+            },
+          ],
+        }}
+        isLoading={false}
+        filters={{ page: 0, pageSize: 25 }}
+        onFiltersChange={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("Unknown (SOME_FUTURE_STATUS)")).toBeInTheDocument();
+    // Amount / EMI / Overdue cells render em-dashes — and never ₹0.
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toMatch(/₹0/);
+  });
 });

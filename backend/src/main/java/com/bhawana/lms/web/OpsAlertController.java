@@ -74,13 +74,19 @@ public class OpsAlertController {
     @GetMapping
     public ResponseEntity<List<OpsAlertResponse>> listAlerts(
             @RequestParam(required = false) OpsAlertStatus status,
+            @RequestParam(required = false, name = "severity") List<String> severities,
+            @RequestParam(required = false) String subjectType,
+            @RequestParam(required = false, name = "q") String query,
             @RequestParam(required = false) @Min(0) Integer offset,
             @RequestParam(required = false) @Min(1) @Max(200) Integer limit,
             @RequestParam(required = false) String paginationDetails
     ) {
         boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
+        // H30 — severity, subject-type and text filters run against the full
+        // dataset before pagination; unknown severities fail with a clear 422
+        // instead of silently matching nothing on the fetched page.
         PagedResult<OpsAlert> page = opsAlertService.listAlerts(
-                status, offset, limit, includePaginationDetails);
+                status, severities, subjectType, query, offset, limit, includePaginationDetails);
         PagedResult<OpsAlertResponse> mapped = new PagedResult<>(
                 page.items().stream().map(OpsAlertController::toResponse).toList(),
                 page.totalCount(),
