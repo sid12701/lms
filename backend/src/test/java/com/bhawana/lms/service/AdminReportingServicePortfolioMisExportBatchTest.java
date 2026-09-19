@@ -45,7 +45,7 @@ import org.mockito.quality.Strictness;
 class AdminReportingServicePortfolioMisExportBatchTest {
 
     @Test
-    void exportUsesThreeBatchesForTwoThousandFiveHundredAccounts() {
+    void exportUsesThreeBatchesForTwoThousandFiveHundredAccounts() throws java.io.IOException {
         PortfolioMisReadRepository repository = mock(PortfolioMisReadRepository.class);
         LoanRepaymentScheduleInstallmentRepository installmentRepository = mock(LoanRepaymentScheduleInstallmentRepository.class);
         LoanForeclosureQuoteRepository foreclosureQuoteRepository = mock(LoanForeclosureQuoteRepository.class);
@@ -53,17 +53,17 @@ class AdminReportingServicePortfolioMisExportBatchTest {
         BusinessCalendar calendar = mock(BusinessCalendar.class);
 
         when(calendar.today()).thenReturn(LocalDate.of(2026, 7, 6));
-        when(repository.findMaxInstallmentCountForExport(isNull(), isNull(), isNull())).thenReturn(0);
+        when(repository.findMaxInstallmentCountForExport(isNull(), isNull(), isNull(), any())).thenReturn(0);
 
         List<UUID> batchOne = ids(1, 1000);
         List<UUID> batchTwo = ids(1001, 1000);
         List<UUID> batchThree = ids(2001, 500);
 
-        when(repository.findAccountIdsForExportBatch(isNull(), isNull(), isNull(), isNull(), eq(1000)))
+        when(repository.findAccountIdsForExportBatch(isNull(), isNull(), isNull(), any(), isNull(), eq(1000)))
                 .thenReturn(batchOne);
-        when(repository.findAccountIdsForExportBatch(isNull(), isNull(), isNull(), eq(batchOne.getLast()), eq(1000)))
+        when(repository.findAccountIdsForExportBatch(isNull(), isNull(), isNull(), any(), eq(batchOne.getLast()), eq(1000)))
                 .thenReturn(batchTwo);
-        when(repository.findAccountIdsForExportBatch(isNull(), isNull(), isNull(), eq(batchTwo.getLast()), eq(1000)))
+        when(repository.findAccountIdsForExportBatch(isNull(), isNull(), isNull(), any(), eq(batchTwo.getLast()), eq(1000)))
                 .thenReturn(batchThree);
 
         when(repository.findAccountsByIds(any())).thenAnswer(invocation -> {
@@ -81,20 +81,25 @@ class AdminReportingServicePortfolioMisExportBatchTest {
                 calendar
         );
 
-        AdminReportingService.GeneratedReport report = service.generatePortfolioMisCsv(null, null, null);
-        String csv = new String(report.content(), StandardCharsets.UTF_8);
+        java.nio.file.Path target = java.nio.file.Files.createTempFile("export-batch-", ".csv");
+        try {
+            service.generatePortfolioMisCsv(null, null, null, Instant.now(), target);
+            String csv = java.nio.file.Files.readString(target, StandardCharsets.UTF_8);
         long dataRows = csv.lines().skip(1).count();
 
-        assertThat(dataRows).isEqualTo(2500);
+            assertThat(dataRows).isEqualTo(2500);
 
-        ArgumentCaptor<UUID> lastIdCaptor = ArgumentCaptor.forClass(UUID.class);
-        verify(repository, atLeastOnce())
-                .findAccountIdsForExportBatch(isNull(), isNull(), isNull(), lastIdCaptor.capture(), eq(1000));
-        assertThat(lastIdCaptor.getAllValues())
-                .containsExactly(null, batchOne.getLast(), batchTwo.getLast());
-        verify(repository).findAccountsByIds(batchOne);
-        verify(repository).findAccountsByIds(batchTwo);
-        verify(repository).findAccountsByIds(batchThree);
+            ArgumentCaptor<UUID> lastIdCaptor = ArgumentCaptor.forClass(UUID.class);
+            verify(repository, atLeastOnce())
+                    .findAccountIdsForExportBatch(isNull(), isNull(), isNull(), any(), lastIdCaptor.capture(), eq(1000));
+            assertThat(lastIdCaptor.getAllValues())
+                    .containsExactly(null, batchOne.getLast(), batchTwo.getLast());
+            verify(repository).findAccountsByIds(batchOne);
+            verify(repository).findAccountsByIds(batchTwo);
+            verify(repository).findAccountsByIds(batchThree);
+        } finally {
+            java.nio.file.Files.deleteIfExists(target);
+        }
     }
 
     private List<UUID> ids(int startInclusive, int count) {

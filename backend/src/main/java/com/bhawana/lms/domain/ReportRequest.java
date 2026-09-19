@@ -53,6 +53,18 @@ public class ReportRequest {
     @Column(name = "notification_error_message", length = 1000)
     private String notificationErrorMessage;
 
+    @Column(name = "processing_owner", length = 160)
+    private String processingOwner;
+
+    @Column(name = "processing_expires_at")
+    private Instant processingExpiresAt;
+
+    @Column(name = "processing_attempt", nullable = false)
+    private int processingAttempt;
+
+    @Column(name = "notification_attempts", nullable = false)
+    private int notificationAttempts;
+
     @Column(name = "file_name", length = 255)
     private String fileName;
 
@@ -183,44 +195,33 @@ public class ReportRequest {
         return entityVersion;
     }
 
-    public void markProcessing() {
+    public String getProcessingOwner() {
+        return processingOwner;
+    }
+
+    public Instant getProcessingExpiresAt() {
+        return processingExpiresAt;
+    }
+
+    public int getProcessingAttempt() {
+        return processingAttempt;
+    }
+
+    public int getNotificationAttempts() {
+        return notificationAttempts;
+    }
+
+    /**
+     * Transitions the request into PROCESSING under a worker lease. Writes go through the
+     * repository's fenced updates in production; this keeps the entity honest on paths (for
+     * example the non-Postgres claim fallback) that mutate state through the entity.
+     */
+    public void claimProcessing(String owner, Instant expiresAt) {
         this.status = ReportRequestStatus.PROCESSING;
+        this.processingOwner = owner;
+        this.processingExpiresAt = expiresAt;
+        this.processingAttempt += 1;
         this.errorMessage = null;
-    }
-
-    public void markCompleted(String fileName, String mediaType, String storageKey, Instant completedAt) {
-        this.status = ReportRequestStatus.COMPLETED;
-        this.fileName = fileName;
-        this.mediaType = mediaType;
-        this.storageKey = storageKey;
-        this.completedAt = completedAt;
-        this.errorMessage = null;
-    }
-
-    public void markFailed(String errorMessage) {
-        this.status = ReportRequestStatus.FAILED;
-        this.errorMessage = truncate(errorMessage);
-        this.storageKey = null;
-        this.fileName = null;
-        this.mediaType = null;
-        this.completedAt = null;
-    }
-
-    public void markNotificationSent(Instant sentAt) {
-        this.notificationSentAt = sentAt;
-        this.notificationErrorMessage = null;
-    }
-
-    public void markNotificationFailed(String errorMessage) {
-        this.notificationSentAt = null;
-        this.notificationErrorMessage = truncate(errorMessage);
-    }
-
-    private static String truncate(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return value.length() <= 1000 ? value : value.substring(0, 1000);
     }
 
     private static String normalize(String value) {

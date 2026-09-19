@@ -2,6 +2,7 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.repo.LoanEventPartitionRepository;
 import com.bhawana.lms.repo.LoanEventPartitionRepository.PartitionChange;
+import com.bhawana.lms.config.ScheduledJobThreadingConfig;
 import com.bhawana.lms.tenant.TenantScopedExecution;
 import java.util.List;
 import org.slf4j.Logger;
@@ -23,21 +24,25 @@ public class LoanEventPartitionLifecycleWorker {
 
     private final LoanEventPartitionRepository loanEventPartitionRepository;
     private final LoanEventLogProperties properties;
+    private final JobObservabilitySupport jobObservability;
 
     public LoanEventPartitionLifecycleWorker(
             LoanEventPartitionRepository loanEventPartitionRepository,
-            LoanEventLogProperties properties
+            LoanEventLogProperties properties,
+            JobObservabilitySupport jobObservability
     ) {
         this.loanEventPartitionRepository = loanEventPartitionRepository;
         this.properties = properties;
+        this.jobObservability = jobObservability;
     }
 
-    @Scheduled(fixedDelayString = "${app.loan-event-log.partition-maintenance-fixed-delay-ms:3600000}")
+    @Scheduled(fixedDelayString = "${app.loan-event-log.partition-maintenance-fixed-delay-ms:3600000}", scheduler = ScheduledJobThreadingConfig.MAINTENANCE_TASK_SCHEDULER)
     public void maintainPartitions() {
         if (!properties.isPartitionMaintenanceEnabled()) {
             return;
         }
-        TenantScopedExecution.runAsAdmin(this::maintainPartitionsUnderAdminScope);
+        jobObservability.run("loan-event-partitions", () ->
+                TenantScopedExecution.runAsAdmin(this::maintainPartitionsUnderAdminScope));
     }
 
     void maintainPartitionsUnderAdminScope() {

@@ -31,8 +31,10 @@ import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.repo.LoanApplicationStatusTransitionRepository;
 import com.bhawana.lms.repo.LoanDelinquencyStateRepository;
 import com.bhawana.lms.repo.LspRepository;
+import com.bhawana.lms.repo.WorkerLeaseRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -41,9 +43,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Scheduled evaluation of configured {@link AlertRule} records. Ad-hoc domain emission lives in
@@ -59,6 +66,7 @@ public class AlertRuleEvaluationWorker {
     // evaluation and would defeat that dedupe, filing a fresh alert every scheduler run for as
     // long as the transaction stays open.
     private static final String OLDEST_TRANSACTION_AGE_CORRELATION_ID = "oldest-transaction-age";
+    static final String EVALUATION_LEASE_JOB = "alert-rule-evaluation";
 
     private final AlertRuleRepository alertRuleRepository;
     private final AlertRuleSetQueryRepository alertRuleSetQueryRepository;
@@ -76,6 +84,11 @@ public class AlertRuleEvaluationWorker {
     private final AlertRuleProperties properties;
     private final Clock clock;
     private final ObjectMapper objectMapper;
+    private final WorkerLeaseRepository workerLeaseRepository;
+    private final TransactionTemplate requiresNew;
+    private final String workerOwner;
+    private final MeterRegistry meterRegistry;
+    private final AtomicLong oldestOpenTransactionAgeSeconds = new AtomicLong(-1);
     private final Counter dpdBucketTransitionCounter;
 
     public AlertRuleEvaluationWorker(
@@ -95,6 +108,8 @@ public class AlertRuleEvaluationWorker {
             AlertRuleProperties properties,
             Clock clock,
             ObjectMapper objectMapper,
+            WorkerLeaseRepository workerLeaseRepository,
+            PlatformTransactionManager transactionManager,
             MeterRegistry meterRegistry
     ) {
         this.alertRuleRepository = alertRuleRepository;
@@ -113,30 +128,109 @@ public class AlertRuleEvaluationWorker {
         this.properties = properties;
         this.clock = clock;
         this.objectMapper = objectMapper;
+        this.workerLeaseRepository = workerLeaseRepository;
+        this.requiresNew = new TransactionTemplate(transactionManager);
+        this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.workerOwner = DisbursementIntentWorkflowService.buildWorkerOwner("alert-evaluation-worker");
+        this.meterRegistry = meterRegistry;
+        meterRegistry.gauge(
+                "lms.eventfeed.oldest_open_transaction_age_seconds",
+                oldestOpenTransactionAgeSeconds
+        );
         this.dpdBucketTransitionCounter = Counter.builder("lms.dpd.bucket_transition")
                 .description("DPD bucket worsening transitions detected during scheduled evaluation")
                 .register(meterRegistry);
     }
 
-    @Transactional
+    /**
+     * One scheduled evaluation run (M07): singleton ownership comes from a durable worker
+     * lease, not a transaction-scoped lock, so the run is a sequence of short per-rule /
+     * per-batch transactions rather than one unbounded writing transaction. A failed rule
+     * rolls back only its own transaction — completed rules keep their commits — and a
+     * crashed run resumes safely because every write is idempotent or deduplicated.
+     */
     public EvaluationSummary evaluateScheduledRules() {
-        Instant evaluatedAt = clock.instant();
-        int emitted = 0;
-        emitted += evaluateStaleIntake(evaluatedAt);
-        emitted += evaluateStuckDisbursement(evaluatedAt);
-        emitted += evaluateDpdBucketTransitions(evaluatedAt);
-        emitted += evaluateLspAutoRejectSpikes(evaluatedAt);
-        emitted += evaluateAuthBruteForce(evaluatedAt);
-        emitted += evaluateAuthBruteForceDistributed(evaluatedAt);
-        emitted += evaluateOldestTransactionAge(evaluatedAt);
-        markRuleEvaluated("STALE_INTAKE", evaluatedAt);
-        markRuleEvaluated("STUCK_DISBURSEMENT", evaluatedAt);
-        markRuleEvaluated("DPD_BUCKET_TRANSITION", evaluatedAt);
-        markRuleEvaluated("LSP_AUTO_REJECT_SPIKE", evaluatedAt);
-        markRuleEvaluated("AUTH_BRUTE_FORCE", evaluatedAt);
-        markRuleEvaluated("AUTH_BRUTE_FORCE_DISTRIBUTED", evaluatedAt);
-        markRuleEvaluated("OLDEST_TRANSACTION_AGE", evaluatedAt);
-        return new EvaluationSummary(emitted, evaluatedAt);
+        OptionalLong claimed = workerLeaseRepository.tryClaim(
+                EVALUATION_LEASE_JOB, workerOwner, leaseExpiry());
+        if (claimed.isEmpty()) {
+            log.info("Alert rule evaluation skipped: lease held by another worker.");
+            return new EvaluationSummary(0, null);
+        }
+        long fencingSeq = claimed.getAsLong();
+        try {
+            Instant evaluatedAt = clock.instant();
+            int emitted = 0;
+            try {
+                emitted += evaluateRuleIsolated("STALE_INTAKE", evaluatedAt, fencingSeq,
+                        () -> evaluateStaleIntake(evaluatedAt));
+                emitted += evaluateRuleIsolated("STUCK_DISBURSEMENT", evaluatedAt, fencingSeq,
+                        () -> evaluateStuckDisbursement(evaluatedAt));
+                emitted += evaluateDpdBucketTransitions(evaluatedAt, fencingSeq);
+                emitted += evaluateRuleIsolated("LSP_AUTO_REJECT_SPIKE", evaluatedAt, fencingSeq,
+                        () -> evaluateLspAutoRejectSpikes(evaluatedAt));
+                emitted += evaluateRuleIsolated("AUTH_BRUTE_FORCE", evaluatedAt, fencingSeq,
+                        () -> evaluateAuthBruteForce(evaluatedAt));
+                emitted += evaluateRuleIsolated("AUTH_BRUTE_FORCE_DISTRIBUTED", evaluatedAt, fencingSeq,
+                        () -> evaluateAuthBruteForceDistributed(evaluatedAt));
+                emitted += evaluateRuleIsolated("OLDEST_TRANSACTION_AGE", evaluatedAt, fencingSeq,
+                        () -> evaluateOldestTransactionAge(evaluatedAt));
+            } catch (EvaluationLeaseLostException displaced) {
+                log.warn("Alert rule evaluation aborted mid-run: {}", displaced.getMessage());
+            }
+            return new EvaluationSummary(emitted, evaluatedAt);
+        } finally {
+            workerLeaseRepository.release(EVALUATION_LEASE_JOB, workerOwner, fencingSeq);
+        }
+    }
+
+    private Instant leaseExpiry() {
+        return clock.instant().plus(Duration.ofMillis(properties.getEvaluationLeaseMs()));
+    }
+
+    /**
+     * Runs one rule inside its own short transaction with a per-transaction statement
+     * timeout, marks it evaluated in the same transaction so a failed rule is never recorded
+     * as evaluated, and isolates failures to that rule. Renews the worker lease first: a
+     * displaced owner stops before starting any more transactions.
+     */
+    private int evaluateRuleIsolated(
+            String ruleCode,
+            Instant evaluatedAt,
+            long fencingSeq,
+            java.util.function.Supplier<Integer> work
+    ) {
+        if (!workerLeaseRepository.renew(
+                EVALUATION_LEASE_JOB, workerOwner, fencingSeq, leaseExpiry())) {
+            throw new EvaluationLeaseLostException(ruleCode);
+        }
+        Timer.Sample sample = Timer.start(meterRegistry);
+        try {
+            Integer emitted = requiresNew.execute(status -> {
+                alertRuleSetQueryRepository.setLocalStatementTimeout(
+                        properties.getEvaluationStatementTimeoutMs());
+                int ruleEmitted = work.get();
+                markRuleEvaluated(ruleCode, evaluatedAt);
+                return ruleEmitted;
+            });
+            return emitted == null ? 0 : emitted;
+        } catch (RuntimeException failed) {
+            log.warn("Alert rule {} evaluation failed and was rolled back: {}", ruleCode, failed.getMessage());
+            return 0;
+        } finally {
+            sample.stop(Timer.builder("lms.alert.evaluation.rule.duration")
+                    .tag("rule", ruleCode)
+                    .register(meterRegistry));
+        }
+    }
+
+    /**
+     * The rule exception that means this worker lost its lease mid-run: abort without
+     * swallowing completed work (earlier rules already committed).
+     */
+    private static final class EvaluationLeaseLostException extends RuntimeException {
+        EvaluationLeaseLostException(String ruleCode) {
+            super("Evaluation lease lost before rule " + ruleCode);
+        }
     }
 
     @Transactional(readOnly = true)
@@ -257,103 +351,166 @@ public class AlertRuleEvaluationWorker {
         return minutes + " " + Strings.pluralize(minutes, "minute");
     }
 
-    private int evaluateDpdBucketTransitions(Instant evaluatedAt) {
+    /**
+     * Delinquency evaluation in bounded keyset pages (M07): each page of at most
+     * {@code evaluationBatchLimit} applications computes buckets, persists
+     * {@link LoanDelinquencyState}, and appends the {@code LOAN_DELINQUENCY_BUCKET_CHANGED}
+     * event inside ONE short transaction — state and its event always commit together. The
+     * worker lease is renewed between pages; a lost lease or a failed page aborts the rule
+     * (already-committed pages stay committed, and the next run re-evaluates the untouched
+     * remainder — per-application writes are idempotent, so nothing is missed or doubled).
+     */
+    private int evaluateDpdBucketTransitions(Instant evaluatedAt, long fencingSeq) {
         if (!isRuleEnabled("DPD_BUCKET_TRANSITION")) {
+            requiresNew.executeWithoutResult(
+                    status -> markRuleEvaluated("DPD_BUCKET_TRANSITION", evaluatedAt));
             return 0;
         }
         LocalDate today = businessCalendar.today();
-        List<DelinquencyEvaluationRow> rows = alertRuleSetQueryRepository.findServicingDelinquencyRows(today);
+        int pageSize = Math.max(1, properties.getEvaluationBatchLimit());
         int emitted = 0;
-        for (DelinquencyEvaluationRow row : rows) {
-            LoanDelinquencyBucket previousBucket = row.previousBucket();
-            LoanDelinquencyBucket currentBucket = row.currentBucket();
-            int currentMaxDaysPastDue = row.maxDaysPastDue();
-
-            if (currentBucket.ordinal() > previousBucket.ordinal()) {
-                String bucketLabel = currentBucket.name();
-                log.info(
-                        "dpd_bucket_transition applicationId={} previousBucket={} currentBucket={} maxDaysPastDue={}",
-                        row.applicationId(),
-                        previousBucket.name(),
-                        bucketLabel,
-                        currentMaxDaysPastDue
-                );
-                OpsAlert created = opsAlertService.createAlertIfAbsent(
-                        OpsAlertType.DPD_BUCKET_TRANSITION,
-                        severityForBucket(currentBucket),
-                        // Title keeps the raw bucket code ("Delinquency bucket DPD_1_30") — the
-                        // frontend's humanizeAlertTitle() parses this exact shape into a display
-                        // label, so it must stay a stable, machine-parseable code, not prose.
-                        "Delinquency bucket " + bucketLabel,
-                        // The bucket is deliberately left out of the message: it's already carried
-                        // (and humanized) via the title above, so repeating the raw enum name here
-                        // would just be the same vocabulary spelled two different ways in one card.
-                        "Loan "
-                                + row.externalLoanId()
-                                + " is "
-                                + currentMaxDaysPastDue
-                                + " "
-                                + Strings.pluralize(currentMaxDaysPastDue, "day")
-                                + " past due (overdue ₹"
-                                + Money.formatIndianGrouping(row.overdueAmount())
-                                + ").",
-                        "LOAN_APPLICATION",
-                        row.applicationId(),
-                        CorrelationIdHolder.get(),
-                        alertContext(Map.of(
-                                "applicationId", row.applicationId().toString(),
-                                "bucket", bucketLabel,
-                                "previousBucket", previousBucket.name(),
-                                "maxDaysPastDue", currentMaxDaysPastDue
-                        ))
-                );
-                dpdBucketTransitionCounter.increment();
-                if (created != null) {
-                    emitted++;
-                }
+        UUID cursor = null;
+        boolean completed = true;
+        while (true) {
+            if (!workerLeaseRepository.renew(
+                    EVALUATION_LEASE_JOB, workerOwner, fencingSeq, leaseExpiry())) {
+                throw new EvaluationLeaseLostException("DPD_BUCKET_TRANSITION");
             }
+            final UUID pageCursor = cursor;
+            Timer.Sample sample = Timer.start(meterRegistry);
+            PageOutcome page;
+            try {
+                page = requiresNew.execute(status -> {
+                    alertRuleSetQueryRepository.setLocalStatementTimeout(
+                            properties.getEvaluationStatementTimeoutMs());
+                    List<DelinquencyEvaluationRow> rows = alertRuleSetQueryRepository
+                            .findServicingDelinquencyRows(today, pageCursor, pageSize);
+                    int pageEmitted = 0;
+                    for (DelinquencyEvaluationRow row : rows) {
+                        pageEmitted += processDelinquencyRow(row, evaluatedAt);
+                    }
+                    return new PageOutcome(
+                            rows.size(),
+                            rows.isEmpty() ? pageCursor : rows.getLast().applicationId(),
+                            pageEmitted);
+                });
+            } catch (RuntimeException failed) {
+                log.warn("DPD evaluation page after cursor {} failed and was rolled back; "
+                        + "the next run resumes this remainder.", pageCursor, failed);
+                completed = false;
+                break;
+            } finally {
+                sample.stop(Timer.builder("lms.alert.evaluation.page.duration")
+                        .tag("rule", "DPD_BUCKET_TRANSITION")
+                        .register(meterRegistry));
+            }
+            emitted += page.emitted();
+            cursor = page.lastId();
+            if (page.rowCount() < pageSize) {
+                break;
+            }
+        }
+        // Marked only when the whole population was evaluated — an aborted rule keeps its
+        // earlier last_evaluated_at so the incomplete run is visible.
+        if (completed) {
+            requiresNew.executeWithoutResult(
+                    status -> markRuleEvaluated("DPD_BUCKET_TRANSITION", evaluatedAt));
+        }
+        return emitted;
+    }
 
-            if (shouldPersistDelinquencyState(
-                    row.existingStateId(),
-                    row.previousBucket(),
-                    row.previousMaxDaysPastDue(),
-                    row.currentBucket(),
-                    row.maxDaysPastDue()
-            )) {
-                LoanDelinquencyState state = row.existingStateId() == null
-                        ? new LoanDelinquencyState(loanApplicationRepository.getReferenceById(row.applicationId()))
-                        : loanDelinquencyStateRepository.findById(row.existingStateId()).orElseThrow();
-                state.refresh(currentBucket, currentMaxDaysPastDue, evaluatedAt);
-                loanDelinquencyStateRepository.save(state);
+    private record PageOutcome(int rowCount, UUID lastId, int emitted) {
+    }
 
-                // Fire on bucket change only, not on every days-past-due tick a re-evaluation
-                // re-confirms: shouldPersistDelinquencyState() being true does not by itself mean the
-                // bucket moved (the max-days-past-due count alone can advance within the same bucket),
-                // so this is a narrower condition than the block it lives in. It is never a wider one:
-                // whenever the bucket changes, the state write above always runs too, which is what
-                // keeps this exactly-once per transition rather than re-emitted on later runs.
-                if (previousBucket != currentBucket) {
-                    Lsp lsp = lspRepository.findById(row.lspId()).orElseThrow(() -> new IllegalStateException(
-                            "Loan application " + row.applicationId() + " references unknown LSP " + row.lspId()
-                    ));
-                    loanEventLog.append(
-                            lsp,
-                            LoanEventType.LOAN_DELINQUENCY_BUCKET_CHANGED,
-                            "LOAN_APPLICATION",
-                            row.applicationId().toString(),
-                            row.applicationId(),
-                            LoanEventPayloads.delinquencyBucketChanged(
-                                    row.applicationId(),
-                                    row.externalLoanId(),
-                                    previousBucket,
-                                    currentBucket,
-                                    currentMaxDaysPastDue,
-                                    row.previousMaxDaysPastDue(),
-                                    row.overdueAmount(),
-                                    evaluatedAt
-                            )
-                    );
-                }
+    private int processDelinquencyRow(DelinquencyEvaluationRow row, Instant evaluatedAt) {
+        LoanDelinquencyBucket previousBucket = row.previousBucket();
+        LoanDelinquencyBucket currentBucket = row.currentBucket();
+        int currentMaxDaysPastDue = row.maxDaysPastDue();
+        int emitted = 0;
+        if (currentBucket.ordinal() > previousBucket.ordinal()) {
+            String bucketLabel = currentBucket.name();
+            log.info(
+                    "dpd_bucket_transition applicationId={} previousBucket={} currentBucket={} maxDaysPastDue={}",
+                    row.applicationId(),
+                    previousBucket.name(),
+                    bucketLabel,
+                    currentMaxDaysPastDue
+            );
+            OpsAlert created = opsAlertService.createAlertIfAbsent(
+                    OpsAlertType.DPD_BUCKET_TRANSITION,
+                    severityForBucket(currentBucket),
+                    // Title keeps the raw bucket code ("Delinquency bucket DPD_1_30") — the
+                    // frontend's humanizeAlertTitle() parses this exact shape into a display
+                    // label, so it must stay a stable, machine-parseable code, not prose.
+                    "Delinquency bucket " + bucketLabel,
+                    // The bucket is deliberately left out of the message: it's already carried
+                    // (and humanized) via the title above, so repeating the raw enum name here
+                    // would just be the same vocabulary spelled two different ways in one card.
+                    "Loan "
+                            + row.externalLoanId()
+                            + " is "
+                            + currentMaxDaysPastDue
+                            + " "
+                            + Strings.pluralize(currentMaxDaysPastDue, "day")
+                            + " past due (overdue ₹"
+                            + Money.formatIndianGrouping(row.overdueAmount())
+                            + ").",
+                    "LOAN_APPLICATION",
+                    row.applicationId(),
+                    CorrelationIdHolder.get(),
+                    alertContext(Map.of(
+                            "applicationId", row.applicationId().toString(),
+                            "bucket", bucketLabel,
+                            "previousBucket", previousBucket.name(),
+                            "maxDaysPastDue", currentMaxDaysPastDue
+                    ))
+            );
+            dpdBucketTransitionCounter.increment();
+            if (created != null) {
+                emitted++;
+            }
+        }
+
+        if (shouldPersistDelinquencyState(
+                row.existingStateId(),
+                row.previousBucket(),
+                row.previousMaxDaysPastDue(),
+                row.currentBucket(),
+                row.maxDaysPastDue()
+        )) {
+            LoanDelinquencyState state = row.existingStateId() == null
+                    ? new LoanDelinquencyState(loanApplicationRepository.getReferenceById(row.applicationId()))
+                    : loanDelinquencyStateRepository.findById(row.existingStateId()).orElseThrow();
+            state.refresh(currentBucket, currentMaxDaysPastDue, evaluatedAt);
+            loanDelinquencyStateRepository.save(state);
+
+            // Fire on bucket change only, not on every days-past-due tick a re-evaluation
+            // re-confirms: shouldPersistDelinquencyState() being true does not by itself mean the
+            // bucket moved (the max-days-past-due count alone can advance within the same bucket),
+            // so this is a narrower condition than the block it lives in. It is never a wider one:
+            // whenever the bucket changes, the state write above always runs too, which is what
+            // keeps this exactly-once per transition rather than re-emitted on later runs.
+            if (previousBucket != currentBucket) {
+                Lsp lsp = lspRepository.findById(row.lspId()).orElseThrow(() -> new IllegalStateException(
+                        "Loan application " + row.applicationId() + " references unknown LSP " + row.lspId()
+                ));
+                loanEventLog.append(
+                        lsp,
+                        LoanEventType.LOAN_DELINQUENCY_BUCKET_CHANGED,
+                        "LOAN_APPLICATION",
+                        row.applicationId().toString(),
+                        row.applicationId(),
+                        LoanEventPayloads.delinquencyBucketChanged(
+                                row.applicationId(),
+                                row.externalLoanId(),
+                                previousBucket,
+                                currentBucket,
+                                currentMaxDaysPastDue,
+                                row.previousMaxDaysPastDue(),
+                                row.overdueAmount(),
+                                evaluatedAt
+                        )
+                );
             }
         }
         return emitted;

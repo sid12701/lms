@@ -76,6 +76,7 @@ class DurableIntentOnlyPathIntegrationTest {
     @Autowired private DisbursementIntentWorkflowService disbursementIntentWorkflowService;
     @Autowired private LoanDisbursementCommandService loanDisbursementCommandService;
     @Autowired private LoanDisbursementWorkerService loanDisbursementWorkerService;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @MockitoSpyBean
     private LoanDisbursementAdapter loanDisbursementAdapter;
@@ -148,8 +149,10 @@ class DurableIntentOnlyPathIntegrationTest {
                         .with(systemAdmin()))
                 .andExpect(status().isOk());
         disbursementIntentWorkflowService.executeForApplication(applicationId);
-        loanDisbursementWorkerService.processPendingStatusChecks();
-        loanDisbursementWorkerService.processPendingStatusChecks();
+        makeAllQueueRowsDue();
+        loanDisbursementWorkerService.processReconciliationQueue();
+        makeAllQueueRowsDue();
+        loanDisbursementWorkerService.processReconciliationQueue();
 
         LoanAccount account = loanAccountRepository.findByLoanApplication_Id(applicationId).orElseThrow();
         assertEquals(LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION, account.getStatus());
@@ -411,5 +414,10 @@ class DurableIntentOnlyPathIntegrationTest {
     private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor opsUser() {
         return jwt().jwt(token -> token.subject("ops.user").claim("roles", List.of("OPS_USER")))
                 .authorities(() -> "ROLE_OPS_USER");
+    }
+
+    private void makeAllQueueRowsDue() {
+        jdbcTemplate.update(
+                "update disbursement_reconciliation_queue set next_poll_at = now() - interval '1 second'");
     }
 }

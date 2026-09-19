@@ -52,6 +52,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import org.springframework.data.domain.PageRequest;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -170,15 +171,16 @@ class DisbursementWorkerIsolationIntegrationTest {
             return result;
         }).when(loanDisbursementCommandService).initiateDisbursement(any(UUID.class), any());
 
-        // Control scan order explicitly instead of assuming findByStatus order: snapshot
+        // Control scan order explicitly instead of assuming the due-ID order: snapshot
         // the pre-tick scan and serve the poisoned item FIRST, so committed neighbors
         // prove continuation after it. (doReturn snapshot: callRealMethod is unsupported
         // on interface spies; unstubbed calls still delegate to the real bean.)
-        List<LoanApplication> approvedScan = new ArrayList<>(loanApplicationRepository
-                .findByStatus(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL));
-        approvedScan.sort(Comparator.comparing(app -> !poisonedId.equals(app.getId())));
-        doReturn(approvedScan).when(loanApplicationRepository)
-                .findByStatus(eq(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL));
+        List<UUID> approvedScanIds = new ArrayList<>(loanApplicationRepository
+                .findIdsByStatus(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL,
+                        PageRequest.of(0, 1000)));
+        approvedScanIds.sort(Comparator.comparing(id -> !poisonedId.equals(id)));
+        doReturn(approvedScanIds).when(loanApplicationRepository)
+                .findIdsByStatus(eq(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL), any());
 
         double failuresBefore = workerItemFailures();
 
@@ -239,7 +241,7 @@ class DisbursementWorkerIsolationIntegrationTest {
         // recovery must still run and commit in the same tick.
         doThrow(new IllegalStateException("scan probe"))
                 .when(loanApplicationRepository)
-                .findByStatus(eq(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL));
+                .findIdsByStatus(eq(LoanApplicationStatus.APPROVED_PENDING_DISBURSAL), any());
 
         double scanBefore = workerScanFailures();
         double itemBefore = workerItemFailures();
@@ -304,8 +306,19 @@ class DisbursementWorkerIsolationIntegrationTest {
         probeIntent.stampLease("t01-stale-owner", Instant.now().minusSeconds(3600));
         disbursementIntentRepository.save(probeIntent);
         disbursementIntentWorkflowService.executeClaimableIntents();
+        // First poll via the status-check scan (unqueued accounts); unresolved repeats
+        // ride the reconciliation sweep's next_poll_at schedule (H25).
         loanDisbursementWorkerService.processPendingStatusChecks();
-        loanDisbursementWorkerService.processPendingStatusChecks();
+        for (int sweep = 0; sweep < 10; sweep++) {
+            if (loanApplicationRepository.findById(probeFailedId).orElseThrow().getStatus()
+                            == LoanApplicationStatus.DISBURSED
+                    && loanApplicationRepository.findById(unknownId).orElseThrow().getStatus()
+                            == LoanApplicationStatus.DISBURSED) {
+                break;
+            }
+            makeAllQueueRowsDue();
+            loanDisbursementWorkerService.processReconciliationQueue();
+        }
         assertEquals(LoanApplicationStatus.DISBURSED,
                 loanApplicationRepository.findById(probeFailedId).orElseThrow().getStatus());
         assertEquals(LoanApplicationStatus.DISBURSED,
@@ -354,8 +367,17 @@ class DisbursementWorkerIsolationIntegrationTest {
         UUID parkedId = seedApproved("MOCK0STUCK0", new BigDecimal("45000.00"));
         loanDisbursementCommandService.initiateDisbursement(parkedId, "t01.setup");
         disbursementIntentWorkflowService.executeForApplication(parkedId);
+        // First poll via the status-check scan; the stuck account lands in the queue and
+        // repeats ride the reconciliation sweep's next_poll_at backoff until it parks.
         loanDisbursementWorkerService.processPendingStatusChecks();
-        loanDisbursementWorkerService.processPendingStatusChecks();
+        for (int sweep = 0; sweep < 10; sweep++) {
+            LoanAccount current = loanAccountRepository.findByLoanApplication_Id(parkedId).orElseThrow();
+            if (current.getStatus() == LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION) {
+                break;
+            }
+            makeAllQueueRowsDue();
+            loanDisbursementWorkerService.processReconciliationQueue();
+        }
 
         LoanAccount parked = loanAccountRepository.findByLoanApplication_Id(parkedId).orElseThrow();
         assertEquals(LoanAccountStatus.DISBURSEMENT_PENDING_RECONCILIATION, parked.getStatus());
@@ -447,6 +469,16 @@ class DisbursementWorkerIsolationIntegrationTest {
     private double workflowFailures(String name, String scope) {
         var counter = meterRegistry.find(name).tag("scope", scope).counter();
         return counter == null ? 0.0 : counter.count();
+    }
+
+    /**
+     * Simulates the queue backoff lapsing: pulls every entry's {@code next_poll_at} into the
+     * past so the reconciliation sweep polls it immediately — the test doesn't wait on the
+     * real exponential schedule.
+     */
+    private void makeAllQueueRowsDue() {
+        jdbcTemplate.update(
+                "update disbursement_reconciliation_queue set next_poll_at = now() - interval '1 second'");
     }
 
     private long loanEventsFor(UUID applicationId) {

@@ -74,6 +74,25 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
     List<LoanAccount> findByStatus(LoanAccountStatus status);
 
     /**
+     * Bounded due-ID selection for the status-check tick (H25): in-flight accounts with no
+     * reconciliation queue entry — i.e. their first poll. Repeat polls are owned by the queue's
+     * {@code next_poll_at} backoff schedule and the reconciliation sweep, so a still-pending
+     * account is never re-polled faster than its backoff allows.
+     */
+    @Query("""
+            select application.id
+            from LoanAccount account
+            join account.loanApplication application
+            where account.status = com.bhawana.lms.domain.LoanAccountStatus.DISBURSEMENT_REQUESTED
+              and not exists (
+                  select 1 from DisbursementReconciliationQueueEntry queueEntry
+                  where queueEntry.loanAccount = account
+              )
+            order by account.id asc
+            """)
+    List<UUID> findIdsAwaitingFirstStatusPoll(Pageable pageable);
+
+    /**
      * Bounded discovery for the reconciliation sweep: in-flight or parked accounts that
      * already submitted at least one provider call (a stored request row exists) but hold no
      * queue entry yet — typically legacy evidence. Fresh CREATED intents with no submitted

@@ -87,14 +87,14 @@ class AdminReportingServicePortfolioMisExportStreamingTest {
     }
 
     @Test
-    void streamingCsvMatchesRowAggregationOnSeededPortfolio() {
+    void streamingCsvMatchesRowAggregationOnSeededPortfolio() throws java.io.IOException {
         when(businessCalendar.today()).thenReturn(LocalDate.of(2026, 7, 6));
 
         Lsp lsp = lspRepository.save(new Lsp("APEX", "Apex Finance", LspStatus.ACTIVE));
         LoanProduct product = persistProduct(product("PORT-STREAM", new BigDecimal("18.50")));
 
         LoanAccount first = loanAccountRepository.save(disbursedAccount(
-                application(borrower(lsp, "Anika Sharma", "ABCDE1234F"), lsp, product, "APEX-LOAN-001", LoanApplicationStatus.DISBURSED),
+                application(borrower("Anika Sharma", "ABCDE1234F"), lsp, product, "APEX-LOAN-001", LoanApplicationStatus.DISBURSED),
                 "ACCT-APEX-001",
                 new BigDecimal("1000.00"),
                 LocalDate.of(2026, 3, 10)
@@ -111,7 +111,7 @@ class AdminReportingServicePortfolioMisExportStreamingTest {
         ));
 
         loanAccountRepository.save(disbursedAccount(
-                application(borrower(lsp, "Rahul Shah", "ZXCVB1234N"), lsp, product, "APEX-LOAN-002", LoanApplicationStatus.DISBURSED),
+                application(borrower("Rahul Shah", "ZXCVB1234N"), lsp, product, "APEX-LOAN-002", LoanApplicationStatus.DISBURSED),
                 "ACCT-APEX-002",
                 new BigDecimal("3000.00"),
                 LocalDate.of(2026, 4, 5)
@@ -120,14 +120,19 @@ class AdminReportingServicePortfolioMisExportStreamingTest {
         List<AdminReportingService.PortfolioMisRow> rows = adminReportingService.buildPortfolioMisReport(null, null, null);
         String expectedCsv = PortfolioMisCsvWriter.toCsv(rows);
 
-        AdminReportingService.GeneratedReport generated = adminReportingService.generatePortfolioMisCsv(null, null, null);
-        String actualCsv = new String(generated.content(), StandardCharsets.UTF_8);
+        java.nio.file.Path target = java.nio.file.Files.createTempFile("export-stream-", ".csv");
+        try {
+            adminReportingService.generatePortfolioMisCsv(null, null, null, Instant.now(), target);
+            String actualCsv = java.nio.file.Files.readString(target, StandardCharsets.UTF_8);
 
-        assertThat(actualCsv).isEqualTo(expectedCsv);
-        assertThat(actualCsv).contains("APEX-LOAN-001", "APEX-LOAN-002", "ACCT-APEX-001", "ACCT-APEX-002");
+            assertThat(actualCsv).isEqualTo(expectedCsv);
+            assertThat(actualCsv).contains("APEX-LOAN-001", "APEX-LOAN-002", "ACCT-APEX-001", "ACCT-APEX-002");
+        } finally {
+            java.nio.file.Files.deleteIfExists(target);
+        }
     }
 
-    private Borrower borrower(Lsp lsp, String fullName, String pan) {
+    private Borrower borrower(String fullName, String pan) {
         return borrowerRepository.save(new Borrower(BorrowerProfile.builder()
                         .fullName(fullName)
                         .panNumber(pan)

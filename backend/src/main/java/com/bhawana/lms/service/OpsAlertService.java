@@ -13,6 +13,7 @@ import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -33,8 +34,13 @@ public class OpsAlertService {
     }
 
     /**
-     * Creates an alert only when no open (NEW) alert already exists for the same
-     * type + subject — prevents scheduled rules from spamming the inbox.
+     * Creates an alert only when no open (NEW) alert already exists for the same canonical
+     * dedupe key (M08): {@code (type, subject_type, subject_id)} for subject alerts,
+     * {@code (type, correlation_id)} for subjectless ones. The existence checks below are a
+     * fast path only — the real fence is the pair of partial unique indexes on NEW rows
+     * (V133), so a lost check-then-insert race surfaces as a constraint violation on the
+     * inner transaction's commit and is treated as "alert already exists" rather than a
+     * second row.
      */
     public OpsAlert createAlertIfAbsent(
             OpsAlertType type,
@@ -46,27 +52,60 @@ public class OpsAlertService {
             String correlationId,
             String contextJson
     ) {
-        return adminScopedTransactionExecutor.call(() -> {
-            if (subjectId != null
-                    && opsAlertRepository.existsByTypeAndSubjectIdAndStatus(type, subjectId, OpsAlertStatus.NEW)) {
+        if (subjectId != null && subjectType == null) {
+            throw new IllegalArgumentException(
+                    "subjectType is required: it is part of the dedupe key for subject alerts.");
+        }
+        try {
+            return adminScopedTransactionExecutor.call(() -> {
+                if (subjectId != null
+                        && opsAlertRepository.existsByTypeAndSubjectTypeAndSubjectIdAndStatus(
+                                type, subjectType, subjectId, OpsAlertStatus.NEW)) {
+                    return null;
+                }
+                if (subjectId == null
+                        && correlationId != null
+                        && opsAlertRepository.existsByTypeAndCorrelationIdAndStatus(type, correlationId, OpsAlertStatus.NEW)) {
+                    return null;
+                }
+                return opsAlertRepository.save(new OpsAlert(
+                        type,
+                        severity,
+                        title,
+                        message,
+                        subjectType,
+                        subjectId,
+                        correlationId,
+                        contextJson
+                ).markDedupeProtected());
+            });
+        } catch (RuntimeException lostDedupeRace) {
+            // A fence hit can surface at insert flush (DataIntegrityViolationException) or at
+            // commit when the winner row committed after our existence check
+            // (TransactionSystemException wrapping the constraint violation). Both mean the
+            // canonical key is already held — report "alert exists" and let the caller move on.
+            if (isUniqueViolation(lostDedupeRace)) {
                 return null;
             }
-            if (subjectId == null
-                    && correlationId != null
-                    && opsAlertRepository.existsByTypeAndCorrelationIdAndStatus(type, correlationId, OpsAlertStatus.NEW)) {
-                return null;
+            throw lostDedupeRace;
+        }
+    }
+
+    private static boolean isUniqueViolation(Throwable throwable) {
+        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
+            if (cause instanceof DataIntegrityViolationException) {
+                return true;
             }
-            return opsAlertRepository.save(new OpsAlert(
-                    type,
-                    severity,
-                    title,
-                    message,
-                    subjectType,
-                    subjectId,
-                    correlationId,
-                    contextJson
-            ));
-        });
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException constraintViolation
+                    && "23505".equals(constraintViolation.getSQLState())) {
+                return true;
+            }
+            if (cause instanceof java.sql.SQLException sqlException
+                    && "23505".equals(sqlException.getSQLState())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public OpsAlert createAlert(

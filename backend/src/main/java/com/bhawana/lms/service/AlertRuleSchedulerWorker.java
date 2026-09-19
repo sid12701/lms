@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.config.ScheduledJobThreadingConfig;
 import com.bhawana.lms.tenant.TenantScopedExecution;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,47 +13,48 @@ public class AlertRuleSchedulerWorker {
     private static final Logger log = LoggerFactory.getLogger(AlertRuleSchedulerWorker.class);
 
     private final AlertRuleEvaluationWorker alertRuleEvaluationWorker;
-    private final PostgresAdvisoryLockSupport advisoryLockSupport;
-    private final PortfolioKpiProperties portfolioKpiProperties;
+    private final JobObservabilitySupport jobObservability;
     private final boolean enabled;
 
     public AlertRuleSchedulerWorker(
             AlertRuleEvaluationWorker alertRuleEvaluationWorker,
-            PostgresAdvisoryLockSupport advisoryLockSupport,
-            PortfolioKpiProperties portfolioKpiProperties,
+            JobObservabilitySupport jobObservability,
             AlertRuleProperties alertRuleProperties
     ) {
         this.alertRuleEvaluationWorker = alertRuleEvaluationWorker;
-        this.advisoryLockSupport = advisoryLockSupport;
-        this.portfolioKpiProperties = portfolioKpiProperties;
+        this.jobObservability = jobObservability;
         this.enabled = alertRuleProperties.isSchedulerEnabled();
     }
 
-    @Scheduled(fixedDelayString = "${app.alert-rules.scheduler-fixed-delay-ms:300000}")
+    @Scheduled(fixedDelayString = "${app.alert-rules.scheduler-fixed-delay-ms:300000}", scheduler = ScheduledJobThreadingConfig.MAINTENANCE_TASK_SCHEDULER)
     public void evaluateScheduledAlertRules() {
         if (!enabled) {
             return;
         }
-        TenantScopedExecution.runAsAdmin(this::evaluateScheduledAlertRulesUnderAdminScope);
+        jobObservability.run("alert-rule-evaluation", () ->
+                TenantScopedExecution.runAsAdmin(this::evaluateScheduledAlertRulesUnderAdminScope));
     }
 
+    /**
+     * Singleton exclusion lives inside the evaluation (a durable worker lease with fencing),
+     * not a transaction-scoped advisory lock: the run is a sequence of short per-rule and
+     * per-batch transactions (M07), so a lock spanning it would recreate exactly the one long
+     * transaction the lease exists to avoid.
+     */
     void evaluateScheduledAlertRulesUnderAdminScope() {
-        long lockId = portfolioKpiProperties.getAdvisoryLockId() + 1L;
-        if (!advisoryLockSupport.tryAcquire(lockId)) {
-            log.debug("alert_rule_scheduler_skipped lock_not_acquired lockId={}", lockId);
+        AlertRuleEvaluationWorker.EvaluationSummary result =
+                alertRuleEvaluationWorker.evaluateScheduledRules();
+        if (result.evaluatedAt() == null) {
+            log.debug("alert_rule_scheduler_skipped lease_not_acquired");
             return;
         }
-        try {
-            AlertRuleEvaluationWorker.EvaluationSummary summary = alertRuleEvaluationWorker.evaluateScheduledRules();
-            if (summary.alertsEmitted() > 0) {
-                log.info(
-                        "Alert rule scheduler emitted {} new alert(s) at {}",
-                        summary.alertsEmitted(),
-                        summary.evaluatedAt()
-                );
-            }
-        } finally {
-            advisoryLockSupport.release(lockId);
+        log.debug("alert_rule_scheduler_completed evaluatedAt={}", result.evaluatedAt());
+        if (result.alertsEmitted() > 0) {
+            log.info(
+                    "Alert rule scheduler emitted {} new alert(s) at {}",
+                    result.alertsEmitted(),
+                    result.evaluatedAt()
+            );
         }
     }
 }

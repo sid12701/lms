@@ -54,8 +54,6 @@ class TransactionalExternalEffectArchitectureTest {
      * boundary was actually moved — never that the rule became inconvenient.
      */
     private static final Map<String, String> OPEN_DEBT_ALLOWLIST = new LinkedHashMap<>(Map.of(
-            "com.bhawana.lms.service.ReportRequestService#processPendingRequests",
-            "H24 (open): write transaction held across R2 storage and SMTP for a whole batch.",
             "com.bhawana.lms.service.LoanApplicationServicingReadService#downloadDocumentZip",
             "H24-class (open, found by this rule): read-write transaction held across N document "
                     + "fetches while building a ZIP. Not in the original audit.",
