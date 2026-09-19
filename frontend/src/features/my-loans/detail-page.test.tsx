@@ -21,7 +21,7 @@ vi.mock("./api", () => ({
   uploadLspDocument: (...args: unknown[]) => uploadLspDocumentMock(...args),
   fetchLspDocumentRequirements: (...args: unknown[]) => fetchLspDocumentRequirementsMock(...args),
   fetchMyLoanRepaymentSchedule: vi.fn().mockResolvedValue([]),
-  fetchMyLoanPayments: vi.fn().mockResolvedValue([]),
+  fetchMyLoanPayments: vi.fn().mockResolvedValue({ items: [], totalCount: 0, truncated: false }),
 }));
 
 function sessionFor(role: Session["user"]["role"]): Session {

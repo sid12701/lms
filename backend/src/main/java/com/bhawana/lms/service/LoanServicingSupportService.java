@@ -3,6 +3,8 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountClosureReason;
 import com.bhawana.lms.domain.LoanAccountStatus;
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.common.money.Money;
 import com.bhawana.lms.common.util.Strings;
@@ -26,6 +28,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -33,6 +38,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class LoanServicingSupportService {
+
+    /**
+     * Stable payment-history order for paging (M14): newest receipt first, with the payment id as
+     * the final tiebreaker so rows sharing a paymentDate/createdAt cannot drift across pages.
+     */
+    private static final Sort PAYMENT_HISTORY_SORT = Sort.by(
+            Sort.Direction.DESC, "paymentDate"
+    ).and(
+            Sort.by(Sort.Direction.DESC, "createdAt")
+    ).and(
+            Sort.by(Sort.Direction.DESC, "id")
+    );
 
     private final LoanApplicationRepository loanApplicationRepository;
     private final LoanAccountRepository loanAccountRepository;
@@ -98,12 +115,34 @@ public class LoanServicingSupportService {
         );
     }
 
+    /**
+     * Payment history for the LSP endpoint is always a bounded page (M14), matching the
+     * loan-application list contract: a request that omits offset/limit returns the first
+     * {@link PaginationResponseBuilder#DEFAULT_LIMIT} rows — the same count the legacy {@code Top50}
+     * cap produced — and the response headers disclose the applied window (and the total when
+     * {@code paginationDetails=ON}), so nothing past the first page is silently hidden.
+     *
+     * <p>Offset is interpreted as a page offset via {@code PageRequest.of(offset / limit, limit)},
+     * the same convention the other Spring-Data-backed list endpoints (borrower directory, ops
+     * alerts) already use.
+     */
     @Transactional(readOnly = true)
-    public List<LoanPaymentTransaction> listPaymentTransactionsForLsp(UUID lspId, UUID loanAccountId) {
+    public PagedResult<LoanPaymentTransaction> listPaymentTransactionsForLspPage(
+            UUID lspId,
+            UUID loanAccountId,
+            Integer offset,
+            Integer limit
+    ) {
         LoanAccount loanAccount = getLoanAccountForLsp(lspId, loanAccountId);
-        return loanPaymentTransactionRepository.findTop50ByLoanAccount_IdOrderByPaymentDateDescCreatedAtDesc(
-                loanAccount.getId()
+        int resolvedOffset = PaginationResponseBuilder.resolveOffset(offset, true);
+        int resolvedLimit = PaginationResponseBuilder.resolveLimit(limit, true);
+        int safeLimit = Math.max(resolvedLimit, 1);
+
+        Page<LoanPaymentTransaction> page = loanPaymentTransactionRepository.findByLoanAccount_Id(
+                loanAccount.getId(),
+                PageRequest.of(resolvedOffset / safeLimit, safeLimit, PAYMENT_HISTORY_SORT)
         );
+        return new PagedResult<>(page.getContent(), page.getTotalElements(), resolvedOffset, resolvedLimit);
     }
 
     @Transactional(readOnly = true)

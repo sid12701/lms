@@ -27,7 +27,9 @@ export function useMyLoanServicing(loanAccountId: string) {
 
   return {
     schedule: scheduleQuery.data ?? null,
-    payments: paymentsQuery.data ?? null,
+    payments: paymentsQuery.data?.items ?? null,
+    paymentsTotalCount: paymentsQuery.data?.totalCount ?? null,
+    paymentsTruncated: paymentsQuery.data?.truncated ?? false,
     loading,
     error,
     refetch: () => Promise.all([scheduleQuery.refetch(), paymentsQuery.refetch()]),
