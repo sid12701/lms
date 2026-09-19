@@ -12,8 +12,6 @@ import java.security.MessageDigest;
 
 import java.security.NoSuchAlgorithmException;
 
-import java.time.Instant;
-
 import java.util.HexFormat;
 
 import java.util.List;
@@ -208,15 +206,19 @@ public class ConfigurableLoanDocumentStorageService implements LoanDocumentStora
 
             }
 
+            String sanitizedFileName = sanitizeFileName(file.getOriginalFilename());
+
+            String contentChecksum = checksum(content);
+
             DocumentStorageDescriptor descriptor = new DocumentStorageDescriptor(
 
-                    sanitizeFileName(file.getOriginalFilename()),
+                    sanitizedFileName,
 
                     resolveContentType(file.getContentType()),
 
-                    checksum(content),
+                    contentChecksum,
 
-                    buildStorageKey(applicationId, documentType, sanitizeFileName(file.getOriginalFilename()))
+                    buildStorageKey(applicationId, documentType, contentChecksum, sanitizedFileName)
 
             );
 
@@ -304,15 +306,25 @@ public class ConfigurableLoanDocumentStorageService implements LoanDocumentStora
 
 
 
-    private static String buildStorageKey(UUID applicationId, LoanApplicationDocumentType documentType, String fileName) {
+    /**
+     * Content-addressed storage key: the same document bytes and file name under
+     * the same application and document type always resolve to the same object.
+     * A re-executed idempotent upload after a crash (H17) overwrites its own
+     * object instead of stacking an orphan, and the checksum prefix makes a
+     * collision between genuinely different content impossible.
+     */
+    private static String buildStorageKey(
+            UUID applicationId,
+            LoanApplicationDocumentType documentType,
+            String contentChecksum,
+            String fileName
+    ) {
 
         return "loan/" + applicationId
 
                 + "/" + documentType.name().toLowerCase()
 
-                + "/" + Instant.now().toEpochMilli()
-
-                + "-" + UUID.randomUUID()
+                + "/" + contentChecksum
 
                 + "-" + fileName;
 

@@ -121,6 +121,76 @@ describe("http-client", () => {
     );
   });
 
+  it("surfaces Retry-After on retryable 409 IDEMPOTENCY_IN_PROGRESS conflicts", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: "IDEMPOTENCY_IN_PROGRESS",
+            message: "An identical request is still being processed. Retry shortly.",
+          }),
+          {
+            status: 409,
+            headers: {
+              "Content-Type": "application/json",
+              "Retry-After": "5",
+            },
+          },
+        ),
+      ),
+    );
+
+    await expect(
+      requestJson("/api/v1/internal/ops/loan-applications/abc/status-transitions", {
+        method: "POST",
+        body: "{}",
+      }),
+    ).rejects.toSatisfy((error: unknown) => {
+      expect(error).toBeInstanceOf(ApiError);
+      const apiError = error as ApiError;
+      expect(apiError.status).toBe(409);
+      expect(apiError.code).toBe("IDEMPOTENCY_IN_PROGRESS");
+      expect(apiError.retryAfterSeconds).toBe(5);
+      expect(apiError.settled).toBe(true);
+      return true;
+    });
+  });
+
+  it("does not surface Retry-After on terminal 409 idempotency conflicts", async () => {
+    for (const code of ["IDEMPOTENCY_CONFLICT", "IDEMPOTENCY_RECOVERY_REQUIRED"]) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({ code, message: "conflict" }), {
+            status: 409,
+            headers: {
+              "Content-Type": "application/json",
+              // Even if a terminal conflict ever carried the header, clients must
+              // not treat it as retryable.
+              "Retry-After": "3",
+            },
+          }),
+        ),
+      );
+
+      await expect(
+        requestJson("/api/v1/internal/ops/loan-applications/abc/status-transitions", {
+          method: "POST",
+          body: "{}",
+        }),
+      ).rejects.toSatisfy((error: unknown) => {
+        expect(error).toBeInstanceOf(ApiError);
+        const apiError = error as ApiError;
+        expect(apiError.status).toBe(409);
+        expect(apiError.code).toBe(code);
+        expect(apiError.retryAfterSeconds).toBeNull();
+        return true;
+      });
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("parses typed 404 NOT_FOUND envelope", async () => {
     vi.stubGlobal(
       "fetch",

@@ -88,6 +88,27 @@ public class IdempotencyClaimService {
                 ));
     }
 
+
+    /**
+     * Marks the claimed pending record recovery-required in an independent transaction,
+     * fenced on this attempt's lease token. Returns false when the lease was already lost
+     * (another attempt reclaimed or completed the row), in which case the caller must
+     * re-read the record instead of assuming the terminal write landed.
+     */
+    public boolean markLspApiIdempotencyRecordRecoveryRequired(LeaseToken leaseToken) {
+        Integer updated = requiresNewTransactionTemplate.execute(status ->
+                lspApiIdempotencyRecordRepository.markRecoveryRequiredIfOwned(
+                        leaseToken.recordId(),
+                        leaseToken.attempt(),
+                        leaseToken.leaseOwner(),
+                        IdempotencyRecordState.RECOVERY_REQUIRED_RESPONSE_STATUS,
+                        IdempotencyRecordState.RECOVERY_REQUIRED_RESPONSE_BODY,
+                        IdempotencyRecordState.PENDING_RESPONSE_BODY,
+                        Instant.now()
+                ));
+        return updated != null && updated == 1;
+    }
+
     public boolean completeAdminApiIdempotencyRecord(
             LeaseToken leaseToken,
             int responseStatus,
@@ -112,6 +133,24 @@ public class IdempotencyClaimService {
                         leaseToken.leaseOwner(),
                         IdempotencyRecordState.PENDING_RESPONSE_BODY
                 ));
+    }
+
+
+    /**
+     * Admin-scope counterpart of {@link #markLspApiIdempotencyRecordRecoveryRequired}.
+     */
+    public boolean markAdminApiIdempotencyRecordRecoveryRequired(LeaseToken leaseToken) {
+        Integer updated = requiresNewTransactionTemplate.execute(status ->
+                adminApiIdempotencyRecordRepository.markRecoveryRequiredIfOwned(
+                        leaseToken.recordId(),
+                        leaseToken.attempt(),
+                        leaseToken.leaseOwner(),
+                        IdempotencyRecordState.RECOVERY_REQUIRED_RESPONSE_STATUS,
+                        IdempotencyRecordState.RECOVERY_REQUIRED_RESPONSE_BODY,
+                        IdempotencyRecordState.PENDING_RESPONSE_BODY,
+                        Instant.now()
+                ));
+        return updated != null && updated == 1;
     }
 
     public Optional<LeaseToken> tryReclaimExpiredLspApiIdempotencyLease(

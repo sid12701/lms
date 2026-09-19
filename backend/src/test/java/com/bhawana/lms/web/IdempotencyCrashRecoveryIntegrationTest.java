@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
@@ -133,6 +134,103 @@ class IdempotencyCrashRecoveryIntegrationTest {
                 .orElseThrow();
         assertFalse(record.getResponseBody().contains("__idempotencyPending"));
         assertEquals(200, record.getResponseStatus());
+    }
+
+    /**
+     * H18: a duplicate arriving while the original owner's lease is still live
+     * gets a fast 409 IDEMPOTENCY_IN_PROGRESS with a bounded Retry-After instead
+     * of pinning the request thread in the old 30-second poll loop. Once the
+     * lease expires, the same retry recovers the committed result.
+     */
+    @Test
+    void livePendingDuplicateReturnsConflictFastAndRetryAfterLeaseExpiryRecovers() throws Exception {
+        LspFixture lsp = createLsp();
+        ProductFixture product = createProduct();
+        mapProductToLsp(product.id(), lsp.id());
+        JsonNode client = createApiClient(lsp.id());
+        String accessToken = issueClientCredentialsToken(
+                client.get("clientId").asText(),
+                client.get("clientSecret").asText()
+        );
+
+        String lspLoanId = "INPROG-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        LinkedHashMap<String, Object> payload = defaultCreatePayload(lsp.id(), product.id(), lspLoanId);
+        String idempotencyKey = UUID.randomUUID().toString();
+
+        MvcResult first = mockMvc.perform(post("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String firstApplicationId = objectMapper.readTree(first.getResponse().getContentAsString())
+                .get("id").asText();
+
+        // Simulate a second worker still holding a live lease on the pending row.
+        jdbcTemplate.update(
+                """
+                        update lsp_api_idempotency_record
+                        set response_status = 0,
+                            response_body = '{"__idempotencyPending":true}',
+                            lease_owner = 'busy-worker',
+                            lease_expires_at = ?
+                        where lsp_id = ? and idempotency_key = ?
+                        """,
+                Timestamp.from(Instant.now().plus(60, ChronoUnit.SECONDS)),
+                UUID.fromString(lsp.id()),
+                idempotencyKey
+        );
+
+        long started = System.nanoTime();
+        MvcResult duplicate = mockMvc.perform(post("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_IN_PROGRESS"))
+                .andReturn();
+        long elapsedMillis = (System.nanoTime() - started) / 1_000_000L;
+        org.junit.jupiter.api.Assertions.assertTrue(
+                elapsedMillis < 10_000,
+                "a live duplicate must not occupy the request thread for the old 30s poll window");
+
+        String retryAfter = duplicate.getResponse().getHeader("Retry-After");
+        org.junit.jupiter.api.Assertions.assertNotNull(retryAfter);
+        long retryAfterSeconds = Long.parseLong(retryAfter);
+        org.junit.jupiter.api.Assertions.assertTrue(
+                retryAfterSeconds >= 1 && retryAfterSeconds <= 5,
+                "Retry-After must be bounded by the cap, not the 60s remaining lease");
+
+        // Once the dead lease expires, the identical retry reclaims and recovers
+        // the committed application via evidence — no duplicate is created.
+        jdbcTemplate.update(
+                """
+                        update lsp_api_idempotency_record
+                        set lease_expires_at = ?
+                        where lsp_id = ? and idempotency_key = ?
+                        """,
+                Timestamp.from(Instant.now().minus(1, ChronoUnit.MINUTES)),
+                UUID.fromString(lsp.id()),
+                idempotencyKey
+        );
+
+        mockMvc.perform(post("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(payload)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(firstApplicationId));
+
+        Long applicationCount = jdbcTemplate.queryForObject(
+                "select count(*) from loan_application where lsp_id = ? and lower(external_loan_id) = lower(?)",
+                Long.class,
+                UUID.fromString(lsp.id()),
+                lspLoanId
+        );
+        assertEquals(1L, applicationCount);
     }
 
     private LinkedHashMap<String, Object> defaultCreatePayload(String lspId, String productId, String lspLoanId) {

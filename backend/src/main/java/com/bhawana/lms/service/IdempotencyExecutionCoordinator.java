@@ -227,6 +227,7 @@ public class IdempotencyExecutionCoordinator {
             Supplier<T> action
     ) {
         assertMatchingFingerprint(record.getRequestFingerprint(), requestFingerprint);
+        throwIfRecoveryRequired(record.getResponseBody());
         if (!IdempotencyRecordState.isPending(record.getResponseBody())) {
             return deserialize(record.getResponseBody(), responseType);
         }
@@ -282,6 +283,7 @@ public class IdempotencyExecutionCoordinator {
             Supplier<T> action
     ) {
         assertMatchingFingerprint(record.getRequestFingerprint(), requestFingerprint);
+        throwIfRecoveryRequired(record.getResponseBody());
         if (!IdempotencyRecordState.isPending(record.getResponseBody())) {
             return deserialize(record.getResponseBody(), responseType);
         }
@@ -334,19 +336,6 @@ public class IdempotencyExecutionCoordinator {
             boolean attemptRecovery,
             IdempotencyClaimService.LeaseToken leaseToken
     ) {
-        if (attemptRecovery && !idempotencyRecoveryService.supports(operationKey, responseType)) {
-            log.error(
-                    "idempotency_recovery_required scope=lsp operationKey={} idempotencyKey={} attempt={}",
-                    operationKey,
-                    normalizedKey,
-                    leaseToken.attempt()
-            );
-            throw new ApiConflictException(
-                    "IDEMPOTENCY_RECOVERY_REQUIRED",
-                    "The prior request outcome cannot be reconstructed automatically. Escalate for reconciliation."
-            );
-        }
-
         try {
             return scopePreservingTransactionExecutor.call(() -> {
                 if (attemptRecovery) {
@@ -366,16 +355,60 @@ public class IdempotencyExecutionCoordinator {
                         );
                         return response;
                     }
+                    if (!IdempotencyOperationClasses.isReexecutable(operationKey)) {
+                        // The prior attempt's outcome is genuinely unknown: it may
+                        // have committed work a rollback cannot undo (object storage,
+                        // a provider call, an inner REQUIRES_NEW write). Do not
+                        // blindly re-run and do not renew the dead lease — park the
+                        // record in the terminal recovery-required state instead.
+                        throw new RecoveryRequiredSignal();
+                    }
                 }
 
                 T response = action.get();
                 completeLspOrThrow(leaseToken, response);
                 return response;
             });
+        } catch (RecoveryRequiredSignal signal) {
+            return failUnrecoverableLsp(lspId, operationKey, normalizedKey, responseType, leaseToken);
         } catch (RuntimeException exception) {
             idempotencyClaimService.releasePendingLspApiIdempotencyRecord(leaseToken);
             throw exception;
         }
+    }
+
+    /**
+     * Parks a reclaimed record in the terminal recovery-required state when its
+     * operation class forbids blind re-execution. The transition is fenced on this
+     * attempt's lease token; if the fence is lost the row was already resolved by
+     * someone else, so it is re-read once and answered honestly rather than
+     * throwing over a completed record.
+     */
+    private <T> T failUnrecoverableLsp(
+            UUID lspId,
+            String operationKey,
+            String normalizedKey,
+            Class<T> responseType,
+            IdempotencyClaimService.LeaseToken leaseToken
+    ) {
+        if (idempotencyClaimService.markLspApiIdempotencyRecordRecoveryRequired(leaseToken)) {
+            log.error(
+                    "idempotency_recovery_required scope=lsp operationKey={} idempotencyKey={} attempt={}",
+                    operationKey,
+                    normalizedKey,
+                    leaseToken.attempt()
+            );
+            throw recoveryRequiredConflict();
+        }
+
+        LspApiIdempotencyRecord latest = findLspRecord(lspId, operationKey, normalizedKey);
+        if (latest != null) {
+            throwIfRecoveryRequired(latest.getResponseBody());
+            if (!IdempotencyRecordState.isPending(latest.getResponseBody())) {
+                return deserialize(latest.getResponseBody(), responseType);
+            }
+        }
+        throw inProgressConflict(null);
     }
 
     private <T> T executeClaimedAdmin(
@@ -387,19 +420,6 @@ public class IdempotencyExecutionCoordinator {
             boolean attemptRecovery,
             IdempotencyClaimService.LeaseToken leaseToken
     ) {
-        if (attemptRecovery && !idempotencyRecoveryService.supports(operationKey, responseType)) {
-            log.error(
-                    "idempotency_recovery_required scope=admin operationKey={} idempotencyKey={} attempt={}",
-                    operationKey,
-                    normalizedKey,
-                    leaseToken.attempt()
-            );
-            throw new ApiConflictException(
-                    "IDEMPOTENCY_RECOVERY_REQUIRED",
-                    "The prior request outcome cannot be reconstructed automatically. Escalate for reconciliation."
-            );
-        }
-
         try {
             return adminScopedTransactionExecutor.call(() -> {
                 if (attemptRecovery) {
@@ -419,16 +439,50 @@ public class IdempotencyExecutionCoordinator {
                         );
                         return response;
                     }
+                    if (!IdempotencyOperationClasses.isReexecutable(operationKey)) {
+                        // Same rule as the LSP path: an unprovable prior outcome is
+                        // parked in the terminal recovery-required state, not renewed.
+                        throw new RecoveryRequiredSignal();
+                    }
                 }
 
                 T response = action.get();
                 completeAdminOrThrow(leaseToken, response);
                 return response;
             });
+        } catch (RecoveryRequiredSignal signal) {
+            return failUnrecoverableAdmin(operationKey, normalizedKey, responseType, leaseToken);
         } catch (RuntimeException exception) {
             idempotencyClaimService.releasePendingAdminApiIdempotencyRecord(leaseToken);
             throw exception;
         }
+    }
+
+    /** Admin-scope counterpart of {@link #failUnrecoverableLsp}. */
+    private <T> T failUnrecoverableAdmin(
+            String operationKey,
+            String normalizedKey,
+            Class<T> responseType,
+            IdempotencyClaimService.LeaseToken leaseToken
+    ) {
+        if (idempotencyClaimService.markAdminApiIdempotencyRecordRecoveryRequired(leaseToken)) {
+            log.error(
+                    "idempotency_recovery_required scope=admin operationKey={} idempotencyKey={} attempt={}",
+                    operationKey,
+                    normalizedKey,
+                    leaseToken.attempt()
+            );
+            throw recoveryRequiredConflict();
+        }
+
+        AdminApiIdempotencyRecord latest = findAdminRecord(operationKey, normalizedKey);
+        if (latest != null) {
+            throwIfRecoveryRequired(latest.getResponseBody());
+            if (!IdempotencyRecordState.isPending(latest.getResponseBody())) {
+                return deserialize(latest.getResponseBody(), responseType);
+            }
+        }
+        throw inProgressConflict(null);
     }
 
     private void completeLspOrThrow(IdempotencyClaimService.LeaseToken leaseToken, Object response) {
@@ -462,23 +516,21 @@ public class IdempotencyExecutionCoordinator {
             }
             assertMatchingFingerprint(latest.getRequestFingerprint(), requestFingerprint);
             if (!IdempotencyRecordState.isPending(latest.getResponseBody())) {
+                throwIfRecoveryRequired(latest.getResponseBody());
                 return latest;
             }
         }
 
+        // Final re-check before giving up: an owner that completed between the last
+        // poll and now replays its stored response instead of getting a 409. This
+        // keeps a zero completion wait honest.
         LspApiIdempotencyRecord latest = findLspRecord(lspId, operationKey, normalizedKey);
         if (latest != null && !IdempotencyRecordState.isPending(latest.getResponseBody())) {
+            throwIfRecoveryRequired(latest.getResponseBody());
             return latest;
         }
 
-        long retryAfterSeconds = liveLeaseExpiresAt == null
-                ? 5L
-                : Math.max(1L, ChronoUnit.SECONDS.between(Instant.now(), liveLeaseExpiresAt));
-        throw new ApiConflictException(
-                "IDEMPOTENCY_IN_PROGRESS",
-                "An identical request is still being processed. Retry shortly.",
-                retryAfterSeconds
-        );
+        throw inProgressConflict(liveLeaseExpiresAt);
     }
 
     private AdminApiIdempotencyRecord awaitAdminCompletion(
@@ -499,23 +551,19 @@ public class IdempotencyExecutionCoordinator {
             }
             assertMatchingFingerprint(latest.getRequestFingerprint(), requestFingerprint);
             if (!IdempotencyRecordState.isPending(latest.getResponseBody())) {
+                throwIfRecoveryRequired(latest.getResponseBody());
                 return latest;
             }
         }
 
+        // Same final re-check as the LSP path before answering in-progress.
         AdminApiIdempotencyRecord latest = findAdminRecord(operationKey, normalizedKey);
         if (latest != null && !IdempotencyRecordState.isPending(latest.getResponseBody())) {
+            throwIfRecoveryRequired(latest.getResponseBody());
             return latest;
         }
 
-        long retryAfterSeconds = liveLeaseExpiresAt == null
-                ? 5L
-                : Math.max(1L, ChronoUnit.SECONDS.between(Instant.now(), liveLeaseExpiresAt));
-        throw new ApiConflictException(
-                "IDEMPOTENCY_IN_PROGRESS",
-                "An identical request is still being processed. Retry shortly.",
-                retryAfterSeconds
-        );
+        throw inProgressConflict(liveLeaseExpiresAt);
     }
 
     private LspApiIdempotencyRecord newPendingLspRecord(
@@ -602,6 +650,55 @@ public class IdempotencyExecutionCoordinator {
                     "IDEMPOTENCY_CONFLICT",
                     "Idempotency-Key has already been used for a different request."
             );
+        }
+    }
+
+    /**
+     * A record parked in the terminal recovery-required state answers every later
+     * retry deterministically — no lease to renew, no action to re-run. The row
+     * itself stays as evidence for reconciliation.
+     */
+    private static void throwIfRecoveryRequired(String responseBody) {
+        if (IdempotencyRecordState.isRecoveryRequired(responseBody)) {
+            throw recoveryRequiredConflict();
+        }
+    }
+
+    private static ApiConflictException recoveryRequiredConflict() {
+        return new ApiConflictException(
+                "IDEMPOTENCY_RECOVERY_REQUIRED",
+                "The prior request outcome cannot be reconstructed automatically. Escalate for reconciliation."
+        );
+    }
+
+    /**
+     * Retryable in-progress answer. The Retry-After hint is bounded by
+     * {@code retry-after-cap-seconds}: it can never span the full remaining lease,
+     * so clients retry on a short fixed cadence while the owner's lease is still
+     * reclaimable on expiry.
+     */
+    private ApiConflictException inProgressConflict(Instant liveLeaseExpiresAt) {
+        long retryAfterSeconds = liveLeaseExpiresAt == null
+                ? properties.getRetryAfterCapSeconds()
+                : Math.min(
+                        properties.getRetryAfterCapSeconds(),
+                        Math.max(1L, ChronoUnit.SECONDS.between(Instant.now(), liveLeaseExpiresAt)));
+        return new ApiConflictException(
+                "IDEMPOTENCY_IN_PROGRESS",
+                "An identical request is still being processed. Retry shortly.",
+                retryAfterSeconds
+        );
+    }
+
+    /**
+     * Internal signal thrown inside the action transaction when a reclaimed
+     * operation may not be re-executed. It rolls the (empty) recovery transaction
+     * back, then the catch block writes the terminal recovery-required marker in
+     * its own fenced transaction.
+     */
+    private static final class RecoveryRequiredSignal extends RuntimeException {
+        private RecoveryRequiredSignal() {
+            super(null, null, false, false);
         }
     }
 

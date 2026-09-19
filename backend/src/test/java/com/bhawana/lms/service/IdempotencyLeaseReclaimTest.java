@@ -2,6 +2,7 @@ package com.bhawana.lms.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.bhawana.lms.domain.LspApiIdempotencyRecord;
@@ -92,6 +93,60 @@ class IdempotencyLeaseReclaimTest {
                 "A worker that lost its lease must not overwrite the current attempt");
     }
 
+    @Test
+    void recoveryRequiredMarkIsTerminalAndLeaseFenced() {
+        UUID lspId = seedLsp();
+        String idempotencyKey = UUID.randomUUID().toString();
+        LspApiIdempotencyRecord record = new LspApiIdempotencyRecord(
+                lspId,
+                "UNAUDITED_OPERATION",
+                idempotencyKey,
+                "fingerprint",
+                IdempotencyRecordState.PENDING_RESPONSE_STATUS,
+                IdempotencyRecordState.PENDING_RESPONSE_BODY
+        );
+        record.stampLease("dead-worker", Instant.now().minus(5, ChronoUnit.MINUTES));
+        UUID recordId = TenantScopedExecution.callAsAdmin(() ->
+                lspApiIdempotencyRecordRepository.save(record).getId());
+
+        var reclaimedLease = idempotencyClaimService.tryReclaimExpiredLspApiIdempotencyLease(
+                recordId,
+                1,
+                "recovery-worker",
+                Instant.now().plus(60, ChronoUnit.SECONDS)
+        );
+        assertTrue(reclaimedLease.isPresent());
+
+        // A stale attempt cannot park the row: the terminal write is fenced on
+        // id + attempt + owner + pending body.
+        assertFalse(idempotencyClaimService.markLspApiIdempotencyRecordRecoveryRequired(
+                new IdempotencyClaimService.LeaseToken(recordId, 1, "dead-worker")));
+
+        assertTrue(idempotencyClaimService.markLspApiIdempotencyRecordRecoveryRequired(
+                reclaimedLease.get()));
+
+        LspApiIdempotencyRecord terminal = TenantScopedExecution.callAsAdmin(() ->
+                lspApiIdempotencyRecordRepository.findById(recordId).orElseThrow());
+        assertTrue(IdempotencyRecordState.isRecoveryRequired(terminal.getResponseBody()));
+        assertNull(terminal.getLeaseOwner());
+        assertNull(terminal.getLeaseExpiresAt());
+
+        // Terminal rows are evidence: they are never reclaimed again and a stale
+        // owner's completion stays fenced out.
+        assertFalse(idempotencyClaimService.tryReclaimExpiredLspApiIdempotencyLease(
+                recordId,
+                terminal.getAttempt(),
+                "another-worker",
+                Instant.now().plus(60, ChronoUnit.SECONDS)
+        ).isPresent());
+        assertFalse(idempotencyClaimService.completeLspApiIdempotencyRecord(
+                new IdempotencyClaimService.LeaseToken(recordId, 1, "dead-worker"),
+                200,
+                "{\"worker\":\"stale\"}"
+        ));
+        assertTrue(IdempotencyRecordState.isRecoveryRequired(TenantScopedExecution.callAsAdmin(() ->
+                lspApiIdempotencyRecordRepository.findById(recordId).orElseThrow()).getResponseBody()));
+    }
     private UUID seedLsp() {
         UUID lspId = UUID.randomUUID();
         jdbcTemplate.update(

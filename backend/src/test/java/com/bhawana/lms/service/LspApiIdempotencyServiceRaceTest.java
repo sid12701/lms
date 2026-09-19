@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -62,6 +63,9 @@ class LspApiIdempotencyServiceRaceTest {
 
     @Test
     void concurrentExecuteWithSameKeyPersistsSingleRecord() throws Exception {
+        // H18: losing duplicates no longer poll for up to 30s. Each caller either
+        // wins/replays the stored response or gets a bounded IDEMPOTENCY_IN_PROGRESS
+        // with Retry-After; a later retry replays the completed record.
         String operationKey = "race-test";
         String idempotencyKey = UUID.randomUUID().toString();
         record RequestBody(String value) {
@@ -83,14 +87,38 @@ class LspApiIdempotencyServiceRaceTest {
             List<Future<String>> futures = executor.invokeAll(tasks);
             List<String> responses = new ArrayList<>();
             for (Future<String> future : futures) {
-                responses.add(future.get());
+                try {
+                    responses.add(future.get());
+                } catch (ExecutionException exception) {
+                    assertTrue(
+                            exception.getCause()
+                                    instanceof com.bhawana.lms.common.api.error.ApiConflictException,
+                            "a losing duplicate may only surface a bounded conflict"
+                    );
+                    var conflict =
+                            (com.bhawana.lms.common.api.error.ApiConflictException) exception.getCause();
+                    assertEquals("IDEMPOTENCY_IN_PROGRESS", conflict.getErrorCode());
+                    assertTrue(conflict.getRetryAfterSeconds().isPresent());
+                }
             }
 
-            assertEquals(5, responses.size());
+            assertTrue(responses.size() >= 1 && responses.size() <= 5);
             assertEquals(1, responses.stream().distinct().count());
+            assertEquals("ok-" + idempotencyKey, responses.get(0));
             assertTrue(asTenant(lspId, () -> lspApiIdempotencyRecordRepository
                     .findByLspIdAndOperationKeyAndIdempotencyKey(lspId, operationKey, idempotencyKey)
                     .isPresent()));
+
+            // Once the owner has completed, a retry replays the stored response.
+            String replayed = asTenant(lspId, () -> lspApiIdempotencyService.execute(
+                    lspId,
+                    operationKey,
+                    idempotencyKey,
+                    new RequestBody("same-body"),
+                    String.class,
+                    () -> "must-not-run"
+            ));
+            assertEquals("ok-" + idempotencyKey, replayed);
         }
     }
 
