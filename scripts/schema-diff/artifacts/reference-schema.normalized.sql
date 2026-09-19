@@ -452,6 +452,20 @@ CREATE TABLE public.loan_application (
     CONSTRAINT chk_loan_application_tenure_positive CHECK ((tenure_months > 0))
 );
 ALTER TABLE ONLY public.loan_application FORCE ROW LEVEL SECURITY;
+CREATE TABLE public.loan_application_approval_evidence (
+    id uuid NOT NULL,
+    approval_id uuid NOT NULL,
+    loan_application_id uuid NOT NULL,
+    document_type character varying(64) NOT NULL,
+    checklist_status character varying(32) NOT NULL,
+    document_version_id uuid,
+    file_checksum character varying(128),
+    storage_key character varying(500),
+    lms_managed_content boolean NOT NULL,
+    approved_by_username character varying(128),
+    approved_at timestamp with time zone NOT NULL
+);
+ALTER TABLE ONLY public.loan_application_approval_evidence FORCE ROW LEVEL SECURITY;
 CREATE TABLE public.loan_application_assignment_event (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     loan_application_id uuid NOT NULL,
@@ -513,9 +527,36 @@ CREATE TABLE public.loan_application_document_checklist (
     lms_managed_content boolean DEFAULT false NOT NULL,
     storage_key character varying(500),
     file_checksum character varying(128),
-    file_size_bytes bigint
+    file_size_bytes bigint,
+    current_version_id uuid
 );
 ALTER TABLE ONLY public.loan_application_document_checklist FORCE ROW LEVEL SECURITY;
+CREATE TABLE public.loan_application_document_version (
+    id uuid NOT NULL,
+    loan_application_id uuid NOT NULL,
+    checklist_item_id uuid NOT NULL,
+    document_type character varying(64) NOT NULL,
+    version_number integer NOT NULL,
+    kind character varying(16) NOT NULL,
+    status character varying(32) NOT NULL,
+    note character varying(500),
+    file_name character varying(255),
+    file_reference character varying(500),
+    source_reference character varying(500),
+    content_type character varying(128),
+    lms_managed_content boolean NOT NULL,
+    storage_key character varying(500),
+    file_checksum character varying(128),
+    file_size_bytes bigint,
+    application_status character varying(32),
+    correction_reason character varying(500),
+    corrects_evidence_id uuid,
+    recorded_by_username character varying(128),
+    recorded_at timestamp with time zone NOT NULL,
+    CONSTRAINT loan_application_document_version_check CHECK ((((kind)::text <> 'CORRECTION'::text) OR (correction_reason IS NOT NULL))),
+    CONSTRAINT loan_application_document_version_kind_check CHECK (((kind)::text = ANY ((ARRAY['LEGACY'::character varying, 'SUBMISSION'::character varying, 'CORRECTION'::character varying])::text[])))
+);
+ALTER TABLE ONLY public.loan_application_document_version FORCE ROW LEVEL SECURITY;
 CREATE TABLE public.loan_application_intake_audit (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     loan_application_id uuid NOT NULL,
@@ -593,6 +634,20 @@ CREATE TABLE public.loan_disbursement_request_log (
     CONSTRAINT chk_disbursement_response_payload_json_object CHECK ((jsonb_typeof(response_payload_json) = 'object'::text))
 );
 ALTER TABLE ONLY public.loan_disbursement_request_log FORCE ROW LEVEL SECURITY;
+CREATE TABLE public.loan_document_object (
+    storage_key character varying(500) NOT NULL,
+    loan_application_id uuid NOT NULL,
+    document_type character varying(64) NOT NULL,
+    file_checksum character varying(128) NOT NULL,
+    file_size_bytes bigint NOT NULL,
+    state character varying(16) NOT NULL,
+    last_attempt_at timestamp with time zone NOT NULL,
+    linked_at timestamp with time zone,
+    deleted_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT loan_document_object_state_check CHECK (((state)::text = ANY ((ARRAY['PENDING'::character varying, 'LINKED'::character varying, 'DELETING'::character varying, 'DELETED'::character varying])::text[])))
+);
+ALTER TABLE ONLY public.loan_document_object FORCE ROW LEVEL SECURITY;
 CREATE SEQUENCE public.loan_event_position_seq
     START WITH 1
     INCREMENT BY 1
@@ -1022,6 +1077,10 @@ ALTER TABLE ONLY public.loan_account
     ADD CONSTRAINT loan_account_loan_application_id_key UNIQUE (loan_application_id);
 ALTER TABLE ONLY public.loan_account
     ADD CONSTRAINT loan_account_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.loan_application_approval_evidence
+    ADD CONSTRAINT loan_application_approval_evidenc_approval_id_document_type_key UNIQUE (approval_id, document_type);
+ALTER TABLE ONLY public.loan_application_approval_evidence
+    ADD CONSTRAINT loan_application_approval_evidence_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.loan_application_assignment_event
     ADD CONSTRAINT loan_application_assignment_event_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.loan_application_audit_event
@@ -1032,6 +1091,10 @@ ALTER TABLE ONLY public.loan_application_document_access_audit_type
     ADD CONSTRAINT loan_application_document_access_audit_type_pkey PRIMARY KEY (audit_id, document_type);
 ALTER TABLE ONLY public.loan_application_document_checklist
     ADD CONSTRAINT loan_application_document_checklist_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.loan_application_document_version
+    ADD CONSTRAINT loan_application_document_ver_loan_application_id_document__key UNIQUE (loan_application_id, document_type, version_number);
+ALTER TABLE ONLY public.loan_application_document_version
+    ADD CONSTRAINT loan_application_document_version_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.loan_application_intake_audit
     ADD CONSTRAINT loan_application_intake_audit_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.loan_application_pii_reveal_audit
@@ -1048,6 +1111,8 @@ ALTER TABLE ONLY public.loan_disbursement_bank_mismatch_log
     ADD CONSTRAINT loan_disbursement_bank_mismatch_log_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.loan_disbursement_request_log
     ADD CONSTRAINT loan_disbursement_request_log_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.loan_document_object
+    ADD CONSTRAINT loan_document_object_pkey PRIMARY KEY (storage_key);
 ALTER TABLE ONLY public.loan_event
     ADD CONSTRAINT loan_event_pkey PRIMARY KEY (occurred_at, id);
 ALTER TABLE ONLY public.loan_event_2026_08
@@ -1158,12 +1223,14 @@ CREATE INDEX idx_loan_account_disbursed_at ON public.loan_account USING btree (d
 CREATE INDEX idx_loan_account_loan_product_version_id ON public.loan_account USING btree (loan_product_version_id);
 CREATE INDEX idx_loan_account_lsp ON public.loan_account USING btree (lsp_id);
 CREATE INDEX idx_loan_account_lsp_disbursed_created_at ON public.loan_account USING btree (lsp_id, disbursed_at DESC, created_at DESC);
+CREATE INDEX idx_loan_application_approval_evidence_application ON public.loan_application_approval_evidence USING btree (loan_application_id, approved_at DESC);
 CREATE INDEX idx_loan_application_assignment_event_application_created_at ON public.loan_application_assignment_event USING btree (loan_application_id, created_at DESC);
 CREATE INDEX idx_loan_application_audit_event_actor_created_at ON public.loan_application_audit_event USING btree (actor_username, created_at DESC);
 CREATE INDEX idx_loan_application_audit_event_application_created_at ON public.loan_application_audit_event USING btree (loan_application_id, created_at DESC);
 CREATE INDEX idx_loan_application_audit_event_created_at ON public.loan_application_audit_event USING btree (created_at DESC);
 CREATE INDEX idx_loan_application_borrower_id ON public.loan_application USING btree (borrower_id);
 CREATE INDEX idx_loan_application_document_checklist_application_created_at ON public.loan_application_document_checklist USING btree (loan_application_id, created_at);
+CREATE INDEX idx_loan_application_document_version_storage_key ON public.loan_application_document_version USING btree (storage_key) WHERE (storage_key IS NOT NULL);
 CREATE INDEX idx_loan_application_external_loan_id_trgm ON public.loan_application USING gin (lower((external_loan_id)::text) public.gin_trgm_ops);
 CREATE INDEX idx_loan_application_intake_audit_actor_created_at ON public.loan_application_intake_audit USING btree (actor_username, created_at DESC);
 CREATE INDEX idx_loan_application_intake_audit_created_at ON public.loan_application_intake_audit USING btree (loan_application_id, created_at DESC);
@@ -1182,6 +1249,7 @@ CREATE INDEX idx_loan_document_access_audit_actor_created_at ON public.loan_appl
 CREATE INDEX idx_loan_document_access_audit_application_created_at ON public.loan_application_document_access_audit USING btree (loan_application_id, created_at DESC);
 CREATE INDEX idx_loan_document_access_audit_created_at ON public.loan_application_document_access_audit USING btree (created_at DESC);
 CREATE INDEX idx_loan_document_access_audit_type_document_type ON public.loan_application_document_access_audit_type USING btree (document_type);
+CREATE INDEX idx_loan_document_object_reconcile ON public.loan_document_object USING btree (last_attempt_at) WHERE ((state)::text = ANY ((ARRAY['PENDING'::character varying, 'DELETING'::character varying])::text[]));
 CREATE INDEX idx_loan_event_application_time ON ONLY public.loan_event USING btree (loan_application_id, occurred_at DESC);
 CREATE INDEX idx_loan_event_feed_order ON ONLY public.loan_event USING btree (lsp_id, transaction_id, "position");
 CREATE UNIQUE INDEX idx_loan_foreclosure_quote_account_version ON public.loan_foreclosure_quote USING btree (loan_account_id, version);
@@ -1305,6 +1373,8 @@ ALTER TABLE ONLY public.disbursement_reconciliation_queue
     ADD CONSTRAINT disbursement_reconciliation_queue_intent_id_fkey FOREIGN KEY (intent_id) REFERENCES public.disbursement_intent(id);
 ALTER TABLE ONLY public.disbursement_reconciliation_queue
     ADD CONSTRAINT disbursement_reconciliation_queue_loan_account_id_fkey FOREIGN KEY (loan_account_id) REFERENCES public.loan_account(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.loan_application_document_version
+    ADD CONSTRAINT fk_document_version_corrects_evidence FOREIGN KEY (corrects_evidence_id) REFERENCES public.loan_application_approval_evidence(id);
 ALTER TABLE ONLY public.loan_application_document_access_audit
     ADD CONSTRAINT fk_loan_document_access_audit_application FOREIGN KEY (loan_application_id) REFERENCES public.loan_application(id);
 ALTER TABLE ONLY public.refresh_token
@@ -1321,6 +1391,10 @@ ALTER TABLE ONLY public.loan_account
     ADD CONSTRAINT loan_account_loan_product_version_id_fkey FOREIGN KEY (loan_product_version_id) REFERENCES public.loan_product_version(id);
 ALTER TABLE ONLY public.loan_account
     ADD CONSTRAINT loan_account_lsp_id_fkey FOREIGN KEY (lsp_id) REFERENCES public.lsp(id);
+ALTER TABLE ONLY public.loan_application_approval_evidence
+    ADD CONSTRAINT loan_application_approval_evidence_document_version_id_fkey FOREIGN KEY (document_version_id) REFERENCES public.loan_application_document_version(id);
+ALTER TABLE ONLY public.loan_application_approval_evidence
+    ADD CONSTRAINT loan_application_approval_evidence_loan_application_id_fkey FOREIGN KEY (loan_application_id) REFERENCES public.loan_application(id);
 ALTER TABLE ONLY public.loan_application_assignment_event
     ADD CONSTRAINT loan_application_assignment_event_loan_application_id_fkey FOREIGN KEY (loan_application_id) REFERENCES public.loan_application(id) ON DELETE CASCADE;
 ALTER TABLE ONLY public.loan_application_audit_event
@@ -1330,7 +1404,13 @@ ALTER TABLE ONLY public.loan_application
 ALTER TABLE ONLY public.loan_application_document_access_audit_type
     ADD CONSTRAINT loan_application_document_access_audit_type_audit_id_fkey FOREIGN KEY (audit_id) REFERENCES public.loan_application_document_access_audit(id) ON DELETE CASCADE;
 ALTER TABLE ONLY public.loan_application_document_checklist
+    ADD CONSTRAINT loan_application_document_checklist_current_version_id_fkey FOREIGN KEY (current_version_id) REFERENCES public.loan_application_document_version(id);
+ALTER TABLE ONLY public.loan_application_document_checklist
     ADD CONSTRAINT loan_application_document_checklist_loan_application_id_fkey FOREIGN KEY (loan_application_id) REFERENCES public.loan_application(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.loan_application_document_version
+    ADD CONSTRAINT loan_application_document_version_checklist_item_id_fkey FOREIGN KEY (checklist_item_id) REFERENCES public.loan_application_document_checklist(id);
+ALTER TABLE ONLY public.loan_application_document_version
+    ADD CONSTRAINT loan_application_document_version_loan_application_id_fkey FOREIGN KEY (loan_application_id) REFERENCES public.loan_application(id);
 ALTER TABLE ONLY public.loan_application_intake_audit
     ADD CONSTRAINT loan_application_intake_audit_loan_application_id_fkey FOREIGN KEY (loan_application_id) REFERENCES public.loan_application(id) ON DELETE CASCADE;
 ALTER TABLE ONLY public.loan_application
@@ -1353,6 +1433,8 @@ ALTER TABLE ONLY public.loan_disbursement_bank_mismatch_log
     ADD CONSTRAINT loan_disbursement_bank_mismatch_log_lsp_id_fkey FOREIGN KEY (lsp_id) REFERENCES public.lsp(id);
 ALTER TABLE ONLY public.loan_disbursement_request_log
     ADD CONSTRAINT loan_disbursement_request_log_loan_account_id_fkey FOREIGN KEY (loan_account_id) REFERENCES public.loan_account(id);
+ALTER TABLE ONLY public.loan_document_object
+    ADD CONSTRAINT loan_document_object_loan_application_id_fkey FOREIGN KEY (loan_application_id) REFERENCES public.loan_application(id);
 ALTER TABLE public.loan_event
     ADD CONSTRAINT loan_event_loan_application_id_fkey FOREIGN KEY (loan_application_id) REFERENCES public.loan_application(id) DEFERRABLE INITIALLY DEFERRED;
 ALTER TABLE public.loan_event
@@ -1425,6 +1507,8 @@ CREATE POLICY disbursement_reconciliation_queue_tenant_policy ON public.disburse
 ALTER TABLE public.loan_account ENABLE ROW LEVEL SECURITY;
 CREATE POLICY loan_account_tenant_policy ON public.loan_account TO lms_tenant_app USING ((lsp_id = public.app_current_lsp_id())) WITH CHECK ((lsp_id = public.app_current_lsp_id()));
 ALTER TABLE public.loan_application ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.loan_application_approval_evidence ENABLE ROW LEVEL SECURITY;
+CREATE POLICY loan_application_approval_evidence_tenant_policy ON public.loan_application_approval_evidence TO lms_tenant_app USING (public.tenant_owns_application(loan_application_id)) WITH CHECK (public.tenant_owns_application(loan_application_id));
 ALTER TABLE public.loan_application_assignment_event ENABLE ROW LEVEL SECURITY;
 CREATE POLICY loan_application_assignment_event_tenant_policy ON public.loan_application_assignment_event TO lms_tenant_app USING (public.tenant_owns_application(loan_application_id)) WITH CHECK (public.tenant_owns_application(loan_application_id));
 ALTER TABLE public.loan_application_audit_event ENABLE ROW LEVEL SECURITY;
@@ -1434,6 +1518,8 @@ CREATE POLICY loan_application_document_access_audit_tenant_policy ON public.loa
 ALTER TABLE public.loan_application_document_access_audit_type ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loan_application_document_checklist ENABLE ROW LEVEL SECURITY;
 CREATE POLICY loan_application_document_checklist_tenant_policy ON public.loan_application_document_checklist TO lms_tenant_app USING (public.tenant_owns_application(loan_application_id)) WITH CHECK (public.tenant_owns_application(loan_application_id));
+ALTER TABLE public.loan_application_document_version ENABLE ROW LEVEL SECURITY;
+CREATE POLICY loan_application_document_version_tenant_policy ON public.loan_application_document_version TO lms_tenant_app USING (public.tenant_owns_application(loan_application_id)) WITH CHECK (public.tenant_owns_application(loan_application_id));
 ALTER TABLE public.loan_application_intake_audit ENABLE ROW LEVEL SECURITY;
 CREATE POLICY loan_application_intake_audit_tenant_policy ON public.loan_application_intake_audit TO lms_tenant_app USING (public.tenant_owns_application(loan_application_id)) WITH CHECK (public.tenant_owns_application(loan_application_id));
 ALTER TABLE public.loan_application_pii_reveal_audit ENABLE ROW LEVEL SECURITY;
@@ -1448,6 +1534,8 @@ CREATE POLICY loan_document_access_audit_type_tenant_policy ON public.loan_appli
   WHERE ((audit.id = loan_application_document_access_audit_type.audit_id) AND public.tenant_owns_application(audit.loan_application_id))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM public.loan_application_document_access_audit audit
   WHERE ((audit.id = loan_application_document_access_audit_type.audit_id) AND public.tenant_owns_application(audit.loan_application_id)))));
+ALTER TABLE public.loan_document_object ENABLE ROW LEVEL SECURITY;
+CREATE POLICY loan_document_object_tenant_policy ON public.loan_document_object TO lms_tenant_app USING (public.tenant_owns_application(loan_application_id)) WITH CHECK (public.tenant_owns_application(loan_application_id));
 ALTER TABLE public.loan_event ENABLE ROW LEVEL SECURITY;
 CREATE POLICY loan_event_tenant_insert_policy ON public.loan_event FOR INSERT TO lms_tenant_app WITH CHECK ((lsp_id = public.app_current_lsp_id()));
 CREATE POLICY loan_event_tenant_select_policy ON public.loan_event FOR SELECT TO lms_tenant_app USING ((lsp_id = public.app_current_lsp_id()));

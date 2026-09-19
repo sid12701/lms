@@ -1,6 +1,7 @@
 package com.bhawana.lms.service;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "app.storage.documents")
@@ -9,6 +10,8 @@ public class DocumentStorageProperties {
     private DocumentStorageProvider provider = DocumentStorageProvider.LOCAL;
     private Path rootPath = Path.of(System.getProperty("java.io.tmpdir"), "lms-documents");
     private final R2 r2 = new R2();
+
+    private final OrphanReconciler orphanReconciler = new OrphanReconciler();
 
     public DocumentStorageProvider getProvider() {
         return provider;
@@ -30,6 +33,60 @@ public class DocumentStorageProperties {
 
     public R2 getR2() {
         return r2;
+    }
+
+    public OrphanReconciler getOrphanReconciler() {
+        return orphanReconciler;
+    }
+
+    /**
+     * M04 orphan-object reconciler. Starts in dry-run: it reports what it would delete until an
+     * operator has reviewed that inventory and turns deletion on.
+     */
+    public static class OrphanReconciler {
+
+        private boolean enabled = true;
+
+        private boolean dryRun = true;
+
+        /** How long a PENDING object must sit untouched before it may be deleted. */
+        private Duration gracePeriod = Duration.ofHours(24);
+
+        private int batchSize = 100;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public boolean isDryRun() {
+            return dryRun;
+        }
+
+        public void setDryRun(boolean dryRun) {
+            this.dryRun = dryRun;
+        }
+
+        public Duration getGracePeriod() {
+            return gracePeriod;
+        }
+
+        public void setGracePeriod(Duration gracePeriod) {
+            if (gracePeriod != null) {
+                this.gracePeriod = gracePeriod;
+            }
+        }
+
+        public int getBatchSize() {
+            return batchSize;
+        }
+
+        public void setBatchSize(int batchSize) {
+            this.batchSize = Math.max(1, batchSize);
+        }
     }
 
     public enum DocumentStorageProvider {

@@ -82,6 +82,20 @@ public class FileSystemLoanDocumentStorageService {
         }
     }
 
+    public void delete(String storageKey) {
+        Path targetPath = properties.getRootPath().resolve(storageKey);
+        try {
+            Files.deleteIfExists(targetPath);
+        } catch (IOException exception) {
+            throw new DocumentStorageUnavailableException(
+                    storageKey,
+                    DocumentStorageProperties.DocumentStorageProvider.LOCAL.name(),
+                    "Unable to delete document from LMS-managed local storage: " + storageKey,
+                    exception
+            );
+        }
+    }
+
     public StoredDocument store(DocumentStorageDescriptor descriptor, byte[] content) {
         Path targetPath = properties.getRootPath().resolve(descriptor.storageKey());
         try {

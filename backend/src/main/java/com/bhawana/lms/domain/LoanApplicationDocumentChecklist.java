@@ -73,6 +73,10 @@ public class LoanApplicationDocumentChecklist {
     @Column(name = "updated_by_username", length = 128)
     private String updatedByUsername;
 
+    /** The immutable {@link LoanApplicationDocumentVersion} this row currently shows (H14). */
+    @Column(name = "current_version_id")
+    private UUID currentVersionId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -185,6 +189,14 @@ public class LoanApplicationDocumentChecklist {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public UUID getCurrentVersionId() {
+        return currentVersionId;
+    }
+
+    public void pointAtVersion(UUID versionId) {
+        this.currentVersionId = versionId;
     }
 
     public void update(

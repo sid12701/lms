@@ -1,14 +1,19 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.common.api.error.DocumentNotFoundException;
 import com.bhawana.lms.common.api.error.UnsupportedDocumentPreviewException;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
+import com.bhawana.lms.domain.LoanDocumentObject;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
+import com.bhawana.lms.repo.LoanDocumentObjectRepository;
+import com.bhawana.lms.service.LoanDocumentStorageService.PreparedDocument;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,7 +23,10 @@ import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -29,19 +37,26 @@ public class LoanDocumentService {
     private final LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository;
     private final LoanDocumentStorageService loanDocumentStorageService;
     private final LoanAutoApprovalGateService loanAutoApprovalGateService;
+    private final LoanDocumentObjectRepository documentObjectRepository;
+    private final TransactionTemplate requiresNewTransactionTemplate;
 
     public LoanDocumentService(
             LoanApplicationQueryService loanApplicationQueryService,
             LoanApplicationDocumentChecklistService documentChecklistService,
             LoanApplicationDocumentChecklistRepository loanApplicationDocumentChecklistRepository,
             LoanDocumentStorageService loanDocumentStorageService,
-            LoanAutoApprovalGateService loanAutoApprovalGateService
+            LoanAutoApprovalGateService loanAutoApprovalGateService,
+            LoanDocumentObjectRepository documentObjectRepository,
+            PlatformTransactionManager transactionManager
     ) {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.documentChecklistService = documentChecklistService;
         this.loanApplicationDocumentChecklistRepository = loanApplicationDocumentChecklistRepository;
         this.loanDocumentStorageService = loanDocumentStorageService;
         this.loanAutoApprovalGateService = loanAutoApprovalGateService;
+        this.documentObjectRepository = documentObjectRepository;
+        this.requiresNewTransactionTemplate = new TransactionTemplate(transactionManager);
+        this.requiresNewTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     @Transactional(readOnly = true)
@@ -68,27 +83,19 @@ public class LoanDocumentService {
             String contentType
     ) {
         loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
-        DocumentChecklistUpdateResult outcome = documentChecklistService.updateDocumentChecklistItem(
-                applicationId,
-                documentType,
-                actorUsername,
-                LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                note,
-                fileName,
-                fileReference,
-                sourceReference,
-                contentType,
-                null,
-                null,
-                null,
-                false
-        );
-        loanAutoApprovalGateService.maybeTriggerAutoApproval(
+        return loanAutoApprovalGateService.commitDocumentSubmissions(
                 applicationId,
                 actorUsername,
-                outcome.allRequiredDocumentsJustCompleted()
-        );
-        return outcome.checklistItem();
+                List.of(DocumentSubmission.metadata(
+                        documentType,
+                        note,
+                        fileName,
+                        fileReference,
+                        sourceReference,
+                        contentType
+                )),
+                null
+        ).checklistItems().get(0);
     }
 
     /**
@@ -226,109 +233,153 @@ public class LoanDocumentService {
             String sourceReference,
             MultipartFile file
     ) {
-        DocumentChecklistUpdateResult outcome = persistStoredDocumentForLsp(
-                lspId,
-                applicationId,
-                documentType,
-                actorUsername,
-                note,
-                sourceReference,
-                file
-        );
-        loanAutoApprovalGateService.maybeTriggerAutoApproval(
-                applicationId,
-                actorUsername,
-                outcome.allRequiredDocumentsJustCompleted()
-        );
-        return outcome.checklistItem();
+        return submitStoredDocumentForLsp(
+                lspId, applicationId, documentType, actorUsername, note, sourceReference, null, file);
     }
 
-    public List<LoanApplicationDocumentChecklist> submitStoredDocumentsForLsp(
-            UUID lspId,
-            UUID applicationId,
-            String actorUsername,
-            List<BatchDocumentUpload> documents
-    ) {
-        boolean wasComplete = documentChecklistService.hasAllRequiredDocumentsUploaded(applicationId);
-        List<LoanApplicationDocumentChecklist> uploaded = persistStoredDocumentsForLsp(
-                lspId,
-                applicationId,
-                actorUsername,
-                documents
-        );
-        loanAutoApprovalGateService.maybeTriggerAutoApproval(
-                applicationId,
-                actorUsername,
-                !wasComplete && documentChecklistService.hasAllRequiredDocumentsUploaded(applicationId)
-        );
-        return uploaded;
-    }
-
-    DocumentChecklistUpdateResult persistStoredDocumentForLsp(
+    /**
+     * Upload one document. With a {@code correctionReason} this is an explicit correction of
+     * approved evidence (H14): it is only accepted after approval, and the replaced version and
+     * the approval evidence that referenced it stay on record.
+     */
+    public LoanApplicationDocumentChecklist submitStoredDocumentForLsp(
             UUID lspId,
             UUID applicationId,
             LoanApplicationDocumentType documentType,
             String actorUsername,
             String note,
             String sourceReference,
+            String correctionReason,
             MultipartFile file
     ) {
-        loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
-        StoredDocument storedDocument = loanDocumentStorageService.store(applicationId, documentType, file);
-        return documentChecklistService.updateDocumentChecklistItem(
+        return storeAndCommit(
+                lspId,
                 applicationId,
-                documentType,
                 actorUsername,
-                LoanApplicationDocumentChecklistStatus.SUBMITTED,
-                note,
-                storedDocument.fileName(),
-                storedDocument.canonicalUri(),
-                sourceReference,
-                storedDocument.contentType(),
-                storedDocument.fileSizeBytes(),
-                storedDocument.fileChecksum(),
-                storedDocument.storageKey(),
-                true
-        );
+                List.of(new BatchDocumentUpload(documentType, note, sourceReference, file)),
+                correctionReason
+        ).get(0);
     }
 
-    List<LoanApplicationDocumentChecklist> persistStoredDocumentsForLsp(
+    /**
+     * Upload a batch atomically (M04): every item is validated before any object is written,
+     * and the metadata for all items commits in one transaction or not at all. Objects written
+     * before a failure stay PENDING and are removed by {@link LoanDocumentOrphanReconciler};
+     * a retry of the same files resolves to the same objects.
+     */
+    public List<LoanApplicationDocumentChecklist> submitStoredDocumentsForLsp(
             UUID lspId,
             UUID applicationId,
             String actorUsername,
             List<BatchDocumentUpload> documents
     ) {
+        return storeAndCommit(lspId, applicationId, actorUsername, documents, null);
+    }
+
+    // Intentionally not @Transactional: object writes must not run inside a database
+    // transaction we own (H24). The phases are ordered so that no object is written for a
+    // request that validation would reject, and every written object is durably owned first.
+    private List<LoanApplicationDocumentChecklist> storeAndCommit(
+            UUID lspId,
+            UUID applicationId,
+            String actorUsername,
+            List<BatchDocumentUpload> documents,
+            String correctionReason
+    ) {
         loanApplicationQueryService.getApplicationForLsp(lspId, applicationId);
         if (documents == null || documents.isEmpty()) {
             throw new IllegalArgumentException("At least one document upload is required.");
         }
+        rejectDuplicateDocumentTypes(documents);
 
-        Set<LoanApplicationDocumentType> seenDocumentTypes = new HashSet<>();
-        return documents.stream()
-                .map(document -> {
-                    if (!seenDocumentTypes.add(document.documentType())) {
-                        Map<String, String> fieldErrors = new LinkedHashMap<>();
-                        fieldErrors.put(
-                                "documentType",
-                                "Duplicate document type in batch upload: " + document.documentType().name()
-                        );
-                        throw new BusinessRuleViolationException(
-                                "DUPLICATE_DOCUMENT_TYPE",
-                                "Each document type may appear only once in a batch upload.",
-                                fieldErrors
-                        );
-                    }
-                    return persistStoredDocumentForLsp(
-                            lspId,
-                            applicationId,
-                            document.documentType(),
-                            actorUsername,
-                            document.note(),
-                            document.sourceReference(),
-                            document.file()
-                    ).checklistItem();
-                })
+        // 1. Validate the whole request: content policy for every file, then upload policy.
+        List<PreparedDocument> prepared = documents.stream()
+                .map(document -> loanDocumentStorageService.prepare(
+                        applicationId,
+                        document.documentType(),
+                        document.file()
+                ))
                 .toList();
+        List<DocumentSubmission> intended = new ArrayList<>(documents.size());
+        for (int index = 0; index < documents.size(); index++) {
+            intended.add(submissionFor(documents.get(index), prepared.get(index), null));
+        }
+        documentChecklistService.checkSubmissionsAllowed(applicationId, intended, correctionReason);
+
+        // 2. Own each object durably, then write it.
+        List<DocumentSubmission> submissions = new ArrayList<>(documents.size());
+        for (int index = 0; index < documents.size(); index++) {
+            PreparedDocument document = prepared.get(index);
+            recordPendingObject(document);
+            StoredDocument stored = loanDocumentStorageService.store(document);
+            submissions.add(submissionFor(documents.get(index), document, stored.canonicalUri()));
+        }
+
+        // 3. Metadata, object links and the approval decision commit together (H13).
+        return loanAutoApprovalGateService.commitDocumentSubmissions(
+                applicationId,
+                actorUsername,
+                submissions,
+                correctionReason
+        ).checklistItems();
+    }
+
+    /**
+     * Commit the ownership record in its own transaction before the object write, so an object
+     * whose metadata later rolls back — including under an outer idempotency transaction — is
+     * always known to the orphan reconciler.
+     */
+    private void recordPendingObject(PreparedDocument document) {
+        String state = requiresNewTransactionTemplate.execute(status -> documentObjectRepository.upsertPending(
+                document.storageKey(),
+                document.applicationId(),
+                document.documentType().name(),
+                document.checksum(),
+                document.content().length
+        ));
+        if (LoanDocumentObject.DELETING.equals(state)) {
+            throw new ApiConflictException(
+                    "DOCUMENT_STORAGE_RETRY_REQUIRED",
+                    "A previous copy of this document is being cleaned up. Retry the upload.",
+                    1
+            );
+        }
+    }
+
+    private static DocumentSubmission submissionFor(
+            BatchDocumentUpload upload,
+            PreparedDocument document,
+            String fileReference
+    ) {
+        return DocumentSubmission.stored(
+                upload.documentType(),
+                upload.note(),
+                upload.sourceReference(),
+                document.fileName(),
+                fileReference,
+                document.contentType(),
+                document.content().length,
+                document.checksum(),
+                document.storageKey()
+        );
+    }
+
+    private static void rejectDuplicateDocumentTypes(List<BatchDocumentUpload> documents) {
+        Set<LoanApplicationDocumentType> seenDocumentTypes = new HashSet<>();
+        for (BatchDocumentUpload document : documents) {
+            if (!seenDocumentTypes.add(document.documentType())) {
+                Map<String, String> fieldErrors = new LinkedHashMap<>();
+                fieldErrors.put(
+                        "documentType",
+                        "Duplicate document type in batch upload: " + document.documentType().name()
+                );
+                throw new BusinessRuleViolationException(
+                        "DUPLICATE_DOCUMENT_TYPE",
+                        "Each document type may appear only once in a batch upload.",
+                        fieldErrors
+                );
+            }
+        }
     }
 
     public record BatchDocumentUpload(
