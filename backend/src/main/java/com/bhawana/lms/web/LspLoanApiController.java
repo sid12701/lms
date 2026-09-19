@@ -4,6 +4,9 @@ import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.domain.LoanPaymentChannel;
+import com.bhawana.lms.domain.LoanPaymentTransaction;
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.service.LoanApplicationDetailAssembler;
 import com.bhawana.lms.service.LoanForeclosureCommandService;
 import com.bhawana.lms.service.LoanRepaymentCommandService;
@@ -12,6 +15,8 @@ import com.bhawana.lms.service.LspApiIdempotencyService;
 import com.bhawana.lms.common.api.StrictJson;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
@@ -21,6 +26,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,6 +35,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -36,6 +43,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class LspLoanApiController {
 
     private static final String FORECLOSURE_EXECUTE_OPERATION_KEY = "FORECLOSURE_EXECUTE";
+    private static final String FORECLOSURE_QUOTE_REQUEST_OPERATION_KEY = "FORECLOSURE_QUOTE_REQUEST";
 
     private final LoanApplicationDetailAssembler loanApplicationDetailAssembler;
     private final LoanServicingSupportService loanServicingSupportService;
@@ -93,18 +101,40 @@ public class LspLoanApiController {
                 .toList();
     }
 
+    /**
+     * Bounded payment history (M14). Same pagination contract as
+     * {@code GET /api/v1/lsp/loan-applications}: the body stays a raw array, the applied window is
+     * always disclosed via {@code X-Limit}/{@code X-Offset} headers, and
+     * {@code paginationDetails=ON} adds {@code X-Total-Count}. A request with no pagination
+     * parameters returns the first page — identical rows to the legacy {@code Top50} cap, which
+     * is no longer silent.
+     */
     @GetMapping("/{loanId}/payments")
     @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_READ','LSP_UI_WRITE')")
-    public List<LspPaymentTransactionResponse> listPayments(
+    public ResponseEntity<List<LspPaymentTransactionResponse>> listPayments(
             Authentication authentication,
-            @PathVariable UUID loanId
+            @PathVariable UUID loanId,
+            @RequestParam(required = false) @Min(0) Integer offset,
+            @RequestParam(required = false) @Min(1) @Max(200) Integer limit,
+            @RequestParam(required = false) String paginationDetails
     ) {
-        return loanServicingSupportService.listPaymentTransactionsForLsp(
+        boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
+        PagedResult<LoanPaymentTransaction> paymentsPage = loanServicingSupportService
+                .listPaymentTransactionsForLspPage(
                         LspAuthenticationSupport.authenticatedLspId(authentication),
-                        loanId
-                ).stream()
-                .map(LspLoanApiResponses::toPaymentTransactionResponse)
-                .toList();
+                        loanId,
+                        offset,
+                        limit
+                );
+        PagedResult<LspPaymentTransactionResponse> page = new PagedResult<>(
+                paymentsPage.items().stream()
+                        .map(LspLoanApiResponses::toPaymentTransactionResponse)
+                        .toList(),
+                paymentsPage.totalCount(),
+                paymentsPage.offset(),
+                paymentsPage.limit()
+        );
+        return PaginationResponseBuilder.toListResponse(page, includePaginationDetails);
     }
 
     @PostMapping("/{loanId}/payments")
@@ -133,20 +163,50 @@ public class LspLoanApiController {
         );
     }
 
+    /**
+     * Requests a foreclosure quote. Sending an {@code Idempotency-Key} (UUID v4) makes the request
+     * replayable (M14): one key yields one logical quote — a retry returns the stored response —
+     * and the same key with a different payload conflicts ({@code IDEMPOTENCY_CONFLICT}). Without
+     * a key the legacy behavior is unchanged: each request creates a fresh quote that supersedes
+     * the previous ACTIVE one.
+     */
     @PostMapping("/{loanId}/foreclosure-quote")
     @PreAuthorize("hasAnyRole('LSP_API_CLIENT','LSP_UI_WRITE')")
     public LspForeclosureQuoteResponse requestForeclosureQuote(
             Authentication authentication,
             @PathVariable UUID loanId,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody LspLoanForeclosureQuoteRequest request
     ) {
-        LoanForeclosureQuote quote = loanForeclosureCommandService.requestForeclosureQuoteForLsp(
-                LspAuthenticationSupport.authenticatedLspId(authentication),
-                loanId,
-                authentication.getName(),
-                request.effectiveDate()
+        UUID lspId = LspAuthenticationSupport.authenticatedLspId(authentication);
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return LspLoanApiResponses.toForeclosureQuoteResponse(
+                    loanForeclosureCommandService.requestForeclosureQuoteForLsp(
+                            lspId,
+                            loanId,
+                            authentication.getName(),
+                            request.effectiveDate()
+                    )
+            );
+        }
+        return lspApiIdempotencyService.execute(
+                lspId,
+                FORECLOSURE_QUOTE_REQUEST_OPERATION_KEY,
+                idempotencyKey,
+                new ForeclosureQuoteRequestIdempotencyFingerprint(
+                        loanId.toString(),
+                        request.effectiveDate().toString()
+                ),
+                LspForeclosureQuoteResponse.class,
+                () -> LspLoanApiResponses.toForeclosureQuoteResponse(
+                        loanForeclosureCommandService.requestForeclosureQuoteForLsp(
+                                lspId,
+                                loanId,
+                                authentication.getName(),
+                                request.effectiveDate()
+                        )
+                )
         );
-        return LspLoanApiResponses.toForeclosureQuoteResponse(quote);
     }
 
     @PostMapping("/{loanId}/foreclosure-quotes/{quoteId}/execute")
@@ -241,6 +301,17 @@ public class LspLoanApiController {
 
     @StrictJson
     public record LspLoanForeclosureQuoteRequest(@NotNull LocalDate effectiveDate) {
+    }
+
+    /**
+     * Request identity for quote creation (M14): the whole request payload plus the target loan.
+     * The operation key distinguishes it from {@link ForeclosureExecuteIdempotencyFingerprint},
+     * so the same key on a different loan or date is a conflict, never a replay.
+     */
+    private record ForeclosureQuoteRequestIdempotencyFingerprint(
+            String loanAccountId,
+            String effectiveDate
+    ) {
     }
 
     private record ForeclosureExecuteIdempotencyFingerprint(

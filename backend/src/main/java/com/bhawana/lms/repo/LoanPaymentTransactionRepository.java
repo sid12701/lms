@@ -4,6 +4,8 @@ import com.bhawana.lms.domain.LoanPaymentTransaction;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -15,6 +17,13 @@ public interface LoanPaymentTransactionRepository extends JpaRepository<LoanPaym
 
     @EntityGraph(attributePaths = {"loanAccount", "repaymentInstallment"})
     List<LoanPaymentTransaction> findTop50ByLoanAccount_IdOrderByPaymentDateDescCreatedAtDesc(UUID loanAccountId);
+
+    /**
+     * Bounded payment-history page for the LSP endpoint (M14). Ordering — and therefore page
+     * boundaries — comes from the caller's {@link Pageable} sort.
+     */
+    @EntityGraph(attributePaths = {"loanAccount", "repaymentInstallment"})
+    Page<LoanPaymentTransaction> findByLoanAccount_Id(UUID loanAccountId, Pageable pageable);
 
     @EntityGraph(attributePaths = {"loanAccount", "repaymentInstallment"})
     List<LoanPaymentTransaction> findByLoanAccount_IdOrderByPaymentDateAscCreatedAtAsc(UUID loanAccountId);

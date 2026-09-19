@@ -42,6 +42,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.zip.ZipInputStream;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -558,6 +559,126 @@ class LspLoanApplicationApiControllerTest {
                 .andExpect(header().string("X-Total-Count", "3"))
                 .andExpect(header().string("X-Limit", "1"))
                 .andExpect(header().string("X-Offset", "1"));
+    }
+
+    @Test
+    void lspListApplicationsRejectsUnknownStatusFilter() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProduct("ACTIVE");
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Status Filter");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+        createExternalApplication(accessToken, apexProduct.id(), "APEX-STATUS-001");
+
+        // Unknown values must not silently collapse into an empty page (M14) — the caller cannot
+        // tell "no loans in this status" from "this status does not exist" otherwise.
+        mockMvc.perform(get("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .queryParam("status", "NOT_A_STATUS"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALID_STATUS"))
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("Unknown status 'NOT_A_STATUS'")))
+                .andExpect(jsonPath("$.errors[0].field").value("status"));
+
+        // A known status with no matching loans is still an empty page, not an error.
+        mockMvc.perform(get("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .queryParam("status", "FORECLOSED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+
+        // Case-insensitive match keeps working.
+        mockMvc.perform(get("/api/v1/lsp/loan-applications")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .queryParam("status", "initialized"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
+
+        // The ops list shares the query helper, so it rejects the same way (M14 consistency).
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("status", "NOT_A_STATUS"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALID_STATUS"));
+    }
+
+    @Test
+    void lspPaymentHistoryPagesBeyondTheLegacyFiftyRowCap() throws Exception {
+        LspFixture apex = createLsp("ACTIVE");
+        ProductFixture apexProduct = createProductWithMaxTenure("ACTIVE", 60);
+        mapProductToLsp(apexProduct.id(), apex.id());
+
+        JsonNode apiClient = createApiClient(apex.id(), "Apex Payment Paging");
+        String accessToken = issueClientCredentialsToken(
+                apiClient.get("clientId").asText(),
+                apiClient.get("clientSecret").asText()
+        );
+
+        Map<String, Object> payload = defaultExternalApplicationPayload(
+                extractLspIdFromToken(accessToken), apexProduct.id(), "APEX-PAY-PAGE-001");
+        payload.put("loanTenure", 60);
+        JsonNode createdApplication = createExternalApplication(accessToken, payload);
+        String applicationId = createdApplication.get("id").asText();
+        uploadAllRequiredDocuments(accessToken, applicationId);
+        requestDisbursement(applicationId);
+
+        JsonNode detail = getApplicationDetail(accessToken, applicationId);
+        String loanId = detail.get("loanAccount").get("id").asText();
+
+        MvcResult scheduleResult = mockMvc.perform(get("/api/v1/lsp/loans/{loanId}/repayment-schedule", loanId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode schedule = objectMapper.readTree(scheduleResult.getResponse().getContentAsString());
+
+        // 53 real receipts through the write path — past the legacy Top50 read cap.
+        int receiptCount = 53;
+        for (int index = 0; index < receiptCount; index++) {
+            JsonNode installment = schedule.get(index);
+            recordPaymentForInstallment(
+                    accessToken,
+                    loanId,
+                    installment.get("id").asText(),
+                    installment.get("outstandingAmount").decimalValue(),
+                    "PAY-PAGE-" + index
+            );
+        }
+
+        // Legacy shape preserved: bare array body and the same first-50 rows as before, but the
+        // applied window is now disclosed through the pagination headers instead of silently
+        // dropping every receipt past index 50 (M14).
+        MvcResult firstPage = mockMvc.perform(get("/api/v1/lsp/loans/{loanId}/payments", loanId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(50))
+                .andExpect(header().string("X-Limit", "50"))
+                .andExpect(header().string("X-Offset", "0"))
+                .andExpect(header().doesNotExist("X-Total-Count"))
+                .andReturn();
+
+        MvcResult secondPage = mockMvc.perform(get("/api/v1/lsp/loans/{loanId}/payments", loanId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .queryParam("offset", "50")
+                        .queryParam("limit", "50")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(header().string("X-Total-Count", "53"))
+                .andExpect(header().string("X-Limit", "50"))
+                .andExpect(header().string("X-Offset", "50"))
+                .andReturn();
+
+        JsonNode firstPageBody = objectMapper.readTree(firstPage.getResponse().getContentAsString());
+        JsonNode secondPageBody = objectMapper.readTree(secondPage.getResponse().getContentAsString());
+        Set<String> receiptIds = new java.util.HashSet<>();
+        firstPageBody.forEach(row -> receiptIds.add(row.get("id").asText()));
+        secondPageBody.forEach(row -> receiptIds.add(row.get("id").asText()));
+        // Paging reads every receipt exactly once — nothing dropped or duplicated at the boundary.
+        assertEquals(receiptCount, receiptIds.size());
     }
 
     @Test
@@ -2242,6 +2363,27 @@ class LspLoanApplicationApiControllerTest {
         } catch (Exception exception) {
             throw new IllegalStateException("Failed to extract lspId from token", exception);
         }
+    }
+
+    private void recordPaymentForInstallment(
+            String accessToken,
+            String loanId,
+            String installmentId,
+            BigDecimal amount,
+            String reference
+    ) throws Exception {
+        mockMvc.perform(post("/api/v1/lsp/loans/{loanId}/payments", loanId)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "targetInstallmentId", installmentId,
+                                "amount", amount,
+                                "postedAt", LocalDate.now().toString(),
+                                "reference", reference,
+                                "channel", "UPI"
+                        ))))
+                .andExpect(status().isOk());
     }
 
     private void recordPaymentViaLsp(String accessToken, String loanId) throws Exception {

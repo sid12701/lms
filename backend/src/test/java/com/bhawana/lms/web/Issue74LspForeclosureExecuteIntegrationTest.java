@@ -3,6 +3,7 @@ package com.bhawana.lms.web;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,6 +19,7 @@ import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplicationAuditAction;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.domain.LoanEventType;
+import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.domain.LoanForeclosureQuoteStatus;
 import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
@@ -312,6 +314,132 @@ class Issue74LspForeclosureExecuteIntegrationTest {
                                 "reference", "BNK-NO-KEY"
                         ))))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void quoteRequestWithOneIdempotencyKeyCreatesOneLogicalQuote() throws Exception {
+        DisbursedLoanFixture fixture = seedDisbursedLoan("FC-QUOTE-IDEM-001");
+        LocalDate effectiveDate = businessCalendar.today();
+        String idempotencyKey = UUID.randomUUID().toString();
+        String body = objectMapper.writeValueAsString(Map.of(
+                "effectiveDate", effectiveDate.toString()
+        ));
+
+        MvcResult first = mockMvc.perform(post(
+                        "/api/v1/lsp/loans/{loanId}/foreclosure-quote",
+                        fixture.loanAccountId())
+                        .header("Authorization", "Bearer " + fixture.accessToken())
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andReturn();
+
+        // A replay of the same key returns the stored response — the quote command never reruns,
+        // so no second quote row is created and nothing is superseded (M14).
+        MvcResult second = mockMvc.perform(post(
+                        "/api/v1/lsp/loans/{loanId}/foreclosure-quote",
+                        fixture.loanAccountId())
+                        .header("Authorization", "Bearer " + fixture.accessToken())
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode firstQuote = objectMapper.readTree(first.getResponse().getContentAsString());
+        JsonNode secondQuote = objectMapper.readTree(second.getResponse().getContentAsString());
+        assertEquals(firstQuote.get("id").asText(), secondQuote.get("id").asText());
+        assertEquals(1, secondQuote.get("version").asInt());
+        assertEquals(
+                first.getResponse().getContentAsString(),
+                second.getResponse().getContentAsString()
+        );
+
+        List<LoanForeclosureQuote> quotes = loanForeclosureQuoteRepository
+                .findByLoanAccount_IdOrderByVersionDesc(UUID.fromString(fixture.loanAccountId()));
+        assertEquals(1, quotes.size());
+        assertEquals(LoanForeclosureQuoteStatus.ACTIVE, quotes.get(0).getStatus());
+    }
+
+    @Test
+    void quoteRequestSameKeyWithDifferentPayloadConflicts() throws Exception {
+        DisbursedLoanFixture fixture = seedDisbursedLoan("FC-QUOTE-CONF-001");
+        String idempotencyKey = UUID.randomUUID().toString();
+
+        mockMvc.perform(post(
+                        "/api/v1/lsp/loans/{loanId}/foreclosure-quote",
+                        fixture.loanAccountId())
+                        .header("Authorization", "Bearer " + fixture.accessToken())
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "effectiveDate", businessCalendar.today().toString()
+                        ))))
+                .andExpect(status().isOk());
+
+        // The fingerprint covers the whole request — a different effectiveDate under the same key
+        // is a different request, not a replay.
+        mockMvc.perform(post(
+                        "/api/v1/lsp/loans/{loanId}/foreclosure-quote",
+                        fixture.loanAccountId())
+                        .header("Authorization", "Bearer " + fixture.accessToken())
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "effectiveDate", businessCalendar.today().plusDays(1).toString()
+                        ))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("IDEMPOTENCY_CONFLICT"));
+
+        assertEquals(
+                1,
+                loanForeclosureQuoteRepository
+                        .findByLoanAccount_IdOrderByVersionDesc(UUID.fromString(fixture.loanAccountId()))
+                        .size()
+        );
+    }
+
+    @Test
+    void quoteRequestMalformedKeyIsRejectedBeforeAnyQuoteExists() throws Exception {
+        DisbursedLoanFixture fixture = seedDisbursedLoan("FC-QUOTE-BADKEY");
+        LocalDate effectiveDate = businessCalendar.today();
+
+        mockMvc.perform(post(
+                        "/api/v1/lsp/loans/{loanId}/foreclosure-quote",
+                        fixture.loanAccountId())
+                        .header("Authorization", "Bearer " + fixture.accessToken())
+                        .header("Idempotency-Key", "not-a-uuid")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "effectiveDate", effectiveDate.toString()
+                        ))))
+                .andExpect(status().isBadRequest());
+
+        assertEquals(
+                0,
+                loanForeclosureQuoteRepository
+                        .findByLoanAccount_IdOrderByVersionDesc(UUID.fromString(fixture.loanAccountId()))
+                        .size()
+        );
+    }
+
+    @Test
+    void quoteRequestWithoutKeyKeepsLegacySupersedingBehavior() throws Exception {
+        DisbursedLoanFixture fixture = seedDisbursedLoan("FC-QUOTE-LEGACY");
+        LocalDate effectiveDate = businessCalendar.today();
+
+        String firstId = requestForeclosureQuote(fixture.accessToken(), fixture.loanAccountId(), effectiveDate);
+        String secondId = requestForeclosureQuote(fixture.accessToken(), fixture.loanAccountId(), effectiveDate);
+
+        // Distinct requests still create fresh quotes — only keyed retries are deduplicated (M14).
+        assertNotEquals(firstId, secondId);
+        List<LoanForeclosureQuote> quotes = loanForeclosureQuoteRepository
+                .findByLoanAccount_IdOrderByVersionDesc(UUID.fromString(fixture.loanAccountId()));
+        assertEquals(2, quotes.size());
+        assertEquals(LoanForeclosureQuoteStatus.ACTIVE, quotes.get(0).getStatus());
+        assertEquals(LoanForeclosureQuoteStatus.SUPERSEDED, quotes.get(1).getStatus());
     }
 
     @Test
