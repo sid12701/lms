@@ -751,7 +751,14 @@ async function runCookieExchange<T>(
     );
   }
   return lock.request(COOKIE_LOCK_NAME, async () => {
-    // INSIDE the lock, first reconcile with the latest PERSISTED intent:
+    // Settle the lock handoff FIRST: the previous owner persists its intent
+    // and jar ownership before removing its marker, so waiting for that
+    // removal to propagate makes those writes visible to the checks below.
+    // Reading them straight after handoff can see pre-B state and let a
+    // stale logout dispatch over B's cookie.
+    const orphan = await readCookieInFlightMarkerAfterLockHandoff();
+
+    // INSIDE the lock, reconcile with the latest PERSISTED intent:
     // another tab may have advanced while this op queued. Strict validation
     // — corrupt/unavailable coordination storage fails closed here.
     const persisted = loadPersistedIntentForLock();
@@ -772,7 +779,6 @@ async function runCookieExchange<T>(
     // A pre-existing marker belongs to a peer that did not settle (closed
     // tab with outstanding response). It is an orphan — fail closed; B is
     // never sent. (Unavailable/corrupt storage also throws.)
-    const orphan = await readCookieInFlightMarkerAfterLockHandoff();
     if (orphan) {
       throw new AuthCookieBlockedError(
         "A prior cookie-affecting exchange is unsettled. Close all app tabs and establish a clean browser context/site state before retrying.",
