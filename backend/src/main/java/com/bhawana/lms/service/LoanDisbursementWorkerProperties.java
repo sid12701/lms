@@ -9,6 +9,11 @@ public class LoanDisbursementWorkerProperties {
     private long fixedDelayMs = 30_000L;
     private int maxAttempts = 5;
     private boolean autoResolveMockOutcome = true;
+    /**
+     * Upper bound on due IDs selected per worker scan (H25). Remaining due work continues on
+     * the next tick — the bound is a resource ceiling, not a throughput claim.
+     */
+    private int scanBatchSize = 200;
 
     public boolean isEnabled() {
         return enabled;
@@ -40,5 +45,13 @@ public class LoanDisbursementWorkerProperties {
 
     public void setAutoResolveMockOutcome(boolean autoResolveMockOutcome) {
         this.autoResolveMockOutcome = autoResolveMockOutcome;
+    }
+
+    public int getScanBatchSize() {
+        return scanBatchSize;
+    }
+
+    public void setScanBatchSize(int scanBatchSize) {
+        this.scanBatchSize = Math.max(1, scanBatchSize);
     }
 }

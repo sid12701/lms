@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -33,16 +34,42 @@ class ScheduledJobConcurrencyArchitectureTest {
     private static final String ADVISORY_LOCK_SUPPORT =
             "com.bhawana.lms.service.PostgresAdvisoryLockSupport";
 
+    /**
+     * The family schedulers every {@code @Scheduled} method must choose between (H26). Jobs
+     * that leave {@code scheduler} empty fall back to a shared single-thread scheduler and can
+     * starve each other again.
+     */
+    private static final Set<String> FAMILY_SCHEDULERS = Set.of(
+            "financialTaskScheduler",
+            "reportingTaskScheduler",
+            "maintenanceTaskScheduler"
+    );
+
+    /**
+     * Which family each known job belongs to. Financial submission/status checks get their own
+     * threads; report processing is the job most likely to block on an external system; the
+     * remaining whole-book maintenance scans share one thread so they cannot overlap each
+     * other.
+     */
+    private static final Map<String, String> EXPECTED_FAMILY = Map.of(
+            "com.bhawana.lms.service.LoanDisbursementWorker", "financialTaskScheduler",
+            "com.bhawana.lms.service.ReportRequestProcessingWorker", "reportingTaskScheduler"
+    );
+
     /** Jobs that are safe without an advisory lock, with the mechanism that makes them safe. */
     private static final Map<String, String> ROW_CLAIM_ALLOWLIST = new LinkedHashMap<>(Map.of(
             "com.bhawana.lms.service.LoanDisbursementWorker",
             "Claims disbursement rows under lock before acting; a losing instance sees no rows.",
             "com.bhawana.lms.service.ReportRequestProcessingWorker",
-            "claimBatchForProcessing claims PENDING rows, so a second instance claims a disjoint batch.",
+            "claimBatchForProcessing stamps owner+lease+attempt, so a second instance claims a disjoint batch.",
             "com.bhawana.lms.service.IdempotencyRecordRetentionWorker",
             "Purge is an idempotent delete by expiry; a duplicate run removes nothing extra.",
             "com.bhawana.lms.service.LoanEventPartitionLifecycleWorker",
-            "Partition maintenance uses IF NOT EXISTS / IF EXISTS DDL and is idempotent."
+            "Partition maintenance uses IF NOT EXISTS / IF EXISTS DDL and is idempotent.",
+            "com.bhawana.lms.service.AlertRuleSchedulerWorker",
+            "Evaluation is serialized by the fenced worker_lease row claimed inside "
+                    + "AlertRuleEvaluationWorker (M07): a losing instance gets an empty "
+                    + "summary, and a displaced owner stops before its next transaction."
     ));
 
     @Test
@@ -71,6 +98,52 @@ class ScheduledJobConcurrencyArchitectureTest {
                     PostgresAdvisoryLockSupport and guard the run, or claim rows so a second \
                     instance cannot pick up the same work and add the class to \
                     ROW_CLAIM_ALLOWLIST with the reason. Violations: """ + violations);
+        }
+    }
+
+    /**
+     * H26 guardrail: every scheduled job names its family scheduler, and the financial and
+     * reporting jobs stay on their dedicated threads. New jobs may join any declared family;
+     * jobs that need financial/reporting isolation get their own entry in
+     * {@link #EXPECTED_FAMILY}.
+     */
+    @Test
+    void everyScheduledJobDeclaresItsFamilyScheduler() {
+        var classes = new ClassFileImporter()
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .importPackages("com.bhawana.lms");
+
+        List<String> violations = new ArrayList<>();
+        for (JavaClass javaClass : classes) {
+            for (JavaMethod method : javaClass.getMethods()) {
+                if (!method.getOwner().equals(javaClass)) {
+                    continue;
+                }
+                var scheduled = method.tryGetAnnotationOfType(
+                        org.springframework.scheduling.annotation.Scheduled.class);
+                if (scheduled.isEmpty()) {
+                    continue;
+                }
+                String scheduler = scheduled.get().scheduler();
+                if (!FAMILY_SCHEDULERS.contains(scheduler)) {
+                    violations.add(javaClass.getName() + "#" + method.getName()
+                            + " -> '" + scheduler + "'");
+                    continue;
+                }
+                String expected = EXPECTED_FAMILY.get(javaClass.getName());
+                if (expected != null && !expected.equals(scheduler)) {
+                    violations.add(javaClass.getName() + "#" + method.getName()
+                            + " must run on " + expected + " but declares " + scheduler);
+                }
+            }
+        }
+
+        if (!violations.isEmpty()) {
+            fail("""
+                    Scheduled job without a declared family scheduler (H26). Set \
+                    @Scheduled(scheduler = ...) to one of the family schedulers in \
+                    ScheduledJobThreadingConfig so a stuck job can only starve its own \
+                    family. Violations: """ + violations);
         }
     }
 

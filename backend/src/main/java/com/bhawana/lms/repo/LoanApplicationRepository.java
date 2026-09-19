@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -109,6 +110,18 @@ public interface LoanApplicationRepository extends JpaRepository<LoanApplication
 
     @EntityGraph(attributePaths = {"borrower", "lsp", "loanProduct", "loanProductVersion"})
     List<LoanApplication> findByStatus(LoanApplicationStatus status);
+
+    /**
+     * Bounded due-ID selection for the disbursement worker (H25): ids only, stable id order —
+     * the tick works a bounded set instead of loading every matching application entity.
+     */
+    @Query("""
+            select application.id
+            from LoanApplication application
+            where application.status = :status
+            order by application.id asc
+            """)
+    List<UUID> findIdsByStatus(@Param("status") LoanApplicationStatus status, Pageable pageable);
 
     boolean existsByBorrower_IdAndLsp_IdAndStatusIn(
             UUID borrowerId,

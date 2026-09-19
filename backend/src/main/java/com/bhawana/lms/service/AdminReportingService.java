@@ -74,12 +74,18 @@ public class AdminReportingService {
         validateFilters(lspId, disbursalDateFrom, disbursalDateTo);
         long startedAt = System.nanoTime();
         List<PortfolioMisRow> rows = new ArrayList<>();
-        forEachExportBatch(
-                lspId,
-                toStartOfDayInclusive(disbursalDateFrom),
-                toEndOfDayExclusive(disbursalDateTo),
-                batch -> rows.addAll(buildRowsForAccounts(batch))
-        );
+        try {
+            forEachExportBatch(
+                    lspId,
+                    toStartOfDayInclusive(disbursalDateFrom),
+                    toEndOfDayExclusive(disbursalDateTo),
+                    java.time.Instant.now(),
+                    batch -> rows.addAll(buildRowsForAccounts(batch))
+            );
+        } catch (java.io.IOException exception) {
+            // This consumer never performs IO; the signature exists for the CSV writer path.
+            throw new java.io.UncheckedIOException(exception);
+        }
         log.debug(
                 "portfolio_mis_export_query completed lspId={} disbursalDateFrom={} disbursalDateTo={} resultCount={} durationMs={}",
                 lspId,
@@ -224,12 +230,20 @@ public class AdminReportingService {
         return new PortfolioMisSummary(totalDisbursed, activeCount, weightedAvg, parPct, totalCount);
     }
 
+    /**
+     * Writes the export to {@code target} incrementally (H25): keyset-paginated batches stream
+     * through a buffered writer, so heap use stays bounded by one batch rather than the whole
+     * file. {@code asOf} fixes the snapshot — rows disbursed after it are excluded from every
+     * batch, so the report cannot gain or silently skip rows mid-export.
+     */
     @Transactional(readOnly = true)
     public GeneratedReport generatePortfolioMisCsv(
             UUID lspId,
             LocalDate disbursalDateFrom,
-            LocalDate disbursalDateTo
-    ) {
+            LocalDate disbursalDateTo,
+            java.time.Instant asOf,
+            java.nio.file.Path target
+    ) throws java.io.IOException {
         validateFilters(lspId, disbursalDateFrom, disbursalDateTo);
         long startedAt = System.nanoTime();
         java.time.Instant disbursalFrom = toStartOfDayInclusive(disbursalDateFrom);
@@ -238,17 +252,19 @@ public class AdminReportingService {
         int maxInstallments = portfolioMisReadRepository.findMaxInstallmentCountForExport(
                 lspId,
                 disbursalFrom,
-                disbursalTo
+                disbursalTo,
+                asOf
         );
-        StringBuilder csv = new StringBuilder();
-        PortfolioMisCsvWriter.writeHeader(csv, maxInstallments);
 
         int[] rowCount = {0};
-        forEachExportBatch(lspId, disbursalFrom, disbursalTo, batch -> {
-            List<PortfolioMisRow> rows = buildRowsForAccounts(batch);
-            rowCount[0] += rows.size();
-            PortfolioMisCsvWriter.appendRows(csv, rows, maxInstallments);
-        });
+        try (java.io.BufferedWriter writer = java.nio.file.Files.newBufferedWriter(target, StandardCharsets.UTF_8)) {
+            PortfolioMisCsvWriter.writeHeader(writer, maxInstallments);
+            forEachExportBatch(lspId, disbursalFrom, disbursalTo, asOf, batch -> {
+                List<PortfolioMisRow> rows = buildRowsForAccounts(batch);
+                rowCount[0] += rows.size();
+                PortfolioMisCsvWriter.appendRows(writer, rows, maxInstallments);
+            });
+        }
 
         log.debug(
                 "portfolio_mis_export_stream completed lspId={} disbursalDateFrom={} disbursalDateTo={} resultCount={} durationMs={}",
@@ -259,31 +275,31 @@ public class AdminReportingService {
                 elapsedMillis(startedAt)
         );
 
-        String csvText = csv.toString();
         return new GeneratedReport(
                 "portfolio-mis-" + businessCalendar.today() + ".csv",
-                "text/csv;charset=UTF-8",
-                csvText.getBytes(StandardCharsets.UTF_8)
+                "text/csv;charset=UTF-8"
         );
     }
 
     @FunctionalInterface
     private interface ExportBatchConsumer {
-        void accept(List<LoanAccount> batch);
+        void accept(List<LoanAccount> batch) throws java.io.IOException;
     }
 
     private void forEachExportBatch(
             UUID lspId,
             java.time.Instant disbursalFrom,
             java.time.Instant disbursalTo,
+            java.time.Instant asOf,
             ExportBatchConsumer consumer
-    ) {
+    ) throws java.io.IOException {
         UUID lastExclusiveId = null;
         while (true) {
             List<UUID> batchIds = portfolioMisReadRepository.findAccountIdsForExportBatch(
                     lspId,
                     disbursalFrom,
                     disbursalTo,
+                    asOf,
                     lastExclusiveId,
                     EXPORT_BATCH_SIZE
             );
@@ -578,8 +594,7 @@ public class AdminReportingService {
 
     public record GeneratedReport(
             String fileName,
-            String mediaType,
-            byte[] content
+            String mediaType
     ) {
     }
 }

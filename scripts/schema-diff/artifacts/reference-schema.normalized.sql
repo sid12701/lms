@@ -939,9 +939,21 @@ CREATE TABLE public.report_request (
     notification_sent_at timestamp with time zone,
     notification_error_message character varying(1000),
     entity_version bigint DEFAULT 0 NOT NULL,
-    storage_key character varying(500)
+    storage_key character varying(500),
+    processing_owner character varying(160),
+    processing_expires_at timestamp with time zone,
+    processing_attempt integer DEFAULT 0 NOT NULL,
+    notification_attempts integer DEFAULT 0 NOT NULL
 );
 ALTER TABLE ONLY public.report_request FORCE ROW LEVEL SECURITY;
+CREATE TABLE public.worker_lease (
+    job_name character varying(64) NOT NULL,
+    owner character varying(160) NOT NULL,
+    fencing_seq bigint NOT NULL,
+    claimed_at timestamp with time zone NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
 ALTER TABLE ONLY public.loan_event ATTACH PARTITION public.loan_event_2026_08 FOR VALUES FROM ('2026-08-01 00:00:00+00') TO ('2026-09-01 00:00:00+00');
 ALTER TABLE ONLY public.loan_event ATTACH PARTITION public.loan_event_2026_09 FOR VALUES FROM ('2026-09-01 00:00:00+00') TO ('2026-10-01 00:00:00+00');
 ALTER TABLE ONLY public.loan_event ATTACH PARTITION public.loan_event_2026_10 FOR VALUES FROM ('2026-10-01 00:00:00+00') TO ('2026-11-01 00:00:00+00');
@@ -1103,6 +1115,8 @@ ALTER TABLE ONLY public.lsp_ui_ip_allowlist
     ADD CONSTRAINT uk_lsp_ui_ip_allowlist_lsp_cidr UNIQUE (lsp_id, cidr);
 ALTER TABLE ONLY public.loan_application_document_checklist
     ADD CONSTRAINT uq_loan_application_document_checklist_application_type UNIQUE (loan_application_id, document_type);
+ALTER TABLE ONLY public.worker_lease
+    ADD CONSTRAINT worker_lease_pkey PRIMARY KEY (job_name);
 CREATE INDEX flyway_schema_history_s_idx ON public.flyway_schema_history USING btree (success);
 CREATE INDEX idx_admin_api_idempotency_created_at ON public.admin_api_idempotency_record USING btree (created_at DESC);
 CREATE INDEX idx_admin_api_idempotency_pending_lease ON public.admin_api_idempotency_record USING btree (lease_expires_at) WHERE (response_body = '{"__idempotencyPending":true}'::text);
@@ -1196,6 +1210,8 @@ CREATE INDEX idx_report_access_audit_lsp_created ON public.report_access_audit U
 CREATE INDEX idx_report_access_audit_report_request_id ON public.report_access_audit USING btree (report_request_id);
 CREATE INDEX idx_report_request_created_at ON public.report_request USING btree (created_at);
 CREATE INDEX idx_report_request_lsp ON public.report_request USING btree (lsp_id);
+CREATE INDEX idx_report_request_notification_pending ON public.report_request USING btree (created_at) WHERE (((status)::text = ANY ((ARRAY['COMPLETED'::character varying, 'FAILED'::character varying])::text[])) AND (notification_email IS NOT NULL) AND (notification_sent_at IS NULL));
+CREATE INDEX idx_report_request_processing_lease ON public.report_request USING btree (processing_expires_at) WHERE ((status)::text = 'PROCESSING'::text);
 CREATE INDEX idx_report_request_status ON public.report_request USING btree (status);
 CREATE INDEX idx_report_request_status_created_at ON public.report_request USING btree (status, created_at);
 CREATE INDEX ix_lsp_ip_allowlist_lsp ON public.lsp_api_ip_allowlist USING btree (lsp_id);
@@ -1216,6 +1232,8 @@ CREATE UNIQUE INDEX uk_disbursement_intent_live_account ON public.disbursement_i
 CREATE UNIQUE INDEX uk_disbursement_intent_tran_ref_no ON public.disbursement_intent USING btree (tran_ref_no);
 CREATE UNIQUE INDEX uk_loan_payment_transaction_foreclosure_quote ON public.loan_payment_transaction USING btree (foreclosure_quote_id) WHERE (foreclosure_quote_id IS NOT NULL);
 CREATE UNIQUE INDEX uk_lsp_api_idempotency_scope ON public.lsp_api_idempotency_record USING btree (lsp_id, operation_key, idempotency_key);
+CREATE UNIQUE INDEX uk_ops_alert_active_correlation ON public.ops_alert USING btree (type, correlation_id) WHERE (((status)::text = 'NEW'::text) AND (subject_id IS NULL) AND (correlation_id IS NOT NULL));
+CREATE UNIQUE INDEX uk_ops_alert_active_subject ON public.ops_alert USING btree (type, subject_type, subject_id) NULLS NOT DISTINCT WHERE (((status)::text = 'NEW'::text) AND (subject_id IS NOT NULL));
 CREATE UNIQUE INDEX uq_refresh_token_live_family_head ON public.refresh_token USING btree (family_id) WHERE ((revoked = false) AND (family_id IS NOT NULL));
 ALTER INDEX public.idx_loan_event_application_time ATTACH PARTITION public.loan_event_2026_08_loan_application_id_occurred_at_idx;
 ALTER INDEX public.idx_loan_event_feed_order ATTACH PARTITION public.loan_event_2026_08_lsp_id_transaction_id_position_idx;

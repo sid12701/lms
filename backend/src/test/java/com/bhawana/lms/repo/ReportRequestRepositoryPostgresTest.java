@@ -6,6 +6,7 @@ import com.bhawana.lms.domain.ReportRequest;
 import com.bhawana.lms.domain.ReportRequestStatus;
 import com.bhawana.lms.domain.ReportType;
 import com.bhawana.lms.support.PostgresDataJpaTestSupport;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -50,7 +51,8 @@ class ReportRequestRepositoryPostgresTest extends PostgresDataJpaTestSupport {
         try {
             Future<List<UUID>> firstWorker = executor.submit(() -> transactionTemplate.execute(status -> {
                 List<UUID> claimed = reportRequestRepository.claimBatchForProcessing(
-                                List.of(ReportRequestStatus.PENDING),
+                                "worker-one",
+                                Instant.now().plusSeconds(300),
                                 2
                         ).stream()
                         .map(ReportRequest::getId)
@@ -63,18 +65,27 @@ class ReportRequestRepositoryPostgresTest extends PostgresDataJpaTestSupport {
             assertThat(firstWorkerClaimed.await(5, TimeUnit.SECONDS)).isTrue();
 
             Future<List<UUID>> secondWorker = executor.submit(() -> transactionTemplate.execute(status ->
-                    reportRequestRepository.claimBatchForProcessing(List.of(ReportRequestStatus.PENDING), 2).stream()
+                    reportRequestRepository.claimBatchForProcessing("worker-two", Instant.now().plusSeconds(300), 2).stream()
                             .map(ReportRequest::getId)
                             .toList()
             ));
 
             List<UUID> secondClaimedIds = secondWorker.get(5, TimeUnit.SECONDS);
             releaseFirstWorker.countDown();
-            List<UUID> firstClaimedIds = firstWorker.get(5, TimeUnit.SECONDS);
+            List<ReportRequest> firstClaimed = firstWorker.get(5, TimeUnit.SECONDS)
+                    .stream()
+                    .map(id -> reportRequestRepository.findById(id).orElseThrow())
+                    .toList();
+            List<UUID> firstClaimedIds = firstClaimed.stream().map(ReportRequest::getId).toList();
 
             assertThat(firstClaimedIds).hasSize(2);
             assertThat(secondClaimedIds).hasSize(1);
             assertThat(secondClaimedIds).doesNotContainAnyElementsOf(firstClaimedIds);
+            assertThat(firstClaimed).allSatisfy(request -> {
+                assertThat(request.getStatus()).isEqualTo(ReportRequestStatus.PROCESSING);
+                assertThat(request.getProcessingOwner()).isEqualTo("worker-one");
+                assertThat(request.getProcessingAttempt()).isEqualTo(1);
+            });
         } finally {
             releaseFirstWorker.countDown();
             executor.shutdownNow();

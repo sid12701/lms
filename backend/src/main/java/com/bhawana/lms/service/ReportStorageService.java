@@ -1,11 +1,16 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.domain.ReportType;
+import java.nio.file.Path;
 import java.util.UUID;
 
 public interface ReportStorageService {
 
-    StoredReport store(ReportStorageDescriptor descriptor, byte[] content);
+    /**
+     * Stores the report file by streaming from {@code contentFile} — the upload never
+     * materialises the whole export in heap (H25).
+     */
+    StoredReport store(ReportStorageDescriptor descriptor, Path contentFile);
 
     byte[] retrieve(String storageKey);
 

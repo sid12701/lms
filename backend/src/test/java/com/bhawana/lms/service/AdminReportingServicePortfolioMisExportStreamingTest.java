@@ -87,7 +87,7 @@ class AdminReportingServicePortfolioMisExportStreamingTest {
     }
 
     @Test
-    void streamingCsvMatchesRowAggregationOnSeededPortfolio() {
+    void streamingCsvMatchesRowAggregationOnSeededPortfolio() throws java.io.IOException {
         when(businessCalendar.today()).thenReturn(LocalDate.of(2026, 7, 6));
 
         Lsp lsp = lspRepository.save(new Lsp("APEX", "Apex Finance", LspStatus.ACTIVE));
@@ -120,11 +120,16 @@ class AdminReportingServicePortfolioMisExportStreamingTest {
         List<AdminReportingService.PortfolioMisRow> rows = adminReportingService.buildPortfolioMisReport(null, null, null);
         String expectedCsv = PortfolioMisCsvWriter.toCsv(rows);
 
-        AdminReportingService.GeneratedReport generated = adminReportingService.generatePortfolioMisCsv(null, null, null);
-        String actualCsv = new String(generated.content(), StandardCharsets.UTF_8);
+        java.nio.file.Path target = java.nio.file.Files.createTempFile("export-stream-", ".csv");
+        try {
+            adminReportingService.generatePortfolioMisCsv(null, null, null, Instant.now(), target);
+            String actualCsv = java.nio.file.Files.readString(target, StandardCharsets.UTF_8);
 
-        assertThat(actualCsv).isEqualTo(expectedCsv);
-        assertThat(actualCsv).contains("APEX-LOAN-001", "APEX-LOAN-002", "ACCT-APEX-001", "ACCT-APEX-002");
+            assertThat(actualCsv).isEqualTo(expectedCsv);
+            assertThat(actualCsv).contains("APEX-LOAN-001", "APEX-LOAN-002", "ACCT-APEX-001", "ACCT-APEX-002");
+        } finally {
+            java.nio.file.Files.deleteIfExists(target);
+        }
     }
 
     private Borrower borrower(Lsp lsp, String fullName, String pan) {

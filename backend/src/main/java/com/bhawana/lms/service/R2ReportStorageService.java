@@ -1,8 +1,9 @@
 package com.bhawana.lms.service;
 
+import java.io.IOException;
 import java.net.URI;
-import java.time.Instant;
-import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -24,28 +25,34 @@ public class R2ReportStorageService implements ReportStorageService {
     }
 
     @Override
-    public StoredReport store(ReportStorageDescriptor descriptor, byte[] content) {
+    public StoredReport store(ReportStorageDescriptor descriptor, Path contentFile) {
         if (descriptor == null) {
             throw new IllegalArgumentException("Report storage descriptor is required.");
         }
-        if (content == null) {
-            throw new IllegalArgumentException("Report content is required.");
+        if (contentFile == null || !Files.isRegularFile(contentFile)) {
+            throw new IllegalArgumentException("Report content file is required.");
         }
         requireConfigured();
 
         String storageKey = buildStorageKey(descriptor);
+        long sizeBytes;
+        try {
+            sizeBytes = Files.size(contentFile);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to size report content file.", exception);
+        }
         try (S3Client client = buildClient()) {
             client.putObject(
                     PutObjectRequest.builder()
                             .bucket(properties.getR2().getBucket())
                             .key(storageKey)
                             .contentType(descriptor.mediaType())
-                            .contentLength((long) content.length)
+                            .contentLength(sizeBytes)
                             .build(),
-                    RequestBody.fromBytes(content)
+                    RequestBody.fromFile(contentFile)
             );
         }
-        return new StoredReport(storageKey, descriptor.fileName(), descriptor.mediaType(), content.length);
+        return new StoredReport(storageKey, descriptor.fileName(), descriptor.mediaType(), sizeBytes);
     }
 
     @Override
@@ -85,16 +92,18 @@ public class R2ReportStorageService implements ReportStorageService {
                 .build();
     }
 
+    /**
+     * Deterministic job output identity (H24): the same report request always produces the same
+     * key, so a retry after a crash between upload and completion overwrites the earlier object
+     * instead of leaving an orphaned duplicate. The download name is recorded on the request
+     * row, not in the key.
+     */
     private static String buildStorageKey(ReportStorageDescriptor descriptor) {
         return "reports/"
                 + descriptor.requestId()
                 + "/"
                 + descriptor.reportType().name().toLowerCase()
                 + "/"
-                + Instant.now().toEpochMilli()
-                + "-"
-                + UUID.randomUUID()
-                + "-"
                 + sanitizeFileName(descriptor.fileName());
     }
 

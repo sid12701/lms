@@ -6,10 +6,9 @@ import jakarta.persistence.LockModeType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import jakarta.persistence.TypedQuery;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.hibernate.Session;
 import org.springframework.stereotype.Repository;
 
@@ -23,33 +22,73 @@ class ReportRequestRepositoryImpl implements ReportRequestRepositoryCustom {
     }
 
     @Override
-    public List<ReportRequest> claimBatchForProcessing(List<ReportRequestStatus> statuses, int batchSize) {
-        if (statuses == null || statuses.isEmpty() || batchSize < 1) {
+    public List<ReportRequest> claimBatchForProcessing(String owner, Instant leaseExpiresAt, int batchSize) {
+        if (batchSize < 1) {
             return List.of();
         }
 
         if (!isPostgres()) {
+            // Portable fallback: lock the candidates, then move them through the same
+            // transition the native claim performs.
             TypedQuery<ReportRequest> query = entityManager.createQuery(
                     """
                             select request
                             from ReportRequest request
                             left join fetch request.lsp
-                            where request.status in :statuses
+                            where request.status = :pendingStatus
+                               or (request.status = :processingStatus
+                                   and (request.processingExpiresAt is null
+                                        or request.processingExpiresAt < :now))
                             order by request.createdAt asc
                             """,
                     ReportRequest.class
             );
-            query.setParameter("statuses", statuses);
+            query.setParameter("pendingStatus", ReportRequestStatus.PENDING);
+            query.setParameter("processingStatus", ReportRequestStatus.PROCESSING);
+            query.setParameter("now", Instant.now());
             query.setLockMode(LockModeType.PESSIMISTIC_WRITE);
             query.setMaxResults(batchSize);
-            return query.getResultList();
+            List<ReportRequest> claimed = query.getResultList();
+            claimed.forEach(request -> request.claimProcessing(owner, leaseExpiresAt));
+            entityManager.flush();
+            return claimed;
         }
 
-        List<UUID> claimedIds = claimIds(statuses, batchSize);
+        Query query = entityManager.createNativeQuery("""
+                update report_request
+                set status = 'PROCESSING',
+                    processing_owner = :owner,
+                    processing_expires_at = :leaseExpiresAt,
+                    processing_attempt = processing_attempt + 1,
+                    error_message = null,
+                    updated_at = now()
+                where id in (
+                    select id
+                    from report_request
+                    where status = 'PENDING'
+                       or (status = 'PROCESSING'
+                           and (processing_expires_at is null
+                                or processing_expires_at < now()))
+                    order by created_at asc
+                    for update skip locked
+                    limit :batchSize
+                )
+                returning id
+                """);
+        query.setParameter("owner", owner);
+        query.setParameter("leaseExpiresAt", leaseExpiresAt);
+        query.setParameter("batchSize", batchSize);
+
+        @SuppressWarnings("unchecked")
+        List<UUID> claimedIds = ((List<Object>) query.getResultList())
+                .stream()
+                .map(ReportRequestRepositoryImpl::toUuid)
+                .toList();
         if (claimedIds.isEmpty()) {
             return List.of();
         }
 
+        // Re-read inside the same transaction so callers see the attempt the claim stamped.
         return entityManager.createQuery(
                         """
                                 select request
@@ -62,32 +101,6 @@ class ReportRequestRepositoryImpl implements ReportRequestRepositoryCustom {
                 )
                 .setParameter("ids", claimedIds)
                 .getResultList();
-    }
-
-    private List<UUID> claimIds(List<ReportRequestStatus> statuses, int batchSize) {
-        String statusPlaceholders = IntStream.range(0, statuses.size())
-                .mapToObj(index -> ":status" + index)
-                .collect(Collectors.joining(", "));
-
-        Query query = entityManager.createNativeQuery("""
-                select request.id
-                from report_request request
-                where request.status in (%s)
-                order by request.created_at asc
-                for update skip locked
-                limit :batchSize
-                """.formatted(statusPlaceholders));
-
-        for (int index = 0; index < statuses.size(); index++) {
-            query.setParameter("status" + index, statuses.get(index).name());
-        }
-        query.setParameter("batchSize", batchSize);
-
-        @SuppressWarnings("unchecked")
-        List<Object> rows = query.getResultList();
-        return rows.stream()
-                .map(ReportRequestRepositoryImpl::toUuid)
-                .toList();
     }
 
     private static UUID toUuid(Object value) {

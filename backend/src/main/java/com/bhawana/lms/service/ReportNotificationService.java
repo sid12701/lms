@@ -38,6 +38,11 @@ public class ReportNotificationService {
         this.reportsPageUrl = reportsPageUrl == null ? "" : reportsPageUrl.trim();
     }
 
+    /** Whether a send can be attempted at all; the pending-notification sweep skips work when false. */
+    public boolean isDeliveryEnabled() {
+        return notificationsEnabled && mailSender != null;
+    }
+
     public NotificationResult sendTerminalStatusNotification(ReportRequest reportRequest) {
         if (!notificationsEnabled || reportRequest.getNotificationEmail() == null || mailSender == null) {
             return NotificationResult.skipped();

@@ -1,8 +1,6 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
-import com.bhawana.lms.domain.LoanAccountStatus;
-import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationStatus;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
@@ -13,6 +11,7 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 /**
@@ -181,18 +180,22 @@ public class LoanDisbursementWorkerService {
     }
 
     private int processStatus(LoanApplicationStatus status) {
-        final List<LoanApplication> applications;
+        final List<UUID> applicationIds;
         try {
-            applications = loanApplicationRepository.findByStatus(status);
+            // Bounded due-ID scan (H25): remaining due work continues on the next tick.
+            applicationIds = loanApplicationRepository.findIdsByStatus(
+                    status,
+                    PageRequest.of(0, properties.getScanBatchSize())
+            );
         } catch (RuntimeException exception) {
             scanFailureCounter.increment();
             log.warn("Disbursement worker scan failed for status {} and was skipped: {}", status, exception.getMessage());
             return 0;
         }
         int processed = 0;
-        for (LoanApplication application : applications) {
+        for (UUID applicationId : applicationIds) {
             try {
-                if (processApplication(application.getId())) {
+                if (processApplication(applicationId)) {
                     processed++;
                 }
             } catch (RuntimeException exception) {
@@ -201,7 +204,7 @@ public class LoanDisbursementWorkerService {
                 itemFailureCounter.increment();
                 log.warn(
                         "Disbursement worker item failed for application {}: {}",
-                        application.getId(),
+                        applicationId,
                         exception.getMessage()
                 );
             }
@@ -210,17 +213,17 @@ public class LoanDisbursementWorkerService {
     }
 
     /**
-     * Polls the mock provider for every disbursement still awaiting a terminal status (NEFT and IMPS
-     * timeout codes left PENDING). Each transaction is resolved in its own transaction so a single
-     * failure cannot roll back the batch.
+     * Polls the provider for disbursements awaiting their first status check. Candidates are
+     * bounded due IDs with no reconciliation queue entry — once a poll lands unresolved the
+     * queue row's {@code next_poll_at} backoff takes over and the reconciliation sweep owns
+     * every repeat (H25). Each poll resolves in its own transaction so one failure cannot
+     * roll back the tick.
      */
     public int processPendingStatusChecks() {
         return TenantScopedExecution.callAsAdmin(() -> {
             List<UUID> applicationIds = loanAccountRepository
-                    .findByStatus(LoanAccountStatus.DISBURSEMENT_REQUESTED)
-                    .stream()
-                    .map(account -> account.getLoanApplication().getId())
-                    .toList();
+                    .findIdsAwaitingFirstStatusPoll(
+                            PageRequest.of(0, properties.getScanBatchSize()));
             int resolved = 0;
             for (UUID applicationId : applicationIds) {
                 try {

@@ -226,6 +226,7 @@ app:
       reconciliation-delay-ms: ${APP_DISBURSEMENT_WORKER_RECONCILIATION_DELAY_MS:60000}
       max-attempts: ${APP_DISBURSEMENT_WORKER_MAX_ATTEMPTS:5}
       auto-resolve-mock-outcome: ${APP_DISBURSEMENT_WORKER_AUTO_RESOLVE_MOCK:true}
+      scan-batch-size: ${APP_DISBURSEMENT_WORKER_SCAN_BATCH_SIZE:200}
     intent-workflow:
       # Durable intent is the only disbursement initiation path (no enable/disable flag).
       lease-duration-seconds: ${APP_DISBURSEMENT_INTENT_LEASE_SECONDS:120}
@@ -267,6 +268,8 @@ app:
     auth-brute-force-distributed-distinct-ip-min: ${APP_ALERT_RULES_AUTH_BRUTE_FORCE_DISTRIBUTED_DISTINCT_IP_MIN:5}
     auth-brute-force-distributed-window-hours: ${APP_ALERT_RULES_AUTH_BRUTE_FORCE_DISTRIBUTED_WINDOW_HOURS:24}
     evaluation-batch-limit: ${APP_ALERT_RULES_EVALUATION_BATCH_LIMIT:500}
+    evaluation-lease-ms: ${APP_ALERT_RULES_EVALUATION_LEASE_MS:300000}
+    evaluation-statement-timeout-ms: ${APP_ALERT_RULES_EVALUATION_STATEMENT_TIMEOUT_MS:60000}
   idempotency:
     retention-days: ${APP_IDEMPOTENCY_RETENTION_DAYS:90}
     purge-enabled: ${APP_IDEMPOTENCY_PURGE_ENABLED:true}
