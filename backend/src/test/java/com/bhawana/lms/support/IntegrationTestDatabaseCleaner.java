@@ -211,7 +211,7 @@ public class IntegrationTestDatabaseCleaner {
         loanApplicationAuditEventRepository.deleteAllInBatch();
         loanApplicationDocumentAccessAuditRepository.deleteAllInBatch();
         loanApplicationAssignmentEventRepository.deleteAllInBatch();
-        // Document evidence (V131): checklist -> version -> evidence -> (correction) version form
+        // Document evidence (V135): checklist -> version -> evidence -> (correction) version form
         // cycles, so the back-pointers are cleared before the rows go.
         jdbcTemplate.execute("UPDATE loan_application_document_checklist SET current_version_id = NULL");
         jdbcTemplate.execute("UPDATE loan_application_document_version SET corrects_evidence_id = NULL");

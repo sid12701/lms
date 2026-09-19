@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (2026-09-19)
 - **Source:** Consolidated audit `docs/audits/lms-consolidated-audit-and-fix-specs-2026-09-06.md` — H13 (concurrent final uploads miss auto-approval), H14 (approval does not freeze its evidence), H16 (eligibility reads the mutable catalog), M04 (object uploads and batch metadata fail inconsistently)
-- **Related:** ADR 0006 (migration discipline), ADR 0010 (lock order), `LoanDocumentService`, `LoanApplicationDocumentChecklistService`, `LoanAutoApprovalGateService`, `LoanDocumentOrphanReconciler`, migration V131
+- **Related:** ADR 0006 (migration discipline), ADR 0010 (lock order), `LoanDocumentService`, `LoanApplicationDocumentChecklistService`, `LoanAutoApprovalGateService`, `LoanDocumentOrphanReconciler`, migration V135
 
 ## Context
 
@@ -60,7 +60,7 @@ that nothing tracked.
 6. **Orphans are reconciled conservatively.** `LoanDocumentOrphanReconciler` considers only
    `PENDING` rows untouched for the grace period (default 24h), claims each with one conditional
    update that rechecks no version or checklist row references the key, deletes the object
-   outside any transaction, then marks the row `DELETED`. Objects without a row (pre-V131) are
+   outside any transaction, then marks the row `DELETED`. Objects without a row (pre-V135) are
    never candidates. It ships in dry-run mode (`app.storage.documents.orphan-reconciler.dry-run`)
    so operators review the logged inventory before enabling deletion.
 

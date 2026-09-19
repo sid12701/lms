@@ -421,7 +421,7 @@ public class LoanApplicationDocumentChecklistService {
         List<LoanApplicationApprovalEvidence> evidence =
                 approvalEvidenceRepository.findByLoanApplicationIdOrderByApprovedAtDesc(applicationId);
         if (evidence.isEmpty()) {
-            return null; // approved before V131: no captured evidence to reference
+            return null; // approved before V135: no captured evidence to reference
         }
         UUID latestApprovalId = evidence.get(0).getApprovalId();
         return evidence.stream()

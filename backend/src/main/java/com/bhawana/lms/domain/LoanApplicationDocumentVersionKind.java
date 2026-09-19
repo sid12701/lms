@@ -2,7 +2,7 @@ package com.bhawana.lms.domain;
 
 /** How an immutable {@link LoanApplicationDocumentVersion} came to exist. */
 public enum LoanApplicationDocumentVersionKind {
-    /** Backfilled from the checklist row as it stood when versioning was introduced (V131). */
+    /** Backfilled from the checklist row as it stood when versioning was introduced (V135). */
     LEGACY,
     /** An ordinary LSP submission. */
     SUBMISSION,

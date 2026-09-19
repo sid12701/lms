@@ -103,7 +103,7 @@ An explicit, reasoned replacement of approved evidence after approval. It append
 _Avoid_: re-upload, override
 
 **Document object record**:
-The durable ownership record for an object the LMS writes to document storage, committed (`PENDING`) before the write and `LINKED` with the metadata that references it. Only `PENDING` records past a grace period with no referencing metadata are deleted by the orphan reconciler; objects with no record (written before V131) are never touched.
+The durable ownership record for an object the LMS writes to document storage, committed (`PENDING`) before the write and `LINKED` with the metadata that references it. Only `PENDING` records past a grace period with no referencing metadata are deleted by the orphan reconciler; objects with no record (written before V135) are never touched.
 _Avoid_: upload log, orphan list
 
 **Evidence chain (H13/H14/M04/H16, 2026-09-19):** See [ADR 0011](docs/adr/0011-approval-and-document-evidence.md). Every document write takes borrower → application locks (the shared loan-command order) and commits together with the auto-approval decision it triggers. Approval eligibility reads the application's pinned product version.

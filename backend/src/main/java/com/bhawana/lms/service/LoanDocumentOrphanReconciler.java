@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.config.ScheduledJobThreadingConfig;
 import com.bhawana.lms.domain.LoanDocumentObject;
 import com.bhawana.lms.repo.LoanDocumentObjectRepository;
 import com.bhawana.lms.tenant.TenantScopedExecution;
@@ -15,7 +16,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * Deletes document objects the LMS wrote but never linked to committed metadata (M04).
  *
- * <p>Only rows in {@code loan_document_object} are candidates, so objects written before V131
+ * <p>Only rows in {@code loan_document_object} are candidates, so objects written before V135
  * — which have no row — are never touched. A candidate must be PENDING and untouched for the
  * grace period, and the claim statement rechecks in the same statement that no version or
  * checklist row references its key. Each step is its own short transaction and the storage
@@ -45,7 +46,7 @@ public class LoanDocumentOrphanReconciler {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
-    @Scheduled(fixedDelayString = "${app.storage.documents.orphan-reconciler.fixed-delay-ms:3600000}")
+    @Scheduled(fixedDelayString = "${app.storage.documents.orphan-reconciler.fixed-delay-ms:3600000}", scheduler = ScheduledJobThreadingConfig.MAINTENANCE_TASK_SCHEDULER)
     public void reconcileOnSchedule() {
         if (!properties.isEnabled()) {
             return;

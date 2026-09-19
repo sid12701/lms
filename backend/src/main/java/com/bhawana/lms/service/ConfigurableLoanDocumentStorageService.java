@@ -366,7 +366,7 @@ public class ConfigurableLoanDocumentStorageService implements LoanDocumentStora
 
     // Content-addressed: the same bytes and name for the same application and type always map
     // to the same key, so a retry converges on one object instead of leaving a stray copy, and
-    // an object at a key never changes content. Keys written before V131 carry a timestamp
+    // an object at a key never changes content. Keys written before V135 carry a timestamp
     // and random UUID instead and are left exactly where they are.
     private static String buildStorageKey(
 

@@ -75,7 +75,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Approval & document evidence chain (consolidated audit H13, H14, M04) against real
- * PostgreSQL transactions, tenant-scoped so the V131 row-level-security policies are exercised.
+ * PostgreSQL transactions, tenant-scoped so the V135 row-level-security policies are exercised.
  */
 @SpringBootTest
 @ActiveProfiles("test")
