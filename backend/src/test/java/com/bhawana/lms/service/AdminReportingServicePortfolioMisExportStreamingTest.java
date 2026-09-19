@@ -94,7 +94,7 @@ class AdminReportingServicePortfolioMisExportStreamingTest {
         LoanProduct product = persistProduct(product("PORT-STREAM", new BigDecimal("18.50")));
 
         LoanAccount first = loanAccountRepository.save(disbursedAccount(
-                application(borrower(lsp, "Anika Sharma", "ABCDE1234F"), lsp, product, "APEX-LOAN-001", LoanApplicationStatus.DISBURSED),
+                application(borrower("Anika Sharma", "ABCDE1234F"), lsp, product, "APEX-LOAN-001", LoanApplicationStatus.DISBURSED),
                 "ACCT-APEX-001",
                 new BigDecimal("1000.00"),
                 LocalDate.of(2026, 3, 10)
@@ -111,7 +111,7 @@ class AdminReportingServicePortfolioMisExportStreamingTest {
         ));
 
         loanAccountRepository.save(disbursedAccount(
-                application(borrower(lsp, "Rahul Shah", "ZXCVB1234N"), lsp, product, "APEX-LOAN-002", LoanApplicationStatus.DISBURSED),
+                application(borrower("Rahul Shah", "ZXCVB1234N"), lsp, product, "APEX-LOAN-002", LoanApplicationStatus.DISBURSED),
                 "ACCT-APEX-002",
                 new BigDecimal("3000.00"),
                 LocalDate.of(2026, 4, 5)
@@ -132,7 +132,7 @@ class AdminReportingServicePortfolioMisExportStreamingTest {
         }
     }
 
-    private Borrower borrower(Lsp lsp, String fullName, String pan) {
+    private Borrower borrower(String fullName, String pan) {
         return borrowerRepository.save(new Borrower(BorrowerProfile.builder()
                         .fullName(fullName)
                         .panNumber(pan)

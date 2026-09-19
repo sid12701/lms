@@ -65,7 +65,7 @@ class DisbursementScanBoundTest {
         LoanProduct product = persistProduct(product("BOUND-1"));
         for (int i = 0; i < 4; i++) {
             application(
-                    borrower(lsp, "Borrower " + i, "ABCDE" + (1000 + i) + "F"),
+                    borrower("Borrower " + i, "ABCDE" + (1000 + i) + "F"),
                     lsp,
                     product,
                     "BOUND-LOAN-" + i,
@@ -90,12 +90,12 @@ class DisbursementScanBoundTest {
         LoanProduct product = persistProduct(product("SCAN-1"));
 
         LoanAccount freshAccount = loanAccountRepository.save(requestedAccount(
-                application(borrower(lsp, "Ishaan Rao", "ABCDE2001F"), lsp, product, "SCAN-LOAN-001",
+                application(borrower("Ishaan Rao", "ABCDE2001F"), lsp, product, "SCAN-LOAN-001",
                         LoanApplicationStatus.DISBURSED),
                 "ACCT-SCAN-001"
         ));
         LoanAccount queuedAccount = loanAccountRepository.save(requestedAccount(
-                application(borrower(lsp, "Meera Iyer", "ABCDE2002F"), lsp, product, "SCAN-LOAN-002",
+                application(borrower("Meera Iyer", "ABCDE2002F"), lsp, product, "SCAN-LOAN-002",
                         LoanApplicationStatus.DISBURSED),
                 "ACCT-SCAN-002"
         ));
@@ -125,7 +125,7 @@ class DisbursementScanBoundTest {
         LoanProduct product = persistProduct(product("PAGE-1"));
         for (int i = 0; i < 3; i++) {
             loanAccountRepository.save(requestedAccount(
-                    application(borrower(lsp, "Borrower " + i, "ABCDE" + (3000 + i) + "F"), lsp, product,
+                    application(borrower("Borrower " + i, "ABCDE" + (3000 + i) + "F"), lsp, product,
                             "PAGE-LOAN-" + i, LoanApplicationStatus.DISBURSED),
                     "ACCT-PAGE-" + i
             ));
@@ -137,7 +137,7 @@ class DisbursementScanBoundTest {
         assertThat(candidates).hasSize(2);
     }
 
-    private Borrower borrower(Lsp lsp, String fullName, String pan) {
+    private Borrower borrower(String fullName, String pan) {
         return borrowerRepository.save(new Borrower(BorrowerProfile.builder()
                         .fullName(fullName)
                         .panNumber(pan)
