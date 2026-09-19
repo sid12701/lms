@@ -21,8 +21,10 @@ public class FileSystemLoanDocumentStorageService {
     }
 
     public List<LoanDocumentStorageService.StorageEntry> listAll(String prefix) {
-        Path rootPath = properties.getRootPath();
-        Path directory = rootPath.resolve(prefix);
+        Path rootPath = properties.getRootPath().toAbsolutePath().normalize();
+        Path directory = (prefix == null || prefix.isBlank())
+                ? rootPath
+                : resolveUnderRoot(prefix);
         List<LoanDocumentStorageService.StorageEntry> entries = new ArrayList<>();
         if (!Files.isDirectory(directory)) {
             return entries;
@@ -43,7 +45,7 @@ public class FileSystemLoanDocumentStorageService {
     }
 
     public byte[] retrieve(String storageKey) {
-        Path targetPath = properties.getRootPath().resolve(storageKey);
+        Path targetPath = resolveUnderRoot(storageKey);
         if (!Files.exists(targetPath)) {
             throw new DocumentNotFoundException(
                     "Document not found in LMS-managed local storage: " + storageKey
@@ -62,7 +64,7 @@ public class FileSystemLoanDocumentStorageService {
     }
 
     public LoanDocumentStorageService.RetrievedDocumentStream openStream(String storageKey) {
-        Path targetPath = properties.getRootPath().resolve(storageKey);
+        Path targetPath = resolveUnderRoot(storageKey);
         if (!Files.exists(targetPath)) {
             throw new DocumentNotFoundException(
                     "Document not found in LMS-managed local storage: " + storageKey
@@ -83,7 +85,7 @@ public class FileSystemLoanDocumentStorageService {
     }
 
     public void delete(String storageKey) {
-        Path targetPath = properties.getRootPath().resolve(storageKey);
+        Path targetPath = resolveUnderRoot(storageKey);
         try {
             Files.deleteIfExists(targetPath);
         } catch (IOException exception) {
@@ -97,7 +99,7 @@ public class FileSystemLoanDocumentStorageService {
     }
 
     public StoredDocument store(DocumentStorageDescriptor descriptor, byte[] content) {
-        Path targetPath = properties.getRootPath().resolve(descriptor.storageKey());
+        Path targetPath = resolveUnderRoot(descriptor.storageKey());
         try {
             Files.createDirectories(targetPath.getParent());
             Files.write(targetPath, content);
@@ -112,5 +114,19 @@ public class FileSystemLoanDocumentStorageService {
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to store document in LMS-managed local storage.", exception);
         }
+    }
+
+    private Path resolveUnderRoot(String storageKey) {
+        if (storageKey == null || storageKey.isBlank()) {
+            throw new IllegalArgumentException("Storage key is required.");
+        }
+        Path root = properties.getRootPath().toAbsolutePath().normalize();
+        Path resolved = root.resolve(storageKey).normalize();
+        if (!resolved.startsWith(root)) {
+            throw new IllegalArgumentException(
+                    "Storage key escapes document root: " + storageKey
+            );
+        }
+        return resolved;
     }
 }
