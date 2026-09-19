@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.bhawana.lms.repo.LoanEventPartitionRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import com.bhawana.lms.repo.LoanEventPartitionRepository.PartitionChange;
 import com.bhawana.lms.repo.LoanEventPartitionRepository.PartitionChange.Action;
 import java.util.List;
@@ -27,7 +28,7 @@ class LoanEventPartitionLifecycleWorkerTest {
         when(loanEventPartitionRepository.maintain(4, 30))
                 .thenReturn(List.of(new PartitionChange(Action.CREATED, "loan_event_2026_12")));
 
-        new LoanEventPartitionLifecycleWorker(loanEventPartitionRepository, properties).maintainPartitions();
+        new LoanEventPartitionLifecycleWorker(loanEventPartitionRepository, properties, new JobObservabilitySupport(new SimpleMeterRegistry())).maintainPartitions();
 
         verify(loanEventPartitionRepository).maintain(4, 30);
     }
@@ -37,7 +38,7 @@ class LoanEventPartitionLifecycleWorkerTest {
         LoanEventLogProperties properties = new LoanEventLogProperties();
         properties.setPartitionMaintenanceEnabled(false);
 
-        new LoanEventPartitionLifecycleWorker(loanEventPartitionRepository, properties).maintainPartitions();
+        new LoanEventPartitionLifecycleWorker(loanEventPartitionRepository, properties, new JobObservabilitySupport(new SimpleMeterRegistry())).maintainPartitions();
 
         verifyNoInteractions(loanEventPartitionRepository);
     }
@@ -47,7 +48,7 @@ class LoanEventPartitionLifecycleWorkerTest {
         LoanEventLogProperties properties = new LoanEventLogProperties();
         when(loanEventPartitionRepository.maintain(anyInt(), anyInt())).thenReturn(List.of());
 
-        new LoanEventPartitionLifecycleWorker(loanEventPartitionRepository, properties).maintainPartitions();
+        new LoanEventPartitionLifecycleWorker(loanEventPartitionRepository, properties, new JobObservabilitySupport(new SimpleMeterRegistry())).maintainPartitions();
 
         verify(loanEventPartitionRepository).maintain(3, 30);
     }

@@ -39,4 +39,14 @@ class ReportRequestProcessingWorkerTenantContextTest {
 
         assertNull(TenantDataAccessContextHolder.snapshot());
     }
+
+    @Test
+    void processPendingNotificationsRestoresEmptyTenantContextOnWorkerThread() {
+        TenantDataAccessContextHolder.clear();
+        assertNull(TenantDataAccessContextHolder.snapshot());
+
+        reportRequestProcessingWorker.processPendingNotifications();
+
+        assertNull(TenantDataAccessContextHolder.snapshot());
+    }
 }

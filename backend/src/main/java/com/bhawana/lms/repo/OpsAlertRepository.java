@@ -50,6 +50,13 @@ public interface OpsAlertRepository extends JpaRepository<OpsAlert, UUID> {
             OpsAlertStatus status
     );
 
+    boolean existsByTypeAndSubjectTypeAndSubjectIdAndStatus(
+            OpsAlertType type,
+            String subjectType,
+            UUID subjectId,
+            OpsAlertStatus status
+    );
+
     boolean existsByTypeAndCorrelationIdAndStatus(
             OpsAlertType type,
             String correlationId,

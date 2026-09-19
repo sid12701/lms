@@ -19,6 +19,8 @@ public class AlertRuleProperties {
     private int authBruteForceDistributedWindowHours = 24;
     private int evaluationBatchLimit = 500;
     private int oldestTransactionAgeSeconds = 300;
+    private long evaluationLeaseMs = 300_000;
+    private int evaluationStatementTimeoutMs = 60_000;
 
     public boolean isSchedulerEnabled() {
         return schedulerEnabled;
@@ -130,5 +132,21 @@ public class AlertRuleProperties {
 
     public void setOldestTransactionAgeSeconds(int oldestTransactionAgeSeconds) {
         this.oldestTransactionAgeSeconds = oldestTransactionAgeSeconds;
+    }
+
+    public long getEvaluationLeaseMs() {
+        return evaluationLeaseMs;
+    }
+
+    public void setEvaluationLeaseMs(long evaluationLeaseMs) {
+        this.evaluationLeaseMs = evaluationLeaseMs;
+    }
+
+    public int getEvaluationStatementTimeoutMs() {
+        return evaluationStatementTimeoutMs;
+    }
+
+    public void setEvaluationStatementTimeoutMs(int evaluationStatementTimeoutMs) {
+        this.evaluationStatementTimeoutMs = evaluationStatementTimeoutMs;
     }
 }

@@ -1,9 +1,7 @@
 package com.bhawana.lms.support;
 
 import com.bhawana.lms.service.ReportStorageService;
-import java.time.Instant;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -29,29 +27,31 @@ public class InMemoryReportStorageConfig {
         return new InMemoryReportStorageService();
     }
 
-    static final class InMemoryReportStorageService implements ReportStorageService {
+    public static final class InMemoryReportStorageService implements ReportStorageService {
 
         private final Map<String, byte[]> objects = new ConcurrentHashMap<>();
 
         @Override
-        public StoredReport store(ReportStorageDescriptor descriptor, byte[] content) {
+        public StoredReport store(ReportStorageDescriptor descriptor, java.nio.file.Path contentFile) {
             if (descriptor == null) {
                 throw new IllegalArgumentException("Report storage descriptor is required.");
             }
-            if (content == null) {
-                throw new IllegalArgumentException("Report content is required.");
+            if (contentFile == null) {
+                throw new IllegalArgumentException("Report content file is required.");
+            }
+            byte[] content;
+            try {
+                content = java.nio.file.Files.readAllBytes(contentFile);
+            } catch (java.io.IOException exception) {
+                throw new IllegalStateException("Unable to read report content file.", exception);
             }
             String storageKey = "reports/"
                     + descriptor.requestId()
                     + "/"
                     + descriptor.reportType().name().toLowerCase(java.util.Locale.ROOT)
                     + "/"
-                    + Instant.now().toEpochMilli()
-                    + "-"
-                    + UUID.randomUUID()
-                    + "-"
                     + sanitizeFileName(descriptor.fileName());
-            objects.put(storageKey, content.clone());
+            objects.put(storageKey, content);
             return new StoredReport(
                     storageKey, descriptor.fileName(), descriptor.mediaType(), content.length);
         }
@@ -63,6 +63,16 @@ public class InMemoryReportStorageConfig {
                 throw new IllegalStateException("No stored report for key " + storageKey);
             }
             return content.clone();
+        }
+
+        /** Test-visible count of distinct stored objects — proves retries converge on one key. */
+        public int storedObjectCount() {
+            return objects.size();
+        }
+
+        /** Test-visible copy of stored keys. */
+        public java.util.Set<String> storedKeys() {
+            return java.util.Set.copyOf(objects.keySet());
         }
 
         /** Mirrors the adapter's key sanitising so a filename can never inject path segments. */

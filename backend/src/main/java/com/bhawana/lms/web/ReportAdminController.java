@@ -10,7 +10,11 @@ import com.bhawana.lms.service.ReportRequestService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -87,24 +91,34 @@ public class ReportAdminController {
             @RequestParam(required = false) UUID lspId,
             @RequestParam(required = false) LocalDate disbursalDateFrom,
             @RequestParam(required = false) LocalDate disbursalDateTo
-    ) {
-        AdminReportingService.GeneratedReport report = adminReportingService.generatePortfolioMisCsv(
-                lspId,
-                disbursalDateFrom,
-                disbursalDateTo
-        );
+    ) throws IOException {
+        // Generate to a bounded temp file (H25): the export streams to disk instead of
+        // accumulating StringBuilder + String + byte[] copies in heap.
+        Path tempFile = Files.createTempFile("portfolio-mis-download-", ".csv");
+        try {
+            AdminReportingService.GeneratedReport report = adminReportingService.generatePortfolioMisCsv(
+                    lspId,
+                    disbursalDateFrom,
+                    disbursalDateTo,
+                    Instant.now(),
+                    tempFile
+            );
+            byte[] content = Files.readAllBytes(tempFile);
 
-        reportAccessAuditService.recordMisCsvDownloaded(
-                principal.getSubject(),
-                ClientIpAddresses.resolve(httpRequest),
-                CorrelationIdHolder.get(),
-                lspId,
-                disbursalDateFrom,
-                disbursalDateTo,
-                report.content().length
-        );
+            reportAccessAuditService.recordMisCsvDownloaded(
+                    principal.getSubject(),
+                    ClientIpAddresses.resolve(httpRequest),
+                    CorrelationIdHolder.get(),
+                    lspId,
+                    disbursalDateFrom,
+                    disbursalDateTo,
+                    content.length
+            );
 
-        return downloadResponse(report.fileName(), report.mediaType(), report.content());
+            return downloadResponse(report.fileName(), report.mediaType(), content);
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
     }
 
     @PostMapping("/portfolio-mis/requests")

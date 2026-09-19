@@ -22,6 +22,15 @@ public class AlertRuleSetQueryRepository {
         this.jdbc = jdbc;
     }
 
+    /**
+     * Per-transaction query budget (M07): bounds how long one evaluation batch may occupy the
+     * database. {@code SET LOCAL} applies only to the calling transaction, so it must be
+     * invoked inside the batch's {@code REQUIRES_NEW} transaction before the work query.
+     */
+    public void setLocalStatementTimeout(int timeoutMillis) {
+        jdbc.getJdbcOperations().execute("set local statement_timeout = " + timeoutMillis);
+    }
+
     public List<StaleIntakeCandidate> findStaleIntakeCandidates(Instant cutoff, int limit) {
         return jdbc.query("""
                 select la.id as application_id, la.external_loan_id
@@ -87,7 +96,14 @@ public class AlertRuleSetQueryRepository {
      * and a settled one is {@code CLOSED}/{@code FORECLOSED}; none of them are servicing
      * anything and none of them should produce delinquency transitions.
      */
-    public List<DelinquencyEvaluationRow> findServicingDelinquencyRows(LocalDate today) {
+    /**
+     * One keyset page of the servicing population (M07): at most {@code limit} applications
+     * strictly after {@code afterId} in stable {@code app.id} order. The evaluator pages the
+     * whole population instead of materialising it in one unbounded query, and each page is
+     * committed in its own short transaction.
+     */
+    public List<DelinquencyEvaluationRow> findServicingDelinquencyRows(
+            LocalDate today, UUID afterId, int limit) {
         return jdbc.query("""
                 select
                   app.id as application_id,
@@ -113,9 +129,15 @@ public class AlertRuleSetQueryRepository {
                 where app.status in ('DISBURSED', 'UNDER_REPAYMENT')
                   and acc.status = 'DISBURSED'
                   and acc.disbursed_at is not null
+                  and (cast(:afterId as uuid) is null or app.id > cast(:afterId as uuid))
                 group by app.id, app.external_loan_id, app.lsp_id, ds.id, ds.last_bucket, ds.last_max_days_past_due
+                order by app.id
+                limit :limit
                 """,
-                new MapSqlParameterSource("today", today),
+                new MapSqlParameterSource()
+                        .addValue("today", today)
+                        .addValue("afterId", afterId)
+                        .addValue("limit", limit),
                 (rs, rowNum) -> {
                     int maxDaysPastDue = rs.getInt("max_days_past_due");
                     LoanDelinquencyBucket currentBucket = LoanDelinquencySupport.resolveDelinquencyBucket(maxDaysPastDue);

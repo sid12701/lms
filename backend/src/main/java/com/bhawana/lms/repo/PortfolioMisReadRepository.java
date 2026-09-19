@@ -31,10 +31,11 @@ public class PortfolioMisReadRepository {
             UUID lspId,
             Instant disbursalDateFrom,
             Instant disbursalDateTo,
+            Instant asOf,
             UUID lastExclusiveId,
             int limit
     ) {
-        QuerySpec querySpec = buildQuerySpec(lspId, disbursalDateFrom, disbursalDateTo);
+        QuerySpec querySpec = buildQuerySpec(lspId, disbursalDateFrom, disbursalDateTo, asOf);
         String lastIdClause = lastExclusiveId == null ? "" : " and account.id > :lastExclusiveId";
         TypedQuery<UUID> query = entityManager.createQuery(
                 """
@@ -58,8 +59,8 @@ public class PortfolioMisReadRepository {
         return query.getResultList();
     }
 
-    public int findMaxInstallmentCountForExport(UUID lspId, Instant disbursalDateFrom, Instant disbursalDateTo) {
-        QuerySpec querySpec = buildQuerySpec(lspId, disbursalDateFrom, disbursalDateTo);
+    public int findMaxInstallmentCountForExport(UUID lspId, Instant disbursalDateFrom, Instant disbursalDateTo, Instant asOf) {
+        QuerySpec querySpec = buildQuerySpec(lspId, disbursalDateFrom, disbursalDateTo, asOf);
         TypedQuery<Long> query = entityManager.createQuery(
                 """
                         select coalesce(max(
@@ -90,7 +91,7 @@ public class PortfolioMisReadRepository {
             int page,
             int size
     ) {
-        QuerySpec querySpec = buildQuerySpec(lspId, disbursalDateFrom, disbursalDateTo);
+        QuerySpec querySpec = buildQuerySpec(lspId, disbursalDateFrom, disbursalDateTo, null);
 
         TypedQuery<UUID> idQuery = entityManager.createQuery(
                 """
@@ -167,7 +168,7 @@ public class PortfolioMisReadRepository {
             Instant disbursalDateTo,
             LocalDate par30Cutoff
     ) {
-        QuerySpec querySpec = buildQuerySpec(lspId, disbursalDateFrom, disbursalDateTo);
+        QuerySpec querySpec = buildQuerySpec(lspId, disbursalDateFrom, disbursalDateTo, null);
         TypedQuery<PortfolioMisSummaryAggregate> query = entityManager.createQuery(
                 """
                         select new com.bhawana.lms.repo.PortfolioMisSummaryAggregate(
@@ -226,7 +227,7 @@ public class PortfolioMisReadRepository {
         parameters.forEach(query::setParameter);
     }
 
-    private static QuerySpec buildQuerySpec(UUID lspId, Instant disbursalDateFrom, Instant disbursalDateTo) {
+    private static QuerySpec buildQuerySpec(UUID lspId, Instant disbursalDateFrom, Instant disbursalDateTo, Instant asOf) {
         StringBuilder whereClause = new StringBuilder(" where 1 = 1");
         Map<String, Object> parameters = new LinkedHashMap<>();
 
@@ -241,6 +242,14 @@ public class PortfolioMisReadRepository {
         if (disbursalDateTo != null) {
             whereClause.append(" and account.disbursedAt < :disbursalDateTo");
             parameters.put("disbursalDateTo", disbursalDateTo);
+        }
+        if (asOf != null) {
+            // Bound the row set to accounts that existed at the cutoff — createdAt, not
+            // disbursedAt: approved-but-undisbursed loans belong in the export and have a
+            // null disbursedAt. Rows created mid-run sort past the keyset cursor anyway,
+            // so this is also what keeps the page stream from growing under the reader.
+            whereClause.append(" and account.createdAt <= :asOf");
+            parameters.put("asOf", asOf);
         }
 
         return new QuerySpec(whereClause.toString(), parameters);

@@ -79,6 +79,7 @@ class PortfolioMisReadRepositoryTest {
                 lsp.getId(),
                 null,
                 null,
+                Instant.now(),
                 null,
                 10
         );
@@ -88,6 +89,7 @@ class PortfolioMisReadRepositoryTest {
                 lsp.getId(),
                 null,
                 null,
+                Instant.now(),
                 null,
                 1
         );
@@ -95,6 +97,7 @@ class PortfolioMisReadRepositoryTest {
                 lsp.getId(),
                 null,
                 null,
+                Instant.now(),
                 firstBatch.getFirst(),
                 1
         );
@@ -105,6 +108,7 @@ class PortfolioMisReadRepositoryTest {
                 lsp.getId(),
                 null,
                 null,
+                Instant.now(),
                 allIds.get(1),
                 1
         )).isEmpty();
