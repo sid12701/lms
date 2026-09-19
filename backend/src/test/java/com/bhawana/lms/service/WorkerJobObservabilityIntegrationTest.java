@@ -28,10 +28,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 @SpringBootTest
 @ActiveProfiles("test")
 @TestPropertySource(properties = {
-        "app.disbursement.worker.enabled=true",
-        // enabled=true also arms the real scheduled ticks; pin all delays far out so no
-        // background tick can interleave with the test or the database cleaner. The
-        // startup tick only ever scans an empty database and writes nothing.
+        // Worker stays disabled at context start so scheduled ticks no-op instantly;
+        // tests enable it on the properties bean for the direct run() call only.
+        // Delays stay pinned regardless: even if a tick somehow lands mid-test while the
+        // flag is flipped on, it cannot fire — the first tick is hours out either way.
         "app.disbursement.worker.fixed-delay-ms=3600000",
         "app.disbursement.worker.status-check-delay-ms=3600000",
         "app.disbursement.worker.reconciliation-delay-ms=3600000"
@@ -51,16 +51,21 @@ class WorkerJobObservabilityIntegrationTest {
     @Autowired
     private IntegrationTestDatabaseCleaner integrationTestDatabaseCleaner;
 
+    @Autowired
+    private LoanDisbursementWorkerProperties loanDisbursementWorkerProperties;
+
     @MockitoSpyBean
     private LoanDisbursementWorkerService loanDisbursementWorkerService;
 
     @BeforeEach
     void setUp() {
         integrationTestDatabaseCleaner.cleanIntegrationTestData();
+        loanDisbursementWorkerProperties.setEnabled(true);
     }
 
     @AfterEach
     void tearDown() {
+        loanDisbursementWorkerProperties.setEnabled(false);
         integrationTestDatabaseCleaner.cleanIntegrationTestData();
     }
 
