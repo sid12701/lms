@@ -1,12 +1,15 @@
 package com.bhawana.lms.web;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LspApiIdempotencyRecordRepository;
+import com.bhawana.lms.service.DocumentStorageProperties;
 import com.bhawana.lms.service.FileSystemLoanDocumentStorageService;
 import com.bhawana.lms.support.IntegrationTestDatabaseCleaner;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
@@ -14,6 +17,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,7 +66,13 @@ class LspLoanDocumentUploadIdempotencyIntegrationTest {
     private FileSystemLoanDocumentStorageService fileSystemLoanDocumentStorageService;
 
     @Autowired
+    private DocumentStorageProperties documentStorageProperties;
+
+    @Autowired
     private LspApiIdempotencyRecordRepository lspApiIdempotencyRecordRepository;
+
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
@@ -221,6 +234,241 @@ class LspLoanDocumentUploadIdempotencyIntegrationTest {
                 UUID.fromString(fixture.applicationId())).stream()
                 .filter(item -> item.getStatus().name().equals("SUBMITTED"))
                 .count());
+    }
+
+    /**
+     * H17 crash window: the checklist commit landed but the idempotency record
+     * was never completed. The reclaim must recover from the committed checklist
+     * evidence — a deleted storage object proves the retried request did NOT
+     * re-run the store (it would have rewritten the content-addressed key).
+     */
+    @Test
+    void expiredPendingUploadRecoversFromChecklistEvidenceWithoutRestoringObject() throws Exception {
+        DocumentFixture fixture = createUploadFixture();
+        String key = UUID.randomUUID().toString();
+        byte[] fileBytes = "%PDF-1.4 recovery evidence".getBytes(StandardCharsets.UTF_8);
+
+        MvcResult first = uploadPanDocument(fixture.applicationId(), fixture.accessToken(), key, fileBytes)
+                .andExpect(status().isOk())
+                .andReturn();
+        String checklistId = objectMapper.readTree(first.getResponse().getContentAsString())
+                .get("id").asText();
+        String storageKey = checklistRepository
+                .findByLoanApplication_IdAndDocumentType(
+                        UUID.fromString(fixture.applicationId()),
+                        com.bhawana.lms.domain.LoanApplicationDocumentType.PAN_CARD)
+                .orElseThrow()
+                .getStorageKey();
+
+        // Probe: remove the object so a blind re-execution would leave visible
+        // evidence (the deterministic key would be rewritten on store).
+        Files.deleteIfExists(documentStorageProperties.getRootPath().resolve(storageKey));
+        downgradeRecordToExpiredPending(key, "LOAN_DOCUMENT_UPLOAD");
+
+        uploadPanDocument(fixture.applicationId(), fixture.accessToken(), key, fileBytes)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(checklistId));
+
+        assertFalse(
+                Files.exists(documentStorageProperties.getRootPath().resolve(storageKey)),
+                "evidence recovery must not re-execute the storage write");
+        assertEquals(1, checklistRepository.findByLoanApplication_IdOrderByCreatedAtAsc(
+                UUID.fromString(fixture.applicationId())).stream()
+                .filter(item -> item.getDocumentType().name().equals("PAN_CARD"))
+                .count());
+        assertEquals(200, lspApiIdempotencyRecordRepository
+                .findByLspIdAndOperationKeyAndIdempotencyKey(
+                        lspIdOf(fixture.applicationId()), "LOAN_DOCUMENT_UPLOAD", key)
+                .orElseThrow()
+                .getResponseStatus());
+    }
+
+    /**
+     * H17 crash window: the storage write landed but the checklist update rolled
+     * back. The orphaned object sits at the deterministic content-addressed key;
+     * the re-executed upload overwrites that same key instead of stacking a
+     * second orphan object.
+     */
+    @Test
+    void expiredPendingUploadReexecutesOverSameContentAddressedKey() throws Exception {
+        DocumentFixture fixture = createUploadFixture();
+        String key = UUID.randomUUID().toString();
+        byte[] fileBytes = "%PDF-1.4 orphan convergence".getBytes(StandardCharsets.UTF_8);
+
+        uploadPanDocument(fixture.applicationId(), fixture.accessToken(), key, fileBytes)
+                .andExpect(status().isOk());
+        String storageKey = checklistRepository
+                .findByLoanApplication_IdAndDocumentType(
+                        UUID.fromString(fixture.applicationId()),
+                        com.bhawana.lms.domain.LoanApplicationDocumentType.PAN_CARD)
+                .orElseThrow()
+                .getStorageKey();
+        int storedFiles = fileSystemLoanDocumentStorageService.listAll("").size();
+
+        // Roll the checklist row back to its pre-upload state — the storage object
+        // stays behind as the crash's orphan.
+        jdbcTemplate.update(
+                """
+                        update loan_application_document_checklist
+                        set status = 'PENDING',
+                            note = 'Awaiting PAN Card',
+                            file_name = null,
+                            file_reference = null,
+                            source_reference = null,
+                            content_type = null,
+                            lms_managed_content = false,
+                            storage_key = null,
+                            file_checksum = null,
+                            file_size_bytes = null,
+                            uploaded_at = null,
+                            uploaded_by_username = null,
+                            updated_at = current_timestamp
+                        where loan_application_id = ? and document_type = 'PAN_CARD'
+                        """,
+                UUID.fromString(fixture.applicationId())
+        );
+        downgradeRecordToExpiredPending(key, "LOAN_DOCUMENT_UPLOAD");
+
+        uploadPanDocument(fixture.applicationId(), fixture.accessToken(), key, fileBytes)
+                .andExpect(status().isOk());
+
+        var checklistItem = checklistRepository
+                .findByLoanApplication_IdAndDocumentType(
+                        UUID.fromString(fixture.applicationId()),
+                        com.bhawana.lms.domain.LoanApplicationDocumentType.PAN_CARD)
+                .orElseThrow();
+        assertEquals("SUBMITTED", checklistItem.getStatus().name());
+        assertEquals(storageKey, checklistItem.getStorageKey(),
+                "re-execution must reuse the deterministic content-addressed key");
+        assertEquals(storedFiles, fileSystemLoanDocumentStorageService.listAll("").size(),
+                "re-execution must overwrite the orphan, not stack a second object");
+    }
+
+    /**
+     * Batch upload recovery uses the same checklist evidence per document: all
+     * committed rows must match the fingerprinted content or the batch re-runs
+     * under its deterministic keys.
+     */
+    @Test
+    void expiredPendingBatchUploadRecoversFromChecklistEvidenceWithoutRestoringObjects() throws Exception {
+        DocumentFixture fixture = createUploadFixture();
+        String key = UUID.randomUUID().toString();
+        byte[] panBytes = "%PDF pan recovery".getBytes(StandardCharsets.UTF_8);
+        byte[] aadhaarBytes = "%PDF aadhaar recovery".getBytes(StandardCharsets.UTF_8);
+        String documentsJson = objectMapper.writeValueAsString(List.of(
+                Map.of("documentType", "PAN_CARD", "note", "batch pan"),
+                Map.of("documentType", "AADHAAR_FILE", "note", "batch aadhaar")
+        ));
+
+        MvcResult first = uploadDocumentsBatch(fixture.applicationId(), fixture.accessToken(), key,
+                documentsJson, panBytes, aadhaarBytes)
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode firstIds = objectMapper.readTree(first.getResponse().getContentAsString());
+
+        List<String> storageKeys = checklistRepository
+                .findByLoanApplication_IdOrderByCreatedAtAsc(UUID.fromString(fixture.applicationId()))
+                .stream()
+                .filter(item -> item.getStorageKey() != null)
+                .map(item -> item.getStorageKey())
+                .toList();
+        assertEquals(2, storageKeys.size());
+        for (String storageKey : storageKeys) {
+            Files.deleteIfExists(documentStorageProperties.getRootPath().resolve(storageKey));
+        }
+        downgradeRecordToExpiredPending(key, "LOAN_DOCUMENT_BATCH_UPLOAD");
+
+        uploadDocumentsBatch(fixture.applicationId(), fixture.accessToken(), key,
+                documentsJson, panBytes, aadhaarBytes)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(firstIds.get(0).get("id").asText()))
+                .andExpect(jsonPath("$[1].id").value(firstIds.get(1).get("id").asText()));
+
+        for (String storageKey : storageKeys) {
+            assertFalse(
+                    Files.exists(documentStorageProperties.getRootPath().resolve(storageKey)),
+                    "batch evidence recovery must not re-execute storage writes");
+        }
+    }
+
+    private org.springframework.test.web.servlet.ResultActions uploadPanDocument(
+            String applicationId,
+            String accessToken,
+            String idempotencyKey,
+            byte[] fileBytes
+    ) throws Exception {
+        return mockMvc.perform(multipart(
+                        "/api/v1/lsp/loan-applications/{applicationId}/documents",
+                        applicationId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                "pan-idempotent.pdf",
+                                "application/pdf",
+                                fileBytes
+                        ))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", idempotencyKey)
+                        .param("documentType", "PAN_CARD")
+                        .param("note", "first upload"));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions uploadDocumentsBatch(
+            String applicationId,
+            String accessToken,
+            String idempotencyKey,
+            String documentsJson,
+            byte[] panBytes,
+            byte[] aadhaarBytes
+    ) throws Exception {
+        return mockMvc.perform(multipart(
+                        "/api/v1/lsp/loan-applications/{applicationId}/documents/batch",
+                        applicationId)
+                        .file(new MockMultipartFile(
+                                "documents",
+                                "documents.json",
+                                MediaType.APPLICATION_JSON_VALUE,
+                                documentsJson.getBytes(StandardCharsets.UTF_8)
+                        ))
+                        .file(new MockMultipartFile(
+                                "files",
+                                "pan.pdf",
+                                "application/pdf",
+                                panBytes
+                        ))
+                        .file(new MockMultipartFile(
+                                "files",
+                                "aadhaar.pdf",
+                                "application/pdf",
+                                aadhaarBytes
+                        ))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .header("Idempotency-Key", idempotencyKey));
+    }
+
+    /** Simulates a crash after claim: pending body, dead owner, expired lease. */
+    private void downgradeRecordToExpiredPending(String idempotencyKey, String operationKey) {
+        jdbcTemplate.update(
+                """
+                        update lsp_api_idempotency_record
+                        set response_status = 0,
+                            response_body = '{"__idempotencyPending":true}',
+                            lease_owner = 'dead-worker',
+                            lease_expires_at = ?
+                        where idempotency_key = ? and operation_key = ?
+                        """,
+                Timestamp.from(Instant.now().minus(2, ChronoUnit.MINUTES)),
+                idempotencyKey,
+                operationKey
+        );
+    }
+
+    private UUID lspIdOf(String applicationId) {
+        return jdbcTemplate.queryForObject(
+                "select lsp_id from loan_application where id = ?",
+                UUID.class,
+                UUID.fromString(applicationId)
+        );
     }
 
     private DocumentFixture createUploadFixture() throws Exception {

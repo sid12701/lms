@@ -10,7 +10,20 @@ public class IdempotencyProperties {
     private long purgeFixedDelayMs = 3_600_000L;
     private int leaseDurationSeconds = 60;
     private String leaseOwner = defaultLeaseOwner();
-    private int completionWaitSeconds = 30;
+    /**
+     * How long a duplicate request may poll for the in-flight owner's completion
+     * before answering 409 IDEMPOTENCY_IN_PROGRESS. Default 0: the waiter still
+     * performs one final re-check before throwing, so a just-completed record
+     * replays while live duplicates never pin a request thread.
+     */
+    private int completionWaitSeconds = 0;
+    /**
+     * Upper bound for the Retry-After hint on IDEMPOTENCY_IN_PROGRESS responses.
+     * Without a cap the hint could span the full remaining lease (lease-duration
+     * seconds), which would strand clients for far longer than the duplicate
+     * needs to wait before its next attempt.
+     */
+    private long retryAfterCapSeconds = 5;
 
     public int getRetentionDays() {
         return retentionDays;
@@ -58,6 +71,14 @@ public class IdempotencyProperties {
 
     public void setCompletionWaitSeconds(int completionWaitSeconds) {
         this.completionWaitSeconds = completionWaitSeconds;
+    }
+
+    public long getRetryAfterCapSeconds() {
+        return retryAfterCapSeconds;
+    }
+
+    public void setRetryAfterCapSeconds(long retryAfterCapSeconds) {
+        this.retryAfterCapSeconds = retryAfterCapSeconds;
     }
 
     private static String defaultLeaseOwner() {

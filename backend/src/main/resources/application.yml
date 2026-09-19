@@ -276,7 +276,13 @@ app:
     purge-fixed-delay-ms: ${APP_IDEMPOTENCY_PURGE_FIXED_DELAY_MS:3600000}
     lease-duration-seconds: ${APP_IDEMPOTENCY_LEASE_DURATION_SECONDS:60}
     lease-owner: ${APP_IDEMPOTENCY_LEASE_OWNER:${HOSTNAME:lms-api}}
-    completion-wait-seconds: ${APP_IDEMPOTENCY_COMPLETION_WAIT_SECONDS:30}
+    # 0 = duplicates get 409 IDEMPOTENCY_IN_PROGRESS + Retry-After immediately
+    # (a final re-check still replays a just-completed record) instead of holding
+    # the request thread open while polling.
+    completion-wait-seconds: ${APP_IDEMPOTENCY_COMPLETION_WAIT_SECONDS:0}
+    # Cap on the Retry-After hint for in-progress duplicates; without it the hint
+    # could span the whole remaining lease duration.
+    retry-after-cap-seconds: ${APP_IDEMPOTENCY_RETRY_AFTER_CAP_SECONDS:5}
   portfolio-kpi:
     scheduler-enabled: ${APP_PORTFOLIO_KPI_SCHEDULER_ENABLED:true}
     scheduler-fixed-delay-ms: ${APP_PORTFOLIO_KPI_SCHEDULER_FIXED_DELAY_MS:900000}

@@ -70,6 +70,36 @@ public interface LspApiIdempotencyRecordRepository extends JpaRepository<LspApiI
             @Param("now") Instant now
     );
 
+    /**
+     * Transitions a still-pending row owned by this attempt into the terminal
+     * recovery-required state and clears its lease. The row is kept as evidence;
+     * fenced on id + attempt + owner + pending body so a stale worker can never
+     * mark a newer attempt or a completed record.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("""
+            UPDATE LspApiIdempotencyRecord record
+            SET record.responseStatus = :responseStatus,
+                record.responseBody = :responseBody,
+                record.leaseOwner = null,
+                record.leaseExpiresAt = null,
+                record.updatedAt = :now
+            WHERE record.id = :id
+              AND record.attempt = :attempt
+              AND record.leaseOwner = :leaseOwner
+              AND record.responseBody = :pendingBody
+            """)
+    int markRecoveryRequiredIfOwned(
+            @Param("id") UUID id,
+            @Param("attempt") int attempt,
+            @Param("leaseOwner") String leaseOwner,
+            @Param("responseStatus") int responseStatus,
+            @Param("responseBody") String responseBody,
+            @Param("pendingBody") String pendingBody,
+            @Param("now") Instant now
+    );
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional
     @Query("""
