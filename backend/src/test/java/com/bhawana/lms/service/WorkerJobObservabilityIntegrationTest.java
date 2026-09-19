@@ -27,7 +27,15 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@TestPropertySource(properties = "app.disbursement.worker.enabled=true")
+@TestPropertySource(properties = {
+        "app.disbursement.worker.enabled=true",
+        // enabled=true also arms the real scheduled ticks; pin all delays far out so no
+        // background tick can interleave with the test or the database cleaner. The
+        // startup tick only ever scans an empty database and writes nothing.
+        "app.disbursement.worker.fixed-delay-ms=3600000",
+        "app.disbursement.worker.status-check-delay-ms=3600000",
+        "app.disbursement.worker.reconciliation-delay-ms=3600000"
+})
 @TestExecutionListeners(
         value = TenantContextTestExecutionListener.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS
