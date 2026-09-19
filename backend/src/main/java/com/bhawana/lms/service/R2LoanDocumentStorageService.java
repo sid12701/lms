@@ -17,6 +17,7 @@ import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
@@ -118,6 +119,24 @@ public class R2LoanDocumentStorageService {
         } catch (RuntimeException exception) {
             s3Client.close();
             throw exception;
+        }
+    }
+
+    public void delete(String storageKey) {
+        DocumentStorageProperties.R2 r2 = properties.getR2();
+        // S3 DeleteObject on a missing key succeeds, so a retried delete is harmless.
+        try (S3Client s3Client = buildClient(r2)) {
+            s3Client.deleteObject(DeleteObjectRequest.builder()
+                    .bucket(r2.getBucket())
+                    .key(storageKey)
+                    .build());
+        } catch (S3Exception | SdkClientException exception) {
+            throw new DocumentStorageUnavailableException(
+                    storageKey,
+                    DocumentStorageProperties.DocumentStorageProvider.R2.name(),
+                    "Unable to delete document from R2 storage: " + storageKey,
+                    exception
+            );
         }
     }
 

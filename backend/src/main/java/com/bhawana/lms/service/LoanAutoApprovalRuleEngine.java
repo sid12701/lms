@@ -7,6 +7,7 @@ import com.bhawana.lms.domain.LoanApplicationDocumentChecklist;
 import com.bhawana.lms.domain.LoanProduct;
 import com.bhawana.lms.domain.LoanProductLspMapping;
 import com.bhawana.lms.domain.LoanProductStatus;
+import com.bhawana.lms.domain.LoanProductVersion;
 import com.bhawana.lms.domain.LspStatus;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.repo.LoanProductLspMappingRepository;
@@ -75,19 +76,30 @@ public class LoanAutoApprovalRuleEngine {
         }
     }
 
+    /**
+     * H16 — commercial bounds come from the application's pinned {@link LoanProductVersion},
+     * never from the mutable catalog row: a product edit after submission must not change
+     * whether an already-submitted application qualifies. Product/LSP/mapping status above
+     * stays the live availability kill switch. The pin is NOT NULL since V104; a missing
+     * version is a data fault that fails loudly rather than falling back to the latest one.
+     */
     private void evaluateAmountTenureRate(LoanApplication application, List<RuleCode> failures) {
-        LoanProduct product = application.getLoanProduct();
-        if (product == null) {
+        if (application.getLoanProduct() == null) {
             return; // already failed via PRODUCT_INACTIVE
+        }
+        LoanProductVersion pinnedVersion = application.getLoanProductVersion();
+        if (pinnedVersion == null) {
+            throw new IllegalStateException(
+                    "Loan application " + application.getId() + " has no pinned product version.");
         }
         BigDecimal amount = application.getRequestedAmount();
         if (amount == null
-                || amount.compareTo(product.getMinPrincipal()) < 0
-                || amount.compareTo(product.getMaxPrincipal()) > 0) {
+                || amount.compareTo(pinnedVersion.getMinPrincipal()) < 0
+                || amount.compareTo(pinnedVersion.getMaxPrincipal()) > 0) {
             failures.add(RuleCode.LOAN_AMOUNT_OUT_OF_RANGE);
         }
         int tenure = application.getTenureMonths();
-        if (tenure < product.getMinTenureMonths() || tenure > product.getMaxTenureMonths()) {
+        if (tenure < pinnedVersion.getMinTenureMonths() || tenure > pinnedVersion.getMaxTenureMonths()) {
             failures.add(RuleCode.LOAN_TENURE_OUT_OF_RANGE);
         }
     }

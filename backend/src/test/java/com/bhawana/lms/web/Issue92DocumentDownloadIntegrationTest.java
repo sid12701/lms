@@ -170,9 +170,11 @@ class Issue92DocumentDownloadIntegrationTest {
             byte[] content
     ) {
         com.bhawana.lms.service.StoredDocument stored = loanDocumentStorageService.store(
-                applicationUuid,
-                documentType,
-                new MockMultipartFile("file", fileName, "application/pdf", content)
+                loanDocumentStorageService.prepare(
+                        applicationUuid,
+                        documentType,
+                        new MockMultipartFile("file", fileName, "application/pdf", content)
+                )
         );
         loanApplicationLifecycleService.updateDocumentChecklistItem(
                 applicationUuid,

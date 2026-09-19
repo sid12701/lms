@@ -3703,6 +3703,7 @@ export interface operations {
           | "LOAN_AGREEMENT";
         note?: string;
         sourceReference?: string;
+        correctionReason?: string;
       };
       header?: {
         "Idempotency-Key"?: string;
