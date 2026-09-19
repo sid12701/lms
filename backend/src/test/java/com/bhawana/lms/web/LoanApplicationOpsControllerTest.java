@@ -358,6 +358,121 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
+    void opsUserCanFilterLoanApplicationsByMultipleStatusesWithAgreeingTotals() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        createApplication(lsp.id(), product.id(), "EXT-MS-1", "API", "ABCDE1234F");
+        String secondId = createApplication(lsp.id(), product.id(), "EXT-MS-2", "API", "ZXCVB1234N")
+                .get("id").asText();
+        createApplication(lsp.id(), product.id(), "EXT-MS-3", "API", "LMNOP1234Q");
+        transitionApplication(secondId, "AWAITING_APPROVAL", "Started review");
+
+        // Two statuses selected: matching rows on different pages all appear
+        // and every page agrees on the total.
+        for (int page = 0; page < 3; page++) {
+            mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                            .with(opsUser())
+                            .queryParam("status", "INITIALIZED")
+                            .queryParam("status", "AWAITING_APPROVAL")
+                            .queryParam("offset", String.valueOf(page))
+                            .queryParam("limit", "1")
+                            .queryParam("paginationDetails", "ON"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.length()").value(1))
+                    .andExpect(header().string("X-Total-Count", "3"));
+        }
+
+        // A single status still narrows to just its own rows.
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("status", "AWAITING_APPROVAL")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].externalLoanId").value("EXT-MS-2"))
+                .andExpect(header().string("X-Total-Count", "1"));
+    }
+
+    @Test
+    void opsLoanApplicationListSortsAcrossPageBoundaries() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+
+        createApplicationWithAmount(lsp.id(), product.id(), "EXT-SMALL", "ABCDE1234F",
+                new BigDecimal("20000.00"));
+        createApplicationWithAmount(lsp.id(), product.id(), "EXT-MID", "ZXCVB1234N",
+                new BigDecimal("45000.00"));
+        createApplicationWithAmount(lsp.id(), product.id(), "EXT-LARGE", "LMNOP1234Q",
+                new BigDecimal("90000.00"));
+
+        // Ascending across three one-row pages.
+        String[] ascending = {"EXT-SMALL", "EXT-MID", "EXT-LARGE"};
+        for (int page = 0; page < 3; page++) {
+            mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                            .with(opsUser())
+                            .queryParam("sortBy", "requestedAmount")
+                            .queryParam("sortDir", "asc")
+                            .queryParam("offset", String.valueOf(page))
+                            .queryParam("limit", "1")
+                            .queryParam("paginationDetails", "ON"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].externalLoanId").value(ascending[page]))
+                    .andExpect(header().string("X-Total-Count", "3"));
+        }
+
+        // Descending is the mirror image.
+        String[] descending = {"EXT-LARGE", "EXT-MID", "EXT-SMALL"};
+        for (int page = 0; page < 3; page++) {
+            mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                            .with(opsUser())
+                            .queryParam("sortBy", "requestedAmount")
+                            .queryParam("sortDir", "desc")
+                            .queryParam("offset", String.valueOf(page))
+                            .queryParam("limit", "1")
+                            .queryParam("paginationDetails", "ON"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$[0].externalLoanId").value(descending[page]))
+                    .andExpect(header().string("X-Total-Count", "3"));
+        }
+    }
+
+    @Test
+    void opsLoanApplicationListRejectsUnknownStatusAndSortClearly() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE");
+        mapProductToLsp(product.id(), lsp.id());
+        createApplication(lsp.id(), product.id(), "EXT-BAD", "API", "ABCDE1234F");
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("status", "NO_SUCH_STATUS"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALID_STATUS"));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("status", "INITIALIZED")
+                        .queryParam("status", "NO_SUCH_STATUS"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALID_STATUS"));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("sortBy", "borrowerMood"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALID_SORT"));
+
+        mockMvc.perform(get("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .queryParam("sortDir", "sideways"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALID_SORT"));
+    }
+
+    @Test
     void opsUserCanInspectLoanApplicationIntakeAudit() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
@@ -1869,6 +1984,41 @@ class LoanApplicationOpsControllerTest {
         int hash = Math.abs(pan.hashCode());
         String suffix = String.format("%09d", hash % 1_000_000_000);
         return "9" + suffix;
+    }
+
+    private JsonNode createApplicationWithAmount(
+            String lspId,
+            String productId,
+            String externalLoanId,
+            String borrowerPan,
+            BigDecimal requestedAmount
+    ) throws Exception {
+        String mobile = mobileForPan(borrowerPan);
+        String email = "anika+" + borrowerPan.toLowerCase() + "@example.com";
+        MvcResult result = mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loanApplicationPayload(
+                                lspId,
+                                productId,
+                                externalLoanId,
+                                "API",
+                                borrowerPan,
+                                "Anika Sharma",
+                                mobile,
+                                email,
+                                LocalDate.of(1992, 3, 10),
+                                "Mumbai",
+                                "Maharashtra",
+                                "SALARIED",
+                                new BigDecimal("78000.00"),
+                                requestedAmount,
+                                12
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        return objectMapper.readTree(result.getResponse().getContentAsString());
     }
 
     private JsonNode fetchRepaymentSchedule(String applicationId) throws Exception {

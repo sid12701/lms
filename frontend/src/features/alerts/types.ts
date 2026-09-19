@@ -7,11 +7,18 @@
  * table component stays pure.
  */
 import { z } from "zod";
-import { AlertSeverity, AlertStatus, AlertSubjectType } from "@/schemas/alert";
+import {
+  AlertSeverity,
+  AlertStatus,
+  AlertSubjectType,
+  type AlertSeverityOrUnknown,
+  type AlertSubjectTypeOrUnknown,
+} from "@/schemas/alert";
 import type { OperationalAlert } from "@/schemas/alert";
 import { ADMIN_LIST_FILTER_FIELDS } from "@/lib/admin-list-url-state";
 
 export type { OperationalAlert };
+export type { AlertSeverityOrUnknown, AlertSubjectTypeOrUnknown };
 
 /**
  * Server-side filters consumed by the backend. Mirrors the
@@ -32,8 +39,20 @@ export type AlertsListFilters = z.infer<typeof AlertsListFilters>;
 /**
  * Row projection used by the list table — the wire alert plus the
  * `acknowledgedByName` lookup the handler resolves from `db.users`.
+ *
+ * H28 — severity, subject type, subject id and correlation id preserve unknown
+ * wire values explicitly instead of folding into MEDIUM / SYSTEM / "unknown" /
+ * a zero UUID. A null subjectId means the alert names no subject: render it as
+ * absent, never as a link to a fabricated id.
  */
-export interface AlertRow extends OperationalAlert {
+export interface AlertRow extends Omit<
+  OperationalAlert,
+  "severity" | "subjectType" | "subjectId" | "correlationId"
+> {
+  severity: AlertSeverityOrUnknown;
+  subjectType: AlertSubjectTypeOrUnknown;
+  subjectId: string | null;
+  correlationId: string | null;
   acknowledgedByName: string | null;
 }
 

@@ -7,16 +7,19 @@
  * Types intentionally use plain TS (not Zod-inferred) — these are
  * presentation projections, not domain entities.
  */
-import type { LoanStatus } from "@/types";
-import type { AlertSeverity, AlertSubjectType } from "@/schemas/alert";
+import type { LoanStatusOrUnknown } from "@/lib/loan-application-status";
+import type { AlertSeverityOrUnknown, AlertSubjectTypeOrUnknown } from "@/schemas/alert";
 import type { DelinquencyBucket } from "@/schemas/loan-account";
 
 /**
  * One row of the "Applications by status" chart on the internal home.
  * `count` is the number of applications currently in `status`.
+ *
+ * H28 — an unrecognized backend status stays `UNKNOWN:<raw>` instead of being
+ * cast into the canonical enum.
  */
 export interface ApplicationsByStatusBucket {
-  status: LoanStatus;
+  status: LoanStatusOrUnknown;
   count: number;
 }
 
@@ -24,9 +27,13 @@ export interface ApplicationsByStatusBucket {
  * One row of the "Loans by DPD bucket" chart on the internal home.
  * `count` is the number of loan accounts whose next-due installment is in
  * `bucket`. Computed from live loan-account delinquency data.
+ *
+ * H28 — `UNKNOWN` is the explicit bucket for wire values the frontend does
+ * not recognize. Folding those loans into B0 (Current) presented potentially
+ * delinquent loans as current.
  */
 export interface DpdBucketSummary {
-  bucket: DelinquencyBucket;
+  bucket: DelinquencyBucket | "UNKNOWN";
   count: number;
 }
 
@@ -42,17 +49,21 @@ export interface HomeRecentApplication {
   borrowerNameMasked: string;
   lspName: string;
   productName: string;
-  status: LoanStatus;
+  /** H28 — unrecognized backend statuses stay `UNKNOWN:<raw>`. */
+  status: LoanStatusOrUnknown;
   requestedAmount: number;
   createdAt: string;
 }
 
 /**
  * One row of the "Open alerts" feed on either home variant.
+ *
+ * H28 — severity/subject preserve unknown wire values explicitly (never
+ * MEDIUM/SYSTEM); a null subjectId means the alert names no subject.
  */
 export interface HomeAlertSummary {
   id: string;
-  severity: AlertSeverity;
+  severity: AlertSeverityOrUnknown;
   title: string;
   /**
    * The rule's detail sentence — the only field that separates a run of
@@ -60,8 +71,8 @@ export interface HomeAlertSummary {
    * carries none, so the card omits the line rather than rendering an empty one.
    */
   message: string | null;
-  subjectType: AlertSubjectType;
-  subjectId: string;
+  subjectType: AlertSubjectTypeOrUnknown;
+  subjectId: string | null;
   createdAt: string;
 }
 

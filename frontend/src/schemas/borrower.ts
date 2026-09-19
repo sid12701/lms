@@ -17,10 +17,10 @@ import {
 } from "./common";
 
 export const Gender = z.enum(["M", "F", "O"]);
-type Gender = z.infer<typeof Gender>;
+export type Gender = z.infer<typeof Gender>;
 
 export const MaritalStatus = z.enum(["SINGLE", "MARRIED", "DIVORCED", "WIDOWED"]);
-type MaritalStatus = z.infer<typeof MaritalStatus>;
+export type MaritalStatus = z.infer<typeof MaritalStatus>;
 
 export const EmploymentType = z.enum([
   "SALARIED",
@@ -30,7 +30,7 @@ export const EmploymentType = z.enum([
   "STUDENT",
   "UNEMPLOYED",
 ]);
-type EmploymentType = z.infer<typeof EmploymentType>;
+export type EmploymentType = z.infer<typeof EmploymentType>;
 
 export const BorrowerAddress = z.object({
   residential: z.string().min(1).max(240),

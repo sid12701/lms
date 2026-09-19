@@ -20,6 +20,7 @@ import { resolveAlertSubjectHref } from "@/lib/alert-links";
 import { alertSubjectTypeLabel, humanizeAlertTitle } from "@/lib/alert-display";
 import type { AlertRow, AlertsListFilters, AlertsListResponse } from "../types";
 import type { AlertSeverity } from "@/schemas/alert";
+import { unknownAlertValueLabel } from "@/schemas/alert";
 
 const SEVERITY_META: Record<
   AlertSeverity,
@@ -46,6 +47,33 @@ const SEVERITY_META: Record<
     className: "border-border bg-surface-muted text-foreground-muted",
   },
 };
+
+/**
+ * H28 — a severity the frontend does not know renders as an explicit Unknown
+ * badge, never as Medium. Severity drives triage order, so a silent downgrade
+ * to Medium would bury an urgent alert in the middle of the queue.
+ */
+const UNKNOWN_SEVERITY_META = {
+  icon: Info,
+  className: "border-border bg-surface-muted text-foreground-muted",
+};
+
+function severityMeta(severity: AlertRow["severity"]): {
+  label: string;
+  icon: typeof AlertOctagon;
+  className: string;
+} {
+  const known = (SEVERITY_META as Partial<Record<string, (typeof SEVERITY_META)[AlertSeverity]>>)[
+    severity
+  ];
+  if (known) return known;
+  return {
+    ...UNKNOWN_SEVERITY_META,
+    label: unknownAlertValueLabel(
+      severity.startsWith("UNKNOWN:") ? severity.slice("UNKNOWN:".length) : severity,
+    ),
+  };
+}
 
 export interface AlertsTableProps {
   data: AlertsListResponse | undefined;
@@ -76,7 +104,7 @@ export function AlertsTable({
         header: "Severity",
         meta: { label: "Severity", mobileCard: "primary" },
         cell: ({ row }) => {
-          const meta = SEVERITY_META[row.original.severity];
+          const meta = severityMeta(row.original.severity);
           const Icon = meta.icon;
           return (
             <Badge

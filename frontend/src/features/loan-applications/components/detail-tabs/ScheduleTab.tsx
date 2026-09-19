@@ -25,13 +25,15 @@ import {
   ScheduleTable,
   type RepaymentPostConfirmArgs,
 } from "@/components/app/repayment";
-import type { LoanStatus, RepaymentInstallment } from "@/types";
+import type { RepaymentInstallment } from "@/types";
+import type { LoanStatusOrUnknown } from "@/lib/loan-application-status";
 import { useLoanApplicationSchedule } from "../../hooks/useLoanApplicationSchedule";
 import { usePostRepayment } from "../../hooks/usePostRepayment";
 
 export interface ScheduleTabProps {
   applicationId: string;
-  status: LoanStatus;
+  /** H28 — unknown statuses match no gate (banners stay hidden, never assumed). */
+  status: LoanStatusOrUnknown;
   /** When true, the user may post repayments against installments. */
   canPost: boolean;
   /** BR-3 — every required-for-disbursement document is uploaded. */
@@ -41,10 +43,7 @@ export interface ScheduleTabProps {
 }
 
 /** Statuses where the disbursement gate is informative to the user. */
-const PRE_DISBURSEMENT_STATUSES = new Set<LoanStatus>([
-  "APPROVED_PENDING_DISBURSAL",
-  "DISBURSEMENT_RETRY",
-]);
+const PRE_DISBURSEMENT_STATUSES = new Set(["APPROVED_PENDING_DISBURSAL", "DISBURSEMENT_RETRY"]);
 
 export function ScheduleTab({
   applicationId,

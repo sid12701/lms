@@ -21,6 +21,7 @@ import {
 } from "../api-detail";
 import type { LoanApplicationDetail, TransitionStatusInput } from "../types";
 import { mapApiErrorMessage, formatLoanStatusLabel } from "@/lib/api/user-messages";
+import { isLoanApplicationStatus } from "@/lib/loan-application-status";
 import { shortId } from "@/lib/short-id";
 import { ForeclosureQuotePanel } from "./ForeclosureQuotePanel";
 import type { LoanStatus } from "@/types";
@@ -94,6 +95,13 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
   const canOfferOverride = role === "SYSTEM_ADMIN" && !overrideHiddenForSource;
   // Never offer the status the application is already in.
   const overrideTargets = manualOverrideTargetsFor(detail.application.status);
+  // H28 — lifecycle actions are only offered for a recognized status. An
+  // unknown status cannot be mapped onto the transition matrix, so the bar
+  // is replaced by an honest note instead of actions computed from a
+  // fabricated fallback status.
+  const knownStatus = isLoanApplicationStatus(detail.application.status)
+    ? detail.application.status
+    : null;
 
   const handleConfirm = async ({
     action,
@@ -226,20 +234,26 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
         </div>
       ) : role ? (
         <>
-          <ActionBar
-            currentStatus={detail.application.status}
-            role={role}
-            applicationId={detail.application.id}
-            gates={{
-              docsComplete: detail.docsComplete,
-              scheduleValid: detail.scheduleValid,
-            }}
-            onConfirm={handleConfirm}
-            // Only relocate foreclosure when the panel that owns it is actually
-            // rendered below; otherwise the bar would hide an action nothing else
-            // offers.
-            hiddenTargetStatuses={showsForeclosurePanel ? FORECLOSURE_OWNED_BY_PANEL : undefined}
-          />
+          {knownStatus ? (
+            <ActionBar
+              currentStatus={knownStatus}
+              role={role}
+              applicationId={detail.application.id}
+              gates={{
+                docsComplete: detail.docsComplete,
+                scheduleValid: detail.scheduleValid,
+              }}
+              onConfirm={handleConfirm}
+              // Only relocate foreclosure when the panel that owns it is actually
+              // rendered below; otherwise the bar would hide an action nothing else
+              // offers.
+              hiddenTargetStatuses={showsForeclosurePanel ? FORECLOSURE_OWNED_BY_PANEL : undefined}
+            />
+          ) : (
+            <p data-slot="unknown-status-actions-note" className="text-foreground-muted text-sm">
+              Lifecycle actions are unavailable: the application status is not recognized.
+            </p>
+          )}
           {canOfferOverride ? (
             <div data-slot="admin-override-bar" className="flex flex-wrap items-center gap-2">
               <Button

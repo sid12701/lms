@@ -47,6 +47,9 @@ class OpsAlertControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     @BeforeEach
     void resetAlerts() {
         TenantScopedExecution.runAsAdmin(() -> opsAlertRepository.deleteAllInBatch());
@@ -362,6 +365,186 @@ class OpsAlertControllerTest {
                         .with(opsUser())
                         .queryParam("limit", "1001"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void listAlertsFindsSevereMatchOnlyOnALaterPageWithAgreeingTotals() throws Exception {
+        // The severe match is the OLDEST row: the default first page (cap 50)
+        // cannot see it, so the totals must come from the full dataset.
+        TenantScopedExecution.callAsAdmin(() -> {
+            opsAlertRepository.save(new OpsAlert(
+                    OpsAlertType.DPD_BUCKET_TRANSITION,
+                    OpsAlertSeverity.CRITICAL,
+                    "Severe late-page delinquency",
+                    "Ninety days past due on a large ticket.",
+                    "LOAN_ACCOUNT",
+                    null,
+                    "corr-severe",
+                    null
+            ));
+            return null;
+        });
+        Thread.sleep(2);
+        for (int i = 0; i < 54; i++) {
+            final int index = i;
+            TenantScopedExecution.callAsAdmin(() -> {
+                opsAlertRepository.save(new OpsAlert(
+                        OpsAlertType.BORROWER_IDENTITY_CONFLICT,
+                        OpsAlertSeverity.HIGH,
+                        "Routine alert " + index,
+                        "Routine body " + index,
+                        "BORROWER",
+                        null,
+                        "corr-routine-" + index,
+                        null
+                ));
+                return null;
+            });
+        }
+
+        // First page: 50 routine alerts, total covers all 55.
+        mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(opsUser())
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(50))
+                .andExpect(jsonPath("$[*].title").value(
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("Severe late-page delinquency"))))
+                .andExpect(header().string("X-Total-Count", "55"));
+
+        // Second page holds the severe match.
+        mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(opsUser())
+                        .queryParam("offset", "50")
+                        .queryParam("limit", "50")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$[4].title").value("Severe late-page delinquency"))
+                .andExpect(jsonPath("$[4].severity").value("CRITICAL"))
+                .andExpect(header().string("X-Total-Count", "55"));
+
+        // Severity filtering applies to the full dataset, not the first page.
+        mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(opsUser())
+                        .queryParam("severity", "CRITICAL")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].title").value("Severe late-page delinquency"))
+                .andExpect(header().string("X-Total-Count", "1"));
+
+        // Text search finds it too.
+        mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(opsUser())
+                        .queryParam("q", "late-page delinquency")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].severity").value("CRITICAL"))
+                .andExpect(header().string("X-Total-Count", "1"));
+
+        // Subject-type filtering composes with the same totals.
+        mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(opsUser())
+                        .queryParam("subjectType", "LOAN_ACCOUNT")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(header().string("X-Total-Count", "1"));
+    }
+
+    @Test
+    void listAlertsRejectsUnknownSeverityClearly() throws Exception {
+        seedAlert();
+
+        mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(opsUser())
+                        .queryParam("severity", "URGENT"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error").value("INVALID_SEVERITY"));
+    }
+
+    @Test
+    void listAlertsKeepsStableOrderAcrossPagesWhenTimestampsTie() throws Exception {
+        for (int i = 0; i < 55; i++) {
+            final int index = i;
+            TenantScopedExecution.callAsAdmin(() -> {
+                opsAlertRepository.save(new OpsAlert(
+                        OpsAlertType.BORROWER_IDENTITY_CONFLICT,
+                        OpsAlertSeverity.HIGH,
+                        "Tied alert " + index,
+                        "Tied body " + index,
+                        "BORROWER",
+                        null,
+                        "corr-tied-" + index,
+                        null
+                ));
+                return null;
+            });
+        }
+        // Force every row onto the same timestamp: without the id tie-breaker
+        // pagination over ties can duplicate or omit rows.
+        TenantScopedExecution.callAsAdmin(() -> {
+            opsAlertRepository.findAll().forEach(alert -> {
+                jdbcTemplate.update(
+                        "UPDATE ops_alert SET created_at = ? WHERE id = ?",
+                        java.sql.Timestamp.from(java.time.Instant.parse("2026-05-01T00:00:00Z")),
+                        alert.getId());
+            });
+            return null;
+        });
+
+        java.util.Set<String> seenIds = new java.util.HashSet<>();
+        for (int page = 0; page < 6; page++) {
+            org.springframework.test.web.servlet.MvcResult result = mockMvc.perform(
+                            get("/api/v1/internal/alerts")
+                                    .with(opsUser())
+                                    .queryParam("offset", String.valueOf(page * 10))
+                                    .queryParam("limit", "10")
+                                    .queryParam("paginationDetails", "ON"))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("X-Total-Count", "55"))
+                    .andReturn();
+            com.fasterxml.jackson.databind.JsonNode body = objectMapper.readTree(
+                    result.getResponse().getContentAsString());
+            for (com.fasterxml.jackson.databind.JsonNode row : body) {
+                org.junit.jupiter.api.Assertions.assertTrue(
+                        seenIds.add(row.get("id").asText()),
+                        "duplicate alert id across pages: " + row.get("id").asText());
+            }
+        }
+        org.junit.jupiter.api.Assertions.assertEquals(55, seenIds.size());
+    }
+
+    @Test
+    void alertAcknowledgementRefreshFindsLatePageAlert() throws Exception {
+        OpsAlert seeded = TenantScopedExecution.callAsAdmin(() -> opsAlertRepository.save(new OpsAlert(
+                OpsAlertType.DPD_BUCKET_TRANSITION,
+                OpsAlertSeverity.CRITICAL,
+                "Severe ack-target delinquency",
+                "Ninety days past due.",
+                "LOAN_ACCOUNT",
+                null,
+                "corr-ack-target",
+                null
+        )));
+
+        mockMvc.perform(post("/api/v1/internal/alerts/{id}/acknowledge", seeded.getId())
+                        .with(opsUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new OpsAlertController.AcknowledgeAlertRequest("Reviewed."))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/internal/alerts")
+                        .with(opsUser())
+                        .queryParam("status", "ACKNOWLEDGED")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].title").value("Severe ack-target delinquency"))
+                .andExpect(header().string("X-Total-Count", "1"));
     }
 
     private void seedAlertsInOrder(String... titles) throws InterruptedException {

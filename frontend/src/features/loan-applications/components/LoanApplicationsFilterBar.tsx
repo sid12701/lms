@@ -26,8 +26,8 @@ import {
   IgnoredFilterNotice,
   type AppliedFilter,
 } from "@/components/app/data/FilterBarShell";
+import { MultiSelectChip } from "@/components/app/data/MultiSelectChip";
 import { filterControlClass } from "@/components/app/data/filter-control";
-import { StatusBadge } from "@/components/app/status/StatusBadge";
 import { useUrlFilters } from "@/lib/url-state";
 import { LoanApplicationListFilters } from "../types";
 import { STATUS_META } from "@/lib/lifecycle";
@@ -151,12 +151,17 @@ export function LoanApplicationsFilterBar({
         onClear: () => setFilters({ bhawLoanId: undefined, page: 0 }),
       });
     }
-    if (filters.status?.[0]) {
+    // H29 — one chip per selected status, each clearing only itself, so the
+    // operator can see exactly which slice of the book is in view.
+    for (const selected of filters.status ?? []) {
       chips.push({
-        key: "status",
+        key: `status:${selected}`,
         label: "Status",
-        value: labelFor(STATUS_OPTIONS, filters.status[0]),
-        onClear: () => setFilters({ status: undefined, page: 0 }),
+        value: labelFor(STATUS_OPTIONS, selected),
+        onClear: () => {
+          const rest = (filters.status ?? []).filter((s) => s !== selected);
+          setFilters({ status: rest.length > 0 ? rest : undefined, page: 0 });
+        },
       });
     }
     if (filters.lspId) {
@@ -266,19 +271,16 @@ export function LoanApplicationsFilterBar({
         />
       </label>
 
-      {/* Single-select on purpose: the ops list endpoint accepts one `status`
-          param, and a multi-select that silently applies only the first
-          choice misleads (audit F5). */}
-      <FilterBarSingleSelect
-        value={filters.status?.[0]}
-        onChange={(next) =>
-          setFilters({ status: next ? [next as LoanStatus] : undefined, page: 0 })
-        }
-        placeholder="All statuses"
-        ariaLabel="Status filter"
-        options={STATUS_OPTIONS}
-        renderOption={(o) => <StatusBadge status={o.value as LoanStatus} variant="subtle" />}
+      {/* H29 — multi-select with OR semantics: every checked status is sent
+          to the ops list endpoint (repeated `status` params), which filters
+          before paginating and returns the matching total. */}
+      <MultiSelectChip<LoanStatus>
+        label="Status"
+        listboxLabel="Status filter"
         dataSlot="loan-applications-status-filter"
+        options={STATUS_OPTIONS}
+        selected={filters.status ?? []}
+        onToggle={(next) => setFilters({ status: next.length > 0 ? next : undefined, page: 0 })}
       />
 
       <FilterBarSingleSelect

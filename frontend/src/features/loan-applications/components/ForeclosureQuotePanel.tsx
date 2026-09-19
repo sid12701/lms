@@ -14,7 +14,6 @@ import { mapApiErrorMessage } from "@/lib/api/user-messages";
 import { formatDate, formatINR } from "@/lib/format";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { cn } from "@/lib/utils";
-import type { LoanStatus } from "@/types";
 import {
   executeForeclosureQuote,
   fetchForeclosureQuotes,
@@ -28,7 +27,7 @@ export interface ForeclosureQuotePanelProps {
   onExecuted?: () => void;
 }
 
-const ELIGIBLE_STATUSES = new Set<LoanStatus>(["DISBURSED", "UNDER_REPAYMENT"]);
+const ELIGIBLE_STATUSES = new Set(["DISBURSED", "UNDER_REPAYMENT"]);
 
 function foreclosureQuotesQueryKey(applicationId: string) {
   return ["loan-application", applicationId, "foreclosure-quotes"] as const;

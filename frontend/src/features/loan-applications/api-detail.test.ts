@@ -39,6 +39,7 @@ vi.mock("@/lib/api/session-storage", () => ({
 
 import { ApiError } from "@/lib/api/http-client";
 import {
+  fetchLoanApplicationDetail,
   isManualOverrideSourceBlocked,
   manualOverrideTargetsFor,
   postManualStatusOverride,
@@ -310,5 +311,109 @@ describe("Override affordance guards", () => {
         );
       }
     }
+  });
+
+  it("hides override for an unrecognized source status", () => {
+    expect(isManualOverrideSourceBlocked("UNKNOWN:SOME_FUTURE_STATUS", null)).toBe(true);
+  });
+});
+
+describe("H28 honest detail projection", () => {
+  function detailPayload(overrides: Record<string, unknown> = {}) {
+    return {
+      id: APP_ID,
+      borrowerId: "22222222-2222-4222-8222-222222222222",
+      borrowerFullName: "Asha Devi",
+      borrowerPan: "ABCDE1234F",
+      borrowerMobile: "9001000540",
+      borrowerEmail: "asha@example.com",
+      borrowerDateOfBirth: "1990-01-01",
+      borrowerCity: "Bengaluru",
+      borrowerState: "KA",
+      borrowerEmploymentType: "SALARIED",
+      borrowerMonthlyIncome: 85_000,
+      lspId: "33333333-3333-4333-8333-333333333333",
+      lspCode: "APEX",
+      lspName: "Apex NBFC",
+      productId: "44444444-4444-4444-8444-444444444444",
+      productCode: "PL-A",
+      productName: "Personal Loan A",
+      requestedAmount: 250_000,
+      tenureMonths: 12,
+      status: "UNDER_REPAYMENT",
+      sourceChannel: "UI",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-02T00:00:00.000Z",
+      loanAccount: {
+        id: "55555555-5555-4555-8555-555555555555",
+        accountNumber: "BHAW-1",
+        status: "DISBURSED",
+        principalAmount: 250_000,
+        tenureMonths: 12,
+        approvedAt: "2026-09-01T00:00:00.000Z",
+        createdAt: "2026-09-01T00:00:00.000Z",
+        closedAt: null,
+        closureReason: null,
+      },
+      ...overrides,
+    };
+  }
+
+  function mockDetail(overrides: Record<string, unknown> = {}) {
+    requestJsonMock.mockImplementation((path: string) => {
+      if (path.endsWith("/kyc-documents")) return Promise.resolve([]);
+      if (path.endsWith(APP_ID)) return Promise.resolve(detailPayload(overrides));
+      throw new Error(`unexpected path ${path}`);
+    });
+  }
+
+  it("projects supplied borrower fields and leaves the rest unknown", async () => {
+    mockDetail();
+    const detail = await fetchLoanApplicationDetail(APP_ID);
+    expect(detail.borrower.fullName).toBe("Asha Devi");
+    expect(detail.borrower.pan).toBe("ABCDE1234F");
+    expect(detail.borrower.mobile).toBe("9001000540");
+    expect(detail.borrower.city).toBe("Bengaluru");
+    expect(detail.borrower.employmentType).toBe("SALARIED");
+    expect(detail.borrower.monthlyIncome).toBe(85_000);
+    expect(detail.borrower.annualIncome).toBe(85_000 * 12);
+    // The endpoint never supplies these: null, never M / SINGLE / false.
+    expect(detail.borrower.gender).toBeNull();
+    expect(detail.borrower.maritalStatus).toBeNull();
+    expect(detail.borrower.aadhaar).toBeNull();
+    expect(detail.borrower.kycComplete).toBeNull();
+    // LSP/product status is unknown, never ACTIVE.
+    expect(detail.lsp.status).toBeNull();
+    expect(detail.product.status).toBeNull();
+  });
+
+  it("preserves UNDER_REPAYMENT and unknown application statuses", async () => {
+    mockDetail();
+    expect((await fetchLoanApplicationDetail(APP_ID)).application.status).toBe("UNDER_REPAYMENT");
+
+    mockDetail({ status: "SOME_FUTURE_STATUS" });
+    expect((await fetchLoanApplicationDetail(APP_ID)).application.status).toBe(
+      "UNKNOWN:SOME_FUTURE_STATUS",
+    );
+  });
+
+  it("keeps account status distinct from application status and preserves unknowns", async () => {
+    mockDetail({ status: "DISBURSED" });
+    const detail = await fetchLoanApplicationDetail(APP_ID);
+    expect(detail.application.status).toBe("DISBURSED");
+    expect(detail.account?.accountStatus).toBe("DISBURSED");
+
+    mockDetail({ loanAccount: { ...detailPayload().loanAccount, status: "WEIRD" } });
+    const weird = await fetchLoanApplicationDetail(APP_ID);
+    expect(weird.account?.accountStatus).toBe("UNKNOWN:WEIRD");
+  });
+
+  it("maps missing money to null, never to zero", async () => {
+    mockDetail({ requestedAmount: null, borrowerMonthlyIncome: null, tenureMonths: null });
+    const detail = await fetchLoanApplicationDetail(APP_ID);
+    expect(detail.application.requestedAmount).toBeNull();
+    expect(detail.application.tenureMonths).toBeNull();
+    expect(detail.borrower.monthlyIncome).toBeNull();
+    expect(detail.borrower.annualIncome).toBeNull();
   });
 });

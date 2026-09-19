@@ -1,4 +1,4 @@
-import type { AlertSubjectType } from "@/schemas/alert";
+import { AlertSubjectType, type AlertSubjectTypeOrUnknown } from "@/schemas/alert";
 import { delinquencyBucketLabel } from "@/lib/delinquency-display";
 import { unknownLoanApplicationStatusLabel } from "@/lib/loan-application-status";
 
@@ -89,6 +89,16 @@ export function humanizeAlertTitle(title: string): string {
   return title;
 }
 
-export function alertSubjectTypeLabel(subjectType: AlertSubjectType): string {
-  return SUBJECT_TYPE_LABELS[subjectType] ?? subjectType.replace(/_/g, " ").toLowerCase();
+/**
+ * H28 — an unrecognized subject type renders as Unknown, never as SYSTEM.
+ */
+export function alertSubjectTypeLabel(subjectType: AlertSubjectTypeOrUnknown): string {
+  const parsed = AlertSubjectType.safeParse(subjectType);
+  if (!parsed.success) {
+    const raw = subjectType.startsWith("UNKNOWN:")
+      ? subjectType.slice("UNKNOWN:".length)
+      : subjectType;
+    return unknownLoanApplicationStatusLabel(raw);
+  }
+  return SUBJECT_TYPE_LABELS[parsed.data];
 }
