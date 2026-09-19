@@ -97,6 +97,15 @@ app:
       ttl: ${APP_SECURITY_JWT_TTL:PT30M}
       refresh-ttl: ${APP_SECURITY_JWT_REFRESH_TTL:P7D}
       secure-cookies: ${APP_SECURITY_JWT_SECURE_COOKIES:true}
+    cors:
+      # Credentialed cross-origin allowlist for the separately hosted SPA. No default:
+      # empty means NO browser origin may call the API cross-origin (fail closed), which is
+      # correct for API-only deployments and for a deployment that forgot to configure one.
+      # Local dev-server origins live only in application-local.yml; real deployments set
+      # APP_SECURITY_CORS_ALLOWED_ORIGINS as a comma-separated list of explicit origins.
+      # Wildcards are rejected at startup — credentials require explicit origins.
+      # Deployment contract: docs/spa-deployment-contract.md.
+      allowed-origins: ${APP_SECURITY_CORS_ALLOWED_ORIGINS:}
     # Entra v2 app-only machine identity (disabled by default). When enabled, configure
     # real tenant/API/client IDs, JWKS URI, required app role and explicit mappings to enabled
     # local api_client rows. Local client-credentials (/auth/token) remain until partner cutover.
