@@ -152,11 +152,11 @@ public class LoanApplicationQueryService {
                 includePaginationDetails
         );
         log.debug(
-                "loan_application_list_query completed lspId={} productId={} status={} sourceChannel={} queryPresent={} lspLoanIdPresent={} bhawLoanIdPresent={} disbursalFrom={} disbursalTo={} offset={} limit={} paginationDetails={} resultCount={} durationMs={}",
+                "loan_application_list_query completed lspId={} productId={} status={} sourceChannelPresent={} queryPresent={} lspLoanIdPresent={} bhawLoanIdPresent={} disbursalFrom={} disbursalTo={} offset={} limit={} paginationDetails={} resultCount={} durationMs={}",
                 lspId,
                 productId,
                 normalizedStatus,
-                Strings.normalizeOptional(sourceChannel),
+                Strings.normalizeOptional(sourceChannel) != null,
                 normalizedQuery != null,
                 normalizedLspLoanId != null,
                 normalizedBhawLoanId != null,
@@ -235,11 +235,11 @@ public class LoanApplicationQueryService {
                 includePaginationDetails
         );
         log.debug(
-                "loan_application_list_query completed lspId={} productId={} statuses={} sourceChannel={} queryPresent={} lspLoanIdPresent={} bhawLoanIdPresent={} disbursalFrom={} disbursalTo={} sortBy={} sortDescending={} offset={} limit={} paginationDetails={} resultCount={} durationMs={}",
+                "loan_application_list_query completed lspId={} productId={} statuses={} sourceChannelPresent={} queryPresent={} lspLoanIdPresent={} bhawLoanIdPresent={} disbursalFrom={} disbursalTo={} sortBy={} sortDescending={} offset={} limit={} paginationDetails={} resultCount={} durationMs={}",
                 lspId,
                 productId,
                 normalizedStatuses,
-                Strings.normalizeOptional(sourceChannel),
+                Strings.normalizeOptional(sourceChannel) != null,
                 normalizedQuery != null,
                 normalizedLspLoanId != null,
                 normalizedBhawLoanId != null,

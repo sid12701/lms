@@ -149,10 +149,9 @@ public class OpsAlertService {
     public PagedResult<OpsAlert> listAlerts(
             OpsAlertStatus status,
             Integer offset,
-            Integer limit,
-            boolean includePaginationDetails
+            Integer limit
     ) {
-        return listAlerts(status, null, null, null, offset, limit, includePaginationDetails);
+        return listAlerts(status, null, null, null, offset, limit);
     }
 
     @Transactional(readOnly = true)
@@ -162,8 +161,7 @@ public class OpsAlertService {
             String subjectType,
             String query,
             Integer offset,
-            Integer limit,
-            boolean includePaginationDetails
+            Integer limit
     ) {
         int resolvedOffset = offset == null ? 0 : offset;
         int resolvedLimit = limit == null ? PaginationResponseBuilder.DEFAULT_LIMIT : limit;

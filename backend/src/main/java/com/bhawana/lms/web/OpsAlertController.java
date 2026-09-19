@@ -86,7 +86,7 @@ public class OpsAlertController {
         // dataset before pagination; unknown severities fail with a clear 422
         // instead of silently matching nothing on the fetched page.
         PagedResult<OpsAlert> page = opsAlertService.listAlerts(
-                status, severities, subjectType, query, offset, limit, includePaginationDetails);
+                status, severities, subjectType, query, offset, limit);
         PagedResult<OpsAlertResponse> mapped = new PagedResult<>(
                 page.items().stream().map(OpsAlertController::toResponse).toList(),
                 page.totalCount(),
