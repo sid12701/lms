@@ -79,8 +79,8 @@ public class AlertRuleSetQueryRepository {
     }
 
     /**
-     * The funded servicing population: every loan whose money has actually left the LSP's
-     * disbursal account and whose schedule is still live.
+     * The funded servicing population ({@link LoanPortfolioPopulation#FUNDED_SERVICING_SQL}): every
+     * loan whose money has actually left the LSP's disbursal account and whose schedule is still live.
      *
      * {@code DISBURSED} belongs here alongside {@code UNDER_REPAYMENT}. An application only
      * reaches {@code UNDER_REPAYMENT} once a receipt has been allocated, so a borrower who
@@ -95,8 +95,7 @@ public class AlertRuleSetQueryRepository {
      * {@code PENDING_DISBURSEMENT}/{@code DISBURSEMENT_*}, a cancelled one is {@code INVALID},
      * and a settled one is {@code CLOSED}/{@code FORECLOSED}; none of them are servicing
      * anything and none of them should produce delinquency transitions.
-     */
-    /**
+     *
      * One keyset page of the servicing population (M07): at most {@code limit} applications
      * strictly after {@code afterId} in stable {@code app.id} order. The evaluator pages the
      * whole population instead of materialising it in one unbounded query, and each page is
@@ -126,9 +125,7 @@ public class AlertRuleSetQueryRepository {
                 join loan_account acc on acc.loan_application_id = app.id
                 left join loan_repayment_schedule_installment inst on inst.loan_account_id = acc.id
                 left join loan_delinquency_state ds on ds.loan_application_id = app.id
-                where app.status in ('DISBURSED', 'UNDER_REPAYMENT')
-                  and acc.status = 'DISBURSED'
-                  and acc.disbursed_at is not null
+                where\s""" + LoanPortfolioPopulation.FUNDED_SERVICING_SQL + """
                   and (cast(:afterId as uuid) is null or app.id > cast(:afterId as uuid))
                 group by app.id, app.external_loan_id, app.lsp_id, ds.id, ds.last_bucket, ds.last_max_days_past_due
                 order by app.id
