@@ -2,6 +2,18 @@
 
 Detailed response and error examples are documented in [api-standards.md](C:/Users/LENOVO/Desktop/Folders/LMS/docs/API-references/api-standards.md).
 
+## Machine-readable OpenAPI documents
+
+Both documents require authentication (any authenticated principal) — see `SecurityFilterChainConfig`:
+
+- `GET /v3/api-docs/partner` — the **partner-only** document: the supported `/api/v1/lsp/**` integration
+  surface plus the `/api/v1/auth/**` credential routes. Internal admin operations are excluded. Per-operation
+  `bearerAuth` security is declared on protected routes; the public credential endpoints carry no security
+  requirement. Error responses use the shared `ApiError` schema with route-meaningful status codes,
+  `Idempotency-Key`/`Retry-After`/pagination headers, and representative examples.
+- `GET /v3/api-docs` — the full internal + LSP document; exported to `openapi/openapi.json` and consumed by
+  the frontend `npm run generate:api-types` pipeline (openapi-typescript).
+
 ## Response Conventions
 
 - Single-resource success responses return the resource payload directly.
