@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.bhawana.lms.service.OpsAlertEmitters;
+import com.bhawana.lms.support.TestTlsMaterials;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.github.bucket4j.distributed.proxy.ProxyManager;
@@ -11,7 +12,6 @@ import io.lettuce.core.ClientOptions;
 import io.lettuce.core.SslOptions;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.servlet.FilterChain;
-import java.io.File;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -46,7 +46,9 @@ class RateLimitRedisOutageIntegrationTest {
     private static final int RECOVERY_HOST_PORT = 16979;
     private static final Duration COMMAND_TIMEOUT = Duration.ofMillis(300);
     private static final Duration RECONNECT_INTERVAL = Duration.ofMillis(200);
-    private static final File TRUSTED_CA = new File("src/test/resources/redis-tls/ca.crt");
+    // Ephemeral TLS material generated at class-init — private keys are never committed
+    // (declared before the container so field-init order guarantees it exists first).
+    private static final TestTlsMaterials.Generated TLS = TestTlsMaterials.selfSignedLocalhost();
 
     /** TLS-only Redis with a required password — the authenticated+TLS acceptance path. */
     @Container
@@ -54,11 +56,11 @@ class RateLimitRedisOutageIntegrationTest {
             new GenericContainer<>(DockerImageName.parse("redis:7.2-alpine"))
                     .withExposedPorts(6379)
                     .withCopyFileToContainer(
-                            MountableFile.forClasspathResource("redis-tls/ca.crt"), "/tls/ca.crt")
+                            MountableFile.forHostPath(TLS.caCertificate()), "/tls/ca.crt")
                     .withCopyFileToContainer(
-                            MountableFile.forClasspathResource("redis-tls/redis.crt"), "/tls/redis.crt")
+                            MountableFile.forHostPath(TLS.certificate()), "/tls/redis.crt")
                     .withCopyFileToContainer(
-                            MountableFile.forClasspathResource("redis-tls/redis.key", 0644), "/tls/redis.key")
+                            MountableFile.forHostPath(TLS.privateKey(), 0644), "/tls/redis.key")
                     .withCommand(
                             "redis-server",
                             "--port", "0",
@@ -113,7 +115,7 @@ class RateLimitRedisOutageIntegrationTest {
             ClientOptions clientOptions = ClientOptions.builder()
                     .sslOptions(SslOptions.builder()
                             .jdkSslProvider()
-                            .trustManager(TRUSTED_CA)
+                            .trustManager(TLS.caCertificate().toFile())
                             .build())
                     .build();
             configBuilder.useSsl().and().clientOptions(clientOptions);

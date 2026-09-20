@@ -112,6 +112,14 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- M10: generates the ephemeral self-signed TLS material the Redis outage
+                 test mounts into its container — no private keys are committed. -->
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>1.82</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>com.bucket4j</groupId>
             <artifactId>bucket4j_jdk11-core</artifactId>
             <version>8.14.0</version>
