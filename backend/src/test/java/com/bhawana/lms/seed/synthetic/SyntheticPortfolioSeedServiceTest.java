@@ -27,10 +27,14 @@ import org.springframework.test.context.TestPropertySource;
         "app.seed.synthetic-portfolio.batch-size=200",
         // test-data is deliberately NOT a dev-exempt profile (see DeploymentProfiles), so this
         // context must satisfy UnsafeDeploymentConfigurationValidator and
-        // TenantDatasourceSecurityValidator like a real deployment would. The tenant password
-        // override feeds both the app.datasource.tenant.password property and the Flyway
-        // tenant_app_password placeholder, so the created role matches the login credentials.
-        "APP_TENANT_DATASOURCE_PASSWORD=test-tenant-rotated-password",
+        // TenantDatasourceSecurityValidator like a real deployment would. The tenant credential
+        // is intentionally NOT overridden here: APP_TENANT_DATASOURCE_PASSWORD is the single
+        // source for both app.datasource.tenant.password and the Flyway tenant_app_password
+        // placeholder that provisions the lms_tenant_app role. The role is created by whichever
+        // context migrates the shared container first, so a per-context override would
+        // authenticate against a password the database role does not have (CI: PSQLException
+        // "password authentication failed for user lms_tenant_app"). Resolving the same source
+        // as every other context is what guarantees the probe matches the provisioned role.
         "app.security.jwt.secret=test-only-jwt-secret-that-is-at-least-32-chars",
         "app.security.jwt.secure-cookies=true",
         "app.reports.processing.enabled=false",

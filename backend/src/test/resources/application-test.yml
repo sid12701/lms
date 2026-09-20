@@ -13,7 +13,13 @@ spring:
   flyway:
     placeholders:
       tenant_app_role: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
-      tenant_app_password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
+      # The V41 migration provisions the lms_tenant_app role with this password on the first
+      # context that migrates the shared container; app.datasource.tenant.password below must
+      # resolve from the same APP_TENANT_DATASOURCE_PASSWORD source so the two can never
+      # diverge. The default is deliberately non-legacy: test-data contexts are NOT
+      # dev-exempt, so UnsafeDeploymentConfigurationValidator and
+      # TenantDatasourceSecurityValidator reject lms_tenant_app_password.
+      tenant_app_password: ${APP_TENANT_DATASOURCE_PASSWORD:test-tenant-rotated-password}
     enabled: true
   jpa:
     open-in-view: false
@@ -112,7 +118,10 @@ app:
   datasource:
     tenant:
       username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
-      password: ${APP_TENANT_DATASOURCE_PASSWORD:lms_tenant_app_password}
+      # Must resolve to the same value as spring.flyway.placeholders.tenant_app_password
+      # above: the Flyway-provisioned role password is what these credentials authenticate
+      # against, and TenantDatasourceSecurityValidator probes a live connection with them.
+      password: ${APP_TENANT_DATASOURCE_PASSWORD:test-tenant-rotated-password}
       connection-strategy: ${APP_TENANT_CONNECTION_STRATEGY:DIRECT_LOGIN}
 
 springdoc:
