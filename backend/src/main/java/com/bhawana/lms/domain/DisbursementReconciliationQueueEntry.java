@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -86,7 +87,7 @@ public class DisbursementReconciliationQueueEntry {
             Instant nextPollAt,
             String details
     ) {
-        this(loanAccount, intent, tranRefNo, reason, nextPollAt, details, Instant.now());
+        this(loanAccount, intent, tranRefNo, reason, nextPollAt, details, PersistedTimestamp.now());
     }
 
     public DisbursementReconciliationQueueEntry(
@@ -103,21 +104,21 @@ public class DisbursementReconciliationQueueEntry {
         this.intent = intent;
         this.tranRefNo = tranRefNo;
         this.reason = reason;
-        this.nextPollAt = nextPollAt;
+        this.nextPollAt = PersistedTimestamp.normalize(nextPollAt);
         this.pollCount = 0;
-        this.firstSeenAt = firstSeenAt;
-        this.lastObservationAt = Instant.now();
+        this.firstSeenAt = PersistedTimestamp.normalize(firstSeenAt);
+        this.lastObservationAt = PersistedTimestamp.now();
         this.details = details;
     }
 
     @PrePersist
     void onCreate() {
-        updatedAt = Instant.now();
+        updatedAt = PersistedTimestamp.now();
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = PersistedTimestamp.now();
     }
 
     public void refresh(
@@ -130,8 +131,8 @@ public class DisbursementReconciliationQueueEntry {
         this.intent = intent;
         this.tranRefNo = tranRefNo;
         this.reason = reason;
-        this.nextPollAt = nextPollAt;
-        this.lastObservationAt = Instant.now();
+        this.nextPollAt = PersistedTimestamp.normalize(nextPollAt);
+        this.lastObservationAt = PersistedTimestamp.now();
         if (details != null) {
             this.details = details;
         }
@@ -151,7 +152,7 @@ public class DisbursementReconciliationQueueEntry {
         this.intent = intent;
         this.tranRefNo = tranRefNo;
         this.reason = reason;
-        this.lastObservationAt = Instant.now();
+        this.lastObservationAt = PersistedTimestamp.now();
         if (details != null) {
             this.details = details;
         }
@@ -159,8 +160,8 @@ public class DisbursementReconciliationQueueEntry {
 
     public void recordPollAttempt(Instant nextPollAt) {
         this.pollCount += 1;
-        this.nextPollAt = nextPollAt;
-        this.lastObservationAt = Instant.now();
+        this.nextPollAt = PersistedTimestamp.normalize(nextPollAt);
+        this.lastObservationAt = PersistedTimestamp.now();
     }
 
     /**
@@ -168,7 +169,7 @@ public class DisbursementReconciliationQueueEntry {
      * age escalation without touching reason, reference, identities, details, owner or schedule.
      */
     public void touchForObservation() {
-        this.lastObservationAt = Instant.now();
+        this.lastObservationAt = PersistedTimestamp.now();
     }
 
     public void claim(String owner) {

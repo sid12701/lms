@@ -42,8 +42,9 @@ public class LoanServicingSupportService {
     /**
      * Stable payment-history order for paging (M14): newest receipt first, with the payment id as
      * the final tiebreaker so rows sharing a paymentDate/createdAt cannot drift across pages.
+     * Shared with the internal ops payment-history read so both surfaces page identically.
      */
-    private static final Sort PAYMENT_HISTORY_SORT = Sort.by(
+    static final Sort PAYMENT_HISTORY_SORT = Sort.by(
             Sort.Direction.DESC, "paymentDate"
     ).and(
             Sort.by(Sort.Direction.DESC, "createdAt")

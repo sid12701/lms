@@ -5553,7 +5553,14 @@ export interface operations {
   };
   listPaymentTransactions: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Zero-based row offset (default 0). */
+        offset?: number;
+        /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
+        limit?: number;
+        /** @description ON adds the X-Total-Count response header (an extra count query); OFF or omitted suppresses it. */
+        paginationDetails?: string;
+      };
       header?: never;
       path: {
         applicationId: string;
@@ -5565,6 +5572,12 @@ export interface operations {
       /** @description OK */
       200: {
         headers: {
+          /** @description The page size actually applied. */
+          "X-Limit"?: number;
+          /** @description The zero-based offset actually applied. */
+          "X-Offset"?: number;
+          /** @description Total matching rows; emitted only when paginationDetails=ON. */
+          "X-Total-Count"?: number;
           [name: string]: unknown;
         };
         content: {

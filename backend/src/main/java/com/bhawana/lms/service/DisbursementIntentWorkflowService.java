@@ -3,6 +3,7 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.domain.Borrower;
 import com.bhawana.lms.domain.DisbursementDeclineKind;
@@ -253,7 +254,7 @@ public class DisbursementIntentWorkflowService {
      * reconciliation, never resubmitted here.
      */
     public List<UUID> executeClaimableIntents() {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         Instant leaseExpiresAt = now.plusSeconds(properties.getLeaseDurationSeconds());
         String owner = workerOwner;
         final List<ClaimToken> claimed;
@@ -306,8 +307,8 @@ public class DisbursementIntentWorkflowService {
         Optional<ClaimToken> claimed = transactionTemplate.execute(
                 status -> disbursementIntentRepository.claimSingle(
                         intent.get().getId(),
-                        Instant.now(),
-                        Instant.now().plusSeconds(properties.getLeaseDurationSeconds()),
+                        PersistedTimestamp.now(),
+                        PersistedTimestamp.now().plusSeconds(properties.getLeaseDurationSeconds()),
                         workerOwner));
         if (claimed == null || claimed.isEmpty()) {
             return Optional.empty();
@@ -360,8 +361,8 @@ public class DisbursementIntentWorkflowService {
         Optional<ClaimToken> claimed = transactionTemplate.execute(
                 status -> disbursementIntentRepository.claimSingle(
                         intentId,
-                        Instant.now(),
-                        Instant.now().plusSeconds(properties.getLeaseDurationSeconds()),
+                        PersistedTimestamp.now(),
+                        PersistedTimestamp.now().plusSeconds(properties.getLeaseDurationSeconds()),
                         workerOwner));
         if (claimed == null || claimed.isEmpty()) {
             return Optional.empty();
@@ -463,7 +464,7 @@ public class DisbursementIntentWorkflowService {
     DisbursementIntent claimIntent(UUID intentId) {
         // Compatibility: the fast path must use the same atomic primitive as batch. The old
         // read-then-write allowed two concurrent claimants to both stamp the same row.
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         Optional<ClaimToken> token = disbursementIntentRepository.claimSingle(
                 intentId, now, now.plusSeconds(properties.getLeaseDurationSeconds()), workerOwner);
         if (token.isEmpty()) {

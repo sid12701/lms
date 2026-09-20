@@ -1,5 +1,7 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.common.api.error.DocumentNotFoundException;
@@ -35,6 +37,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -212,12 +216,30 @@ public class LoanApplicationServicingReadService {
         return loanDisbursementRequestLogRepository.findTopByLoanAccount_IdOrderByCreatedAtDesc(loanAccountId);
     }
 
+    /**
+     * Payment history for the ops endpoint is always a bounded page, matching the LSP payment
+     * contract (M14): a request that omits offset/limit returns the first
+     * {@link PaginationResponseBuilder#DEFAULT_LIMIT} rows — the same count the legacy
+     * {@code Top50} cap produced — and the response headers disclose the applied window (and the
+     * total when {@code paginationDetails=ON}), so nothing past the first page is silently hidden.
+     * Ordering is the shared {@link LoanServicingSupportService#PAYMENT_HISTORY_SORT}.
+     */
     @Transactional(readOnly = true)
-    public List<LoanPaymentTransaction> listPaymentTransactions(UUID applicationId) {
+    public PagedResult<LoanPaymentTransaction> listPaymentTransactionsPage(
+            UUID applicationId,
+            Integer offset,
+            Integer limit
+    ) {
         LoanAccount loanAccount = getRequiredLoanAccount(applicationId);
-        return loanPaymentTransactionRepository.findTop50ByLoanAccount_IdOrderByPaymentDateDescCreatedAtDesc(
-                loanAccount.getId()
+        int resolvedOffset = PaginationResponseBuilder.resolveOffset(offset, true);
+        int resolvedLimit = PaginationResponseBuilder.resolveLimit(limit, true);
+        int safeLimit = Math.max(resolvedLimit, 1);
+
+        Page<LoanPaymentTransaction> page = loanPaymentTransactionRepository.findByLoanAccount_Id(
+                loanAccount.getId(),
+                PageRequest.of(resolvedOffset / safeLimit, safeLimit, LoanServicingSupportService.PAYMENT_HISTORY_SORT)
         );
+        return new PagedResult<>(page.getContent(), page.getTotalElements(), resolvedOffset, resolvedLimit);
     }
 
     @Transactional(readOnly = true)

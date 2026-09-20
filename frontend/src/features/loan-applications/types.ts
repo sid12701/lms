@@ -229,6 +229,10 @@ export interface LoanApplicationDocumentsResponse {
 
 export interface LoanApplicationRepaymentsResponse {
   payments: readonly PaymentTransaction[];
+  /** Server-reported total; `payments.length < totalCount` means rows are still unread. */
+  totalCount?: number;
+  /** True when the page walk stopped at the safety bound with receipts still unread. */
+  truncated?: boolean;
 }
 
 export interface LoanApplicationActivityResponse {

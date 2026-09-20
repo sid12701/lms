@@ -3,6 +3,7 @@ package com.bhawana.lms.service;
 import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import com.bhawana.lms.domain.ReportRequest;
 import com.bhawana.lms.domain.ReportRequestStatus;
 import com.bhawana.lms.domain.ReportType;
@@ -250,7 +251,7 @@ public class ReportRequestService {
                     stored.mediaType(),
                     stored.storageKey(),
                     null,
-                    Instant.now()
+                    PersistedTimestamp.now()
             );
         } catch (RuntimeException | java.io.IOException exception) {
             return recordOutcome(
@@ -298,7 +299,7 @@ public class ReportRequestService {
                 errorMessage,
                 completedAt,
                 ReportRequestStatus.PROCESSING,
-                Instant.now()
+                PersistedTimestamp.now()
         );
         if (updated != 1) {
             log.warn(
@@ -324,9 +325,9 @@ public class ReportRequestService {
                 reportRequestRepository.tryClaimNotification(
                         requestId,
                         workerOwner,
-                        Instant.now().plusMillis(processingLeaseMillis),
+                        PersistedTimestamp.now().plusMillis(processingLeaseMillis),
                         TERMINAL_STATUSES,
-                        Instant.now()
+                        PersistedTimestamp.now()
                 ) == 1
                         ? reportRequestRepository.findById(requestId)
                         : Optional.empty());
@@ -342,7 +343,7 @@ public class ReportRequestService {
                 workerOwner,
                 result.sentAt(),
                 result.attempted() ? result.errorMessage() : "notification delivery was not attempted",
-                Instant.now()
+                PersistedTimestamp.now()
         );
         if (recorded != 1) {
             // The lease was lost between claim and record. If the mail went out the next

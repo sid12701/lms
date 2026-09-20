@@ -178,7 +178,7 @@ public class OpenApiContractCustomizer implements GlobalOpenApiCustomizer {
     /** Routes whose 200 responses carry a representative inline example. */
     private static final Map<String, Object> SUCCESS_EXAMPLES = Map.of(
             "POST /api/v1/auth/token", orderedMap(
-                    "accessToken", "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJsc3AtY2xpZW50LTEiLCJhdWQiOiJtYWNoaW5lIn0.signature",
+                    "accessToken", "<jwt-header>.<jwt-payload>.<jwt-signature>",
                     "tokenType", "Bearer",
                     "expiresInSeconds", 3600,
                     "passwordChangeRequired", false),

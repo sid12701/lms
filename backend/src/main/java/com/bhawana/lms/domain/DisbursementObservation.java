@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -170,7 +171,7 @@ public class DisbursementObservation {
     @PrePersist
     void onCreate() {
         if (observedAt == null) {
-            observedAt = Instant.now();
+            observedAt = PersistedTimestamp.now();
         }
     }
 

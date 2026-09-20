@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -14,7 +15,6 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Entity
@@ -183,24 +183,14 @@ public class LoanPaymentTransaction {
 
     @PrePersist
     void onCreate() {
-        Instant now = persistedInstantNow();
+        Instant now = PersistedTimestamp.now();
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = persistedInstantNow();
-    }
-
-    /**
-     * {@code timestamptz} stores microseconds, so the entity may not carry finer clock digits:
-     * a payment response rendered from the just-persisted entity would otherwise disagree in
-     * {@code createdAt}/{@code updatedAt} with the same receipt re-rendered from the stored row,
-     * breaking byte-identical idempotent replay on platforms whose clock resolves nanoseconds.
-     */
-    private static Instant persistedInstantNow() {
-        return Instant.now().truncatedTo(ChronoUnit.MICROS);
+        updatedAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {

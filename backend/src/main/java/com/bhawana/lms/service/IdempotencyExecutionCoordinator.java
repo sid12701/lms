@@ -1,6 +1,7 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.api.error.ApiConflictException;
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import com.bhawana.lms.domain.AdminApiIdempotencyRecord;
 import com.bhawana.lms.domain.LspApiIdempotencyRecord;
 import com.bhawana.lms.repo.AdminApiIdempotencyRecordRepository;
@@ -232,7 +233,7 @@ public class IdempotencyExecutionCoordinator {
             return deserialize(record.getResponseBody(), responseType);
         }
 
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         if (isLeaseLive(record.getLeaseExpiresAt(), now)) {
             LspApiIdempotencyRecord completedRecord = awaitLspCompletion(
                     lspId,
@@ -288,7 +289,7 @@ public class IdempotencyExecutionCoordinator {
             return deserialize(record.getResponseBody(), responseType);
         }
 
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         if (isLeaseLive(record.getLeaseExpiresAt(), now)) {
             AdminApiIdempotencyRecord completedRecord = awaitAdminCompletion(
                     operationKey,

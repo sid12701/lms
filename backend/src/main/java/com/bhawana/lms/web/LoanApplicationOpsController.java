@@ -2,6 +2,7 @@ package com.bhawana.lms.web;
 
 import com.bhawana.lms.domain.LoanApplication;
 import com.bhawana.lms.domain.LoanApplicationDocumentType;
+import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.common.api.PagedResult;
 import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
@@ -249,11 +250,32 @@ public class LoanApplicationOpsController {
                 .toList();
     }
 
+    /**
+     * Bounded payment history (M14 contract, same as the LSP endpoint): the body stays a raw
+     * array, the applied window is always disclosed via {@code X-Limit}/{@code X-Offset} headers,
+     * and {@code paginationDetails=ON} adds {@code X-Total-Count}. A request with no pagination
+     * parameters returns the first page — identical rows to the legacy {@code Top50} cap, which
+     * is no longer silent.
+     */
     @GetMapping("/{applicationId}/payments")
-    public List<LoanPaymentTransactionResponse> listPaymentTransactions(@PathVariable UUID applicationId) {
-        return loanApplicationServicingReadService.listPaymentTransactions(applicationId).stream()
-                .map(LoanApplicationOpsResponses::toPaymentTransactionResponse)
-                .toList();
+    public ResponseEntity<List<LoanPaymentTransactionResponse>> listPaymentTransactions(
+            @PathVariable UUID applicationId,
+            @RequestParam(required = false) @Min(0) Integer offset,
+            @RequestParam(required = false) @Min(1) @Max(200) Integer limit,
+            @RequestParam(required = false) String paginationDetails
+    ) {
+        boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
+        PagedResult<LoanPaymentTransaction> paymentsPage = loanApplicationServicingReadService
+                .listPaymentTransactionsPage(applicationId, offset, limit);
+        PagedResult<LoanPaymentTransactionResponse> page = new PagedResult<>(
+                paymentsPage.items().stream()
+                        .map(LoanApplicationOpsResponses::toPaymentTransactionResponse)
+                        .toList(),
+                paymentsPage.totalCount(),
+                paymentsPage.offset(),
+                paymentsPage.limit()
+        );
+        return PaginationResponseBuilder.toListResponse(page, includePaginationDetails);
     }
 
     @GetMapping("/{applicationId}/foreclosure-quotes")

@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -121,14 +122,14 @@ public class LoanDisbursementRequestLog {
 
     @PrePersist
     void onCreate() {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {

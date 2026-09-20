@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -51,14 +52,14 @@ public class LoanDelinquencyState {
 
     @PrePersist
     void onCreate() {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {
@@ -96,6 +97,6 @@ public class LoanDelinquencyState {
     public void refresh(LoanDelinquencyBucket bucket, int maxDaysPastDue, Instant evaluatedAt) {
         this.lastBucket = bucket;
         this.lastMaxDaysPastDue = maxDaysPastDue;
-        this.lastEvaluatedAt = evaluatedAt;
+        this.lastEvaluatedAt = PersistedTimestamp.normalize(evaluatedAt);
     }
 }

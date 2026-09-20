@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -94,14 +95,14 @@ public class ApiClient {
 
     @PrePersist
     void onCreate() {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {
@@ -153,7 +154,7 @@ public class ApiClient {
     }
 
     public void markUsed() {
-        this.lastUsedAt = Instant.now();
+        this.lastUsedAt = PersistedTimestamp.now();
     }
 
     public Instant getLastRotatedAt() {
@@ -178,26 +179,26 @@ public class ApiClient {
         if (status != null) {
             this.status = status;
             if (status == ApiClientStatus.INACTIVE) {
-                this.credentialsInvalidatedAt = Instant.now();
+                this.credentialsInvalidatedAt = PersistedTimestamp.now();
             }
         }
     }
 
     public void deactivate() {
         this.status = ApiClientStatus.INACTIVE;
-        this.credentialsInvalidatedAt = Instant.now();
+        this.credentialsInvalidatedAt = PersistedTimestamp.now();
     }
 
     public void revokeAllSessions() {
         this.tokenVersion++;
-        this.credentialsInvalidatedAt = Instant.now();
+        this.credentialsInvalidatedAt = PersistedTimestamp.now();
     }
 
     public void rotateSecret(String newSecretHash, String previousSecretHash, Instant previousSecretValidUntil) {
         this.previousSecretHash = previousSecretHash;
-        this.previousSecretValidUntil = previousSecretValidUntil;
+        this.previousSecretValidUntil = PersistedTimestamp.normalize(previousSecretValidUntil);
         this.secretHash = newSecretHash;
-        this.lastRotatedAt = Instant.now();
+        this.lastRotatedAt = PersistedTimestamp.now();
         revokeAllSessions();
     }
 
@@ -240,7 +241,7 @@ public class ApiClient {
         }
         this.failedAuthAttempts++;
         if (this.failedAuthAttempts >= maxAttempts) {
-            this.authLockedUntil = now.plus(lockDuration);
+            this.authLockedUntil = PersistedTimestamp.normalize(now.plus(lockDuration));
             this.failedAuthAttempts = 0;
         }
     }

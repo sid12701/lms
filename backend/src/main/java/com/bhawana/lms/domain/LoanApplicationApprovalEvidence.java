@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -73,7 +74,7 @@ public class LoanApplicationApprovalEvidence {
         this.storageKey = item.getStorageKey();
         this.lmsManagedContent = item.isLmsManagedContent();
         this.approvedByUsername = approvedByUsername;
-        this.approvedAt = approvedAt;
+        this.approvedAt = PersistedTimestamp.normalize(approvedAt);
     }
 
     public UUID getId() {

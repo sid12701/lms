@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -51,14 +52,14 @@ public class LspIpAllowlistEntry {
 
     @PrePersist
     void onCreate() {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         this.createdAt = now;
         this.updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
-        this.updatedAt = Instant.now();
+        this.updatedAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {

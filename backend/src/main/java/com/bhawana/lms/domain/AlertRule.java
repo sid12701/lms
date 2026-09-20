@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -103,6 +104,6 @@ public class AlertRule {
     }
 
     public void markEvaluated(Instant evaluatedAt) {
-        this.lastEvaluatedAt = evaluatedAt;
+        this.lastEvaluatedAt = PersistedTimestamp.normalize(evaluatedAt);
     }
 }
