@@ -63,8 +63,10 @@ public class LspLoanApplicationApiController {
     private static final String INVALID_LOAN_OPERATION_KEY = "LOAN_APPLICATION_INVALIDATION";
     private static final String CREATE_LOAN_OPERATION_KEY = "LOAN_APPLICATION_CREATE";
     private static final String LOAN_DOCUMENT_METADATA_SUBMIT = "LOAN_DOCUMENT_METADATA_SUBMIT";
-    private static final String LOAN_DOCUMENT_UPLOAD = "LOAN_DOCUMENT_UPLOAD";
-    private static final String LOAN_DOCUMENT_BATCH_UPLOAD = "LOAN_DOCUMENT_BATCH_UPLOAD";
+    // Package-private so LoanDocumentUploadIdempotencyReconstructor keys off the
+    // same constants — a renamed key can never drift apart from its recovery path.
+    static final String LOAN_DOCUMENT_UPLOAD = "LOAN_DOCUMENT_UPLOAD";
+    static final String LOAN_DOCUMENT_BATCH_UPLOAD = "LOAN_DOCUMENT_BATCH_UPLOAD";
 
     private final LoanApplicationQueryService loanApplicationQueryService;
     private final LoanApplicationLifecycleService loanApplicationLifecycleService;
@@ -937,7 +939,9 @@ public class LspLoanApplicationApiController {
     private record DocumentMetadataFingerprint(String applicationId, LspLoanApplicationDocumentRequest request) {
     }
 
-    private record DocumentUploadFingerprint(
+    // Package-private: LoanDocumentUploadIdempotencyReconstructor reads these as
+    // recovery evidence when a pending upload record is reclaimed.
+    record DocumentUploadFingerprint(
             String applicationId,
             String documentType,
             String originalFilename,
@@ -948,13 +952,15 @@ public class LspLoanApplicationApiController {
     ) {
     }
 
-    private record DocumentCorrectionFingerprint(DocumentUploadFingerprint upload, String correctionReason) {
+    // Package-private: LoanDocumentUploadIdempotencyReconstructor unwraps it to
+    // recover a crashed correction upload from checklist evidence.
+    record DocumentCorrectionFingerprint(DocumentUploadFingerprint upload, String correctionReason) {
     }
 
-    private record BatchDocumentUploadFingerprint(String applicationId, List<DocumentUploadFingerprint> parts) {
+    record BatchDocumentUploadFingerprint(String applicationId, List<DocumentUploadFingerprint> parts) {
     }
 
-    private record BatchDocumentUploadIdempotencyResponse(List<LspDocumentChecklistDetailResponse> documents) {
+    record BatchDocumentUploadIdempotencyResponse(List<LspDocumentChecklistDetailResponse> documents) {
     }
 
 }

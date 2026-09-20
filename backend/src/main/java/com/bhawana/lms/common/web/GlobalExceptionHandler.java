@@ -197,17 +197,20 @@ public class GlobalExceptionHandler {
             ApiConflictException exception,
             HttpServletRequest request
     ) {
-        ResponseEntity<ApiError> response = build(
-                HttpStatus.CONFLICT,
+        // ResponseEntity headers are immutable once the body is attached, so the
+        // Retry-After hint has to be added on the builder before body().
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(HttpStatus.CONFLICT);
+        exception.getRetryAfterSeconds().ifPresent(seconds ->
+                response.header("Retry-After", Long.toString(seconds))
+        );
+        return response.body(ApiError.of(
+                HttpStatus.CONFLICT.value(),
                 exception.getErrorCode(),
                 exception.getMessage(),
-                request,
+                request.getRequestURI(),
+                CorrelationIdHolder.get(),
                 Map.of()
-        );
-        exception.getRetryAfterSeconds().ifPresent(seconds ->
-                response.getHeaders().set("Retry-After", Long.toString(seconds))
-        );
-        return response;
+        ));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

@@ -5,6 +5,7 @@ import com.bhawana.lms.tenant.TenantScopedExecution;
 import org.springframework.test.context.TestExecutionListeners;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -12,7 +13,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zaxxer.hikari.HikariDataSource;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import com.bhawana.lms.service.DisbursementIntentWorkflowService;
 import com.bhawana.lms.service.LoanDisbursementCommandService;
@@ -29,8 +32,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -142,11 +148,11 @@ class Issue86RepaymentIdempotencyIntegrationTest {
         LocalDate postedAt = LocalDate.now().minusDays(1);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(5)) {
-            List<Callable<String>> tasks = new ArrayList<>();
+            List<Callable<MvcResult>> tasks = new ArrayList<>();
             for (int index = 0; index < 5; index++) {
                 tasks.add(() -> TenantScopedExecution.callAsAdmin(() -> {
                     try {
-                        MvcResult result = postPayment(
+                        return postPayment(
                                 fixture.applicationId(),
                                 fixture.firstInstallmentId(),
                                 new BigDecimal("4136.32"),
@@ -155,23 +161,66 @@ class Issue86RepaymentIdempotencyIntegrationTest {
                                 idempotencyKey,
                                 postedAt
                         ).andReturn();
-                        int status = result.getResponse().getStatus();
-                        assertEquals(200, status, "concurrent idempotent retries should return 200");
-                        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asText();
                     } catch (Exception exception) {
                         throw new IllegalStateException(exception);
                     }
                 }));
             }
 
-            List<Future<String>> futures = executor.invokeAll(tasks);
-            List<String> paymentIds = new ArrayList<>();
-            for (Future<String> future : futures) {
-                paymentIds.add(future.get());
+            List<Future<MvcResult>> futures = executor.invokeAll(tasks);
+            List<String> responseBodies = new ArrayList<>();
+            for (Future<MvcResult> future : futures) {
+                MvcResult result = future.get();
+                int status = result.getResponse().getStatus();
+                if (status != 200) {
+                    // A duplicate that arrives while the winner is still in flight is answered
+                    // with a bounded conflict, not the receipt. Retrying the identical request
+                    // once the winner has committed must replay its stored response.
+                    assertEquals(
+                            409,
+                            status,
+                            "a concurrent duplicate may only be refused with a bounded conflict: "
+                                    + result.getResponse().getContentAsString()
+                    );
+                    String error = objectMapper.readTree(result.getResponse().getContentAsString())
+                            .get("error").asText();
+                    assertTrue(
+                            error.equals("IDEMPOTENCY_IN_PROGRESS") || error.equals("CONCURRENT_MODIFICATION"),
+                            "unexpected conflict code for a same-key duplicate: " + error
+                    );
+                    result = postPayment(
+                            fixture.applicationId(),
+                            fixture.firstInstallmentId(),
+                            new BigDecimal("4136.32"),
+                            "PAY-RACE-001",
+                            "UPI",
+                            idempotencyKey,
+                            postedAt
+                    ).andReturn();
+                    assertEquals(
+                            200,
+                            result.getResponse().getStatus(),
+                            "retry after the bounded conflict must replay the winner's response: "
+                                    + result.getResponse().getContentAsString()
+                    );
+                }
+                responseBodies.add(result.getResponse().getContentAsString());
             }
 
-            assertEquals(5, paymentIds.size());
-            assertEquals(1, paymentIds.stream().distinct().count());
+            assertEquals(5, responseBodies.size());
+            // Every resolved response — winner and replays alike — is the same receipt.
+            assertEquals(
+                    1,
+                    responseBodies.stream().distinct().count(),
+                    "resolved bodies diverged: " + responseBodies.stream().distinct().toList()
+            );
+            assertEquals(
+                    1,
+                    responseBodies.stream()
+                            .map(body -> readPaymentId(body))
+                            .distinct()
+                            .count()
+            );
             assertEquals(
                     1L,
                     jdbcTemplate.queryForObject(
@@ -431,6 +480,44 @@ class Issue86RepaymentIdempotencyIntegrationTest {
                 .authorities(() -> "ROLE_OPS_USER");
     }
 
+    private String readPaymentId(String responseBody) {
+        try {
+            return objectMapper.readTree(responseBody).get("id").asText();
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("payment response is not readable JSON: " + responseBody, exception);
+        }
+    }
+
     private record DisbursedLoanFixture(String applicationId, String firstInstallmentId) {
+    }
+
+    /**
+     * The five-way payment burst pins one pool connection per racer for the whole
+     * payment transaction, including the loan row-lock wait, while the shared test
+     * pool lazily creates connections (minimum-idle=0) and retires them at
+     * max-lifetime. Size 5 leaves no headroom, so on a loaded CI runner a racer's
+     * borrow can outlast connection-timeout and fail the request with a 500.
+     * {@code spring.datasource.hikari.*} cannot be overridden per test class —
+     * {@code PostgresTestEnvironmentPostProcessor} binds it ahead of every
+     * test-level property source — so this configuration widens the two Hikari
+     * pools directly, for this class's context only.
+     */
+    @TestConfiguration(proxyBeanMethods = false)
+    static class ConcurrencyPoolSizingConfiguration {
+
+        @Bean
+        static BeanPostProcessor widenHikariPoolsForConcurrencyBurst() {
+            return new BeanPostProcessor() {
+                @Override
+                public Object postProcessAfterInitialization(Object bean, String beanName) {
+                    if (bean instanceof HikariDataSource hikariDataSource
+                            && ("adminDataSource".equals(beanName)
+                                    || "tenantPhysicalDataSource".equals(beanName))) {
+                        hikariDataSource.setMaximumPoolSize(10);
+                    }
+                    return bean;
+                }
+            };
+        }
     }
 }

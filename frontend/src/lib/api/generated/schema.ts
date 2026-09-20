@@ -12,6 +12,10 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
+    /**
+     * Replace the pre-disbursement repayment schedule
+     * @description Full replacement of the pre-disbursement schedule — naturally idempotent, no Idempotency-Key needed. mode=LSP_PROVIDED rows must pass principal integrity plus date/interest discipline; violations return 422 REPAYMENT_SCHEDULE_INVALID.
+     */
     put: operations["upsertRepaymentSchedule"];
     post?: never;
     delete?: never;
@@ -28,6 +32,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
+    /** Update user */
     put: operations["updateUser"];
     post?: never;
     delete?: never;
@@ -43,7 +48,9 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get product */
     get: operations["getProduct"];
+    /** Update product */
     put: operations["updateProduct"];
     post?: never;
     delete?: never;
@@ -59,7 +66,9 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get product mappings */
     get: operations["getProductMappings"];
+    /** Replace product mappings */
     put: operations["replaceProductMappings"];
     post?: never;
     delete?: never;
@@ -76,6 +85,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
+    /** Replace mappings */
     put: operations["replaceMappings"];
     post?: never;
     delete?: never;
@@ -92,6 +102,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
+    /** Update status */
     put: operations["updateStatus"];
     post?: never;
     delete?: never;
@@ -107,7 +118,9 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get */
     get: operations["get"];
+    /** Update */
     put: operations["update"];
     post?: never;
     delete?: never;
@@ -124,6 +137,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
+    /** Update api client */
     put: operations["updateApiClient"];
     post?: never;
     delete?: never;
@@ -139,8 +153,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /**
+     * List a loan's payment transactions (bounded page)
+     * @description Always a bounded page: the body is a raw array, X-Limit/X-Offset are always emitted, and paginationDetails=ON adds X-Total-Count. Omitting the parameters returns the first page (default limit 50).
+     */
     get: operations["listPayments"];
     put?: never;
+    /**
+     * Record a borrower payment
+     * @description Records a repayment allocated against the target installment. Idempotency-Key is required.
+     */
     post: operations["recordPayment"];
     delete?: never;
     options?: never;
@@ -157,6 +179,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /**
+     * Execute a foreclosure quote to settle the loan
+     * @description Redeems the quote with a settlement receipt. If receipts or the schedule changed since the quote was issued, the quote is stale and execution returns 422 FORECLOSURE_QUOTE_STALE — request a fresh quote. Idempotency-Key is required.
+     */
     post: operations["executeForeclosureQuote"];
     delete?: never;
     options?: never;
@@ -173,6 +199,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /**
+     * Request a foreclosure quote
+     * @description The quote is redeemable only on effectiveDate, which must be the current business date (422 FORECLOSURE_QUOTE_DATE_INVALID). A new quote supersedes the previous ACTIVE one. Idempotency-Key is optional: a keyed retry returns the stored quote.
+     */
     post: operations["requestForeclosureQuote"];
     delete?: never;
     options?: never;
@@ -187,8 +217,16 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /**
+     * List the caller's loan applications
+     * @description Filters: productId, status, sourceChannel, free-text q. An unrecognized status returns 422 INVALID_STATUS. The body is always a raw array; the applied window is disclosed via the X-Limit/X-Offset headers, and paginationDetails=ON adds X-Total-Count.
+     */
     get: operations["listApplications"];
     put?: never;
+    /**
+     * Create a loan application
+     * @description lspId must match the authenticated LSP (403 otherwise). Reusing a lspLoanId returns 409 DUPLICATE_EXTERNAL_LOAN_ID. Sending an Idempotency-Key makes the request replayable.
+     */
     post: operations["createApplication"];
     delete?: never;
     options?: never;
@@ -205,6 +243,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /**
+     * Mark a loan application invalid
+     * @description reasonCode must come from GET /api/v1/lsp/loan-applications/invalid-reasons; reasonText is required only for OTHERS. Idempotency-Key is required.
+     */
     post: operations["invalidateApplication"];
     delete?: never;
     options?: never;
@@ -219,8 +261,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List submitted documents for an application */
     get: operations["listSubmittedDocuments"];
     put?: never;
+    /**
+     * Submit document metadata or upload a document file
+     * @description Two variants share this route: application/json submits document metadata; multipart/form-data uploads the file itself.
+     */
     post: operations["uploadDocument"];
     delete?: never;
     options?: never;
@@ -237,6 +284,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Upload multiple documents in one request */
     post: operations["uploadDocumentsBatch"];
     delete?: never;
     options?: never;
@@ -253,6 +301,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Verify disbursement bank details (read-only preflight) */
     post: operations["verifyDisbursementBankDetails"];
     delete?: never;
     options?: never;
@@ -269,6 +318,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Bootstrap sync */
     post: operations["bootstrapSync"];
     delete?: never;
     options?: never;
@@ -285,6 +335,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Process report requests */
     post: operations["processReportRequests"];
     delete?: never;
     options?: never;
@@ -301,6 +352,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Create portfolio mis request */
     post: operations["createPortfolioMisRequest"];
     delete?: never;
     options?: never;
@@ -315,8 +367,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List applications */
     get: operations["listApplications_1"];
     put?: never;
+    /** Create application */
     post: operations["createApplication_1"];
     delete?: never;
     options?: never;
@@ -331,8 +385,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List status transitions */
     get: operations["listStatusTransitions"];
     put?: never;
+    /** Transition status */
     post: operations["transitionStatus"];
     delete?: never;
     options?: never;
@@ -347,8 +403,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List payment transactions */
     get: operations["listPaymentTransactions"];
     put?: never;
+    /** Record payment transaction */
     post: operations["recordPaymentTransaction"];
     delete?: never;
     options?: never;
@@ -365,6 +423,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Manually override status */
     post: operations["manuallyOverrideStatus"];
     delete?: never;
     options?: never;
@@ -379,8 +438,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List foreclosure quotes */
     get: operations["listForeclosureQuotes"];
     put?: never;
+    /** Request foreclosure quote */
     post: operations["requestForeclosureQuote_1"];
     delete?: never;
     options?: never;
@@ -397,6 +458,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Execute foreclosure quote */
     post: operations["executeForeclosureQuote_1"];
     delete?: never;
     options?: never;
@@ -411,8 +473,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List disbursement requests */
     get: operations["listDisbursementRequests"];
     put?: never;
+    /** Initiate disbursement */
     post: operations["initiateDisbursement"];
     delete?: never;
     options?: never;
@@ -429,6 +493,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Run disbursement status check */
     post: operations["runDisbursementStatusCheck"];
     delete?: never;
     options?: never;
@@ -445,6 +510,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Reconcile disbursement */
     post: operations["reconcileDisbursement"];
     delete?: never;
     options?: never;
@@ -461,6 +527,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Apply mock disbursement outcome */
     post: operations["applyMockDisbursementOutcome"];
     delete?: never;
     options?: never;
@@ -477,6 +544,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Claim entry */
     post: operations["claimEntry"];
     delete?: never;
     options?: never;
@@ -493,6 +561,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Acknowledge */
     post: operations["acknowledge"];
     delete?: never;
     options?: never;
@@ -509,6 +578,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Escalate */
     post: operations["escalate"];
     delete?: never;
     options?: never;
@@ -523,8 +593,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List users */
     get: operations["listUsers"];
     put?: never;
+    /** Create user */
     post: operations["createUser"];
     delete?: never;
     options?: never;
@@ -541,6 +613,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Revoke sessions */
     post: operations["revokeSessions"];
     delete?: never;
     options?: never;
@@ -557,6 +630,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Reset password */
     post: operations["resetPassword"];
     delete?: never;
     options?: never;
@@ -571,8 +645,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List products */
     get: operations["listProducts"];
     put?: never;
+    /** Create product */
     post: operations["createProduct"];
     delete?: never;
     options?: never;
@@ -587,8 +663,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List entries */
     get: operations["listEntries"];
     put?: never;
+    /** Upsert entry */
     post: operations["upsertEntry"];
     delete?: never;
     options?: never;
@@ -603,8 +681,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List lsps */
     get: operations["listLsps"];
     put?: never;
+    /** Create lsp */
     post: operations["createLsp"];
     delete?: never;
     options?: never;
@@ -619,8 +699,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List */
     get: operations["list"];
     put?: never;
+    /** Create */
     post: operations["create"];
     delete?: never;
     options?: never;
@@ -635,8 +717,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List */
     get: operations["list_1"];
     put?: never;
+    /** Create */
     post: operations["create_1"];
     delete?: never;
     options?: never;
@@ -651,8 +735,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List api clients */
     get: operations["listApiClients"];
     put?: never;
+    /** Create api client */
     post: operations["createApiClient"];
     delete?: never;
     options?: never;
@@ -669,6 +755,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Rotate secret */
     post: operations["rotateSecret"];
     delete?: never;
     options?: never;
@@ -685,6 +772,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /**
+     * Issue an access token for an API client
+     * @description Client-credentials issuance for machine API clients; the returned JWT carries the roles used by the /api/v1/lsp/** routes.
+     */
     post: operations["token"];
     delete?: never;
     options?: never;
@@ -701,6 +792,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Rotate the refresh cookie and issue a new access token */
     post: operations["refresh"];
     delete?: never;
     options?: never;
@@ -717,6 +809,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Change the authenticated user's password */
     post: operations["changePassword"];
     delete?: never;
     options?: never;
@@ -733,6 +826,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Log out and revoke the refresh-token family */
     post: operations["logout"];
     delete?: never;
     options?: never;
@@ -749,6 +843,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** Log in with email and password (human users) */
     post: operations["login"];
     delete?: never;
     options?: never;
@@ -763,12 +858,20 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /**
+     * Get a borrower's bank details (unmasked, audited)
+     * @description The one LSP read that returns the full unmasked bank account number; every read writes a PII-reveal audit entry.
+     */
     get: operations["getBankDetails"];
     put?: never;
     post?: never;
     delete?: never;
     options?: never;
     head?: never;
+    /**
+     * Update a borrower's bank details
+     * @description State overwrite — a no-op resubmission writes nothing, so no Idempotency-Key is needed. Locked while a disbursement is in flight (422 BANK_DETAILS_LOCKED_DISBURSEMENT_IN_FLIGHT).
+     */
     patch: operations["updateBankDetails"];
     trace?: never;
   };
@@ -785,6 +888,7 @@ export interface paths {
     delete?: never;
     options?: never;
     head?: never;
+    /** Update bank details */
     patch: operations["updateBankDetails_1"];
     trace?: never;
   };
@@ -795,6 +899,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List products provisioned to the caller */
     get: operations["listProvisionedProducts"];
     put?: never;
     post?: never;
@@ -811,6 +916,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get loan detail */
     get: operations["getLoan"];
     put?: never;
     post?: never;
@@ -827,6 +933,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List a loan's repayment schedule */
     get: operations["listRepaymentSchedule"];
     put?: never;
     post?: never;
@@ -843,6 +950,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /**
+     * Read the loan event feed from a cursor
+     * @description At-least-once delivery — dedupe on eventId. Ordering is per loan, not global. The cursor is opaque: store nextCursor and hand it back. A cursor older than the retained window (at least 30 days) returns 410 CURSOR_EXPIRED; resync via GET /api/v1/lsp/loan-applications and resume with no cursor.
+     */
     get: operations["listLoanEvents"];
     put?: never;
     post?: never;
@@ -859,6 +970,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get loan application detail */
     get: operations["getApplication"];
     put?: never;
     post?: never;
@@ -875,6 +987,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List the allowed invalid-loan reason codes */
     get: operations["listInvalidLoanReasons"];
     put?: never;
     post?: never;
@@ -891,6 +1004,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get an application by the LSP's external loan id */
     get: operations["getApplicationByExternalLoanId"];
     put?: never;
     post?: never;
@@ -907,6 +1021,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List document requirements by document type */
     get: operations["listDocumentRequirements"];
     put?: never;
     post?: never;
@@ -923,6 +1038,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Context */
     get: operations["context"];
     put?: never;
     post?: never;
@@ -939,6 +1055,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List report requests */
     get: operations["listReportRequests"];
     put?: never;
     post?: never;
@@ -955,6 +1072,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Download generated report */
     get: operations["downloadGeneratedReport"];
     put?: never;
     post?: never;
@@ -971,6 +1089,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Download portfolio mis report */
     get: operations["downloadPortfolioMisReport"];
     put?: never;
     post?: never;
@@ -987,6 +1106,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get portfolio mis summary */
     get: operations["getPortfolioMisSummary"];
     put?: never;
     post?: never;
@@ -1003,6 +1123,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Preview portfolio mis report */
     get: operations["previewPortfolioMisReport"];
     put?: never;
     post?: never;
@@ -1019,6 +1140,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get application */
     get: operations["getApplication_1"];
     put?: never;
     post?: never;
@@ -1035,6 +1157,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List repayment schedule */
     get: operations["listRepaymentSchedule_1"];
     put?: never;
     post?: never;
@@ -1051,6 +1174,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List document checklist */
     get: operations["listDocumentChecklist"];
     put?: never;
     post?: never;
@@ -1067,6 +1191,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get document content */
     get: operations["getDocumentContent"];
     put?: never;
     post?: never;
@@ -1083,6 +1208,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Download all documents */
     get: operations["downloadAllDocuments"];
     put?: never;
     post?: never;
@@ -1099,6 +1225,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List intake audits */
     get: operations["listIntakeAudits"];
     put?: never;
     post?: never;
@@ -1115,6 +1242,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List document access audits */
     get: operations["listDocumentAccessAudits"];
     put?: never;
     post?: never;
@@ -1131,6 +1259,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get disbursement reference */
     get: operations["getDisbursementReference"];
     put?: never;
     post?: never;
@@ -1147,6 +1276,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get disbursement preview */
     get: operations["getDisbursementPreview"];
     put?: never;
     post?: never;
@@ -1163,6 +1293,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List audit events */
     get: operations["listAuditEvents"];
     put?: never;
     post?: never;
@@ -1179,6 +1310,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Queue */
     get: operations["queue"];
     put?: never;
     post?: never;
@@ -1195,6 +1327,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Queue summary */
     get: operations["queueSummary"];
     put?: never;
     post?: never;
@@ -1211,6 +1344,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Search */
     get: operations["search"];
     put?: never;
     post?: never;
@@ -1227,6 +1361,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Overview */
     get: operations["overview"];
     put?: never;
     post?: never;
@@ -1243,6 +1378,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List alerts */
     get: operations["listAlerts"];
     put?: never;
     post?: never;
@@ -1259,6 +1395,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List alert rules */
     get: operations["listAlertRules"];
     put?: never;
     post?: never;
@@ -1275,6 +1412,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List audit events */
     get: operations["listAuditEvents_1"];
     put?: never;
     post?: never;
@@ -1291,6 +1429,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List product options */
     get: operations["listProductOptions"];
     put?: never;
     post?: never;
@@ -1307,6 +1446,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List mappings */
     get: operations["listMappings"];
     put?: never;
     post?: never;
@@ -1323,6 +1463,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Metadata */
     get: operations["metadata"];
     put?: never;
     post?: never;
@@ -1339,6 +1480,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get lsp detail */
     get: operations["getLspDetail"];
     put?: never;
     post?: never;
@@ -1355,6 +1497,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List audit events */
     get: operations["listAuditEvents_2"];
     put?: never;
     post?: never;
@@ -1371,6 +1514,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List lsp options */
     get: operations["listLspOptions"];
     put?: never;
     post?: never;
@@ -1387,6 +1531,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** List borrowers */
     get: operations["listBorrowers"];
     put?: never;
     post?: never;
@@ -1403,6 +1548,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Get borrower detail */
     get: operations["getBorrowerDetail"];
     put?: never;
     post?: never;
@@ -1419,6 +1565,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Search */
     get: operations["search_1"];
     put?: never;
     post?: never;
@@ -1435,6 +1582,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Count document access by document type */
     get: operations["countDocumentAccessByDocumentType"];
     put?: never;
     post?: never;
@@ -1454,6 +1602,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
+    /** Delete */
     delete: operations["delete"];
     options?: never;
     head?: never;
@@ -1470,6 +1619,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
+    /** Delete */
     delete: operations["delete_1"];
     options?: never;
     head?: never;
@@ -3191,6 +3341,33 @@ export interface components {
       /** Format: int64 */
       count?: number;
     };
+    ApiError: {
+      /** Format: date-time */
+      timestamp?: string;
+      /** Format: int32 */
+      status?: number;
+      code?: string;
+      error?: string;
+      message?: string;
+      path?: string;
+      correlationId?: string;
+      errorCode?: string;
+      errorReason?: string;
+      errorSource?: string;
+      violations?: components["schemas"]["FieldViolation"][];
+      errors?: components["schemas"]["ErrorDetail"][];
+    };
+    FieldViolation: {
+      field?: string;
+      message?: string;
+    };
+    ErrorDetail: {
+      errorCode?: string;
+      errorReason?: string;
+      errorSource?: string;
+      field?: string;
+      message?: string;
+    };
   };
   responses: never;
   parameters: never;
@@ -3224,12 +3401,72 @@ export interface operations {
           "*/*": components["schemas"]["LspRepaymentScheduleInstallmentResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description A business rule rejected the request (code REPAYMENT_SCHEDULE_INVALID shown; the route's domain rules define the full set). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   updateUser: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -3250,6 +3487,53 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["UserResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -3274,12 +3558,52 @@ export interface operations {
           "*/*": components["schemas"]["ProductResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   updateProduct: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -3302,6 +3626,53 @@ export interface operations {
           "*/*": components["schemas"]["ProductResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   getProductMappings: {
@@ -3322,6 +3693,42 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["ProductMappingResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -3350,6 +3757,42 @@ export interface operations {
           "*/*": components["schemas"]["ProductMappingResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   replaceMappings: {
@@ -3376,12 +3819,52 @@ export interface operations {
           "*/*": components["schemas"]["ProductLspMappingResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   updateStatus: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -3404,6 +3887,53 @@ export interface operations {
           "*/*": components["schemas"]["LspResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   get: {
@@ -3424,6 +3954,42 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["AllowlistEnforcementResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -3452,6 +4018,42 @@ export interface operations {
           "*/*": components["schemas"]["AllowlistEnforcementResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   updateApiClient: {
@@ -3478,11 +4080,54 @@ export interface operations {
           "*/*": components["schemas"]["ApiClientResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listPayments: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Zero-based row offset (default 0). */
+        offset?: number;
+        /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
+        limit?: number;
+        /** @description ON adds the X-Total-Count response header (an extra count query); OFF or omitted suppresses it. */
+        paginationDetails?: string;
+      };
       header?: never;
       path: {
         loanId: string;
@@ -3494,10 +4139,52 @@ export interface operations {
       /** @description OK */
       200: {
         headers: {
+          /** @description The page size actually applied. */
+          "X-Limit"?: number;
+          /** @description The zero-based offset actually applied. */
+          "X-Offset"?: number;
+          /** @description Total matching rows; emitted only when paginationDetails=ON. */
+          "X-Total-Count"?: number;
           [name: string]: unknown;
         };
         content: {
           "*/*": components["schemas"]["LspPaymentTransactionResponse"][];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -3505,8 +4192,12 @@ export interface operations {
   recordPayment: {
     parameters: {
       query?: never;
-      header?: {
-        "Idempotency-Key"?: string;
+      header: {
+        /**
+         * @description UUID v4 idempotency key (required — a missing or malformed key is rejected with 400 INVALID_REQUEST). A retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
+        "Idempotency-Key": string;
       };
       path: {
         loanId: string;
@@ -3528,13 +4219,84 @@ export interface operations {
           "*/*": components["schemas"]["LspPaymentTransactionResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description A business rule rejected the request (code REPAYMENT_NOT_ALLOWED shown; the route's domain rules define the full set). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   executeForeclosureQuote: {
     parameters: {
       query?: never;
-      header?: {
-        "Idempotency-Key"?: string;
+      header: {
+        /**
+         * @description UUID v4 idempotency key (required — a missing or malformed key is rejected with 400 INVALID_REQUEST). A retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
+        "Idempotency-Key": string;
       };
       path: {
         loanId: string;
@@ -3557,12 +4319,85 @@ export interface operations {
           "*/*": components["schemas"]["LspForeclosureQuoteResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description A business rule rejected the request (code FORECLOSURE_QUOTE_STALE shown; the route's domain rules define the full set). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   requestForeclosureQuote: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
+        "Idempotency-Key"?: string;
+      };
       path: {
         loanId: string;
       };
@@ -3583,17 +4418,88 @@ export interface operations {
           "*/*": components["schemas"]["LspForeclosureQuoteResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description A business rule rejected the request (code FORECLOSURE_QUOTE_DATE_INVALID shown; the route's domain rules define the full set). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listApplications: {
     parameters: {
       query?: {
         productId?: string;
+        /** @description Loan application status filter; an unrecognized value returns 422 INVALID_STATUS. */
         status?: string;
         sourceChannel?: string;
         q?: string;
+        /** @description Zero-based row offset (default 0). */
         offset?: number;
+        /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
         limit?: number;
+        /** @description ON adds the X-Total-Count response header (an extra count query); OFF or omitted suppresses it. */
         paginationDetails?: string;
       };
       header?: never;
@@ -3605,10 +4511,52 @@ export interface operations {
       /** @description OK */
       200: {
         headers: {
+          /** @description The page size actually applied. */
+          "X-Limit"?: number;
+          /** @description The zero-based offset actually applied. */
+          "X-Offset"?: number;
+          /** @description Total matching rows; emitted only when paginationDetails=ON. */
+          "X-Total-Count"?: number;
           [name: string]: unknown;
         };
         content: {
           "*/*": components["schemas"]["LspLoanApplicationResponse"][];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description A business rule rejected the request (code INVALID_STATUS shown; the route's domain rules define the full set). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -3617,6 +4565,10 @@ export interface operations {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path?: never;
@@ -3637,13 +4589,75 @@ export interface operations {
           "*/*": components["schemas"]["LspLoanApplicationDetailResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description A business rule rejected the request (code PRODUCT_NOT_MAPPED shown; the route's domain rules define the full set). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   invalidateApplication: {
     parameters: {
       query?: never;
-      header?: {
-        "Idempotency-Key"?: string;
+      header: {
+        /**
+         * @description UUID v4 idempotency key (required — a missing or malformed key is rejected with 400 INVALID_REQUEST). A retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
+        "Idempotency-Key": string;
       };
       path: {
         applicationId: string;
@@ -3663,6 +4677,73 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LspLoanApplicationDetailResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description A business rule rejected the request (code INVALIDATION_NOT_ALLOWED shown; the route's domain rules define the full set). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -3687,6 +4768,53 @@ export interface operations {
           "*/*": components["schemas"]["LspDocumentChecklistResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   uploadDocument: {
@@ -3706,6 +4834,10 @@ export interface operations {
         correctionReason?: string;
       };
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -3732,12 +4864,83 @@ export interface operations {
           "*/*": components["schemas"]["LspDocumentChecklistDetailResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description A business rule rejected the request (code DOCUMENT_MIME_NOT_ALLOWED shown; the route's domain rules define the full set). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   uploadDocumentsBatch: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -3761,6 +4964,73 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LspDocumentChecklistDetailResponse"][];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description A business rule rejected the request (code DOCUMENT_MIME_NOT_ALLOWED shown; the route's domain rules define the full set). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -3789,6 +5059,62 @@ export interface operations {
           "*/*": components["schemas"]["LspBankDetailsCheckResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description A business rule rejected the request (code DISBURSEMENT_VALIDATION_FAILED shown; the route's domain rules define the full set). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   bootstrapSync: {
@@ -3806,6 +5132,24 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
     };
   };
@@ -3829,12 +5173,54 @@ export interface operations {
           "*/*": components["schemas"]["ProcessReportRequestsResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   createPortfolioMisRequest: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path?: never;
@@ -3855,6 +5241,55 @@ export interface operations {
           "*/*": components["schemas"]["ReportRequestResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listApplications_1: {
@@ -3871,8 +5306,11 @@ export interface operations {
         disbursalDateTo?: string;
         sortBy?: string;
         sortDir?: string;
+        /** @description Zero-based row offset (default 0). */
         offset?: number;
+        /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
         limit?: number;
+        /** @description ON adds the X-Total-Count response header (an extra count query); OFF or omitted suppresses it. */
         paginationDetails?: string;
       };
       header?: never;
@@ -3884,10 +5322,43 @@ export interface operations {
       /** @description OK */
       200: {
         headers: {
+          /** @description The page size actually applied. */
+          "X-Limit"?: number;
+          /** @description The zero-based offset actually applied. */
+          "X-Offset"?: number;
+          /** @description Total matching rows; emitted only when paginationDetails=ON. */
+          "X-Total-Count"?: number;
           [name: string]: unknown;
         };
         content: {
           "*/*": components["schemas"]["LoanApplicationResponse"][];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -3914,6 +5385,33 @@ export interface operations {
           "*/*": components["schemas"]["LoanApplicationResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listStatusTransitions: {
@@ -3936,12 +5434,52 @@ export interface operations {
           "*/*": components["schemas"]["LoanApplicationStatusTransitionResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   transitionStatus: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -3962,6 +5500,53 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LoanApplicationDetailResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -3986,12 +5571,52 @@ export interface operations {
           "*/*": components["schemas"]["LoanPaymentTransactionResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   recordPaymentTransaction: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -4014,12 +5639,63 @@ export interface operations {
           "*/*": components["schemas"]["LoanPaymentTransactionResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   manuallyOverrideStatus: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -4042,6 +5718,53 @@ export interface operations {
           "*/*": components["schemas"]["LoanApplicationDetailResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listForeclosureQuotes: {
@@ -4062,6 +5785,42 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LoanForeclosureQuoteResponse"][];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4090,12 +5849,52 @@ export interface operations {
           "*/*": components["schemas"]["LoanForeclosureQuoteResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   executeForeclosureQuote_1: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -4117,6 +5916,53 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LoanForeclosureQuoteResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4141,12 +5987,52 @@ export interface operations {
           "*/*": components["schemas"]["LoanDisbursementRequestResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   initiateDisbursement: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -4163,6 +6049,53 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LoanApplicationDetailResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4171,6 +6104,10 @@ export interface operations {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -4189,12 +6126,63 @@ export interface operations {
           "*/*": components["schemas"]["LoanApplicationDetailResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   reconcileDisbursement: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -4217,12 +6205,63 @@ export interface operations {
           "*/*": components["schemas"]["LoanApplicationDetailResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   applyMockDisbursementOutcome: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -4243,6 +6282,64 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LoanApplicationDetailResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4269,12 +6366,52 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   acknowledge: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -4297,12 +6434,63 @@ export interface operations {
           "*/*": components["schemas"]["OpsAlertResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   escalate: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path?: never;
@@ -4321,6 +6509,44 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["OpsAlertResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4343,12 +6569,34 @@ export interface operations {
           "*/*": components["schemas"]["UserResponse"][];
         };
       };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   createUser: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path?: never;
@@ -4367,6 +6615,44 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["CreateUserResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4395,12 +6681,63 @@ export interface operations {
           "*/*": components["schemas"]["RevokeSessionsResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   resetPassword: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -4417,6 +6754,64 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["ResetPasswordResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4439,12 +6834,34 @@ export interface operations {
           "*/*": components["schemas"]["ProductListItemResponse"][];
         };
       };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   createProduct: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path?: never;
@@ -4465,6 +6882,44 @@ export interface operations {
           "*/*": components["schemas"]["ProductResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listEntries: {
@@ -4483,6 +6938,24 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["ProductLspMappingEntryResponse"][];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4509,6 +6982,33 @@ export interface operations {
           "*/*": components["schemas"]["ProductLspMappingEntryResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listLsps: {
@@ -4529,12 +7029,34 @@ export interface operations {
           "*/*": components["schemas"]["LspResponse"][];
         };
       };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   createLsp: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path?: never;
@@ -4553,6 +7075,44 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LspResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4577,12 +7137,52 @@ export interface operations {
           "*/*": components["schemas"]["LspIpAllowlistEntryResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   create: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -4603,6 +7203,53 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LspIpAllowlistEntryResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4627,12 +7274,52 @@ export interface operations {
           "*/*": components["schemas"]["LspIpAllowlistEntryResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   create_1: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -4655,6 +7342,53 @@ export interface operations {
           "*/*": components["schemas"]["LspIpAllowlistEntryResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listApiClients: {
@@ -4675,12 +7409,34 @@ export interface operations {
           "*/*": components["schemas"]["ApiClientResponse"][];
         };
       };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   createApiClient: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path?: never;
@@ -4701,12 +7457,54 @@ export interface operations {
           "*/*": components["schemas"]["CreatedApiClientResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   rotateSecret: {
     parameters: {
       query?: never;
       header?: {
+        /**
+         * @description Optional UUID v4 idempotency key. When sent, a retry with the same key and an identical request returns the stored response; the same key with a different request returns 409 IDEMPOTENCY_CONFLICT.
+         * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+         */
         "Idempotency-Key"?: string;
       };
       path: {
@@ -4727,6 +7525,53 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["RotateSecretResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The request conflicts with existing state. Idempotent endpoints return IDEMPOTENCY_CONFLICT (key reused with a different payload), IDEMPOTENCY_IN_PROGRESS (an identical request is still processing — retry after the Retry-After hint), or IDEMPOTENCY_RECOVERY_REQUIRED (the prior outcome cannot be reconstructed — escalate for reconciliation). Application create can also return DUPLICATE_EXTERNAL_LOAN_ID or BORROWER_PAN_CONFLICT. */
+      409: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4753,6 +7598,35 @@ export interface operations {
           "*/*": components["schemas"]["TokenResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The supplied credentials were rejected (INVALID_CREDENTIALS, ACCOUNT_LOCKED, ACCOUNT_DISABLED, LSP_INACTIVE). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   refresh: {
@@ -4773,6 +7647,38 @@ export interface operations {
         };
         content: {
           "*/*": Record<string, never>;
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The refresh cookie is missing, expired, revoked, or already rotated. The body is a small {code, message} object (e.g. MISSING_REFRESH_COOKIE, TOKEN_EXPIRED, TOKEN_REVOKED, TOKEN_ROTATED), not an ApiError. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            code?: string;
+            message?: string;
+          };
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4799,6 +7705,44 @@ export interface operations {
           "*/*": components["schemas"]["TokenResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   logout: {
@@ -4812,12 +7756,21 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description OK */
-      200: {
+      /** @description Logged out — the refresh-token family is revoked and the cookie cleared. */
+      204: {
         headers: {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
     };
   };
@@ -4843,6 +7796,35 @@ export interface operations {
           "*/*": components["schemas"]["TokenResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The supplied credentials were rejected (INVALID_CREDENTIALS, ACCOUNT_LOCKED, ACCOUNT_DISABLED, LSP_INACTIVE). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   getBankDetails: {
@@ -4863,6 +7845,42 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["BorrowerBankDetailsResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4891,6 +7909,62 @@ export interface operations {
           "*/*": components["schemas"]["BorrowerBankDetailsResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description A business rule rejected the request (code BANK_DETAILS_LOCKED_DISBURSEMENT_IN_FLIGHT shown; the route's domain rules define the full set). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   updateBankDetails_1: {
@@ -4917,6 +7991,42 @@ export interface operations {
           "*/*": components["schemas"]["BorrowerBankDetailsResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listProvisionedProducts: {
@@ -4935,6 +8045,24 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LspProductResponse"][];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -4959,6 +8087,42 @@ export interface operations {
           "*/*": components["schemas"]["LspLoanApplicationDetailResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listRepaymentSchedule: {
@@ -4981,13 +8145,52 @@ export interface operations {
           "*/*": components["schemas"]["LspRepaymentScheduleInstallmentResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listLoanEvents: {
     parameters: {
       query?: {
+        /** @description Opaque feed cursor returned as nextCursor; omit to start at the beginning of the retained window. A cursor older than the retained log returns 410 CURSOR_EXPIRED. */
         cursor?: string;
+        /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
         limit?: number;
+        /** @description Narrows the returned events, never the cursor — cursors always cover the unfiltered stream. */
         eventTypes?: string[];
       };
       header?: never;
@@ -5003,6 +8206,62 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LoanEventFeedPage"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The supplied cursor predates the oldest event still retained (CURSOR_EXPIRED). Resync via GET /api/v1/lsp/loan-applications, then resume the feed with no cursor. */
+      410: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description A business rule rejected the request (code INVALID_CURSOR shown; the route's domain rules define the full set). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5027,6 +8286,42 @@ export interface operations {
           "*/*": components["schemas"]["LspLoanApplicationDetailResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listInvalidLoanReasons: {
@@ -5045,6 +8340,24 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LspInvalidLoanReasonOptionResponse"][];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5069,6 +8382,42 @@ export interface operations {
           "*/*": components["schemas"]["LspLoanApplicationDetailResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listDocumentRequirements: {
@@ -5087,6 +8436,24 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LspDocumentRequirementResponse"][];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5109,6 +8476,24 @@ export interface operations {
           "*/*": components["schemas"]["SystemContextResponse"];
         };
       };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listReportRequests: {
@@ -5127,6 +8512,35 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["ReportRequestResponse"][];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5149,6 +8563,53 @@ export interface operations {
         };
         content: {
           "*/*": string;
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5175,6 +8636,44 @@ export interface operations {
           "text/csv": string;
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   getPortfolioMisSummary: {
@@ -5197,6 +8696,44 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["PortfolioMisSummary"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5225,6 +8762,44 @@ export interface operations {
           "*/*": components["schemas"]["PortfolioMisPreviewPage"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   getApplication_1: {
@@ -5245,6 +8820,42 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LoanApplicationDetailResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5269,6 +8880,42 @@ export interface operations {
           "*/*": components["schemas"]["LoanRepaymentScheduleInstallmentResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listDocumentChecklist: {
@@ -5289,6 +8936,53 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LoanApplicationDocumentChecklistResponse"][];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5324,6 +9018,53 @@ export interface operations {
           "*/*": string;
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   downloadAllDocuments: {
@@ -5344,6 +9085,53 @@ export interface operations {
         };
         content: {
           "*/*": string;
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The configured rate limit for this route was exceeded (RATE_LIMIT_EXCEEDED). Retry after the number of seconds in Retry-After. */
+      429: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5368,6 +9156,42 @@ export interface operations {
           "*/*": components["schemas"]["LoanApplicationIntakeAuditResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listDocumentAccessAudits: {
@@ -5388,6 +9212,42 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["LoanApplicationDocumentAccessAuditResponse"][];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5412,6 +9272,42 @@ export interface operations {
           "*/*": components["schemas"]["DisbursementReferenceResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   getDisbursementPreview: {
@@ -5432,6 +9328,42 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["DisbursementPreviewResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5456,12 +9388,50 @@ export interface operations {
           "*/*": components["schemas"]["LoanApplicationAuditEventResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   queue: {
     parameters: {
       query?: {
+        /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
         limit?: number;
+        /** @description Zero-based row offset (default 0). */
         offset?: number;
       };
       header?: never;
@@ -5477,6 +9447,33 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["QueueEntryView"][];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5499,6 +9496,24 @@ export interface operations {
           "*/*": components["schemas"]["QueueSummary"];
         };
       };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   search: {
@@ -5506,8 +9521,11 @@ export interface operations {
       query?: {
         username?: string;
         eventType?: string;
+        /** @description Zero-based row offset (default 0). */
         offset?: number;
+        /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
         limit?: number;
+        /** @description ON adds the X-Total-Count response header (an extra count query); OFF or omitted suppresses it. */
         paginationDetails?: boolean;
       };
       header?: never;
@@ -5519,10 +9537,43 @@ export interface operations {
       /** @description OK */
       200: {
         headers: {
+          /** @description The page size actually applied. */
+          "X-Limit"?: number;
+          /** @description The zero-based offset actually applied. */
+          "X-Offset"?: number;
+          /** @description Total matching rows; emitted only when paginationDetails=ON. */
+          "X-Total-Count"?: number;
           [name: string]: unknown;
         };
         content: {
           "*/*": components["schemas"]["PagedResultAuthAuditEventResponse"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5545,6 +9596,24 @@ export interface operations {
           "*/*": components["schemas"]["HomeDashboardSummary"];
         };
       };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listAlerts: {
@@ -5554,8 +9623,11 @@ export interface operations {
         severity?: string[];
         subjectType?: string;
         q?: string;
+        /** @description Zero-based row offset (default 0). */
         offset?: number;
+        /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
         limit?: number;
+        /** @description ON adds the X-Total-Count response header (an extra count query); OFF or omitted suppresses it. */
         paginationDetails?: string;
       };
       header?: never;
@@ -5567,10 +9639,43 @@ export interface operations {
       /** @description OK */
       200: {
         headers: {
+          /** @description The page size actually applied. */
+          "X-Limit"?: number;
+          /** @description The zero-based offset actually applied. */
+          "X-Offset"?: number;
+          /** @description Total matching rows; emitted only when paginationDetails=ON. */
+          "X-Total-Count"?: number;
           [name: string]: unknown;
         };
         content: {
           "*/*": components["schemas"]["OpsAlertResponse"][];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5591,6 +9696,24 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["AlertRuleResponse"][];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5615,6 +9738,42 @@ export interface operations {
           "*/*": components["schemas"]["ProductAuditEventResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listProductOptions: {
@@ -5633,6 +9792,24 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["ProductOptionResponse"][];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5655,6 +9832,24 @@ export interface operations {
           "*/*": components["schemas"]["ProductLspMappingResponse"][];
         };
       };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   metadata: {
@@ -5673,6 +9868,24 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["AdminMetadataResponse"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5697,6 +9910,42 @@ export interface operations {
           "*/*": components["schemas"]["LspDetailResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listAuditEvents_2: {
@@ -5719,6 +9968,42 @@ export interface operations {
           "*/*": components["schemas"]["LspAuditEventResponse"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listLspOptions: {
@@ -5739,14 +10024,35 @@ export interface operations {
           "*/*": components["schemas"]["LspOptionResponse"][];
         };
       };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   listBorrowers: {
     parameters: {
       query?: {
         q?: string;
+        /** @description Zero-based row offset (default 0). */
         offset?: number;
+        /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
         limit?: number;
+        /** @description ON adds the X-Total-Count response header (an extra count query); OFF or omitted suppresses it. */
         paginationDetails?: string;
       };
       header?: never;
@@ -5758,10 +10064,43 @@ export interface operations {
       /** @description OK */
       200: {
         headers: {
+          /** @description The page size actually applied. */
+          "X-Limit"?: number;
+          /** @description The zero-based offset actually applied. */
+          "X-Offset"?: number;
+          /** @description Total matching rows; emitted only when paginationDetails=ON. */
+          "X-Total-Count"?: number;
           [name: string]: unknown;
         };
         content: {
           "*/*": components["schemas"]["BorrowerSummaryResponse"][];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5786,6 +10125,42 @@ export interface operations {
           "*/*": components["schemas"]["BorrowerDetailResponse"];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   search_1: {
@@ -5800,7 +10175,9 @@ export interface operations {
         since?: string;
         until?: string;
         correlationId?: string;
+        /** @description Opaque feed cursor returned as nextCursor; omit to start at the beginning of the retained window. A cursor older than the retained log returns 410 CURSOR_EXPIRED. */
         cursor?: string;
+        /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
         limit?: number;
       };
       header?: never;
@@ -5816,6 +10193,33 @@ export interface operations {
         };
         content: {
           "*/*": components["schemas"]["CursorPagedResultAuditExplorerEvent"];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
     };
@@ -5841,6 +10245,33 @@ export interface operations {
           "*/*": components["schemas"]["DocumentAccessDocumentTypeCount"][];
         };
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   delete: {
@@ -5862,6 +10293,42 @@ export interface operations {
         };
         content?: never;
       };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
     };
   };
   delete_1: {
@@ -5882,6 +10349,42 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The caller lacks the required role (ACCESS_DENIED). On the /api/v1/lsp surface this is also returned when the source IP is outside the LSP's allowlist (LSP_SURFACE_IP_ACCESS_DENIED). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
+      };
+      /** @description The addressed resource does not exist or is not visible to the caller (NOT_FOUND). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
+        };
       };
     };
   };

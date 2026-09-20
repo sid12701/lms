@@ -2,6 +2,18 @@
 
 Detailed response and error examples are documented in [api-standards.md](C:/Users/LENOVO/Desktop/Folders/LMS/docs/API-references/api-standards.md).
 
+## Machine-readable OpenAPI documents
+
+Both documents require authentication (any authenticated principal) — see `SecurityFilterChainConfig`:
+
+- `GET /v3/api-docs/partner` — the **partner-only** document: the supported `/api/v1/lsp/**` integration
+  surface plus the `/api/v1/auth/**` credential routes. Internal admin operations are excluded. Per-operation
+  `bearerAuth` security is declared on protected routes; the public credential endpoints carry no security
+  requirement. Error responses use the shared `ApiError` schema with route-meaningful status codes,
+  `Idempotency-Key`/`Retry-After`/pagination headers, and representative examples.
+- `GET /v3/api-docs` — the full internal + LSP document; exported to `openapi/openapi.json` and consumed by
+  the frontend `npm run generate:api-types` pipeline (openapi-typescript).
+
 ## Response Conventions
 
 - Single-resource success responses return the resource payload directly.
@@ -31,7 +43,7 @@ Detailed response and error examples are documented in [api-standards.md](C:/Use
 
 | Method | Endpoint | Description | Roles |
 |--------|----------|-------------|-------|
-| GET | `/` | List applications (filters: productId, status, sourceChannel, query; optional pagination: `offset`, `limit`, `paginationDetails`) | LSP_API_CLIENT, LSP_UI_READ, LSP_UI_WRITE |
+| GET | `/` | List applications (filters: productId, status, sourceChannel, query; optional pagination: `offset`, `limit`, `paginationDetails`; an unrecognised `status` value returns `422 INVALID_STATUS`) | LSP_API_CLIENT, LSP_UI_READ, LSP_UI_WRITE |
 | GET | `/invalid-reasons` | List allowed invalid-loan reason options for LSP clients and portals | LSP_API_CLIENT, LSP_UI_READ, LSP_UI_WRITE |
 | GET | `/{applicationId}` | Get application detail | LSP_API_CLIENT, LSP_UI_READ, LSP_UI_WRITE |
 | GET | `/external/{externalLoanId}` | Get application by external loan ID | LSP_API_CLIENT, LSP_UI_READ, LSP_UI_WRITE |
@@ -65,8 +77,16 @@ Detailed response and error examples are documented in [api-standards.md](C:/Use
 |--------|----------|-------------|-------|
 | GET | `/{loanId}` | Get loan detail | LSP_API_CLIENT, LSP_UI_READ, LSP_UI_WRITE |
 | GET | `/{loanId}/repayment-schedule` | List repayment schedule | LSP_API_CLIENT, LSP_UI_READ, LSP_UI_WRITE |
-| GET | `/{loanId}/payments` | List payment transactions | LSP_API_CLIENT, LSP_UI_READ, LSP_UI_WRITE |
-| POST | `/{loanId}/foreclosure-quote` | Request foreclosure quote | LSP_API_CLIENT, LSP_UI_WRITE |
+| GET | `/{loanId}/payments` | List payment transactions — always a bounded page (`offset`, `limit` ≤ 200, `paginationDetails`); `X-Limit`/`X-Offset` are always emitted and `paginationDetails=ON` adds `X-Total-Count`. Omitting the parameters returns the first page (default `limit=50`). | LSP_API_CLIENT, LSP_UI_READ, LSP_UI_WRITE |
+| POST | `/{loanId}/payments` | Record a payment; requires `Idempotency-Key` UUID v4 | LSP_API_CLIENT |
+| POST | `/{loanId}/foreclosure-quote` | Request foreclosure quote; accepts an optional `Idempotency-Key` UUID v4 — a keyed retry replays the stored response and a changed payload under the same key returns `409 IDEMPOTENCY_CONFLICT` | LSP_API_CLIENT, LSP_UI_WRITE |
+| POST | `/{loanId}/foreclosure-quotes/{quoteId}/execute` | Execute a foreclosure quote; requires `Idempotency-Key` UUID v4 | LSP_API_CLIENT, LSP_UI_WRITE |
+
+**LSP mutation idempotency contract:** every mutating partner endpoint is either key-guarded or carries a natural idempotent identity —
+
+- Key-guarded (`Idempotency-Key`, replay returns the stored response, changed payload returns `409 IDEMPOTENCY_CONFLICT`): `POST /api/v1/lsp/loan-applications` (optional), `POST .../{applicationId}/invalid` (required), `POST .../{applicationId}/documents` JSON + multipart (optional), `POST .../{applicationId}/documents/batch` (optional), `POST .../loans/{loanId}/payments` (required), `POST .../loans/{loanId}/foreclosure-quote` (optional, M14), `POST .../foreclosure-quotes/{quoteId}/execute` (required).
+- Natural identity, no key needed: `PUT .../{applicationId}/repayment-schedule` (full replacement of the pre-disbursement schedule) and `PATCH /api/v1/lsp/borrowers/{borrowerId}/bank-details` (state overwrite — a no-op resubmission writes nothing).
+- `POST .../{applicationId}/disbursement-bank-check` is a read-only preflight check, not a mutation.
 
 ---
 

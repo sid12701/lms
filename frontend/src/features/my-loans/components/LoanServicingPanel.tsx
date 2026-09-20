@@ -13,7 +13,8 @@ export interface LoanServicingPanelProps {
 }
 
 export function LoanServicingPanel({ loanAccountId }: LoanServicingPanelProps) {
-  const { schedule, payments, loading, error, refetch } = useMyLoanServicing(loanAccountId);
+  const { schedule, payments, paymentsTotalCount, paymentsTruncated, loading, error, refetch } =
+    useMyLoanServicing(loanAccountId);
 
   const installments = useMemo(
     () => (schedule ? lspScheduleToRepaymentInstallments(schedule, loanAccountId) : []),
@@ -57,6 +58,11 @@ export function LoanServicingPanel({ loanAccountId }: LoanServicingPanelProps) {
 
           <div className="flex flex-col gap-2">
             <h3 className="text-sm font-semibold">Payments</h3>
+            {paymentsTruncated && paymentsTotalCount != null ? (
+              <p className="text-foreground-muted text-xs" role="note">
+                Showing the {payments?.length ?? 0} most recent of {paymentsTotalCount} payments.
+              </p>
+            ) : null}
             {payments && payments.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-xl text-left text-xs">

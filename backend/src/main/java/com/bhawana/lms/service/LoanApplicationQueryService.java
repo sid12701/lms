@@ -13,12 +13,14 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -114,14 +116,13 @@ public class LoanApplicationQueryService {
         String normalizedQuery = normalizeQuery(query);
         String normalizedLspLoanId = normalizeQuery(lspLoanId);
         String normalizedBhawLoanId = normalizeQuery(bhawLoanId);
-        LoanApplicationStatus normalizedStatus = resolveStatus(status);
-        if (status != null && normalizedStatus == null) {
-            return new PagedResult<>(
-                    List.of(),
-                    0,
-                    PaginationResponseBuilder.resolveOffset(offset, true),
-                    PaginationResponseBuilder.resolveLimit(limit, true)
-            );
+        // An unknown status used to silently produce an empty page (M14): a caller could not tell
+        // "no loans in this status" from "this status does not exist". It is now rejected with the
+        // same INVALID_* contract the other validated filters use.
+        String normalizedStatusValue = Strings.normalizeOptional(status);
+        LoanApplicationStatus normalizedStatus = resolveStatus(normalizedStatusValue);
+        if (normalizedStatusValue != null && normalizedStatus == null) {
+            throw unknownStatus(normalizedStatusValue);
         }
 
         Instant disbursalFromInstant = disbursalDateFrom == null
@@ -322,8 +323,7 @@ public class LoanApplicationQueryService {
         );
     }
 
-    private static LoanApplicationStatus resolveStatus(String status) {
-        String normalizedStatus = Strings.normalizeOptional(status);
+    private static LoanApplicationStatus resolveStatus(String normalizedStatus) {
         if (normalizedStatus == null) {
             return null;
         }
@@ -332,6 +332,17 @@ public class LoanApplicationQueryService {
         } catch (IllegalArgumentException exception) {
             return null;
         }
+    }
+
+    private static BusinessRuleViolationException unknownStatus(String status) {
+        String knownStatuses = Arrays.stream(LoanApplicationStatus.values())
+                .map(LoanApplicationStatus::name)
+                .collect(Collectors.joining(", "));
+        return new BusinessRuleViolationException(
+                "INVALID_STATUS",
+                "Unknown status '" + status + "'. Known statuses: " + knownStatuses + ".",
+                Map.of("status", "names an unknown status: " + status)
+        );
     }
 
     private static Set<LoanApplicationStatus> resolveStatusesStrict(List<String> statuses) {

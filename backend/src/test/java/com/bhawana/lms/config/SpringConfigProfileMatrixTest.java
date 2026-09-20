@@ -213,6 +213,54 @@ class SpringConfigProfileMatrixTest {
     }
 
     @Test
+    void baseConfigShipsNoCorsOriginDefaults() throws Exception {
+        // Dev-server origins must not leak into the base document: outside local the
+        // allowlist binds empty and fails closed (no cross-origin browser calls at all).
+        String base = configText("application.yml");
+        assertTrue(base.contains("allowed-origins: ${APP_SECURITY_CORS_ALLOWED_ORIGINS:}"));
+    }
+
+    @Test
+    void unsetProfileBindsEmptyCorsAllowlist() {
+        baseRunner(new String[0], strongPins())
+                .withUserConfiguration(BoundBeans.class)
+                .run(context -> {
+                    SecurityProperties bound = context.getBean(SecurityProperties.class);
+                    assertTrue(bound.getCors().getAllowedOrigins().isEmpty());
+                });
+    }
+
+    @Test
+    void localProfileBindsPackagedDevServerOrigins() {
+        // The localhost dev values live only in application-local.yml and load only when
+        // the local profile is explicitly active.
+        baseRunner(new String[]{"local"}, localPins())
+                .withUserConfiguration(BoundBeans.class)
+                .run(context -> {
+                    SecurityProperties bound = context.getBean(SecurityProperties.class);
+                    assertEquals(java.util.List.of(
+                            "http://localhost:5173",
+                            "http://127.0.0.1:5173",
+                            "http://localhost:4200",
+                            "http://127.0.0.1:4200"),
+                            bound.getCors().getAllowedOrigins());
+                });
+    }
+
+    @Test
+    void explicitCorsOriginsBindCommaSeparatedForNonlocalDeployment() {
+        baseRunner(new String[]{"prod"}, withPin(strongPins(),
+                "app.security.cors.allowed-origins=https://app.example.com, https://ops.example.com"))
+                .withUserConfiguration(BoundBeans.class)
+                .run(context -> {
+                    SecurityProperties bound = context.getBean(SecurityProperties.class);
+                    assertEquals(
+                            java.util.List.of("https://app.example.com", "https://ops.example.com"),
+                            bound.getCors().getAllowedOrigins());
+                });
+    }
+
+    @Test
     void simulationGuardDeniesUnsetAndMixedProfilesWithoutWeakening() {
         MockEnvironment unset = new MockEnvironment();
         assertTrue(!new DisbursementSimulationGuard(unset).isSimulationAllowed());
@@ -295,6 +343,12 @@ class SpringConfigProfileMatrixTest {
                 "app.datasource.tenant.username=lms_tenant_app",
                 "app.datasource.tenant.password=rotated-tenant-password-for-tests"
         };
+    }
+
+    private static String[] withPin(String[] pins, String extra) {
+        String[] result = java.util.Arrays.copyOf(pins, pins.length + 1);
+        result[pins.length] = extra;
+        return result;
     }
 
     private static TenantDatasourceSecurityValidator tenantGate(

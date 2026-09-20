@@ -647,13 +647,8 @@ interface BackendLspPayment {
   createdAt: string | null;
 }
 
-/** GET `/api/v1/lsp/loans/{loanId}/payments`. */
-export async function fetchMyLoanPayments(loanId: string): Promise<MyLoanPayment[]> {
-  ensureLspSession();
-  const rows = await requestJson<BackendLspPayment[]>(
-    `/api/v1/lsp/loans/${encodeURIComponent(loanId)}/payments`,
-  );
-  return rows.map((row) => ({
+function toMyLoanPayment(row: BackendLspPayment): MyLoanPayment {
+  return {
     id: row.id,
     amount: toNumber(row.amount),
     paymentDate: row.paymentDate,
@@ -661,5 +656,73 @@ export async function fetchMyLoanPayments(loanId: string): Promise<MyLoanPayment
     reference: row.reference,
     status: row.status,
     createdAt: row.createdAt,
-  }));
+  };
+}
+
+export interface MyLoanPaymentsPage {
+  items: MyLoanPayment[];
+  /** Total receipts on the loan, from `X-Total-Count`. */
+  totalCount: number;
+  offset: number;
+  limit: number;
+}
+
+export interface MyLoanPaymentHistory {
+  items: MyLoanPayment[];
+  /** Server-reported total; `items.length < totalCount` means rows are still unread. */
+  totalCount: number;
+  /** True when the walk stopped at the safety bound with receipts still unread. */
+  truncated: boolean;
+}
+
+// The endpoint caps each response at 200 rows; the panel renders the whole
+// ledger, so pages are walked explicitly rather than silently truncating at
+// the first page (M14).
+const MY_LOAN_PAYMENTS_PAGE_LIMIT = 200;
+const MY_LOAN_PAYMENTS_MAX_PAGES = 25;
+
+/** GET `/api/v1/lsp/loans/{loanId}/payments` — one bounded page with pagination headers. */
+export async function fetchMyLoanPaymentsPage(
+  loanId: string,
+  params: { offset: number; limit: number },
+): Promise<MyLoanPaymentsPage> {
+  ensureLspSession();
+  const path = buildQueryPath(`/api/v1/lsp/loans/${encodeURIComponent(loanId)}/payments`, {
+    offset: params.offset,
+    limit: params.limit,
+    paginationDetails: "ON",
+  });
+  const { data, headers } = await requestJsonWithHeaders<BackendLspPayment[]>(path);
+  const pagination = readPaginationHeaders(headers);
+  const items = data.map(toMyLoanPayment);
+  return {
+    items,
+    totalCount: pagination.totalCount ?? items.length,
+    offset: pagination.offset ?? params.offset,
+    limit: pagination.limit ?? params.limit,
+  };
+}
+
+/**
+ * GET `/api/v1/lsp/loans/{loanId}/payments` — the complete receipt history,
+ * assembled from bounded pages so nothing is lost past the server's per-page
+ * cap. `truncated` reports the unreachable remainder instead of hiding it.
+ */
+export async function fetchMyLoanPayments(loanId: string): Promise<MyLoanPaymentHistory> {
+  const items: MyLoanPayment[] = [];
+  let offset = 0;
+  let totalCount = 0;
+  for (let page = 0; page < MY_LOAN_PAYMENTS_MAX_PAGES; page += 1) {
+    const result = await fetchMyLoanPaymentsPage(loanId, {
+      offset,
+      limit: MY_LOAN_PAYMENTS_PAGE_LIMIT,
+    });
+    items.push(...result.items);
+    totalCount = result.totalCount;
+    if (result.items.length === 0 || items.length >= totalCount) {
+      break;
+    }
+    offset += result.items.length;
+  }
+  return { items, totalCount, truncated: items.length < totalCount };
 }

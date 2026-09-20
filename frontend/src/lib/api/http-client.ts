@@ -284,11 +284,25 @@ async function performFetch(
   return response;
 }
 
+/**
+ * 409 IDEMPOTENCY_IN_PROGRESS is the only retryable conflict: the duplicate's
+ * idempotency key is still owned by an in-flight request and the backend's
+ * bounded Retry-After says when to ask again. Payload conflicts
+ * (IDEMPOTENCY_CONFLICT) and recovery-required conflicts are terminal — they
+ * never carry a usable Retry-After and must not be retried as if transient.
+ */
+function isRetryableConflict(status: number, code: string | null): boolean {
+  return status === 409 && code === "IDEMPOTENCY_IN_PROGRESS";
+}
+
 async function throwIfNotOk(response: Response): Promise<void> {
   if (response.ok) return;
   const errorBody = await response.text();
   const { message, code } = readResponseError(errorBody);
-  const retryAfterSeconds = response.status === 429 ? readRetryAfterSeconds(response) : null;
+  const retryAfterSeconds =
+    response.status === 429 || isRetryableConflict(response.status, code)
+      ? readRetryAfterSeconds(response)
+      : null;
   // Built from a received response: settled transport evidence.
   throw new ApiError(
     message || `Request failed with status ${response.status}`,

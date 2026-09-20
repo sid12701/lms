@@ -2,6 +2,7 @@ package com.bhawana.lms.security;
 
 import com.bhawana.lms.common.api.ApiError;
 import com.bhawana.lms.common.api.PaginationResponseBuilder;
+import com.bhawana.lms.common.correlation.CorrelationIdFilter;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.web.AuthenticationTenantScopeFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -179,20 +180,27 @@ public class SecurityFilterChainConfig {
         return http.build();
     }
 
+    /**
+     * Credentialed CORS for the separately hosted SPA. The origin allowlist is config-bound
+     * ({@code app.security.cors.allowed-origins}, env {@code APP_SECURITY_CORS_ALLOWED_ORIGINS})
+     * and carries no code default: an empty list fails closed so a deployment without an
+     * explicit SPA origin denies every cross-origin browser call rather than allowing any.
+     * The local dev-server origins live only in {@code application-local.yml}. Wildcards are
+     * rejected at startup because {@code allowCredentials=true} requires explicit origins.
+     * Deployment contract: {@code docs/spa-deployment-contract.md}.
+     */
     @Bean
-    CorsConfigurationSource corsConfigurationSource() {
+    CorsConfigurationSource corsConfigurationSource(SecurityProperties securityProperties) {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(
-                "http://localhost:5173",
-                "http://127.0.0.1:5173",
-                "http://localhost:4200",
-                "http://127.0.0.1:4200"
-        ));
+        configuration.setAllowedOrigins(explicitOrigins(securityProperties.getCors().getAllowedOrigins()));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key"));
         configuration.setExposedHeaders(List.of(
-                "X-Correlation-Id",
+                CorrelationIdFilter.HEADER_NAME,
                 HttpHeaders.CONTENT_DISPOSITION,
+                // 429 rate-limit and 409 IDEMPOTENCY_IN_PROGRESS responses carry this hint;
+                // the cross-origin SPA cannot read it unless it is exposed here.
+                HttpHeaders.RETRY_AFTER,
                 PaginationResponseBuilder.TOTAL_COUNT_HEADER,
                 PaginationResponseBuilder.LIMIT_HEADER,
                 PaginationResponseBuilder.OFFSET_HEADER
@@ -202,6 +210,17 @@ public class SecurityFilterChainConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    private static List<String> explicitOrigins(List<String> allowedOrigins) {
+        for (String origin : allowedOrigins) {
+            if (origin.indexOf('*') >= 0) {
+                throw new IllegalStateException(
+                        "app.security.cors.allowed-origins must list explicit origins; wildcards are "
+                                + "forbidden because credentials are allowed: '" + origin + "'.");
+            }
+        }
+        return allowedOrigins;
     }
 
     private static ResolvedAuthError resolveAuthenticationError(AuthenticationException authenticationException) {

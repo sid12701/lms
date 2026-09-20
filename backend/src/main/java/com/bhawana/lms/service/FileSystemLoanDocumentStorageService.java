@@ -5,6 +5,7 @@ import com.bhawana.lms.common.api.error.DocumentStorageUnavailableException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -116,12 +117,25 @@ public class FileSystemLoanDocumentStorageService {
         }
     }
 
+    /**
+     * Defense-in-depth for path injection: a storage key must stay a relative
+     * path under the configured storage root. Keys are built server-side and
+     * upload file names are reduced to a safe key segment before they ever
+     * reach a key, but a key that still resolves outside the root (an absolute
+     * path or {@code ..} segments) is rejected outright instead of being
+     * resolved.
+     */
     private Path resolveUnderRoot(String storageKey) {
         if (storageKey == null || storageKey.isBlank()) {
             throw new IllegalArgumentException("Storage key is required.");
         }
         Path root = properties.getRootPath().toAbsolutePath().normalize();
-        Path resolved = root.resolve(storageKey).normalize();
+        Path resolved;
+        try {
+            resolved = root.resolve(storageKey).normalize();
+        } catch (InvalidPathException exception) {
+            throw new IllegalArgumentException("Storage key is not a valid path: " + storageKey, exception);
+        }
         if (!resolved.startsWith(root)) {
             throw new IllegalArgumentException(
                     "Storage key escapes document root: " + storageKey
