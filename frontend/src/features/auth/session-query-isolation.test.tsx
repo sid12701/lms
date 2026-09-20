@@ -313,7 +313,7 @@ describe("auth-scoped query isolation", () => {
     const changedRole: Session = {
       ...adminSession,
       accessToken: "refreshed.token",
-      user: { ...adminSession.user, role: "OPS_USER" },
+      user: { ...adminSession.user, role: "OPS_USER", roles: ["OPS_USER"] },
     };
     const queryFn = vi
       .fn<() => Promise<string>>()

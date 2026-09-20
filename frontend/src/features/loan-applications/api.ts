@@ -87,9 +87,12 @@ function backendQueryFromFilters(
 
 export async function fetchLoanApplications(
   filters: LoanApplicationListFilters,
+  signal?: AbortSignal,
 ): Promise<LoanApplicationListResponse> {
   const path = buildQueryPath(BACKEND_BASE, backendQueryFromFilters(filters));
-  const { data, headers } = await requestJsonWithHeaders<BackendApplicationResponse[]>(path);
+  const { data, headers } = await requestJsonWithHeaders<BackendApplicationResponse[]>(path, {
+    signal,
+  });
   const pagination = readPaginationHeaders(headers);
   const items = data.map(toListItem);
   const pageSize = filters.pageSize ?? 25;

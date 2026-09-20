@@ -39,10 +39,11 @@ function buildBorrowersListQuery(filters: BorrowerListFilters): string {
 
 export async function fetchBorrowersList(
   filters: BorrowerListFilters,
+  signal?: AbortSignal,
 ): Promise<BorrowerListResponse> {
   const query = buildBorrowersListQuery(filters);
   const path = `${BACKEND_BASE}${query ? `?${query}` : ""}`;
-  const { data, headers } = await requestJsonWithHeaders<BorrowerSummary[]>(path);
+  const { data, headers } = await requestJsonWithHeaders<BorrowerSummary[]>(path, { signal });
   const items = BorrowerSummaryArraySchema.parse(data);
   const pagination = readPaginationHeaders(headers);
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;

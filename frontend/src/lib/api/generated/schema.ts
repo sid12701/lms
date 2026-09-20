@@ -6566,7 +6566,24 @@ export interface operations {
   };
   listUsers: {
     parameters: {
-      query?: never;
+      query?: {
+        status?: "ACTIVE" | "INACTIVE";
+        role?:
+          | "SYSTEM_ADMIN"
+          | "OPS_USER"
+          | "PRODUCT_ADMIN"
+          | "LSP_UI_READ"
+          | "LSP_UI_WRITE"
+          | "LSP_API_CLIENT";
+        lspId?: string;
+        q?: string;
+        /** @description Zero-based row offset (default 0). */
+        offset?: number;
+        /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
+        limit?: number;
+        /** @description ON adds the X-Total-Count response header (an extra count query); OFF or omitted suppresses it. */
+        paginationDetails?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
@@ -6576,10 +6593,25 @@ export interface operations {
       /** @description OK */
       200: {
         headers: {
+          /** @description The page size actually applied. */
+          "X-Limit"?: number;
+          /** @description The zero-based offset actually applied. */
+          "X-Offset"?: number;
+          /** @description Total matching rows; emitted only when paginationDetails=ON. */
+          "X-Total-Count"?: number;
           [name: string]: unknown;
         };
         content: {
           "*/*": components["schemas"]["UserResponse"][];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
       /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */
@@ -7406,7 +7438,17 @@ export interface operations {
   };
   listApiClients: {
     parameters: {
-      query?: never;
+      query?: {
+        status?: "ACTIVE" | "INACTIVE";
+        lspId?: string;
+        q?: string;
+        /** @description Zero-based row offset (default 0). */
+        offset?: number;
+        /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
+        limit?: number;
+        /** @description ON adds the X-Total-Count response header (an extra count query); OFF or omitted suppresses it. */
+        paginationDetails?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
@@ -7416,10 +7458,25 @@ export interface operations {
       /** @description OK */
       200: {
         headers: {
+          /** @description The page size actually applied. */
+          "X-Limit"?: number;
+          /** @description The zero-based offset actually applied. */
+          "X-Offset"?: number;
+          /** @description Total matching rows; emitted only when paginationDetails=ON. */
+          "X-Total-Count"?: number;
           [name: string]: unknown;
         };
         content: {
           "*/*": components["schemas"]["ApiClientResponse"][];
+        };
+      };
+      /** @description The request failed validation (VALIDATION_FAILED) or could not be parsed (INVALID_REQUEST). Field-level failures are listed in violations[] and errors[]. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ApiError"];
         };
       };
       /** @description Missing, expired, or invalid bearer token (UNAUTHORIZED). */

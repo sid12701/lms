@@ -48,6 +48,12 @@ const PERMISSIONS_BY_ROLE: Record<Role, Permission[]> = {
   LSP_API_CLIENT: LSP_API_CLIENT_PERMS,
 };
 
-export function hasPermission(role: Role, permission: Permission): boolean {
-  return PERMISSIONS_BY_ROLE[role].includes(permission);
+/**
+ * M19 — evaluates the session's full role set: a multi-role user holds the
+ * union of every granted role's permissions, matching the backend's
+ * hasAnyRole authority semantics. Unknown roles are never synthesized — the
+ * caller passes the session's already-validated roles.
+ */
+export function hasPermission(roles: readonly Role[], permission: Permission): boolean {
+  return roles.some((role) => PERMISSIONS_BY_ROLE[role].includes(permission));
 }

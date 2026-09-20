@@ -6,7 +6,11 @@ import type { Session } from "@/features/auth/session-types";
 
 function scopeKey(session: Session | null): string {
   if (!session) return "signed-out";
-  return `${session.user.id}|${session.user.lspId ?? ""}|${session.user.role}`;
+  // M19 — the scope key embeds the full effective role set, not just the
+  // primary role: a capability change that leaves the primary role intact
+  // (e.g. PRODUCT_ADMIN dropped from an OPS_USER+PRODUCT_ADMIN user) must
+  // still retire the old client so stale protected data cannot persist.
+  return `${session.user.id}|${session.user.lspId ?? ""}|${session.user.roles.join(",")}`;
 }
 
 function ScopedClientProvider({ children }: { children: ReactNode }): ReactElement {

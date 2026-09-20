@@ -81,7 +81,10 @@ function toAlertRow(payload: BackendAlertResponse): AlertRow {
  * first fetched page locally hid older matching alerts and understated
  * totals, so the local path is gone.
  */
-export async function listAlerts(filters: AlertsListFilters = {}): Promise<AlertsListResponse> {
+export async function listAlerts(
+  filters: AlertsListFilters = {},
+  signal?: AbortSignal,
+): Promise<AlertsListResponse> {
   const pageSize = filters.pageSize ?? 25;
   const page = filters.page ?? 0;
   const path = buildQueryPath(BASE, {
@@ -93,7 +96,9 @@ export async function listAlerts(filters: AlertsListFilters = {}): Promise<Alert
     limit: pageSize,
     paginationDetails: "ON",
   });
-  const { data, headers } = await requestJsonWithHeaders<BackendAlertResponse[]>(path);
+  const { data, headers } = await requestJsonWithHeaders<BackendAlertResponse[]>(path, {
+    signal,
+  });
   const pagination = readPaginationHeaders(headers);
   return {
     items: data.map(toAlertRow),
@@ -173,7 +178,7 @@ function toAlertRuleRow(payload: BackendAlertRuleResponse): AlertRuleRow {
 }
 
 /** SYSTEM_ADMIN-only catalogue of configured alert rules. */
-export async function listAlertRules(): Promise<AlertRuleRow[]> {
-  const payload = await requestJson<BackendAlertRuleResponse[]>(`${BASE}/rules`);
+export async function listAlertRules(signal?: AbortSignal): Promise<AlertRuleRow[]> {
+  const payload = await requestJson<BackendAlertRuleResponse[]>(`${BASE}/rules`, { signal });
   return payload.map(toAlertRuleRow);
 }

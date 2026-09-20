@@ -8,7 +8,7 @@ export function myLoanDetailQueryKey(id: string) {
 export function useMyLoanDetail(id: string): UseQueryResult<MyLoanDetail, Error> {
   return useQuery({
     queryKey: myLoanDetailQueryKey(id),
-    queryFn: () => fetchMyLoanDetail(id),
+    queryFn: ({ signal }) => fetchMyLoanDetail(id, signal),
     enabled: id.length > 0,
     staleTime: 30_000,
   });

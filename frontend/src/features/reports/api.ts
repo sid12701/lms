@@ -165,9 +165,12 @@ function filterToQuery(
   return out;
 }
 
-export async function misSummary(filters: MisFilters = {}): Promise<MisSummary> {
+export async function misSummary(
+  filters: MisFilters = {},
+  signal?: AbortSignal,
+): Promise<MisSummary> {
   const path = buildQueryPath(`${BASE}/portfolio-mis/summary`, filterToQuery(filters));
-  const payload = await requestJson<BackendMisSummary>(path);
+  const payload = await requestJson<BackendMisSummary>(path, { signal });
   return {
     totalDisbursed: Number(payload.totalDisbursed),
     activeLoanCount: Number(payload.activeLoanCount),
@@ -234,9 +237,12 @@ export function mapBackendPreviewRowToMisPreviewRow(payload: BackendPreviewRow):
   };
 }
 
-export async function misPreview(filters: MisPreviewFilters = {}): Promise<MisPreviewResponseDto> {
+export async function misPreview(
+  filters: MisPreviewFilters = {},
+  signal?: AbortSignal,
+): Promise<MisPreviewResponseDto> {
   const path = buildQueryPath(`${BASE}/portfolio-mis/preview`, filterToQuery(filters));
-  const payload = await requestJson<BackendPreviewPage>(path);
+  const payload = await requestJson<BackendPreviewPage>(path, { signal });
   return {
     items: payload.content.map(mapBackendPreviewRowToMisPreviewRow),
     total: payload.totalElements,
@@ -270,8 +276,8 @@ function toReportRequest(payload: BackendReportRequest): ReportRequest {
   };
 }
 
-export async function listRequests(): Promise<ReportRequestsListResponse> {
-  const payload = await requestJson<BackendReportRequest[]>(`${BASE}/requests`);
+export async function listRequests(signal?: AbortSignal): Promise<ReportRequestsListResponse> {
+  const payload = await requestJson<BackendReportRequest[]>(`${BASE}/requests`, { signal });
   return { items: payload.map(toReportRequest) };
 }
 

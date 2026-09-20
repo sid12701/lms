@@ -175,6 +175,7 @@ function buildAdminSession(): Session {
       id: "11111111-1111-4111-8111-111111111111",
       username: "ops.admin",
       role: "SYSTEM_ADMIN",
+      roles: ["SYSTEM_ADMIN"],
       lspId: null,
       mustChangePassword: false,
     },

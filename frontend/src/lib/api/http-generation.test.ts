@@ -14,6 +14,7 @@ const SESSION_A: Session = {
     id: "00000000-0000-4000-8000-000000000001",
     username: "a.user",
     role: "SYSTEM_ADMIN",
+    roles: ["SYSTEM_ADMIN"],
     lspId: null,
     mustChangePassword: false,
   },

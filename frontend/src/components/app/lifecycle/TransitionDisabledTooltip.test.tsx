@@ -29,7 +29,7 @@ const DISBURSE_ACTION: LifecycleAction = {
 
 describe("resolveDisabledReason()", () => {
   it("returns null when role is permitted and gates are clean", () => {
-    const reason = resolveDisabledReason(APPROVE_ACTION, "AWAITING_APPROVAL", "SYSTEM_ADMIN", {
+    const reason = resolveDisabledReason(APPROVE_ACTION, "AWAITING_APPROVAL", ["SYSTEM_ADMIN"], {
       docsComplete: true,
       scheduleValid: true,
     });
@@ -37,20 +37,16 @@ describe("resolveDisabledReason()", () => {
   });
 
   it("returns 'Already in this status' when current === target", () => {
-    const reason = resolveDisabledReason(
-      APPROVE_ACTION,
-      "APPROVED_PENDING_DISBURSAL",
+    const reason = resolveDisabledReason(APPROVE_ACTION, "APPROVED_PENDING_DISBURSAL", [
       "SYSTEM_ADMIN",
-    );
+    ]);
     expect(reason).toMatch(/already/i);
   });
 
   it("returns 'Insufficient permissions' when role lacks the permission", () => {
-    const reason = resolveDisabledReason(
-      DISBURSE_ACTION,
-      "APPROVED_PENDING_DISBURSAL",
+    const reason = resolveDisabledReason(DISBURSE_ACTION, "APPROVED_PENDING_DISBURSAL", [
       "LSP_UI_READ",
-    );
+    ]);
     expect(reason).toMatch(/permissions/i);
   });
 
@@ -58,7 +54,7 @@ describe("resolveDisabledReason()", () => {
     const reason = resolveDisabledReason(
       DISBURSE_ACTION,
       "APPROVED_PENDING_DISBURSAL",
-      "SYSTEM_ADMIN",
+      ["SYSTEM_ADMIN"],
       { docsComplete: false, scheduleValid: true },
     );
     expect(reason).toMatch(/Documents incomplete/i);
@@ -68,7 +64,7 @@ describe("resolveDisabledReason()", () => {
     const reason = resolveDisabledReason(
       DISBURSE_ACTION,
       "APPROVED_PENDING_DISBURSAL",
-      "SYSTEM_ADMIN",
+      ["SYSTEM_ADMIN"],
       { docsComplete: true, scheduleValid: false },
     );
     expect(reason).toMatch(/schedule/i);
@@ -78,7 +74,7 @@ describe("resolveDisabledReason()", () => {
     const reason = resolveDisabledReason(
       APPROVE_ACTION,
       "INITIALIZED", // no rule from INITIALIZED → APPROVED_PENDING_DISBURSAL
-      "SYSTEM_ADMIN",
+      ["SYSTEM_ADMIN"],
     );
     expect(reason).toMatch(/not allowed/i);
   });

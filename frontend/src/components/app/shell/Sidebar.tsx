@@ -25,7 +25,7 @@ export function Sidebar({ collapsed = false, onNavigate, className }: SidebarPro
   const navigate = useNavigate();
   if (!session) return null;
 
-  const groups = getNavItems(session.user.role);
+  const groups = getNavItems(session.user.roles);
 
   return (
     <aside

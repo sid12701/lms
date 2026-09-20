@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/types";
-import { isLspUiUser } from "@/lib/role-gates";
+import { hasAnyRole, isLspUiUser } from "@/lib/role-gates";
 
 export interface NavItem {
   to: string;
@@ -28,28 +28,27 @@ export interface NavGroup {
   items: NavItem[];
 }
 
+const OPS_ROLES: readonly Role[] = ["SYSTEM_ADMIN", "OPS_USER"];
+const PRODUCT_ROLES: readonly Role[] = ["SYSTEM_ADMIN", "PRODUCT_ADMIN"];
+
 /**
  * Build the role-aware sidebar navigation tree.
  *
  * Gap #8: Home is admin-only. Non-admin roles never see the Home nav
  * entry; they land directly on their primary work surface after sign-in
  * (handled by `defaultLandingFor`).
+ *
+ * M19: takes the session's FULL role set — a multi-role user (e.g.
+ * OPS_USER + PRODUCT_ADMIN) sees the union of every granted role's nav
+ * items, matching what the route guards and backend allow. The primary
+ * role only decides the landing route; it never hides a granted surface.
  */
-export function getNavItems(role: Role): NavGroup[] {
-  if (isLspUiUser(role)) {
-    return [
-      {
-        label: "Workspace",
-        items: [{ to: "/my-loans", label: "My loans", icon: Folder, match: "startsWith" }],
-      },
-    ];
-  }
-
+export function getNavItems(roles: readonly Role[]): NavGroup[] {
   const workspace: NavItem[] = [];
-  if (role === "SYSTEM_ADMIN") {
+  if (roles.includes("SYSTEM_ADMIN")) {
     workspace.push({ to: "/home", label: "Home", icon: Home, match: "exact" });
   }
-  if (role === "SYSTEM_ADMIN" || role === "OPS_USER") {
+  if (hasAnyRole(roles, OPS_ROLES)) {
     workspace.push({
       to: "/loan-applications",
       label: "Loan applications",
@@ -63,23 +62,31 @@ export function getNavItems(role: Role): NavGroup[] {
       match: "startsWith",
     });
   }
+  if (isLspUiUser(roles)) {
+    workspace.push({
+      to: "/my-loans",
+      label: "My loans",
+      icon: Folder,
+      match: "startsWith",
+    });
+  }
 
   const reporting: NavItem[] = [];
-  if (role === "SYSTEM_ADMIN" || role === "OPS_USER") {
+  if (hasAnyRole(roles, OPS_ROLES)) {
     reporting.push({ to: "/alerts", label: "Alerts", icon: Bell, match: "startsWith" });
   }
-  if (role === "SYSTEM_ADMIN") {
+  if (roles.includes("SYSTEM_ADMIN")) {
     reporting.push({ to: "/reports", label: "Reports", icon: BarChart3, match: "startsWith" });
   }
 
   const administration: NavItem[] = [];
-  if (role === "SYSTEM_ADMIN") {
+  if (roles.includes("SYSTEM_ADMIN")) {
     administration.push({ to: "/lsps", label: "LSPs", icon: Building2, match: "startsWith" });
   }
-  if (role === "SYSTEM_ADMIN" || role === "PRODUCT_ADMIN") {
+  if (hasAnyRole(roles, PRODUCT_ROLES)) {
     administration.push({ to: "/products", label: "Products", icon: Layers, match: "startsWith" });
   }
-  if (role === "SYSTEM_ADMIN") {
+  if (roles.includes("SYSTEM_ADMIN")) {
     administration.push({ to: "/users", label: "Users", icon: Users, match: "startsWith" });
     administration.push({
       to: "/api-clients",

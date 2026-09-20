@@ -339,6 +339,73 @@ describe("auth-service session refresh", () => {
     expect(saveStoredSession).toHaveBeenCalledTimes(1);
   });
 
+  it("M19: preserves the full recognized role set alongside the deliberate primary", async () => {
+    vi.mocked(refreshAccessToken).mockResolvedValue(REFRESHED_TOKEN);
+    vi.mocked(fetchSystemContext).mockResolvedValue({
+      ...SYSTEM_CONTEXT,
+      roles: ["PRODUCT_ADMIN", "OPS_USER"],
+    });
+
+    const result = await refreshSession();
+
+    expect(result).toMatchObject({
+      status: "authenticated",
+      session: {
+        user: {
+          // Landing/display priority still resolves to OPS_USER…
+          role: "OPS_USER",
+          // …but the capability set keeps BOTH granted roles (priority order).
+          roles: ["OPS_USER", "PRODUCT_ADMIN"],
+        },
+      },
+    });
+  });
+
+  it("M19: drops unknown roles without granting or failing", async () => {
+    vi.mocked(refreshAccessToken).mockResolvedValue(REFRESHED_TOKEN);
+    vi.mocked(fetchSystemContext).mockResolvedValue({
+      ...SYSTEM_CONTEXT,
+      roles: ["OPS_USER", "SUPERUSER", "tenant-admin"],
+    });
+
+    const result = await refreshSession();
+
+    expect(result).toMatchObject({
+      status: "authenticated",
+      session: { user: { role: "OPS_USER", roles: ["OPS_USER"] } },
+    });
+  });
+
+  it("M19: never infers a browser role from LSP_API_CLIENT", async () => {
+    vi.mocked(refreshAccessToken).mockResolvedValue(REFRESHED_TOKEN);
+    vi.mocked(fetchSystemContext).mockResolvedValue({
+      ...SYSTEM_CONTEXT,
+      roles: ["LSP_API_CLIENT", "LSP_UI_READ"],
+    });
+
+    const result = await refreshSession();
+
+    expect(result).toMatchObject({
+      status: "authenticated",
+      session: { user: { role: "LSP_UI_READ", roles: ["LSP_UI_READ"] } },
+    });
+  });
+
+  it.each([
+    ["only machine principals", ["LSP_API_CLIENT"]],
+    ["only unknown roles", ["tenant-admin", "SUPERUSER"]],
+    ["no roles at all", []],
+  ])("M19: fails closed when the context grants %s", async (_label, roles) => {
+    vi.mocked(refreshAccessToken).mockResolvedValue(REFRESHED_TOKEN);
+    vi.mocked(fetchSystemContext).mockResolvedValue({ ...SYSTEM_CONTEXT, roles });
+
+    await expect(refreshSession()).rejects.toMatchObject({
+      kind: "CONTEXT_INVALID",
+    });
+    expect(saveStoredSession).not.toHaveBeenCalled();
+    expect(clearStoredSession).not.toHaveBeenCalled();
+  });
+
   it("discards a login superseded mid-exchange without persisting", async () => {
     let resolveLogin!: (token: typeof REFRESHED_TOKEN) => void;
     vi.mocked(loginWithPassword).mockReturnValue(

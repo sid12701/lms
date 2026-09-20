@@ -38,7 +38,7 @@ describe("My Loan query hooks", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(detail);
-    expect(fetchMyLoanDetailMock).toHaveBeenCalledWith(detail.id);
+    expect(fetchMyLoanDetailMock).toHaveBeenCalledWith(detail.id, expect.any(AbortSignal));
     expect(myLoanDetailQueryKey(detail.id)).toEqual(["my-loans", "detail", detail.id]);
   });
 

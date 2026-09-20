@@ -2,9 +2,12 @@ package com.bhawana.lms.repo;
 
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.RoleCode;
+import com.bhawana.lms.domain.UserStatus;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -65,8 +68,31 @@ public interface AppUserRepository extends JpaRepository<AppUser, UUID> {
             @Param("excludeUserId") UUID excludeUserId
     );
 
+    /**
+     * M20: bounded admin-directory search. Filters apply to the full dataset
+     * before pagination; {@code role} matches membership in the user's granted
+     * role set (not a collapsed primary role). The entity graph keeps the
+     * page's lsp/roles fetch to one join instead of N+1 selects.
+     */
     @EntityGraph(attributePaths = {"lsp", "roles"})
-    List<AppUser> findAllByOrderByUsernameAsc();
+    @Query("""
+            select u from AppUser u
+            where (:status is null or u.status = :status)
+              and (:lspId is null or u.lsp.id = :lspId)
+              and (:role is null or exists (
+                  select 1 from AppUser u2 join u2.roles r
+                  where u2.id = u.id and r.code = :role))
+              and (:queryLike is null
+                   or lower(u.username) like :queryLike
+                   or lower(u.email) like :queryLike)
+            """)
+    Page<AppUser> searchUsers(
+            @Param("status") UserStatus status,
+            @Param("role") RoleCode role,
+            @Param("lspId") UUID lspId,
+            @Param("queryLike") String queryLike,
+            Pageable pageable
+    );
 
     @EntityGraph(attributePaths = {"lsp", "roles"})
     List<AppUser> findByLsp_IdOrderByUsernameAsc(UUID lspId);

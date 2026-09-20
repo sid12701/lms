@@ -77,7 +77,7 @@ export function ChangePasswordPage() {
   }
 
   if (!session.user.mustChangePassword) {
-    return <Navigate to={defaultLandingFor(session.user.role)} replace />;
+    return <Navigate to={defaultLandingFor(session.user.roles)} replace />;
   }
 
   async function onSubmit(values: ChangePasswordValues): Promise<void> {
@@ -87,7 +87,7 @@ export function ChangePasswordPage() {
       const intent = captureAuthIntent();
       const next = await pending;
       if (!signIn(next, intent)) return;
-      navigate(defaultLandingFor(next.user.role), { replace: true });
+      navigate(defaultLandingFor(next.user.roles), { replace: true });
     } catch (err) {
       const message = mapApiErrorMessage(err, "Could not update password.");
       setSubmitError(message);

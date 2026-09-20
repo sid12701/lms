@@ -6,9 +6,9 @@
  * so XSS cannot exfiltrate a durable bearer token from localStorage.
  *
  * Identity consistency: the bearer is bound to the FULL effective
- * identity (user id + role + LSP scope), never to the id alone — a
- * role/LSP-only change with the same id must not pair the old bearer with
- * the new scope. Stale in-memory state is cleared on foreign removal/change
+ * identity (user id + complete role set + LSP scope), never to the id
+ * alone — a role/LSP-only change with the same id must not pair the old
+ * bearer with the new scope. Stale in-memory state is cleared on foreign removal/change
  * instead of being returned. Storage UNAVAILABLE (throws) fails closed
  * (memory cleared, null returned); storage ABSENT (no key) after a foreign
  * logout clears stale memory and returns null rather than resurrecting A.
@@ -64,10 +64,20 @@ function sanitizePersistedRaw(raw: Record<string, unknown>): PersistedSession | 
   }
 }
 
+/** Set-equality on role sets — order-insensitive. */
+function sameRoleSet(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((role) => right.includes(role));
+}
+
 function sameEffectiveIdentity(left: Session["user"], right: Session["user"]): boolean {
+  // M19 — identity includes the FULL role set, not just the primary role:
+  // a permission change that leaves the primary role intact must still
+  // re-pair the bearer (stale rights must not ride a newer identity).
   return (
     left.id === right.id &&
     left.role === right.role &&
+    sameRoleSet(left.roles, right.roles) &&
     (left.lspId ?? null) === (right.lspId ?? null)
   );
 }

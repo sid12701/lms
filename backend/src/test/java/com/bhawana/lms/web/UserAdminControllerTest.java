@@ -434,6 +434,145 @@ class UserAdminControllerTest {
                 .andExpect(status().isConflict());
     }
 
+    @Test
+    void listUsersIsBoundedAndEmitsPaginationHeaders() throws Exception {
+        AppRole opsRole = appRoleRepository.findByCodeIn(List.of(RoleCode.OPS_USER)).stream()
+                .findFirst()
+                .orElseThrow();
+        appUserRepository.save(new AppUser(
+                "second.user",
+                "second.user@bhawana.local",
+                passwordEncoder.encode("TestPassword123!"),
+                UserStatus.ACTIVE,
+                null,
+                Set.of(opsRole)
+        ));
+
+        // M20 — a requested page returns only that slice; the total count comes
+        // from the headers, not from downloading every row.
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .param("limit", "1")
+                        .param("offset", "0")
+                        .param("paginationDetails", "ON")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].username").value("second.user"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("X-Total-Count", "2"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("X-Limit", "1"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("X-Offset", "0"));
+
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .param("limit", "1")
+                        .param("offset", "1")
+                        .param("paginationDetails", "ON")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].username").value("test.user"));
+
+        // Offset past the end returns an empty page, not an error.
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .param("limit", "10")
+                        .param("offset", "500")
+                        .param("paginationDetails", "ON")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("X-Total-Count", "2"));
+    }
+
+    @Test
+    void listUsersAppliesFiltersBeforePagination() throws Exception {
+        AppRole opsRole = appRoleRepository.findByCodeIn(List.of(RoleCode.OPS_USER)).stream()
+                .findFirst()
+                .orElseThrow();
+        AppRole productRole = appRoleRepository.findByCodeIn(List.of(RoleCode.PRODUCT_ADMIN)).stream()
+                .findFirst()
+                .orElseThrow();
+
+        // Multi-role user: visible under every granted role, not only the
+        // highest-priority one the old client-side filter collapsed to.
+        appUserRepository.save(new AppUser(
+                "multi.role",
+                "multi.role@bhawana.local",
+                passwordEncoder.encode("TestPassword123!"),
+                UserStatus.ACTIVE,
+                null,
+                Set.of(opsRole, productRole)
+        ));
+        appUserRepository.save(new AppUser(
+                "disabled.user",
+                "disabled.user@bhawana.local",
+                passwordEncoder.encode("TestPassword123!"),
+                UserStatus.INACTIVE,
+                null,
+                Set.of(opsRole)
+        ));
+
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .param("role", "PRODUCT_ADMIN")
+                        .param("paginationDetails", "ON")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].username").value("multi.role"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("X-Total-Count", "1"));
+
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .param("status", "INACTIVE")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].username").value("disabled.user"));
+
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .param("q", "MULTI.ROLE")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].username").value("multi.role"));
+
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .param("q", "disabled.user@bhawana")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].username").value("disabled.user"));
+
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .param("q", "no-such-user")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void listUsersRejectsInvalidPaginationParams() throws Exception {
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .param("limit", "0")
+                        .with(systemAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .param("offset", "-1")
+                        .with(systemAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        mockMvc.perform(get("/api/v1/internal/admin/users")
+                        .param("limit", "201")
+                        .with(systemAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
     private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor systemAdmin() {
         return jwt().jwt(jwt -> jwt.subject("ops.admin").claim("roles", List.of("SYSTEM_ADMIN")))
                 .authorities(() -> "ROLE_SYSTEM_ADMIN");

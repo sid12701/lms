@@ -20,7 +20,7 @@ const REQUIREMENTS_STALE_TIME_MS = 10 * 60_000;
 export function useLspDocumentRequirements(): UseQueryResult<LspDocumentRequirement[], Error> {
   return useQuery({
     queryKey: LSP_DOCUMENT_REQUIREMENTS_QUERY_KEY,
-    queryFn: fetchLspDocumentRequirements,
+    queryFn: ({ signal }) => fetchLspDocumentRequirements(signal),
     staleTime: REQUIREMENTS_STALE_TIME_MS,
   });
 }

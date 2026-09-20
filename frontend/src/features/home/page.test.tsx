@@ -96,6 +96,7 @@ function makeSession(role: Session["user"]["role"]): SessionContextValue {
       id: "00000000-0000-4000-8000-000000000001",
       username: "tester",
       role,
+      roles: [role],
       lspId:
         role === "LSP_UI_READ" || role === "LSP_UI_WRITE"
           ? "00000000-0000-4000-8000-000000000099"

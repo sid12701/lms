@@ -1,6 +1,9 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.domain.AppRole;
 import com.bhawana.lms.domain.AppUser;
 import com.bhawana.lms.domain.AppUserAuditEvent;
@@ -24,10 +27,14 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -142,9 +149,36 @@ public class UserAdminService {
         return appUserRepository.save(user);
     }
 
+    /**
+     * Always paginated: M20. The unbounded list is gone — callers that omit
+     * offset/limit get offset=0 and PaginationResponseBuilder.DEFAULT_LIMIT
+     * rows, never the whole app_user table. Status, granted-role membership,
+     * LSP and text filters apply to the full dataset before pagination.
+     */
     @Transactional(readOnly = true)
-    public List<AppUser> listUsers() {
-        return appUserRepository.findAllByOrderByUsernameAsc();
+    public PagedResult<AppUser> listUsers(
+            UserStatus status,
+            RoleCode role,
+            UUID lspId,
+            String query,
+            Integer offset,
+            Integer limit
+    ) {
+        int resolvedOffset = offset == null ? 0 : offset;
+        int resolvedLimit = limit == null ? PaginationResponseBuilder.DEFAULT_LIMIT : limit;
+        int safeLimit = Math.max(resolvedLimit, 1);
+        String normalizedQuery = Strings.normalizeOptional(query);
+        String queryLike = normalizedQuery == null
+                ? null
+                : "%" + normalizedQuery.toLowerCase(Locale.ROOT) + "%";
+        PageRequest pageRequest = PageRequest.of(
+                resolvedOffset / safeLimit,
+                safeLimit,
+                Sort.by(Sort.Order.asc("username"), Sort.Order.asc("id"))
+        );
+        Page<AppUser> page = appUserRepository.searchUsers(
+                status, role, lspId, queryLike, pageRequest);
+        return new PagedResult<>(page.getContent(), page.getTotalElements(), resolvedOffset, resolvedLimit);
     }
 
     @Transactional

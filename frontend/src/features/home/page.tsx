@@ -43,11 +43,10 @@ function HomeLoadingSkeleton() {
 
 export function HomePage() {
   const { session } = useSession();
-  const role = session?.user.role;
   const query = useHomeKpis();
 
-  if (role && role !== "SYSTEM_ADMIN") {
-    return <Navigate to={defaultLandingFor(role)} replace />;
+  if (session && !session.user.roles.includes("SYSTEM_ADMIN")) {
+    return <Navigate to={defaultLandingFor(session.user.roles)} replace />;
   }
 
   return (

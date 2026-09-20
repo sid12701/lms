@@ -13,7 +13,7 @@ const MIS_SUMMARY_QUERY_KEY = ["reports", "mis-summary"] as const;
 export function useMisSummary(filters: MisFilters): UseQueryResult<MisSummary, Error> {
   return useQuery({
     queryKey: [...MIS_SUMMARY_QUERY_KEY, filters],
-    queryFn: () => misSummary(filters),
+    queryFn: ({ signal }) => misSummary(filters, signal),
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
   });

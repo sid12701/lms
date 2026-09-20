@@ -59,8 +59,7 @@ function distinctActorOptions(rows: ReadonlyArray<AuditRow>): ActorOption[] {
 
 export function AuditPage() {
   const { session } = useSession();
-  const role = session?.user.role ?? null;
-  const isSystemAdmin = role === "SYSTEM_ADMIN";
+  const isSystemAdmin = session?.user.roles.includes("SYSTEM_ADMIN") === true;
 
   const [searchParams, setSearchParams] = useSearchParams();
   const parsed = useMemo(() => parseAuditFiltersFromUrl(searchParams), [searchParams]);

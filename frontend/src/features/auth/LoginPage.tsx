@@ -113,7 +113,7 @@ export function LoginPage() {
   if (session) {
     const target = session.user.mustChangePassword
       ? "/change-password"
-      : defaultLandingFor(session.user.role);
+      : defaultLandingFor(session.user.roles);
     return <Navigate to={target} replace />;
   }
 
@@ -127,7 +127,7 @@ export function LoginPage() {
       if (!signIn(next, intent)) return;
       const target = next.user.mustChangePassword
         ? "/change-password"
-        : defaultLandingFor(next.user.role);
+        : defaultLandingFor(next.user.roles);
       navigate(target, { replace: true });
     } catch (err) {
       const message =

@@ -15,7 +15,7 @@ export function useApiClients(
 ): UseQueryResult<ApiClientsListResponse, Error> {
   return useQuery({
     queryKey: [...API_CLIENTS_LIST_QUERY_KEY, filters],
-    queryFn: () => listApiClients(filters),
+    queryFn: ({ signal }) => listApiClients(filters, signal),
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
   });

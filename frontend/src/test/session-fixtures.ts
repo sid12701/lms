@@ -4,6 +4,7 @@ const TEST_ADMIN_USER_ID = "aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa";
 export const TEST_OPS_USER_ID = "aaaaaaaa-2222-4aaa-8aaa-aaaaaaaaaaaa";
 const TEST_LSP_READ_USER_ID = "aaaaaaaa-4444-4aaa-8aaa-aaaaaaaaaaaa";
 const TEST_TEMP_USER_ID = "aaaaaaaa-6666-4aaa-8aaa-aaaaaaaaaaaa";
+const TEST_MULTI_ROLE_USER_ID = "aaaaaaaa-7777-4aaa-8aaa-aaaaaaaaaaaa";
 const TEST_LSP_ID = "00000000-0000-4000-8000-000000000099";
 
 export const adminSession: Session = {
@@ -11,6 +12,7 @@ export const adminSession: Session = {
     id: TEST_ADMIN_USER_ID,
     username: "ops.admin",
     role: "SYSTEM_ADMIN",
+    roles: ["SYSTEM_ADMIN"],
     lspId: null,
     mustChangePassword: false,
   },
@@ -23,6 +25,7 @@ export const lspReadSession: Session = {
     id: TEST_LSP_READ_USER_ID,
     username: "lsp.read1",
     role: "LSP_UI_READ",
+    roles: ["LSP_UI_READ"],
     lspId: TEST_LSP_ID,
     mustChangePassword: false,
   },
@@ -35,8 +38,27 @@ export const tempPasswordSession: Session = {
     id: TEST_TEMP_USER_ID,
     username: "temp.user",
     role: "SYSTEM_ADMIN",
+    roles: ["SYSTEM_ADMIN"],
     lspId: null,
     mustChangePassword: true,
+  },
+  accessToken: "test.access.token",
+  expiresAt: "2099-01-01T00:00:00.000Z",
+};
+
+/**
+ * M19 regression fixture — the audit's canonical multi-role user.
+ * Primary role is OPS_USER (deliberate landing priority), but the session
+ * keeps the full role set so product surfaces stay reachable.
+ */
+export const opsProductAdminSession: Session = {
+  user: {
+    id: TEST_MULTI_ROLE_USER_ID,
+    username: "ops.product",
+    role: "OPS_USER",
+    roles: ["OPS_USER", "PRODUCT_ADMIN"],
+    lspId: null,
+    mustChangePassword: false,
   },
   accessToken: "test.access.token",
   expiresAt: "2099-01-01T00:00:00.000Z",

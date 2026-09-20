@@ -19,7 +19,10 @@ vi.mock("../api-detail", () => ({
 }));
 
 import {
+  DISBURSEMENT_POLL_INTERVAL_MS,
+  DISBURSEMENT_POLL_WINDOW_MS,
   loanApplicationDetailQueryKey,
+  resolveDisbursementPollInterval,
   useLoanApplicationDetail,
 } from "./useLoanApplicationDetail";
 import { useLoanApplicationActivity } from "./useLoanApplicationActivity";
@@ -89,6 +92,117 @@ describe("useLoanApplicationDetail", () => {
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toBeInstanceOf(Error);
+  });
+
+  // L02 — bounded polling only while a disbursement is genuinely in flight.
+  it("polls while a disbursement is in flight and stops at a terminal status", async () => {
+    vi.useFakeTimers();
+    try {
+      detailMock.mockResolvedValue({
+        ...DETAIL_FIXTURE,
+        application: { ...DETAIL_FIXTURE.application, status: "APPROVED_PENDING_DISBURSAL" },
+      });
+      const { Wrapper } = makeWrapper();
+      renderHook(() => useLoanApplicationDetail("app-1"), { wrapper: Wrapper });
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(detailMock).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(DISBURSEMENT_POLL_INTERVAL_MS);
+      expect(detailMock).toHaveBeenCalledTimes(2);
+
+      // The status flips to terminal on the next response.
+      detailMock.mockResolvedValue({
+        ...DETAIL_FIXTURE,
+        application: { ...DETAIL_FIXTURE.application, status: "DISBURSED" },
+      });
+      await vi.advanceTimersByTimeAsync(DISBURSEMENT_POLL_INTERVAL_MS);
+      expect(detailMock).toHaveBeenCalledTimes(3);
+
+      // Terminal state: polling is off — a long wait fetches nothing more.
+      await vi.advanceTimersByTimeAsync(DISBURSEMENT_POLL_INTERVAL_MS * 4);
+      expect(detailMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not poll ordinary statuses", async () => {
+    vi.useFakeTimers();
+    try {
+      detailMock.mockResolvedValue(DETAIL_FIXTURE); // INITIALIZED
+      const { Wrapper } = makeWrapper();
+      renderHook(() => useLoanApplicationDetail("app-1"), { wrapper: Wrapper });
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(detailMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(DISBURSEMENT_POLL_INTERVAL_MS * 4);
+      expect(detailMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps polling through a retry state but stops once the window expires", async () => {
+    vi.useFakeTimers();
+    try {
+      detailMock.mockResolvedValue({
+        ...DETAIL_FIXTURE,
+        application: { ...DETAIL_FIXTURE.application, status: "DISBURSEMENT_RETRY" },
+      });
+      const { Wrapper } = makeWrapper();
+      renderHook(() => useLoanApplicationDetail("app-1"), { wrapper: Wrapper });
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(detailMock).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(DISBURSEMENT_POLL_INTERVAL_MS);
+      expect(detailMock).toHaveBeenCalledTimes(2);
+
+      // Past the polling window the query goes quiet — no unbounded polling.
+      await vi.advanceTimersByTimeAsync(
+        DISBURSEMENT_POLL_WINDOW_MS + DISBURSEMENT_POLL_INTERVAL_MS,
+      );
+      const callsAtWindow = detailMock.mock.calls.length;
+      expect(callsAtWindow).toBeGreaterThan(2);
+      await vi.advanceTimersByTimeAsync(DISBURSEMENT_POLL_INTERVAL_MS * 3);
+      expect(detailMock).toHaveBeenCalledTimes(callsAtWindow);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("resolveDisbursementPollInterval", () => {
+  it("returns the interval for in-flight statuses inside the window", () => {
+    expect(resolveDisbursementPollInterval("APPROVED_PENDING_DISBURSAL", 0)).toBe(
+      DISBURSEMENT_POLL_INTERVAL_MS,
+    );
+    expect(resolveDisbursementPollInterval("DISBURSEMENT_RETRY", 5_000)).toBe(
+      DISBURSEMENT_POLL_INTERVAL_MS,
+    );
+  });
+
+  it("stops for terminal and historical statuses", () => {
+    for (const status of ["DISBURSED", "UNDER_REPAYMENT", "INITIALIZED", "REJECTED", "INVALID"]) {
+      expect(resolveDisbursementPollInterval(status, 0)).toBe(false);
+    }
+  });
+
+  it("stops once the polling window has elapsed", () => {
+    expect(resolveDisbursementPollInterval("DISBURSEMENT_RETRY", DISBURSEMENT_POLL_WINDOW_MS)).toBe(
+      false,
+    );
+    expect(
+      resolveDisbursementPollInterval(
+        "APPROVED_PENDING_DISBURSAL",
+        DISBURSEMENT_POLL_WINDOW_MS + 1,
+      ),
+    ).toBe(false);
+  });
+
+  it("stops when no status has loaded yet", () => {
+    expect(resolveDisbursementPollInterval(undefined, 0)).toBe(false);
   });
 });
 

@@ -7,7 +7,7 @@ const ALERT_RULES_QUERY_KEY = ["alerts", "rules"] as const;
 export function useAlertRules(enabled: boolean) {
   return useQuery<AlertRuleRow[]>({
     queryKey: ALERT_RULES_QUERY_KEY,
-    queryFn: listAlertRules,
+    queryFn: ({ signal }) => listAlertRules(signal),
     enabled,
     staleTime: 60_000,
   });

@@ -1,5 +1,7 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.AppUser;
@@ -12,6 +14,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import java.util.List;
@@ -19,9 +23,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,11 +35,13 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/internal/admin/users")
 @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+@Validated
 public class UserAdminController {
 
     private static final String USER_CREATE = "USER_CREATE";
@@ -52,10 +60,29 @@ public class UserAdminController {
     }
 
     @GetMapping
-    public List<UserResponse> listUsers() {
-        return userAdminService.listUsers().stream()
-                .map(UserAdminController::toResponse)
-                .toList();
+    public ResponseEntity<List<UserResponse>> listUsers(
+            @RequestParam(required = false) UserStatus status,
+            @RequestParam(required = false) RoleCode role,
+            @RequestParam(required = false) UUID lspId,
+            @RequestParam(required = false, name = "q") String query,
+            @RequestParam(required = false) @Min(0) Integer offset,
+            @RequestParam(required = false) @Min(1) @Max(200) Integer limit,
+            @RequestParam(required = false) String paginationDetails
+    ) {
+        boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
+        // M20 — directory reads are always bounded; filters run against the
+        // full dataset before pagination. `role` filters by granted-role
+        // membership — a multi-role user appears under every role they hold,
+        // not only under the UI's collapsed primary role.
+        PagedResult<AppUser> page = userAdminService.listUsers(
+                status, role, lspId, query, offset, limit);
+        PagedResult<UserResponse> mapped = new PagedResult<>(
+                page.items().stream().map(UserAdminController::toResponse).toList(),
+                page.totalCount(),
+                page.offset(),
+                page.limit()
+        );
+        return PaginationResponseBuilder.toListResponse(mapped, includePaginationDetails);
     }
 
     @PostMapping

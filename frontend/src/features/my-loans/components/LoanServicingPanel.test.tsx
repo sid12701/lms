@@ -58,8 +58,11 @@ describe("LoanServicingPanel", () => {
     renderPanel("acct-42");
 
     expect(await screen.findByText("Repayment schedule")).toBeInTheDocument();
-    expect(fetchMyLoanRepaymentScheduleMock).toHaveBeenCalledWith("acct-42");
-    expect(fetchMyLoanPaymentsMock).toHaveBeenCalledWith("acct-42");
+    expect(fetchMyLoanRepaymentScheduleMock).toHaveBeenCalledWith(
+      "acct-42",
+      expect.any(AbortSignal),
+    );
+    expect(fetchMyLoanPaymentsMock).toHaveBeenCalledWith("acct-42", expect.any(AbortSignal));
     expect(screen.getByText("Due")).toBeInTheDocument();
   });
 

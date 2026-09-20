@@ -176,9 +176,9 @@ export function mapBackendHomeOverviewToInternalKpis(
  * Gap #8: only SYSTEM_ADMIN may load home KPIs. Other roles use their
  * primary landing route and must not call this client.
  */
-export async function fetchHomeKpis(): Promise<HomeKpis> {
+export async function fetchHomeKpis(signal?: AbortSignal): Promise<HomeKpis> {
   const session = loadStoredSession();
-  if (!session || session.user.role !== "SYSTEM_ADMIN") {
+  if (!session || !session.user.roles.includes("SYSTEM_ADMIN")) {
     throw new ApiError(
       "Home dashboard is only available to system administrators.",
       403,
@@ -186,6 +186,8 @@ export async function fetchHomeKpis(): Promise<HomeKpis> {
       "FORBIDDEN",
     );
   }
-  const overview = await requestJson<BackendHomeOverview>("/api/v1/internal/home/overview");
+  const overview = await requestJson<BackendHomeOverview>("/api/v1/internal/home/overview", {
+    signal,
+  });
   return { kind: "internal", data: mapBackendHomeOverviewToInternalKpis(overview) };
 }

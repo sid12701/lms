@@ -9,6 +9,6 @@ export interface ProductOption {
 
 const PRODUCT_OPTIONS_PATH = "/api/v1/internal/admin/product-options";
 
-export function listProductOptions(): Promise<ProductOption[]> {
-  return requestJson<ProductOption[]>(PRODUCT_OPTIONS_PATH);
+export function listProductOptions(signal?: AbortSignal): Promise<ProductOption[]> {
+  return requestJson<ProductOption[]>(PRODUCT_OPTIONS_PATH, { signal });
 }

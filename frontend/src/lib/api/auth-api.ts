@@ -30,7 +30,7 @@ export function loginWithPassword(email: string, password: string): Promise<Back
   return requestJson<BackendTokenResponse>(
     "/api/v1/auth/login",
     { method: "POST", body: JSON.stringify({ email, password }) },
-    { authenticated: false },
+    { authenticated: false, requestClass: "auth" },
   );
 }
 
@@ -38,7 +38,7 @@ export function refreshAccessToken(): Promise<BackendTokenResponse> {
   return requestJson<BackendTokenResponse>(
     "/api/v1/auth/refresh",
     { method: "POST" },
-    { authenticated: false },
+    { authenticated: false, requestClass: "auth" },
   );
 }
 
@@ -60,12 +60,17 @@ export function completePasswordChange(
     {
       ...(options.accessToken ? { accessToken: options.accessToken } : {}),
       refreshOnUnauthorized: false,
+      requestClass: "auth",
     },
   );
 }
 
 export function logoutSession(): Promise<void> {
-  return requestJson<void>("/api/v1/auth/logout", { method: "POST" }, { authenticated: false });
+  return requestJson<void>(
+    "/api/v1/auth/logout",
+    { method: "POST" },
+    { authenticated: false, requestClass: "auth" },
+  );
 }
 
 export function fetchSystemContext(
@@ -78,6 +83,7 @@ export function fetchSystemContext(
     {
       ...(accessToken ? { accessToken } : {}),
       refreshOnUnauthorized: options.refreshOnUnauthorized,
+      requestClass: "auth",
     },
   );
 }

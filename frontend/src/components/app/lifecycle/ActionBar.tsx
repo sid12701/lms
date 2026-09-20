@@ -16,7 +16,8 @@ import {
 
 export interface ActionBarProps {
   currentStatus: LoanStatus;
-  role: Role;
+  /** M19 — the session's full role set; any granted role may unlock an action. */
+  roles: readonly Role[];
   /** Loan application id — required for disbursement preview on DISBURSED actions. */
   applicationId?: string;
   /** Externally-evaluated business gates surfaced as "disabled with reason". */
@@ -70,7 +71,7 @@ const NO_HIDDEN_TARGET_STATUSES: readonly LoanStatus[] = [];
  */
 export function ActionBar({
   currentStatus,
-  role,
+  roles,
   applicationId,
   gates,
   hiddenTargetStatuses = NO_HIDDEN_TARGET_STATUSES,
@@ -90,14 +91,14 @@ export function ActionBar({
     return {
       items: visible.map((action) => ({
         action,
-        disabledReason: resolveDisabledReason(action, currentStatus, role, gates),
+        disabledReason: resolveDisabledReason(action, currentStatus, roles, gates),
       })),
       // Every action leaving this status is owned by a dedicated workflow on the
       // host screen. The bar is empty, but the screen is not — so it must not
       // claim otherwise.
       allActionsRelocated: visible.length === 0 && all.length > 0,
     };
-  }, [currentStatus, role, gates, hiddenTargetStatuses]);
+  }, [currentStatus, roles, gates, hiddenTargetStatuses]);
 
   const handleClick = (action: LifecycleAction) => {
     setActiveAction(action);
@@ -208,5 +209,5 @@ function mapDisbursementPreview(response: DisbursementPreviewResponse) {
   };
 }
 
-const loadDisbursementPreviewForDialog = (id: string) =>
-  fetchDisbursementPreview(id).then(mapDisbursementPreview);
+const loadDisbursementPreviewForDialog = (id: string, signal?: AbortSignal) =>
+  fetchDisbursementPreview(id, signal).then(mapDisbursementPreview);
