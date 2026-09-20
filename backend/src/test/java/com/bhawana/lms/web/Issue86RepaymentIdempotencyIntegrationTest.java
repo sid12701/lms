@@ -209,7 +209,11 @@ class Issue86RepaymentIdempotencyIntegrationTest {
 
             assertEquals(5, responseBodies.size());
             // Every resolved response — winner and replays alike — is the same receipt.
-            assertEquals(1, responseBodies.stream().distinct().count());
+            assertEquals(
+                    1,
+                    responseBodies.stream().distinct().count(),
+                    "resolved bodies diverged: " + responseBodies.stream().distinct().toList()
+            );
             assertEquals(
                     1,
                     responseBodies.stream()
