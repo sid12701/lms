@@ -96,7 +96,7 @@ class LoanRepaymentScheduleServiceTest {
                 .thenReturn(List.of(new LoanRepaymentScheduleInstallment(
                         loanAccount,
                         1,
-                        java.time.LocalDate.now(),
+                        java.time.LocalDate.now(TimeConfig.BUSINESS_ZONE),
                         new BigDecimal("50000.00"),
                         new BigDecimal("1000.00"),
                         new BigDecimal("750.00"),

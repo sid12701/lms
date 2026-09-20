@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import com.bhawana.lms.tenant.TenantScopedExecution;
 import org.springframework.test.context.TestExecutionListeners;
@@ -74,7 +75,7 @@ class Issue86RepaymentIdempotencyIntegrationTest {
     void duplicatePaymentWithSameKeyAndBodyReturnsOriginalPayment() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan();
         String idempotencyKey = UUID.randomUUID().toString();
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
 
         MvcResult first = postPayment(
                 fixture.applicationId(),
@@ -113,7 +114,7 @@ class Issue86RepaymentIdempotencyIntegrationTest {
     void duplicatePaymentWithSameKeyButDifferentAmountReturnsConflict() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan();
         String idempotencyKey = UUID.randomUUID().toString();
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
 
         postPayment(
                 fixture.applicationId(),
@@ -145,7 +146,7 @@ class Issue86RepaymentIdempotencyIntegrationTest {
     void concurrentPaymentsWithSameKeyProduceSingleRowAndMatchingResponses() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan();
         String idempotencyKey = UUID.randomUUID().toString();
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(5)) {
             List<Callable<MvcResult>> tasks = new ArrayList<>();
@@ -236,7 +237,7 @@ class Issue86RepaymentIdempotencyIntegrationTest {
     void legacyPaymentWithNullFingerprintAcceptsRetryWithSameKey() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan();
         String idempotencyKey = UUID.randomUUID().toString();
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
 
         MvcResult first = postPayment(
                 fixture.applicationId(),

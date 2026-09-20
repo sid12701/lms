@@ -333,7 +333,7 @@ public class LocalDemoPortfolioSeedService {
                 UUID.randomUUID().toString(),
                 firstInstallment.getId(),
                 firstInstallment.getOutstandingAmount(),
-                LocalDate.now(),
+                businessCalendar.today(),
                 "PAY-SUPA-1007",
                 LoanPaymentChannel.UPI
         );
@@ -362,7 +362,7 @@ public class LocalDemoPortfolioSeedService {
                     UUID.randomUUID().toString(),
                     installment.getId(),
                     installment.getOutstandingAmount(),
-                    LocalDate.now(),
+                    businessCalendar.today(),
                     "PAY-SUPA-1009-" + installment.getInstallmentNumber(),
                     LoanPaymentChannel.BANK_TRANSFER
             );

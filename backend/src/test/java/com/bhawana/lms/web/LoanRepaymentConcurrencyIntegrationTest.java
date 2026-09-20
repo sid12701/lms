@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.domain.LoanRepaymentScheduleInstallmentStatus;
 import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.LoanApplicationRepository;
@@ -96,7 +97,7 @@ class LoanRepaymentConcurrencyIntegrationTest {
     @Test
     void concurrentDifferentKeyPaymentsOnSameInstallmentAllowExactlyOneSuccess() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan();
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
         BigDecimal emiAmount = new BigDecimal("4136.32");
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
@@ -147,7 +148,7 @@ class LoanRepaymentConcurrencyIntegrationTest {
                 "PAY-ROLLBACK-001",
                 "UPI",
                 UUID.randomUUID().toString(),
-                LocalDate.now().minusDays(1)
+                LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1)
         ).andExpect(status().is5xxServerError());
 
         assertEquals(0L, loanPaymentTransactionRepository.count());

@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanApplicationStatus;
@@ -224,7 +225,7 @@ class FinancialStatusGuardIntegrationTest {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("targetInstallmentId", installment.get("id").asText());
             body.put("amount", new BigDecimal(installment.get("outstandingAmount").asText()));
-            body.put("postedAt", LocalDate.now().minusDays(schedule.size() - index).toString());
+            body.put("postedAt", LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(schedule.size() - index).toString());
             body.put("channel", "BANK_TRANSFER");
             body.put("reference", "PAY-CLOSE-" + String.format("%03d", index + 1));
             mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
