@@ -60,6 +60,18 @@ public class ConfigurableLoanDocumentStorageService implements LoanDocumentStora
 
 
 
+    /** Maximum length of the readability-only file-name segment inside a storage key. */
+
+    private static final int MAX_KEY_FILE_NAME_LENGTH = 128;
+
+
+
+    /** Substituted when an upload file name reduces to no usable key segment. */
+
+    private static final String FALLBACK_KEY_FILE_NAME = "document.bin";
+
+
+
     @Override
 
     public byte[] retrieve(String storageKey) {
@@ -311,7 +323,9 @@ public class ConfigurableLoanDocumentStorageService implements LoanDocumentStora
      * the same application and document type always resolve to the same object.
      * A re-executed idempotent upload after a crash (H17) overwrites its own
      * object instead of stacking an orphan, and the checksum prefix makes a
-     * collision between genuinely different content impossible.
+     * collision between genuinely different content impossible. The file
+     * name is readability-only and is reduced to a safe single path segment
+     * before it enters the key.
      */
     private static String buildStorageKey(
             UUID applicationId,
@@ -326,7 +340,88 @@ public class ConfigurableLoanDocumentStorageService implements LoanDocumentStora
 
                 + "/" + contentChecksum
 
-                + "-" + fileName;
+                + "-" + toSafeKeySegment(fileName);
+
+    }
+
+
+
+    /**
+     * The file-name portion of a storage key exists only for readability —
+     * the content checksum is the object's real identity. The segment is
+     * reduced to a single safe path element: the raw name is first truncated
+     * to its last path component, every character outside
+     * {@code [A-Za-z0-9._-]} collapses to {@code _}, leading dots are dropped
+     * so it can never become a dot-segment or a hidden name, and the result
+     * is length-bounded. The mapping is deterministic, so an idempotent
+     * replay of the same upload still derives the same key.
+     */
+
+    private static String toSafeKeySegment(String fileName) {
+
+        String candidate = fileName == null ? "" : fileName;
+
+        int lastSeparator = Math.max(candidate.lastIndexOf('/'), candidate.lastIndexOf('\\'));
+
+        if (lastSeparator >= 0) {
+
+            candidate = candidate.substring(lastSeparator + 1);
+
+        }
+
+        StringBuilder cleaned = new StringBuilder(candidate.length());
+
+        for (int index = 0; index < candidate.length(); index++) {
+
+            char character = candidate.charAt(index);
+
+            cleaned.append(isSafeKeySegmentChar(character) ? character : '_');
+
+        }
+
+        String segment = stripLeadingDots(cleaned.toString());
+
+        if (segment.length() > MAX_KEY_FILE_NAME_LENGTH) {
+
+            segment = stripLeadingDots(segment.substring(segment.length() - MAX_KEY_FILE_NAME_LENGTH));
+
+        }
+
+        return segment.isEmpty() ? FALLBACK_KEY_FILE_NAME : segment;
+
+    }
+
+
+
+    private static boolean isSafeKeySegmentChar(char character) {
+
+        return character >= 'a' && character <= 'z'
+
+                || character >= 'A' && character <= 'Z'
+
+                || character >= '0' && character <= '9'
+
+                || character == '.'
+
+                || character == '_'
+
+                || character == '-';
+
+    }
+
+
+
+    private static String stripLeadingDots(String value) {
+
+        int start = 0;
+
+        while (start < value.length() && value.charAt(start) == '.') {
+
+            start++;
+
+        }
+
+        return value.substring(start);
 
     }
 

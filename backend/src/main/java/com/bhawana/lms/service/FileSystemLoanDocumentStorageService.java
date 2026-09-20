@@ -5,6 +5,7 @@ import com.bhawana.lms.common.api.error.DocumentStorageUnavailableException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,8 +22,8 @@ public class FileSystemLoanDocumentStorageService {
     }
 
     public List<LoanDocumentStorageService.StorageEntry> listAll(String prefix) {
-        Path rootPath = properties.getRootPath();
-        Path directory = rootPath.resolve(prefix);
+        Path rootPath = properties.getRootPath().normalize();
+        Path directory = resolveWithinRoot(prefix);
         List<LoanDocumentStorageService.StorageEntry> entries = new ArrayList<>();
         if (!Files.isDirectory(directory)) {
             return entries;
@@ -43,7 +44,7 @@ public class FileSystemLoanDocumentStorageService {
     }
 
     public byte[] retrieve(String storageKey) {
-        Path targetPath = properties.getRootPath().resolve(storageKey);
+        Path targetPath = resolveWithinRoot(storageKey);
         if (!Files.exists(targetPath)) {
             throw new DocumentNotFoundException(
                     "Document not found in LMS-managed local storage: " + storageKey
@@ -62,7 +63,7 @@ public class FileSystemLoanDocumentStorageService {
     }
 
     public LoanDocumentStorageService.RetrievedDocumentStream openStream(String storageKey) {
-        Path targetPath = properties.getRootPath().resolve(storageKey);
+        Path targetPath = resolveWithinRoot(storageKey);
         if (!Files.exists(targetPath)) {
             throw new DocumentNotFoundException(
                     "Document not found in LMS-managed local storage: " + storageKey
@@ -83,7 +84,7 @@ public class FileSystemLoanDocumentStorageService {
     }
 
     public StoredDocument store(DocumentStorageDescriptor descriptor, byte[] content) {
-        Path targetPath = properties.getRootPath().resolve(descriptor.storageKey());
+        Path targetPath = resolveWithinRoot(descriptor.storageKey());
         try {
             Files.createDirectories(targetPath.getParent());
             Files.write(targetPath, content);
@@ -98,5 +99,29 @@ public class FileSystemLoanDocumentStorageService {
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to store document in LMS-managed local storage.", exception);
         }
+    }
+
+    /**
+     * Defense-in-depth for path injection: a storage key must stay a relative
+     * path under the configured storage root. Keys are built server-side and
+     * upload file names are reduced to a safe key segment before they ever
+     * reach a key, but a key that still resolves outside the root (an absolute
+     * path or {@code ..} segments) is rejected outright instead of being
+     * resolved.
+     */
+    private Path resolveWithinRoot(String storageKey) {
+        Path rootPath = properties.getRootPath().normalize();
+        Path targetPath;
+        try {
+            targetPath = rootPath.resolve(storageKey).normalize();
+        } catch (InvalidPathException exception) {
+            throw new IllegalArgumentException("Storage key is not a valid path: " + storageKey, exception);
+        }
+        if (!targetPath.startsWith(rootPath)) {
+            throw new IllegalArgumentException(
+                    "Storage key resolves outside the LMS-managed local storage root: " + storageKey
+            );
+        }
+        return targetPath;
     }
 }

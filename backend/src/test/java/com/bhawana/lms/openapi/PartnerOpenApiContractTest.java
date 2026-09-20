@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -71,7 +70,7 @@ class PartnerOpenApiContractTest {
     void protectedOperationsDeclareBearerAuthAndPublicAuthOpsDoNot() throws Exception {
         JsonNode doc = partnerDoc();
         forEachOperation(doc, (path, method, operation) -> {
-            boolean publicRoute = isPublicAuthRoute(path, method);
+            boolean publicRoute = isPublicAuthRoute(path);
             JsonNode security = operation.path("security");
             if (publicRoute) {
                 assertThat(security.isMissingNode() || security.isEmpty())
@@ -245,7 +244,7 @@ class PartnerOpenApiContractTest {
         return objectMapper.readTree(body);
     }
 
-    private static boolean isPublicAuthRoute(String path, String method) {
+    private static boolean isPublicAuthRoute(String path) {
         return path.startsWith("/api/v1/auth/")
                 && List.of("/api/v1/auth/login", "/api/v1/auth/token",
                         "/api/v1/auth/refresh", "/api/v1/auth/logout").contains(path);
@@ -262,12 +261,8 @@ class PartnerOpenApiContractTest {
     }
 
     private static void forEachOperation(JsonNode doc, OperationAssertion assertion) {
-        Iterator<Map.Entry<String, JsonNode>> pathItems = doc.path("paths").fields();
-        while (pathItems.hasNext()) {
-            Map.Entry<String, JsonNode> pathItem = pathItems.next();
-            Iterator<Map.Entry<String, JsonNode>> operations = pathItem.getValue().fields();
-            while (operations.hasNext()) {
-                Map.Entry<String, JsonNode> operation = operations.next();
+        for (Map.Entry<String, JsonNode> pathItem : doc.path("paths").properties()) {
+            for (Map.Entry<String, JsonNode> operation : pathItem.getValue().properties()) {
                 if (List.of("get", "put", "post", "delete", "patch", "options", "head", "trace")
                         .contains(operation.getKey())) {
                     assertion.assertOperation(pathItem.getKey(), operation.getKey(), operation.getValue());
