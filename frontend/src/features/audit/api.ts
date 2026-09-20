@@ -125,9 +125,12 @@ function humanize(action: string | null | undefined): string {
   return lowered.charAt(0).toUpperCase() + lowered.slice(1);
 }
 
-async function fetchFromBackend(filters: AuditEventsFilters): Promise<AuditEventsResponse> {
+async function fetchFromBackend(
+  filters: AuditEventsFilters,
+  signal?: AbortSignal,
+): Promise<AuditEventsResponse> {
   const path = buildQueryPath(ENDPOINT, buildBackendQueryParams(filters));
-  const payload = await requestJson<BackendCursorPagedAuditEvents>(path);
+  const payload = await requestJson<BackendCursorPagedAuditEvents>(path, { signal });
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
 
   return {
@@ -139,6 +142,9 @@ async function fetchFromBackend(filters: AuditEventsFilters): Promise<AuditEvent
   };
 }
 
-export async function fetchAuditEvents(filters: AuditEventsFilters): Promise<AuditEventsResponse> {
-  return fetchFromBackend(filters);
+export async function fetchAuditEvents(
+  filters: AuditEventsFilters,
+  signal?: AbortSignal,
+): Promise<AuditEventsResponse> {
+  return fetchFromBackend(filters, signal);
 }

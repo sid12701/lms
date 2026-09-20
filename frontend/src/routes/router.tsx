@@ -12,13 +12,6 @@ import { AppRoot } from "@/routes/app-root";
 const SYSTEM_ADMIN_ONLY: readonly Role[] = ["SYSTEM_ADMIN"] as const;
 const SYSTEM_ADMIN_OR_OPS: readonly Role[] = ["SYSTEM_ADMIN", "OPS_USER"] as const;
 const PRODUCT_ADMIN_OR_SYSTEM: readonly Role[] = ["SYSTEM_ADMIN", "PRODUCT_ADMIN"] as const;
-const ALL_AUTHENTICATED: readonly Role[] = [
-  "SYSTEM_ADMIN",
-  "OPS_USER",
-  "PRODUCT_ADMIN",
-  "LSP_UI_READ",
-  "LSP_UI_WRITE",
-] as const;
 const LSP_UI_ALL: readonly Role[] = ["LSP_UI_READ", "LSP_UI_WRITE"] as const;
 
 const HomePage = lazyPage(() => import("@/features/home/page"));
@@ -72,8 +65,13 @@ export function createAppRouter() {
           children: [
             {
               path: "/home",
+              // M19 — Home's audience is SYSTEM_ADMIN at every layer: the
+              // backend HomeDashboardController is hasRole('SYSTEM_ADMIN'),
+              // nav shows the link only to admins, and the page redirects
+              // non-admins. The guard now agrees instead of allowing all
+              // authenticated roles through to a page that bounces them.
               element: (
-                <RequireRole roles={ALL_AUTHENTICATED}>{withSuspense(HomePage)}</RequireRole>
+                <RequireRole roles={SYSTEM_ADMIN_ONLY}>{withSuspense(HomePage)}</RequireRole>
               ),
             },
             {

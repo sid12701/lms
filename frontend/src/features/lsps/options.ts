@@ -9,7 +9,7 @@ export interface LspOption {
 
 const LSP_OPTIONS_PATH = "/api/v1/internal/admin/lsp-options";
 
-export async function listLspOptions(): Promise<LspOption[]> {
-  const rows = await requestJson<LspOption[]>(LSP_OPTIONS_PATH);
+export async function listLspOptions(signal?: AbortSignal): Promise<LspOption[]> {
+  const rows = await requestJson<LspOption[]>(LSP_OPTIONS_PATH, { signal });
   return rows.filter((row) => row.status === "ACTIVE");
 }

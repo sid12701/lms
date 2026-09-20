@@ -1,33 +1,45 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const requestJsonMock = vi.hoisted(() => vi.fn());
+const requestJsonWithHeadersMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/api/http-client", () => ({
-  requestJson: requestJsonMock,
-}));
+vi.mock("@/lib/api/http-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/http-client")>();
+  return {
+    ...actual,
+    requestJson: requestJsonMock,
+    requestJsonWithHeaders: requestJsonWithHeadersMock,
+  };
+});
 
 import { listUsers, revokeUserSessions, createUser } from "./api";
 import { makeCreateUserInput } from "./test-utils";
 
+function listResult(items: unknown[], headers: Record<string, string> = {}) {
+  return { data: items, headers: new Headers(headers) };
+}
+
 describe("listUsers", () => {
   afterEach(() => {
-    requestJsonMock.mockReset();
+    requestJsonWithHeadersMock.mockReset();
   });
 
   it("maps lockout fields from the backend response", async () => {
-    requestJsonMock.mockResolvedValue([
-      {
-        id: "11111111-1111-1111-1111-111111111111",
-        username: "locked.user",
-        email: "locked.user@bhawana.local",
-        status: "ACTIVE",
-        lspId: null,
-        lspName: null,
-        roles: ["OPS_USER"],
-        lockedAt: "2026-06-08T10:00:00.000Z",
-        lockReason: "BRUTE_FORCE",
-      },
-    ]);
+    requestJsonWithHeadersMock.mockResolvedValue(
+      listResult([
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          username: "locked.user",
+          email: "locked.user@bhawana.local",
+          status: "ACTIVE",
+          lspId: null,
+          lspName: null,
+          roles: ["OPS_USER"],
+          lockedAt: "2026-06-08T10:00:00.000Z",
+          lockReason: "BRUTE_FORCE",
+        },
+      ]),
+    );
 
     const result = await listUsers();
 
@@ -36,23 +48,85 @@ describe("listUsers", () => {
   });
 
   it("maps passwordChangeRequired from the backend response", async () => {
-    requestJsonMock.mockResolvedValue([
-      {
-        id: "11111111-1111-1111-1111-111111111111",
-        username: "pending.user",
-        email: "pending.user@bhawana.local",
-        status: "ACTIVE",
-        lspId: null,
-        lspName: null,
-        roles: ["OPS_USER"],
-        passwordChangeRequired: true,
-        createdAt: "2026-06-08T10:00:00.000Z",
-      },
-    ]);
+    requestJsonWithHeadersMock.mockResolvedValue(
+      listResult([
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          username: "pending.user",
+          email: "pending.user@bhawana.local",
+          status: "ACTIVE",
+          lspId: null,
+          lspName: null,
+          roles: ["OPS_USER"],
+          passwordChangeRequired: true,
+          createdAt: "2026-06-08T10:00:00.000Z",
+        },
+      ]),
+    );
 
     const result = await listUsers();
 
     expect(result.items[0]?.mustChangePassword).toBe(true);
+  });
+
+  // M20 — filters and pagination travel to the backend; no local filtering.
+  it("sends filters and pagination params, and reads totals from headers", async () => {
+    requestJsonWithHeadersMock.mockResolvedValue(
+      listResult([], { "X-Total-Count": "137", "X-Limit": "50", "X-Offset": "50" }),
+    );
+
+    const result = await listUsers({
+      q: "ops",
+      role: "OPS_USER",
+      status: "DISABLED",
+      lspId: "33333333-3333-3333-3333-333333333333",
+      page: 1,
+      pageSize: 50,
+    });
+
+    const [path, init] = requestJsonWithHeadersMock.mock.calls[0] as [string, RequestInit];
+    const url = new URL(path, "http://localhost");
+    expect(url.pathname).toBe("/api/v1/internal/admin/users");
+    expect(url.searchParams.get("q")).toBe("ops");
+    expect(url.searchParams.get("role")).toBe("OPS_USER");
+    expect(url.searchParams.get("status")).toBe("INACTIVE");
+    expect(url.searchParams.get("lspId")).toBe("33333333-3333-3333-3333-333333333333");
+    expect(url.searchParams.get("offset")).toBe("50");
+    expect(url.searchParams.get("limit")).toBe("50");
+    expect(url.searchParams.get("paginationDetails")).toBe("ON");
+    expect(init.signal).toBeUndefined();
+
+    expect(result.total).toBe(137);
+    expect(result.page).toBe(1);
+    expect(result.pageSize).toBe(50);
+    expect(result.items).toEqual([]);
+  });
+
+  it("defaults to the first page and falls back to the item count when headers are absent", async () => {
+    requestJsonWithHeadersMock.mockResolvedValue(
+      listResult([
+        {
+          id: "11111111-1111-1111-1111-111111111111",
+          username: "ops.user",
+          email: "ops.user@bhawana.local",
+          status: "ACTIVE",
+          lspId: null,
+          lspName: null,
+          roles: ["OPS_USER"],
+          createdAt: "2026-06-08T10:00:00.000Z",
+        },
+      ]),
+    );
+
+    const result = await listUsers();
+
+    const [path] = requestJsonWithHeadersMock.mock.calls[0] as [string];
+    const url = new URL(path, "http://localhost");
+    expect(url.searchParams.get("offset")).toBe("0");
+    expect(url.searchParams.get("limit")).toBe("25");
+    expect(url.searchParams.get("q")).toBeNull();
+    expect(result.total).toBe(1);
+    expect(result.page).toBe(0);
   });
 });
 

@@ -21,7 +21,7 @@ const OPTIONS_STALE_TIME_MS = 5 * 60_000;
 export function useLspOptions(): UseQueryResult<LspOption[], Error> {
   return useQuery({
     queryKey: LSP_OPTIONS_QUERY_KEY,
-    queryFn: listLspOptions,
+    queryFn: ({ signal }) => listLspOptions(signal),
     staleTime: OPTIONS_STALE_TIME_MS,
   });
 }

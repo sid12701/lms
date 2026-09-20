@@ -18,6 +18,8 @@ describe("listProductOptions", () => {
     requestJsonMock.mockResolvedValue(options);
 
     await expect(listProductOptions()).resolves.toEqual(options);
-    expect(requestJsonMock).toHaveBeenCalledWith("/api/v1/internal/admin/product-options");
+    expect(requestJsonMock).toHaveBeenCalledWith("/api/v1/internal/admin/product-options", {
+      signal: undefined,
+    });
   });
 });

@@ -36,9 +36,9 @@ export function useLspIpAllowlistAdmin(lspId: string | null, enabled: boolean) {
 
   const ui = useQuery({
     queryKey: lspIpAllowlistQueryKey(lspId, "ui"),
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (!lspId) throw new Error("lspId required");
-      return listLspIpAllowlist(lspId, "ui");
+      return listLspIpAllowlist(lspId, "ui", signal);
     },
     enabled: active,
     staleTime: 0,
@@ -47,9 +47,9 @@ export function useLspIpAllowlistAdmin(lspId: string | null, enabled: boolean) {
 
   const api = useQuery({
     queryKey: lspIpAllowlistQueryKey(lspId, "api"),
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (!lspId) throw new Error("lspId required");
-      return listLspIpAllowlist(lspId, "api");
+      return listLspIpAllowlist(lspId, "api", signal);
     },
     enabled: active,
     staleTime: 0,
@@ -58,9 +58,9 @@ export function useLspIpAllowlistAdmin(lspId: string | null, enabled: boolean) {
 
   const enforcement = useQuery({
     queryKey: lspAllowlistEnforcementQueryKey(lspId),
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (!lspId) throw new Error("lspId required");
-      return getLspAllowlistEnforcement(lspId);
+      return getLspAllowlistEnforcement(lspId, signal);
     },
     enabled: active,
     staleTime: 0,

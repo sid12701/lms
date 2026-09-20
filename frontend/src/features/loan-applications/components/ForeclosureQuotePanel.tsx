@@ -70,7 +70,7 @@ export function ForeclosureQuotePanel({ detail, onExecuted }: ForeclosureQuotePa
 
   const quotesQuery = useQuery({
     queryKey: foreclosureQuotesQueryKey(applicationId),
-    queryFn: () => fetchForeclosureQuotes(applicationId),
+    queryFn: ({ signal }) => fetchForeclosureQuotes(applicationId, signal),
     enabled: isEligible,
     staleTime: 15_000,
   });

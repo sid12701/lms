@@ -36,7 +36,7 @@ const APP_ID = "11111111-1111-4111-8111-111111111111";
 
 function stubSession(role: "SYSTEM_ADMIN" | "OPS_USER") {
   useSessionMock.mockReturnValue({
-    session: { user: { role } },
+    session: { user: { role, roles: [role] } },
   } as unknown as SessionContextValue);
 }
 

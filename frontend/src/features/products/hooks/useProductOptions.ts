@@ -14,7 +14,7 @@ const OPTIONS_STALE_TIME_MS = 5 * 60_000;
 export function useProductOptions(): UseQueryResult<ProductOption[], Error> {
   return useQuery({
     queryKey: PRODUCT_OPTIONS_QUERY_KEY,
-    queryFn: listProductOptions,
+    queryFn: ({ signal }) => listProductOptions(signal),
     staleTime: OPTIONS_STALE_TIME_MS,
   });
 }

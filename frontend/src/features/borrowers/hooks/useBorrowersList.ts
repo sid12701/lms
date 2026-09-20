@@ -16,7 +16,7 @@ export function useBorrowersList(
 ): UseQueryResult<BorrowerListResponse, Error> {
   return useQuery({
     queryKey: [...BORROWERS_LIST_QUERY_KEY, filters],
-    queryFn: () => fetchBorrowersList(filters),
+    queryFn: ({ signal }) => fetchBorrowersList(filters, signal),
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
   });

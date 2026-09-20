@@ -16,7 +16,7 @@ export function useLoanApplications(
 ): UseQueryResult<LoanApplicationListResponse, Error> {
   return useQuery({
     queryKey: [...LOAN_APPLICATIONS_LIST_QUERY_KEY, filters],
-    queryFn: () => fetchLoanApplications(filters),
+    queryFn: ({ signal }) => fetchLoanApplications(filters, signal),
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
   });

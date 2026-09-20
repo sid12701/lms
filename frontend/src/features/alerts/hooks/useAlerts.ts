@@ -13,7 +13,7 @@ export const ALERTS_LIST_QUERY_KEY = ["alerts", "list"] as const;
 export function useAlerts(filters: AlertsListFilters): UseQueryResult<AlertsListResponse, Error> {
   return useQuery({
     queryKey: [...ALERTS_LIST_QUERY_KEY, filters],
-    queryFn: () => listAlerts(filters),
+    queryFn: ({ signal }) => listAlerts(filters, signal),
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
   });

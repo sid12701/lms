@@ -189,17 +189,17 @@ function ApplicationTabBody({
   applicationId,
   detail,
   borrowerDetail,
-  role,
+  roles,
 }: {
   activeTab: LoanApplicationDetailTab;
   applicationId: string;
   detail: LoanApplicationDetail;
   borrowerDetail: BorrowerDetail | null;
-  role: Role | undefined;
+  roles: readonly Role[];
 }) {
   const canPost =
-    role !== undefined &&
-    canPostRepayment(role) &&
+    roles.length > 0 &&
+    canPostRepayment(roles) &&
     REPAYABLE_STATUSES.has(detail.application.status);
 
   switch (activeTab) {
@@ -249,7 +249,7 @@ export function LoanApplicationDetailPage() {
   const detailQuery = useLoanApplicationDetail(applicationId);
   const [activeTab, setActiveTab] = useTabParam();
   const { session } = useSession();
-  const role = session?.user.role;
+  const roles = session?.user.roles ?? [];
 
   // Gap #20: fetch the borrower-admin projection in parallel with the
   // loan-app detail so the OverviewTab can render the fuller borrower
@@ -368,14 +368,19 @@ export function LoanApplicationDetailPage() {
       className="flex flex-col gap-6 p-6 xl:flex-row xl:items-start xl:gap-8"
     >
       <div className="min-w-0 flex-1 space-y-6">
-        <DetailHeader detail={detail} />
+        <DetailHeader
+          detail={detail}
+          lastUpdatedAt={detailQuery.dataUpdatedAt}
+          isRefreshing={detailQuery.isFetching}
+          onRefresh={() => void detailQuery.refetch()}
+        />
         <DetailTabsShell activeTab={activeTab} onTabChange={setActiveTab}>
           <ApplicationTabBody
             activeTab={activeTab}
             applicationId={applicationId}
             detail={detail}
             borrowerDetail={borrowerDetail}
-            role={role}
+            roles={roles}
           />
         </DetailTabsShell>
       </div>

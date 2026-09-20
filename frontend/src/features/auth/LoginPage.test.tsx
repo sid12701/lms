@@ -34,6 +34,7 @@ function sessionFor(role: Session["user"]["role"], id: string, username: string)
       id,
       username,
       role,
+      roles: [role],
       lspId:
         role === "LSP_UI_READ" || role === "LSP_UI_WRITE"
           ? "00000000-0000-4000-8000-000000000099"

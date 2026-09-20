@@ -65,9 +65,9 @@ describe("useLspIpAllowlistAdmin", () => {
     await waitFor(() => expect(result.current.ui.isSuccess).toBe(true));
     await waitFor(() => expect(result.current.api.isSuccess).toBe(true));
     await waitFor(() => expect(result.current.enforcement.isSuccess).toBe(true));
-    expect(listMock).toHaveBeenCalledWith("lsp-1", "ui");
-    expect(listMock).toHaveBeenCalledWith("lsp-1", "api");
-    expect(enforcementMock).toHaveBeenCalledWith("lsp-1");
+    expect(listMock).toHaveBeenCalledWith("lsp-1", "ui", expect.any(AbortSignal));
+    expect(listMock).toHaveBeenCalledWith("lsp-1", "api", expect.any(AbortSignal));
+    expect(enforcementMock).toHaveBeenCalledWith("lsp-1", expect.any(AbortSignal));
   });
 
   it("performs explicit save, remove, and enforcement mutations", async () => {

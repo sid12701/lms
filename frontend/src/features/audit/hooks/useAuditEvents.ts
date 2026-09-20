@@ -25,7 +25,7 @@ export function useAuditEvents(
 ): UseQueryResult<AuditEventsResponse, Error> {
   return useQuery({
     queryKey: [...AUDIT_EVENTS_QUERY_KEY, filters],
-    queryFn: () => fetchAuditEvents(filters),
+    queryFn: ({ signal }) => fetchAuditEvents(filters, signal),
     staleTime: 15_000,
     placeholderData: (previousData) => previousData,
     enabled: options.enabled ?? true,

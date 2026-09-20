@@ -16,7 +16,7 @@ export function useLoanApplicationDocuments(
 ): UseQueryResult<LoanApplicationDocumentsResponse, Error> {
   return useQuery({
     queryKey: loanApplicationDocumentsQueryKey(id),
-    queryFn: () => fetchLoanApplicationDocuments(id),
+    queryFn: ({ signal }) => fetchLoanApplicationDocuments(id, signal),
     enabled: Boolean(id),
     staleTime: 30_000,
   });

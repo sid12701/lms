@@ -55,10 +55,13 @@ function projectLspRow(payload: BackendLspResponse): LspRow {
   };
 }
 
-export async function listLsps(filters: LspsListFilters = {}): Promise<LspsListResponse> {
+export async function listLsps(
+  filters: LspsListFilters = {},
+  signal?: AbortSignal,
+): Promise<LspsListResponse> {
   const all = await requestJson<BackendLspResponse[]>(
     BACKEND_BASE,
-    { cache: "no-store" },
+    { cache: "no-store", signal },
     { dedupe: false },
   );
   const filtered = all.filter((row) => {
@@ -147,10 +150,13 @@ function projectAuditEvent(payload: BackendLspAuditEventResponse): LspAuditEvent
   };
 }
 
-export async function listLspAuditEvents(lspId: string): Promise<LspAuditEventRow[]> {
+export async function listLspAuditEvents(
+  lspId: string,
+  signal?: AbortSignal,
+): Promise<LspAuditEventRow[]> {
   const rows = await requestJson<BackendLspAuditEventResponse[]>(
     `${BACKEND_BASE}/${encodeURIComponent(lspId)}/audit-events`,
-    { cache: "no-store" },
+    { cache: "no-store", signal },
     { dedupe: false },
   );
   if (!Array.isArray(rows)) {
@@ -187,9 +193,11 @@ function allowlistBase(lspId: string, surface: LspIpAllowlistSurface): string {
 export async function listLspIpAllowlist(
   lspId: string,
   surface: LspIpAllowlistSurface,
+  signal?: AbortSignal,
 ): Promise<LspIpAllowlistEntry[]> {
   const rows = await requestJson<BackendIpAllowlistEntry[]>(allowlistBase(lspId, surface), {
     cache: "no-store",
+    signal,
   });
   return rows.map(projectAllowlistEntry);
 }
@@ -219,10 +227,13 @@ export async function removeLspIpAllowlistEntry(
   });
 }
 
-export async function getLspAllowlistEnforcement(lspId: string): Promise<LspAllowlistEnforcement> {
+export async function getLspAllowlistEnforcement(
+  lspId: string,
+  signal?: AbortSignal,
+): Promise<LspAllowlistEnforcement> {
   return requestJson<LspAllowlistEnforcement>(
     `${BACKEND_BASE}/${encodeURIComponent(lspId)}/allowlist-enforcement`,
-    { cache: "no-store" },
+    { cache: "no-store", signal },
   );
 }
 

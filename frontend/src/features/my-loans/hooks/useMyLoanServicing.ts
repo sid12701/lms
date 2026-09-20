@@ -12,13 +12,13 @@ function myLoanPaymentsQueryKey(loanAccountId: string) {
 export function useMyLoanServicing(loanAccountId: string) {
   const scheduleQuery = useQuery({
     queryKey: myLoanScheduleQueryKey(loanAccountId),
-    queryFn: () => fetchMyLoanRepaymentSchedule(loanAccountId),
+    queryFn: ({ signal }) => fetchMyLoanRepaymentSchedule(loanAccountId, signal),
     staleTime: 15_000,
   });
 
   const paymentsQuery = useQuery({
     queryKey: myLoanPaymentsQueryKey(loanAccountId),
-    queryFn: () => fetchMyLoanPayments(loanAccountId),
+    queryFn: ({ signal }) => fetchMyLoanPayments(loanAccountId, signal),
     staleTime: 15_000,
   });
 

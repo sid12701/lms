@@ -1,4 +1,3 @@
-/* eslint-disable jsx-a11y/aria-role -- "role" here is the ActionBar prop, not the ARIA attribute */
 import { describe, it, expect, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
@@ -10,7 +9,7 @@ describe("<ActionBar />", () => {
     const { getByRole } = renderWithProviders(
       <ActionBar
         currentStatus="AWAITING_APPROVAL"
-        role="SYSTEM_ADMIN"
+        roles={["SYSTEM_ADMIN"]}
         gates={{ docsComplete: true, scheduleValid: true }}
         onConfirm={() => {}}
       />,
@@ -26,7 +25,7 @@ describe("<ActionBar />", () => {
     const { getByRole } = renderWithProviders(
       <ActionBar
         currentStatus="AWAITING_APPROVAL"
-        role="SYSTEM_ADMIN"
+        roles={["SYSTEM_ADMIN"]}
         gates={{ docsComplete: false, scheduleValid: true }}
         onConfirm={() => {}}
       />,
@@ -37,7 +36,7 @@ describe("<ActionBar />", () => {
 
   it("disables actions when role lacks the permission", () => {
     const { getByRole } = renderWithProviders(
-      <ActionBar currentStatus="AWAITING_APPROVAL" role="LSP_UI_READ" onConfirm={() => {}} />,
+      <ActionBar currentStatus="AWAITING_APPROVAL" roles={["LSP_UI_READ"]} onConfirm={() => {}} />,
     );
     const approve = getByRole("button", { name: "Approve" });
     expect(approve).toHaveAttribute("aria-disabled", "true");
@@ -45,7 +44,7 @@ describe("<ActionBar />", () => {
 
   it("renders an empty-state message when no transitions leave the status", () => {
     const { getByText } = renderWithProviders(
-      <ActionBar currentStatus="CLOSED" role="SYSTEM_ADMIN" onConfirm={() => {}} />,
+      <ActionBar currentStatus="CLOSED" roles={["SYSTEM_ADMIN"]} onConfirm={() => {}} />,
     );
     expect(getByText(/No actions available/i)).toBeInTheDocument();
   });
@@ -59,7 +58,7 @@ describe("<ActionBar />", () => {
     const { queryByRole, queryByText } = renderWithProviders(
       <ActionBar
         currentStatus="UNDER_REPAYMENT"
-        role="SYSTEM_ADMIN"
+        roles={["SYSTEM_ADMIN"]}
         gates={{ docsComplete: true, scheduleValid: true }}
         hiddenTargetStatuses={["FORECLOSED"]}
         onConfirm={() => {}}
@@ -73,7 +72,7 @@ describe("<ActionBar />", () => {
     const { getByText } = renderWithProviders(
       <ActionBar
         currentStatus="UNDER_REPAYMENT"
-        role="OPS_USER"
+        roles={["OPS_USER"]}
         gates={{ docsComplete: true, scheduleValid: true }}
         onConfirm={() => {}}
       />,
@@ -87,7 +86,7 @@ describe("<ActionBar />", () => {
     const { getByRole, findAllByRole } = renderWithProviders(
       <ActionBar
         currentStatus="AWAITING_APPROVAL"
-        role="SYSTEM_ADMIN"
+        roles={["SYSTEM_ADMIN"]}
         gates={{ docsComplete: true, scheduleValid: true }}
         onConfirm={() => {}}
       />,
@@ -103,7 +102,7 @@ describe("<ActionBar />", () => {
     const { getByRole, findByRole, findByLabelText, getAllByRole } = renderWithProviders(
       <ActionBar
         currentStatus="AWAITING_APPROVAL"
-        role="SYSTEM_ADMIN"
+        roles={["SYSTEM_ADMIN"]}
         gates={{ docsComplete: true, scheduleValid: true }}
         onConfirm={onConfirm}
       />,
@@ -131,7 +130,7 @@ describe("<ActionBar />", () => {
     const { container } = renderWithProviders(
       <ActionBar
         currentStatus="AWAITING_APPROVAL"
-        role="SYSTEM_ADMIN"
+        roles={["SYSTEM_ADMIN"]}
         gates={{ docsComplete: true, scheduleValid: true }}
         onConfirm={() => {}}
       />,

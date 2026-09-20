@@ -13,7 +13,7 @@ export const USERS_LIST_QUERY_KEY = ["admin", "users", "list"] as const;
 export function useUsers(filters: UsersListFilters): UseQueryResult<UsersListResponse, Error> {
   return useQuery({
     queryKey: [...USERS_LIST_QUERY_KEY, filters],
-    queryFn: () => listUsers(filters),
+    queryFn: ({ signal }) => listUsers(filters, signal),
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
   });

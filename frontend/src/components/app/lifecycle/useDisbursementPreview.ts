@@ -37,18 +37,18 @@ export function useDisbursementPreview({
 }: {
   enabled: boolean;
   applicationId?: string;
-  load?: (applicationId: string) => Promise<DisbursementPreviewData>;
+  load?: (applicationId: string, signal?: AbortSignal) => Promise<DisbursementPreviewData>;
 }): PreviewState {
   const queryEnabled = enabled && Boolean(applicationId) && Boolean(load);
 
   const query = useQuery<DisbursementPreviewData, Error>({
     queryKey: disbursementPreviewQueryKey(applicationId ?? ""),
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (!applicationId || !load) {
         // Unreachable: `enabled` guards both preconditions below.
         return Promise.reject(new Error("Disbursement preview requested without an application."));
       }
-      return load(applicationId);
+      return load(applicationId, signal);
     },
     enabled: queryEnabled,
     staleTime: 0,

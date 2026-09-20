@@ -13,6 +13,7 @@ const SESSION: Session = {
     id: "00000000-0000-4000-8000-000000000001",
     username: "ops.admin",
     role: "SYSTEM_ADMIN",
+    roles: ["SYSTEM_ADMIN"],
     lspId: null,
     mustChangePassword: false,
   },
@@ -106,7 +107,11 @@ describe("session-storage", () => {
 
   it("does not pair the bearer across a role-only change with the same id", () => {
     saveStoredSession({ ...SESSION, accessToken: "bearer-A" });
-    const demoted = { ...SESSION.user, role: "LSP_UI_READ" as const };
+    const demoted = {
+      ...SESSION.user,
+      role: "LSP_UI_READ" as const,
+      roles: ["LSP_UI_READ" as const],
+    };
     window.localStorage.setItem(
       SESSION_STORAGE_KEY,
       JSON.stringify({ user: demoted, expiresAt: SESSION.expiresAt }),
@@ -118,10 +123,39 @@ describe("session-storage", () => {
     expect(getStoredAccessToken()).toBeNull();
   });
 
+  it("M19: does not pair the bearer when the role SET changes under a stable primary role", () => {
+    saveStoredSession({ ...SESSION, accessToken: "bearer-A" });
+    // Same id + same primary role (SYSTEM_ADMIN), but the effective grant set
+    // shrank — the old bearer must not ride the reduced authorization scope.
+    const narrowed = { ...SESSION.user, roles: ["SYSTEM_ADMIN" as const, "OPS_USER" as const] };
+    window.localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({ user: narrowed, expiresAt: SESSION.expiresAt }),
+    );
+
+    const loaded = loadStoredSession();
+    expect(loaded?.user.roles).toEqual(["SYSTEM_ADMIN", "OPS_USER"]);
+    expect(loaded?.accessToken).toBe("");
+    expect(getStoredAccessToken()).toBeNull();
+  });
+
+  it("M19: legacy persisted metadata without `roles` rehydrates as [role]", () => {
+    const { roles: _dropped, ...legacyUser } = SESSION.user;
+    window.localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({ user: legacyUser, expiresAt: SESSION.expiresAt }),
+    );
+
+    const loaded = loadStoredSession();
+    expect(loaded?.user.role).toBe("SYSTEM_ADMIN");
+    expect(loaded?.user.roles).toEqual(["SYSTEM_ADMIN"]);
+  });
+
   it("does not pair the bearer across an LSP-only change with the same id", () => {
     const lspUser = {
       ...SESSION.user,
       role: "LSP_UI_READ" as const,
+      roles: ["LSP_UI_READ" as const],
       lspId: "00000000-0000-4000-8000-000000000099",
     };
     saveStoredSession({ ...SESSION, user: lspUser, accessToken: "bearer-A" });

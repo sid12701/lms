@@ -12,7 +12,7 @@ export function useProducts(
 ): UseQueryResult<ProductsListResponse, Error> {
   return useQuery({
     queryKey: [...PRODUCTS_LIST_QUERY_KEY, filters],
-    queryFn: () => listProducts(filters),
+    queryFn: ({ signal }) => listProducts(filters, signal),
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
   });

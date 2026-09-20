@@ -19,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
@@ -63,13 +64,23 @@ class RepositoryFetchPlanTest {
         ));
         flushAndResetStatistics();
 
-        List<String> lspCodes = apiClientRepository.findAll().stream()
+        // M20 — the admin listing runs through searchClients; the entity graph
+        // moved with it so the LSP join still lands in the content statement.
+        // The Page contract adds exactly one COUNT statement on top. The text
+        // filter scopes the assertion to this test's own clients — other
+        // classes leave api_client rows behind in the shared test database.
+        List<String> lspCodes = apiClientRepository.searchClients(
+                        null, null, "%fetch-client%", PageRequest.of(0, 50))
+                .getContent().stream()
                 .map(client -> client.getLsp().getCode())
                 .sorted()
                 .toList();
 
         assertThat(lspCodes).containsExactly("FETCH-APEX", "FETCH-NORTH");
-        assertThat(statistics.getPrepareStatementCount()).isEqualTo(1L);
+        // Content select + at most one COUNT (skipped when page 0 underfills
+        // the page size). Anything above that means the LSP join regressed to
+        // per-row selects.
+        assertThat(statistics.getPrepareStatementCount()).isLessThanOrEqualTo(2L);
     }
 
     @Test

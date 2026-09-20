@@ -16,6 +16,7 @@ const TEST_SESSION: Session = {
     id: "00000000-0000-4000-8000-000000000001",
     username: "ops.admin",
     role: "SYSTEM_ADMIN",
+    roles: ["SYSTEM_ADMIN"],
     lspId: null,
     mustChangePassword: false,
   },
@@ -332,5 +333,205 @@ describe("http-client", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(refreshCallback).not.toHaveBeenCalled();
+  });
+});
+
+describe("http-client deadlines + cancellation (M21)", () => {
+  beforeEach(() => {
+    clearStoredSession();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    setRefreshCallback(null);
+    clearStoredSession();
+  });
+
+  /** A fetch that stays pending until the request's signal aborts it. */
+  function hangingFetch() {
+    return vi.fn((_url: unknown, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) return; // never settles — deadline/caller must abort
+        if (signal.aborted) {
+          reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+          return;
+        }
+        signal.addEventListener(
+          "abort",
+          () => reject(signal.reason ?? new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    });
+  }
+
+  it("produces a distinct REQUEST_TIMEOUT error when the deadline fires", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", hangingFetch());
+
+    const pending = requestJson(
+      "/api/v1/internal/reports/portfolio-mis/summary",
+      {},
+      {
+        timeoutMs: 5_000,
+      },
+    );
+    const assertion = expect(pending).rejects.toSatisfy((error: unknown) => {
+      expect(error).toBeInstanceOf(ApiError);
+      const apiError = error as ApiError;
+      expect(apiError.code).toBe("REQUEST_TIMEOUT");
+      expect(apiError.status).toBe(0);
+      expect(apiError.message).toMatch(/took too long/i);
+      // Deadline aborts are transport-uncertain, never settled evidence.
+      expect(apiError.settled).toBe(false);
+      return true;
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await assertion;
+  });
+
+  it("uses the auth budget class for auth requests when no override is given", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", hangingFetch());
+
+    const pending = requestJson(
+      "/api/v1/auth/refresh",
+      { method: "POST" },
+      { authenticated: false, requestClass: "auth" },
+    );
+    const assertion = expect(pending).rejects.toMatchObject({ code: "REQUEST_TIMEOUT" });
+    // Auth budget is 20s — must NOT fire at the default 30s boundary first.
+    await vi.advanceTimersByTimeAsync(20_000);
+    await assertion;
+  });
+
+  it("mutation timeouts keep the uncertain-status guidance (no assumed rollback)", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", hangingFetch());
+
+    const pending = requestJson(
+      "/api/v1/internal/ops/loan-applications/abc/disbursements",
+      { method: "POST", body: "{}" },
+      { timeoutMs: 2_000, idempotencyKey: "key-1" },
+    );
+    const assertion = expect(pending).rejects.toSatisfy((error: unknown) => {
+      const apiError = error as ApiError;
+      expect(apiError.code).toBe("REQUEST_TIMEOUT");
+      expect(apiError.message).toMatch(/may still have processed/i);
+      expect(apiError.message).toMatch(/before retrying/i);
+      return true;
+    });
+    await vi.advanceTimersByTimeAsync(2_000);
+    await assertion;
+  });
+
+  it("forwards the caller's AbortSignal and rejects with it unchanged", async () => {
+    const fetchMock = hangingFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const caller = new AbortController();
+
+    const pending = requestJson("/api/v1/internal/ops/loan-applications", {
+      signal: caller.signal,
+    });
+    const assertion = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    caller.abort();
+
+    await assertion;
+    // The composed fetch signal aborted — never converted into an ApiError.
+    const signal = fetchMock.mock.calls[0]?.[1]?.signal;
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("a cancelled coalesced caller does not abort the other subscriber's fetch", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: unknown, init?: RequestInit) => {
+        capturedSignal = init?.signal ?? undefined;
+        return new Promise<Response>((resolve, reject) => {
+          capturedSignal?.addEventListener(
+            "abort",
+            () => reject(capturedSignal?.reason ?? new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+          // Resolve on the next microtask regardless — the shared fetch lives.
+          queueMicrotask(() =>
+            resolve(
+              new Response(JSON.stringify({ ok: true }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              }),
+            ),
+          );
+        });
+      }),
+    );
+
+    const callerA = new AbortController();
+    const callerB = new AbortController();
+    const path = "/api/v1/internal/reports/portfolio-mis/summary";
+    const a = requestJson(path, { signal: callerA.signal });
+    const b = requestJson<{ ok: boolean }>(path, { signal: callerB.signal });
+    const aAssertion = expect(a).rejects.toMatchObject({ name: "AbortError" });
+
+    // A cancels; B's shared fetch must still resolve, not abort.
+    callerA.abort();
+    await aAssertion;
+    await expect(b).resolves.toEqual({ ok: true });
+    // The underlying fetch was never aborted — only one fetch ran.
+    expect(capturedSignal?.aborted).toBe(false);
+  });
+
+  it("aborts the shared fetch once the LAST coalesced subscriber cancels", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: unknown, init?: RequestInit) => {
+        capturedSignal = init?.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          capturedSignal?.addEventListener(
+            "abort",
+            () => reject(capturedSignal?.reason ?? new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        });
+      }),
+    );
+
+    const callerA = new AbortController();
+    const callerB = new AbortController();
+    const path = "/api/v1/internal/reports/portfolio-mis/summary";
+    const a = requestJson(path, { signal: callerA.signal });
+    const b = requestJson(path, { signal: callerB.signal });
+    const assertions = Promise.all([
+      expect(a).rejects.toMatchObject({ name: "AbortError" }),
+      expect(b).rejects.toMatchObject({ name: "AbortError" }),
+    ]);
+
+    callerA.abort();
+    // With one subscriber left the shared fetch is still alive.
+    await vi.waitFor(() => expect(capturedSignal?.aborted).toBe(false));
+    callerB.abort();
+    await assertions;
+    await vi.waitFor(() => expect(capturedSignal?.aborted).toBe(true));
+  });
+
+  it("clears the deadline timer once the request settles", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    await requestJson("/api/v1/internal/home/overview", {}, { authenticated: false });
+    // No deadline timer may leak past settlement.
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

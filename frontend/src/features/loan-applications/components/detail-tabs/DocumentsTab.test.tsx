@@ -328,6 +328,7 @@ describe("DocumentsTab", () => {
     await waitFor(() =>
       expect(requestBlobMock).toHaveBeenCalledWith(
         "/api/v1/internal/ops/loan-applications/app-1/kyc-documents/PAN_CARD/content?disposition=inline",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     );
     expect(await screen.findByTitle(/Preview of/i)).toBeInTheDocument();

@@ -8,9 +8,9 @@ export function lspAuditEventsQueryKey(lspId: string | null) {
 export function useLspAuditEvents(lspId: string | null, enabled: boolean) {
   return useQuery({
     queryKey: lspAuditEventsQueryKey(lspId),
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (!lspId) throw new Error("lspId required");
-      return listLspAuditEvents(lspId);
+      return listLspAuditEvents(lspId, signal);
     },
     enabled: enabled && Boolean(lspId),
     staleTime: 0,

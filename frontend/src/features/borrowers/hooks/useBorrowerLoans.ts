@@ -15,7 +15,7 @@ function borrowerLoansQueryKey(id: string): readonly unknown[] {
 export function useBorrowerLoans(id: string): UseQueryResult<BorrowerLoansResponse, Error> {
   return useQuery({
     queryKey: borrowerLoansQueryKey(id),
-    queryFn: () => fetchBorrowerLoans(id),
+    queryFn: ({ signal }) => fetchBorrowerLoans(id, signal),
     enabled: Boolean(id),
     staleTime: 30_000,
   });

@@ -7,8 +7,8 @@
  * Status enum is ACTIVE / INACTIVE on the backend; the frontend uses
  * ACTIVE / DISABLED. Translated in both directions.
  */
-import { requestJson } from "@/lib/api/http-client";
-import { paginate } from "@/lib/pagination";
+import { buildQueryPath, requestJson, requestJsonWithHeaders } from "@/lib/api/http-client";
+import { readPaginationHeaders } from "@/lib/api/pagination-headers";
 import type { ApiClient, ApiClientStatus } from "@/schemas/user";
 import type {
   ApiClientMutationResponse,
@@ -74,27 +74,37 @@ function toRow(payload: BackendApiClientResponse): ApiClientRow {
   };
 }
 
+/**
+ * M20 — the directory is server-paginated and server-filtered. Every filter
+ * (status, LSP, text) travels to the backend, which applies it to the full
+ * dataset before paginating; the total comes from the pagination headers.
+ * Filtering/paginating only a fetched slice locally hid matching clients on
+ * other pages and understated totals, so the local path is gone.
+ */
 export async function listApiClients(
   filters: ApiClientsListFilters = {},
+  signal?: AbortSignal,
 ): Promise<ApiClientsListResponse> {
-  const all = await requestJson<BackendApiClientResponse[]>(BASE);
-  const filtered = all.filter((row) => {
-    if (filters.status && frontendStatus(row.status) !== filters.status) return false;
-    if (filters.lspId && row.lspId !== filters.lspId) return false;
-    if (filters.q) {
-      const needle = filters.q.toLowerCase();
-      if (
-        !row.name.toLowerCase().includes(needle) &&
-        !row.clientId.toLowerCase().includes(needle) &&
-        !(row.description ?? "").toLowerCase().includes(needle)
-      ) {
-        return false;
-      }
-    }
-    return true;
+  const pageSize = filters.pageSize ?? 25;
+  const page = filters.page ?? 0;
+  const path = buildQueryPath(BASE, {
+    status: filters.status ? (filters.status === "DISABLED" ? "INACTIVE" : "ACTIVE") : undefined,
+    lspId: filters.lspId,
+    q: filters.q,
+    offset: page * pageSize,
+    limit: pageSize,
+    paginationDetails: "ON",
   });
-  const result = paginate(filtered, filters);
-  return { ...result, items: result.items.map(toRow) };
+  const { data, headers } = await requestJsonWithHeaders<BackendApiClientResponse[]>(path, {
+    signal,
+  });
+  const pagination = readPaginationHeaders(headers);
+  return {
+    items: data.map(toRow),
+    total: pagination.totalCount ?? data.length,
+    page,
+    pageSize,
+  };
 }
 
 export async function createApiClient(

@@ -17,7 +17,7 @@ export function useLoanApplicationSchedule(
 ): UseQueryResult<LoanApplicationScheduleResponse, Error> {
   return useQuery({
     queryKey: loanApplicationScheduleQueryKey(id),
-    queryFn: () => fetchLoanApplicationSchedule(id),
+    queryFn: ({ signal }) => fetchLoanApplicationSchedule(id, signal),
     enabled: Boolean(id),
     staleTime: 30_000,
   });

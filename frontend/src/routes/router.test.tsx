@@ -12,6 +12,7 @@ import {
   adminSession,
   lspReadSession,
   tempPasswordSession,
+  opsProductAdminSession,
   TEST_OPS_USER_ID,
 } from "@/test/session-fixtures";
 
@@ -48,7 +49,7 @@ describe("route smoke tests", () => {
       </Routes>,
     );
     expect(screen.getByTestId("home")).toBeInTheDocument();
-    expect(defaultLandingFor("SYSTEM_ADMIN")).toBe("/home");
+    expect(defaultLandingFor(["SYSTEM_ADMIN"])).toBe("/home");
   });
 
   it("LandingRedirect routes an LSP user to /my-loans", () => {
@@ -61,7 +62,7 @@ describe("route smoke tests", () => {
       </Routes>,
     );
     expect(screen.getByTestId("my-loans")).toBeInTheDocument();
-    expect(defaultLandingFor("LSP_UI_READ")).toBe("/my-loans");
+    expect(defaultLandingFor(["LSP_UI_READ"])).toBe("/my-loans");
   });
 
   it("RequireAuth bounces a user with mustChangePassword to /change-password", () => {
@@ -131,6 +132,7 @@ describe("route smoke tests", () => {
         id: TEST_OPS_USER_ID,
         username: "ops.user",
         role: "OPS_USER",
+        roles: ["OPS_USER"],
         lspId: null,
         mustChangePassword: false,
       },
@@ -166,6 +168,7 @@ describe("route smoke tests", () => {
         id: "aaaaaaaa-3333-4aaa-8aaa-aaaaaaaaaaaa",
         username: "product.owner",
         role: "PRODUCT_ADMIN",
+        roles: ["PRODUCT_ADMIN"],
         lspId: null,
         mustChangePassword: false,
       },
@@ -188,6 +191,38 @@ describe("route smoke tests", () => {
     );
     expect(screen.getByText("You don't have access to this page")).toBeInTheDocument();
     expect(screen.queryByTestId("loan-applications")).not.toBeInTheDocument();
+  });
+
+  it("M19: OPS_USER+PRODUCT_ADMIN session reaches BOTH ops and product routes", () => {
+    renderWithSession(
+      opsProductAdminSession,
+      "/products",
+      <Routes>
+        <Route
+          path="/products"
+          element={
+            <RequireRole roles={["SYSTEM_ADMIN", "PRODUCT_ADMIN"]}>
+              <div data-testid="products">products</div>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/loan-applications"
+          element={
+            <RequireRole roles={["SYSTEM_ADMIN", "OPS_USER"]}>
+              <div data-testid="loan-applications">apps</div>
+            </RequireRole>
+          }
+        />
+      </Routes>,
+    );
+    // Before M19 the primary role (OPS_USER) collapsed the session, so the
+    // products guard denied the user even though PRODUCT_ADMIN was granted.
+    expect(screen.getByTestId("products")).toBeInTheDocument();
+  });
+
+  it("M19: landing for OPS_USER+PRODUCT_ADMIN keeps the deliberate ops priority", () => {
+    expect(defaultLandingFor(opsProductAdminSession.user.roles)).toBe("/loan-applications");
   });
 
   it("createAppRouter compiles the route tree without throwing", async () => {

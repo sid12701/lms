@@ -15,7 +15,7 @@ export const HOME_KPIS_QUERY_KEY = ["home", "kpis"] as const;
 export function useHomeKpis(): UseQueryResult<HomeKpis, Error> {
   return useQuery({
     queryKey: HOME_KPIS_QUERY_KEY,
-    queryFn: fetchHomeKpis,
+    queryFn: ({ signal }) => fetchHomeKpis(signal),
     staleTime: 30_000,
   });
 }

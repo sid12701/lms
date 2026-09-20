@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatDateTime, formatINR } from "@/lib/format";
 import type { BorrowerDetail } from "@/features/borrowers/types";
@@ -106,8 +107,11 @@ function DisbursementRetryCard({ detail }: { detail: LoanApplicationDetail }) {
   return (
     <PanelShell tone="warning" title="Disbursement retry pending" hint="Last attempt failed">
       Disbursement for loan {detail.application.externalLoanId ?? detail.application.id}
-      will be retried automatically. Inspect the Disbursements tab for the detailed adapter
-      response.
+      will be retried automatically. Inspect the{" "}
+      <Link to="?tab=activity" className="text-info hover:underline">
+        Activity tab
+      </Link>{" "}
+      for the adapter response captured on the failed attempt.
     </PanelShell>
   );
 }
