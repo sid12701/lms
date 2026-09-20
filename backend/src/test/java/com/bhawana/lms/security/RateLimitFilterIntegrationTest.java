@@ -91,7 +91,8 @@ class RateLimitFilterIntegrationTest {
                 proxyManager,
                 objectMapper,
                 properties,
-                opsAlertEmittersProvider
+                opsAlertEmittersProvider,
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry()
         );
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/login");
@@ -124,7 +125,8 @@ class RateLimitFilterIntegrationTest {
                 proxyManager,
                 objectMapper,
                 properties,
-                opsAlertEmittersProvider
+                opsAlertEmittersProvider,
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry()
         );
 
         Jwt jwt = Jwt.withTokenValue("token")

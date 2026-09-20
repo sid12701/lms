@@ -1,27 +1,46 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.api.error.ResourceNotFoundException;
+import jakarta.annotation.PreDestroy;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
+/**
+ * Report-object storage against Cloudflare R2. The {@link S3Client} is built once, lazily on
+ * first use, and shared by every call (M05): its bounded Apache connection pool is reused
+ * across requests and API call/attempt deadlines come from {@code app.storage.reports.r2.*}
+ * (see {@link ReportStorageProperties.R2}). The client is closed once at bean shutdown;
+ * streams handed out by {@link #openStream} release only their pooled connection when the
+ * caller closes them.
+ */
 @Service
 public class R2ReportStorageService implements ReportStorageService {
 
     private final ReportStorageProperties properties;
+    private final Object clientLock = new Object();
+    private volatile S3Client client;
+    private volatile boolean closed;
 
+    @Autowired
     public R2ReportStorageService(ReportStorageProperties properties) {
         this.properties = properties;
+    }
+
+    /** Test seam: run against a pre-built client without touching properties. */
+    R2ReportStorageService(ReportStorageProperties properties, S3Client client) {
+        this.properties = properties;
+        this.client = client;
     }
 
     @Override
@@ -32,7 +51,6 @@ public class R2ReportStorageService implements ReportStorageService {
         if (contentFile == null || !Files.isRegularFile(contentFile)) {
             throw new IllegalArgumentException("Report content file is required.");
         }
-        requireConfigured();
 
         String storageKey = buildStorageKey(descriptor);
         long sizeBytes;
@@ -41,17 +59,15 @@ public class R2ReportStorageService implements ReportStorageService {
         } catch (IOException exception) {
             throw new IllegalStateException("Unable to size report content file.", exception);
         }
-        try (S3Client client = buildClient()) {
-            client.putObject(
-                    PutObjectRequest.builder()
-                            .bucket(properties.getR2().getBucket())
-                            .key(storageKey)
-                            .contentType(descriptor.mediaType())
-                            .contentLength(sizeBytes)
-                            .build(),
-                    RequestBody.fromFile(contentFile)
-            );
-        }
+        client().putObject(
+                PutObjectRequest.builder()
+                        .bucket(properties.getR2().getBucket())
+                        .key(storageKey)
+                        .contentType(descriptor.mediaType())
+                        .contentLength(sizeBytes)
+                        .build(),
+                RequestBody.fromFile(contentFile)
+        );
         return new StoredReport(storageKey, descriptor.fileName(), descriptor.mediaType(), sizeBytes);
     }
 
@@ -60,36 +76,75 @@ public class R2ReportStorageService implements ReportStorageService {
         if (storageKey == null || storageKey.isBlank()) {
             throw new IllegalArgumentException("Storage key is required for report retrieval.");
         }
-        requireConfigured();
 
-        try (S3Client client = buildClient()) {
-            ResponseBytes<GetObjectResponse> responseBytes = client.getObjectAsBytes(
+        ResponseBytes<GetObjectResponse> responseBytes = client().getObjectAsBytes(
+                GetObjectRequest.builder()
+                        .bucket(properties.getR2().getBucket())
+                        .key(storageKey)
+                        .build()
+        );
+        return responseBytes.asByteArray();
+    }
+
+    @Override
+    public ReportStream openStream(String storageKey) {
+        if (storageKey == null || storageKey.isBlank()) {
+            throw new IllegalArgumentException("Storage key is required for report retrieval.");
+        }
+        try {
+            ResponseInputStream<GetObjectResponse> responseStream = client().getObject(
                     GetObjectRequest.builder()
                             .bucket(properties.getR2().getBucket())
                             .key(storageKey)
                             .build()
             );
-            return responseBytes.asByteArray();
+            return new ReportStream(responseStream, responseStream.response().contentLength());
+        } catch (NoSuchKeyException exception) {
+            throw new ResourceNotFoundException("Report not found in storage: " + storageKey);
         }
     }
 
-    private void requireConfigured() {
-        if (!properties.getR2().isConfigured()) {
-            throw new IllegalStateException(
-                    "R2 report storage is not configured. Set endpoint, access key, secret key, and bucket."
-            );
+    /**
+     * Returns the shared client, building it once on first use — never per call. Building is
+     * lazy so an unconfigured deployment does not materialise a pool it can never use; the
+     * misconfiguration error is raised here, at first use, with the same contract as before.
+     */
+    private S3Client client() {
+        S3Client current = client;
+        if (current != null) {
+            return current;
+        }
+        synchronized (clientLock) {
+            if (closed) {
+                throw new IllegalStateException("R2 report storage client is shut down.");
+            }
+            if (client == null) {
+                ReportStorageProperties.R2 r2 = properties.getR2();
+                if (!r2.isConfigured()) {
+                    throw new IllegalStateException(
+                            "R2 report storage is not configured. Set endpoint, access key, secret key, and bucket."
+                    );
+                }
+                client = R2S3ClientFactory.build(r2);
+            }
+            return client;
         }
     }
 
-    private S3Client buildClient() {
-        ReportStorageProperties.R2 r2 = properties.getR2();
-        return S3Client.builder()
-                .endpointOverride(URI.create(r2.getEndpoint()))
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(r2.getAccessKey(), r2.getSecretKey())))
-                .region(Region.of(r2.getRegion()))
-                .forcePathStyle(true)
-                .build();
+    @PreDestroy
+    void shutdown() {
+        synchronized (clientLock) {
+            closed = true;
+            if (client != null) {
+                client.close();
+                client = null;
+            }
+        }
+    }
+
+    /** Test-visible: the lazily-built shared client, or null before first use. */
+    S3Client peekClient() {
+        return client;
     }
 
     /**

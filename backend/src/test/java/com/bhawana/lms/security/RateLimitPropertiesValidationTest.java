@@ -23,4 +23,19 @@ class RateLimitPropertiesValidationTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("permitsSubject");
     }
+
+    @Test
+    void rejectsNonPositiveOutageSettings() {
+        RateLimitProperties properties = new RateLimitProperties();
+        properties.setReconnectInterval(java.time.Duration.ZERO);
+        assertThatThrownBy(properties::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("reconnect-interval");
+
+        RateLimitProperties retryAfter = new RateLimitProperties();
+        retryAfter.setUnavailableRetryAfterSeconds(0);
+        assertThatThrownBy(retryAfter::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("unavailable-retry-after-seconds");
+    }
 }

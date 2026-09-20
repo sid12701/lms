@@ -35,6 +35,27 @@ spring:
   jpa:
     open-in-view: false
     database-platform: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    redis:
+      # M10: this is the ONLY Redis configuration the rate limiter reads — credentials, TLS,
+      # and timeouts flow into the shared Lettuce client the limiter borrows. There is no
+      # second hand-rolled client.
+      host: ${LMS_REDIS_HOST:localhost}
+      port: ${LMS_REDIS_PORT:6379}
+      username: ${LMS_REDIS_USERNAME:}
+      password: ${LMS_REDIS_PASSWORD:}
+      database: ${LMS_REDIS_DATABASE:0}
+      # Command timeout is the rate limiter's per-request store deadline. Bucket4j CAS does a
+      # couple of EVALSHA round-trips; measured p99 on a same-region Redis is single-digit ms,
+      # so 200ms is a generous bound that still fails a stalled store before the caller's own
+      # HTTP budget is burned. Raise only with measured latency evidence.
+      timeout: ${LMS_REDIS_COMMAND_TIMEOUT:200ms}
+      # TCP connect deadline — bounds the lazy reconnect attempt during an outage.
+      connect-timeout: ${LMS_REDIS_CONNECT_TIMEOUT:2s}
+      ssl:
+        # Set true for Azure Cache for Redis and other TLS-terminated endpoints. For a
+        # self-signed/private CA also set spring.ssl.bundle + spring.data.redis.ssl.bundle.
+        enabled: ${LMS_REDIS_SSL_ENABLED:false}
 
 management:
   endpoints:
@@ -151,6 +172,14 @@ app:
         secret-key: ${APP_STORAGE_DOCUMENTS_R2_SECRET_KEY:}
         bucket: ${APP_STORAGE_DOCUMENTS_R2_BUCKET:}
         region: ${APP_STORAGE_DOCUMENTS_R2_REGION:auto}
+        # M05 request-time budget on the shared client. Documents are capped at 10MB, so 30s
+        # per attempt / 120s per call is generous; the 5s connect and 30s socket deadlines are
+        # what actually fire on an unreachable or stalled endpoint.
+        api-call-timeout: ${APP_STORAGE_DOCUMENTS_R2_API_CALL_TIMEOUT:PT120S}
+        api-call-attempt-timeout: ${APP_STORAGE_DOCUMENTS_R2_API_CALL_ATTEMPT_TIMEOUT:PT30S}
+        connection-timeout: ${APP_STORAGE_DOCUMENTS_R2_CONNECTION_TIMEOUT:PT5S}
+        socket-timeout: ${APP_STORAGE_DOCUMENTS_R2_SOCKET_TIMEOUT:PT30S}
+        max-connections: ${APP_STORAGE_DOCUMENTS_R2_MAX_CONNECTIONS:50}
       orphan-reconciler:
         enabled: ${APP_STORAGE_DOCUMENTS_ORPHAN_RECONCILER_ENABLED:true}
         dry-run: ${APP_STORAGE_DOCUMENTS_ORPHAN_RECONCILER_DRY_RUN:true}
@@ -163,6 +192,13 @@ app:
         secret-key: ${APP_STORAGE_REPORTS_R2_SECRET_KEY:}
         bucket: ${APP_STORAGE_REPORTS_R2_BUCKET:}
         region: ${APP_STORAGE_REPORTS_R2_REGION:auto}
+        # M05: same deadline/pool contract as document storage; report exports are larger, so
+        # the total call budget is the knob to raise first if uploads legitimately outgrow it.
+        api-call-timeout: ${APP_STORAGE_REPORTS_R2_API_CALL_TIMEOUT:PT120S}
+        api-call-attempt-timeout: ${APP_STORAGE_REPORTS_R2_API_CALL_ATTEMPT_TIMEOUT:PT30S}
+        connection-timeout: ${APP_STORAGE_REPORTS_R2_CONNECTION_TIMEOUT:PT5S}
+        socket-timeout: ${APP_STORAGE_REPORTS_R2_SOCKET_TIMEOUT:PT30S}
+        max-connections: ${APP_STORAGE_REPORTS_R2_MAX_CONNECTIONS:50}
   datasource:
     tenant:
       username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}
@@ -170,68 +206,92 @@ app:
       connection-strategy: ${APP_TENANT_CONNECTION_STRATEGY:DIRECT_LOGIN}
   rate-limit:
     enabled: ${APP_RATE_LIMIT_ENABLED:true}
+    # M10 outage policy. If the rate-limit store is unreachable or a command exceeds
+    # spring.data.redis.timeout, every matched route applies its on-store-failure policy:
+    # FAIL_CLOSED answers a bounded 503 + Retry-After (unavailable-retry-after-seconds) and is
+    # required on credential-attack-sensitive routes; FAIL_OPEN counts the failure and lets
+    # the request through for authenticated non-credential routes. reconnect-interval is the
+    # cooldown between Redis re-dial attempts after a connect failure; recovery is automatic
+    # and needs no instance restart.
+    reconnect-interval: ${APP_RATE_LIMIT_RECONNECT_INTERVAL:PT5S}
+    unavailable-retry-after-seconds: ${APP_RATE_LIMIT_UNAVAILABLE_RETRY_AFTER_SECONDS:30}
     rules:
       - id: auth-login
         path: /api/v1/auth/login
         methods: [POST]
         key: IP
         permits-per-minute: ${APP_RATE_LIMIT_AUTH_PER_MINUTE:10}
+        # Credential endpoint: never accept unlimited attempts while the limiter is blind.
+        on-store-failure: FAIL_CLOSED
       - id: auth-token
         path: /api/v1/auth/token
         methods: [POST]
         key: IP
         permits-per-minute: ${APP_RATE_LIMIT_AUTH_PER_MINUTE:10}
+        on-store-failure: FAIL_CLOSED
       - id: lsp-write
         path: /api/v1/lsp/**
         methods: [POST, PUT, PATCH, DELETE]
         key: LSP
         permits-per-minute: ${APP_RATE_LIMIT_LSP_WRITE_PER_MINUTE:60}
+        # Already behind a machine token + LSP role; availability wins over the limiter.
+        on-store-failure: FAIL_OPEN
       - id: auth-refresh
         path: /api/v1/auth/refresh
         methods: [POST]
         key: IP_AND_SUBJECT
         permits-per-minute: 30
+        # Refresh tokens are bearer credentials — same fail-closed class as login.
+        on-store-failure: FAIL_CLOSED
       - id: auth-password
         path: /api/v1/auth/password
         methods: [POST]
         key: SUBJECT
         permits-per-minute: 5
+        on-store-failure: FAIL_CLOSED
       - id: admin-reset-password
         path: /api/v1/internal/admin/users/*/reset-password
         methods: [POST]
         key: SUBJECT
         permits-per-minute: 5
+        on-store-failure: FAIL_OPEN
       - id: admin-revoke-sessions
         path: /api/v1/internal/admin/users/*/revoke-sessions
         methods: [POST]
         key: SUBJECT
         permits-per-minute: 5
+        on-store-failure: FAIL_OPEN
       - id: docs-ops
         path: /api/v1/internal/ops/loan-applications/*/kyc-documents/**
         methods: [GET]
         key: SUBJECT
         permits-per-minute: 120
+        on-store-failure: FAIL_OPEN
       - id: docs-lsp
         path: /api/v1/lsp/loan-applications/*/documents/**
         methods: [GET]
         key: LSP
         permits-per-minute: 120
+        on-store-failure: FAIL_OPEN
       - id: lsp-loan-events
         path: /api/v1/lsp/loan-events
         methods: [GET]
         key: LSP
         permits-per-minute: ${APP_RATE_LIMIT_LSP_FEED_PER_MINUTE:120}
+        on-store-failure: FAIL_OPEN
       - id: reports
         path: /api/v1/internal/reports/**
         methods: [GET, POST]
         key: SUBJECT
         permits-per-minute: 60
+        on-store-failure: FAIL_OPEN
       - id: mock-outcome
         path: /api/v1/internal/ops/loan-applications/*/disbursement-requests/mock-outcome
         methods: [POST]
         key: SUBJECT_AND_APPLICATION
         permits-subject: 10
         permits-application: 5
+        on-store-failure: FAIL_OPEN
   disbursement:
     worker:
       enabled: ${APP_DISBURSEMENT_WORKER_ENABLED:true}

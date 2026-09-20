@@ -380,6 +380,16 @@ public class OpenApiContractCustomizer implements GlobalOpenApiCustomizer {
                     .description("Logged out — the refresh-token family is revoked and the cookie "
                             + "cleared."));
         }
+        // M05: the report download now streams straight to HttpServletResponse, so springdoc
+        // emits a bare 200 — restore the documented byte body so the client contract is
+        // unchanged by the internal streaming switch.
+        if ("GET /api/v1/internal/reports/requests/{requestId}/download".equals(route)) {
+            ApiResponse ok = responses.get("200");
+            if (ok != null && ok.getContent() == null) {
+                ok.setContent(new Content().addMediaType("*/*",
+                        new MediaType().schema(new StringSchema().format("byte"))));
+            }
+        }
     }
 
     private void customiseParameter(String route, Parameter parameter) {

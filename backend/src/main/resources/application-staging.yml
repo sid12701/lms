@@ -2,6 +2,14 @@ spring:
   config:
     activate:
       on-profile: staging
+  data:
+    redis:
+      # M10: staging fronts Azure Cache for Redis — TLS is mandatory there, and the rate
+      # limiter now honours it via the shared Lettuce client. Credentials come from
+      # LMS_REDIS_USERNAME / LMS_REDIS_PASSWORD (see the spring.data.redis block in
+      # application.yml).
+      ssl:
+        enabled: ${LMS_REDIS_SSL_ENABLED:true}
 
 app:
   seed:

@@ -73,6 +73,12 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>s3</artifactId>
         </dependency>
+        <dependency>
+            <!-- M05: needed at compile scope so the storage services can size the
+                 connection pool and wire explicit timeouts on the shared S3 client. -->
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>apache-client</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>com.h2database</groupId>
@@ -103,6 +109,14 @@
             <groupId>com.tngtech.archunit</groupId>
             <artifactId>archunit-junit5</artifactId>
             <version>1.4.1</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- M10: generates the ephemeral self-signed TLS material the Redis outage
+                 test mounts into its container — no private keys are committed. -->
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>1.82</version>
             <scope>test</scope>
         </dependency>
         <dependency>
