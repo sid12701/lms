@@ -15,12 +15,9 @@ public interface LoanPaymentTransactionRepository extends JpaRepository<LoanPaym
     @EntityGraph(attributePaths = {"loanAccount", "repaymentInstallment"})
     Optional<LoanPaymentTransaction> findFirstByIdempotencyKeyOrderByCreatedAtAsc(String idempotencyKey);
 
-    @EntityGraph(attributePaths = {"loanAccount", "repaymentInstallment"})
-    List<LoanPaymentTransaction> findTop50ByLoanAccount_IdOrderByPaymentDateDescCreatedAtDesc(UUID loanAccountId);
-
     /**
-     * Bounded payment-history page for the LSP endpoint (M14). Ordering — and therefore page
-     * boundaries — comes from the caller's {@link Pageable} sort.
+     * Bounded payment-history page for the LSP and ops endpoints (M14). Ordering — and therefore
+     * page boundaries — comes from the caller's {@link Pageable} sort.
      */
     @EntityGraph(attributePaths = {"loanAccount", "repaymentInstallment"})
     Page<LoanPaymentTransaction> findByLoanAccount_Id(UUID loanAccountId, Pageable pageable);

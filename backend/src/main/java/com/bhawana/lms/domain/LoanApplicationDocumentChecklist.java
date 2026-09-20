@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import com.bhawana.lms.common.util.Strings;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -105,14 +106,14 @@ public class LoanApplicationDocumentChecklist {
 
     @PrePersist
     void onCreate() {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {
@@ -248,7 +249,7 @@ public class LoanApplicationDocumentChecklist {
         this.storageKey = Strings.normalizeOptional(storageKey);
         this.lmsManagedContent = lmsManagedContent;
         if (hasUploadMetadata()) {
-            this.uploadedAt = Instant.now();
+            this.uploadedAt = PersistedTimestamp.now();
             this.uploadedByUsername = this.updatedByUsername;
         } else {
             this.uploadedAt = null;

@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import com.bhawana.lms.domain.ReportRequest;
 import com.bhawana.lms.domain.ReportRequestStatus;
 import java.time.Instant;
@@ -63,7 +64,7 @@ public class ReportNotificationService {
 
         try {
             mailSender.send(message);
-            return NotificationResult.sent(Instant.now());
+            return NotificationResult.sent(PersistedTimestamp.now());
         } catch (MailException exception) {
             log.warn(
                     "Unable to send notification for report request {} to {}",

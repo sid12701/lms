@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -60,7 +61,7 @@ public class PortfolioKpiSnapshot {
     ) {
         this.id = UUID.randomUUID();
         this.lsp = lsp;
-        this.computedAt = computedAt;
+        this.computedAt = PersistedTimestamp.normalize(computedAt);
         this.totalDisbursed = totalDisbursed;
         this.totalOutstanding = totalOutstanding;
         this.totalOverdue = totalOverdue;

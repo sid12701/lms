@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -69,7 +70,7 @@ public class BorrowerPiiRevealAudit {
     @PrePersist
     void onCreate() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = PersistedTimestamp.now();
         }
     }
 

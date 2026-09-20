@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -89,7 +90,7 @@ public class AppUser {
         this.email = email;
         this.passwordHash = passwordHash;
         this.passwordChangeRequired = false;
-        this.passwordChangedAt = Instant.now();
+        this.passwordChangedAt = PersistedTimestamp.now();
         this.status = status;
         this.lsp = lsp;
         this.roles = new LinkedHashSet<>(roles);
@@ -98,14 +99,14 @@ public class AppUser {
 
     @PrePersist
     void onCreate() {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {
@@ -159,13 +160,13 @@ public class AppUser {
     public void requirePasswordChange(String passwordHash) {
         this.passwordHash = passwordHash;
         this.passwordChangeRequired = true;
-        this.passwordChangedAt = Instant.now();
+        this.passwordChangedAt = PersistedTimestamp.now();
     }
 
     public void changePassword(String passwordHash) {
         this.passwordHash = passwordHash;
         this.passwordChangeRequired = false;
-        this.passwordChangedAt = Instant.now();
+        this.passwordChangedAt = PersistedTimestamp.now();
     }
 
     public void updateManagedProfile(
@@ -203,7 +204,7 @@ public class AppUser {
     }
 
     public void lockForBruteForce(Instant lockedAt) {
-        this.lockedAt = lockedAt;
+        this.lockedAt = PersistedTimestamp.normalize(lockedAt);
         this.lockReason = LOCK_REASON_BRUTE_FORCE;
     }
 
@@ -241,7 +242,7 @@ public class AppUser {
             clearFailedLoginWindow();
         }
         if (failedLoginAttempts == 0) {
-            failedLoginWindowStartedAt = now;
+            failedLoginWindowStartedAt = PersistedTimestamp.normalize(now);
         }
         failedLoginAttempts++;
         return failedLoginAttempts >= threshold;

@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -78,7 +79,7 @@ public class LoanApplicationAuditEvent {
 
     @PrePersist
     void onCreate() {
-        createdAt = Instant.now();
+        createdAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {

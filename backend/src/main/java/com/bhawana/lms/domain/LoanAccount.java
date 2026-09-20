@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -111,19 +112,19 @@ public class LoanAccount {
         this.principalAmount = principalAmount;
         this.tenureMonths = tenureMonths;
         this.status = status;
-        this.approvedAt = approvedAt;
+        this.approvedAt = PersistedTimestamp.normalize(approvedAt);
     }
 
     @PrePersist
     void onCreate() {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {
@@ -214,7 +215,7 @@ public class LoanAccount {
     public void updateDisbursementStatus(LoanAccountStatus status, Instant occurredAt, BigDecimal processingFeeAmount) {
         this.status = status;
         if (status == LoanAccountStatus.DISBURSED) {
-            this.disbursedAt = occurredAt;
+            this.disbursedAt = PersistedTimestamp.normalize(occurredAt);
             this.processingFeeAmount = processingFeeAmount;
         }
     }
@@ -261,6 +262,6 @@ public class LoanAccount {
                 : LoanAccountStatus.CLOSED;
         this.closureReason = reason;
         this.closedByUsername = actorUsername;
-        this.closedAt = occurredAt;
+        this.closedAt = PersistedTimestamp.normalize(occurredAt);
     }
 }

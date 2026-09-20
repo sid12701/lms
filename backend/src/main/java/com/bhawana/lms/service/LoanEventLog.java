@@ -1,6 +1,7 @@
 package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.LoanEventType;
 import com.bhawana.lms.repo.LoanEventRepository;
@@ -55,7 +56,7 @@ public class LoanEventLog {
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Loan events must be appended inside the lifecycle transaction.");
         }
-        Instant occurredAt = Instant.now();
+        Instant occurredAt = PersistedTimestamp.now();
         LinkedHashMap<String, Object> envelope = new LinkedHashMap<>();
         envelope.put("schemaVersion", 1);
         envelope.put("eventType", eventType.name());

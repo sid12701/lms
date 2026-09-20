@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -54,13 +55,13 @@ public class AuthSession {
     @PrePersist
     void prePersist() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = PersistedTimestamp.now();
         }
     }
 
     public void revoke(Instant revokedAt) {
         this.revoked = true;
-        this.revokedAt = revokedAt;
+        this.revokedAt = PersistedTimestamp.normalize(revokedAt);
     }
 
     public UUID getId() {

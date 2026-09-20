@@ -9,7 +9,8 @@
  * `postRepayment` posts strict per-installment payments to the live backend
  * (Gap #17).
  */
-import { requestJson } from "@/lib/api/http-client";
+import { buildQueryPath, requestJson, requestJsonWithHeaders } from "@/lib/api/http-client";
+import { readPaginationHeaders } from "@/lib/api/pagination-headers";
 import type {
   LoanApplicationDocumentsResponse,
   LoanApplicationRepaymentsResponse,
@@ -264,14 +265,58 @@ function toPaymentTransaction(row: BackendPaymentRow): PaymentTransaction {
   };
 }
 
-/** GET `/api/v1/loan-applications/:id/repayments` — Repayments tab data. */
+// The endpoint caps each response at 200 rows; the tab renders the whole
+// ledger, so pages are walked explicitly rather than silently truncating at
+// the first page (same contract as the LSP payments endpoint, M14).
+const OPS_PAYMENTS_PAGE_LIMIT = 200;
+const OPS_PAYMENTS_MAX_PAGES = 25;
+
+/** GET `/api/v1/internal/ops/loan-applications/:id/payments` — one bounded page. */
+async function fetchLoanApplicationRepaymentsPage(
+  id: string,
+  params: { offset: number; limit: number },
+): Promise<{ items: BackendPaymentRow[]; totalCount: number }> {
+  const path = buildQueryPath(`${BACKEND_BASE}/${encodeURIComponent(id)}/payments`, {
+    offset: params.offset,
+    limit: params.limit,
+    paginationDetails: "ON",
+  });
+  const { data, headers } = await requestJsonWithHeaders<BackendPaymentRow[]>(path);
+  const pagination = readPaginationHeaders(headers);
+  return {
+    items: data,
+    totalCount: pagination.totalCount ?? data.length,
+  };
+}
+
+/**
+ * GET `/api/v1/internal/ops/loan-applications/:id/payments` — the complete receipt
+ * history, assembled from bounded pages so nothing is lost past the server's
+ * per-page cap. `truncated` reports the unreachable remainder instead of hiding it.
+ */
 export async function fetchLoanApplicationRepayments(
   id: string,
 ): Promise<LoanApplicationRepaymentsResponse> {
-  const rows = await requestJson<BackendPaymentRow[]>(
-    `${BACKEND_BASE}/${encodeURIComponent(id)}/payments`,
-  );
-  return { payments: rows.map(toPaymentTransaction) };
+  const rows: BackendPaymentRow[] = [];
+  let offset = 0;
+  let totalCount = 0;
+  for (let page = 0; page < OPS_PAYMENTS_MAX_PAGES; page += 1) {
+    const result = await fetchLoanApplicationRepaymentsPage(id, {
+      offset,
+      limit: OPS_PAYMENTS_PAGE_LIMIT,
+    });
+    rows.push(...result.items);
+    totalCount = result.totalCount;
+    if (result.items.length === 0 || rows.length >= totalCount) {
+      break;
+    }
+    offset += result.items.length;
+  }
+  return {
+    payments: rows.map(toPaymentTransaction),
+    totalCount,
+    truncated: rows.length < totalCount,
+  };
 }
 
 function toBackendPaymentChannel(mode: string): string {

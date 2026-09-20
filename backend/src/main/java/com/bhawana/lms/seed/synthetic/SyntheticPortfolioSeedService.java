@@ -1,6 +1,7 @@
 package com.bhawana.lms.seed.synthetic;
 
 import com.bhawana.lms.common.money.LoanFeeCalculator;
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import com.bhawana.lms.domain.ApiClientStatus;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplicationStatus;
@@ -130,7 +131,7 @@ public class SyntheticPortfolioSeedService {
 
     private List<LspSeedContext> seedDimensions(SyntheticPortfolioSpec spec) {
         List<LspSeedContext> contexts = new ArrayList<>(spec.lspCount());
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         String runId = properties.getSeedRunId() == null || properties.getSeedRunId().isBlank()
                 ? ""
                 : "-" + properties.getSeedRunId().trim().toUpperCase().replaceAll("[^A-Z0-9]", "");
@@ -297,7 +298,7 @@ public class SyntheticPortfolioSeedService {
             int applicationAuditRowsPerApp,
             List<SyntheticPortfolioAuditWriter.ApplicationAuditRow> applicationAuditRows
     ) {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         List<UUID> borrowerIds = new ArrayList<>(batchCount);
         List<UUID> applicationIds = new ArrayList<>(batchCount);
         List<Instant> createdAts = new ArrayList<>(batchCount);

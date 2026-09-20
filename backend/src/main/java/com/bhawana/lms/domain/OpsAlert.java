@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -108,7 +109,7 @@ public class OpsAlert {
 
     @PrePersist
     void onCreate() {
-        this.createdAt = Instant.now();
+        this.createdAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {
@@ -169,7 +170,7 @@ public class OpsAlert {
 
     public void acknowledge(String actorUsername, String note) {
         this.status = OpsAlertStatus.ACKNOWLEDGED;
-        this.acknowledgedAt = Instant.now();
+        this.acknowledgedAt = PersistedTimestamp.now();
         this.acknowledgedByUsername = normalize(actorUsername);
         this.acknowledgementNote = normalize(note);
     }

@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import com.bhawana.lms.common.util.Strings;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -71,14 +72,14 @@ public class BorrowerLspRelationship {
         this.borrower = borrower;
         this.lsp = lsp;
         this.sourceChannel = Strings.normalizeOptional(sourceChannel);
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         this.firstSourcedAt = now;
         this.lastTouchedAt = now;
     }
 
     @PrePersist
     void onCreate() {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         if (firstSourcedAt == null) {
             firstSourcedAt = now;
         }
@@ -89,11 +90,11 @@ public class BorrowerLspRelationship {
 
     @PreUpdate
     void onUpdate() {
-        lastTouchedAt = Instant.now();
+        lastTouchedAt = PersistedTimestamp.now();
     }
 
     public void touch() {
-        this.lastTouchedAt = Instant.now();
+        this.lastTouchedAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {

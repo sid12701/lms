@@ -1,5 +1,6 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import com.bhawana.lms.domain.AdminApiIdempotencyRecord;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.domain.LspApiIdempotencyRecord;
@@ -74,7 +75,7 @@ public class IdempotencyClaimService {
                 responseStatus,
                 responseBody,
                 IdempotencyRecordState.PENDING_RESPONSE_BODY,
-                Instant.now()
+                PersistedTimestamp.now()
         ) == 1;
     }
 
@@ -104,7 +105,7 @@ public class IdempotencyClaimService {
                         IdempotencyRecordState.RECOVERY_REQUIRED_RESPONSE_STATUS,
                         IdempotencyRecordState.RECOVERY_REQUIRED_RESPONSE_BODY,
                         IdempotencyRecordState.PENDING_RESPONSE_BODY,
-                        Instant.now()
+                        PersistedTimestamp.now()
                 ));
         return updated != null && updated == 1;
     }
@@ -121,7 +122,7 @@ public class IdempotencyClaimService {
                 responseStatus,
                 responseBody,
                 IdempotencyRecordState.PENDING_RESPONSE_BODY,
-                Instant.now()
+                PersistedTimestamp.now()
         ) == 1;
     }
 
@@ -148,7 +149,7 @@ public class IdempotencyClaimService {
                         IdempotencyRecordState.RECOVERY_REQUIRED_RESPONSE_STATUS,
                         IdempotencyRecordState.RECOVERY_REQUIRED_RESPONSE_BODY,
                         IdempotencyRecordState.PENDING_RESPONSE_BODY,
-                        Instant.now()
+                        PersistedTimestamp.now()
                 ));
         return updated != null && updated == 1;
     }
@@ -159,7 +160,7 @@ public class IdempotencyClaimService {
             String leaseOwner,
             Instant leaseExpiresAt
     ) {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         Integer updated = requiresNewTransactionTemplate.execute(status ->
                 lspApiIdempotencyRecordRepository.tryReclaimExpiredLease(
                         recordId,
@@ -180,7 +181,7 @@ public class IdempotencyClaimService {
             String leaseOwner,
             Instant leaseExpiresAt
     ) {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         Integer updated = requiresNewTransactionTemplate.execute(status ->
                 adminApiIdempotencyRecordRepository.tryReclaimExpiredLease(
                         recordId,

@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -77,14 +78,14 @@ public class LoanProductVersion {
         this.processingFeeRate = processingFeeRate;
         this.minTenureMonths = minTenureMonths;
         this.maxTenureMonths = maxTenureMonths;
-        this.effectiveFrom = effectiveFrom;
+        this.effectiveFrom = PersistedTimestamp.normalize(effectiveFrom);
         this.createdBy = createdBy;
     }
 
     @PrePersist
     void onCreate() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = PersistedTimestamp.now();
         }
     }
 

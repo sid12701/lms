@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -118,7 +119,7 @@ public class LoanApplicationDocumentVersion {
         this.correctionReason = correctionReason;
         this.correctsEvidenceId = correctsEvidenceId;
         this.recordedByUsername = item.getUpdatedByUsername();
-        this.recordedAt = Instant.now();
+        this.recordedAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {

@@ -932,6 +932,70 @@ class LoanApplicationOpsControllerTest {
     }
 
     @Test
+    void opsPaymentHistoryPagesBeyondTheLegacyFiftyRowCap() throws Exception {
+        LspFixture lsp = createLsp("ACTIVE");
+        ProductFixture product = createProduct("ACTIVE", 60);
+        mapProductToLsp(product.id(), lsp.id());
+
+        JsonNode created = createApplication(
+                lsp.id(), product.id(), "EXT-PAY-PAGE-001", "API", "ABCDE1234F", 60);
+        String applicationId = created.get("id").asText();
+        transitionApplication(applicationId, "AWAITING_APPROVAL", "Started review");
+        markAllRequiredKycDocumentsVerified(applicationId);
+        transitionApplication(applicationId, "APPROVED_PENDING_DISBURSAL", "Approved after checks", null, systemAdmin());
+        disburseLoan(applicationId);
+
+        JsonNode schedule = fetchRepaymentSchedule(applicationId);
+
+        // 53 real receipts through the write path — past the legacy Top50 read cap.
+        int receiptCount = 53;
+        for (int index = 0; index < receiptCount; index++) {
+            JsonNode installment = schedule.get(index);
+            mockMvc.perform(postInstallmentPayment(
+                            applicationId,
+                            installment.get("id").asText(),
+                            installment.get("outstandingAmount").decimalValue(),
+                            "PAY-PAGE-" + index,
+                            "UPI",
+                            UUID.randomUUID().toString(),
+                            LocalDate.now().minusDays(1)))
+                    .andExpect(status().isOk());
+        }
+
+        // Legacy shape preserved: bare array body and the same first-50 rows as before, but the
+        // applied window is now disclosed through the pagination headers instead of silently
+        // dropping every receipt past index 50.
+        MvcResult firstPage = mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(opsUser()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(50))
+                .andExpect(header().string("X-Limit", "50"))
+                .andExpect(header().string("X-Offset", "0"))
+                .andExpect(header().doesNotExist("X-Total-Count"))
+                .andReturn();
+
+        MvcResult secondPage = mockMvc.perform(get("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
+                        .with(opsUser())
+                        .queryParam("offset", "50")
+                        .queryParam("limit", "50")
+                        .queryParam("paginationDetails", "ON"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(header().string("X-Total-Count", "53"))
+                .andExpect(header().string("X-Limit", "50"))
+                .andExpect(header().string("X-Offset", "50"))
+                .andReturn();
+
+        JsonNode firstPageBody = objectMapper.readTree(firstPage.getResponse().getContentAsString());
+        JsonNode secondPageBody = objectMapper.readTree(secondPage.getResponse().getContentAsString());
+        java.util.Set<String> receiptIds = new java.util.HashSet<>();
+        firstPageBody.forEach(row -> receiptIds.add(row.get("id").asText()));
+        secondPageBody.forEach(row -> receiptIds.add(row.get("id").asText()));
+        // Paging reads every receipt exactly once — nothing dropped or duplicated at the boundary.
+        assertThat(receiptIds).hasSize(receiptCount);
+    }
+
+    @Test
     void paymentRequiresIdempotencyKeyHeader() throws Exception {
         LspFixture lsp = createLsp("ACTIVE");
         ProductFixture product = createProduct("ACTIVE");
@@ -1952,6 +2016,17 @@ class LoanApplicationOpsControllerTest {
             String sourceChannel,
             String borrowerPan
     ) throws Exception {
+        return createApplication(lspId, productId, externalLoanId, sourceChannel, borrowerPan, 12);
+    }
+
+    private JsonNode createApplication(
+            String lspId,
+            String productId,
+            String externalLoanId,
+            String sourceChannel,
+            String borrowerPan,
+            int tenureMonths
+    ) throws Exception {
         String mobile = mobileForPan(borrowerPan);
         String email = "anika+" + borrowerPan.toLowerCase() + "@example.com";
         MvcResult result = mockMvc.perform(post("/api/v1/internal/ops/loan-applications")
@@ -1972,7 +2047,7 @@ class LoanApplicationOpsControllerTest {
                                 "SALARIED",
                                 new BigDecimal("78000.00"),
                                 new BigDecimal("45000.00"),
-                                12
+                                tenureMonths
                         ))))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -2200,6 +2275,10 @@ class LoanApplicationOpsControllerTest {
     }
 
     private ProductFixture createProduct(String status) throws Exception {
+        return createProduct(status, 24);
+    }
+
+    private ProductFixture createProduct(String status, int maxTenureMonths) throws Exception {
         String code = "PRODUCT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         MvcResult createResult = mockMvc.perform(post("/api/v1/internal/admin/products")
                         .with(productAdmin())
@@ -2212,7 +2291,7 @@ class LoanApplicationOpsControllerTest {
                                 "interestRate", new BigDecimal("18.50"),
                                 "processingFeeRate", new BigDecimal("2.25"),
                                 "minTenureMonths", 6,
-                                "maxTenureMonths", 24,
+                                "maxTenureMonths", maxTenureMonths,
                                 "status", status
                         ))))
                 .andExpect(status().isOk())

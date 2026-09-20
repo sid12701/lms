@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -73,14 +74,14 @@ public class AdminApiIdempotencyRecord {
 
     @PrePersist
     void onCreate() {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {
@@ -136,6 +137,6 @@ public class AdminApiIdempotencyRecord {
 
     public void stampLease(String leaseOwner, Instant leaseExpiresAt) {
         this.leaseOwner = leaseOwner;
-        this.leaseExpiresAt = leaseExpiresAt;
+        this.leaseExpiresAt = PersistedTimestamp.normalize(leaseExpiresAt);
     }
 }

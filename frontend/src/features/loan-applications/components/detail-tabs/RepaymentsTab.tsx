@@ -112,6 +112,11 @@ export function RepaymentsTab({ applicationId }: RepaymentsTabProps) {
 
   return (
     <div data-slot="repayments-tab" className="flex flex-col gap-4">
+      {query.data?.truncated && query.data.totalCount != null ? (
+        <p className="text-foreground-muted text-xs" role="note">
+          Showing the {data.length} most recent of {query.data.totalCount} payments.
+        </p>
+      ) : null}
       <DataTable
         columns={COLUMNS}
         data={data}

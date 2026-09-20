@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -79,7 +80,7 @@ public class RefreshToken {
         this.tokenHash = tokenHash;
         this.appUser = appUser;
         this.authType = AUTH_TYPE_PASSWORD;
-        this.expiresAt = expiresAt;
+        this.expiresAt = PersistedTimestamp.normalize(expiresAt);
         this.revoked = false;
     }
 
@@ -91,28 +92,28 @@ public class RefreshToken {
         this.tokenHash = tokenHash;
         this.apiClient = apiClient;
         this.authType = AUTH_TYPE_API_CLIENT;
-        this.expiresAt = expiresAt;
+        this.expiresAt = PersistedTimestamp.normalize(expiresAt);
         this.revoked = false;
     }
 
     @PrePersist
     void prePersist() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = PersistedTimestamp.now();
         }
     }
 
     public void revoke() {
         this.revoked = true;
         if (this.revokedAt == null) {
-            this.revokedAt = Instant.now();
+            this.revokedAt = PersistedTimestamp.now();
         }
     }
 
     public void markReplaced(String successorHash, Instant revokedAt) {
         this.revoked = true;
         this.replacedByHash = successorHash;
-        this.revokedAt = revokedAt;
+        this.revokedAt = PersistedTimestamp.normalize(revokedAt);
     }
 
     /** Attach a human refresh row to its session family with version/epoch lineage. */

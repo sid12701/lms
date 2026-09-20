@@ -1,5 +1,6 @@
 package com.bhawana.lms.domain;
 
+import com.bhawana.lms.common.util.PersistedTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -86,14 +87,14 @@ public class LoanForeclosureQuote {
 
     @PrePersist
     void onCreate() {
-        Instant now = Instant.now();
+        Instant now = PersistedTimestamp.now();
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = PersistedTimestamp.now();
     }
 
     public UUID getId() {
@@ -157,6 +158,6 @@ public class LoanForeclosureQuote {
     public void execute(String actorUsername) {
         this.status = LoanForeclosureQuoteStatus.EXECUTED;
         this.executedByUsername = actorUsername;
-        this.executedAt = Instant.now();
+        this.executedAt = PersistedTimestamp.now();
     }
 }
