@@ -1,12 +1,12 @@
 package com.bhawana.lms.seed.synthetic;
 
 import com.bhawana.lms.common.money.Money;
+import com.bhawana.lms.config.TimeConfig;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,7 +25,9 @@ final class SyntheticPortfolioEmiCalculator {
         BigDecimal scaledPrincipal = Money.scale(principal);
         BigDecimal monthlyRate = annualInterestRate.divide(BigDecimal.valueOf(1200), 10, RoundingMode.HALF_UP);
         BigDecimal emiAmount = calculateMonthlyEmi(scaledPrincipal, monthlyRate, tenureMonths);
-        LocalDate firstDueDate = approvedAt.atZone(ZoneOffset.UTC).toLocalDate().plusMonths(1);
+        // M09 — seeded schedules anchor on the business date like the real
+        // generator, not the UTC date.
+        LocalDate firstDueDate = approvedAt.atZone(TimeConfig.BUSINESS_ZONE).toLocalDate().plusMonths(1);
 
         BigDecimal remainingPrincipal = scaledPrincipal;
         List<InstallmentRow> installments = new ArrayList<>(tenureMonths);

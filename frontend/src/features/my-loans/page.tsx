@@ -45,7 +45,12 @@ const COLUMNS: ColumnDef<MyLoanListRow>[] = [
     meta: { label: "Amount", numeric: true, mobileCard: "secondary" },
     header: () => <span>Amount</span>,
     cell: ({ row }) => (
-      <span className="tabular-nums">{formatINR(Number(row.original.requestedAmount ?? 0))}</span>
+      // M09 — an absent amount is "unavailable", not ₹0.00.
+      <span className="tabular-nums">
+        {row.original.requestedAmount != null
+          ? formatINR(Number(row.original.requestedAmount))
+          : "—"}
+      </span>
     ),
   },
   {

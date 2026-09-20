@@ -11,6 +11,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.config.BusinessCalendar;
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
@@ -25,6 +27,7 @@ import com.bhawana.lms.service.LoanRepaymentScheduleService.InstallmentDraft;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -79,7 +82,8 @@ class LoanRepaymentScheduleServiceTest {
                 loanRepaymentScheduleInstallmentRepository,
                 loanPaymentTransactionRepository,
                 lspValidationAuditService,
-                scheduleValidationProperties
+                scheduleValidationProperties,
+                new BusinessCalendar(Clock.system(TimeConfig.BUSINESS_ZONE))
         );
     }
 
@@ -156,6 +160,42 @@ class LoanRepaymentScheduleServiceTest {
         scheduleService.replaceWithProvidedScheduleForLsp(lspId, applicationId, generated);
 
         verify(loanRepaymentScheduleInstallmentRepository).saveAll(any());
+    }
+
+    @Test
+    void earlyMorningIstApprovalAnchorsToIstBusinessDate() {
+        // M09: 2026-03-10T20:30:00Z is 2026-03-11 02:00 IST — still 10 March in
+        // UTC, but the contractual business date is 11 March. Anchoring through
+        // UTC placed the first due date on 10 April; the business zone anchors
+        // it on 11 April.
+        LoanAccount loanAccount = loanAccountApprovedAt(
+                UUID.randomUUID(),
+                new BigDecimal("45000.00"),
+                12,
+                new BigDecimal("18.50"),
+                Instant.parse("2026-03-10T20:30:00Z")
+        );
+
+        List<InstallmentDraft> drafts = scheduleService.projectGeneratedInstallmentDrafts(loanAccount);
+
+        assertEquals(LocalDate.of(2026, 4, 11), drafts.get(0).dueDate());
+    }
+
+    @Test
+    void leapDayEveApprovalAnchorsToIstLeapDay() {
+        // 2024-02-28T20:00:00Z is 2024-02-29 01:30 IST — the leap day itself is
+        // the business date even though UTC is still on 28 February.
+        LoanAccount loanAccount = loanAccountApprovedAt(
+                UUID.randomUUID(),
+                new BigDecimal("45000.00"),
+                12,
+                new BigDecimal("18.50"),
+                Instant.parse("2024-02-28T20:00:00Z")
+        );
+
+        List<InstallmentDraft> drafts = scheduleService.projectGeneratedInstallmentDrafts(loanAccount);
+
+        assertEquals(LocalDate.of(2024, 3, 29), drafts.get(0).dueDate());
     }
 
     @Test
@@ -410,6 +450,16 @@ class LoanRepaymentScheduleServiceTest {
     }
 
     private static LoanAccount loanAccount(UUID accountId, BigDecimal principal, int tenureMonths, BigDecimal annualRate) {
+        return loanAccountApprovedAt(accountId, principal, tenureMonths, annualRate, APPROVED_AT);
+    }
+
+    private static LoanAccount loanAccountApprovedAt(
+            UUID accountId,
+            BigDecimal principal,
+            int tenureMonths,
+            BigDecimal annualRate,
+            Instant approvedAt
+    ) {
         LoanProductVersion productVersion = mock(LoanProductVersion.class);
         lenient().when(productVersion.getInterestRate()).thenReturn(annualRate);
 
@@ -418,7 +468,7 @@ class LoanRepaymentScheduleServiceTest {
         when(loanAccount.getPrincipalAmount()).thenReturn(principal);
         when(loanAccount.getTenureMonths()).thenReturn(tenureMonths);
         when(loanAccount.getLoanProductVersion()).thenReturn(productVersion);
-        when(loanAccount.getApprovedAt()).thenReturn(APPROVED_AT);
+        when(loanAccount.getApprovedAt()).thenReturn(approvedAt);
         return loanAccount;
     }
 

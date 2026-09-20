@@ -14,8 +14,8 @@ import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import java.math.BigDecimal;
+import com.bhawana.lms.config.TimeConfig;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -134,7 +134,8 @@ public class LspDirectoryService {
                 : accountSummary.getTotalDisbursedAmount();
         LocalDate latestDisbursalDate = accountSummary == null || accountSummary.getLatestDisbursalAt() == null
                 ? null
-                : accountSummary.getLatestDisbursalAt().atZone(ZoneOffset.UTC).toLocalDate();
+                // M09 — disbursal dates are business dates: derive in Asia/Kolkata, not UTC.
+                : accountSummary.getLatestDisbursalAt().atZone(TimeConfig.BUSINESS_ZONE).toLocalDate();
 
         return new LspPortfolioSummary(
                 applicationSummary == null ? 0 : Math.toIntExact(applicationSummary.getLoanApplicationCount()),

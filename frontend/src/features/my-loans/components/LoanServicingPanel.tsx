@@ -79,7 +79,9 @@ export function LoanServicingPanel({ loanAccountId }: LoanServicingPanelProps) {
                     {payments.map((row) => (
                       <tr key={row.id} className="border-border border-b last:border-b-0">
                         <td className="px-2 py-2 font-mono">{row.paymentDate}</td>
-                        <td className="px-2 py-2 font-mono">{formatINR(row.amount)}</td>
+                        <td className="px-2 py-2 font-mono">
+                          {formatINR(row.amount, { decimals: 2 })}
+                        </td>
                         <td className="px-2 py-2">{row.channel}</td>
                         <td className="px-2 py-2 font-mono">{row.reference ?? "—"}</td>
                         {/* Same badge the ops repayments ledger uses, so an

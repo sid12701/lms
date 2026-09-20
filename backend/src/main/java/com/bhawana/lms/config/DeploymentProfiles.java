@@ -18,9 +18,12 @@ import org.springframework.core.env.Environment;
  * and therefore must not earn exemptions either.
  *
  * <p>This set is intentionally narrower than {@code DisbursementSimulationGuard}'s simulation set
- * ({@code test}/{@code local}/{@code dev}): the {@code dev} profile may run the disbursement
- * simulator but still enforces deployment safety checks. Coordinate changes to either set with the
- * other; neither may be weakened to reintroduce an implicit local default.
+ * ({@code test}/{@code local}/{@code dev}/{@code test-data}): the {@code dev} profile may run the
+ * disbursement simulator but still enforces deployment safety checks, and {@code test-data} (L05)
+ * — the dedicated profile that exposes the synthetic seeder — likewise keeps full deployment
+ * safety enforcement; a test-data environment is not a free pass for weak secrets. Coordinate
+ * changes to either set with the other; neither may be weakened to reintroduce an implicit local
+ * default.
  */
 public final class DeploymentProfiles {
 

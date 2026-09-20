@@ -669,71 +669,6 @@ CREATE TABLE public.loan_event (
 )
 PARTITION BY RANGE (occurred_at);
 ALTER TABLE ONLY public.loan_event FORCE ROW LEVEL SECURITY;
-CREATE TABLE public.loan_event_2026_08 (
-    id uuid NOT NULL,
-    lsp_id uuid NOT NULL,
-    event_type character varying(64) NOT NULL,
-    aggregate_type character varying(64) NOT NULL,
-    aggregate_id character varying(64) NOT NULL,
-    loan_application_id uuid NOT NULL,
-    payload_json jsonb NOT NULL,
-    occurred_at timestamp with time zone NOT NULL,
-    correlation_id character varying(128),
-    transaction_id xid8 DEFAULT pg_current_xact_id() NOT NULL,
-    "position" bigint DEFAULT nextval('public.loan_event_position_seq'::regclass) NOT NULL
-);
-CREATE TABLE public.loan_event_2026_09 (
-    id uuid NOT NULL,
-    lsp_id uuid NOT NULL,
-    event_type character varying(64) NOT NULL,
-    aggregate_type character varying(64) NOT NULL,
-    aggregate_id character varying(64) NOT NULL,
-    loan_application_id uuid NOT NULL,
-    payload_json jsonb NOT NULL,
-    occurred_at timestamp with time zone NOT NULL,
-    correlation_id character varying(128),
-    transaction_id xid8 DEFAULT pg_current_xact_id() NOT NULL,
-    "position" bigint DEFAULT nextval('public.loan_event_position_seq'::regclass) NOT NULL
-);
-CREATE TABLE public.loan_event_2026_10 (
-    id uuid NOT NULL,
-    lsp_id uuid NOT NULL,
-    event_type character varying(64) NOT NULL,
-    aggregate_type character varying(64) NOT NULL,
-    aggregate_id character varying(64) NOT NULL,
-    loan_application_id uuid NOT NULL,
-    payload_json jsonb NOT NULL,
-    occurred_at timestamp with time zone NOT NULL,
-    correlation_id character varying(128),
-    transaction_id xid8 DEFAULT pg_current_xact_id() NOT NULL,
-    "position" bigint DEFAULT nextval('public.loan_event_position_seq'::regclass) NOT NULL
-);
-CREATE TABLE public.loan_event_2026_11 (
-    id uuid NOT NULL,
-    lsp_id uuid NOT NULL,
-    event_type character varying(64) NOT NULL,
-    aggregate_type character varying(64) NOT NULL,
-    aggregate_id character varying(64) NOT NULL,
-    loan_application_id uuid NOT NULL,
-    payload_json jsonb NOT NULL,
-    occurred_at timestamp with time zone NOT NULL,
-    correlation_id character varying(128),
-    transaction_id xid8 DEFAULT pg_current_xact_id() NOT NULL,
-    "position" bigint DEFAULT nextval('public.loan_event_position_seq'::regclass) NOT NULL
-);
-CREATE TABLE public.loan_event_2026_12 (
-    id uuid NOT NULL,
-    lsp_id uuid NOT NULL,
-    event_type character varying(64) NOT NULL,
-    aggregate_type character varying(64) NOT NULL,
-    aggregate_id character varying(64) NOT NULL,
-    loan_application_id uuid NOT NULL,
-    payload_json jsonb NOT NULL,
-    occurred_at timestamp with time zone NOT NULL,
-    correlation_id character varying(128),
-    transaction_id xid8 DEFAULT pg_current_xact_id() NOT NULL,
-    "position" bigint DEFAULT nextval('public.loan_event_position_seq'::regclass) NOT NULL
-);
 CREATE TABLE public.loan_foreclosure_quote (
     id uuid NOT NULL,
     loan_account_id uuid NOT NULL,
@@ -1010,11 +945,6 @@ CREATE TABLE public.worker_lease (
     expires_at timestamp with time zone NOT NULL,
     updated_at timestamp with time zone NOT NULL
 );
-ALTER TABLE ONLY public.loan_event ATTACH PARTITION public.loan_event_2026_08 FOR VALUES FROM ('2026-08-01 00:00:00+00') TO ('2026-09-01 00:00:00+00');
-ALTER TABLE ONLY public.loan_event ATTACH PARTITION public.loan_event_2026_09 FOR VALUES FROM ('2026-09-01 00:00:00+00') TO ('2026-10-01 00:00:00+00');
-ALTER TABLE ONLY public.loan_event ATTACH PARTITION public.loan_event_2026_10 FOR VALUES FROM ('2026-10-01 00:00:00+00') TO ('2026-11-01 00:00:00+00');
-ALTER TABLE ONLY public.loan_event ATTACH PARTITION public.loan_event_2026_11 FOR VALUES FROM ('2026-11-01 00:00:00+00') TO ('2026-12-01 00:00:00+00');
-ALTER TABLE ONLY public.loan_event ATTACH PARTITION public.loan_event_2026_12 FOR VALUES FROM ('2026-12-01 00:00:00+00') TO ('2027-01-01 00:00:00+00');
 ALTER TABLE ONLY public.admin_api_idempotency_record
     ADD CONSTRAINT admin_api_idempotency_record_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.alert_rule
@@ -1115,16 +1045,6 @@ ALTER TABLE ONLY public.loan_document_object
     ADD CONSTRAINT loan_document_object_pkey PRIMARY KEY (storage_key);
 ALTER TABLE ONLY public.loan_event
     ADD CONSTRAINT loan_event_pkey PRIMARY KEY (occurred_at, id);
-ALTER TABLE ONLY public.loan_event_2026_08
-    ADD CONSTRAINT loan_event_2026_08_pkey PRIMARY KEY (occurred_at, id);
-ALTER TABLE ONLY public.loan_event_2026_09
-    ADD CONSTRAINT loan_event_2026_09_pkey PRIMARY KEY (occurred_at, id);
-ALTER TABLE ONLY public.loan_event_2026_10
-    ADD CONSTRAINT loan_event_2026_10_pkey PRIMARY KEY (occurred_at, id);
-ALTER TABLE ONLY public.loan_event_2026_11
-    ADD CONSTRAINT loan_event_2026_11_pkey PRIMARY KEY (occurred_at, id);
-ALTER TABLE ONLY public.loan_event_2026_12
-    ADD CONSTRAINT loan_event_2026_12_pkey PRIMARY KEY (occurred_at, id);
 ALTER TABLE ONLY public.loan_foreclosure_quote
     ADD CONSTRAINT loan_foreclosure_quote_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.loan_payment_transaction
@@ -1285,16 +1205,6 @@ CREATE INDEX idx_report_request_status ON public.report_request USING btree (sta
 CREATE INDEX idx_report_request_status_created_at ON public.report_request USING btree (status, created_at);
 CREATE INDEX ix_lsp_ip_allowlist_lsp ON public.lsp_api_ip_allowlist USING btree (lsp_id);
 CREATE INDEX ix_lsp_ui_ip_allowlist_lsp ON public.lsp_ui_ip_allowlist USING btree (lsp_id);
-CREATE INDEX loan_event_2026_08_loan_application_id_occurred_at_idx ON public.loan_event_2026_08 USING btree (loan_application_id, occurred_at DESC);
-CREATE INDEX loan_event_2026_08_lsp_id_transaction_id_position_idx ON public.loan_event_2026_08 USING btree (lsp_id, transaction_id, "position");
-CREATE INDEX loan_event_2026_09_loan_application_id_occurred_at_idx ON public.loan_event_2026_09 USING btree (loan_application_id, occurred_at DESC);
-CREATE INDEX loan_event_2026_09_lsp_id_transaction_id_position_idx ON public.loan_event_2026_09 USING btree (lsp_id, transaction_id, "position");
-CREATE INDEX loan_event_2026_10_loan_application_id_occurred_at_idx ON public.loan_event_2026_10 USING btree (loan_application_id, occurred_at DESC);
-CREATE INDEX loan_event_2026_10_lsp_id_transaction_id_position_idx ON public.loan_event_2026_10 USING btree (lsp_id, transaction_id, "position");
-CREATE INDEX loan_event_2026_11_loan_application_id_occurred_at_idx ON public.loan_event_2026_11 USING btree (loan_application_id, occurred_at DESC);
-CREATE INDEX loan_event_2026_11_lsp_id_transaction_id_position_idx ON public.loan_event_2026_11 USING btree (lsp_id, transaction_id, "position");
-CREATE INDEX loan_event_2026_12_loan_application_id_occurred_at_idx ON public.loan_event_2026_12 USING btree (loan_application_id, occurred_at DESC);
-CREATE INDEX loan_event_2026_12_lsp_id_transaction_id_position_idx ON public.loan_event_2026_12 USING btree (lsp_id, transaction_id, "position");
 CREATE UNIQUE INDEX uk_admin_api_idempotency_scope ON public.admin_api_idempotency_record USING btree (operation_key, idempotency_key);
 CREATE UNIQUE INDEX uk_borrower_pan ON public.borrower USING btree (pan);
 CREATE UNIQUE INDEX uk_disbursement_intent_live_account ON public.disbursement_intent USING btree (loan_account_id) WHERE ((state)::text <> ALL ((ARRAY['SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELLED'::character varying])::text[]));
@@ -1304,21 +1214,6 @@ CREATE UNIQUE INDEX uk_lsp_api_idempotency_scope ON public.lsp_api_idempotency_r
 CREATE UNIQUE INDEX uk_ops_alert_active_correlation ON public.ops_alert USING btree (type, correlation_id) WHERE (((status)::text = 'NEW'::text) AND (subject_id IS NULL) AND (correlation_id IS NOT NULL) AND dedupe_protected);
 CREATE UNIQUE INDEX uk_ops_alert_active_subject ON public.ops_alert USING btree (type, subject_type, subject_id) NULLS NOT DISTINCT WHERE (((status)::text = 'NEW'::text) AND (subject_id IS NOT NULL) AND dedupe_protected);
 CREATE UNIQUE INDEX uq_refresh_token_live_family_head ON public.refresh_token USING btree (family_id) WHERE ((revoked = false) AND (family_id IS NOT NULL));
-ALTER INDEX public.idx_loan_event_application_time ATTACH PARTITION public.loan_event_2026_08_loan_application_id_occurred_at_idx;
-ALTER INDEX public.idx_loan_event_feed_order ATTACH PARTITION public.loan_event_2026_08_lsp_id_transaction_id_position_idx;
-ALTER INDEX public.loan_event_pkey ATTACH PARTITION public.loan_event_2026_08_pkey;
-ALTER INDEX public.idx_loan_event_application_time ATTACH PARTITION public.loan_event_2026_09_loan_application_id_occurred_at_idx;
-ALTER INDEX public.idx_loan_event_feed_order ATTACH PARTITION public.loan_event_2026_09_lsp_id_transaction_id_position_idx;
-ALTER INDEX public.loan_event_pkey ATTACH PARTITION public.loan_event_2026_09_pkey;
-ALTER INDEX public.idx_loan_event_application_time ATTACH PARTITION public.loan_event_2026_10_loan_application_id_occurred_at_idx;
-ALTER INDEX public.idx_loan_event_feed_order ATTACH PARTITION public.loan_event_2026_10_lsp_id_transaction_id_position_idx;
-ALTER INDEX public.loan_event_pkey ATTACH PARTITION public.loan_event_2026_10_pkey;
-ALTER INDEX public.idx_loan_event_application_time ATTACH PARTITION public.loan_event_2026_11_loan_application_id_occurred_at_idx;
-ALTER INDEX public.idx_loan_event_feed_order ATTACH PARTITION public.loan_event_2026_11_lsp_id_transaction_id_position_idx;
-ALTER INDEX public.loan_event_pkey ATTACH PARTITION public.loan_event_2026_11_pkey;
-ALTER INDEX public.idx_loan_event_application_time ATTACH PARTITION public.loan_event_2026_12_loan_application_id_occurred_at_idx;
-ALTER INDEX public.idx_loan_event_feed_order ATTACH PARTITION public.loan_event_2026_12_lsp_id_transaction_id_position_idx;
-ALTER INDEX public.loan_event_pkey ATTACH PARTITION public.loan_event_2026_12_pkey;
 CREATE TRIGGER disbursement_observation_append_only BEFORE DELETE OR UPDATE ON public.disbursement_observation FOR EACH ROW EXECUTE FUNCTION public.reject_disbursement_observation_mutation();
 CREATE TRIGGER loan_event_append_only BEFORE DELETE OR UPDATE ON public.loan_event FOR EACH ROW EXECUTE FUNCTION public.reject_loan_event_mutation();
 ALTER TABLE ONLY public.api_client_audit_event
@@ -1551,3 +1446,4 @@ ALTER TABLE public.lsp_api_idempotency_record ENABLE ROW LEVEL SECURITY;
 CREATE POLICY lsp_api_idempotency_record_tenant_policy ON public.lsp_api_idempotency_record TO lms_tenant_app USING ((lsp_id = public.app_current_lsp_id())) WITH CHECK ((lsp_id = public.app_current_lsp_id()));
 ALTER TABLE public.report_request ENABLE ROW LEVEL SECURITY;
 CREATE POLICY report_request_tenant_policy ON public.report_request TO lms_tenant_app USING ((lsp_id = public.app_current_lsp_id())) WITH CHECK ((lsp_id = public.app_current_lsp_id()));
+-- schema-diff: 5 runtime partition(s) of public.loan_event elided; child names and bounds derive from the generation date

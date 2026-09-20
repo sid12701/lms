@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
  * {@code java -jar lms.jar --spring.profiles.active=staging --seed-synthetic-portfolio --app.seed.synthetic-portfolio.enabled=true}
  */
 @Component
-@Profile({"staging", "local"})
+@Profile({"staging", "local", "test-data"})
 @Order(Integer.MIN_VALUE)
 public class SyntheticPortfolioSeedRunner implements ApplicationRunner {
 

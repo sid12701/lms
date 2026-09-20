@@ -29,8 +29,12 @@ public class DisbursementSimulationGuard {
 
     public static final String SIMULATION_NOT_ALLOWED = "DISBURSEMENT_SIMULATION_NOT_ALLOWED";
 
-    /** Explicit simulation-only profiles. Anything else — including prod/staging/default — denies. */
-    private static final Set<String> SIMULATION_PROFILES = Set.of("test", "local", "dev");
+    /**
+     * Explicit simulation-only profiles. Anything else — including prod/staging/default — denies.
+     * {@code test-data} (L05) is the dedicated test-seeding profile: contexts that activate it are
+     * test-data environments by definition, so simulation stays allowed there.
+     */
+    private static final Set<String> SIMULATION_PROFILES = Set.of("test", "local", "dev", "test-data");
 
     private final Environment environment;
 

@@ -14,12 +14,25 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 @SpringBootTest
-@ActiveProfiles("test")
+// The seed service bean only exists under the approved seeding profiles (L05); the
+// dedicated test-data profile is the sanctioned way to reach it from a test context.
+@ActiveProfiles({"test", "test-data"})
 @TestPropertySource(properties = {
         "app.seed.synthetic-portfolio.enabled=true",
+        // Testcontainers shared Postgres runs with database name "lms"; the seed refuses
+        // any database that is not explicitly allowlisted.
+        "app.seed.synthetic-portfolio.allowed-database-names=lms",
         "app.seed.synthetic-portfolio.application-count-override=400",
         "app.seed.synthetic-portfolio.lsp-count=2",
         "app.seed.synthetic-portfolio.batch-size=200",
+        // test-data is deliberately NOT a dev-exempt profile (see DeploymentProfiles), so this
+        // context must satisfy UnsafeDeploymentConfigurationValidator and
+        // TenantDatasourceSecurityValidator like a real deployment would. The tenant password
+        // override feeds both the app.datasource.tenant.password property and the Flyway
+        // tenant_app_password placeholder, so the created role matches the login credentials.
+        "APP_TENANT_DATASOURCE_PASSWORD=test-tenant-rotated-password",
+        "app.security.jwt.secret=test-only-jwt-secret-that-is-at-least-32-chars",
+        "app.security.jwt.secure-cookies=true",
         "app.reports.processing.enabled=false",
         "app.disbursement.worker.enabled=false",
         "app.alert-rules.scheduler-enabled=false",

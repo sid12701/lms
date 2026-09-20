@@ -41,6 +41,34 @@ const INR_COMPACT_FORMATTERS: Record<0 | 2, Intl.NumberFormat> = {
   }),
 };
 
+/**
+ * The product's business timezone — Asia/Kolkata, matching the backend's
+ * `TimeConfig.BUSINESS_ZONE`. Contractual dates (approval anchoring, due
+ * dates, DPD) are computed in this zone on the backend, so instants shown to
+ * operators render in it too — never in the browser's timezone, which would
+ * disagree with the business date at day boundaries (M09).
+ */
+export const BUSINESS_TIME_ZONE = "Asia/Kolkata";
+
+const BUSINESS_DATE_FORMATTER = new Intl.DateTimeFormat("en-IN", {
+  timeZone: BUSINESS_TIME_ZONE,
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+const BUSINESS_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-IN", {
+  timeZone: BUSINESS_TIME_ZONE,
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+/** `YYYY-MM-DD` — a contractual calendar date, not an instant. */
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 function isPlausibleInstant(date: Date): boolean {
   return !Number.isNaN(date.getTime()) && date.getFullYear() >= MIN_PLAUSIBLE_YEAR;
 }
@@ -62,14 +90,29 @@ export function formatPickerDate(iso: string): string {
   return format(parseISO(iso), "dd/MM/yyyy");
 }
 
-/** "09 May 2026" */
+/**
+ * "09 May 2026" — calendar-date display.
+ *
+ * A date-only value (`2026-05-09`) is a contractual date, not an instant: it
+ * renders literally and cannot be shifted by the browser's timezone. A value
+ * carrying a time component is an instant and renders the date it falls on in
+ * the business zone, so it agrees with backend business-date math (M09).
+ */
 export function formatDate(iso: string): string {
-  return format(parseISO(iso), "dd MMM yyyy");
+  if (DATE_ONLY_PATTERN.test(iso)) {
+    return format(parseISO(iso), "dd MMM yyyy");
+  }
+  return BUSINESS_DATE_FORMATTER.format(parseISO(iso));
 }
 
-/** "09 May 2026, 14:32" */
+/**
+ * "09 May 2026, 14:32 IST" — an actual instant rendered in the business zone
+ * and labeled with it. Browser-local rendering used to print e.g. a London
+ * wall-clock time with no zone marker (or worse, an "IST" label on local
+ * time); the label is now always accurate (M09).
+ */
 export function formatDateTime(iso: string): string {
-  return format(parseISO(iso), "dd MMM yyyy, HH:mm");
+  return `${BUSINESS_DATE_TIME_FORMATTER.format(parseISO(iso))} IST`;
 }
 
 /**

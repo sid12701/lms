@@ -1,6 +1,7 @@
 package com.bhawana.lms.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.bhawana.lms.config.BusinessCalendar;
@@ -89,6 +90,11 @@ class AdminReportingServicePortfolioMisExportStreamingTest {
     @Test
     void streamingCsvMatchesRowAggregationOnSeededPortfolio() throws java.io.IOException {
         when(businessCalendar.today()).thenReturn(LocalDate.of(2026, 7, 6));
+        // The service derives report dates through BusinessCalendar (M09); only today() is
+        // time-sensitive, so the instant-to-business-date mappings use the real implementation.
+        when(businessCalendar.businessDate(any())).thenCallRealMethod();
+        when(businessCalendar.startOfBusinessDay(any())).thenCallRealMethod();
+        when(businessCalendar.endOfBusinessDayExclusive(any())).thenCallRealMethod();
 
         Lsp lsp = lspRepository.save(new Lsp("APEX", "Apex Finance", LspStatus.ACTIVE));
         LoanProduct product = persistProduct(product("PORT-STREAM", new BigDecimal("18.50")));
