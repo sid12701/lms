@@ -56,12 +56,7 @@ class TransactionalExternalEffectArchitectureTest {
     private static final Map<String, String> OPEN_DEBT_ALLOWLIST = new LinkedHashMap<>(Map.of(
             "com.bhawana.lms.service.LoanApplicationServicingReadService#downloadDocumentZip",
             "H24-class (open, found by this rule): read-write transaction held across N document "
-                    + "fetches while building a ZIP. Not in the original audit.",
-            "com.bhawana.lms.service.ReportRequestService#getCompletedReport",
-            "Lower severity: readOnly transaction held across one report fetch. No rollback "
-                    + "divergence, but it still occupies a pooled connection for the download.",
-            "com.bhawana.lms.service.ReportRequestService#getCompletedReportDownload",
-            "Lower severity: readOnly transaction held across one report fetch, as above."
+                    + "fetches while building a ZIP. Not in the original audit."
     ));
 
     @Test

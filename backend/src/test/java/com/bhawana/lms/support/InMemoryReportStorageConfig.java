@@ -65,6 +65,15 @@ public class InMemoryReportStorageConfig {
             return content.clone();
         }
 
+        @Override
+        public ReportStream openStream(String storageKey) {
+            byte[] content = objects.get(storageKey);
+            if (content == null) {
+                throw new IllegalStateException("No stored report for key " + storageKey);
+            }
+            return new ReportStream(new java.io.ByteArrayInputStream(content), content.length);
+        }
+
         /** Test-visible count of distinct stored objects — proves retries converge on one key. */
         public int storedObjectCount() {
             return objects.size();

@@ -73,6 +73,12 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>s3</artifactId>
         </dependency>
+        <dependency>
+            <!-- M05: needed at compile scope so the storage services can size the
+                 connection pool and wire explicit timeouts on the shared S3 client. -->
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>apache-client</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>com.h2database</groupId>

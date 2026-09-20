@@ -1,6 +1,7 @@
 package com.bhawana.lms.security;
 
 import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -12,6 +13,16 @@ public class RateLimitProperties {
 
     private boolean enabled = true;
     private List<RateLimitRule> rules = new ArrayList<>();
+
+    /**
+     * M10: cooldown between attempts to (re)establish the rate-limit Redis connection after a
+     * connect failure. While down, matched routes apply their per-rule
+     * {@code on-store-failure} policy instead of hammering Redis per request.
+     */
+    private Duration reconnectInterval = Duration.ofSeconds(5);
+
+    /** Retry-After seconds sent with the bounded 503 of a FAIL_CLOSED route during an outage. */
+    private long unavailableRetryAfterSeconds = 30;
 
     public boolean isEnabled() {
         return enabled;
@@ -29,8 +40,32 @@ public class RateLimitProperties {
         this.rules = rules == null ? new ArrayList<>() : rules;
     }
 
+    public Duration getReconnectInterval() {
+        return reconnectInterval;
+    }
+
+    public void setReconnectInterval(Duration reconnectInterval) {
+        if (reconnectInterval != null) {
+            this.reconnectInterval = reconnectInterval;
+        }
+    }
+
+    public long getUnavailableRetryAfterSeconds() {
+        return unavailableRetryAfterSeconds;
+    }
+
+    public void setUnavailableRetryAfterSeconds(long unavailableRetryAfterSeconds) {
+        this.unavailableRetryAfterSeconds = unavailableRetryAfterSeconds;
+    }
+
     @PostConstruct
     void validate() {
+        if (reconnectInterval.isZero() || reconnectInterval.isNegative()) {
+            throw new IllegalStateException("app.rate-limit.reconnect-interval must be positive.");
+        }
+        if (unavailableRetryAfterSeconds < 1) {
+            throw new IllegalStateException("app.rate-limit.unavailable-retry-after-seconds must be positive.");
+        }
         Set<String> ids = new HashSet<>();
         for (RateLimitRule rule : rules) {
             if (rule.getId() == null || rule.getId().isBlank()) {
