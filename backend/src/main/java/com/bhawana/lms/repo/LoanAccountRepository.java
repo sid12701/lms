@@ -193,6 +193,7 @@ public interface LoanAccountRepository extends JpaRepository<LoanAccount, UUID> 
             join account.lsp lsp
             join account.loanProductVersion productVersion
             left join LoanRepaymentScheduleInstallment installment on installment.loanAccount = account
+            where\s""" + LoanPortfolioPopulation.FUNDED_SERVICING_JPQL + """
             group by account.id,
                      application.id,
                      application.externalLoanId,

@@ -69,7 +69,10 @@ class ScheduledJobConcurrencyArchitectureTest {
             "com.bhawana.lms.service.AlertRuleSchedulerWorker",
             "Evaluation is serialized by the fenced worker_lease row claimed inside "
                     + "AlertRuleEvaluationWorker (M07): a losing instance gets an empty "
-                    + "summary, and a displaced owner stops before its next transaction."
+                    + "summary, and a displaced owner stops before its next transaction.",
+            "com.bhawana.lms.service.LoanDocumentOrphanReconciler",
+            "Claims each object with a conditional PENDING -> DELETING update; a losing instance "
+                    + "updates no row, and the storage delete it may repeat is idempotent."
     ));
 
     @Test

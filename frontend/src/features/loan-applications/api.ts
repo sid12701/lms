@@ -61,19 +61,24 @@ function toListItem(payload: BackendApplicationResponse): LoanApplicationListIte
 
 function backendQueryFromFilters(
   filters: LoanApplicationListFilters,
-): Record<string, string | number | undefined> {
+): Record<string, string | number | readonly string[] | undefined> {
   const pageSize = filters.pageSize ?? 25;
   const offset = (filters.page ?? 0) * pageSize;
-  const firstStatus = filters.status && filters.status.length > 0 ? filters.status[0] : undefined;
   return {
     lspId: filters.lspId,
     productId: filters.productId,
-    status: firstStatus,
+    // H29 — every selected status reaches the server (repeated `status`
+    // params, OR semantics); the sort choice travels too, so the page the
+    // table shows is the page the server sorted — never a client-side
+    // re-sort of one loaded page.
+    status: filters.status && filters.status.length > 0 ? [...filters.status] : undefined,
     q: filters.q,
     lspLoanId: filters.lspLoanId,
     bhawLoanId: filters.bhawLoanId,
     disbursalDateFrom: filters.disbursalDateFrom,
     disbursalDateTo: filters.disbursalDateTo,
+    sortBy: filters.sortBy,
+    sortDir: filters.sortDir,
     offset,
     limit: pageSize,
     paginationDetails: "ON",

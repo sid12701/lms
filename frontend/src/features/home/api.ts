@@ -2,7 +2,7 @@
  * Home API client — calls the live backend dashboard endpoints and maps their
  * response contracts into the view model declared in `./types.ts`.
  */
-import { AlertSeverity, AlertSubjectType } from "@/schemas/alert";
+import { apiAlertSeverity, apiAlertSubjectType } from "@/schemas/alert";
 import type { DelinquencyBucket } from "@/schemas/loan-account";
 import { ApiError, requestJson } from "@/lib/api/http-client";
 import { loadStoredSession } from "@/lib/api/session-storage";
@@ -14,7 +14,6 @@ import type {
   HomeKpis,
   InternalHomeKpis,
 } from "./types";
-import type { LoanStatus as LoanStatusType } from "@/types";
 
 // ─── Public surface ─────────────────────────────────────────────────────────
 
@@ -83,32 +82,46 @@ export interface BackendHomeOverview {
 }
 
 function safeAlertSubjectType(value: string): HomeAlertSummary["subjectType"] {
-  const parsed = AlertSubjectType.safeParse(value);
-  return parsed.success ? parsed.data : "SYSTEM";
+  return apiAlertSubjectType(value);
 }
 
+/**
+ * H28 — backend DPD bucket names map onto the frontend chart ids; a wire
+ * value the frontend does not recognize lands in the explicit UNKNOWN bucket
+ * (never B0/Current). Counts accumulate per bucket so repeated or
+ * overlapping rows cannot silently overwrite each other.
+ */
 function mapDpdBuckets(
   rows: ReadonlyArray<{ bucket: string; count: number }>,
 ): readonly DpdBucketSummary[] {
-  const counts = new Map<DelinquencyBucket, number>();
+  const counts = new Map<DelinquencyBucket | "UNKNOWN", number>();
   for (const bucket of DPD_BUCKETS_IN_ORDER) {
     counts.set(bucket, 0);
   }
+  let unknown = 0;
   for (const row of rows) {
-    const mapped = BACKEND_DPD_TO_FE[row.bucket] ?? "B0";
-    counts.set(mapped, row.count);
+    const mapped = BACKEND_DPD_TO_FE[row.bucket];
+    if (mapped) {
+      counts.set(mapped, (counts.get(mapped) ?? 0) + row.count);
+    } else {
+      unknown += row.count;
+    }
   }
-  return DPD_BUCKETS_IN_ORDER.map((bucket) => ({
+  const summaries: DpdBucketSummary[] = DPD_BUCKETS_IN_ORDER.map((bucket) => ({
     bucket,
     count: counts.get(bucket) ?? 0,
   }));
+  if (unknown > 0) {
+    summaries.push({ bucket: "UNKNOWN", count: unknown });
+  }
+  return summaries;
 }
 
 function mapApplicationsByStatus(
   rows: ReadonlyArray<{ status: string; count: number }>,
 ): readonly ApplicationsByStatusBucket[] {
   return rows.map((row) => ({
-    status: apiLoanStatus(row.status) as LoanStatusType,
+    status: apiLoanStatus(row.status),
     count: row.count,
   }));
 }
@@ -123,19 +136,20 @@ export function mapBackendHomeOverviewToInternalKpis(
     borrowerNameMasked: application.borrowerNameMasked,
     lspName: application.lspName,
     productName: application.productName,
-    status: apiLoanStatus(application.status) as LoanStatusType,
+    status: apiLoanStatus(application.status),
     requestedAmount: application.requestedAmount,
     createdAt: application.createdAt,
   }));
   const openAlerts: HomeAlertSummary[] = overview.openAlertSummaries.map((alert) => ({
     id: alert.id,
-    severity: AlertSeverity.safeParse(alert.severity).success
-      ? AlertSeverity.parse(alert.severity)
-      : "MEDIUM",
+    // H28 — unknown severities stay visible as UNKNOWN:<raw>, never MEDIUM.
+    severity: apiAlertSeverity(alert.severity),
     title: alert.title,
     message: alert.message?.trim() || null,
     subjectType: safeAlertSubjectType(alert.subjectType),
-    subjectId: alert.subjectId || alert.id,
+    // H28 — a missing subject id stays missing; reusing the alert id as the
+    // subject id would link the row to a subject that does not exist.
+    subjectId: alert.subjectId?.trim() ? alert.subjectId : null,
     createdAt: alert.createdAt,
   }));
   return {

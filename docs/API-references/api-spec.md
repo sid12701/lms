@@ -50,10 +50,12 @@ Both documents require authentication (any authenticated principal) — see `Sec
 | GET | `/{applicationId}/borrower-pii` | Reveal full borrower PII for a single application and create an audit trail entry | LSP_API_CLIENT, LSP_UI_WRITE |
 | POST | `/` | Create new loan application | LSP_API_CLIENT |
 | POST | `/{applicationId}/invalid` | Mark a loan application invalid using a constrained reason catalog (`REASON_A`, `REASON_B`, `REASON_C`, `OTHERS`) and a required `Idempotency-Key` UUID v4 header | LSP_API_CLIENT, LSP_UI_WRITE |
-| POST | `/{applicationId}/documents` | Submit document metadata (legacy compatibility) | LSP_API_CLIENT, LSP_UI_WRITE |
-| POST | `/{applicationId}/documents/batch` (`multipart/form-data`) | Upload one or more documents into LMS-managed storage in a single API call | LSP_API_CLIENT, LSP_UI_WRITE |
+| POST | `/{applicationId}/documents` | Submit document metadata as JSON (legacy compatibility), or upload one file as `multipart/form-data` (`documentType`, `file`, optional `note`, `sourceReference`, `correctionReason`) | LSP_API_CLIENT, LSP_UI_WRITE |
+| POST | `/{applicationId}/documents/batch` (`multipart/form-data`) | Upload one or more documents into LMS-managed storage in a single API call. All-or-nothing: every file is validated before any is stored, and all metadata commits together | LSP_API_CLIENT, LSP_UI_WRITE |
 | PUT | `/{applicationId}/repayment-schedule` | Generate or replace repayment schedule before disbursement. `LSP_PROVIDED` schedules must pass principal + S20 date/interest checks (see `docs/partner-schedule-validation.md`); failures return `422 REPAYMENT_SCHEDULE_INVALID`. | LSP_API_CLIENT |
 | POST | `/{applicationId}/disbursement` | Request disbursement with compliance checks on documents, schedule, and deduction cap | LSP_API_CLIENT |
+
+**Document submission rules (ADR 0011):** Documents may be submitted while the application is `INITIALIZED`, `AWAITING_APPROVAL` or `REJECTED`. After approval (`APPROVED_PENDING_DISBURSAL`, `DISBURSEMENT_RETRY`) the approved documents are frozen: a replacement returns `409 DOCUMENT_EVIDENCE_LOCKED` unless it is a correction (single-file upload with `correctionReason`, which keeps the replaced version on record). The one ordinary upload still accepted after approval supplies the LMS-held file for a document that was approved as a metadata-only reference. Other statuses return `409 DOCUMENT_UPLOAD_NOT_ALLOWED`; `correctionReason` before approval returns `422 DOCUMENT_CORRECTION_NOT_APPLICABLE`. Re-sending exactly the document an item already shows returns it unchanged. `409 DOCUMENT_STORAGE_RETRY_REQUIRED` (with `Retry-After`) asks the client to retry the upload.
 
 **Create Application Request fields:** borrower info (name, email, mobile, DOB, gender, marital status, father name, Aadhaar, PAN), address, employment, income, bank details, reference person, loan details (amount, tenure, productId, lspLoanId)
 

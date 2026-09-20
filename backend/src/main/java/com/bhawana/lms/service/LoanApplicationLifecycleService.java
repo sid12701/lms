@@ -142,6 +142,7 @@ public class LoanApplicationLifecycleService {
                 )
         );
         if (targetStatus == LoanApplicationStatus.APPROVED_PENDING_DISBURSAL) {
+            documentChecklistService.captureApprovalEvidence(applicationId, actorUsername);
             statusWriter.ensureLoanAccountForApprovedApplication(savedApplication);
         }
         return savedApplication;
@@ -303,6 +304,7 @@ public class LoanApplicationLifecycleService {
                             LoanApplicationAuditAction.STATUS_TRANSITION
                     )
             );
+            documentChecklistService.captureApprovalEvidence(applicationId, actorUsername);
             statusWriter.ensureLoanAccountForApprovedApplication(savedApplication);
         }
         return savedApplication;

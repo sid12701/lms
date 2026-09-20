@@ -15,7 +15,7 @@ import { captureAuthIntent, isStaleIntent } from "@/features/auth/auth-coordinat
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 const API_ORIGIN = new URL(API_BASE_URL).origin;
 
-type QueryParamValue = string | number | boolean | null | undefined;
+type QueryParamValue = string | number | boolean | readonly string[] | null | undefined;
 
 let onUnauthorizedRefresh: (() => Promise<string | null>) | null = null;
 const inFlightJsonRequests = new Map<string, Promise<unknown>>();
@@ -165,6 +165,15 @@ export function buildQueryPath(path: string, params: Record<string, QueryParamVa
   const search = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
     if (v == null || v === "") return;
+    // H29 — arrays serialize as repeated params (`?status=A&status=B`) so a
+    // multi-select filter reaches the server instead of dying at the client.
+    if (Array.isArray(v)) {
+      for (const item of v) {
+        if (item == null || item === "") continue;
+        search.append(k, String(item));
+      }
+      return;
+    }
     search.set(k, String(v));
   });
   const qs = search.toString();

@@ -88,6 +88,26 @@ _Avoid_: foreclosure payment, closure payment
 
 **Settlement boundary (C05/H09, 2026-09-18):** See [ADR 0010](docs/adr/0010-foreclosure-settlement-boundary.md). Lock order for foreclosure commands is application → account → installments (installment-number order) → quote.
 
+### Documents and approval evidence
+
+**Document version**:
+One immutable record of a document write for a checklist item — what was submitted, by whom, when, in which application status, and (for LMS-held files) its storage key and checksum. The checklist row shows the current version; versions are never rewritten. Rows that existed before versioning became one `LEGACY` version each, which records what the row showed then and does not reconstruct files that earlier uploads overwrote.
+_Avoid_: document revision, file history
+
+**Approved evidence**:
+The exact document versions (and checksums) an approval committed against, captured in the approval transaction for every checklist item. Later uploads never change it. Once an application is approved, a document can only be replaced by a **correction**; an ordinary upload is accepted only to supply the LMS-held copy of a document that was approved as an external reference.
+_Avoid_: approved documents (ambiguous with the current checklist), frozen set
+
+**Correction**:
+An explicit, reasoned replacement of approved evidence after approval. It appends a new version that names the approval evidence it corrects and keeps the replaced version and its object. It does not reopen or repeat the approval.
+_Avoid_: re-upload, override
+
+**Document object record**:
+The durable ownership record for an object the LMS writes to document storage, committed (`PENDING`) before the write and `LINKED` with the metadata that references it. Only `PENDING` records past a grace period with no referencing metadata are deleted by the orphan reconciler; objects with no record (written before V135) are never touched.
+_Avoid_: upload log, orphan list
+
+**Evidence chain (H13/H14/M04/H16, 2026-09-19):** See [ADR 0011](docs/adr/0011-approval-and-document-evidence.md). Every document write takes borrower → application locks (the shared loan-command order) and commits together with the auto-approval decision it triggers. Approval eligibility reads the application's pinned product version.
+
 ## Example dialogue
 
 > **Dev:** The credit failed — should the worker retry the disbursement?

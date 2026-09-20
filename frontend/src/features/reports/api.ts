@@ -10,7 +10,8 @@
  * components and tests keep their existing field names.
  */
 import { requestJson, requestBlob, buildQueryPath } from "@/lib/api/http-client";
-import { parseLoanApplicationStatus } from "@/lib/loan-application-status";
+import { apiLoanStatus } from "@/lib/loan-application-status";
+import { finiteNumberOrNull } from "@/lib/number";
 import type { DelinquencyBucket } from "@/schemas/loan-account";
 import type { MisPreviewInstallment } from "@/schemas/report";
 import type {
@@ -176,11 +177,16 @@ export async function misSummary(filters: MisFilters = {}): Promise<MisSummary> 
   };
 }
 
+/**
+ * H28 — the account's own status, mapped without folding. UNDER_REPAYMENT is
+ * a real account phase (never collapsed into DISBURSED), and a wire value the
+ * frontend does not know stays `UNKNOWN:<raw>` (never INITIALIZED). A missing
+ * account status means "not available" (null), not a healthy state. The
+ * application-side lifecycle display lives in the separate
+ * `loanStatusDisplay` field and is never mixed into this one.
+ */
 function loanStatusFromBackend(value: string | null): MisPreviewRow["status"] {
-  const parsed = parseLoanApplicationStatus(value);
-  if (parsed === "UNDER_REPAYMENT") return "DISBURSED";
-  if (parsed) return parsed;
-  return "INITIALIZED";
+  return apiLoanStatus(value);
 }
 
 /** Maps a backend portfolio-MIS preview row to the frontend table shape (Gap #10). */
@@ -196,20 +202,20 @@ export function mapBackendPreviewRowToMisPreviewRow(payload: BackendPreviewRow):
     productCode: payload.productCode,
     productName: payload.productName,
     accountNumber: payload.accountNumber,
-    amount: Number(payload.principalAmount ?? 0),
-    status: loanStatusFromBackend(payload.accountStatus ?? payload.loanStatusDisplay),
+    amount: finiteNumberOrNull(payload.principalAmount),
+    status: loanStatusFromBackend(payload.accountStatus),
     loanStatusDisplay: payload.loanStatusDisplay ?? payload.accountStatus,
     disbursalDate: payload.disbursalDate,
     applicationCreatedAt: payload.applicationCreatedAt,
     dpd: payload.daysPastDue,
     delinquencyBucket: mapDelinquencyBucket(payload.delinquencyBucket),
     year: payload.loanYear,
-    processingFee: Number(payload.processingFeeAmount ?? 0),
-    disbursalAmount: Number(payload.disbursalAmount ?? 0),
-    interestPct: Number(payload.interestRate ?? 0),
+    processingFee: finiteNumberOrNull(payload.processingFeeAmount),
+    disbursalAmount: finiteNumberOrNull(payload.disbursalAmount),
+    interestPct: finiteNumberOrNull(payload.interestRate),
     tenureMonths: payload.tenureMonths,
-    emiAmount: Number(payload.perEmiAmount ?? 0),
-    overdueAmount: Number(payload.overdueAmount ?? 0),
+    emiAmount: finiteNumberOrNull(payload.perEmiAmount),
+    overdueAmount: finiteNumberOrNull(payload.overdueAmount),
     closureDate: payload.closedDate ?? payload.normalClosureDate,
     closureReason: payload.closureReason,
     foreclosureDate: payload.foreclosureDate,

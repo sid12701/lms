@@ -5,17 +5,23 @@ import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.common.api.PagedResult;
 import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
+import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.domain.OpsAlert;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertStatus;
 import com.bhawana.lms.domain.OpsAlertType;
 import com.bhawana.lms.repo.OpsAlertRepository;
 import com.bhawana.lms.tenant.AdminScopedTransactionExecutor;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -134,24 +140,77 @@ public class OpsAlertService {
      * Always paginated: F-06. The unbounded list method is gone — callers that
      * omit offset/limit get offset=0 and PaginationResponseBuilder.DEFAULT_LIMIT
      * rows, never the whole ops_alert table.
+     *
+     * H30 — severity, subject-type and text filters apply to the full dataset
+     * before pagination, with stable createdAt + id ordering so timestamp ties
+     * cannot duplicate or omit rows across pages.
      */
     @Transactional(readOnly = true)
     public PagedResult<OpsAlert> listAlerts(
             OpsAlertStatus status,
             Integer offset,
-            Integer limit,
-            boolean includePaginationDetails
+            Integer limit
+    ) {
+        return listAlerts(status, null, null, null, offset, limit);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResult<OpsAlert> listAlerts(
+            OpsAlertStatus status,
+            List<String> severities,
+            String subjectType,
+            String query,
+            Integer offset,
+            Integer limit
     ) {
         int resolvedOffset = offset == null ? 0 : offset;
         int resolvedLimit = limit == null ? PaginationResponseBuilder.DEFAULT_LIMIT : limit;
         int safeLimit = Math.max(resolvedLimit, 1);
         int pageNumber = resolvedOffset / safeLimit;
 
-        PageRequest pageRequest = PageRequest.of(pageNumber, safeLimit);
-        Page<OpsAlert> page = status == null
-                ? opsAlertRepository.findAllByOrderByCreatedAtDesc(pageRequest)
-                : opsAlertRepository.findByStatusOrderByCreatedAtDesc(status, pageRequest);
+        Set<OpsAlertSeverity> normalizedSeverities = resolveSeveritiesStrict(severities);
+        String normalizedSubjectType = Strings.normalizeOptional(subjectType);
+        String normalizedQuery = Strings.normalizeOptional(query);
+        String queryLike = normalizedQuery == null
+                ? null
+                : "%" + normalizedQuery.toLowerCase(Locale.ROOT) + "%";
+
+        PageRequest pageRequest = PageRequest.of(
+                pageNumber,
+                safeLimit,
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))
+        );
+        Page<OpsAlert> page = opsAlertRepository.searchAlerts(
+                status,
+                normalizedSeverities.isEmpty() ? null : normalizedSeverities,
+                normalizedSubjectType,
+                queryLike,
+                pageRequest
+        );
         return new PagedResult<>(page.getContent(), page.getTotalElements(), resolvedOffset, resolvedLimit);
+    }
+
+    private static Set<OpsAlertSeverity> resolveSeveritiesStrict(List<String> severities) {
+        if (severities == null || severities.isEmpty()) {
+            return Set.of();
+        }
+        Set<OpsAlertSeverity> resolved = new LinkedHashSet<>();
+        for (String severity : severities) {
+            String normalized = Strings.normalizeOptional(severity);
+            if (normalized == null) {
+                continue;
+            }
+            try {
+                resolved.add(OpsAlertSeverity.valueOf(normalized.toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException exception) {
+                throw new BusinessRuleViolationException(
+                        "INVALID_SEVERITY",
+                        "Unknown alert severity: " + severity + ".",
+                        Map.of("severity", "must be a known alert severity")
+                );
+            }
+        }
+        return resolved;
     }
 
     @Transactional

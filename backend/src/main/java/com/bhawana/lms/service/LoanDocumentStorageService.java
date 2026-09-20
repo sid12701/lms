@@ -8,11 +8,22 @@ import org.springframework.web.multipart.MultipartFile;
 
 public interface LoanDocumentStorageService {
 
-    StoredDocument store(
+    /**
+     * Validate an upload and fix its identity without touching storage (M04): content policy,
+     * size, checksum and a deterministic, content-addressed storage key. A batch prepares every
+     * item before any object is written, and a retry of the same bytes resolves to the same key.
+     */
+    PreparedDocument prepare(
             UUID applicationId,
             LoanApplicationDocumentType documentType,
             MultipartFile file
     );
+
+    /** Write a prepared object. Rewriting the same key writes the same bytes. */
+    StoredDocument store(PreparedDocument document);
+
+    /** Delete an object; deleting a missing key is not an error. */
+    void delete(String storageKey);
 
     byte[] retrieve(String storageKey);
 
@@ -28,6 +39,18 @@ public interface LoanDocumentStorageService {
     List<StorageEntry> listAll(String prefix);
 
     record StorageEntry(String key, byte[] content) {
+    }
+
+    /** A validated upload whose storage key is fixed but whose bytes are not yet written. */
+    record PreparedDocument(
+            UUID applicationId,
+            LoanApplicationDocumentType documentType,
+            String fileName,
+            String contentType,
+            String checksum,
+            String storageKey,
+            byte[] content
+    ) {
     }
 
     /** A lazily-streamed document body plus its known content length (bytes). */

@@ -107,6 +107,8 @@ app:
         secret-key:
         bucket:
         region: auto
+      orphan-reconciler:
+        enabled: false
   datasource:
     tenant:
       username: ${APP_TENANT_DATASOURCE_USERNAME:lms_tenant_app}

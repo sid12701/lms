@@ -4831,6 +4831,7 @@ export interface operations {
           | "LOAN_AGREEMENT";
         note?: string;
         sourceReference?: string;
+        correctionReason?: string;
       };
       header?: {
         /**
@@ -5296,13 +5297,15 @@ export interface operations {
       query?: {
         lspId?: string;
         productId?: string;
-        status?: string;
+        status?: string[];
         sourceChannel?: string;
         q?: string;
         lspLoanId?: string;
         bhawLoanId?: string;
         disbursalDateFrom?: string;
         disbursalDateTo?: string;
+        sortBy?: string;
+        sortDir?: string;
         /** @description Zero-based row offset (default 0). */
         offset?: number;
         /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */
@@ -9617,6 +9620,9 @@ export interface operations {
     parameters: {
       query?: {
         status?: "NEW" | "ACKNOWLEDGED";
+        severity?: string[];
+        subjectType?: string;
+        q?: string;
         /** @description Zero-based row offset (default 0). */
         offset?: number;
         /** @description Page size (1-200). Defaults to 50 once any pagination parameter is sent. */

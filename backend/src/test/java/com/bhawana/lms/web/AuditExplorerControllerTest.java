@@ -207,6 +207,11 @@ class AuditExplorerControllerTest {
         intakeAuditRepo.deleteAllInBatch();
         documentAccessRepo.deleteAllInBatch();
         loanApplicationAssignmentEventRepository.deleteAllInBatch();
+        jdbcTemplate.execute("UPDATE loan_application_document_checklist SET current_version_id = NULL");
+        jdbcTemplate.execute("UPDATE loan_application_document_version SET corrects_evidence_id = NULL");
+        jdbcTemplate.execute("DELETE FROM loan_application_approval_evidence");
+        jdbcTemplate.execute("DELETE FROM loan_application_document_version");
+        jdbcTemplate.execute("DELETE FROM loan_document_object");
         loanApplicationDocumentChecklistRepository.deleteAllInBatch();
         loanApplicationStatusTransitionRepository.deleteAllInBatch();
         jdbcTemplate.execute("TRUNCATE TABLE loan_event");

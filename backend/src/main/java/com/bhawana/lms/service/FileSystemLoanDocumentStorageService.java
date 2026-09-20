@@ -22,8 +22,10 @@ public class FileSystemLoanDocumentStorageService {
     }
 
     public List<LoanDocumentStorageService.StorageEntry> listAll(String prefix) {
-        Path rootPath = properties.getRootPath().normalize();
-        Path directory = resolveWithinRoot(prefix);
+        Path rootPath = properties.getRootPath().toAbsolutePath().normalize();
+        Path directory = (prefix == null || prefix.isBlank())
+                ? rootPath
+                : resolveUnderRoot(prefix);
         List<LoanDocumentStorageService.StorageEntry> entries = new ArrayList<>();
         if (!Files.isDirectory(directory)) {
             return entries;
@@ -44,7 +46,7 @@ public class FileSystemLoanDocumentStorageService {
     }
 
     public byte[] retrieve(String storageKey) {
-        Path targetPath = resolveWithinRoot(storageKey);
+        Path targetPath = resolveUnderRoot(storageKey);
         if (!Files.exists(targetPath)) {
             throw new DocumentNotFoundException(
                     "Document not found in LMS-managed local storage: " + storageKey
@@ -63,7 +65,7 @@ public class FileSystemLoanDocumentStorageService {
     }
 
     public LoanDocumentStorageService.RetrievedDocumentStream openStream(String storageKey) {
-        Path targetPath = resolveWithinRoot(storageKey);
+        Path targetPath = resolveUnderRoot(storageKey);
         if (!Files.exists(targetPath)) {
             throw new DocumentNotFoundException(
                     "Document not found in LMS-managed local storage: " + storageKey
@@ -83,8 +85,22 @@ public class FileSystemLoanDocumentStorageService {
         }
     }
 
+    public void delete(String storageKey) {
+        Path targetPath = resolveUnderRoot(storageKey);
+        try {
+            Files.deleteIfExists(targetPath);
+        } catch (IOException exception) {
+            throw new DocumentStorageUnavailableException(
+                    storageKey,
+                    DocumentStorageProperties.DocumentStorageProvider.LOCAL.name(),
+                    "Unable to delete document from LMS-managed local storage: " + storageKey,
+                    exception
+            );
+        }
+    }
+
     public StoredDocument store(DocumentStorageDescriptor descriptor, byte[] content) {
-        Path targetPath = resolveWithinRoot(descriptor.storageKey());
+        Path targetPath = resolveUnderRoot(descriptor.storageKey());
         try {
             Files.createDirectories(targetPath.getParent());
             Files.write(targetPath, content);
@@ -109,19 +125,22 @@ public class FileSystemLoanDocumentStorageService {
      * path or {@code ..} segments) is rejected outright instead of being
      * resolved.
      */
-    private Path resolveWithinRoot(String storageKey) {
-        Path rootPath = properties.getRootPath().normalize();
-        Path targetPath;
+    private Path resolveUnderRoot(String storageKey) {
+        if (storageKey == null || storageKey.isBlank()) {
+            throw new IllegalArgumentException("Storage key is required.");
+        }
+        Path root = properties.getRootPath().toAbsolutePath().normalize();
+        Path resolved;
         try {
-            targetPath = rootPath.resolve(storageKey).normalize();
+            resolved = root.resolve(storageKey).normalize();
         } catch (InvalidPathException exception) {
             throw new IllegalArgumentException("Storage key is not a valid path: " + storageKey, exception);
         }
-        if (!targetPath.startsWith(rootPath)) {
+        if (!resolved.startsWith(root)) {
             throw new IllegalArgumentException(
-                    "Storage key resolves outside the LMS-managed local storage root: " + storageKey
+                    "Storage key escapes document root: " + storageKey
             );
         }
-        return targetPath;
+        return resolved;
     }
 }

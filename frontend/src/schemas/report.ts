@@ -67,20 +67,30 @@ export const MisPreviewRow = z.object({
   productCode: z.string(),
   productName: z.string(),
   accountNumber: z.string().nullable(),
-  amount: MoneyINR,
-  status: LoanStatus,
+  /**
+   * H28 — externally supplied amounts are nullable: a missing figure means
+   * "not available", never zero. Zero is a real measured value (nothing owed);
+   * rendering null as ₹0 would understate debt.
+   */
+  amount: MoneyINR.nullable(),
+  /**
+   * H28 — the account's own status, preserving unknown wire values as
+   * `UNKNOWN:<raw>` (never folded into a healthy state). The application-side
+   * display stays in the separate `loanStatusDisplay` field.
+   */
+  status: z.union([LoanStatus, z.string().regex(/^UNKNOWN:/u)]),
   loanStatusDisplay: z.string().nullable(),
   disbursalDate: IsoDate.nullable(),
   applicationCreatedAt: IsoDate.nullable(),
   dpd: z.number().int().nonnegative(),
   delinquencyBucket: DelinquencyBucket.nullable(),
   year: z.number().int().min(2000).max(2100).nullable(),
-  processingFee: MoneyINR,
-  disbursalAmount: MoneyINR,
-  interestPct: z.number().nonnegative().max(100),
+  processingFee: MoneyINR.nullable(),
+  disbursalAmount: MoneyINR.nullable(),
+  interestPct: z.number().nonnegative().max(100).nullable(),
   tenureMonths: z.number().int().min(1).max(360),
-  emiAmount: MoneyINR,
-  overdueAmount: MoneyINR,
+  emiAmount: MoneyINR.nullable(),
+  overdueAmount: MoneyINR.nullable(),
   closureDate: IsoDate.nullable(),
   closureReason: z.string().nullable(),
   foreclosureDate: IsoDate.nullable(),

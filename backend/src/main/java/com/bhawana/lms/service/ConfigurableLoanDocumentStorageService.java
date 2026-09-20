@@ -176,7 +176,7 @@ public class ConfigurableLoanDocumentStorageService implements LoanDocumentStora
 
     @Override
 
-    public StoredDocument store(
+    public PreparedDocument prepare(
 
             UUID applicationId,
 
@@ -218,33 +218,91 @@ public class ConfigurableLoanDocumentStorageService implements LoanDocumentStora
 
             }
 
-            String sanitizedFileName = sanitizeFileName(file.getOriginalFilename());
+            String fileName = sanitizeFileName(file.getOriginalFilename());
 
-            String contentChecksum = checksum(content);
+            String checksum = checksum(content);
 
-            DocumentStorageDescriptor descriptor = new DocumentStorageDescriptor(
+            return new PreparedDocument(
 
-                    sanitizedFileName,
+                    applicationId,
+
+                    documentType,
+
+                    fileName,
 
                     resolveContentType(file.getContentType()),
 
-                    contentChecksum,
+                    checksum,
 
-                    buildStorageKey(applicationId, documentType, contentChecksum, sanitizedFileName)
+                    buildStorageKey(applicationId, documentType, checksum, fileName),
+
+                    content
 
             );
-
-            return switch (properties.getProvider()) {
-
-                case R2 -> storeToR2OrFail(descriptor, content);
-
-                case LOCAL -> fileSystemStorage.store(descriptor, content);
-
-            };
 
         } catch (java.io.IOException exception) {
 
             throw new IllegalStateException("Unable to read multipart document content.", exception);
+
+        }
+
+    }
+
+
+
+    @Override
+
+    public StoredDocument store(PreparedDocument document) {
+
+        DocumentStorageDescriptor descriptor = new DocumentStorageDescriptor(
+
+                document.fileName(),
+
+                document.contentType(),
+
+                document.checksum(),
+
+                document.storageKey()
+
+        );
+
+        return switch (properties.getProvider()) {
+
+            case R2 -> storeToR2OrFail(descriptor, document.content());
+
+            case LOCAL -> fileSystemStorage.store(descriptor, document.content());
+
+        };
+
+    }
+
+
+
+    @Override
+
+    public void delete(String storageKey) {
+
+        if (storageKey == null || storageKey.isBlank()) {
+
+            throw new IllegalArgumentException("Storage key is required for document deletion.");
+
+        }
+
+        switch (properties.getProvider()) {
+
+            case R2 -> {
+
+                if (!properties.getR2().isConfigured()) {
+
+                    throw r2Misconfigured();
+
+                }
+
+                r2Storage.delete(storageKey);
+
+            }
+
+            case LOCAL -> fileSystemStorage.delete(storageKey);
 
         }
 
@@ -323,15 +381,22 @@ public class ConfigurableLoanDocumentStorageService implements LoanDocumentStora
      * the same application and document type always resolve to the same object.
      * A re-executed idempotent upload after a crash (H17) overwrites its own
      * object instead of stacking an orphan, and the checksum prefix makes a
-     * collision between genuinely different content impossible. The file
-     * name is readability-only and is reduced to a safe single path segment
-     * before it enters the key.
+     * collision between genuinely different content impossible — an object at a
+     * key never changes content. The file name is readability-only and is
+     * reduced to a safe single path segment before it enters the key. Keys
+     * written before V135 carry a timestamp and random UUID instead and are
+     * left exactly where they are.
      */
     private static String buildStorageKey(
+
             UUID applicationId,
+
             LoanApplicationDocumentType documentType,
+
             String contentChecksum,
+
             String fileName
+
     ) {
 
         return "loan/" + applicationId

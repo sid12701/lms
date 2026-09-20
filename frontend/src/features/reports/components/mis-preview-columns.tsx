@@ -1,6 +1,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { formatINR } from "@/lib/format";
+import { unknownLoanApplicationStatusLabel } from "@/lib/loan-application-status";
 import { cn } from "@/lib/utils";
 import type { MisPreviewRow } from "../types";
 import {
@@ -11,6 +12,26 @@ import {
   safeBankAccountDisplay,
   truncateMiddle,
 } from "./mis-preview-helpers";
+
+/**
+ * H28 — status text without fabrication. The application-side display wins
+ * when present; otherwise the account's own status renders, with wire values
+ * the frontend does not know shown as Unknown rather than a healthy state.
+ */
+function statusCellText(row: MisPreviewRow): string {
+  if (row.loanStatusDisplay != null && row.loanStatusDisplay.trim() !== "") {
+    return row.loanStatusDisplay.replace(/_/g, " ").toLowerCase();
+  }
+  if (row.status.startsWith("UNKNOWN:")) {
+    return unknownLoanApplicationStatusLabel(row.status.slice("UNKNOWN:".length));
+  }
+  return row.status.replace(/_/g, " ").toLowerCase();
+}
+
+/** H28 — nullable money renders as an em-dash, never as ₹0. */
+function moneyCellText(value: number | null): string {
+  return value == null ? "—" : formatINR(value, { compact: true });
+}
 
 function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRow>[] {
   return [
@@ -81,9 +102,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Amount", numeric: true },
       header: () => <span>Amount</span>,
       cell: ({ row }) => (
-        <span className="text-foreground tabular-nums">
-          {formatINR(row.original.amount, { compact: true })}
-        </span>
+        <span className="text-foreground tabular-nums">{moneyCellText(row.original.amount)}</span>
       ),
     },
     {
@@ -96,7 +115,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
           data-status={row.original.status}
           className="text-badge font-medium"
         >
-          {(row.original.loanStatusDisplay ?? row.original.status).replace(/_/g, " ").toLowerCase()}
+          {statusCellText(row.original)}
         </Badge>
       ),
     },
@@ -141,7 +160,9 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       header: () => <span>EMI</span>,
       cell: ({ row }) => (
         <span className="text-foreground tabular-nums">
-          {row.original.emiAmount > 0 ? formatINR(row.original.emiAmount, { compact: true }) : "—"}
+          {row.original.emiAmount != null && row.original.emiAmount > 0
+            ? formatINR(row.original.emiAmount, { compact: true })
+            : "—"}
         </span>
       ),
     },
@@ -153,10 +174,12 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
         <span
           className={cn(
             "tabular-nums",
-            row.original.overdueAmount > 0 ? "text-danger font-medium" : "text-foreground-muted",
+            row.original.overdueAmount != null && row.original.overdueAmount > 0
+              ? "text-danger font-medium"
+              : "text-foreground-muted",
           )}
         >
-          {row.original.overdueAmount > 0
+          {row.original.overdueAmount != null && row.original.overdueAmount > 0
             ? formatINR(row.original.overdueAmount, { compact: true })
             : "—"}
         </span>
@@ -196,7 +219,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       header: () => <span>Disbursal</span>,
       cell: ({ row }) => (
         <span className="text-foreground tabular-nums">
-          {formatINR(row.original.disbursalAmount, { compact: true })}
+          {moneyCellText(row.original.disbursalAmount)}
         </span>
       ),
     },
@@ -206,7 +229,7 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       header: () => <span>Fee</span>,
       cell: ({ row }) => (
         <span className="text-foreground tabular-nums">
-          {formatINR(row.original.processingFee, { compact: true })}
+          {moneyCellText(row.original.processingFee)}
         </span>
       ),
     },
@@ -215,7 +238,9 @@ function buildMisPreviewColumns(maxInstallments: number): ColumnDef<MisPreviewRo
       meta: { label: "Rate %", numeric: true },
       header: () => <span>Rate %</span>,
       cell: ({ row }) => (
-        <span className="text-foreground tabular-nums">{row.original.interestPct.toFixed(2)}</span>
+        <span className="text-foreground tabular-nums">
+          {row.original.interestPct != null ? row.original.interestPct.toFixed(2) : "—"}
+        </span>
       ),
     },
     {

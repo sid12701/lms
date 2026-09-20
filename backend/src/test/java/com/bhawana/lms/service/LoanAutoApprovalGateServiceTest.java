@@ -35,6 +35,7 @@ class LoanAutoApprovalGateServiceTest {
         meterRegistry = new SimpleMeterRegistry();
         gateService = new LoanAutoApprovalGateService(
                 loanApplicationLifecycleService,
+                null,
                 loanApplicationRepository,
                 meterRegistry
         );

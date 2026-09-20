@@ -1540,7 +1540,7 @@ class LspLoanApplicationApiControllerTest {
     }
 
     @Test
-    void reuploadAfterApprovalDoesNotInvokeAutoApprovalAgain() throws Exception {
+    void reuploadAfterApprovalIsRefusedAndDoesNotInvokeAutoApprovalAgain() throws Exception {
         LspFixture apex = createLsp("ACTIVE");
         ProductFixture apexProduct = createProduct("ACTIVE");
         mapProductToLsp(apexProduct.id(), apex.id());
@@ -1558,7 +1558,19 @@ class LspLoanApplicationApiControllerTest {
         JsonNode approvedDetail = getApplicationDetail(accessToken, applicationId);
         String loanAccountId = approvedDetail.get("loanAccount").get("id").asText();
 
-        uploadSingleDocument(accessToken, applicationId, "PAN_CARD");
+        // H14: approved evidence is frozen; replacing it needs an explicit correction.
+        mockMvc.perform(multipart("/api/v1/lsp/loan-applications/{applicationId}/documents", applicationId)
+                        .file(new MockMultipartFile(
+                                "file",
+                                "pan_card.pdf",
+                                "application/pdf",
+                                "%PDF-1.4 content-PAN_CARD".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                        ))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .param("documentType", "PAN_CARD")
+                        .param("note", "Uploaded PAN_CARD"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DOCUMENT_EVIDENCE_LOCKED"));
 
         mockMvc.perform(get("/api/v1/lsp/loan-applications/{applicationId}", applicationId)
                         .header("Authorization", "Bearer " + accessToken))

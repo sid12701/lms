@@ -351,19 +351,28 @@ public class LspLoanApplicationApiController {
             @RequestParam LoanApplicationDocumentType documentType,
             @RequestParam(required = false) String note,
             @RequestParam(required = false) String sourceReference,
+            @RequestParam(required = false) String correctionReason,
             @RequestPart("file") MultipartFile file
     ) {
         UUID lspId = LspAuthenticationSupport.authenticatedLspId(authentication);
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            return doUploadDocument(lspId, authentication, applicationId, documentType, note, sourceReference, file);
+            return doUploadDocument(
+                    lspId, authentication, applicationId, documentType, note, sourceReference, correctionReason, file);
         }
+        DocumentUploadFingerprint uploadFingerprint =
+                buildDocumentUploadFingerprint(applicationId, documentType, note, sourceReference, file);
+        // Plain uploads keep their existing fingerprint shape so in-flight retries still match.
+        Object fingerprint = correctionReason == null
+                ? uploadFingerprint
+                : new DocumentCorrectionFingerprint(uploadFingerprint, correctionReason);
         return lspApiIdempotencyService.execute(
                 lspId,
                 LOAN_DOCUMENT_UPLOAD,
                 idempotencyKey,
-                buildDocumentUploadFingerprint(applicationId, documentType, note, sourceReference, file),
+                fingerprint,
                 LspDocumentChecklistDetailResponse.class,
-                () -> doUploadDocument(lspId, authentication, applicationId, documentType, note, sourceReference, file)
+                () -> doUploadDocument(
+                        lspId, authentication, applicationId, documentType, note, sourceReference, correctionReason, file)
         );
     }
 
@@ -374,6 +383,7 @@ public class LspLoanApplicationApiController {
             LoanApplicationDocumentType documentType,
             String note,
             String sourceReference,
+            String correctionReason,
             MultipartFile file
     ) {
         LoanApplicationDocumentChecklist checklistItem = loanDocumentService.submitStoredDocumentForLsp(
@@ -383,6 +393,7 @@ public class LspLoanApplicationApiController {
                 authentication.getName(),
                 note,
                 sourceReference,
+                correctionReason,
                 file
         );
         return LspLoanApplicationResponses.toDocumentChecklistDetailResponse(checklistItem);
@@ -939,6 +950,11 @@ public class LspLoanApplicationApiController {
             String note,
             String sourceReference
     ) {
+    }
+
+    // Package-private: LoanDocumentUploadIdempotencyReconstructor unwraps it to
+    // recover a crashed correction upload from checklist evidence.
+    record DocumentCorrectionFingerprint(DocumentUploadFingerprint upload, String correctionReason) {
     }
 
     record BatchDocumentUploadFingerprint(String applicationId, List<DocumentUploadFingerprint> parts) {

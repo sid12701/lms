@@ -7,6 +7,7 @@ import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
 import com.bhawana.lms.service.IdempotencyResultReconstructor;
 import com.bhawana.lms.web.LspLoanApplicationApiController.BatchDocumentUploadFingerprint;
 import com.bhawana.lms.web.LspLoanApplicationApiController.BatchDocumentUploadIdempotencyResponse;
+import com.bhawana.lms.web.LspLoanApplicationApiController.DocumentCorrectionFingerprint;
 import com.bhawana.lms.web.LspLoanApplicationApiController.DocumentUploadFingerprint;
 import com.bhawana.lms.web.LspLoanApplicationApiController.LspDocumentChecklistDetailResponse;
 import java.util.ArrayList;
@@ -62,6 +63,12 @@ class LoanDocumentUploadIdempotencyReconstructor implements IdempotencyResultRec
         }
         if (requestFingerprintSource instanceof DocumentUploadFingerprint fingerprint) {
             return recoverSingle(fingerprint).map(item -> (T) item);
+        }
+        // A correction wraps the upload fingerprint; the committed checklist row is
+        // the same evidence, and recovering it avoids appending a duplicate
+        // correction version on re-execution.
+        if (requestFingerprintSource instanceof DocumentCorrectionFingerprint correction) {
+            return recoverSingle(correction.upload()).map(item -> (T) item);
         }
         if (requestFingerprintSource instanceof BatchDocumentUploadFingerprint batchFingerprint) {
             return recoverBatch(batchFingerprint).map(response -> (T) response);

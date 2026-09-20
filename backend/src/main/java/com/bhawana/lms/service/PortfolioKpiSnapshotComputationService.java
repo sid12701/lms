@@ -6,6 +6,7 @@ import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.Lsp;
 import com.bhawana.lms.domain.PortfolioKpiSnapshot;
 import com.bhawana.lms.repo.LoanApplicationRepository;
+import com.bhawana.lms.repo.LoanPortfolioPopulation;
 import com.bhawana.lms.repo.LspRepository;
 import com.bhawana.lms.repo.PortfolioKpiSnapshotRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -108,6 +109,9 @@ public class PortfolioKpiSnapshotComputationService {
 
         for (AccountSnapshotRow row : rows) {
             totalDisbursed = totalDisbursed.add(row.disbursedAmount());
+            if (!row.fundedServicing()) {
+                continue;
+            }
             totalOutstanding = totalOutstanding.add(row.outstandingAmount());
             totalOverdue = totalOverdue.add(row.overdueAmount());
             BucketAccumulator accumulator = bucketAccumulators.get(row.bucket());
@@ -144,10 +148,15 @@ public class PortfolioKpiSnapshotComputationService {
     }
 
     private List<AccountSnapshotRow> loadAccountSnapshots(LocalDate today) {
+        // Only ever-funded accounts are loaded: unfunded pipeline accounts already carry generated
+        // schedules, which are not debt. Disbursed volume counts the whole historical population;
+        // outstanding, overdue and buckets count only the funded servicing population.
         return jdbc.query("""
                 select
-                  la.lsp_id as lsp_id,
-                  case when la.disbursed_at is null then 0 else la.principal_amount end as disbursed_amount,
+                  acc.lsp_id as lsp_id,
+                  acc.principal_amount as disbursed_amount,
+                  (""" + LoanPortfolioPopulation.FUNDED_SERVICING_SQL + """
+                  ) as funded_servicing,
                   coalesce(sum(lrsi.outstanding_amount), 0) as outstanding_amount,
                   coalesce(sum(case
                       when lrsi.outstanding_amount > 0 and lrsi.due_date < :today
@@ -159,10 +168,12 @@ public class PortfolioKpiSnapshotComputationService {
                       then lrsi.due_date
                       else null
                   end) as oldest_overdue_due_date
-                from loan_account la
+                from loan_account acc
+                join loan_application app on app.id = acc.loan_application_id
                 left join loan_repayment_schedule_installment lrsi
-                  on lrsi.loan_account_id = la.id
-                group by la.id, la.lsp_id, la.disbursed_at, la.principal_amount
+                  on lrsi.loan_account_id = acc.id
+                where\s""" + LoanPortfolioPopulation.HISTORICAL_DISBURSED_SQL + """
+                group by acc.id, acc.lsp_id, acc.principal_amount, acc.status, acc.disbursed_at, app.status
                 """,
                 new MapSqlParameterSource("today", today),
                 (rs, rowNum) -> {
@@ -174,6 +185,7 @@ public class PortfolioKpiSnapshotComputationService {
                             : Math.toIntExact(ChronoUnit.DAYS.between(oldestOverdueDueDate, today));
                     return new AccountSnapshotRow(
                             rs.getObject("lsp_id", UUID.class),
+                            rs.getBoolean("funded_servicing"),
                             Money.scale(rs.getBigDecimal("disbursed_amount")),
                             Money.scale(rs.getBigDecimal("outstanding_amount")),
                             Money.scale(rs.getBigDecimal("overdue_amount")),
@@ -189,6 +201,7 @@ public class PortfolioKpiSnapshotComputationService {
 
     private record AccountSnapshotRow(
             UUID lspId,
+            boolean fundedServicing,
             BigDecimal disbursedAmount,
             BigDecimal outstandingAmount,
             BigDecimal overdueAmount,

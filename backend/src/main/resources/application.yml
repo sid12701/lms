@@ -151,6 +151,11 @@ app:
         secret-key: ${APP_STORAGE_DOCUMENTS_R2_SECRET_KEY:}
         bucket: ${APP_STORAGE_DOCUMENTS_R2_BUCKET:}
         region: ${APP_STORAGE_DOCUMENTS_R2_REGION:auto}
+      orphan-reconciler:
+        enabled: ${APP_STORAGE_DOCUMENTS_ORPHAN_RECONCILER_ENABLED:true}
+        dry-run: ${APP_STORAGE_DOCUMENTS_ORPHAN_RECONCILER_DRY_RUN:true}
+        grace-period: ${APP_STORAGE_DOCUMENTS_ORPHAN_RECONCILER_GRACE_PERIOD:PT24H}
+        batch-size: ${APP_STORAGE_DOCUMENTS_ORPHAN_RECONCILER_BATCH_SIZE:100}
     reports:
       r2:
         endpoint: ${APP_STORAGE_REPORTS_R2_ENDPOINT:}

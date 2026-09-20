@@ -92,4 +92,68 @@ describe("mapBackendPreviewRowToMisPreviewRow (Gap #10)", () => {
       }).delinquencyBucket,
     ).toBe("B90_PLUS");
   });
+
+  it("keeps an unrecognized DPD bucket as null instead of inventing one", () => {
+    expect(
+      mapBackendPreviewRowToMisPreviewRow({ ...BACKEND_ROW, delinquencyBucket: "DPD_999" })
+        .delinquencyBucket,
+    ).toBeNull();
+  });
+});
+
+describe("mapBackendPreviewRowToMisPreviewRow (H28 honesty)", () => {
+  it("preserves UNDER_REPAYMENT instead of collapsing it into DISBURSED", () => {
+    const row = mapBackendPreviewRowToMisPreviewRow(BACKEND_ROW);
+    expect(row.status).toBe("UNDER_REPAYMENT");
+  });
+
+  it("preserves unknown account statuses as UNKNOWN:<raw> instead of INITIALIZED", () => {
+    const row = mapBackendPreviewRowToMisPreviewRow({
+      ...BACKEND_ROW,
+      accountStatus: "SOME_FUTURE_STATUS",
+    });
+    expect(row.status).toBe("UNKNOWN:SOME_FUTURE_STATUS");
+  });
+
+  it("maps a missing account status to unknown, never to a healthy state", () => {
+    const row = mapBackendPreviewRowToMisPreviewRow({ ...BACKEND_ROW, accountStatus: null });
+    expect(row.status).toBe("UNKNOWN:");
+    expect(row.status).not.toBe("INITIALIZED");
+    expect(row.status).not.toBe("DISBURSED");
+  });
+
+  it("keeps account status and application display as distinct fields", () => {
+    const row = mapBackendPreviewRowToMisPreviewRow({
+      ...BACKEND_ROW,
+      accountStatus: "UNDER_REPAYMENT",
+      loanStatusDisplay: "DISBURSED",
+    });
+    expect(row.status).toBe("UNDER_REPAYMENT");
+    expect(row.loanStatusDisplay).toBe("DISBURSED");
+  });
+
+  it("maps missing money to null, never to zero", () => {
+    const row = mapBackendPreviewRowToMisPreviewRow({
+      ...BACKEND_ROW,
+      principalAmount: null,
+      processingFeeAmount: null,
+      disbursalAmount: null,
+      interestRate: null,
+      perEmiAmount: null,
+      overdueAmount: null,
+      income: null,
+    });
+    expect(row.amount).toBeNull();
+    expect(row.processingFee).toBeNull();
+    expect(row.disbursalAmount).toBeNull();
+    expect(row.interestPct).toBeNull();
+    expect(row.emiAmount).toBeNull();
+    expect(row.overdueAmount).toBeNull();
+    expect(row.income).toBeNull();
+  });
+
+  it("keeps a real zero distinct from missing money", () => {
+    const row = mapBackendPreviewRowToMisPreviewRow({ ...BACKEND_ROW, overdueAmount: 0 });
+    expect(row.overdueAmount).toBe(0);
+  });
 });

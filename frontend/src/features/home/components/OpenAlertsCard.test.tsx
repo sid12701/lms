@@ -140,6 +140,39 @@ describe("<OpenAlertsCard />", () => {
     expect(container.textContent).toMatch(/Report request · rpt-xyz-/);
   });
 
+  it("renders an unrecognized severity as Unknown with the neutral token, never Medium", () => {
+    const { container, getByText } = renderWithProviders(
+      wrap(<OpenAlertsCard alerts={[mkAlert({ severity: "UNKNOWN:URGENT" })]} />),
+    );
+    const row = container.querySelector('[data-slot="alert-row"]');
+    expect(row).not.toBeNull();
+    expect(row!.getAttribute("data-token")).toBe("neutral");
+    expect(row!.getAttribute("data-severity")).toBe("UNKNOWN:URGENT");
+    expect(getByText("Unknown (URGENT)")).toBeInTheDocument();
+  });
+
+  it("renders a missing subject id without inventing a link target", () => {
+    const { container, queryByRole, getByText } = renderWithProviders(
+      wrap(
+        <OpenAlertsCard alerts={[mkAlert({ subjectType: "LOAN_APPLICATION", subjectId: null })]} />,
+      ),
+    );
+    expect(queryByRole("link")).toBeNull();
+    expect(getByText("Loan application")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/abc-123|11111111/);
+  });
+
+  it("renders an unrecognized subject type as Unknown, never System", () => {
+    const { getByText } = renderWithProviders(
+      wrap(
+        <OpenAlertsCard
+          alerts={[mkAlert({ subjectType: "UNKNOWN:SPACE_LASER", subjectId: null })]}
+        />,
+      ),
+    );
+    expect(getByText("Unknown (SPACE_LASER)")).toBeInTheDocument();
+  });
+
   it("forwards className to the card", () => {
     const { container } = renderWithProviders(
       wrap(<OpenAlertsCard alerts={[]} className="extra-class" />),
