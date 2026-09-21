@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.repo.AlertRuleRepository;
@@ -204,7 +205,7 @@ class AlertRuleEvaluationBatchingIntegrationTest {
         List<UUID> ids = new ArrayList<>();
         for (int i = 0; i < DELINQUENT_LOANS; i++) {
             UUID applicationId = seedDisbursedLoan();
-            setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(10));
+            setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(10));
             ids.add(applicationId);
         }
         ids.sort(AlertRuleEvaluationBatchingIntegrationTest::compareUuidAsPostgres);

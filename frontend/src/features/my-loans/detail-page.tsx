@@ -68,7 +68,13 @@ function LoanTermsCard({ detail }: { detail: MyLoanDetail }) {
     >
       <h2 className="text-base font-semibold">Loan terms</h2>
       <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-        <DetailField label="Requested amount" value={formatINR(detail.requestedAmount)} mono />
+        {/* Financial detail surfaces show exact paise (M09); the rounded form
+            stays on list/overview cards. */}
+        <DetailField
+          label="Requested amount"
+          value={formatINR(detail.requestedAmount, { decimals: 2 })}
+          mono
+        />
         <DetailField
           label="Interest rate"
           value={detail.interestRate != null ? `${detail.interestRate}%` : null}
@@ -170,7 +176,11 @@ function LoanAccountCard({ detail }: { detail: MyLoanDetail }) {
           label="Status"
           value={account.status ? <StatusBadge status={apiAccountStatus(account.status)} /> : null}
         />
-        <DetailField label="Principal" value={formatINR(account.principalAmount)} mono />
+        <DetailField
+          label="Principal"
+          value={formatINR(account.principalAmount, { decimals: 2 })}
+          mono
+        />
         <DetailField
           label="Tenure"
           value={account.tenureMonths ? `${account.tenureMonths} months` : null}
@@ -201,7 +211,7 @@ function LoanAccountCard({ detail }: { detail: MyLoanDetail }) {
             />
             <DetailField
               label="Overdue amount"
-              value={formatINR(account.delinquency.overdueAmount)}
+              value={formatINR(account.delinquency.overdueAmount, { decimals: 2 })}
               mono
             />
             <DetailField
@@ -237,12 +247,12 @@ function LoanAccountCard({ detail }: { detail: MyLoanDetail }) {
             />
             <DetailField
               label="Gross amount"
-              value={formatINR(account.disbursement.grossAmount)}
+              value={formatINR(account.disbursement.grossAmount, { decimals: 2 })}
               mono
             />
             <DetailField
               label="Net disbursed"
-              value={formatINR(account.disbursement.netDisbursedAmount)}
+              value={formatINR(account.disbursement.netDisbursedAmount, { decimals: 2 })}
               mono
             />
             <DetailField
@@ -263,7 +273,7 @@ function LoanAccountCard({ detail }: { detail: MyLoanDetail }) {
         <p className="text-foreground-muted text-xs">
           Schedule: {account.repaymentSchedule.installmentCount ?? 0} installments of{" "}
           <span className="font-mono">
-            {formatINR(account.repaymentSchedule.installmentAmount)}
+            {formatINR(account.repaymentSchedule.installmentAmount, { decimals: 2 })}
           </span>
           {account.repaymentSchedule.firstDueDate
             ? `, first due ${account.repaymentSchedule.firstDueDate}`

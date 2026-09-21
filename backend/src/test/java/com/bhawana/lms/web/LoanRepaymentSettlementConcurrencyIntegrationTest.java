@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.domain.LoanPaymentChannel;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 import com.bhawana.lms.repo.LoanApplicationRepository;
@@ -121,7 +122,7 @@ class LoanRepaymentSettlementConcurrencyIntegrationTest {
     @Test
     void concurrentFinalInstallmentPaymentsCloseTheLoanExactlyOnce() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan("H06-CLOSE");
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
         for (int installmentNumber = 1; installmentNumber <= INSTALLMENT_COUNT - 2; installmentNumber++) {
             payInstallmentViaOps(fixture, installmentNumber, postedAt, UUID.randomUUID().toString());
         }
@@ -152,7 +153,7 @@ class LoanRepaymentSettlementConcurrencyIntegrationTest {
     @Test
     void concurrentFirstPaymentsBothSettleWithoutUnexplainedFailure() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan("H06-CONTEND");
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
         assertEquals("DISBURSED", applicationStatus(fixture.applicationId()));
 
         rendezvousBeforeClosureDecision(2);
@@ -167,7 +168,7 @@ class LoanRepaymentSettlementConcurrencyIntegrationTest {
     @Test
     void finalPaymentReplaysAfterClosureThroughCommandAndBothHttpPaths() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan("H07-REPLAY");
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
         for (int installmentNumber = 1; installmentNumber < INSTALLMENT_COUNT; installmentNumber++) {
             payInstallmentViaOps(fixture, installmentNumber, postedAt, UUID.randomUUID().toString());
         }
@@ -259,7 +260,7 @@ class LoanRepaymentSettlementConcurrencyIntegrationTest {
         DisbursedLoanFixture owned = seedDisbursedLoan("H07-OWNED");
         DisbursedLoanFixture other = seedDisbursedLoan("H07-OTHER");
         assertNotEquals(owned.lspId(), other.lspId());
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
 
         String idempotencyKey = UUID.randomUUID().toString();
         postOpsPayment(
@@ -305,7 +306,7 @@ class LoanRepaymentSettlementConcurrencyIntegrationTest {
     @Test
     void concurrentApplicationWriteWaitsForThePaymentInsteadOfOrphaningItsReceipt() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan("H06-NOWINNER");
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
         CountDownLatch parked = new CountDownLatch(1);
         CountDownLatch resume = new CountDownLatch(1);
         parkFirstClosureDecision(parked, resume);
@@ -332,7 +333,7 @@ class LoanRepaymentSettlementConcurrencyIntegrationTest {
     @Test
     void legacyReceiptWithoutFingerprintReplaysOnlyAnIdenticalRequest() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan("H07-LEGACY");
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
         String idempotencyKey = UUID.randomUUID().toString();
         MvcResult original = postOpsPayment(
                 fixture.applicationId(),
@@ -404,7 +405,7 @@ class LoanRepaymentSettlementConcurrencyIntegrationTest {
     void sameKeyRacedAcrossTwoLoansCommitsOneReceiptAndConflictsTheOther() throws Exception {
         DisbursedLoanFixture first = seedDisbursedLoan("H06-KEYRACE-A");
         DisbursedLoanFixture second = seedDisbursedLoan("H06-KEYRACE-B");
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
         String idempotencyKey = UUID.randomUUID().toString();
         CyclicBarrier barrier = new CyclicBarrier(2);
         Mockito.doAnswer(invocation -> {
@@ -450,7 +451,7 @@ class LoanRepaymentSettlementConcurrencyIntegrationTest {
     @Test
     void receiptCommittedJustBeforeTheInsertResolvesAsAReplay() throws Exception {
         DisbursedLoanFixture fixture = seedDisbursedLoan("H06-LATEWIN");
-        LocalDate postedAt = LocalDate.now().minusDays(1);
+        LocalDate postedAt = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1);
         String idempotencyKey = UUID.randomUUID().toString();
         UUID winnerReceiptId = UUID.randomUUID();
         CountDownLatch parked = new CountDownLatch(1);

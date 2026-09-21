@@ -26,7 +26,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -336,12 +335,14 @@ public class AdminReportingService {
         }
     }
 
-    private static java.time.Instant toStartOfDayInclusive(LocalDate value) {
-        return value == null ? null : value.atStartOfDay(ZoneOffset.UTC).toInstant();
+    // M09 — report disbursal-date filters are business dates; their instant boundaries are
+    // drawn in the business zone (Asia/Kolkata), matching LoanApplicationQueryService.
+    private java.time.Instant toStartOfDayInclusive(LocalDate value) {
+        return value == null ? null : businessCalendar.startOfBusinessDay(value);
     }
 
-    private static java.time.Instant toEndOfDayExclusive(LocalDate value) {
-        return value == null ? null : value.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+    private java.time.Instant toEndOfDayExclusive(LocalDate value) {
+        return value == null ? null : businessCalendar.endOfBusinessDayExclusive(value);
     }
 
     private static BigDecimal defaultBigDecimal(BigDecimal value) {
@@ -364,7 +365,7 @@ public class AdminReportingService {
     ) {
         LocalDate disbursalDate = loanAccount.getDisbursedAt() == null
                 ? null
-                : loanAccount.getDisbursedAt().atZone(ZoneOffset.UTC).toLocalDate();
+                : businessCalendar.businessDate(loanAccount.getDisbursedAt());
 
         LoanApplication application = loanAccount.getLoanApplication();
         LoanProduct product = loanAccount.getLoanProduct();
@@ -372,7 +373,7 @@ public class AdminReportingService {
 
         // Loan year: year portion of disbursal date (or application creation year)
         Integer loanYear = disbursalDate != null ? disbursalDate.getYear()
-                : application.getCreatedAt().atZone(ZoneOffset.UTC).getYear();
+                : businessCalendar.businessDate(application.getCreatedAt()).getYear();
 
         // ADR 0004: report the fee actually charged at disbursement (persisted on the loan account).
         // Legacy rows predating the change carry no persisted fee — no fee was deducted at disbursal,
@@ -412,7 +413,7 @@ public class AdminReportingService {
         if (executedQuote != null) {
             foreclosedRepaidAmount = executedQuote.getSettlementAmount();
             foreclosureDate = executedQuote.getExecutedAt() != null
-                    ? executedQuote.getExecutedAt().atZone(ZoneOffset.UTC).toLocalDate()
+                    ? businessCalendar.businessDate(executedQuote.getExecutedAt())
                     : executedQuote.getEffectiveDate();
         }
 
@@ -420,7 +421,7 @@ public class AdminReportingService {
         LocalDate normalClosureDate = null;
         if (loanAccount.getClosureReason() == LoanAccountClosureReason.FULLY_REPAID
                 && loanAccount.getClosedAt() != null) {
-            normalClosureDate = loanAccount.getClosedAt().atZone(ZoneOffset.UTC).toLocalDate();
+            normalClosureDate = businessCalendar.businessDate(loanAccount.getClosedAt());
         }
 
         // Days past due (max across installments)
@@ -444,8 +445,8 @@ public class AdminReportingService {
                 delinquencySnapshot.bucket(),
                 delinquencySnapshot.overdueAmount(),
                 loanAccount.getClosureReason() == null ? null : loanAccount.getClosureReason().name(),
-                loanAccount.getClosedAt() == null ? null : loanAccount.getClosedAt().atZone(ZoneOffset.UTC).toLocalDate(),
-                application.getCreatedAt().atZone(ZoneOffset.UTC).toLocalDate(),
+                loanAccount.getClosedAt() == null ? null : businessCalendar.businessDate(loanAccount.getClosedAt()),
+                businessCalendar.businessDate(application.getCreatedAt()),
                 loanYear,
                 processingFeeAmount,
                 loanAccount.getPrincipalAmount(),

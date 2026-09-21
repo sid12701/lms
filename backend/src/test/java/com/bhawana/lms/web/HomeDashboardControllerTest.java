@@ -1,5 +1,6 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
@@ -112,7 +113,7 @@ class HomeDashboardControllerTest {
                 null
         ));
 
-        setInstallmentDueDate(apexLoan.get("id").asText(), 1, LocalDate.now().minusDays(120));
+        setInstallmentDueDate(apexLoan.get("id").asText(), 1, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(120));
 
         mockMvc.perform(get("/api/v1/internal/home/overview")
                         .with(systemAdmin()))

@@ -49,7 +49,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      APP_TENANT_DATASOURCE_PASSWORD: lms_tenant_app_password
+      # Single source for both the Flyway tenant_app_password placeholder (which provisions
+      # the lms_tenant_app role) and app.datasource.tenant.password (which authenticates as
+      # it). Must be non-legacy: the test-data context in SyntheticPortfolioSeedServiceTest
+      # is not dev-exempt, so the deployment validators reject lms_tenant_app_password.
+      APP_TENANT_DATASOURCE_PASSWORD: test-tenant-rotated-password
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

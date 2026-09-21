@@ -64,15 +64,30 @@ describe("computeScheduleTotals", () => {
     });
   });
 
-  it("defaults asOf to the viewer's local calendar date, not the UTC date", () => {
-    // 02:00 IST is still the previous day in UTC. Pinning the clock there
-    // guarantees a regression to `toISOString()` fails this test.
+  it("defaults asOf to the business calendar date (Asia/Kolkata), not the UTC or browser date", () => {
+    // M09 — 2026-08-04T02:00+05:30 is still 2026-08-03 in UTC, and would be
+    // 2026-08-03 for a browser anywhere west of IST too. The business date the
+    // backend counts DPD against is 2026-08-04, and the summary must agree.
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-04T02:00:00+05:30"));
     try {
-      const localToday = new Date();
-      const iso = `${localToday.getFullYear()}-${String(localToday.getMonth() + 1).padStart(2, "0")}-${String(localToday.getDate()).padStart(2, "0")}`;
-      const rows = [installment({ dueDate: iso, outstandingAmount: 4200 })];
+      const dueToday = [installment({ dueDate: "2026-08-04", outstandingAmount: 4200 })];
+      const dueTomorrow = [installment({ dueDate: "2026-08-05", outstandingAmount: 4200 })];
+
+      expect(computeScheduleTotals(dueToday).outstandingAsOfToday).toBe(4200);
+      expect(computeScheduleTotals(dueTomorrow).outstandingAsOfToday).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("treats a UTC-evening instant inside the next IST day as that business date", () => {
+    // 2026-08-03T23:30Z is 2026-08-04 05:00 IST — a non-India browser zone
+    // (e.g. a London reviewer at 23:30) must still see the 4th as "today".
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-03T23:30:00.000Z"));
+    try {
+      const rows = [installment({ dueDate: "2026-08-04", outstandingAmount: 4200 })];
 
       expect(computeScheduleTotals(rows).outstandingAsOfToday).toBe(4200);
     } finally {

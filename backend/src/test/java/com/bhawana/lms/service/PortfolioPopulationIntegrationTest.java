@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.common.money.Money;
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.repo.LoanAccountRepository;
 import com.bhawana.lms.repo.LoanApplicationDocumentChecklistRepository;
@@ -98,17 +99,17 @@ class PortfolioPopulationIntegrationTest {
     void eachMetricCountsOnlyItsOwnPopulationInLiveFallbackAndSnapshots() throws Exception {
         // Each loan is overdue in a different bucket, so a leak shows up as a wrong bucket count.
         UUID unfunded = seedApprovedLoan();
-        setFirstInstallmentDueDate(unfunded, LocalDate.now().minusDays(45));
+        setFirstInstallmentDueDate(unfunded, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(45));
 
         UUID invalid = seedApprovedLoan();
-        setFirstInstallmentDueDate(invalid, LocalDate.now().minusDays(70));
+        setFirstInstallmentDueDate(invalid, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(70));
         forceLoanState(invalid, "INVALID", "INVALID");
 
         UUID active = seedDisbursedLoan();
-        setFirstInstallmentDueDate(active, LocalDate.now().minusDays(10));
+        setFirstInstallmentDueDate(active, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(10));
 
         UUID closed = seedDisbursedLoan();
-        setFirstInstallmentDueDate(closed, LocalDate.now().minusDays(120));
+        setFirstInstallmentDueDate(closed, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(120));
         forceLoanState(closed, "CLOSED", "CLOSED");
 
         BigDecimal expectedDisbursed = principalOf(active).add(principalOf(closed));

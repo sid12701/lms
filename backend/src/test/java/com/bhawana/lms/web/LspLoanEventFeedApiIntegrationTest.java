@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.service.AlertRuleEvaluationWorker;
 import com.bhawana.lms.service.DisbursementIntentWorkflowService;
 import com.bhawana.lms.service.LoanDisbursementCommandService;
@@ -613,7 +614,7 @@ class LspLoanEventFeedApiIntegrationTest {
         String loanAccountId = loanAccountId(partner.accessToken(), applicationId);
 
         transitionApplicationToUnderRepayment(applicationId);
-        setFirstInstallmentDueDate(loanAccountId, LocalDate.now().minusDays(10));
+        setFirstInstallmentDueDate(loanAccountId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(10));
         evaluateScheduledRulesAsAdmin();
 
         List<JsonNode> afterWorsening = delinquencyEvents(partner.accessToken());
@@ -643,7 +644,7 @@ class LspLoanEventFeedApiIntegrationTest {
         );
 
         // The cure: the installment moves back into the future.
-        setFirstInstallmentDueDate(loanAccountId, LocalDate.now().plusDays(5));
+        setFirstInstallmentDueDate(loanAccountId, LocalDate.now(TimeConfig.BUSINESS_ZONE).plusDays(5));
         evaluateScheduledRulesAsAdmin();
 
         List<JsonNode> afterCure = delinquencyEvents(partner.accessToken());
@@ -1258,7 +1259,7 @@ class LspLoanEventFeedApiIntegrationTest {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "targetInstallmentId", installmentId,
                                 "amount", amount,
-                                "postedAt", LocalDate.now().minusDays(1).toString(),
+                                "postedAt", LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1).toString(),
                                 "reference", "PAY-FEED-001",
                                 "channel", "UPI"
                         ))))

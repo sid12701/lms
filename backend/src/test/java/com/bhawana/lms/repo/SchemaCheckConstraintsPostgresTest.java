@@ -2,6 +2,7 @@ package com.bhawana.lms.repo;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.support.PostgresDataJpaTestSupport;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -424,7 +425,7 @@ class SchemaCheckConstraintsPostgresTest extends PostgresDataJpaTestSupport {
                 UUID.randomUUID(),
                 loanAccountId,
                 installmentNumber,
-                LocalDate.now().plusDays(30),
+                LocalDate.now(TimeConfig.BUSINESS_ZONE).plusDays(30),
                 openingPrincipal,
                 principalDue,
                 interestDue,
@@ -450,7 +451,7 @@ class SchemaCheckConstraintsPostgresTest extends PostgresDataJpaTestSupport {
                 UUID.randomUUID(),
                 loanAccountId,
                 amount,
-                LocalDate.now(),
+                LocalDate.now(TimeConfig.BUSINESS_ZONE),
                 "REF-" + UUID.randomUUID().toString().substring(0, 8),
                 allocatedAmount,
                 unallocatedAmount

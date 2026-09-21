@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Points Bean Validation's "now" at the business calendar's zone (M09). Without this,
+  the validator evaluates @Past/@PastOrPresent/@Future on LocalDate fields in the JVM
+  default zone: between 18:30 and 24:00 UTC the Asia/Kolkata business date reads as
+  "tomorrow" to the validator, so requests dated on the current business date are
+  rejected as future-dated while the service layer requires exactly that date.
+-->
+<validation-config
+        xmlns="https://jakarta.ee/xml/ns/validation/configuration"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="https://jakarta.ee/xml/ns/validation/configuration
+            https://jakarta.ee/xml/ns/validation/validation-configuration-3.0.xsd"
+        version="3.0">
+    <clock-provider>com.bhawana.lms.config.BusinessZoneClockProvider</clock-provider>
+</validation-config>

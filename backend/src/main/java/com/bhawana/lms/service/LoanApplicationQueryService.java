@@ -2,6 +2,7 @@ package com.bhawana.lms.service;
 
 import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
+import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.common.api.PagedResult;
 import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
@@ -11,7 +12,6 @@ import com.bhawana.lms.repo.LoanApplicationReadRepository;
 import com.bhawana.lms.repo.LoanApplicationRepository;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -33,13 +33,16 @@ public class LoanApplicationQueryService {
 
     private final LoanApplicationReadRepository loanApplicationReadRepository;
     private final LoanApplicationRepository loanApplicationRepository;
+    private final BusinessCalendar businessCalendar;
 
     public LoanApplicationQueryService(
             LoanApplicationReadRepository loanApplicationReadRepository,
-            LoanApplicationRepository loanApplicationRepository
+            LoanApplicationRepository loanApplicationRepository,
+            BusinessCalendar businessCalendar
     ) {
         this.loanApplicationReadRepository = loanApplicationReadRepository;
         this.loanApplicationRepository = loanApplicationRepository;
+        this.businessCalendar = businessCalendar;
     }
 
     @Transactional(readOnly = true)
@@ -125,12 +128,15 @@ public class LoanApplicationQueryService {
             throw unknownStatus(normalizedStatusValue);
         }
 
+        // M09 — disbursalDateFrom/To are business dates, so the day boundaries are
+        // drawn in the business zone (Asia/Kolkata), not UTC: a UTC boundary would
+        // cut 00:00–05:30 IST disbursals into the previous day's bucket.
         Instant disbursalFromInstant = disbursalDateFrom == null
                 ? null
-                : disbursalDateFrom.atStartOfDay(ZoneOffset.UTC).toInstant();
+                : businessCalendar.startOfBusinessDay(disbursalDateFrom);
         Instant disbursalToInstant = disbursalDateTo == null
                 ? null
-                : disbursalDateTo.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+                : businessCalendar.endOfBusinessDayExclusive(disbursalDateTo);
         boolean paginationRequested = true;
         int resolvedOffset = PaginationResponseBuilder.resolveOffset(offset, paginationRequested);
         int resolvedLimit = PaginationResponseBuilder.resolveLimit(limit, paginationRequested);
@@ -206,12 +212,13 @@ public class LoanApplicationQueryService {
         String normalizedLspLoanId = normalizeQuery(lspLoanId);
         String normalizedBhawLoanId = normalizeQuery(bhawLoanId);
 
+        // Same business-date contract as listApplicationsPage (M09).
         Instant disbursalFromInstant = disbursalDateFrom == null
                 ? null
-                : disbursalDateFrom.atStartOfDay(ZoneOffset.UTC).toInstant();
+                : businessCalendar.startOfBusinessDay(disbursalDateFrom);
         Instant disbursalToInstant = disbursalDateTo == null
                 ? null
-                : disbursalDateTo.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+                : businessCalendar.endOfBusinessDayExclusive(disbursalDateTo);
         boolean paginationRequested = true;
         int resolvedOffset = PaginationResponseBuilder.resolveOffset(offset, paginationRequested);
         int resolvedLimit = PaginationResponseBuilder.resolveLimit(limit, paginationRequested);

@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { formatDateTime } from "@/lib/format";
 import { RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,14 +18,15 @@ export interface ApiClientSecretMetaProps {
   className?: string;
 }
 
-const DATE_FMT = "dd MMM yyyy HH:mm 'IST'";
-
 function formatTimestamp(value: string): string {
   // Defensive against bad fixture input — surface the raw value rather than
   // crashing the card if a date is malformed.
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
-  return format(d, DATE_FMT);
+  // M09 — these are real instants; render them in the business zone. The old
+  // "IST" literal was appended to *browser-local* time, which was wrong for
+  // every operator outside India.
+  return formatDateTime(value);
 }
 
 /**

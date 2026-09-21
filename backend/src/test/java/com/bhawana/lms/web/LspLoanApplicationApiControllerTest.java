@@ -1666,7 +1666,7 @@ class LspLoanApplicationApiControllerTest {
                                 "mode", "LSP_PROVIDED",
                                 "installments", List.of(Map.of(
                                         "installmentNumber", 1,
-                                        "dueDate", LocalDate.now().plusMonths(1).toString(),
+                                        "dueDate", LocalDate.now(TimeConfig.BUSINESS_ZONE).plusMonths(1).toString(),
                                         "openingPrincipal", "45000.00",
                                         "principalDue", "1000.00",
                                         "interestDue", "100.00",
@@ -2391,7 +2391,7 @@ class LspLoanApplicationApiControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "targetInstallmentId", installmentId,
                                 "amount", amount,
-                                "postedAt", LocalDate.now().toString(),
+                                "postedAt", LocalDate.now(TimeConfig.BUSINESS_ZONE).toString(),
                                 "reference", reference,
                                 "channel", "UPI"
                         ))))
@@ -2414,7 +2414,7 @@ class LspLoanApplicationApiControllerTest {
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "targetInstallmentId", installmentId,
                                 "amount", amount,
-                                "postedAt", LocalDate.now().minusDays(1).toString(),
+                                "postedAt", LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1).toString(),
                                 "reference", "PAY-LSP-001",
                                 "channel", "UPI"
                         ))))

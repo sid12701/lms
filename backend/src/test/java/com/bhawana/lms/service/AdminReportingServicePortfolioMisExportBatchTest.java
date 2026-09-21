@@ -53,6 +53,11 @@ class AdminReportingServicePortfolioMisExportBatchTest {
         BusinessCalendar calendar = mock(BusinessCalendar.class);
 
         when(calendar.today()).thenReturn(LocalDate.of(2026, 7, 6));
+        // M09 — the service maps persisted instants through BusinessCalendar; keep the real
+        // instant→business-date logic on the mock so rows are not dated null.
+        when(calendar.businessDate(any())).thenCallRealMethod();
+        when(calendar.startOfBusinessDay(any())).thenCallRealMethod();
+        when(calendar.endOfBusinessDayExclusive(any())).thenCallRealMethod();
         when(repository.findMaxInstallmentCountForExport(isNull(), isNull(), isNull(), any())).thenReturn(0);
 
         List<UUID> batchOne = ids(1, 1000);

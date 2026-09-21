@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { format, parseISO } from "date-fns";
+import { parseISO } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatINR } from "@/lib/format";
+import { formatDateTime, formatINR } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export interface ForeclosureSummaryCardProps {
@@ -45,8 +45,8 @@ export function ForeclosureSummaryCard({
   // and the parent owns refresh cadence.
   const [now] = useState<number>(() => Date.now());
   const isStale = now > validUntilDate.valueOf();
-  const formattedValidUntil = format(validUntilDate, "dd MMM yyyy HH:mm");
-  const formattedQuotedAt = format(parseISO(quotedAt), "dd MMM yyyy HH:mm");
+  const formattedValidUntil = formatDateTime(quoteValidUntil);
+  const formattedQuotedAt = formatDateTime(quotedAt);
 
   const rows: Array<{ label: string; value: number; emphasis?: boolean }> = [
     { label: "Principal outstanding", value: principalOutstanding },
@@ -94,7 +94,9 @@ export function ForeclosureSummaryCard({
               data-slot="foreclosure-summary-row"
             >
               <dt className="text-foreground-muted">{row.label}</dt>
-              <dd className="tabular-nums">{formatINR(row.value)}</dd>
+              {/* Settlement screen — paise are part of the payoff the operator
+                  confirms, so the exact two-decimal form is required (M09). */}
+              <dd className="tabular-nums">{formatINR(row.value, { decimals: 2 })}</dd>
             </div>
           ))}
         </dl>
