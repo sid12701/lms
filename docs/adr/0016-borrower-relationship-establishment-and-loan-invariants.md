@@ -1,4 +1,4 @@
-# ADR 0014 — Borrower relationship establishment and loan financial invariants
+# ADR 0016 — Borrower relationship establishment and loan financial invariants
 
 - **Status:** Accepted (audit remediation batch 9)
 - **Source:** Consolidated audit `docs/audits/lms-consolidated-audit-and-fix-specs-2026-09-06.md` — M02 (borrower visibility can outlive failed onboarding; race recovery inconsistent), M18 (invariants enforced only in selected service paths)

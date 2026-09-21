@@ -8,7 +8,7 @@
 -- NOT VALID keeps the DDL off a long table scan, and validation makes a dirty
 -- pre-existing row fail the migration loudly rather than slipping past. Before
 -- applying to a populated database, run the violation-inventory queries recorded
--- in docs/adr/0014... (per-constraint count queries) — each must return zero.
+-- in docs/adr/0016... (per-constraint count queries) — each must return zero.
 --
 -- Deferred on purpose: loan_foreclosure_quote's settlement = principal + interest
 -- equality. H08's pricing policy (ADR 0009, still Proposed) has not fixed which
