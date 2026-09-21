@@ -128,7 +128,13 @@ function ScheduleStartCard({ detail }: { detail: LoanApplicationDetail }) {
 }
 
 function DelinquencyCard({ borrowerDetail }: { borrowerDetail?: BorrowerDetail | null }) {
-  const overdue = borrowerDetail?.totals.activeOverdueAmount ?? 0;
+  // M09 — an unavailable delinquency projection is not a zero balance: without
+  // the totals there is no evidence for "on track", so the card stays silent
+  // rather than asserting a healthy state it cannot know.
+  const overdue = borrowerDetail?.totals.activeOverdueAmount;
+  if (overdue == null) {
+    return null;
+  }
 
   if (overdue <= 0) {
     return (
@@ -142,7 +148,8 @@ function DelinquencyCard({ borrowerDetail }: { borrowerDetail?: BorrowerDetail |
     <PanelShell tone="danger" title="Loan is delinquent">
       <ul className="space-y-1">
         <li>
-          Active overdue amount: <span className="font-mono">{formatINR(overdue)}</span>
+          Active overdue amount:{" "}
+          <span className="font-mono">{formatINR(overdue, { decimals: 2 })}</span>
         </li>
         <li className="text-foreground-muted text-xs">
           Per-installment DPD / bucket detail is available on the Repayments tab.

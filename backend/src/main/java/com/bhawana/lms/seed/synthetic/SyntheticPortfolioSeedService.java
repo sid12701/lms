@@ -2,6 +2,7 @@ package com.bhawana.lms.seed.synthetic;
 
 import com.bhawana.lms.common.money.LoanFeeCalculator;
 import com.bhawana.lms.common.util.PersistedTimestamp;
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.domain.ApiClientStatus;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplicationStatus;
@@ -29,12 +30,23 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+/**
+ * Destructive-capable seeding service. The bean only exists under the explicitly approved
+ * {@code local}, {@code staging}, or {@code test-data} profiles (L05): under {@code prod},
+ * {@code production}, {@code test}, or any unknown profile it is never registered, so no
+ * controller, runner, or other bean can resolve it. {@link #seed()} still fails closed at
+ * runtime on three independent gates: production profile detection, the
+ * {@code app.seed.synthetic-portfolio.enabled} flag, and the
+ * {@code app.seed.synthetic-portfolio.allowed-database-names} target-database allowlist.
+ */
 @Service
+@Profile({"local", "staging", "test-data"})
 public class SyntheticPortfolioSeedService {
 
     private static final Logger LOG = LoggerFactory.getLogger(SyntheticPortfolioSeedService.class);
@@ -66,6 +78,7 @@ public class SyntheticPortfolioSeedService {
             throw new IllegalStateException(
                     "Synthetic portfolio seeding requires app.seed.synthetic-portfolio.enabled=true");
         }
+        guardTargetDatabase();
 
         SyntheticPortfolioSpec spec = SyntheticPortfolioSpec.from(properties);
         validateSpec(spec);
@@ -103,6 +116,32 @@ public class SyntheticPortfolioSeedService {
                 throw new IllegalStateException("Synthetic portfolio seeding is not allowed in production profiles.");
             }
         }
+    }
+
+    /**
+     * The seeder may TRUNCATE business tables ({@code resetExistingData}), so an approved
+     * profile and {@code enabled=true} are not sufficient: the connected database name must
+     * also be explicitly listed in {@code app.seed.synthetic-portfolio.allowed-database-names}.
+     * An empty allowlist fails closed even when every other gate is open.
+     */
+    private void guardTargetDatabase() {
+        List<String> allowedDatabases = properties.getAllowedDatabaseNames();
+        if (allowedDatabases == null || allowedDatabases.isEmpty()) {
+            throw new IllegalStateException(
+                    "Synthetic portfolio seeding requires app.seed.synthetic-portfolio."
+                            + "allowed-database-names to list the target database explicitly");
+        }
+        String currentDatabase = currentDatabaseName();
+        if (currentDatabase == null || !allowedDatabases.contains(currentDatabase)) {
+            throw new IllegalStateException(
+                    "Synthetic portfolio seeding refused: current database is not in "
+                            + "app.seed.synthetic-portfolio.allowed-database-names");
+        }
+    }
+
+    /** Visible for testing: the name of the database the admin datasource is connected to. */
+    String currentDatabaseName() {
+        return jdbcTemplate.queryForObject("SELECT current_database()", String.class);
     }
 
     private static void validateSpec(SyntheticPortfolioSpec spec) {
@@ -679,7 +718,8 @@ public class SyntheticPortfolioSeedService {
                         ps.setObject(3, row.installmentId());
                         ps.setString(4, ACTOR);
                         ps.setBigDecimal(5, row.amount());
-                        ps.setObject(6, LocalDate.ofInstant(row.paidAt(), java.time.ZoneOffset.UTC));
+                        // M09 — seeded payment dates follow the business calendar too.
+                        ps.setObject(6, LocalDate.ofInstant(row.paidAt(), TimeConfig.BUSINESS_ZONE));
                         ps.setString(7, "SYN-PAY-" + row.paymentId());
                         ps.setString(8, row.paymentId().toString());
                         ps.setString(9, LoanPaymentChannel.UPI.name());

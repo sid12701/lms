@@ -17,7 +17,7 @@ class DisbursementSimulationGuardTest {
 
     @Test
     void explicitSimulationProfilesAreAllowed() {
-        for (String profile : new String[]{"test", "local", "dev"}) {
+        for (String profile : new String[]{"test", "local", "dev", "test-data"}) {
             assertTrue(new DisbursementSimulationGuard(env(profile)).isSimulationAllowed(), profile);
         }
     }

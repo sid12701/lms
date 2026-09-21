@@ -146,7 +146,12 @@ app:
     sample-data:
       enabled: false
     synthetic-portfolio:
+      # The seed service bean only exists under the local/staging/test-data profiles.
+      # Even there it fails closed unless enabled=true AND the connected database name
+      # appears in allowed-database-names (empty by default — never seed a database
+      # that was not explicitly listed).
       enabled: false
+      allowed-database-names: []
       scale-factor: 1.0
       lsp-count: 10
       whale-lsp-index: 0

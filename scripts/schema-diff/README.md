@@ -62,6 +62,14 @@ Review `artifacts/prod-vs-reference.diff`. Expected drift is recorded in `known-
 - `SET` / `pg_catalog.set_config` session pragmas
 - `OWNER TO` and `TABLESPACE` clauses
 - `CREATE EXTENSION` and bare `CREATE SCHEMA public` (Supabase hosts extensions separately)
+- Runtime partition inventory: `CREATE TABLE` for partition children, `ATTACH PARTITION`
+  statements, and child-only constraints/indexes/triggers/policies are elided. Partition
+  names and bounds derive from the generation date (see `V117`), so keeping them would make
+  the committed artifact go stale every month. A deterministic
+  `-- schema-diff: N runtime partition(s) of <parent> elided` marker records the count;
+  the parent table, its `PARTITION BY` clause, parent-level indexes (`ON ONLY`), policies,
+  triggers, and grants all remain in the artifact. Dropping a real table/policy/index still
+  fails `check-reference.sh` — see `test_normalize_schema.py` for the contract.
 
 ## Operational rules (see ADR 0006)
 

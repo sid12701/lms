@@ -1,5 +1,6 @@
 package com.bhawana.lms.seed.synthetic;
 
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -15,6 +16,22 @@ public class SyntheticPortfolioSeedProperties {
      */
     private boolean enabled = false;
 
+    /**
+     * Database names (as returned by {@code SELECT current_database()}) the seeder may run
+     * against. Empty by default, so seeding fails closed unless an operator explicitly
+     * allowlists the target — the last guard against pointing the destructive seed at a
+     * database that was never meant to hold synthetic data (L05).
+     */
+    private List<String> allowedDatabaseNames = List.of();
+
+    /**
+     * {@code true} (default) truncates {@code report_request}, {@code borrower},
+     * {@code loan_product}, and {@code lsp} (cascading) before seeding and deletes every
+     * non-bootstrap user. {@code false} switches to additive mode: existing business rows
+     * are preserved, borrower sequences are offset, and verification counts are measured
+     * against the pre-seed baseline. Either way the target database must still appear in
+     * {@link #allowedDatabaseNames}.
+     */
     private boolean resetExistingData = true;
 
     /** Creates only account-backed UNDER_REPAYMENT loans. */
@@ -57,6 +74,14 @@ public class SyntheticPortfolioSeedProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public List<String> getAllowedDatabaseNames() {
+        return allowedDatabaseNames;
+    }
+
+    public void setAllowedDatabaseNames(List<String> allowedDatabaseNames) {
+        this.allowedDatabaseNames = allowedDatabaseNames == null ? List.of() : allowedDatabaseNames;
     }
 
     public boolean isResetExistingData() {

@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.common.money.Money;
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.domain.DisbursementDeclineKind;
 import com.bhawana.lms.domain.DisbursementDisposition;
 import com.bhawana.lms.domain.DisbursementIntent;
@@ -257,7 +258,7 @@ class ScheduleReplacementFreezeIntegrationTest {
                 firstInstallment,
                 "t15.test",
                 new BigDecimal("1000.00"),
-                LocalDate.now(),
+                LocalDate.now(TimeConfig.BUSINESS_ZONE),
                 "RCPT-001",
                 LoanPaymentChannel.UPI,
                 LoanPaymentStatus.RECEIVED,

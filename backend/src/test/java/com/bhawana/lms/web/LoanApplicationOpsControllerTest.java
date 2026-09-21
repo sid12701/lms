@@ -837,8 +837,8 @@ class LoanApplicationOpsControllerTest {
 
         String installment1Id = installmentIdAt(applicationId, 1);
         String installment2Id = installmentIdAt(applicationId, 2);
-        String paymentDate = LocalDate.now().minusDays(2).toString();
-        String secondPaymentDate = LocalDate.now().minusDays(1).toString();
+        String paymentDate = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(2).toString();
+        String secondPaymentDate = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1).toString();
 
         mockMvc.perform(postInstallmentPayment(
                         applicationId,
@@ -921,7 +921,7 @@ class LoanApplicationOpsControllerTest {
                         "PAY-PARTIAL-REJECT",
                         "UPI",
                         UUID.randomUUID().toString(),
-                        LocalDate.now().minusDays(1)))
+                        LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error").value("PAYMENT_AMOUNT_MISMATCH"));
 
@@ -958,7 +958,7 @@ class LoanApplicationOpsControllerTest {
                             "PAY-PAGE-" + index,
                             "UPI",
                             UUID.randomUUID().toString(),
-                            LocalDate.now().minusDays(1)))
+                            LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1)))
                     .andExpect(status().isOk());
         }
 
@@ -1012,7 +1012,7 @@ class LoanApplicationOpsControllerTest {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("targetInstallmentId", installment1Id);
         body.put("amount", new BigDecimal("4136.32"));
-        body.put("postedAt", LocalDate.now().toString());
+        body.put("postedAt", LocalDate.now(TimeConfig.BUSINESS_ZONE).toString());
         body.put("channel", "NEFT");
 
         mockMvc.perform(post("/api/v1/internal/ops/loan-applications/{applicationId}/payments", applicationId)
@@ -1134,7 +1134,7 @@ class LoanApplicationOpsControllerTest {
                             "PAY-CLOSE-" + String.format("%03d", index + 1),
                             "BANK_TRANSFER",
                             UUID.randomUUID().toString(),
-                            LocalDate.now().minusDays(installmentAmounts.size() - index)))
+                            LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(installmentAmounts.size() - index)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.allocatedAmount").value(installmentAmount.doubleValue()))
                     .andExpect(jsonPath("$.unallocatedAmount").value(0.00));
@@ -1170,7 +1170,7 @@ class LoanApplicationOpsControllerTest {
                         "PAY-INSTALLMENT-001",
                         "UPI",
                         UUID.randomUUID().toString(),
-                        LocalDate.now().minusDays(2)))
+                        LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(2)))
                 .andExpect(status().isOk());
 
         // Quotes are same-day only, so both versions carry today's business date.
@@ -1271,7 +1271,7 @@ class LoanApplicationOpsControllerTest {
                         "PAY-002",
                         "BANK_TRANSFER",
                         UUID.randomUUID().toString(),
-                        LocalDate.now().minusDays(1)))
+                        LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1)))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error").value("REPAYMENT_NOT_ALLOWED"));
     }
@@ -1293,7 +1293,7 @@ class LoanApplicationOpsControllerTest {
         UUID loanAccountId = loanAccountRepository.findByLoanApplication_Id(UUID.fromString(applicationId))
                 .orElseThrow()
                 .getId();
-        LocalDate overdueDate = LocalDate.now().minusDays(45);
+        LocalDate overdueDate = LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(45);
         jdbcTemplate.update(
                 "update loan_repayment_schedule_installment set due_date = ?, updated_at = current_timestamp where loan_account_id = ? and installment_number = 1",
                 overdueDate,
@@ -1377,7 +1377,7 @@ class LoanApplicationOpsControllerTest {
                         "PAY-003",
                         "UPI",
                         UUID.randomUUID().toString(),
-                        LocalDate.now().minusDays(1),
+                        LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1),
                         opsUser()))
                 .andExpect(status().isForbidden());
     }

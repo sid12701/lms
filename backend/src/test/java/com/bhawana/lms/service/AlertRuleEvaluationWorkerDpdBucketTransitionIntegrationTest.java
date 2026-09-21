@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bhawana.lms.common.money.Money;
+import com.bhawana.lms.config.TimeConfig;
 import com.bhawana.lms.domain.LoanApplicationDocumentChecklistStatus;
 import com.bhawana.lms.domain.LoanDelinquencyBucket;
 import com.bhawana.lms.domain.OpsAlert;
@@ -106,7 +107,7 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
     @Test
     void firstEvaluationOfTenDayPastDueLoanEmitsAlertAndPersistsState() throws Exception {
         UUID applicationId = seedUnderRepaymentLoan();
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(10));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(10));
 
         AlertRuleEvaluationWorker.EvaluationSummary summary = alertRuleEvaluationWorker.evaluateScheduledRules();
 
@@ -130,7 +131,7 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
     @Test
     void firstEvaluationOfOneDayPastDueLoanEmitsAlertWithSingularDayWording() throws Exception {
         UUID applicationId = seedUnderRepaymentLoan();
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(1));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(1));
 
         AlertRuleEvaluationWorker.EvaluationSummary summary = alertRuleEvaluationWorker.evaluateScheduledRules();
 
@@ -172,7 +173,7 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
         // than anything (including the CURRENT default used when no prior state exists) — so
         // "is 0 days past due" can never actually reach the alert message on this path.
         UUID applicationId = seedUnderRepaymentLoan();
-        setFirstInstallmentDueDate(applicationId, LocalDate.now());
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE));
 
         alertRuleEvaluationWorker.evaluateScheduledRules();
 
@@ -185,7 +186,7 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
     @Test
     void unchangedBucketAfterAcknowledgementDoesNotEmitAnotherAlert() throws Exception {
         UUID applicationId = seedUnderRepaymentLoan();
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(10));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(10));
 
         alertRuleEvaluationWorker.evaluateScheduledRules();
         acknowledgeLatestDpdAlert(applicationId);
@@ -200,11 +201,11 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
     @Test
     void bucketWorseningEmitsAlertWithPreviousBucketInContext() throws Exception {
         UUID applicationId = seedUnderRepaymentLoan();
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(10));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(10));
         alertRuleEvaluationWorker.evaluateScheduledRules();
         acknowledgeLatestDpdAlert(applicationId);
 
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(35));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(35));
         AlertRuleEvaluationWorker.EvaluationSummary worseningPass = alertRuleEvaluationWorker.evaluateScheduledRules();
 
         assertThat(worseningPass.alertsEmitted()).isGreaterThanOrEqualTo(1);
@@ -222,17 +223,17 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
     @Test
     void bucketImprovementUpdatesStateWithoutAlertAndReWorseningAlertsAgain() throws Exception {
         UUID applicationId = seedUnderRepaymentLoan();
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(10));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(10));
         alertRuleEvaluationWorker.evaluateScheduledRules();
         acknowledgeLatestDpdAlert(applicationId);
 
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().plusDays(5));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).plusDays(5));
         AlertRuleEvaluationWorker.EvaluationSummary improvementPass = alertRuleEvaluationWorker.evaluateScheduledRules();
         assertThat(improvementPass.alertsEmitted()).isZero();
         assertThat(loanDelinquencyStateRepository.findByLoanApplication_Id(applicationId).orElseThrow().getLastBucket())
                 .isEqualTo(LoanDelinquencyBucket.CURRENT);
 
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(12));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(12));
         AlertRuleEvaluationWorker.EvaluationSummary reWorseningPass = alertRuleEvaluationWorker.evaluateScheduledRules();
         assertThat(reWorseningPass.alertsEmitted()).isGreaterThanOrEqualTo(1);
         assertThat(countDpdAlerts(applicationId)).isEqualTo(2);
@@ -247,7 +248,7 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
         // The sweep used to skip this loan entirely even though the read API reported it overdue.
         UUID applicationId = seedDisbursedLoan();
         assertThat(applicationStatusOf(applicationId)).isEqualTo("DISBURSED");
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(10));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(10));
 
         alertRuleEvaluationWorker.evaluateScheduledRules();
 
@@ -272,7 +273,7 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
     @Test
     void fundedDisbursedLoanWhoseFirstInstallmentIsNotYetDueIsNotFlagged() throws Exception {
         UUID applicationId = seedDisbursedLoan();
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().plusDays(5));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).plusDays(5));
 
         alertRuleEvaluationWorker.evaluateScheduledRules();
 
@@ -284,7 +285,7 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
     @Test
     void fundedDisbursedLoanWithASettledInstallmentIsNotFlagged() throws Exception {
         UUID applicationId = seedDisbursedLoan();
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(10));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(10));
         settleFirstInstallment(applicationId);
 
         alertRuleEvaluationWorker.evaluateScheduledRules();
@@ -299,7 +300,7 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
         // The schedule is generated at approval, so an unfunded account can carry overdue rows.
         // No money moved, so there is nothing to be delinquent about.
         UUID applicationId = seedApprovedLoan();
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(45));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(45));
 
         alertRuleEvaluationWorker.evaluateScheduledRules();
 
@@ -310,7 +311,7 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
     @Test
     void invalidatedLoanIsExcluded() throws Exception {
         UUID applicationId = seedApprovedLoan();
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(45));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(45));
         forceLoanState(applicationId, "INVALID", "INVALID");
 
         alertRuleEvaluationWorker.evaluateScheduledRules();
@@ -322,7 +323,7 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
     @Test
     void closedLoanIsExcluded() throws Exception {
         UUID applicationId = seedDisbursedLoan();
-        setFirstInstallmentDueDate(applicationId, LocalDate.now().minusDays(45));
+        setFirstInstallmentDueDate(applicationId, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(45));
         forceLoanState(applicationId, "CLOSED", "CLOSED");
 
         alertRuleEvaluationWorker.evaluateScheduledRules();
@@ -335,9 +336,9 @@ class AlertRuleEvaluationWorkerDpdBucketTransitionIntegrationTest {
     void bucketBoundaryDueDatesResolveToTheExpectedBuckets() throws Exception {
         // 30 days past due is the last day of DPD_1_30; 31 is the first day of DPD_31_60.
         UUID lastDayOfFirstBucket = seedDisbursedLoan();
-        setFirstInstallmentDueDate(lastDayOfFirstBucket, LocalDate.now().minusDays(30));
+        setFirstInstallmentDueDate(lastDayOfFirstBucket, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(30));
         UUID firstDayOfSecondBucket = seedDisbursedLoan();
-        setFirstInstallmentDueDate(firstDayOfSecondBucket, LocalDate.now().minusDays(31));
+        setFirstInstallmentDueDate(firstDayOfSecondBucket, LocalDate.now(TimeConfig.BUSINESS_ZONE).minusDays(31));
 
         alertRuleEvaluationWorker.evaluateScheduledRules();
 

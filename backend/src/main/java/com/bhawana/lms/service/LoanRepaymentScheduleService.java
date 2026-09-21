@@ -4,6 +4,7 @@ import com.bhawana.lms.common.api.error.ApiConflictException;
 import com.bhawana.lms.common.api.error.BusinessRuleViolationException;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
 import com.bhawana.lms.common.money.Money;
+import com.bhawana.lms.config.BusinessCalendar;
 import com.bhawana.lms.domain.LoanAccount;
 import com.bhawana.lms.domain.LoanAccountStatus;
 import com.bhawana.lms.domain.LoanApplication;
@@ -16,7 +17,6 @@ import com.bhawana.lms.repo.LoanRepaymentScheduleInstallmentRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -41,6 +41,7 @@ public class LoanRepaymentScheduleService {
     private final LoanPaymentTransactionRepository loanPaymentTransactionRepository;
     private final LspValidationAuditService lspValidationAuditService;
     private final ScheduleValidationProperties scheduleValidationProperties;
+    private final BusinessCalendar businessCalendar;
 
     public LoanRepaymentScheduleService(
             LoanApplicationQueryService loanApplicationQueryService,
@@ -50,7 +51,8 @@ public class LoanRepaymentScheduleService {
             LoanRepaymentScheduleInstallmentRepository loanRepaymentScheduleInstallmentRepository,
             LoanPaymentTransactionRepository loanPaymentTransactionRepository,
             LspValidationAuditService lspValidationAuditService,
-            ScheduleValidationProperties scheduleValidationProperties
+            ScheduleValidationProperties scheduleValidationProperties,
+            BusinessCalendar businessCalendar
     ) {
         this.loanApplicationQueryService = loanApplicationQueryService;
         this.loanAccountRepository = loanAccountRepository;
@@ -60,6 +62,7 @@ public class LoanRepaymentScheduleService {
         this.loanPaymentTransactionRepository = loanPaymentTransactionRepository;
         this.lspValidationAuditService = lspValidationAuditService;
         this.scheduleValidationProperties = scheduleValidationProperties;
+        this.businessCalendar = businessCalendar;
     }
 
     /**
@@ -576,8 +579,14 @@ public class LoanRepaymentScheduleService {
         return absTolerance.max(pctComponent);
     }
 
-    private static LocalDate approvalDate(LoanAccount loanAccount) {
-        return loanAccount.getApprovedAt().atZone(ZoneOffset.UTC).toLocalDate();
+    /**
+     * The business date the approval landed on (M09). Anchoring through UTC put a
+     * 00:00–05:30 IST approval on the prior calendar day, so generated due dates
+     * and the S20 first-due window disagreed with the business DPD convention by
+     * one day. All contractual dates derive through {@link BusinessCalendar}.
+     */
+    private LocalDate approvalDate(LoanAccount loanAccount) {
+        return businessCalendar.businessDate(loanAccount.getApprovedAt());
     }
 
     private static BigDecimal monthlyRate(LoanAccount loanAccount) {

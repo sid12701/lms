@@ -14,12 +14,29 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 @SpringBootTest
-@ActiveProfiles("test")
+// The seed service bean only exists under the approved seeding profiles (L05); the
+// dedicated test-data profile is the sanctioned way to reach it from a test context.
+@ActiveProfiles({"test", "test-data"})
 @TestPropertySource(properties = {
         "app.seed.synthetic-portfolio.enabled=true",
+        // Testcontainers shared Postgres runs with database name "lms"; the seed refuses
+        // any database that is not explicitly allowlisted.
+        "app.seed.synthetic-portfolio.allowed-database-names=lms",
         "app.seed.synthetic-portfolio.application-count-override=400",
         "app.seed.synthetic-portfolio.lsp-count=2",
         "app.seed.synthetic-portfolio.batch-size=200",
+        // test-data is deliberately NOT a dev-exempt profile (see DeploymentProfiles), so this
+        // context must satisfy UnsafeDeploymentConfigurationValidator and
+        // TenantDatasourceSecurityValidator like a real deployment would. The tenant credential
+        // is intentionally NOT overridden here: APP_TENANT_DATASOURCE_PASSWORD is the single
+        // source for both app.datasource.tenant.password and the Flyway tenant_app_password
+        // placeholder that provisions the lms_tenant_app role. The role is created by whichever
+        // context migrates the shared container first, so a per-context override would
+        // authenticate against a password the database role does not have (CI: PSQLException
+        // "password authentication failed for user lms_tenant_app"). Resolving the same source
+        // as every other context is what guarantees the probe matches the provisioned role.
+        "app.security.jwt.secret=test-only-jwt-secret-that-is-at-least-32-chars",
+        "app.security.jwt.secure-cookies=true",
         "app.reports.processing.enabled=false",
         "app.disbursement.worker.enabled=false",
         "app.alert-rules.scheduler-enabled=false",
