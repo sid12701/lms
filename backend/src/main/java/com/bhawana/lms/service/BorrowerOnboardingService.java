@@ -80,6 +80,18 @@ public class BorrowerOnboardingService {
         String normalizedPan = profile.panNumber();
         String normalizedMobile = profile.mobileNumber();
 
+        // M02: serialize find-or-create for one PAN on this transaction. A concurrent
+        // same-PAN contender waits here until the winner commits or rolls back, after
+        // which the admin-scope re-lookup below sees the committed identity and takes
+        // the reuse path. Row-level security hides a cross-tenant borrower row, so an
+        // ON CONFLICT insert alone could never make the winner's row readable — the
+        // transaction-scoped lock plus the committed read is what resolves the race
+        // atomically. This is the first lock the command takes (before the borrower
+        // row lock in the reuse path), keeping the shared loan-command lock order.
+        if (normalizedPan != null) {
+            acquirePanSerialization(normalizedPan);
+        }
+
         Borrower borrowerByPan = lookupBorrowerByPan(normalizedPan);
         Borrower borrowerByMobile = lookupBorrowerByMobile(normalizedMobile);
 
@@ -156,6 +168,22 @@ public class BorrowerOnboardingService {
                 lsp,
                 BorrowerLspRelationship.SOURCE_LOAN_ONBOARDING
         );
+    }
+
+    /**
+     * Takes a transaction-scoped PostgreSQL advisory lock keyed on the normalized PAN.
+     * {@code pg_advisory_xact_lock} releases exactly when the surrounding transaction
+     * commits or rolls back — the same boundary at which the borrower row and its
+     * visibility grant become visible — so a released lock always means a decidable
+     * outcome for the contender. It must run on the tenant connection (the entity
+     * manager's transaction), never inside a nested REQUIRES_NEW scope whose commit
+     * would drop the lock before the borrower write lands.
+     */
+    private void acquirePanSerialization(String normalizedPan) {
+        entityManager.createNativeQuery(
+                        "SELECT pg_advisory_xact_lock(hashtext('lms.borrower.pan'), hashtext(:pan))")
+                .setParameter("pan", normalizedPan)
+                .getSingleResult();
     }
 
     private Borrower lookupBorrowerByPan(String normalizedPan) {

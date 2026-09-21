@@ -166,7 +166,7 @@ class PortfolioMisReadRepositoryTest {
                 new BigDecimal("800.00"),
                 new BigDecimal("200.00"),
                 new BigDecimal("1000.00"),
-                BigDecimal.ZERO.setScale(2)
+                new BigDecimal("200.00")
         ));
 
         LoanAccount closedAccount = disbursedAccount(

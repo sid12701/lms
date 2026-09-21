@@ -287,8 +287,11 @@ class ScheduleReplacementFreezeIntegrationTest {
 
         // A change that commits after the eligibility check without passing the shared locks
         // (e.g. a legacy writer): submission must observe it via the frozen hash and stop.
+        // M18 made component arithmetic a check constraint, so the staged drift moves the
+        // due date — still inside the canonical hash — rather than writing a row the
+        // database now rejects outright.
         jdbcTemplate.update(
-                "UPDATE loan_repayment_schedule_installment SET interest_due = interest_due + 100"
+                "UPDATE loan_repayment_schedule_installment SET due_date = due_date + 1"
                         + " WHERE loan_account_id = ? AND installment_number = 1",
                 account.getId());
 

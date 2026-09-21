@@ -1943,12 +1943,23 @@ class LspLoanApplicationApiControllerTest {
                 UUID.class,
                 applicationUuid
         );
+        // M18 made the per-row arithmetic a database invariant, so the fixture can no
+        // longer be written as a single-column lie — the DB would reject it. The chain
+        // break is instead staged as a row that satisfies every per-row check while
+        // disagreeing with the next installment's opening principal: exactly the
+        // cross-row tampering shape only the worker can still catch.
         jdbcTemplate.update(
                 """
                 update loan_repayment_schedule_installment
-                set closing_principal = ?
+                set principal_due = opening_principal - ?,
+                    closing_principal = ?,
+                    installment_amount = (opening_principal - ?) + interest_due,
+                    outstanding_amount = (opening_principal - ?) + interest_due - paid_amount
                 where loan_account_id = ? and installment_number = ?
                 """,
+                new BigDecimal("0.01"),
+                new BigDecimal("0.01"),
+                new BigDecimal("0.01"),
                 new BigDecimal("0.01"),
                 loanAccountId,
                 1
