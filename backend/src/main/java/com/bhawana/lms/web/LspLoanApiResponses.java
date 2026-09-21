@@ -3,6 +3,11 @@ package com.bhawana.lms.web;
 import com.bhawana.lms.domain.LoanForeclosureQuote;
 import com.bhawana.lms.domain.LoanPaymentTransaction;
 
+/**
+ * LSP-surface mappers for the loan servicing endpoints. The field mapping is
+ * shared with the ops surface via {@link LoanServicingResponseFields}; the LSP
+ * wire records remain separate so the partner contract can evolve on its own.
+ */
 public final class LspLoanApiResponses {
 
     private LspLoanApiResponses() {
@@ -11,44 +16,12 @@ public final class LspLoanApiResponses {
     public static LspLoanApiController.LspPaymentTransactionResponse toPaymentTransactionResponse(
             LoanPaymentTransaction paymentTransaction
     ) {
-        return new LspLoanApiController.LspPaymentTransactionResponse(
-                paymentTransaction.getId(),
-                paymentTransaction.getLoanAccount().getId(),
-                paymentTransaction.getRepaymentInstallment() == null
-                        ? null
-                        : paymentTransaction.getRepaymentInstallment().getId(),
-                paymentTransaction.getActorUsername(),
-                paymentTransaction.getAmount(),
-                paymentTransaction.getPaymentDate(),
-                paymentTransaction.getReference(),
-                paymentTransaction.getChannel().name(),
-                paymentTransaction.getStatus().name(),
-                paymentTransaction.getAllocatedAmount(),
-                paymentTransaction.getUnallocatedAmount(),
-                paymentTransaction.getNote(),
-                paymentTransaction.getCorrelationId(),
-                paymentTransaction.getCreatedAt(),
-                paymentTransaction.getUpdatedAt()
-        );
+        return LoanServicingResponseFields.PaymentTransactionFields.from(paymentTransaction).toLsp();
     }
 
     public static LspLoanApiController.LspForeclosureQuoteResponse toForeclosureQuoteResponse(
             LoanForeclosureQuote quote
     ) {
-        return new LspLoanApiController.LspForeclosureQuoteResponse(
-                quote.getId(),
-                quote.getLoanAccount().getId(),
-                quote.getVersion(),
-                quote.getRequestedByUsername(),
-                quote.getExecutedByUsername(),
-                quote.getEffectiveDate(),
-                quote.getOutstandingPrincipal(),
-                quote.getOutstandingInterest(),
-                quote.getSettlementAmount(),
-                quote.getStatus().name(),
-                quote.getExecutedAt(),
-                quote.getCreatedAt(),
-                quote.getUpdatedAt()
-        );
+        return LoanServicingResponseFields.ForeclosureQuoteFields.from(quote).toLsp();
     }
 }

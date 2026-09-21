@@ -10,7 +10,6 @@ import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.service.LoanApplicationDetailAssembler.LoanApplicationDetailView;
 import com.bhawana.lms.service.LoanApplicationLastActivity;
 import com.bhawana.lms.service.LoanDelinquencySummary;
-import com.bhawana.lms.service.LoanDelinquencySupport;
 import com.bhawana.lms.service.LoanRepaymentScheduleSummary;
 import com.bhawana.lms.service.LspDisbursementSummary;
 import com.bhawana.lms.service.LspDisbursementSummarySupport;
@@ -156,18 +155,12 @@ public final class LspLoanApplicationResponses {
                 loanAccount.getClosureReason() == null ? null : loanAccount.getClosureReason().name(),
                 loanAccount.getClosedAt(),
                 loanAccount.getClosedByUsername(),
-                delinquencySummary == null ? null : new LspLoanApplicationApiController.LspLoanDelinquencySummaryResponse(
-                        delinquencySummary.maxDaysPastDue(),
-                        delinquencySummary.bucket().name(),
-                        delinquencySummary.overdueInstallmentCount(),
-                        delinquencySummary.overdueAmount()
-                ),
-                repaymentScheduleSummary == null ? null : new LspLoanApplicationApiController.LspLoanRepaymentScheduleSummaryResponse(
-                        repaymentScheduleSummary.installmentCount(),
-                        repaymentScheduleSummary.installmentAmount(),
-                        repaymentScheduleSummary.firstDueDate(),
-                        repaymentScheduleSummary.finalDueDate()
-                ),
+                delinquencySummary == null
+                        ? null
+                        : LoanServicingResponseFields.DelinquencySummaryFields.from(delinquencySummary).toLsp(),
+                repaymentScheduleSummary == null
+                        ? null
+                        : LoanServicingResponseFields.ScheduleSummaryFields.from(repaymentScheduleSummary).toLsp(),
                 toDisbursementSummaryResponse(
                         LspDisbursementSummarySupport.toSummary(loanAccount, latestDisbursementRequest)
                 )
@@ -193,14 +186,7 @@ public final class LspLoanApplicationResponses {
     private static LspLoanApplicationApiController.LoanApplicationLastActivityResponse toLastActivityResponse(
             LoanApplicationLastActivity activity
     ) {
-        return new LspLoanApplicationApiController.LoanApplicationLastActivityResponse(
-                activity.activityType(),
-                activity.actorUsername(),
-                activity.summary(),
-                activity.detail(),
-                activity.correlationId(),
-                activity.occurredAt()
-        );
+        return LoanServicingResponseFields.LastActivityFields.from(activity).toLsp();
     }
 
     public static LspLoanApplicationApiController.LspDocumentChecklistDetailResponse toDocumentChecklistDetailResponse(
@@ -232,29 +218,8 @@ public final class LspLoanApplicationResponses {
             LoanRepaymentScheduleInstallment installment,
             LocalDate businessDate
     ) {
-        int daysPastDue = LoanDelinquencySupport.calculateDaysPastDue(
-                installment,
-                businessDate
-        );
-        return new LspLoanApplicationApiController.LspRepaymentScheduleInstallmentResponse(
-                installment.getId(),
-                installment.getLoanAccount().getId(),
-                installment.getInstallmentNumber(),
-                installment.getDueDate(),
-                installment.getOpeningPrincipal(),
-                installment.getPrincipalDue(),
-                installment.getInterestDue(),
-                installment.getInstallmentAmount(),
-                installment.getClosingPrincipal(),
-                installment.getStatus().name(),
-                installment.getPaidPrincipal(),
-                installment.getPaidInterest(),
-                installment.getPaidAmount(),
-                installment.getOutstandingAmount(),
-                daysPastDue,
-                LoanDelinquencySupport.resolveDelinquencyBucket(daysPastDue).name(),
-                installment.getCreatedAt()
-        );
+        return LoanServicingResponseFields.ScheduleInstallmentFields.from(installment, businessDate)
+                .toLsp();
     }
 
 }

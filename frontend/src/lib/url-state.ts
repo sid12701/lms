@@ -31,8 +31,18 @@ export interface ParsedFilters<T extends AnyZodObject> {
   ignoredKeys: readonly string[];
 }
 
-/** Pure: read a URLSearchParams snapshot through a Zod object schema. */
-function parseFilters<T extends AnyZodObject>(
+/**
+ * Pure: read a URLSearchParams snapshot through a Zod object schema.
+ *
+ * This is the single URL→filter parsing engine for surfaces whose semantics
+ * match it (L01): scalar keys read via `params.get`, array keys via repeated
+ * `params.getAll`, invalid values dropped per key and reported in
+ * `ignoredKeys`. Surfaces with deliberately different rules — e.g. the audit
+ * explorer's all-or-nothing multi-stream handling and deliberately
+ * unvalidated pass-through scalars, or the admin lists' omit-default write
+ * convention — keep their own readers rather than force-fitting this one.
+ */
+export function parseFilters<T extends AnyZodObject>(
   schema: T,
   params: URLSearchParams,
 ): ParsedFilters<T> {

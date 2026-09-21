@@ -105,8 +105,12 @@ jobs:
 
       - name: Wait for backend readiness
         run: |
+          # Gate on the readiness group, not the dependency-aggregating root
+          # endpoint: readiness covers readinessState + db, which is what the
+          # journeys actually need, and it cannot be dragged DOWN by an
+          # unrelated contributor (mail/redis) the journeys never touch (L03).
           for attempt in $(seq 1 60); do
-            if curl -sf http://localhost:8080/actuator/health > /dev/null; then
+            if curl -sf http://localhost:8080/actuator/health/readiness > /dev/null; then
               echo "backend ready after ${attempt} attempts"
               exit 0
             fi
