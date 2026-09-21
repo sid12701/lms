@@ -16,7 +16,6 @@ import com.bhawana.lms.domain.LoanRepaymentScheduleInstallment;
 import com.bhawana.lms.service.LoanApplicationDetailAssembler.LoanApplicationDetailView;
 import com.bhawana.lms.service.LoanApplicationLastActivity;
 import com.bhawana.lms.service.LoanDelinquencySummary;
-import com.bhawana.lms.service.LoanDelinquencySupport;
 import com.bhawana.lms.service.LoanRepaymentScheduleSummary;
 import com.bhawana.lms.service.DisbursementPreview;
 import com.bhawana.lms.service.DisbursementReference;
@@ -254,73 +253,20 @@ public final class LoanApplicationOpsResponses {
             LoanRepaymentScheduleInstallment installment,
             LocalDate businessDate
     ) {
-        int daysPastDue = LoanDelinquencySupport.calculateDaysPastDue(
-                installment,
-                businessDate
-        );
-        return new LoanApplicationOpsApiTypes.LoanRepaymentScheduleInstallmentResponse(
-                installment.getId(),
-                installment.getLoanAccount().getId(),
-                installment.getInstallmentNumber(),
-                installment.getDueDate(),
-                installment.getOpeningPrincipal(),
-                installment.getPrincipalDue(),
-                installment.getInterestDue(),
-                installment.getInstallmentAmount(),
-                installment.getClosingPrincipal(),
-                installment.getStatus().name(),
-                installment.getPaidPrincipal(),
-                installment.getPaidInterest(),
-                installment.getPaidAmount(),
-                installment.getOutstandingAmount(),
-                daysPastDue,
-                LoanDelinquencySupport.resolveDelinquencyBucket(daysPastDue).name(),
-                installment.getCreatedAt()
-        );
+        return LoanServicingResponseFields.ScheduleInstallmentFields.from(installment, businessDate)
+                .toOps();
     }
 
     public static LoanApplicationOpsApiTypes.LoanPaymentTransactionResponse toPaymentTransactionResponse(
             LoanPaymentTransaction paymentTransaction
     ) {
-        return new LoanApplicationOpsApiTypes.LoanPaymentTransactionResponse(
-                paymentTransaction.getId(),
-                paymentTransaction.getLoanAccount().getId(),
-                paymentTransaction.getRepaymentInstallment() == null
-                        ? null
-                        : paymentTransaction.getRepaymentInstallment().getId(),
-                paymentTransaction.getActorUsername(),
-                paymentTransaction.getAmount(),
-                paymentTransaction.getPaymentDate(),
-                paymentTransaction.getReference(),
-                paymentTransaction.getChannel().name(),
-                paymentTransaction.getStatus().name(),
-                paymentTransaction.getAllocatedAmount(),
-                paymentTransaction.getUnallocatedAmount(),
-                paymentTransaction.getNote(),
-                paymentTransaction.getCorrelationId(),
-                paymentTransaction.getCreatedAt(),
-                paymentTransaction.getUpdatedAt()
-        );
+        return LoanServicingResponseFields.PaymentTransactionFields.from(paymentTransaction).toOps();
     }
 
     public static LoanApplicationOpsApiTypes.LoanForeclosureQuoteResponse toForeclosureQuoteResponse(
             LoanForeclosureQuote quote
     ) {
-        return new LoanApplicationOpsApiTypes.LoanForeclosureQuoteResponse(
-                quote.getId(),
-                quote.getLoanAccount().getId(),
-                quote.getVersion(),
-                quote.getRequestedByUsername(),
-                quote.getExecutedByUsername(),
-                quote.getEffectiveDate(),
-                quote.getOutstandingPrincipal(),
-                quote.getOutstandingInterest(),
-                quote.getSettlementAmount(),
-                quote.getStatus().name(),
-                quote.getExecutedAt(),
-                quote.getCreatedAt(),
-                quote.getUpdatedAt()
-        );
+        return LoanServicingResponseFields.ForeclosureQuoteFields.from(quote).toOps();
     }
 
     public static LoanApplicationOpsApiTypes.LoanApplicationDocumentChecklistResponse toDocumentChecklistResponse(
@@ -386,18 +332,12 @@ public final class LoanApplicationOpsResponses {
                 loanAccount.getClosureReason() == null ? null : loanAccount.getClosureReason().name(),
                 loanAccount.getClosedAt(),
                 loanAccount.getClosedByUsername(),
-                delinquencySummary == null ? null : new LoanApplicationOpsApiTypes.LoanDelinquencySummaryResponse(
-                        delinquencySummary.maxDaysPastDue(),
-                        delinquencySummary.bucket().name(),
-                        delinquencySummary.overdueInstallmentCount(),
-                        delinquencySummary.overdueAmount()
-                ),
-                repaymentScheduleSummary == null ? null : new LoanApplicationOpsApiTypes.LoanRepaymentScheduleSummaryResponse(
-                        repaymentScheduleSummary.installmentCount(),
-                        repaymentScheduleSummary.installmentAmount(),
-                        repaymentScheduleSummary.firstDueDate(),
-                        repaymentScheduleSummary.finalDueDate()
-                )
+                delinquencySummary == null
+                        ? null
+                        : LoanServicingResponseFields.DelinquencySummaryFields.from(delinquencySummary).toOps(),
+                repaymentScheduleSummary == null
+                        ? null
+                        : LoanServicingResponseFields.ScheduleSummaryFields.from(repaymentScheduleSummary).toOps()
         );
     }
 
@@ -407,14 +347,7 @@ public final class LoanApplicationOpsResponses {
         if (lastActivity == null) {
             return null;
         }
-        return new LoanApplicationOpsApiTypes.LoanApplicationLastActivityResponse(
-                lastActivity.activityType(),
-                lastActivity.actorUsername(),
-                lastActivity.summary(),
-                lastActivity.detail(),
-                lastActivity.correlationId(),
-                lastActivity.occurredAt()
-        );
+        return LoanServicingResponseFields.LastActivityFields.from(lastActivity).toOps();
     }
 
     private static String maskSensitivePayloadJson(String payloadJson) {

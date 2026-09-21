@@ -953,7 +953,7 @@ Connected endpoints/services: webhook delivery diagnostics.
 | `notification_email`, `notification_sent_at`, `notification_error` | text/timestamp nullable | Email status |
 | `file_name` | text/varchar nullable | Output file name |
 | `media_type` | text/varchar nullable | Output media type |
-| `report_content` | text/blob nullable | Generated report content |
+| `storage_key` | text/varchar nullable | Object-storage key for the generated report (inline `report_content` column removed in V136) |
 | `error_message` | text nullable | Failure message |
 | `completed_at` | timestamp nullable | Completion time |
 | `created_at`, `updated_at` | timestamp | Audit timestamps |
@@ -1122,7 +1122,7 @@ System admin request
   -> synchronous preview/CSV or async report_request insert
   -> scheduled worker claims pending requests
   -> report query and CSV generation
-  -> report_content stored
+  -> generated report stored in object storage (report_request.storage_key)
   -> optional email notification sent
 ```
 

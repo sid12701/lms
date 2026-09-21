@@ -6,3 +6,14 @@ export type OpsLoanApplicationDetailResponse =
 
 export type OpsLoanApplicationDocumentChecklistResponse =
   components["schemas"]["LoanApplicationDocumentChecklistResponse"];
+
+/** Ops audit-timeline row (`LoanApplicationOpsController` audit-events). */
+export type OpsLoanApplicationAuditEventResponse =
+  components["schemas"]["LoanApplicationAuditEventResponse"];
+
+/** Ops foreclosure-quote payload (`LoanApplicationOpsController`). */
+export type OpsLoanForeclosureQuoteResponse = components["schemas"]["LoanForeclosureQuoteResponse"];
+
+/** Ops durable disbursement reference (`LoanApplicationOpsController`). */
+export type OpsDisbursementReferenceResponse =
+  components["schemas"]["DisbursementReferenceResponse"];
