@@ -1,15 +1,11 @@
 package com.bhawana.lms.repo;
 
 import com.bhawana.lms.domain.ReportRequest;
-import com.bhawana.lms.domain.ReportRequestStatus;
-import jakarta.persistence.LockModeType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
-import jakarta.persistence.TypedQuery;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.hibernate.Session;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -27,33 +23,11 @@ class ReportRequestRepositoryImpl implements ReportRequestRepositoryCustom {
             return List.of();
         }
 
-        if (!isPostgres()) {
-            // Portable fallback: lock the candidates, then move them through the same
-            // transition the native claim performs.
-            TypedQuery<ReportRequest> query = entityManager.createQuery(
-                    """
-                            select request
-                            from ReportRequest request
-                            left join fetch request.lsp
-                            where request.status = :pendingStatus
-                               or (request.status = :processingStatus
-                                   and (request.processingExpiresAt is null
-                                        or request.processingExpiresAt < :now))
-                            order by request.createdAt asc
-                            """,
-                    ReportRequest.class
-            );
-            query.setParameter("pendingStatus", ReportRequestStatus.PENDING);
-            query.setParameter("processingStatus", ReportRequestStatus.PROCESSING);
-            query.setParameter("now", Instant.now());
-            query.setLockMode(LockModeType.PESSIMISTIC_WRITE);
-            query.setMaxResults(batchSize);
-            List<ReportRequest> claimed = query.getResultList();
-            claimed.forEach(request -> request.claimProcessing(owner, leaseExpiresAt));
-            entityManager.flush();
-            return claimed;
-        }
-
+        // Postgres-only by construction (L03): spring.jpa.database-platform pins
+        // PostgreSQLDialect, and every test context runs Testcontainers Postgres via
+        // PostgresTestEnvironmentPostProcessor — including @DataJpaTest slices — so a
+        // portable fallback branch was unreachable in every supported runtime. The
+        // claim relies on FOR UPDATE SKIP LOCKED, which has no H2 equivalent.
         Query query = entityManager.createNativeQuery("""
                 update report_request
                 set status = 'PROCESSING',
@@ -108,11 +82,5 @@ class ReportRequestRepositoryImpl implements ReportRequestRepositoryCustom {
             return uuid;
         }
         return UUID.fromString(String.valueOf(value));
-    }
-
-    private boolean isPostgres() {
-        return entityManager.unwrap(Session.class).doReturningWork(connection ->
-                connection.getMetaData().getDatabaseProductName().toLowerCase().contains("postgres")
-        );
     }
 }

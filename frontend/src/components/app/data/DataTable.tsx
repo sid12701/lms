@@ -16,7 +16,7 @@ import {
   type TableOptions,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { type KeyboardEvent, type ReactNode } from "react";
+import { type KeyboardEvent, type ReactNode, useMemo } from "react";
 import {
   Table,
   TableBody,
@@ -116,7 +116,12 @@ export interface DataTableProps<TData, TValue> {
 
 interface DataTableConfiguration<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
-  data: readonly TData[];
+  /**
+   * Already-memoized mutable copy of the caller's readonly prop — see
+   * `useConfiguredTable`. Typed mutable so `createTableOptions` does not need
+   * another clone or a cast.
+   */
+  data: TData[];
   state?: DataTableState;
   onStateChange?: (next: DataTableStateChange) => void;
   pagination?: DataTablePaginationConfig;
@@ -231,7 +236,7 @@ function createTableOptions<TData, TValue>({
   const paginationState = currentPagination(state, pagination);
 
   return {
-    data: [...data],
+    data,
     columns,
     state: controlledTableState(state),
     initialState: state?.pagination ? {} : { pagination: paginationState },
@@ -244,8 +249,18 @@ function createTableOptions<TData, TValue>({
   };
 }
 
-function useConfiguredTable<TData, TValue>(configuration: DataTableConfiguration<TData, TValue>) {
-  return useReactTable(createTableOptions(configuration));
+function useConfiguredTable<TData, TValue>({
+  data,
+  ...rest
+}: Omit<DataTableConfiguration<TData, TValue>, "data"> & { data: readonly TData[] }) {
+  // The public prop is `readonly TData[]` so callers can hand in frozen or
+  // store-owned slices; TanStack's option type wants a mutable array. The
+  // spread copy bridges that without mutating caller state, and it is memoized
+  // on the input reference: a fresh array every render would change
+  // `options.data` identity — the memo key behind TanStack's row models — so
+  // an unrelated parent re-render would rebuild every row model (L01).
+  const mutableData = useMemo<TData[]>(() => [...data], [data]);
+  return useReactTable(createTableOptions({ ...rest, data: mutableData }));
 }
 
 function DataTableHeader<TData>({

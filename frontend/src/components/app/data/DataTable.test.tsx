@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
-import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import type { ColumnDef, SortingState, Table as TanStackTable } from "@tanstack/react-table";
 import { renderWithProviders } from "@/test/utils";
 import { DensityProvider, useDensity } from "@/app/providers";
 import { DataTable, type DataTableState, type DataTableStateChange } from "./DataTable";
@@ -168,6 +168,62 @@ describe("DataTable", () => {
       ),
     );
     expect(container.querySelectorAll("td[data-tabular]").length).toBeGreaterThan(0);
+  });
+
+  /**
+   * L01 — `options.data` identity is the memo key behind TanStack's row
+   * models. Re-rendering with the same `data` reference (but an unrelated
+   * prop change) must not rebuild the row model.
+   */
+  it("keeps the row model stable across re-renders when data is unchanged", () => {
+    let captured: TanStackTable<Row> | null = null;
+    const capture = (table: TanStackTable<Row>) => {
+      captured = table;
+      return null;
+    };
+
+    const { rerender } = renderWithProviders(
+      withDensity(
+        <DataTable
+          columns={columns}
+          data={rows}
+          density="comfortable"
+          ariaLabel="Stable table"
+          toolbar={capture}
+        />,
+      ),
+    );
+    const firstModel = captured!.getRowModel();
+    expect(firstModel.rows).toHaveLength(rows.length);
+
+    rerender(
+      withDensity(
+        <DataTable
+          columns={columns}
+          data={rows}
+          density="compact"
+          ariaLabel="Stable table renamed"
+          className="unrelated-change"
+          toolbar={capture}
+        />,
+      ),
+    );
+
+    expect(captured!.getRowModel()).toBe(firstModel);
+
+    rerender(
+      withDensity(
+        <DataTable
+          columns={columns}
+          data={[...rows]}
+          density="compact"
+          ariaLabel="Stable table renamed"
+          toolbar={capture}
+        />,
+      ),
+    );
+    // A genuinely new array must still produce a rebuilt model.
+    expect(captured!.getRowModel()).not.toBe(firstModel);
   });
 
   it("has no axe violations", async () => {

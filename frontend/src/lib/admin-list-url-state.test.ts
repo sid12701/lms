@@ -16,6 +16,9 @@ describe("admin list URL state", () => {
   it.each([
     ["page=-1", {}],
     ["page=1.5", {}],
+    // An empty param reads as absent, not page 0 — the writer omits `page`
+    // until it is > 0 anyway, so the URL contract is unchanged (L01).
+    ["page=", {}],
     ["pageSize=4", {}],
     ["pageSize=101", {}],
     ["q=%20%20", {}],
