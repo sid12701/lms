@@ -921,7 +921,6 @@ CREATE TABLE public.report_request (
     requested_by_username character varying(255) NOT NULL,
     file_name character varying(255),
     media_type character varying(128),
-    report_content text,
     error_message character varying(1000),
     completed_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
