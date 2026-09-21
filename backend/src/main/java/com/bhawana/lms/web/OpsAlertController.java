@@ -9,6 +9,7 @@ import com.bhawana.lms.domain.OpsAlert;
 import com.bhawana.lms.domain.OpsAlertSeverity;
 import com.bhawana.lms.domain.OpsAlertStatus;
 import com.bhawana.lms.domain.OpsAlertType;
+import com.bhawana.lms.service.AlertRuleConfiguration;
 import com.bhawana.lms.service.AlertRuleEvaluationWorker;
 import com.bhawana.lms.service.AdminApiIdempotencyService;
 import com.bhawana.lms.service.OpsAlertService;
@@ -48,26 +49,34 @@ public class OpsAlertController {
 
     private final OpsAlertService opsAlertService;
     private final AlertRuleEvaluationWorker alertRuleEvaluationWorker;
+    private final AlertRuleConfiguration alertRuleConfiguration;
     private final ObjectMapper objectMapper;
     private final AdminApiIdempotencyService adminApiIdempotencyService;
 
     public OpsAlertController(
             OpsAlertService opsAlertService,
             AlertRuleEvaluationWorker alertRuleEvaluationWorker,
+            AlertRuleConfiguration alertRuleConfiguration,
             ObjectMapper objectMapper,
             AdminApiIdempotencyService adminApiIdempotencyService
     ) {
         this.opsAlertService = opsAlertService;
         this.alertRuleEvaluationWorker = alertRuleEvaluationWorker;
+        this.alertRuleConfiguration = alertRuleConfiguration;
         this.objectMapper = objectMapper;
         this.adminApiIdempotencyService = adminApiIdempotencyService;
     }
 
+    /**
+     * Rule catalogue for operators (M06). {@code effectiveConfig} is the typed
+     * {@code app.alert-rules.*} configuration the evaluator actually enforces —
+     * read-only; changes land through deployment config, never through this API.
+     */
     @GetMapping("/rules")
     @PreAuthorize("hasRole('SYSTEM_ADMIN')")
     public List<AlertRuleResponse> listAlertRules() {
         return alertRuleEvaluationWorker.listRules().stream()
-                .map(OpsAlertController::toRuleResponse)
+                .map(this::toRuleResponse)
                 .toList();
     }
 
@@ -231,12 +240,13 @@ public class OpsAlertController {
             boolean enabled,
             String audience,
             String triggerKind,
-            String configJson,
+            Map<String, Object> effectiveConfig,
+            String configSource,
             String lastEvaluatedAt
     ) {
     }
 
-    private static AlertRuleResponse toRuleResponse(AlertRule rule) {
+    private AlertRuleResponse toRuleResponse(AlertRule rule) {
         return new AlertRuleResponse(
                 rule.getId().toString(),
                 rule.getCode(),
@@ -245,7 +255,8 @@ public class OpsAlertController {
                 rule.isEnabled(),
                 rule.getAudience().name(),
                 rule.getTriggerKind().name(),
-                rule.getConfigJson(),
+                alertRuleConfiguration.effectiveConfig(rule.getCode()),
+                AlertRuleConfiguration.CONFIG_SOURCE,
                 rule.getLastEvaluatedAt() == null ? null : rule.getLastEvaluatedAt().toString()
         );
     }

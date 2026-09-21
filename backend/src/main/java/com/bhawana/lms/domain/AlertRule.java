@@ -37,9 +37,9 @@ public class AlertRule {
     @Column(name = "trigger_kind", nullable = false, length = 32)
     private AlertRuleTriggerKind triggerKind;
 
-    @Column(name = "config_json", columnDefinition = "TEXT")
-    private String configJson;
-
+    // No config payload column: evaluation thresholds come exclusively from typed
+    // application configuration (app.alert-rules.*). A persisted JSON copy can only
+    // drift from the evaluated values, so it was retired (V136, M06).
     @Column(name = "last_evaluated_at")
     private Instant lastEvaluatedAt;
 
@@ -52,8 +52,7 @@ public class AlertRule {
             String name,
             String description,
             AlertRuleAudience audience,
-            AlertRuleTriggerKind triggerKind,
-            String configJson
+            AlertRuleTriggerKind triggerKind
     ) {
         AlertRule rule = new AlertRule();
         rule.id = id;
@@ -63,7 +62,6 @@ public class AlertRule {
         rule.enabled = true;
         rule.audience = audience;
         rule.triggerKind = triggerKind;
-        rule.configJson = configJson;
         return rule;
     }
 
@@ -93,10 +91,6 @@ public class AlertRule {
 
     public AlertRuleTriggerKind getTriggerKind() {
         return triggerKind;
-    }
-
-    public String getConfigJson() {
-        return configJson;
     }
 
     public Instant getLastEvaluatedAt() {

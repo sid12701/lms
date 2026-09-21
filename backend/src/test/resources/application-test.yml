@@ -46,6 +46,9 @@ app:
     jwt:
       secret: change-me-test-secret-change-me-test-secret
       secure-cookies: false
+    refresh-token-retention:
+      # Scheduled purge off; RefreshTokenRetentionWorkerTest calls the purge directly.
+      enabled: false
   seed:
     sample-data:
       enabled: false
@@ -97,6 +100,8 @@ app:
     oldest-transaction-age-seconds: 86400
   portfolio-kpi:
     scheduler-enabled: false
+    # Scheduled purge off; retention tests drive the worker method explicitly.
+    purge-enabled: false
   idempotency:
     purge-enabled: false
   loan-event-log:

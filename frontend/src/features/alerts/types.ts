@@ -93,6 +93,8 @@ export interface AlertRuleRow {
   enabled: boolean;
   audience: "OPS" | "SYSTEM_ADMIN";
   triggerKind: "SCHEDULED" | "EVENT";
-  configJson: string | null;
+  /** Evaluated thresholds as deployed (read-only; never a persisted editable blob). */
+  effectiveConfig: Record<string, unknown>;
+  configSource: string;
   lastEvaluatedAt: string | null;
 }
