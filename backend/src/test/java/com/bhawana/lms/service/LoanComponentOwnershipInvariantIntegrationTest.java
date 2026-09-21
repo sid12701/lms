@@ -51,7 +51,7 @@ import org.springframework.test.context.TestExecutionListeners;
  * or a future service path that bypasses {@code LoanServicingSupportService} cannot
  * produce an installment whose components don't reconcile, a payment aimed at another
  * account's installment or quote, or an account that disagrees with its application's
- * identity. The per-constraint inventory queries from ADR 0014 are also exercised and
+ * identity. The per-constraint inventory queries from ADR 0016 are also exercised and
  * must return zero on the fixture data.
  */
 @SpringBootTest
@@ -380,7 +380,7 @@ class LoanComponentOwnershipInvariantIntegrationTest {
 
     @Test
     void inventoryQueriesReturnZeroOnCleanFixtures() {
-        // ADR 0014 §8 — every pre-migration inventory query must return zero on
+        // ADR 0016 §8 — every pre-migration inventory query must return zero on
         // data the migration is expected to validate.
         assertEquals(0L, adminCount(
                 "SELECT count(*) FROM loan_repayment_schedule_installment"

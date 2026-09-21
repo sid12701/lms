@@ -253,7 +253,7 @@ class BorrowerOnboardingPanRaceIntegrationTest {
         LoanApplication application = onboard(lspA, pan, uniqueMobile(), "EXT-M02-I-" + pan);
         assertNotNull(application.getId());
 
-        // ADR 0014 §5: every pre-cleanup divergence query must return zero on
+        // ADR 0016 §5: every pre-cleanup divergence query must return zero on
         // post-atomic data.
         assertEquals(0L, adminQueryCount(
                 "SELECT count(*) FROM borrower_lsp_access a"
