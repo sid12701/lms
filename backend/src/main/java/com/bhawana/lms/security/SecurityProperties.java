@@ -2,8 +2,10 @@ package com.bhawana.lms.security;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.Duration;
 import java.time.Instant;
@@ -29,6 +31,26 @@ public class SecurityProperties {
     @Valid
     private final Cors cors = new Cors();
 
+    /**
+     * Per-process JWT principal snapshot TTL (L04). Revocation paths evict explicitly
+     * on the mutating instance; every other instance converges within this bound.
+     * The documented maximum cross-instance revocation delay for principal state
+     * (token version, status, lockout) is this TTL.
+     */
+    @NotNull
+    private Duration principalCacheTtl = Duration.ofSeconds(30);
+
+    /**
+     * Per-process LSP IP-allowlist snapshot TTL (L04). An allowlist change made on one
+     * instance can take up to this long to take effect on another instance — the
+     * documented maximum revocation/enforcement delay for allowlist state.
+     */
+    @NotNull
+    private Duration lspIpAllowlistCacheTtl = Duration.ofSeconds(60);
+
+    @Valid
+    private final RefreshTokenRetention refreshTokenRetention = new RefreshTokenRetention();
+
     public BootstrapUser getBootstrapUser() {
         return bootstrapUser;
     }
@@ -43,6 +65,93 @@ public class SecurityProperties {
 
     public Cors getCors() {
         return cors;
+    }
+
+    public Duration getPrincipalCacheTtl() {
+        return principalCacheTtl;
+    }
+
+    public void setPrincipalCacheTtl(Duration principalCacheTtl) {
+        this.principalCacheTtl = principalCacheTtl;
+    }
+
+    public Duration getLspIpAllowlistCacheTtl() {
+        return lspIpAllowlistCacheTtl;
+    }
+
+    public void setLspIpAllowlistCacheTtl(Duration lspIpAllowlistCacheTtl) {
+        this.lspIpAllowlistCacheTtl = lspIpAllowlistCacheTtl;
+    }
+
+    public RefreshTokenRetention getRefreshTokenRetention() {
+        return refreshTokenRetention;
+    }
+
+    /**
+     * Retention policy for {@code refresh_token} rows (L04). Only rows past
+     * {@code expires_at + expiredRetentionDays} are purged, in bounded batches: a
+     * revoked-but-unexpired row is the evidence family reuse detection needs
+     * (replayed presentation → family revoke), so the predicate is expiry-based
+     * and never touches anything a client could still present successfully.
+     */
+    public static class RefreshTokenRetention {
+
+        private boolean enabled = true;
+
+        /** Post-expiry forensic margin before a dead refresh row is purged. */
+        @Min(0)
+        private int expiredRetentionDays = 30;
+
+        @Min(1)
+        private long purgeFixedDelayMs = 3_600_000L;
+
+        /** Rows deleted per transaction — keeps each purge transaction short. */
+        @Min(1)
+        private int batchSize = 500;
+
+        /** Cap on batches per run; a larger backlog drains over subsequent runs. */
+        @Min(1)
+        private int maxBatchesPerRun = 40;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getExpiredRetentionDays() {
+            return expiredRetentionDays;
+        }
+
+        public void setExpiredRetentionDays(int expiredRetentionDays) {
+            this.expiredRetentionDays = expiredRetentionDays;
+        }
+
+        public long getPurgeFixedDelayMs() {
+            return purgeFixedDelayMs;
+        }
+
+        public void setPurgeFixedDelayMs(long purgeFixedDelayMs) {
+            this.purgeFixedDelayMs = purgeFixedDelayMs;
+        }
+
+        public int getBatchSize() {
+            return batchSize;
+        }
+
+        public void setBatchSize(int batchSize) {
+            this.batchSize = batchSize;
+        }
+
+        public int getMaxBatchesPerRun() {
+            return maxBatchesPerRun;
+        }
+
+        public void setMaxBatchesPerRun(int maxBatchesPerRun) {
+            this.maxBatchesPerRun = maxBatchesPerRun;
+        }
     }
 
     public static class BootstrapUser {

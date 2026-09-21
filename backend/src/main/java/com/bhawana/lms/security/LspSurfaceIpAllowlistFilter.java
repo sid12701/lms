@@ -34,18 +34,31 @@ public class LspSurfaceIpAllowlistFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(LspSurfaceIpAllowlistFilter.class);
     private static final String LSP_PATH_PREFIX = "/api/v1/lsp/";
-    private static final Duration CACHE_TTL = Duration.ofSeconds(60);
+    /**
+     * Distinct-key count at which a lookup opportunistically sweeps expired snapshots.
+     * Keys are (lspId, surface) pairs — bounded by the LSP catalogue — so the threshold
+     * only guards a churn/leak pathology, never normal operation (L04).
+     */
+    private static final int SWEEP_THRESHOLD = 1024;
 
     private final LspSurfaceIpAllowlistService allowlistService;
     private final ObjectMapper objectMapper;
+    /**
+     * Per-process snapshot TTL (L04): an allowlist change on one instance takes effect
+     * here within this bound — the documented maximum cross-instance revocation delay
+     * for allowlist state. {@code app.security.lsp-ip-allowlist-cache-ttl}, default 60 s.
+     */
+    private final Duration cacheTtl;
     private final ConcurrentHashMap<CacheKey, CachedSnapshot> cache = new ConcurrentHashMap<>();
 
     public LspSurfaceIpAllowlistFilter(
             LspSurfaceIpAllowlistService allowlistService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            SecurityProperties securityProperties
     ) {
         this.allowlistService = allowlistService;
         this.objectMapper = objectMapper;
+        this.cacheTtl = securityProperties.getLspIpAllowlistCacheTtl();
     }
 
     @Override
@@ -107,7 +120,10 @@ public class LspSurfaceIpAllowlistFilter extends OncePerRequestFilter {
         AllowlistSnapshot snapshot = TenantScopedExecution.callAsAdmin(
                 () -> allowlistService.loadSnapshot(lspId, surface)
         );
-        cache.put(key, new CachedSnapshot(snapshot, now.plus(CACHE_TTL)));
+        cache.put(key, new CachedSnapshot(snapshot, now.plus(cacheTtl)));
+        if (cache.size() > SWEEP_THRESHOLD) {
+            cache.entrySet().removeIf(entry -> !entry.getValue().expiresAt.isAfter(now));
+        }
         return snapshot;
     }
 

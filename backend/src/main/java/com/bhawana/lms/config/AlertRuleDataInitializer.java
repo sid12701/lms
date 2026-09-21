@@ -17,6 +17,10 @@ import org.springframework.stereotype.Component;
  * V119 retires the webhook dead-letter one of them, and V95 and V118 add three more. Both
  * paths below are then no-ops — {@code seedIfEmpty} returns early on a non-empty table and
  * {@code ensureRule} skips a code that already exists.
+ *
+ * <p>Rule rows carry identity and the enabled flag only. Evaluation thresholds are typed
+ * application configuration ({@code app.alert-rules.*}); there is no per-row config payload
+ * to seed (M06, V137).
  */
 @Component
 public class AlertRuleDataInitializer implements ApplicationRunner {
@@ -37,8 +41,7 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
                     "Auth brute-force lockout",
                     "Locks an account after repeated failed password logins from the same username and IP within a short window.",
                     AlertRuleAudience.SYSTEM_ADMIN,
-                    AlertRuleTriggerKind.SCHEDULED,
-                    "{\"threshold\":5,\"windowMinutes\":10}"
+                    AlertRuleTriggerKind.SCHEDULED
             );
             ensureRule(
                     UUID.fromString("00000000-0000-4000-8000-000000000609"),
@@ -46,8 +49,7 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
                     "Distributed auth brute-force",
                     "Alerts when a username sees many failed logins from many distinct IPs over a longer window (no account lock).",
                     AlertRuleAudience.SYSTEM_ADMIN,
-                    AlertRuleTriggerKind.SCHEDULED,
-                    "{\"threshold\":20,\"distinctIpMin\":5,\"windowHours\":24}"
+                    AlertRuleTriggerKind.SCHEDULED
             );
             ensureRule(
                     UUID.fromString("00000000-0000-4000-8000-000000000610"),
@@ -55,8 +57,7 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
                     "Oldest open transaction age",
                     "A long-running database transaction anywhere on the cluster holds back the loan event feed snapshot for every LSP until it completes.",
                     AlertRuleAudience.SYSTEM_ADMIN,
-                    AlertRuleTriggerKind.SCHEDULED,
-                    "{\"ageSeconds\":300}"
+                    AlertRuleTriggerKind.SCHEDULED
             );
         });
     }
@@ -72,8 +73,7 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
                         "Stale intake",
                         "INITIALIZED applications older than 24 hours with an incomplete required-document checklist.",
                         AlertRuleAudience.OPS,
-                        AlertRuleTriggerKind.SCHEDULED,
-                        "{\"staleHours\":24}"
+                        AlertRuleTriggerKind.SCHEDULED
                 ),
                 AlertRule.seeded(
                         UUID.fromString("00000000-0000-4000-8000-000000000602"),
@@ -81,8 +81,7 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
                         "Stuck disbursement retry",
                         "Applications in DISBURSEMENT_RETRY for more than 2 hours.",
                         AlertRuleAudience.OPS,
-                        AlertRuleTriggerKind.SCHEDULED,
-                        "{\"stuckHours\":2}"
+                        AlertRuleTriggerKind.SCHEDULED
                 ),
                 AlertRule.seeded(
                         UUID.fromString("00000000-0000-4000-8000-000000000603"),
@@ -90,8 +89,7 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
                         "DPD bucket escalation",
                         "UNDER_REPAYMENT loans whose delinquency bucket is past CURRENT.",
                         AlertRuleAudience.OPS,
-                        AlertRuleTriggerKind.SCHEDULED,
-                        "{}"
+                        AlertRuleTriggerKind.SCHEDULED
                 ),
                 AlertRule.seeded(
                         UUID.fromString("00000000-0000-4000-8000-000000000604"),
@@ -99,8 +97,7 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
                         "LSP auto-reject rate spike",
                         "LSP partners whose auto-reject rate exceeds the configured threshold.",
                         AlertRuleAudience.SYSTEM_ADMIN,
-                        AlertRuleTriggerKind.SCHEDULED,
-                        "{\"windowDays\":7,\"minSamples\":10,\"rejectRatePct\":40}"
+                        AlertRuleTriggerKind.SCHEDULED
                 ),
                 AlertRule.seeded(
                         UUID.fromString("00000000-0000-4000-8000-000000000606"),
@@ -108,8 +105,7 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
                         "One open loan violation",
                         "LSP intake blocked because the borrower already has an open loan.",
                         AlertRuleAudience.SYSTEM_ADMIN,
-                        AlertRuleTriggerKind.EVENT,
-                        "{}"
+                        AlertRuleTriggerKind.EVENT
                 ),
                 AlertRule.seeded(
                         UUID.fromString("00000000-0000-4000-8000-000000000607"),
@@ -117,8 +113,7 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
                         "Rate limit breach",
                         "An API rate limit was exceeded — LSP write, partner event feed, document read, or auth endpoint.",
                         AlertRuleAudience.SYSTEM_ADMIN,
-                        AlertRuleTriggerKind.EVENT,
-                        "{}"
+                        AlertRuleTriggerKind.EVENT
                 )
         ));
     }
@@ -129,12 +124,11 @@ public class AlertRuleDataInitializer implements ApplicationRunner {
             String name,
             String description,
             AlertRuleAudience audience,
-            AlertRuleTriggerKind triggerKind,
-            String configJson
+            AlertRuleTriggerKind triggerKind
     ) {
         if (alertRuleRepository.findByCode(code).isPresent()) {
             return;
         }
-        alertRuleRepository.save(AlertRule.seeded(id, code, name, description, audience, triggerKind, configJson));
+        alertRuleRepository.save(AlertRule.seeded(id, code, name, description, audience, triggerKind));
     }
 }

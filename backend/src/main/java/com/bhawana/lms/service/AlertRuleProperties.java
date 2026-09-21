@@ -1,25 +1,55 @@
 package com.bhawana.lms.service;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
-@ConfigurationProperties(prefix = "app.alert-rules")
+/**
+ * The single authority for alert-rule evaluation (M06). Every threshold the
+ * {@link AlertRuleEvaluationWorker} enforces is bound here from
+ * {@code app.alert-rules.*}; the rules API exposes these same values read-only as
+ * each rule's effective configuration.
+ *
+ * <p>{@code ignoreUnknownFields = false} plus the constraints below make a
+ * misspelled or out-of-range operator override fail at startup instead of
+ * silently evaluating with defaults.
+ */
+@Validated
+@ConfigurationProperties(prefix = "app.alert-rules", ignoreUnknownFields = false)
 public class AlertRuleProperties {
 
     private boolean schedulerEnabled = true;
+    @Min(1)
     private long schedulerFixedDelayMs = 300_000L;
+    @Min(1)
     private int staleIntakeHours = 24;
+    @Min(1)
     private int stuckDisbursementHours = 2;
+    @Min(1)
     private int lspRejectWindowDays = 7;
+    @Min(1)
     private int lspRejectMinSamples = 10;
+    @Min(1)
+    @Max(100)
     private int lspRejectRatePct = 40;
+    @Min(1)
     private int authBruteForceThreshold = 5;
+    @Min(1)
     private int authBruteForceWindowMinutes = 10;
+    @Min(1)
     private int authBruteForceDistributedThreshold = 20;
+    @Min(1)
     private int authBruteForceDistributedDistinctIpMin = 5;
+    @Min(1)
     private int authBruteForceDistributedWindowHours = 24;
+    @Min(1)
     private int evaluationBatchLimit = 500;
+    @Min(1)
     private int oldestTransactionAgeSeconds = 300;
+    @Min(1)
     private long evaluationLeaseMs = 300_000;
+    @Min(1)
     private int evaluationStatementTimeoutMs = 60_000;
 
     public boolean isSchedulerEnabled() {

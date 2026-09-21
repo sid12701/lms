@@ -142,6 +142,21 @@ app:
       jwks-cache-ttl: ${APP_SECURITY_ENTRA_JWKS_CACHE_TTL:PT10M}
       unknown-kid-min-interval: ${APP_SECURITY_ENTRA_UNKNOWN_KID_MIN_INTERVAL:PT30S}
       mappings: []
+    # L04 revocation SLA: principal snapshots (token version, status, lockout) and
+    # LSP IP-allowlist snapshots are cached per process. A mutation evicts on the
+    # instance that performs it; every other instance converges within these TTLs —
+    # the documented maximum cross-instance revocation delay is 60 s.
+    principal-cache-ttl: ${APP_SECURITY_PRINCIPAL_CACHE_TTL:PT30S}
+    lsp-ip-allowlist-cache-ttl: ${APP_SECURITY_LSP_IP_ALLOWLIST_CACHE_TTL:PT60S}
+    refresh-token-retention:
+      # Bounded purge of dead refresh rows: only rows past
+      # expires_at + expired-retention-days are deleted (batch-capped per run), so
+      # live tokens and the unexpired revoked rows reuse detection needs stay put.
+      enabled: ${APP_SECURITY_REFRESH_TOKEN_RETENTION_ENABLED:true}
+      expired-retention-days: ${APP_SECURITY_REFRESH_TOKEN_RETENTION_EXPIRED_DAYS:30}
+      purge-fixed-delay-ms: ${APP_SECURITY_REFRESH_TOKEN_RETENTION_PURGE_FIXED_DELAY_MS:3600000}
+      batch-size: ${APP_SECURITY_REFRESH_TOKEN_RETENTION_BATCH_SIZE:500}
+      max-batches-per-run: ${APP_SECURITY_REFRESH_TOKEN_RETENTION_MAX_BATCHES:40}
   seed:
     sample-data:
       enabled: false
@@ -366,6 +381,13 @@ app:
     scheduler-enabled: ${APP_PORTFOLIO_KPI_SCHEDULER_ENABLED:true}
     scheduler-fixed-delay-ms: ${APP_PORTFOLIO_KPI_SCHEDULER_FIXED_DELAY_MS:900000}
     advisory-lock-id: ${APP_PORTFOLIO_KPI_ADVISORY_LOCK_ID:42109}
+    # L04 retention: derived snapshots older than retention-days are purged in
+    # bounded batches; the newest row per scope is always preserved.
+    retention-days: ${APP_PORTFOLIO_KPI_RETENTION_DAYS:400}
+    purge-enabled: ${APP_PORTFOLIO_KPI_PURGE_ENABLED:true}
+    purge-fixed-delay-ms: ${APP_PORTFOLIO_KPI_PURGE_FIXED_DELAY_MS:21600000}
+    purge-batch-size: ${APP_PORTFOLIO_KPI_PURGE_BATCH_SIZE:1000}
+    purge-max-batches-per-run: ${APP_PORTFOLIO_KPI_PURGE_MAX_BATCHES:50}
   loan-event-log:
     # Retention floor published to partners (ADR 0007). Partitions are whole months, so the month
     # holding the cutoff is kept until everything in it has aged out.

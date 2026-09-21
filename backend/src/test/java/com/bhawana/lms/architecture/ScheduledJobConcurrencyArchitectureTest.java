@@ -72,7 +72,13 @@ class ScheduledJobConcurrencyArchitectureTest {
                     + "summary, and a displaced owner stops before its next transaction.",
             "com.bhawana.lms.service.LoanDocumentOrphanReconciler",
             "Claims each object with a conditional PENDING -> DELETING update; a losing instance "
-                    + "updates no row, and the storage delete it may repeat is idempotent."
+                    + "updates no row, and the storage delete it may repeat is idempotent.",
+            "com.bhawana.lms.service.RefreshTokenRetentionWorker",
+            "Purge is an idempotent bounded delete by expires_at + retention margin; a concurrent "
+                    + "second run re-reads under READ COMMITTED and deletes only rows still present.",
+            "com.bhawana.lms.service.PortfolioKpiSnapshotRetentionWorker",
+            "Purge is an idempotent bounded delete by computed_at that always preserves each scope's "
+                    + "latest row; a concurrent second run re-reads and removes nothing extra."
     ));
 
     @Test
