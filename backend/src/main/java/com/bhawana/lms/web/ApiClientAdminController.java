@@ -1,5 +1,7 @@
 package com.bhawana.lms.web;
 
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.common.web.ClientIpAddresses;
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.ApiClientStatus;
@@ -7,15 +9,19 @@ import com.bhawana.lms.service.ApiClientManagementService;
 import com.bhawana.lms.service.LspApiIdempotencyService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,11 +29,13 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/internal/admin/api-clients")
 @PreAuthorize("hasRole('SYSTEM_ADMIN')")
+@Validated
 public class ApiClientAdminController {
 
     private static final String CREATE_OPERATION_KEY = "API_CLIENT_CREATE";
@@ -45,10 +53,26 @@ public class ApiClientAdminController {
     }
 
     @GetMapping
-    public List<ApiClientResponse> listApiClients() {
-        return apiClientManagementService.listClients().stream()
-                .map(ApiClientAdminController::toResponse)
-                .toList();
+    public ResponseEntity<List<ApiClientResponse>> listApiClients(
+            @RequestParam(required = false) ApiClientStatus status,
+            @RequestParam(required = false) UUID lspId,
+            @RequestParam(required = false, name = "q") String query,
+            @RequestParam(required = false) @Min(0) Integer offset,
+            @RequestParam(required = false) @Min(1) @Max(200) Integer limit,
+            @RequestParam(required = false) String paginationDetails
+    ) {
+        boolean includePaginationDetails = PaginationResponseBuilder.includePaginationDetails(paginationDetails);
+        // M20 — directory reads are always bounded; filters run against the
+        // full dataset before pagination, never against a fetched page.
+        PagedResult<ApiClientManagementService.ApiClientView> page =
+                apiClientManagementService.listClients(status, lspId, query, offset, limit);
+        PagedResult<ApiClientResponse> mapped = new PagedResult<>(
+                page.items().stream().map(ApiClientAdminController::toResponse).toList(),
+                page.totalCount(),
+                page.offset(),
+                page.limit()
+        );
+        return PaginationResponseBuilder.toListResponse(mapped, includePaginationDetails);
     }
 
     @PostMapping

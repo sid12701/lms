@@ -113,7 +113,6 @@ export const RecentApplicationsCard = forwardRef<HTMLDivElement, RecentApplicati
               columns={columns}
               data={data}
               rowIdKey="id"
-              density="comfortable"
               ariaLabel="Recent applications"
               getRowAction={(row) => navigate(`/loan-applications/${row.original.id}`)}
             />

@@ -36,7 +36,7 @@ export function useUpdateLspStatus(): UseMutationResult<
       await queryClient.refetchQueries({ queryKey: [...LSPS_LIST_QUERY_KEY] });
       await queryClient.fetchQuery({
         queryKey: lspAuditEventsQueryKey(vars.id),
-        queryFn: () => listLspAuditEvents(vars.id),
+        queryFn: ({ signal }) => listLspAuditEvents(vars.id, signal),
       });
       const verb =
         vars.status === "INACTIVE"

@@ -10,7 +10,7 @@ export const PRODUCT_DETAIL_QUERY_KEY = ["products", "detail"] as const;
 export function useProduct(id: string | null): UseQueryResult<ProductDetailResponse, Error> {
   return useQuery({
     queryKey: [...PRODUCT_DETAIL_QUERY_KEY, id],
-    queryFn: () => getProduct(id ?? ""),
+    queryFn: ({ signal }) => getProduct(id ?? "", signal),
     enabled: Boolean(id),
     staleTime: 30_000,
   });

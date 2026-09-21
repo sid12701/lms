@@ -13,7 +13,7 @@ export interface RoleScopeBadgeProps {
 export function RoleScopeBadge({ className }: RoleScopeBadgeProps) {
   const { session } = useSession();
   if (!session) return null;
-  const internal = isInternalUser(session.user.role);
+  const internal = isInternalUser(session.user.roles);
   const lspLabel = session.user.lspName?.trim();
   const label = internal ? "Internal · All LSPs" : lspLabel ? `LSP · ${lspLabel}` : "LSP workspace";
   return (

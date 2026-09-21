@@ -102,9 +102,11 @@ function synthesiseSchedule(installments: RepaymentInstallment[]): RepaymentSche
 /** GET `/api/v1/loan-applications/:id/schedule` — Schedule tab data. */
 export async function fetchLoanApplicationSchedule(
   id: string,
+  signal?: AbortSignal,
 ): Promise<LoanApplicationScheduleResponse> {
   const rows = await requestJson<BackendScheduleRow[]>(
     `${BACKEND_BASE}/${encodeURIComponent(id)}/repayment-schedule`,
+    { signal },
   );
   const installments = rows.map(toInstallment);
   return {
@@ -208,9 +210,11 @@ function toDocument(row: BackendChecklistRow): LoanDocument {
 /** GET `/api/v1/loan-applications/:id/documents` — Documents tab data. */
 export async function fetchLoanApplicationDocuments(
   id: string,
+  signal?: AbortSignal,
 ): Promise<LoanApplicationDocumentsResponse> {
   const rows = await requestJson<BackendChecklistRow[]>(
     `${BACKEND_BASE}/${encodeURIComponent(id)}/kyc-documents`,
+    { signal },
   );
   return { documents: rows.map(toDocument) };
 }
@@ -275,13 +279,14 @@ const OPS_PAYMENTS_MAX_PAGES = 25;
 async function fetchLoanApplicationRepaymentsPage(
   id: string,
   params: { offset: number; limit: number },
+  signal?: AbortSignal,
 ): Promise<{ items: BackendPaymentRow[]; totalCount: number }> {
   const path = buildQueryPath(`${BACKEND_BASE}/${encodeURIComponent(id)}/payments`, {
     offset: params.offset,
     limit: params.limit,
     paginationDetails: "ON",
   });
-  const { data, headers } = await requestJsonWithHeaders<BackendPaymentRow[]>(path);
+  const { data, headers } = await requestJsonWithHeaders<BackendPaymentRow[]>(path, { signal });
   const pagination = readPaginationHeaders(headers);
   return {
     items: data,
@@ -296,15 +301,20 @@ async function fetchLoanApplicationRepaymentsPage(
  */
 export async function fetchLoanApplicationRepayments(
   id: string,
+  signal?: AbortSignal,
 ): Promise<LoanApplicationRepaymentsResponse> {
   const rows: BackendPaymentRow[] = [];
   let offset = 0;
   let totalCount = 0;
   for (let page = 0; page < OPS_PAYMENTS_MAX_PAGES; page += 1) {
-    const result = await fetchLoanApplicationRepaymentsPage(id, {
-      offset,
-      limit: OPS_PAYMENTS_PAGE_LIMIT,
-    });
+    const result = await fetchLoanApplicationRepaymentsPage(
+      id,
+      {
+        offset,
+        limit: OPS_PAYMENTS_PAGE_LIMIT,
+      },
+      signal,
+    );
     rows.push(...result.items);
     totalCount = result.totalCount;
     if (result.items.length === 0 || rows.length >= totalCount) {

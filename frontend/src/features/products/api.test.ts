@@ -37,7 +37,9 @@ describe("listProducts", () => {
     const result = await listProducts({ page: 0, pageSize: 20 });
 
     expect(requestJsonMock).toHaveBeenCalledTimes(1);
-    expect(requestJsonMock).toHaveBeenCalledWith("/api/v1/internal/admin/products");
+    expect(requestJsonMock).toHaveBeenCalledWith("/api/v1/internal/admin/products", {
+      signal: undefined,
+    });
     expect(result.items[0]).toMatchObject({
       id: "product-1",
       lspIds: ["lsp-1", "lsp-2"],

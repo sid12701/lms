@@ -270,6 +270,134 @@ class ApiClientAdminControllerTest {
                 .authorities(() -> "ROLE_OPS_USER");
     }
 
+    @Test
+    void listApiClientsIsBoundedAndEmitsPaginationHeaders() throws Exception {
+        String lspId = createIdempotencyLsp();
+        createClientNamed(lspId, "M20 Page Client A");
+        createClientNamed(lspId, "M20 Page Client B");
+
+        // M20 — a requested page returns only that slice; the total count comes
+        // from the headers, not from downloading every row.
+        MvcResult first = mockMvc.perform(get("/api/v1/internal/admin/api-clients")
+                        .param("lspId", lspId)
+                        .param("limit", "1")
+                        .param("offset", "0")
+                        .param("paginationDetails", "ON")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("X-Total-Count", "2"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("X-Limit", "1"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("X-Offset", "0"))
+                .andReturn();
+
+        MvcResult second = mockMvc.perform(get("/api/v1/internal/admin/api-clients")
+                        .param("lspId", lspId)
+                        .param("limit", "1")
+                        .param("offset", "1")
+                        .param("paginationDetails", "ON")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andReturn();
+
+        // Both pages together cover the full filtered set — no row repeats.
+        JsonNode firstPage = objectMapper.readTree(first.getResponse().getContentAsString());
+        JsonNode secondPage = objectMapper.readTree(second.getResponse().getContentAsString());
+        String firstId = firstPage.get(0).get("id").asText();
+        String secondId = secondPage.get(0).get("id").asText();
+        assertTrue(!firstId.equals(secondId));
+
+        // Offset past the end returns an empty page, not an error.
+        mockMvc.perform(get("/api/v1/internal/admin/api-clients")
+                        .param("lspId", lspId)
+                        .param("limit", "10")
+                        .param("offset", "500")
+                        .param("paginationDetails", "ON")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("X-Total-Count", "2"));
+    }
+
+    @Test
+    void listApiClientsAppliesFiltersBeforePagination() throws Exception {
+        String lspId = createIdempotencyLsp();
+        String needle = "m20uniq" + UUID.randomUUID().toString().substring(0, 8);
+        createClientNamed(lspId, needle + " alpha");
+        createClientNamed(lspId, "M20 Other Client");
+
+        mockMvc.perform(get("/api/v1/internal/admin/api-clients")
+                        .param("lspId", lspId)
+                        .param("paginationDetails", "ON")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("X-Total-Count", "2"));
+
+        mockMvc.perform(get("/api/v1/internal/admin/api-clients")
+                        .param("q", needle.toUpperCase())
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].name").value(needle + " alpha"));
+
+        mockMvc.perform(get("/api/v1/internal/admin/api-clients")
+                        .param("lspId", lspId)
+                        .param("status", "INACTIVE")
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+
+        mockMvc.perform(get("/api/v1/internal/admin/api-clients")
+                        .param("lspId", UUID.randomUUID().toString())
+                        .with(systemAdmin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void listApiClientsRejectsInvalidPaginationParams() throws Exception {
+        mockMvc.perform(get("/api/v1/internal/admin/api-clients")
+                        .param("limit", "0")
+                        .with(systemAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        mockMvc.perform(get("/api/v1/internal/admin/api-clients")
+                        .param("offset", "-1")
+                        .with(systemAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+
+        mockMvc.perform(get("/api/v1/internal/admin/api-clients")
+                        .param("limit", "201")
+                        .with(systemAdmin()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    private String createClientNamed(String lspId, String name) throws Exception {
+        MvcResult createdResult = mockMvc.perform(post("/api/v1/internal/admin/api-clients")
+                        .with(systemAdmin())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", name,
+                                "description", "M20 pagination test client",
+                                "lspId", lspId,
+                                "status", "ACTIVE"
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(createdResult.getResponse().getContentAsString())
+                .get("id").asText();
+    }
+
     private CreatedClientFixture createActiveClient() throws Exception {
         String lspCode = "APX" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
 

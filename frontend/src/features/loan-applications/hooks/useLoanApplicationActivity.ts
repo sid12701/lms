@@ -23,7 +23,7 @@ export function useLoanApplicationActivity(
 ): UseQueryResult<LoanApplicationActivityResponse, Error> {
   return useQuery({
     queryKey: loanApplicationActivityQueryKey(id),
-    queryFn: () => fetchLoanApplicationActivity(id),
+    queryFn: ({ signal }) => fetchLoanApplicationActivity(id, signal),
     staleTime: 30_000,
     enabled: typeof id === "string" && id.length > 0 && (options.enabled ?? true),
   });

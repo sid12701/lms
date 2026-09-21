@@ -33,7 +33,7 @@ export function AlertsPage() {
   const [selectedAlertForAck, setSelectedAlertForAck] = useState<AlertRow | null>(null);
 
   const { session } = useSession();
-  const isSystemAdmin = session?.user.role === "SYSTEM_ADMIN";
+  const isSystemAdmin = session?.user.roles.includes("SYSTEM_ADMIN") === true;
 
   const query = useAlerts(filters);
   const rulesQuery = useAlertRules(isSystemAdmin);

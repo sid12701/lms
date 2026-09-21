@@ -52,9 +52,13 @@ function toLoanRow(row: BackendBorrowerLoanRow): BorrowerLoanRow {
 }
 
 /** GET `/api/v1/borrowers/:id/loans` — Loans tab data. */
-export async function fetchBorrowerLoans(id: string): Promise<BorrowerLoansResponse> {
+export async function fetchBorrowerLoans(
+  id: string,
+  signal?: AbortSignal,
+): Promise<BorrowerLoansResponse> {
   const payload = await requestJson<BackendBorrowerDetailLoans>(
     `${BACKEND_BASE}/${encodeURIComponent(id)}`,
+    { signal },
   );
   return { loans: (payload.loans ?? []).map(toLoanRow) };
 }

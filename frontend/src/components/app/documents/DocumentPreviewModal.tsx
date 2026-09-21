@@ -65,8 +65,8 @@ export function DocumentPreviewModal({
 
   const blobQuery = useQuery({
     queryKey: ["document-preview", contentPath],
-    queryFn: async () => {
-      const { blob } = await requestBlob(contentPath as string);
+    queryFn: async ({ signal }) => {
+      const { blob } = await requestBlob(contentPath as string, { signal });
       return blob;
     },
     enabled,

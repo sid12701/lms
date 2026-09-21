@@ -91,8 +91,9 @@ export function formatLoanStatusLabel(status: string): string {
 }
 
 export function formatPermissionDeniedDescription(
-  currentRole: string,
+  currentRoles: readonly string[],
   allowedRoles: readonly string[],
 ): string {
-  return `Signed in as ${formatRoleLabel(currentRole)}. This area is limited to ${formatRoleList(allowedRoles)}. Contact your administrator if you need access.`;
+  const signedInAs = currentRoles.map(formatRoleLabel).join(", ");
+  return `Signed in as ${signedInAs}. This area is limited to ${formatRoleList(allowedRoles)}. Contact your administrator if you need access.`;
 }

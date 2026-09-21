@@ -65,8 +65,11 @@ function toLoanProduct(payload: BackendProductResponse): LoanProduct {
   };
 }
 
-async function fetchMapping(productId: string): Promise<BackendMappingResponse> {
-  return requestJson<BackendMappingResponse>(`${BASE}/${productId}/mappings`);
+async function fetchMapping(
+  productId: string,
+  signal?: AbortSignal,
+): Promise<BackendMappingResponse> {
+  return requestJson<BackendMappingResponse>(`${BASE}/${productId}/mappings`, { signal });
 }
 
 function toProductRow(
@@ -93,8 +96,9 @@ async function hydrateProductRow(payload: BackendProductResponse): Promise<Produ
 
 export async function listProducts(
   filters: ProductsListFilters = {},
+  signal?: AbortSignal,
 ): Promise<ProductsListResponse> {
-  const all = await requestJson<BackendProductListResponse[]>(BASE);
+  const all = await requestJson<BackendProductListResponse[]>(BASE, { signal });
   const filtered = all.filter((row) => {
     if (filters.status && row.status !== filters.status) return false;
     if (filters.q) {
@@ -112,10 +116,10 @@ export async function listProducts(
   return { items, total: filtered.length, page, pageSize };
 }
 
-export async function getProduct(id: string): Promise<ProductDetailResponse> {
+export async function getProduct(id: string, signal?: AbortSignal): Promise<ProductDetailResponse> {
   const [payload, mapping] = await Promise.all([
-    requestJson<BackendProductResponse>(`${BASE}/${id}`),
-    fetchMapping(id).catch(() => null),
+    requestJson<BackendProductResponse>(`${BASE}/${id}`, { signal }),
+    fetchMapping(id, signal).catch(() => null),
   ]);
   const product = toLoanProduct(payload);
   const lspIds = mapping?.mappedLsps.map((entry) => entry.id) ?? [];

@@ -40,7 +40,7 @@ import {
 const BACKEND_BASE = "/api/v1/internal/ops/loan-applications";
 
 function isSystemAdmin(): boolean {
-  return loadStoredSession()?.user.role === "SYSTEM_ADMIN";
+  return loadStoredSession()?.user.roles.includes("SYSTEM_ADMIN") === true;
 }
 
 /**
@@ -268,19 +268,26 @@ function backendToDetail(
 
 async function fetchChecklist(
   id: string,
+  signal?: AbortSignal,
 ): Promise<readonly OpsLoanApplicationDocumentChecklistResponse[]> {
   return requestJson<readonly OpsLoanApplicationDocumentChecklistResponse[]>(
     `${BACKEND_BASE}/${encodeURIComponent(id)}/kyc-documents`,
+    { signal },
   );
 }
 
 // ─── Public surface ──────────────────────────────────────────────────────────
 
 /** Fetch the full detail payload for one loan application. */
-export async function fetchLoanApplicationDetail(id: string): Promise<LoanApplicationDetail> {
+export async function fetchLoanApplicationDetail(
+  id: string,
+  signal?: AbortSignal,
+): Promise<LoanApplicationDetail> {
   const [payload, checklist] = await Promise.all([
-    requestJson<OpsLoanApplicationDetailResponse>(`${BACKEND_BASE}/${encodeURIComponent(id)}`),
-    fetchChecklist(id),
+    requestJson<OpsLoanApplicationDetailResponse>(`${BACKEND_BASE}/${encodeURIComponent(id)}`, {
+      signal,
+    }),
+    fetchChecklist(id, signal),
   ]);
   return backendToDetail(payload, checklist);
 }
@@ -323,17 +330,22 @@ function toAuditEvent(row: BackendAuditEvent): ApplicationAuditEvent {
 /** Fetch the per-application audit timeline. */
 export async function fetchLoanApplicationActivity(
   id: string,
+  signal?: AbortSignal,
 ): Promise<LoanApplicationActivityResponse> {
   const rows = await requestJson<BackendAuditEvent[]>(
     `${BACKEND_BASE}/${encodeURIComponent(id)}/audit-events`,
+    { signal },
   );
   return { events: rows.map(toAuditEvent) };
 }
 
-export async function fetchForeclosureQuotes(id: string): Promise<readonly LoanForeclosureQuote[]> {
+export async function fetchForeclosureQuotes(
+  id: string,
+  signal?: AbortSignal,
+): Promise<readonly LoanForeclosureQuote[]> {
   const rows = await requestJson<BackendLoanForeclosureQuoteResponse[]>(
     `${BACKEND_BASE}/${encodeURIComponent(id)}/foreclosure-quotes`,
-    {},
+    { signal },
     { dedupe: false },
   );
   return rows.map(toForeclosureQuote);
@@ -565,7 +577,10 @@ function toPreviewAmount(value: number | null | undefined): number {
 }
 
 /** Read-only disbursement figures for the confirmation dialog (SYSTEM_ADMIN). */
-export async function fetchDisbursementPreview(id: string): Promise<DisbursementPreviewResponse> {
+export async function fetchDisbursementPreview(
+  id: string,
+  signal?: AbortSignal,
+): Promise<DisbursementPreviewResponse> {
   if (!isSystemAdmin()) {
     throw new ApiError(
       "Disbursement preview requires a system administrator session.",
@@ -577,7 +592,7 @@ export async function fetchDisbursementPreview(id: string): Promise<Disbursement
 
   const payload = await requestJson<DisbursementPreviewResponse>(
     `${BACKEND_BASE}/${encodeURIComponent(id)}/disbursement-preview`,
-    { method: "GET" },
+    { method: "GET", signal },
   );
   return {
     ...payload,

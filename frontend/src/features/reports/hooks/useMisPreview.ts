@@ -16,7 +16,7 @@ export function useMisPreview(
 ): UseQueryResult<MisPreviewResponseDto, Error> {
   return useQuery({
     queryKey: [...MIS_PREVIEW_QUERY_KEY, filters],
-    queryFn: () => misPreview(filters),
+    queryFn: ({ signal }) => misPreview(filters, signal),
     staleTime: 30_000,
     placeholderData: (previousData) => previousData,
   });

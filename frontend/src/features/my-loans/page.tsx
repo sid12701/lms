@@ -70,12 +70,13 @@ export function MyLoansPage() {
   const pageSize = filters.pageSize ?? DEFAULT_PAGE_SIZE;
   const query = useQuery({
     queryKey: ["my-loans", page, pageSize, filters.q ?? null, filters.status ?? null],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       fetchMyLoansPage({
         offset: page * pageSize,
         limit: pageSize,
         q: filters.q,
         status: filters.status,
+        signal,
       }),
     placeholderData: (previousData) => previousData,
   });

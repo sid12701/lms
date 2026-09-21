@@ -24,7 +24,7 @@ export function useLspSubmittedDocuments(
 ): UseQueryResult<SubmittedLspDocument[], Error> {
   return useQuery({
     queryKey: lspSubmittedDocumentsQueryKey(applicationId),
-    queryFn: () => listLspSubmittedDocuments(applicationId),
+    queryFn: ({ signal }) => listLspSubmittedDocuments(applicationId, signal),
     enabled: applicationId.length > 0,
     staleTime: 30_000,
   });

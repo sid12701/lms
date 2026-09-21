@@ -30,6 +30,7 @@ function sessionFor(role: Session["user"]["role"]): Session {
       id: "aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa",
       username: role.toLowerCase(),
       role,
+      roles: [role],
       lspId: "bbbbbbbb-2222-4bbb-8bbb-bbbbbbbbbbbb",
       mustChangePassword: false,
     },

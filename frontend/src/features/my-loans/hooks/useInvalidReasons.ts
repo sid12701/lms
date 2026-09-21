@@ -6,7 +6,7 @@ export const INVALID_REASONS_QUERY_KEY = ["my-loans", "invalid-reasons"] as cons
 export function useInvalidReasons(enabled: boolean): UseQueryResult<InvalidReasonOption[], Error> {
   return useQuery({
     queryKey: INVALID_REASONS_QUERY_KEY,
-    queryFn: fetchInvalidReasons,
+    queryFn: ({ signal }) => fetchInvalidReasons(signal),
     enabled,
     staleTime: Number.POSITIVE_INFINITY,
   });

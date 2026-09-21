@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "@/features/auth/use-session";
-import { defaultLandingFor, isInternalUser, isLspUiUser } from "@/lib/role-gates";
+import { defaultLandingFor, hasAnyRole, isInternalUser, isLspUiUser } from "@/lib/role-gates";
 import { formatPermissionDeniedDescription } from "@/lib/api/user-messages";
 import { PermissionDeniedState } from "@/components/app/feedback/PermissionDeniedState";
 import { RouteFallback } from "@/routes/route-fallback";
@@ -30,12 +30,12 @@ export function RequireAuth({ children }: { children: ReactNode }): ReactElement
  */
 function PermissionDeniedRoute({
   title,
-  currentRole,
+  currentRoles,
   allowedRoles,
   actionLabel,
 }: {
   title: string;
-  currentRole: Role;
+  currentRoles: readonly Role[];
   allowedRoles: readonly string[];
   actionLabel: string;
 }): ReactElement {
@@ -44,8 +44,8 @@ function PermissionDeniedRoute({
     <div className="flex min-h-[60vh] items-center justify-center p-6">
       <PermissionDeniedState
         title={title}
-        description={formatPermissionDeniedDescription(currentRole, allowedRoles)}
-        action={{ label: actionLabel, onClick: () => navigate(defaultLandingFor(currentRole)) }}
+        description={formatPermissionDeniedDescription(currentRoles, allowedRoles)}
+        action={{ label: actionLabel, onClick: () => navigate(defaultLandingFor(currentRoles)) }}
         secondaryAction={{ label: "Go back", onClick: () => navigate(-1) }}
       />
     </div>
@@ -56,11 +56,11 @@ function PermissionDeniedRoute({
 export function RequireInternal({ children }: { children: ReactNode }): ReactElement {
   const { session } = useSession();
   if (!session) return <Navigate to="/login" replace />;
-  if (!isInternalUser(session.user.role)) {
+  if (!isInternalUser(session.user.roles)) {
     return (
       <PermissionDeniedRoute
         title="Internal workspace only"
-        currentRole={session.user.role}
+        currentRoles={session.user.roles}
         allowedRoles={["SYSTEM_ADMIN", "OPS_USER", "PRODUCT_ADMIN"]}
         actionLabel="Go to my loans"
       />
@@ -73,11 +73,11 @@ export function RequireInternal({ children }: { children: ReactNode }): ReactEle
 export function RequireLsp({ children }: { children: ReactNode }): ReactElement {
   const { session } = useSession();
   if (!session) return <Navigate to="/login" replace />;
-  if (!isLspUiUser(session.user.role)) {
+  if (!isLspUiUser(session.user.roles)) {
     return (
       <PermissionDeniedRoute
         title="LSP workspace only"
-        currentRole={session.user.role}
+        currentRoles={session.user.roles}
         allowedRoles={["LSP_UI_READ", "LSP_UI_WRITE"]}
         actionLabel="Go to workspace home"
       />
@@ -91,15 +91,15 @@ interface RequireRoleProps {
   children: ReactNode;
 }
 
-/** Render a 403 surface if the active role is not in the allow-list. */
+/** Render a 403 surface if none of the session's roles is in the allow-list. */
 export function RequireRole({ roles, children }: RequireRoleProps): ReactElement {
   const { session } = useSession();
   if (!session) return <Navigate to="/login" replace />;
-  if (!roles.includes(session.user.role)) {
+  if (!hasAnyRole(session.user.roles, roles)) {
     return (
       <PermissionDeniedRoute
         title="You don't have access to this page"
-        currentRole={session.user.role}
+        currentRoles={session.user.roles}
         allowedRoles={roles}
         actionLabel="Go to your home"
       />

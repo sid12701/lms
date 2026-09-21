@@ -51,8 +51,11 @@ const MARK_INVALID_REASON_ID = "mark-invalid-disabled-reason";
  * gate is money already in motion (DISBURSED, UNDER_REPAYMENT). The wording
  * mirrors the backend's own rejection message.
  */
-function resolveMarkInvalidDisabledReason(role: Role, status: LoanStatus): string | null {
-  return canTransition(role, status, "INVALID", {}).ok
+function resolveMarkInvalidDisabledReason(
+  roles: readonly Role[],
+  status: LoanStatus,
+): string | null {
+  return canTransition(roles, status, "INVALID", {}).ok
     ? null
     : "Loans that have entered servicing can't be marked invalid.";
 }
@@ -398,7 +401,7 @@ export function MyLoanDetailPage() {
   }
 
   const isTerminal = TERMINAL_STATUSES.has(detail.status);
-  const canWriteLoan = session ? hasPermission(session.user.role, "LOAN_WRITE") : false;
+  const canWriteLoan = session ? hasPermission(session.user.roles, "LOAN_WRITE") : false;
   const canMutateLoan = canWriteLoan && !isTerminal;
   const documentsReadOnlyReason = canMutateLoan ? null : isTerminal ? "terminal" : "role";
   // Document upload and invalidation are separate rights: uploading stays open
@@ -406,7 +409,7 @@ export function MyLoanDetailPage() {
   // disbursement. Gate them independently rather than on one `canMutateLoan`.
   const markInvalidDisabledReason =
     session && canWriteLoan
-      ? resolveMarkInvalidDisabledReason(session.user.role, detail.status)
+      ? resolveMarkInvalidDisabledReason(session.user.roles, detail.status)
       : null;
   const eyebrow = detail.externalLoanId
     ? `LSP workspace · ${detail.externalLoanId}`

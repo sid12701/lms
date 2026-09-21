@@ -121,7 +121,6 @@ export function RepaymentsTab({ applicationId }: RepaymentsTabProps) {
         columns={COLUMNS}
         data={data}
         ariaLabel="Posted repayments"
-        density="comfortable"
         rowIdKey="id"
         empty={
           <EmptyState

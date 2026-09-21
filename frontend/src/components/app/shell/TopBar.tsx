@@ -66,7 +66,8 @@ function AlertsBell({ onOpen }: { onOpen: () => void }) {
 export function TopBar({ onOpenMobileNav, className }: TopBarProps) {
   const navigate = useNavigate();
   const { session } = useSession();
-  const showAlerts = session?.user.role != null && INTERNAL_ALERT_ROLES.has(session.user.role);
+  const showAlerts =
+    session != null && session.user.roles.some((role) => INTERNAL_ALERT_ROLES.has(role));
 
   return (
     <header

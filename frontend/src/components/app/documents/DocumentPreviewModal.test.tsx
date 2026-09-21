@@ -83,7 +83,10 @@ describe("DocumentPreviewModal", () => {
     );
 
     expect(await screen.findByTitle(/Preview of PAN card/i)).toBeInTheDocument();
-    expect(requestBlobMock).toHaveBeenCalledWith(INLINE_PDF_PATH);
+    expect(requestBlobMock).toHaveBeenCalledWith(
+      INLINE_PDF_PATH,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("renders an image preview for image mime types", async () => {

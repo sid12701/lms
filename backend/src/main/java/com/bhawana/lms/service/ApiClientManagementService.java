@@ -1,7 +1,10 @@
 package com.bhawana.lms.service;
 
+import com.bhawana.lms.common.api.PagedResult;
+import com.bhawana.lms.common.api.PaginationResponseBuilder;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
 import com.bhawana.lms.common.api.error.ResourceNotFoundException;
+import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.domain.ApiClient;
 import com.bhawana.lms.domain.ApiClientAuditEvent;
 import com.bhawana.lms.domain.ApiClientStatus;
@@ -18,8 +21,12 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -108,15 +115,41 @@ public class ApiClientManagementService {
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown API client id: " + clientId));
     }
 
+    /**
+     * Always paginated: M20. The unbounded list is gone — callers that omit
+     * offset/limit get offset=0 and PaginationResponseBuilder.DEFAULT_LIMIT
+     * rows, never the whole api_client table. Status, LSP and text filters
+     * apply to the full dataset before pagination; ordering stays
+     * createdAt desc with clientId as the stable tie-break.
+     */
     @Transactional(readOnly = true)
-    public List<ApiClientView> listClients() {
-        return apiClientRepository.findAll().stream()
-                .sorted(java.util.Comparator
-                        .comparing(ApiClient::getCreatedAt)
-                        .reversed()
-                        .thenComparing(ApiClient::getClientId))
-                .map(ApiClientView::new)
-                .toList();
+    public PagedResult<ApiClientView> listClients(
+            ApiClientStatus status,
+            UUID lspId,
+            String query,
+            Integer offset,
+            Integer limit
+    ) {
+        int resolvedOffset = offset == null ? 0 : offset;
+        int resolvedLimit = limit == null ? PaginationResponseBuilder.DEFAULT_LIMIT : limit;
+        int safeLimit = Math.max(resolvedLimit, 1);
+        String normalizedQuery = Strings.normalizeOptional(query);
+        String queryLike = normalizedQuery == null
+                ? null
+                : "%" + normalizedQuery.toLowerCase(Locale.ROOT) + "%";
+        PageRequest pageRequest = PageRequest.of(
+                resolvedOffset / safeLimit,
+                safeLimit,
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.asc("clientId"))
+        );
+        Page<ApiClient> page = apiClientRepository.searchClients(
+                status, lspId, queryLike, pageRequest);
+        return new PagedResult<>(
+                page.getContent().stream().map(ApiClientView::new).toList(),
+                page.getTotalElements(),
+                resolvedOffset,
+                resolvedLimit
+        );
     }
 
     @Transactional

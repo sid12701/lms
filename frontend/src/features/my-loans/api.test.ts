@@ -14,7 +14,7 @@ vi.mock("@/lib/api/http-client", async (importOriginal) => {
 
 vi.mock("@/lib/api/session-storage", () => ({
   loadStoredSession: () => ({
-    user: { role: "LSP_UI_READ" },
+    user: { role: "LSP_UI_READ", roles: ["LSP_UI_READ"] },
   }),
 }));
 
@@ -65,6 +65,7 @@ describe("fetchMyLoanPaymentsPage", () => {
 
     expect(requestJsonWithHeadersMock).toHaveBeenCalledWith(
       "/api/v1/lsp/loans/loan-1/payments?offset=50&limit=2&paginationDetails=ON",
+      { signal: undefined },
     );
     expect(result.items).toHaveLength(2);
     expect(result.totalCount).toBe(53);
@@ -84,6 +85,7 @@ describe("fetchMyLoanPayments", () => {
     expect(requestJsonWithHeadersMock).toHaveBeenCalledTimes(2);
     expect(requestJsonWithHeadersMock).toHaveBeenLastCalledWith(
       "/api/v1/lsp/loans/loan-1/payments?offset=200&limit=200&paginationDetails=ON",
+      { signal: undefined },
     );
     expect(result.items).toHaveLength(203);
     expect(result.totalCount).toBe(203);

@@ -16,6 +16,7 @@ import { readPaginationHeaders } from "@/lib/api/pagination-headers";
 import { newIdempotencyKey } from "@/lib/idempotency";
 import { loadStoredSession } from "@/lib/api/session-storage";
 import { parseLoanApplicationStatus } from "@/lib/loan-application-status";
+import { isLspUiUser } from "@/lib/role-gates";
 import { finiteNumberOrZero as toNumber } from "@/lib/number";
 import type { LoanApplication } from "@/types";
 
@@ -68,6 +69,8 @@ export async function fetchMyLoansPage(params: {
   q?: string | undefined;
   /** Single lifecycle status — the endpoint accepts one value. */
   status?: string | undefined;
+  /** Caller cancellation (TanStack query signal). */
+  signal?: AbortSignal | undefined;
 }): Promise<MyLoanListPage> {
   const path = buildQueryPath(LSP_BASE, {
     offset: params.offset,
@@ -76,7 +79,9 @@ export async function fetchMyLoansPage(params: {
     status: params.status,
     paginationDetails: "ON",
   });
-  const { data, headers } = await requestJsonWithHeaders<BackendLspListItem[]>(path);
+  const { data, headers } = await requestJsonWithHeaders<BackendLspListItem[]>(path, {
+    signal: params.signal,
+  });
   const pagination = readPaginationHeaders(headers);
   const items = data.map(toMyLoanListRow);
   return {
@@ -240,8 +245,10 @@ interface BackendInvalidReasonOption {
 }
 
 function isLspSession(): boolean {
-  const role = loadStoredSession()?.user.role;
-  return role === "LSP_UI_READ" || role === "LSP_UI_WRITE" || role === "LSP_API_CLIENT";
+  // M19 — any granted LSP UI role qualifies (multi-role sessions keep the
+  // full set). LSP_API_CLIENT cannot appear in a UI session's roles: it is
+  // filtered out at session build (machine principal, no browser surface).
+  return isLspUiUser(loadStoredSession()?.user.roles ?? []);
 }
 
 function ensureLspSession(): void {
@@ -339,16 +346,20 @@ function backendToDetail(payload: BackendLspDetail): MyLoanDetail {
 }
 
 /** GET `/api/v1/lsp/loan-applications/{id}`. */
-export async function fetchMyLoanDetail(id: string): Promise<MyLoanDetail> {
+export async function fetchMyLoanDetail(id: string, signal?: AbortSignal): Promise<MyLoanDetail> {
   ensureLspSession();
-  const payload = await requestJson<BackendLspDetail>(`${LSP_BASE}/${encodeURIComponent(id)}`);
+  const payload = await requestJson<BackendLspDetail>(`${LSP_BASE}/${encodeURIComponent(id)}`, {
+    signal,
+  });
   return backendToDetail(payload);
 }
 
 /** GET `/api/v1/lsp/loan-applications/invalid-reasons`. */
-export async function fetchInvalidReasons(): Promise<InvalidReasonOption[]> {
+export async function fetchInvalidReasons(signal?: AbortSignal): Promise<InvalidReasonOption[]> {
   ensureLspSession();
-  const rows = await requestJson<BackendInvalidReasonOption[]>(`${LSP_BASE}/invalid-reasons`);
+  const rows = await requestJson<BackendInvalidReasonOption[]>(`${LSP_BASE}/invalid-reasons`, {
+    signal,
+  });
   return rows.map((row) => ({
     code: row.code,
     label: row.label,
@@ -518,10 +529,12 @@ function toSubmittedLspDocument(payload: BackendLspSubmittedDocument): Submitted
  */
 export async function listLspSubmittedDocuments(
   applicationId: string,
+  signal?: AbortSignal,
 ): Promise<SubmittedLspDocument[]> {
   ensureLspSession();
   const payload = await requestJson<BackendLspSubmittedDocument[]>(
     `${LSP_BASE}/${encodeURIComponent(applicationId)}/documents`,
+    { signal },
   );
   return payload.map(toSubmittedLspDocument);
 }
@@ -543,6 +556,7 @@ export async function uploadLspDocument(
   const payload = await requestJson<BackendLspChecklistResponse>(
     `${LSP_BASE}/${encodeURIComponent(input.applicationId)}/documents`,
     { method: "POST", body: form },
+    { requestClass: "transfer" },
   );
   return toUploadedDocument(payload);
 }
@@ -562,10 +576,13 @@ interface BackendLspDocumentRequirement {
 }
 
 /** GET `/api/v1/lsp/loan-applications/document-requirements`. */
-export async function fetchLspDocumentRequirements(): Promise<LspDocumentRequirement[]> {
+export async function fetchLspDocumentRequirements(
+  signal?: AbortSignal,
+): Promise<LspDocumentRequirement[]> {
   ensureLspSession();
   const rows = await requestJson<BackendLspDocumentRequirement[]>(
     `${LSP_BASE}/document-requirements`,
+    { signal },
   );
   return rows.map((row) => ({
     code: row.code,
@@ -607,10 +624,12 @@ interface BackendLspScheduleInstallment {
 /** GET `/api/v1/lsp/loans/{loanId}/repayment-schedule`. */
 export async function fetchMyLoanRepaymentSchedule(
   loanId: string,
+  signal?: AbortSignal,
 ): Promise<MyLoanScheduleInstallment[]> {
   ensureLspSession();
   const rows = await requestJson<BackendLspScheduleInstallment[]>(
     `/api/v1/lsp/loans/${encodeURIComponent(loanId)}/repayment-schedule`,
+    { signal },
   );
   return rows.map((row) => ({
     id: row.id,
@@ -685,6 +704,7 @@ const MY_LOAN_PAYMENTS_MAX_PAGES = 25;
 export async function fetchMyLoanPaymentsPage(
   loanId: string,
   params: { offset: number; limit: number },
+  signal?: AbortSignal,
 ): Promise<MyLoanPaymentsPage> {
   ensureLspSession();
   const path = buildQueryPath(`/api/v1/lsp/loans/${encodeURIComponent(loanId)}/payments`, {
@@ -692,7 +712,9 @@ export async function fetchMyLoanPaymentsPage(
     limit: params.limit,
     paginationDetails: "ON",
   });
-  const { data, headers } = await requestJsonWithHeaders<BackendLspPayment[]>(path);
+  const { data, headers } = await requestJsonWithHeaders<BackendLspPayment[]>(path, {
+    signal,
+  });
   const pagination = readPaginationHeaders(headers);
   const items = data.map(toMyLoanPayment);
   return {
@@ -708,15 +730,22 @@ export async function fetchMyLoanPaymentsPage(
  * assembled from bounded pages so nothing is lost past the server's per-page
  * cap. `truncated` reports the unreachable remainder instead of hiding it.
  */
-export async function fetchMyLoanPayments(loanId: string): Promise<MyLoanPaymentHistory> {
+export async function fetchMyLoanPayments(
+  loanId: string,
+  signal?: AbortSignal,
+): Promise<MyLoanPaymentHistory> {
   const items: MyLoanPayment[] = [];
   let offset = 0;
   let totalCount = 0;
   for (let page = 0; page < MY_LOAN_PAYMENTS_MAX_PAGES; page += 1) {
-    const result = await fetchMyLoanPaymentsPage(loanId, {
-      offset,
-      limit: MY_LOAN_PAYMENTS_PAGE_LIMIT,
-    });
+    const result = await fetchMyLoanPaymentsPage(
+      loanId,
+      {
+        offset,
+        limit: MY_LOAN_PAYMENTS_PAGE_LIMIT,
+      },
+      signal,
+    );
     items.push(...result.items);
     totalCount = result.totalCount;
     if (result.items.length === 0 || items.length >= totalCount) {

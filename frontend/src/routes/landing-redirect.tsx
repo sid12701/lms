@@ -14,5 +14,5 @@ export function LandingRedirect() {
   if (isLoading) return <RouteFallback standalone />;
   if (!session) return <Navigate to="/login" replace />;
   if (session.user.mustChangePassword) return <Navigate to="/change-password" replace />;
-  return <Navigate to={defaultLandingFor(session.user.role)} replace />;
+  return <Navigate to={defaultLandingFor(session.user.roles)} replace />;
 }

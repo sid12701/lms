@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import type { ColumnDef, SortingState } from "@tanstack/react-table";
 import { renderWithProviders } from "@/test/utils";
-import { DensityProvider } from "@/app/providers";
+import { DensityProvider, useDensity } from "@/app/providers";
 import { DataTable, type DataTableState, type DataTableStateChange } from "./DataTable";
 import { DataTableColumnHeader } from "./DataTableColumnHeader";
 
@@ -73,6 +73,34 @@ describe("DataTable", () => {
     expect(getByRole("table", { name: "Test table" })).toBeInTheDocument();
     // 1 header row + 3 data rows
     expect(getAllByRole("row")).toHaveLength(1 + rows.length);
+  });
+
+  // L02 — without a `density` prop the table must follow the global
+  // DensityProvider setting; the toggle is a no-op if this regresses.
+  it("follows the global density setting when no prop overrides it", async () => {
+    function Harness() {
+      const { density, setDensity } = useDensity();
+      return (
+        <>
+          <button onClick={() => setDensity(density === "compact" ? "comfortable" : "compact")}>
+            flip density
+          </button>
+          <DataTable columns={columns} data={rows} rowIdKey="id" ariaLabel="Ctx table" />
+        </>
+      );
+    }
+
+    window.localStorage.removeItem("bhawana-lms-density");
+    const { container, getByRole, getAllByRole } = renderWithProviders(withDensity(<Harness />));
+
+    const tableRegion = () => container.querySelector('[data-slot="data-table"]');
+    expect(tableRegion()?.getAttribute("data-density")).toBe("compact");
+    expect(getAllByRole("cell")[0]?.className).toContain("py-1.5");
+
+    await userEvent.click(getByRole("button", { name: "flip density" }));
+
+    expect(tableRegion()?.getAttribute("data-density")).toBe("comfortable");
+    expect(getAllByRole("cell")[0]?.className).toContain("py-3");
   });
 
   it("shows the empty state when data is empty", () => {

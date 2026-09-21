@@ -15,8 +15,8 @@
  *     `roles[]` by picking the highest-priority role (SYSTEM_ADMIN >
  *     OPS_USER > PRODUCT_ADMIN > LSP_UI_WRITE > LSP_UI_READ > LSP_API_CLIENT).
  */
-import { requestJson } from "@/lib/api/http-client";
-import { paginate } from "@/lib/pagination";
+import { buildQueryPath, requestJson, requestJsonWithHeaders } from "@/lib/api/http-client";
+import { readPaginationHeaders } from "@/lib/api/pagination-headers";
 import type { Role } from "@/schemas/role";
 import type { User, UserStatus } from "@/schemas/user";
 import type {
@@ -132,25 +132,43 @@ export async function createUser(input: CreateUserInput): Promise<CreateUserResp
   };
 }
 
-export async function listUsers(filters: UsersListFilters = {}): Promise<UsersListResponse> {
-  const all = await requestJson<BackendUserResponse[]>(BASE);
-  const filtered = all.filter((row) => {
-    if (filters.status && backendToFrontendStatus(row.status) !== filters.status) return false;
-    if (filters.role && pickPrimaryRole(row.roles) !== filters.role) return false;
-    if (filters.lspId && row.lspId !== filters.lspId) return false;
-    if (filters.q) {
-      const needle = filters.q.toLowerCase();
-      if (
-        !row.username.toLowerCase().includes(needle) &&
-        !row.email.toLowerCase().includes(needle)
-      ) {
-        return false;
-      }
-    }
-    return true;
+/**
+ * M20 — the directory is server-paginated and server-filtered. Every filter
+ * (status, role membership, LSP, text) travels to the backend, which applies
+ * it to the full dataset before paginating; the total comes from the
+ * pagination headers. Filtering/paginating only a fetched slice locally hid
+ * matching users on other pages and understated totals, so the local path is
+ * gone.
+ *
+ * `role` filters by granted-role membership server-side — a multi-role user
+ * appears under every role they hold, not only under the collapsed primary
+ * role this feature previously filtered by (consistent with M19).
+ */
+export async function listUsers(
+  filters: UsersListFilters = {},
+  signal?: AbortSignal,
+): Promise<UsersListResponse> {
+  const pageSize = filters.pageSize ?? 25;
+  const page = filters.page ?? 0;
+  const path = buildQueryPath(BASE, {
+    status: frontendToBackendStatus(filters.status),
+    role: filters.role,
+    lspId: filters.lspId,
+    q: filters.q,
+    offset: page * pageSize,
+    limit: pageSize,
+    paginationDetails: "ON",
   });
-  const result = paginate(filtered, filters);
-  return { ...result, items: result.items.map(toUserRow) };
+  const { data, headers } = await requestJsonWithHeaders<BackendUserResponse[]>(path, {
+    signal,
+  });
+  const pagination = readPaginationHeaders(headers);
+  return {
+    items: data.map(toUserRow),
+    total: pagination.totalCount ?? data.length,
+    page,
+    pageSize,
+  };
 }
 
 export async function updateUser(

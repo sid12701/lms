@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { AbsoluteRelativeTime } from "@/components/app/misc/AbsoluteRelativeTime";
 import { PageHeader } from "@/components/app/layout/PageHeader";
 import { StatusBadge } from "@/components/app/status/StatusBadge";
 import { ActionBar } from "@/components/app/lifecycle/ActionBar";
@@ -22,9 +23,10 @@ import {
 import type { LoanApplicationDetail, TransitionStatusInput } from "../types";
 import { mapApiErrorMessage, formatLoanStatusLabel } from "@/lib/api/user-messages";
 import { isLoanApplicationStatus } from "@/lib/loan-application-status";
+import { cn } from "@/lib/utils";
 import { shortId } from "@/lib/short-id";
 import { ForeclosureQuotePanel } from "./ForeclosureQuotePanel";
-import type { LoanStatus } from "@/types";
+import type { LoanStatus, Role } from "@/types";
 
 /** Stable identity so `ActionBar`'s memo does not re-run every render. */
 const FORECLOSURE_OWNED_BY_PANEL: readonly LoanStatus[] = ["FORECLOSED"];
@@ -33,17 +35,35 @@ export interface DetailHeaderProps {
   detail: LoanApplicationDetail;
   /** Optional callback fired after a successful transition (e.g. for toasts). */
   onTransitionSuccess?: () => void;
+  /**
+   * L02 — when `onRefresh` is provided the header shows a last-updated
+   * timestamp and a manual refresh affordance, so an operator watching an
+   * in-flight disbursement can see data age and force a refetch.
+   */
+  lastUpdatedAt?: number;
+  isRefreshing?: boolean;
+  onRefresh?: () => void;
 }
 
 /**
  * Detail-page header: borrower name → status badge → ActionBar.
  */
-export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps) {
+export function DetailHeader({
+  detail,
+  onTransitionSuccess,
+  lastUpdatedAt,
+  isRefreshing = false,
+  onRefresh,
+}: DetailHeaderProps) {
   const { session } = useSession();
-  const role = session?.user.role;
+  // M19 — every check below consults the session's full role set so a
+  // multi-role user (e.g. OPS_USER+PRODUCT_ADMIN) gets the union of their
+  // affordances rather than the primary role's slice.
+  const roles = session?.user.roles ?? [];
+  const hasRole = (r: Role) => roles.includes(r);
   // `ForeclosureQuotePanel` owns the foreclosure transition when it renders, so
   // the two must be decided together — see `hiddenTargetStatuses` below.
-  const showsForeclosurePanel = role === "SYSTEM_ADMIN";
+  const showsForeclosurePanel = hasRole("SYSTEM_ADMIN");
   const mutation = useTransitionStatus(detail.application.id);
   const disbursementMutation = useInitiateDisbursement(detail.application.id);
   const overrideMutation = useManualStatusOverride(detail.application.id);
@@ -92,7 +112,7 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
     detail.application.status,
     detail.account?.accountStatus ?? null,
   );
-  const canOfferOverride = role === "SYSTEM_ADMIN" && !overrideHiddenForSource;
+  const canOfferOverride = hasRole("SYSTEM_ADMIN") && !overrideHiddenForSource;
   // Never offer the status the application is already in.
   const overrideTargets = manualOverrideTargetsFor(detail.application.status);
   // H28 — lifecycle actions are only offered for a recognized status. An
@@ -195,6 +215,35 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
         description={`Application ${shortId(detail.application.id)}`}
         actions={
           <div className="flex items-center gap-2">
+            {onRefresh ? (
+              <div data-slot="detail-refresh" className="flex items-center gap-2">
+                {lastUpdatedAt ? (
+                  <span className="text-foreground-muted text-xs">
+                    Updated{" "}
+                    <AbsoluteRelativeTime
+                      iso={new Date(lastUpdatedAt).toISOString()}
+                      variant="relative"
+                    />
+                  </span>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onRefresh}
+                  disabled={isRefreshing}
+                >
+                  <RefreshCw
+                    aria-hidden="true"
+                    className={cn(
+                      "size-4",
+                      isRefreshing && "animate-spin motion-reduce:animate-none",
+                    )}
+                  />
+                  <span>Refresh</span>
+                </Button>
+              </div>
+            ) : null}
             <StatusBadge
               status={detail.application.status}
               delinquency={detail.accountDelinquency}
@@ -203,7 +252,7 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
         }
       />
 
-      {role === "OPS_USER" ? (
+      {hasRole("OPS_USER") && !hasRole("SYSTEM_ADMIN") ? (
         <div data-slot="ops-escalate-bar" className="flex flex-col gap-2">
           <p className="text-foreground-muted text-sm">
             Approvals and lifecycle changes are automated. Use Escalate to admin if this loan needs
@@ -232,12 +281,12 @@ export function DetailHeader({ detail, onTransitionSuccess }: DetailHeaderProps)
             loading={escalateBusy}
           />
         </div>
-      ) : role ? (
+      ) : roles.length > 0 ? (
         <>
           {knownStatus ? (
             <ActionBar
               currentStatus={knownStatus}
-              role={role}
+              roles={roles}
               applicationId={detail.application.id}
               gates={{
                 docsComplete: detail.docsComplete,

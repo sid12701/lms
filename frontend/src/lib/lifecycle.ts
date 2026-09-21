@@ -325,9 +325,15 @@ function findRule(from: LoanStatus, to: LoanStatus): TransitionRule | undefined 
   return TRANSITIONS.find((r) => r.from === from && r.to === to);
 }
 
-/** Advisory UX gate — backend `LoanApplicationStatusTransitioner` is authoritative. */
+/**
+ * Advisory UX gate — backend `LoanApplicationStatusTransitioner` is authoritative.
+ *
+ * M19: takes the session's full role set — any granted role in
+ * `rule.allowedRoles` satisfies the check (same "any authority" semantics as
+ * the backend's hasAnyRole).
+ */
 export function canTransition(
-  role: Role,
+  roles: readonly Role[],
   from: LoanStatus,
   to: LoanStatus,
   ctx: TransitionCtx,
@@ -336,8 +342,8 @@ export function canTransition(
   if (!rule) {
     return err("INVALID_TRANSITION", `no rule from ${from} to ${to} (BR-6)`);
   }
-  if (!rule.allowedRoles.includes(role)) {
-    return err("ROLE_NOT_ALLOWED", `role ${role} cannot transition ${from} → ${to}`);
+  if (!rule.allowedRoles.some((allowed) => roles.includes(allowed))) {
+    return err("ROLE_NOT_ALLOWED", `roles ${roles.join(",")} cannot transition ${from} → ${to}`);
   }
   if (rule.preconditions) {
     return rule.preconditions(ctx);

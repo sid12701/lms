@@ -19,7 +19,7 @@ export function borrowerDetailQueryKey(id: string) {
 export function useBorrowerDetail(id: string): UseQueryResult<BorrowerDetail, Error> {
   return useQuery({
     queryKey: borrowerDetailQueryKey(id),
-    queryFn: () => fetchBorrowerDetail(id),
+    queryFn: ({ signal }) => fetchBorrowerDetail(id, signal),
     staleTime: 30_000,
     enabled: typeof id === "string" && id.length > 0,
   });

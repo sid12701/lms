@@ -40,13 +40,13 @@ const SCHEDULE_GATED_TARGETS: ReadonlySet<LoanStatus> = new Set(["DISBURSED"]);
 export function resolveDisabledReason(
   action: LifecycleAction,
   currentStatus: LoanStatus,
-  role: Role,
+  roles: readonly Role[],
   gates?: TransitionGates,
 ): string | null {
   if (currentStatus === action.toStatus) {
     return "Already in this status.";
   }
-  if (!hasPermission(role, action.permission)) {
+  if (!hasPermission(roles, action.permission)) {
     return "Insufficient permissions.";
   }
   const rule = TRANSITIONS.find((r) => r.from === currentStatus && r.to === action.toStatus);

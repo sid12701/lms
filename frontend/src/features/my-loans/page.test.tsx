@@ -58,6 +58,7 @@ describe("MyLoansPage", () => {
       limit: 25,
       q: undefined,
       status: undefined,
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -77,6 +78,7 @@ describe("MyLoansPage", () => {
       limit: 25,
       q: "Aarav",
       status: "UNDER_REPAYMENT",
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -96,6 +98,7 @@ describe("MyLoansPage", () => {
         limit: 25,
         q: undefined,
         status: "UNDER_REPAYMENT",
+        signal: expect.any(AbortSignal),
       }),
     );
   });

@@ -25,7 +25,7 @@ import {
 import { clearStoredSession, saveStoredSession } from "@/lib/api/session-storage";
 import { Session, SessionUser, type Session as SessionType } from "@/features/auth/session-types";
 import type { LoginInput } from "@/schemas/auth";
-import type { Role } from "@/types";
+import { primaryRoleFor, uiSessionRoles } from "@/lib/role-gates";
 import {
   AuthStaleResultError,
   advanceAuthGeneration,
@@ -35,14 +35,6 @@ import {
   type AuthIntent,
 } from "@/features/auth/auth-coordinator";
 import { getStoredAccessToken } from "@/lib/api/session-storage";
-
-const UI_ROLE_PRIORITY: Role[] = [
-  "SYSTEM_ADMIN",
-  "OPS_USER",
-  "PRODUCT_ADMIN",
-  "LSP_UI_WRITE",
-  "LSP_UI_READ",
-];
 
 const LEGACY_USER_ID_STORAGE_KEY = "bhawana-lms-user-id";
 
@@ -77,19 +69,6 @@ export type RefreshSessionResult =
 
 let refreshInFlight: { intent: AuthIntent; promise: Promise<RefreshSessionResult> } | null = null;
 
-/**
- * No OPS_USER fallback. Unknown live roles fail closed (invalid
- * context, no UI exposure). LSP_API_CLIENT has no UI surface, so it is not
- * selected as a UI session role either — treat as unknown for browser
- * sessions (narrow compatibility: API clients never mint UI sessions).
- */
-function selectPrimaryRole(roles: readonly string[]): Role | null {
-  for (const candidate of UI_ROLE_PRIORITY) {
-    if (roles.includes(candidate)) return candidate;
-  }
-  return null;
-}
-
 function clearLegacyPersistedUserId(): void {
   if (typeof window === "undefined") return;
   try {
@@ -111,7 +90,17 @@ async function buildSessionFromToken(
   const context = await fetchSystemContext(options.accessToken ?? token.accessToken, {
     refreshOnUnauthorized: options.refreshOnUnauthorized,
   });
-  const role = selectPrimaryRole(context.roles);
+  /**
+   * No OPS_USER fallback. Unknown live roles fail closed (invalid context,
+   * no UI exposure). LSP_API_CLIENT has no UI surface and is never selected
+   * for a browser session (API clients never mint UI sessions).
+   *
+   * M19 — the session keeps the FULL recognized role set (`uiSessionRoles`,
+   * priority-ordered) plus the deliberate primary role for landing/display.
+   * Unknown roles are dropped, never mapped onto permissions.
+   */
+  const roles = uiSessionRoles(context.roles);
+  const role = primaryRoleFor(roles);
   if (!role) {
     throw new SessionRestoreError(
       "CONTEXT_INVALID",
@@ -123,6 +112,7 @@ async function buildSessionFromToken(
     id: context.id,
     username: context.username,
     role,
+    roles,
     lspId: context.lspId,
     lspName: context.lspName,
     mustChangePassword: token.passwordChangeRequired ?? false,

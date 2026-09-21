@@ -231,13 +231,17 @@ function backendToDetail(
 // ─── Public surface ──────────────────────────────────────────────────────────
 
 /** Fetch the joined borrower-detail payload for `/borrowers/:id`. */
-export async function fetchBorrowerDetail(id: string): Promise<BorrowerDetail> {
+export async function fetchBorrowerDetail(
+  id: string,
+  signal?: AbortSignal,
+): Promise<BorrowerDetail> {
   const payload = await requestJson<BackendBorrowerDetail>(
     `${BACKEND_BASE}/${encodeURIComponent(id)}`,
+    { signal },
   );
   const lspNamesById =
     payload.visibleLsps && payload.visibleLsps.length > 0
       ? new Map<string, string>()
-      : new Map((await listLspOptions()).map((lsp) => [lsp.id, lsp.name]));
+      : new Map((await listLspOptions(signal)).map((lsp) => [lsp.id, lsp.name]));
   return backendToDetail(payload, lspNamesById);
 }

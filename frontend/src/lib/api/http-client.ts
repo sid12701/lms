@@ -18,7 +18,22 @@ const API_ORIGIN = new URL(API_BASE_URL).origin;
 type QueryParamValue = string | number | boolean | readonly string[] | null | undefined;
 
 let onUnauthorizedRefresh: (() => Promise<string | null>) | null = null;
-const inFlightJsonRequests = new Map<string, Promise<unknown>>();
+
+/**
+ * M21 — a deduped GET is shared fan-in state: the underlying fetch carries a
+ * private AbortController (still deadline-bounded inside `performFetch`), and
+ * each caller subscribes with its own signal. One caller's cancellation only
+ * detaches that caller — the shared fetch is aborted only when its LAST
+ * subscriber has left, so a cancelled navigation can never silently kill
+ * another component's live read.
+ */
+interface InflightJsonRequest {
+  controller: AbortController;
+  promise: Promise<unknown>;
+  subscribers: number;
+}
+
+const inFlightJsonRequests = new Map<string, InflightJsonRequest>();
 
 export function setRefreshCallback(callback: (() => Promise<string | null>) | null): void {
   onUnauthorizedRefresh = callback;
@@ -180,6 +195,22 @@ export function buildQueryPath(path: string, params: Record<string, QueryParamVa
   return qs ? `${path}?${qs}` : path;
 }
 
+/**
+ * M21 — request deadline budgets by class. Every request carries a deadline
+ * (callers may widen it via `timeoutMs`); the budget composes with the
+ * caller's AbortSignal rather than replacing it. `transfer` stays generous so
+ * ordinary uploads/downloads are never killed by a read-sized budget.
+ */
+export type RequestClass = "default" | "auth" | "transfer";
+
+const REQUEST_DEADLINE_MS: Record<RequestClass, number> = {
+  default: 30_000,
+  // Auth exchanges serialize through the cookie lock; still bounded so a hung
+  // network cannot pin the auth coordinator forever.
+  auth: 20_000,
+  transfer: 180_000,
+};
+
 export interface RequestOptions {
   authenticated?: boolean;
   accessToken?: string;
@@ -188,6 +219,10 @@ export interface RequestOptions {
   refreshOnUnauthorized?: boolean;
   /** When false, concurrent GETs are not coalesced (use for frequently invalidated reads). */
   dedupe?: boolean;
+  /** Deadline class for the request; defaults to "default" (30s). */
+  requestClass?: RequestClass;
+  /** Explicit deadline override in ms — wins over `requestClass`. */
+  timeoutMs?: number;
   _retried?: boolean;
 }
 
@@ -216,6 +251,68 @@ async function executeFetch(url: URL, init: RequestInit, headers: Headers): Prom
     headers,
     credentials: "include",
   });
+}
+
+function resolveDeadlineMs(options: RequestOptions): number {
+  return options.timeoutMs ?? REQUEST_DEADLINE_MS[options.requestClass ?? "default"];
+}
+
+/**
+ * Compose the caller's signal with the request deadline into one signal for
+ * `fetch`. Returns the composed signal plus a `timedOut()` probe (so the
+ * caller can distinguish a deadline abort from a user/navigation abort) and a
+ * `cleanup()` that MUST run once the request has fully settled — it clears
+ * the timer and detaches the caller listener on every outcome.
+ */
+function composeRequestSignal(
+  callerSignal: AbortSignal | null | undefined,
+  deadlineMs: number,
+): { signal: AbortSignal; timedOut: () => boolean; cleanup: () => void } {
+  const controller = new AbortController();
+  let timedOut = false;
+  const onCallerAbort = () => controller.abort(callerSignal?.reason);
+  if (callerSignal) {
+    if (callerSignal.aborted) {
+      onCallerAbort();
+    } else {
+      callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+  }
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new DOMException("The request timed out.", "TimeoutError"));
+  }, deadlineMs);
+  // Keep Node/Vitest timers from holding the process open; harmless in browsers.
+  if (typeof timer === "object" && "unref" in timer) {
+    (timer as { unref: () => void }).unref();
+  }
+  const cleanup = () => {
+    clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", onCallerAbort);
+  };
+  return { signal: controller.signal, timedOut: () => timedOut, cleanup };
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")
+  );
+}
+
+/**
+ * M21 — a deadline abort is a distinct, readable error (never mistaken for a
+ * caller cancellation). For mutations the timeout is deliberately uncertain:
+ * the request may still have landed, so the message steers the operator to
+ * verify before replaying — the idempotency key already makes a safe retry
+ * possible.
+ */
+function requestTimeoutError(init: RequestInit): ApiError {
+  const method = (init.method ?? "GET").toUpperCase();
+  const message =
+    method === "GET" || method === "HEAD"
+      ? "The request took too long. Check your connection and try again."
+      : "The request timed out. The server may still have processed it — verify the record's status before retrying.";
+  return new ApiError(message, 0, "", "REQUEST_TIMEOUT", null, false);
 }
 
 async function performFetch(
@@ -328,16 +425,60 @@ export interface JsonWithHeaders<T> {
 
 /**
  * Coalesce identical concurrent GETs: when `key` is non-null and a matching
- * request is already in flight, return the existing promise instead of issuing
- * a second network call. Entries self-evict once the request settles.
+ * request is already in flight, subscribe to it instead of issuing a second
+ * network call. Entries self-evict once the shared request settles. Caller
+ * signals are per-subscriber — they detach, never propagate to the shared
+ * fetch until no subscriber remains (see `InflightJsonRequest`).
  */
-function dedupedJsonRequest<T>(key: string | null, run: () => Promise<T>): Promise<T> {
-  if (!key) return run();
-  const existing = inFlightJsonRequests.get(key) as Promise<T> | undefined;
-  if (existing) return existing;
-  const promise = run().finally(() => inFlightJsonRequests.delete(key));
-  inFlightJsonRequests.set(key, promise);
-  return promise;
+function dedupedJsonRequest<T>(
+  key: string | null,
+  callerSignal: AbortSignal | null | undefined,
+  run: (signal: AbortSignal | undefined) => Promise<T>,
+): Promise<T> {
+  if (!key) return run(callerSignal ?? undefined);
+  const existing = inFlightJsonRequests.get(key);
+  if (existing) return subscribeToInflight(key, existing, callerSignal);
+  const controller = new AbortController();
+  const entry: InflightJsonRequest = {
+    controller,
+    promise: null as unknown as Promise<unknown>,
+    subscribers: 0,
+  };
+  entry.promise = run(controller.signal).finally(() => {
+    // Evict only if this record is still the live one — a successor may have
+    // already been registered for the same key after this entry settled.
+    if (inFlightJsonRequests.get(key) === entry) inFlightJsonRequests.delete(key);
+  });
+  inFlightJsonRequests.set(key, entry);
+  return subscribeToInflight(key, entry, callerSignal);
+}
+
+function subscribeToInflight<T>(
+  key: string,
+  entry: InflightJsonRequest,
+  callerSignal: AbortSignal | null | undefined,
+): Promise<T> {
+  if (callerSignal?.aborted) {
+    return Promise.reject(callerSignal.reason ?? new DOMException("Aborted", "AbortError"));
+  }
+  entry.subscribers += 1;
+  let detach: (() => void) | undefined;
+  const detached = new Promise<never>((_resolve, reject) => {
+    if (!callerSignal) return;
+    const onAbort = () => reject(callerSignal.reason ?? new DOMException("Aborted", "AbortError"));
+    callerSignal.addEventListener("abort", onAbort, { once: true });
+    detach = () => callerSignal.removeEventListener("abort", onAbort);
+  });
+  return Promise.race([entry.promise as Promise<T>, detached]).finally(() => {
+    detach?.();
+    entry.subscribers -= 1;
+    if (entry.subscribers === 0) {
+      // Last subscriber left (cancelled or the request settled): stop the
+      // shared fetch if it is still running and drop any dead map entry.
+      entry.controller.abort();
+      if (inFlightJsonRequests.get(key) === entry) inFlightJsonRequests.delete(key);
+    }
+  });
 }
 
 export function requestJsonWithHeaders<T>(
@@ -345,8 +486,10 @@ export function requestJsonWithHeaders<T>(
   init: RequestInit = {},
   options: RequestOptions = {},
 ): Promise<JsonWithHeaders<T>> {
-  return dedupedJsonRequest(buildJsonDedupeKey(path, init, options, "json-with-headers"), () =>
-    performJsonRequestWithHeaders<T>(path, init, options),
+  return dedupedJsonRequest(
+    buildJsonDedupeKey(path, init, options, "json-with-headers"),
+    init.signal,
+    (signal) => performJsonRequestWithHeaders<T>(path, { ...init, signal }, options),
   );
 }
 
@@ -355,15 +498,30 @@ async function performJsonRequestWithHeaders<T>(
   init: RequestInit = {},
   options: RequestOptions = {},
 ): Promise<JsonWithHeaders<T>> {
-  const response = await performFetch(path, init, { ...options, responseType: "json" });
+  // The deadline covers the whole exchange — headers AND body — so a stalled
+  // stream cannot outlive the budget.
+  const deadline = composeRequestSignal(init.signal, resolveDeadlineMs(options));
   try {
+    const response = await performFetch(
+      path,
+      { ...init, signal: deadline.signal },
+      {
+        ...options,
+        responseType: "json",
+      },
+    );
     await throwIfNotOk(response);
     const data = await readJsonBody<T>(response);
     return { data, headers: response.headers };
   } catch (error) {
+    if (deadline.timedOut()) throw requestTimeoutError(init);
+    // A caller/navigation abort is not an API error — propagate untouched.
+    if (isAbortError(error)) throw error;
     // A response was received (jar already updated); even local
     // parse/contract failures afterwards must not look network-uncertain.
     throw markHttpSettled(error);
+  } finally {
+    deadline.cleanup();
   }
 }
 
@@ -372,8 +530,10 @@ export function requestJson<T>(
   init: RequestInit = {},
   options: RequestOptions = {},
 ): Promise<T> {
-  return dedupedJsonRequest(buildJsonDedupeKey(path, init, options, "json"), () =>
-    performJsonRequest<T>(path, init, options),
+  return dedupedJsonRequest(
+    buildJsonDedupeKey(path, init, options, "json"),
+    init.signal,
+    (signal) => performJsonRequest<T>(path, { ...init, signal }, options),
   );
 }
 
@@ -398,12 +558,24 @@ async function performJsonRequest<T>(
   init: RequestInit = {},
   options: RequestOptions = {},
 ): Promise<T> {
-  const response = await performFetch(path, init, { ...options, responseType: "json" });
+  const deadline = composeRequestSignal(init.signal, resolveDeadlineMs(options));
   try {
+    const response = await performFetch(
+      path,
+      { ...init, signal: deadline.signal },
+      {
+        ...options,
+        responseType: "json",
+      },
+    );
     await throwIfNotOk(response);
     return await readJsonBody<T>(response);
   } catch (error) {
+    if (deadline.timedOut()) throw requestTimeoutError(init);
+    if (isAbortError(error)) throw error;
     throw markHttpSettled(error);
+  } finally {
+    deadline.cleanup();
   }
 }
 
@@ -412,8 +584,20 @@ export async function requestBlob(
   init: RequestInit = {},
   options: RequestOptions = {},
 ): Promise<{ blob: Blob; filename: string | null }> {
-  const response = await performFetch(path, init, { ...options, responseType: "blob" });
+  // Downloads get the transfer budget unless the caller overrides.
+  const deadline = composeRequestSignal(
+    init.signal,
+    resolveDeadlineMs({ requestClass: "transfer", ...options }),
+  );
   try {
+    const response = await performFetch(
+      path,
+      { ...init, signal: deadline.signal },
+      {
+        ...options,
+        responseType: "blob",
+      },
+    );
     await throwIfNotOk(response);
 
     return {
@@ -421,6 +605,10 @@ export async function requestBlob(
       filename: readFilenameFromContentDisposition(response.headers.get("content-disposition")),
     };
   } catch (error) {
+    if (deadline.timedOut()) throw requestTimeoutError(init);
+    if (isAbortError(error)) throw error;
     throw markHttpSettled(error);
+  } finally {
+    deadline.cleanup();
   }
 }

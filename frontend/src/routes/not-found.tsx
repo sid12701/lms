@@ -13,7 +13,7 @@ export interface NotFoundPageProps {
 export function NotFoundPage({ inShell = false }: NotFoundPageProps) {
   const navigate = useNavigate();
   const { session } = useSession();
-  const homeTarget = session ? defaultLandingFor(session.user.role) : "/login";
+  const homeTarget = session ? defaultLandingFor(session.user.roles) : "/login";
   return (
     <div
       className={cn(
