@@ -119,24 +119,24 @@ class R2ReportStorageServiceTest {
         S3Client client = mock(S3Client.class);
         byte[] first = "one".getBytes(StandardCharsets.UTF_8);
         byte[] second = "two".getBytes(StandardCharsets.UTF_8);
-        when(client.getObject(any(GetObjectRequest.class)))
-                .thenReturn(
-                        new ResponseInputStream<>(
-                                GetObjectResponse.builder().contentLength((long) first.length).build(),
-                                AbortableInputStream.create(new ByteArrayInputStream(first))),
-                        new ResponseInputStream<>(
-                                GetObjectResponse.builder().contentLength((long) second.length).build(),
-                                AbortableInputStream.create(new ByteArrayInputStream(second))));
-
         R2ReportStorageService service =
                 new R2ReportStorageService(new ReportStorageProperties(), client);
+        try (ResponseInputStream<GetObjectResponse> firstStream = new ResponseInputStream<>(
+                        GetObjectResponse.builder().contentLength((long) first.length).build(),
+                        AbortableInputStream.create(new ByteArrayInputStream(first)));
+                ResponseInputStream<GetObjectResponse> secondStream = new ResponseInputStream<>(
+                        GetObjectResponse.builder().contentLength((long) second.length).build(),
+                        AbortableInputStream.create(new ByteArrayInputStream(second)))) {
+            when(client.getObject(any(GetObjectRequest.class)))
+                    .thenReturn(firstStream, secondStream);
 
-        var streamA = service.openStream("reports/x/a.csv");
-        var streamB = service.openStream("reports/x/b.csv");
-        streamA.close();
-        assertThat(streamB.content().readAllBytes()).isEqualTo(second);
-        streamB.close();
-        verify(client, never()).close();
+            var streamA = service.openStream("reports/x/a.csv");
+            var streamB = service.openStream("reports/x/b.csv");
+            streamA.close();
+            assertThat(streamB.content().readAllBytes()).isEqualTo(second);
+            streamB.close();
+            verify(client, never()).close();
+        }
 
         service.shutdown();
         service.shutdown();

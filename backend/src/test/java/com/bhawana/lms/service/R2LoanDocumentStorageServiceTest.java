@@ -140,26 +140,26 @@ class R2LoanDocumentStorageServiceTest {
         S3Client client = mock(S3Client.class);
         byte[] first = "first".getBytes(StandardCharsets.UTF_8);
         byte[] second = "second".getBytes(StandardCharsets.UTF_8);
-        when(client.getObject(any(GetObjectRequest.class)))
-                .thenReturn(
-                        new ResponseInputStream<>(
-                                GetObjectResponse.builder().contentLength((long) first.length).build(),
-                                AbortableInputStream.create(new ByteArrayInputStream(first))),
-                        new ResponseInputStream<>(
-                                GetObjectResponse.builder().contentLength((long) second.length).build(),
-                                AbortableInputStream.create(new ByteArrayInputStream(second))));
-
         R2LoanDocumentStorageService service =
                 new R2LoanDocumentStorageService(new DocumentStorageProperties(), client);
+        try (ResponseInputStream<GetObjectResponse> firstStream = new ResponseInputStream<>(
+                        GetObjectResponse.builder().contentLength((long) first.length).build(),
+                        AbortableInputStream.create(new ByteArrayInputStream(first)));
+                ResponseInputStream<GetObjectResponse> secondStream = new ResponseInputStream<>(
+                        GetObjectResponse.builder().contentLength((long) second.length).build(),
+                        AbortableInputStream.create(new ByteArrayInputStream(second)))) {
+            when(client.getObject(any(GetObjectRequest.class)))
+                    .thenReturn(firstStream, secondStream);
 
-        var streamA = service.openStream("loan/a/one.bin");
-        var streamB = service.openStream("loan/a/two.bin");
-        streamA.content().close();
+            var streamA = service.openStream("loan/a/one.bin");
+            var streamB = service.openStream("loan/a/two.bin");
+            streamA.content().close();
 
-        // Closing stream A must not kill the shared client — stream B still reads to the end.
-        assertThat(streamB.content().readAllBytes()).isEqualTo(second);
-        streamB.content().close();
-        verify(client, never()).close();
+            // Closing stream A must not kill the shared client — stream B still reads to the end.
+            assertThat(streamB.content().readAllBytes()).isEqualTo(second);
+            streamB.content().close();
+            verify(client, never()).close();
+        }
 
         // Shutdown closes the shared client exactly once, even if invoked twice.
         service.shutdown();

@@ -85,7 +85,15 @@ public final class FakeS3Server implements AutoCloseable {
         String query = exchange.getRequestURI().getQuery() == null ? "" : exchange.getRequestURI().getQuery();
         switch (exchange.getRequestMethod()) {
             case "PUT" -> {
-                objects.put(key, readRequestBody(exchange));
+                try {
+                    objects.put(key, readRequestBody(exchange));
+                } catch (MalformedChunkedBodyException malformed) {
+                    writeBytes(exchange, 400, ("<Error><Code>BadRequest</Code>"
+                            + "<Message>malformed chunked body</Message></Error>")
+                            .getBytes(StandardCharsets.UTF_8));
+                    exchange.close();
+                    return;
+                }
                 exchange.getResponseHeaders().set("ETag", "\"fake-etag\"");
                 exchange.sendResponseHeaders(200, -1);
             }
@@ -157,7 +165,13 @@ public final class FakeS3Server implements AutoCloseable {
             if (sizeToken.isEmpty()) {
                 continue;
             }
-            int size = Integer.parseInt(sizeToken, 16);
+            final int size;
+            try {
+                size = Integer.parseInt(sizeToken, 16);
+            } catch (NumberFormatException notAChunkSize) {
+                throw new MalformedChunkedBodyException(
+                        "chunk-size line is not hex: " + sizeToken, notAChunkSize);
+            }
             if (size == 0) {
                 // Terminal chunk: consume trailer lines through the blank line.
                 String trailer;
@@ -170,6 +184,14 @@ public final class FakeS3Server implements AutoCloseable {
             readLine(in); // CRLF after the chunk data
         }
         return out.toByteArray();
+    }
+
+    /** Request body framing could not be parsed — the fake answers 400 like a real S3 would. */
+    private static final class MalformedChunkedBodyException extends IOException {
+
+        MalformedChunkedBodyException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     private static String readLine(java.io.InputStream in) throws IOException {

@@ -2,6 +2,7 @@ package com.bhawana.lms.security;
 
 import com.bhawana.lms.common.api.ApiError;
 import com.bhawana.lms.common.correlation.CorrelationIdHolder;
+import com.bhawana.lms.common.util.Strings;
 import com.bhawana.lms.service.OpsAlertEmitters;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.bucket4j.Bandwidth;
@@ -90,7 +91,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             response.setHeader("Retry-After", Long.toString(decision.retryAfterSeconds()));
             log.warn(
                     "Rate limit exceeded for bucket {} — retry after {}s",
-                    decision.bucketKey(),
+                    Strings.forLog(decision.bucketKey()),
                     decision.retryAfterSeconds()
             );
             OpsAlertEmitters alertEmitters = opsAlertEmittersProvider.getIfAvailable();
@@ -108,8 +109,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
                     // RATE_LIMIT_BREACH for every LSP-keyed rule until someone read the SQL grants.
                     log.warn(
                             "Rate limit breach alert failed for bucket {} on {} — the 429 was still returned",
-                            decision.bucketKey(),
-                            request.getRequestURI(),
+                            Strings.forLog(decision.bucketKey()),
+                            Strings.forLog(request.getRequestURI()),
                             exception
                     );
                 }
@@ -209,13 +210,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 && lastStoreFailureLogNanosCompareAndSet(lastLogged, now)) {
             log.warn(
                     "rate_limit_store_unavailable rule={} policy={} uri={} — applying {}: {}",
-                    rule.getId(),
+                    Strings.forLog(rule.getId()),
                     policy,
-                    requestUri,
+                    Strings.forLog(requestUri),
                     policy == RateLimitRule.StoreFailurePolicy.FAIL_CLOSED
                             ? "bounded 503 + Retry-After"
                             : "allowing request (fail open)",
-                    cause == null ? "no Redis connection" : cause.toString()
+                    cause == null ? "no Redis connection" : Strings.forLog(cause.toString())
             );
         }
 
