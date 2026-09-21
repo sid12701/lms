@@ -46,7 +46,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestExecutionListeners;
 
 /**
- * M18: direct-SQL evidence that V136's checks and composite foreign keys enforce the
+ * M18: direct-SQL evidence that V139's checks and composite foreign keys enforce the
  * financial and ownership invariants at the database boundary — a hand edit, a restore,
  * or a future service path that bypasses {@code LoanServicingSupportService} cannot
  * produce an installment whose components don't reconcile, a payment aimed at another
@@ -429,7 +429,7 @@ class LoanComponentOwnershipInvariantIntegrationTest {
         return count == null ? -1 : count;
     }
 
-    private static final String[] V136_CONSTRAINT_NAMES = {
+    private static final String[] V139_CONSTRAINT_NAMES = {
             "chk_installment_amount_components",
             "chk_installment_principal_reconcile",
             "chk_installment_paid_principal_bounded",
@@ -448,7 +448,7 @@ class LoanComponentOwnershipInvariantIntegrationTest {
             haystack.append(' ').append(String.valueOf(cause.getMessage()));
         }
         String text = haystack.toString();
-        String[] expected = names.length == 0 ? V136_CONSTRAINT_NAMES : names;
+        String[] expected = names.length == 0 ? V139_CONSTRAINT_NAMES : names;
         for (String name : expected) {
             if (text.contains(name)) {
                 return true;

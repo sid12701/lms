@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (audit remediation batch 9)
 - **Source:** Consolidated audit `docs/audits/lms-consolidated-audit-and-fix-specs-2026-09-06.md` — M02 (borrower visibility can outlive failed onboarding; race recovery inconsistent), M18 (invariants enforced only in selected service paths)
-- **Related:** ADR 0005 (tenant scope fail-closed), ADR 0006 (migration discipline), ADR 0009 (foreclosure pricing policy — Proposed), ADR 0010 (lock order), ADR 0011 (evidence chain), migrations V43, V65, V113, V136; `BorrowerOnboardingService`, `LoanApplicationOnboardingService`, `BorrowerLspRelationshipService`
+- **Related:** ADR 0005 (tenant scope fail-closed), ADR 0006 (migration discipline), ADR 0009 (foreclosure pricing policy — Proposed), ADR 0010 (lock order), ADR 0011 (evidence chain), migrations V43, V65, V113, V139; `BorrowerOnboardingService`, `LoanApplicationOnboardingService`, `BorrowerLspRelationshipService`
 
 ## Context
 
@@ -101,7 +101,7 @@ service code.
    what the generator produces and what `validateProvidedInstallments` demands of
    LSP-supplied schedules. `paid_amount <= installment_amount` follows transitively
    through the existing V65 `chk_installment_paid_sum`/`chk_installment_total`.
-7. **Ownership agreement is enforced by composite foreign keys** (migration V136):
+7. **Ownership agreement is enforced by composite foreign keys** (migration V139):
    a payment's `repayment_installment_id`/`foreclosure_quote_id` must belong to the
    payment's `loan_account_id`; an application's `loan_product_version_id` must be a
    version of its `loan_product_id`; an account's `loan_product_version_id` must be
