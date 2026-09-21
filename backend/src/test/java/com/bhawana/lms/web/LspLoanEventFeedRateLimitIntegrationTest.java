@@ -257,9 +257,10 @@ class LspLoanEventFeedRateLimitIntegrationTest {
                 ProxyManager<String> rateLimitProxyManager,
                 ObjectMapper objectMapper,
                 RateLimitProperties rateLimitProperties,
-                ObjectProvider<OpsAlertEmitters> opsAlertEmittersProvider
+                ObjectProvider<OpsAlertEmitters> opsAlertEmittersProvider,
+                io.micrometer.core.instrument.MeterRegistry meterRegistry
         ) {
-            return new RateLimitFilter(rateLimitProxyManager, objectMapper, rateLimitProperties, opsAlertEmittersProvider);
+            return new RateLimitFilter(rateLimitProxyManager, objectMapper, rateLimitProperties, opsAlertEmittersProvider, meterRegistry);
         }
     }
 

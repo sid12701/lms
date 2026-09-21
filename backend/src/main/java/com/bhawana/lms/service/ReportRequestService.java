@@ -92,30 +92,40 @@ public class ReportRequestService {
         return reportRequestRepository.findTop50ByOrderByCreatedAtDesc();
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * Buffers a completed report into memory — kept for callers that genuinely need bytes.
+     * New download paths should prefer {@link #openCompletedReportDownload}, which streams.
+     */
     public GeneratedStoredReport getCompletedReport(UUID requestId) {
-        CompletedReportDownload download = getCompletedReportDownload(requestId);
-        return new GeneratedStoredReport(
-                download.fileName(),
-                download.mediaType(),
-                download.content()
-        );
+        try (StreamedReportDownload download = openCompletedReportDownload(requestId)) {
+            return new GeneratedStoredReport(
+                    download.fileName(),
+                    download.mediaType(),
+                    download.content().readAllBytes()
+            );
+        } catch (java.io.IOException exception) {
+            throw new IllegalStateException("Unable to read stored report content.", exception);
+        }
     }
 
-    @Transactional(readOnly = true)
-    public CompletedReportDownload getCompletedReportDownload(UUID requestId) {
+    // Intentionally not @Transactional: the metadata read is a single short repository call
+    // (each repository read checks out and releases its own connection), and the object stream
+    // must never be opened while a pooled database connection is held (H24/M05). The returned
+    // stream is closed by the caller after the response body is written.
+    public StreamedReportDownload openCompletedReportDownload(UUID requestId) {
         ReportRequest reportRequest = reportRequestRepository.findById(requestId)
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown report request id: " + requestId));
         if (reportRequest.getStatus() != ReportRequestStatus.COMPLETED || reportRequest.getStorageKey() == null) {
             throw new ApiConflictException("REPORT_NOT_READY", "Report is not ready for download.");
         }
 
-        byte[] content = reportStorageService.retrieve(reportRequest.getStorageKey());
-        return new CompletedReportDownload(
+        ReportStorageService.ReportStream stream = reportStorageService.openStream(reportRequest.getStorageKey());
+        return new StreamedReportDownload(
                 reportRequest,
                 reportRequest.getFileName(),
                 reportRequest.getMediaType(),
-                content
+                stream.content(),
+                stream.contentLength()
         );
     }
 
@@ -391,12 +401,19 @@ public class ReportRequestService {
     ) {
     }
 
-    public record CompletedReportDownload(
+    /** A lazily-streamed report download with its metadata; the caller must close it. */
+    public record StreamedReportDownload(
             ReportRequest reportRequest,
             String fileName,
             String mediaType,
-            byte[] content
-    ) {
+            java.io.InputStream content,
+            long contentLength
+    ) implements java.io.Closeable {
+
+        @Override
+        public void close() throws java.io.IOException {
+            content.close();
+        }
     }
 
     public record ProcessingSummary(

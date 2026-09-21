@@ -1,61 +1,68 @@
 package com.bhawana.lms.security;
 
-import io.github.bucket4j.distributed.ExpirationAfterWriteStrategy;
-import io.github.bucket4j.distributed.proxy.ProxyManager;
-import io.github.bucket4j.redis.lettuce.Bucket4jLettuce;
-import io.lettuce.core.RedisClient;
-import io.lettuce.core.api.StatefulRedisConnection;
-import io.lettuce.core.codec.ByteArrayCodec;
-import io.lettuce.core.codec.RedisCodec;
-import io.lettuce.core.codec.StringCodec;
-import java.time.Duration;
+import io.lettuce.core.AbstractRedisClient;
 import com.bhawana.lms.service.OpsAlertEmitters;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 
+/**
+ * Rate-limit wiring (M10). The rate limiter reuses the auto-configured
+ * {@link LettuceConnectionFactory}'s native Lettuce client, so every validated
+ * {@code spring.data.redis.*} option — username/password, TLS ({@code ssl.enabled} /
+ * {@code ssl.bundle}), database, client name, connect timeout and the command timeout that
+ * bounds every rate-limit round-trip — applies to the limiter instead of being silently
+ * dropped by a hand-rolled {@code redis://host:port} URI.
+ *
+ * <p>Nothing connects to Redis at startup: {@link RateLimitRedisConnectionProvider} dials
+ * lazily on first rate-limited request and retries on a cooldown, so an unavailable store at
+ * boot is a per-route outage-policy decision (see {@code RateLimitRule.onStoreFailure}),
+ * not a failed context — and recovery needs no restart.
+ */
 @Configuration
 @ConditionalOnProperty(name = "app.rate-limit.enabled", havingValue = "true", matchIfMissing = true)
 public class RateLimitConfig {
 
-    @Bean(destroyMethod = "shutdown")
-    public RedisClient rateLimitRedisClient(
-            @Value("${spring.data.redis.host:localhost}") String host,
-            @Value("${spring.data.redis.port:6379}") int port
-    ) {
-        return RedisClient.create("redis://" + host + ":" + port);
-    }
-
     @Bean(destroyMethod = "close")
-    public StatefulRedisConnection<String, byte[]> rateLimitRedisConnection(RedisClient rateLimitRedisClient) {
-        RedisCodec<String, byte[]> codec = RedisCodec.of(StringCodec.UTF8, ByteArrayCodec.INSTANCE);
-        return rateLimitRedisClient.connect(codec);
-    }
-
-    @Bean
-    public ProxyManager<String> rateLimitProxyManager(
-            StatefulRedisConnection<String, byte[]> rateLimitRedisConnection
+    RateLimitRedisConnectionProvider rateLimitRedisConnectionProvider(
+            RedisConnectionFactory redisConnectionFactory,
+            RateLimitProperties properties
     ) {
-        return Bucket4jLettuce.casBasedBuilder(rateLimitRedisConnection)
-                .expirationAfterWrite(ExpirationAfterWriteStrategy.fixedTimeToLive(Duration.ofMinutes(10)))
-                .build();
+        if (!(redisConnectionFactory instanceof LettuceConnectionFactory lettuceConnectionFactory)) {
+            throw new IllegalStateException(
+                    "app.rate-limit.enabled=true requires the Lettuce-based RedisConnectionFactory "
+                            + "(spring.data.redis.client-type=lettuce, the default); found "
+                            + redisConnectionFactory.getClass().getName()
+            );
+        }
+        AbstractRedisClient nativeClient = lettuceConnectionFactory.getNativeClient();
+        if (nativeClient == null) {
+            throw new IllegalStateException(
+                    "LettuceConnectionFactory has no native client — check spring.data.redis.* configuration."
+            );
+        }
+        return new RateLimitRedisConnectionProvider(nativeClient, properties.getReconnectInterval());
     }
 
     @Bean
     public RateLimitFilter rateLimitFilter(
-            ProxyManager<String> rateLimitProxyManager,
+            RateLimitRedisConnectionProvider rateLimitRedisConnectionProvider,
             ObjectMapper objectMapper,
             RateLimitProperties properties,
-            ObjectProvider<OpsAlertEmitters> opsAlertEmittersProvider
+            ObjectProvider<OpsAlertEmitters> opsAlertEmittersProvider,
+            MeterRegistry meterRegistry
     ) {
         return new RateLimitFilter(
-                rateLimitProxyManager,
+                rateLimitRedisConnectionProvider::proxyManager,
                 objectMapper,
                 properties,
-                opsAlertEmittersProvider
+                opsAlertEmittersProvider,
+                meterRegistry
         );
     }
 }

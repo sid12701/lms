@@ -8,6 +8,7 @@ import com.bhawana.lms.service.AdminApiIdempotencyService;
 import com.bhawana.lms.service.ReportAccessAuditService;
 import com.bhawana.lms.service.ReportRequestService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import java.io.IOException;
@@ -171,21 +172,33 @@ public class ReportAdminController {
         return new ProcessReportRequestsResponse(summary.processed(), summary.completed(), summary.failed());
     }
 
+    /**
+     * Streams the stored report straight to the response (M05): the object body is copied
+     * through without buffering the whole export in heap, and the storage stream is closed
+     * once the body is written. The audit row records the advertised content length — the
+     * same byte count the response claims — before streaming starts, matching the previous
+     * record-then-send ordering.
+     */
     @GetMapping("/requests/{requestId}/download")
-    public ResponseEntity<byte[]> downloadGeneratedReport(
+    public void downloadGeneratedReport(
             @AuthenticationPrincipal Jwt principal,
             HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse,
             @PathVariable UUID requestId
-    ) {
-        ReportRequestService.CompletedReportDownload download = reportRequestService.getCompletedReportDownload(requestId);
-        reportAccessAuditService.recordMisRequestDownloaded(
-                principal.getSubject(),
-                ClientIpAddresses.resolve(httpRequest),
-                CorrelationIdHolder.get(),
-                download.reportRequest(),
-                download.content().length
-        );
-        return downloadResponse(download.fileName(), download.mediaType(), download.content());
+    ) throws IOException {
+        try (ReportRequestService.StreamedReportDownload download =
+                reportRequestService.openCompletedReportDownload(requestId)) {
+            reportAccessAuditService.recordMisRequestDownloaded(
+                    principal.getSubject(),
+                    ClientIpAddresses.resolve(httpRequest),
+                    CorrelationIdHolder.get(),
+                    download.reportRequest(),
+                    download.contentLength()
+            );
+            writeDownloadResponse(httpResponse, download.fileName(), download.mediaType(), download.contentLength());
+            download.content().transferTo(httpResponse.getOutputStream());
+            httpResponse.flushBuffer();
+        }
     }
 
     private static ResponseEntity<byte[]> downloadResponse(String fileName, String mediaType, byte[] content) {
@@ -194,6 +207,23 @@ public class ReportAdminController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(fileName).build().toString())
                 .contentType(contentType)
                 .body(content);
+    }
+
+    private static void writeDownloadResponse(
+            HttpServletResponse response,
+            String fileName,
+            String mediaType,
+            long contentLength
+    ) {
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.setContentType(MediaType.parseMediaType(mediaType).toString());
+        response.setHeader(
+                HttpHeaders.CONTENT_DISPOSITION,
+                ContentDisposition.attachment().filename(fileName).build().toString()
+        );
+        if (contentLength >= 0) {
+            response.setContentLengthLong(contentLength);
+        }
     }
 
     private static ReportRequestResponse toResponse(ReportRequest reportRequest) {
