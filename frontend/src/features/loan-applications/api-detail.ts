@@ -10,8 +10,11 @@
  * internal ops endpoints with BR-5 idempotency keys.
  */
 import type {
+  OpsDisbursementReferenceResponse,
+  OpsLoanApplicationAuditEventResponse,
   OpsLoanApplicationDetailResponse,
   OpsLoanApplicationDocumentChecklistResponse,
+  OpsLoanForeclosureQuoteResponse,
 } from "@/lib/api/generated/ops-loan-applications";
 import { ApiError, requestJson } from "@/lib/api/http-client";
 import { loadStoredSession } from "@/lib/api/session-storage";
@@ -62,21 +65,9 @@ export interface DisbursementResponse {
   events?: readonly ApplicationAuditEvent[];
 }
 
-interface BackendLoanForeclosureQuoteResponse {
-  id?: string;
-  loanAccountId?: string;
-  version?: number;
-  requestedByUsername?: string;
-  executedByUsername?: string;
-  effectiveDate?: string;
-  outstandingPrincipal?: number;
-  outstandingInterest?: number;
-  settlementAmount?: number;
-  status?: string;
-  executedAt?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
+// Wire shape is the generated contract type — every field is optional on the
+// schema, which is exactly the defensive read `toForeclosureQuote` performs.
+type BackendLoanForeclosureQuoteResponse = OpsLoanForeclosureQuoteResponse;
 
 function toAmount(value: number | null | undefined): number {
   return value ?? 0;
@@ -292,26 +283,17 @@ export async function fetchLoanApplicationDetail(
   return backendToDetail(payload, checklist);
 }
 
-interface BackendAuditEvent {
-  id: string;
-  loanApplicationId: string;
-  action: string;
-  actorUsername: string | null;
-  fromStatus: string | null;
-  toStatus: string | null;
-  note: string | null;
-  reasonCode: string | null;
-  correlationId: string | null;
-  createdAt: string;
-}
+// Wire shape is the generated contract type; the schema marks every field
+// optional, so the projection below supplies the missing-field fallbacks.
+type BackendAuditEvent = OpsLoanApplicationAuditEventResponse;
 
 const APPLICATION_ROLE_FALLBACK = "OPS_USER";
 const APPLICATION_CHANNEL_FALLBACK = "UI";
 
 function toAuditEvent(row: BackendAuditEvent): ApplicationAuditEvent {
   return {
-    id: row.id,
-    applicationId: row.loanApplicationId,
+    id: row.id ?? "",
+    applicationId: row.loanApplicationId ?? "",
     // H28 — unknown transition endpoints stay visible as UNKNOWN:<raw>, never
     // folded into INITIALIZED (which would rewrite history as "started here").
     fromStatus: row.fromStatus ? apiLoanStatus(row.fromStatus) : null,
@@ -320,10 +302,10 @@ function toAuditEvent(row: BackendAuditEvent): ApplicationAuditEvent {
     actorId: row.actorUsername ?? "system",
     actorRole: APPLICATION_ROLE_FALLBACK as ApplicationAuditEvent["actorRole"],
     channel: APPLICATION_CHANNEL_FALLBACK as ApplicationAuditEvent["channel"],
-    correlationId: row.correlationId ?? row.id,
-    reason: row.note ?? row.reasonCode,
+    correlationId: row.correlationId ?? row.id ?? "",
+    reason: row.note ?? row.reasonCode ?? null,
     contextJson: row.reasonCode ? { reasonCode: row.reasonCode } : undefined,
-    createdAt: row.createdAt,
+    createdAt: row.createdAt ?? nowIso(),
   };
 }
 
@@ -565,12 +547,9 @@ interface BackendDisbursementRequestRow {
   requestPayloadJson?: string;
 }
 
-interface DisbursementReferenceResponse {
-  tranRefNo: string;
-  source: string;
-  intentId?: string | null;
-  intentState?: string | null;
-}
+// Wire shape is the generated contract type (all fields optional on the
+// schema); the `?.tranRefNo` truthiness check below is the only read.
+type DisbursementReferenceResponse = OpsDisbursementReferenceResponse;
 
 function toPreviewAmount(value: number | null | undefined): number {
   return value ?? 0;

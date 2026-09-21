@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseFilters } from "./url-state";
 
 export const ADMIN_LIST_FILTER_FIELDS = {
   q: z.string().trim().min(1).max(120).optional(),
@@ -14,27 +15,21 @@ export interface AdminListFilterValues {
 
 const UUID = z.string().uuid();
 
-function readInteger(
-  params: URLSearchParams,
-  key: string,
-  minimum: number,
-  maximum = Number.MAX_SAFE_INTEGER,
-): number | undefined {
-  const raw = params.get(key);
-  if (raw === null) return undefined;
-  const value = Number(raw);
-  return Number.isInteger(value) && value >= minimum && value <= maximum ? value : undefined;
-}
+const ADMIN_LIST_PARAMS_SCHEMA = z.object(ADMIN_LIST_FILTER_FIELDS);
 
+/**
+ * Reads the common admin-list params through the shared schema-driven parser
+ * (`parseFilters` in `./url-state`). Its per-key `ignoredKeys` are discarded:
+ * admin list surfaces do not render an ignored-filter notice, and the parsed
+ * value set is identical either way.
+ *
+ * The write side stays local: the admin convention omits the default first
+ * page (`page=0`) and empty values from the URL, which the generic
+ * serializer does not express — merging it would add `?page=0` noise to
+ * every filter change (the filter bars reset `page` explicitly).
+ */
 export function readAdminListParams(params: URLSearchParams): AdminListFilterValues {
-  const q = params.get("q")?.trim();
-  const page = readInteger(params, "page", 0);
-  const pageSize = readInteger(params, "pageSize", 5, 100);
-  return {
-    ...(q ? { q } : {}),
-    ...(page !== undefined ? { page } : {}),
-    ...(pageSize !== undefined ? { pageSize } : {}),
-  };
+  return parseFilters(ADMIN_LIST_PARAMS_SCHEMA, params).values;
 }
 
 export function writeAdminListParams(filters: AdminListFilterValues): URLSearchParams {
