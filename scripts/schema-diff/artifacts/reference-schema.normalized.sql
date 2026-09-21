@@ -120,7 +120,6 @@ CREATE TABLE public.alert_rule (
     enabled boolean DEFAULT true NOT NULL,
     audience character varying(32) NOT NULL,
     trigger_kind character varying(32) NOT NULL,
-    config_json text,
     last_evaluated_at timestamp with time zone
 );
 CREATE TABLE public.api_client (
@@ -1200,6 +1199,7 @@ CREATE INDEX idx_lsp_audit_event_actor_created ON public.lsp_audit_event USING b
 CREATE INDEX idx_lsp_audit_event_correlation_id ON public.lsp_audit_event USING btree (correlation_id);
 CREATE INDEX idx_lsp_audit_event_lsp_created ON public.lsp_audit_event USING btree (lsp_id, created_at DESC);
 CREATE INDEX idx_ops_alert_status_created_at ON public.ops_alert USING btree (status, created_at DESC);
+CREATE INDEX idx_portfolio_kpi_snapshot_computed ON public.portfolio_kpi_snapshot USING btree (computed_at);
 CREATE INDEX idx_portfolio_kpi_snapshot_lsp_computed ON public.portfolio_kpi_snapshot USING btree (lsp_id, computed_at DESC);
 CREATE INDEX idx_refresh_token_api_client_id ON public.refresh_token USING btree (api_client_id) WHERE (api_client_id IS NOT NULL);
 CREATE INDEX idx_refresh_token_app_user_id ON public.refresh_token USING btree (app_user_id) WHERE (app_user_id IS NOT NULL);

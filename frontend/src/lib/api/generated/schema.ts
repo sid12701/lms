@@ -3137,7 +3137,10 @@ export interface components {
       enabled?: boolean;
       audience?: string;
       triggerKind?: string;
-      configJson?: string;
+      effectiveConfig?: {
+        [key: string]: unknown;
+      };
+      configSource?: string;
       lastEvaluatedAt?: string;
     };
     ProductListItemResponse: {

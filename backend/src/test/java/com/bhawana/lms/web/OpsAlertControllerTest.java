@@ -3,6 +3,7 @@ package com.bhawana.lms.web;
 import com.bhawana.lms.support.TenantContextTestExecutionListener;
 import org.springframework.test.context.TestExecutionListeners;
 
+import static org.hamcrest.Matchers.anEmptyMap;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -257,6 +258,31 @@ class OpsAlertControllerTest {
                 .andExpect(jsonPath("$[?(@.code=='AUTH_BRUTE_FORCE')].triggerKind").value("SCHEDULED"))
                 .andExpect(jsonPath("$[?(@.code=='AUTH_BRUTE_FORCE_DISTRIBUTED')].triggerKind").value("SCHEDULED"))
                 .andExpect(jsonPath("$[?(@.code=='OLDEST_TRANSACTION_AGE')].triggerKind").value("SCHEDULED"));
+    }
+
+    @Test
+    void listAlertRulesExposesEffectiveEvaluatedConfigNotStaleJson() throws Exception {
+        // M06: the API must render the typed app.alert-rules.* configuration the
+        // evaluator enforces — never a persisted config_json blob. The test profile
+        // overrides oldest-transaction-age-seconds to 86400, so a displayed 86400
+        // proves the response tracks the deployed evaluation boundary, not a seed copy.
+        mockMvc.perform(get("/api/v1/internal/alerts/rules")
+                        .with(jwt()
+                                .jwt(jwt -> jwt
+                                        .subject("ops.admin")
+                                        .claim("roles", List.of("SYSTEM_ADMIN")))
+                                .authorities(() -> "ROLE_SYSTEM_ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].configJson").doesNotExist())
+                .andExpect(jsonPath("$[?(@.code=='STALE_INTAKE')].effectiveConfig.staleHours").value(24))
+                .andExpect(jsonPath("$[?(@.code=='STUCK_DISBURSEMENT')].effectiveConfig.stuckHours").value(2))
+                .andExpect(jsonPath("$[?(@.code=='LSP_AUTO_REJECT_SPIKE')].effectiveConfig.rejectRatePct").value(40))
+                .andExpect(jsonPath("$[?(@.code=='AUTH_BRUTE_FORCE')].effectiveConfig.threshold").value(5))
+                .andExpect(jsonPath("$[?(@.code=='AUTH_BRUTE_FORCE')].effectiveConfig.windowMinutes").value(10))
+                .andExpect(jsonPath("$[?(@.code=='AUTH_BRUTE_FORCE_DISTRIBUTED')].effectiveConfig.distinctIpMin").value(5))
+                .andExpect(jsonPath("$[?(@.code=='OLDEST_TRANSACTION_AGE')].effectiveConfig.ageSeconds").value(86400))
+                .andExpect(jsonPath("$[?(@.code=='DPD_BUCKET_TRANSITION')].effectiveConfig", everyItem(anEmptyMap())))
+                .andExpect(jsonPath("$[*].configSource", everyItem(is("application-config"))));
     }
 
     @Test

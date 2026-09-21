@@ -115,7 +115,9 @@ _Avoid_: upload log, orphan list
 
 ## Security
 
-**JWT principal cache (accepted property):** Managed-user and API-client JWT validation uses a 30-second in-process cache keyed by username or client id. Session revocation, password reset, lockout, and token-version bumps evict the cache entry immediately; worst-case stale acceptance is bounded by the TTL.
+**JWT principal cache (accepted property):** Managed-user and API-client JWT validation uses an in-process cache keyed by username or client id (TTL `app.security.principal-cache-ttl`, default 30 s). Session revocation, password reset, lockout, and token-version bumps evict the cache entry immediately on the mutating instance; worst-case stale acceptance on any other instance is bounded by the TTL. LSP IP-allowlist snapshots follow the same per-process pattern (`app.security.lsp-ip-allowlist-cache-ttl`, default 60 s). The documented maximum cross-instance revocation/enforcement delay is therefore 60 s; no cross-instance invalidation messaging exists because that bound is the accepted SLA (L04 — see [ADR 0014](docs/adr/0014-credential-retention-and-revocation-sla.md)).
+
+**Credential and derived-data retention (L04):** `refresh_token` rows are purged only after `expires_at` plus a forensic margin (`app.security.refresh-token-retention.expired-retention-days`, default 30 days), in bounded indexed batches — a live token or a revoked-but-unexpired row is never deleted, because the latter is the evidence family reuse detection reads on replay. Derived `portfolio_kpi_snapshot` rows older than `app.portfolio-kpi.retention-days` (default 400 days) are purged in batches, always preserving the newest row per scope. Idempotency replay records keep their existing 90-day purge. Immutable financial and audit records are never pruned.
 
 **SPA access token (Spec S11):** The browser holds the access JWT in memory only. `localStorage` may keep session metadata (user/roles/expiry) for shell continuity; reload acquires a fresh access token via the HttpOnly refresh cookie. Frontend HTTP clients refuse credential-bearing cross-origin absolute URLs (Spec S7).
 

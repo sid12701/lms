@@ -159,7 +159,9 @@ interface BackendAlertRuleResponse {
   enabled: boolean;
   audience: string;
   triggerKind: string;
-  configJson: string | null;
+  // The typed app.alert-rules.* values the evaluator enforces (read-only, M06).
+  effectiveConfig: Record<string, unknown>;
+  configSource: string;
   lastEvaluatedAt: string | null;
 }
 
@@ -172,7 +174,8 @@ function toAlertRuleRow(payload: BackendAlertRuleResponse): AlertRuleRow {
     enabled: payload.enabled,
     audience: payload.audience === "OPS" ? "OPS" : "SYSTEM_ADMIN",
     triggerKind: payload.triggerKind === "EVENT" ? "EVENT" : "SCHEDULED",
-    configJson: payload.configJson,
+    effectiveConfig: payload.effectiveConfig ?? {},
+    configSource: payload.configSource,
     lastEvaluatedAt: payload.lastEvaluatedAt,
   };
 }

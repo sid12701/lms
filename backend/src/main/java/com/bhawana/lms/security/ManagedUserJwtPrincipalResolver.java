@@ -19,9 +19,9 @@ import org.springframework.stereotype.Component;
  * password/token versions). Missing subjects, deleted users and unrecognized token types fail
  * closed here; API-client tokens defer to {@link ApiClientJwtSessionValidator} on its own branch.
  *
- * <p>Principal snapshots are cached for {@link AuthPrincipalCache#TTL_MILLIS} (30s): revocation
- * (delete/disable/version bump) is therefore effective within 30 seconds per instance, sooner
- * when the mutation path evicts explicitly (see SessionRevocationService, UserAdminService).
+ * <p>Principal snapshots are cached for {@code app.security.principal-cache-ttl} (default 30s):
+ * revocation (delete/disable/version bump) is therefore effective within that bound per instance,
+ * sooner when the mutation path evicts explicitly (see SessionRevocationService, UserAdminService).
  * A deleted subject's token can never authenticate past that bound, and the explicit bootstrap
  * sync route re-checks actor liveness instead of trusting a cached snapshot.
  *

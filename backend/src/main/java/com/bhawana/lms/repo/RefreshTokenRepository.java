@@ -40,7 +40,24 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
             """)
     Optional<RefreshToken> findLiveHeadByFamilyIdForUpdate(@Param("familyId") UUID familyId);
 
-    int deleteByExpiresAtBefore(Instant cutoff);
+    /**
+     * Bounded purge batch (L04): deletes at most {@code batchSize} rows whose
+     * {@code expires_at} is older than {@code cutoff}, oldest first, using
+     * {@code idx_refresh_token_expires}. The predicate is expiry-based, so it can
+     * never remove a live or revoked-but-still-presentable row — the evidence
+     * family reuse detection needs is exactly those unexpired rows.
+     */
+    @Modifying
+    @Query(value = """
+            DELETE FROM refresh_token
+            WHERE id IN (
+                SELECT id FROM refresh_token
+                WHERE expires_at < :cutoff
+                ORDER BY expires_at ASC
+                LIMIT :batchSize
+            )
+            """, nativeQuery = true)
+    int deleteExpiredBatch(@Param("cutoff") Instant cutoff, @Param("batchSize") int batchSize);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
