@@ -682,7 +682,10 @@ CREATE TABLE public.loan_foreclosure_quote (
     status character varying(32) NOT NULL,
     executed_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT chk_foreclosure_quote_outstanding_interest_non_negative CHECK ((outstanding_interest >= (0)::numeric)),
+    CONSTRAINT chk_foreclosure_quote_outstanding_principal_non_negative CHECK ((outstanding_principal >= (0)::numeric)),
+    CONSTRAINT chk_foreclosure_quote_settlement_amount_non_negative CHECK ((settlement_amount >= (0)::numeric))
 );
 ALTER TABLE ONLY public.loan_foreclosure_quote FORCE ROW LEVEL SECURITY;
 CREATE TABLE public.loan_payment_transaction (
@@ -782,6 +785,7 @@ CREATE TABLE public.loan_repayment_schedule_installment (
     outstanding_amount numeric(19,2) DEFAULT 0 NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     entity_version bigint DEFAULT 0 NOT NULL,
+    CONSTRAINT chk_installment_amount_components CHECK ((installment_amount = (principal_due + interest_due))),
     CONSTRAINT chk_installment_amount_non_negative CHECK ((installment_amount >= (0)::numeric)),
     CONSTRAINT chk_installment_closing_principal_non_negative CHECK ((closing_principal >= (0)::numeric)),
     CONSTRAINT chk_installment_interest_due_non_negative CHECK ((interest_due >= (0)::numeric)),
@@ -789,10 +793,13 @@ CREATE TABLE public.loan_repayment_schedule_installment (
     CONSTRAINT chk_installment_opening_principal_non_negative CHECK ((opening_principal >= (0)::numeric)),
     CONSTRAINT chk_installment_outstanding_non_negative CHECK ((outstanding_amount >= (0)::numeric)),
     CONSTRAINT chk_installment_paid_amount_non_negative CHECK ((paid_amount >= (0)::numeric)),
+    CONSTRAINT chk_installment_paid_interest_bounded CHECK ((paid_interest <= interest_due)),
     CONSTRAINT chk_installment_paid_interest_non_negative CHECK ((paid_interest >= (0)::numeric)),
+    CONSTRAINT chk_installment_paid_principal_bounded CHECK ((paid_principal <= principal_due)),
     CONSTRAINT chk_installment_paid_principal_non_negative CHECK ((paid_principal >= (0)::numeric)),
     CONSTRAINT chk_installment_paid_sum CHECK ((paid_amount = (paid_principal + paid_interest))),
     CONSTRAINT chk_installment_principal_due_non_negative CHECK ((principal_due >= (0)::numeric)),
+    CONSTRAINT chk_installment_principal_reconcile CHECK ((closing_principal = (opening_principal - principal_due))),
     CONSTRAINT chk_installment_total CHECK (((paid_amount + outstanding_amount) = installment_amount))
 );
 ALTER TABLE ONLY public.loan_repayment_schedule_installment FORCE ROW LEVEL SECURITY;
@@ -1091,12 +1098,20 @@ ALTER TABLE ONLY public.report_request
     ADD CONSTRAINT report_request_pkey PRIMARY KEY (id);
 ALTER TABLE ONLY public.borrower_lsp_relationship
     ADD CONSTRAINT uk_borrower_lsp_relationship UNIQUE (borrower_id, lsp_id);
+ALTER TABLE ONLY public.loan_foreclosure_quote
+    ADD CONSTRAINT uk_foreclosure_quote_id_loan_account UNIQUE (id, loan_account_id);
+ALTER TABLE ONLY public.loan_repayment_schedule_installment
+    ADD CONSTRAINT uk_installment_id_loan_account UNIQUE (id, loan_account_id);
+ALTER TABLE ONLY public.loan_application
+    ADD CONSTRAINT uk_loan_application_identity UNIQUE (id, borrower_id, lsp_id, loan_product_id, loan_product_version_id);
 ALTER TABLE ONLY public.loan_application
     ADD CONSTRAINT uk_loan_application_lsp_external UNIQUE (lsp_id, external_loan_id);
 ALTER TABLE ONLY public.loan_payment_transaction
     ADD CONSTRAINT uk_loan_payment_transaction_idempotency_key UNIQUE (idempotency_key);
 ALTER TABLE ONLY public.loan_product_lsp_mapping
     ADD CONSTRAINT uk_loan_product_lsp_mapping UNIQUE (loan_product_id, lsp_id);
+ALTER TABLE ONLY public.loan_product_version
+    ADD CONSTRAINT uk_loan_product_version_id_product UNIQUE (id, loan_product_id);
 ALTER TABLE ONLY public.lsp_ui_ip_allowlist
     ADD CONSTRAINT uk_lsp_ui_ip_allowlist_lsp_cidr UNIQUE (lsp_id, cidr);
 ALTER TABLE ONLY public.loan_application_document_checklist
@@ -1268,10 +1283,20 @@ ALTER TABLE ONLY public.disbursement_reconciliation_queue
     ADD CONSTRAINT disbursement_reconciliation_queue_intent_id_fkey FOREIGN KEY (intent_id) REFERENCES public.disbursement_intent(id);
 ALTER TABLE ONLY public.disbursement_reconciliation_queue
     ADD CONSTRAINT disbursement_reconciliation_queue_loan_account_id_fkey FOREIGN KEY (loan_account_id) REFERENCES public.loan_account(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.loan_account
+    ADD CONSTRAINT fk_account_matches_application FOREIGN KEY (loan_application_id, borrower_id, lsp_id, loan_product_id, loan_product_version_id) REFERENCES public.loan_application(id, borrower_id, lsp_id, loan_product_id, loan_product_version_id);
+ALTER TABLE ONLY public.loan_account
+    ADD CONSTRAINT fk_account_version_same_product FOREIGN KEY (loan_product_version_id, loan_product_id) REFERENCES public.loan_product_version(id, loan_product_id);
+ALTER TABLE ONLY public.loan_application
+    ADD CONSTRAINT fk_application_version_same_product FOREIGN KEY (loan_product_version_id, loan_product_id) REFERENCES public.loan_product_version(id, loan_product_id);
 ALTER TABLE ONLY public.loan_application_document_version
     ADD CONSTRAINT fk_document_version_corrects_evidence FOREIGN KEY (corrects_evidence_id) REFERENCES public.loan_application_approval_evidence(id);
 ALTER TABLE ONLY public.loan_application_document_access_audit
     ADD CONSTRAINT fk_loan_document_access_audit_application FOREIGN KEY (loan_application_id) REFERENCES public.loan_application(id);
+ALTER TABLE ONLY public.loan_payment_transaction
+    ADD CONSTRAINT fk_payment_foreclosure_quote_same_account FOREIGN KEY (foreclosure_quote_id, loan_account_id) REFERENCES public.loan_foreclosure_quote(id, loan_account_id);
+ALTER TABLE ONLY public.loan_payment_transaction
+    ADD CONSTRAINT fk_payment_installment_same_account FOREIGN KEY (repayment_installment_id, loan_account_id) REFERENCES public.loan_repayment_schedule_installment(id, loan_account_id);
 ALTER TABLE ONLY public.refresh_token
     ADD CONSTRAINT fk_refresh_token_api_client FOREIGN KEY (api_client_id) REFERENCES public.api_client(id) ON DELETE CASCADE;
 ALTER TABLE ONLY public.refresh_token
