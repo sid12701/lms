@@ -39,7 +39,7 @@ public class AlertRule {
 
     // No config payload column: evaluation thresholds come exclusively from typed
     // application configuration (app.alert-rules.*). A persisted JSON copy can only
-    // drift from the evaluated values, so it was retired (V136, M06).
+    // drift from the evaluated values, so it was retired (V137, M06).
     @Column(name = "last_evaluated_at")
     private Instant lastEvaluatedAt;
 

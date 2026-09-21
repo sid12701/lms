@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>Rule rows carry identity and the enabled flag only. Evaluation thresholds are typed
  * application configuration ({@code app.alert-rules.*}); there is no per-row config payload
- * to seed (M06, V136).
+ * to seed (M06, V137).
  */
 @Component
 public class AlertRuleDataInitializer implements ApplicationRunner {
