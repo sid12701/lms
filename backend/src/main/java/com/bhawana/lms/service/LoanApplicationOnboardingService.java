@@ -85,16 +85,28 @@ public class LoanApplicationOnboardingService {
             LoanApplicationOnboardingCommand command,
             UUID enforcedLspId
     ) {
+        // Inside a caller-owned transaction (e.g. the LSP idempotency wrapper) the
+        // boundary is not ours to replay: a failure there rolls the whole outer
+        // transaction back and is reported as-is.
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             return doCreateApplication(actorUsername, command, enforcedLspId);
         }
-        DataIntegrityViolationException lastRace = null;
+        RuntimeException lastRace = null;
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
                 return scopePreservingTransactionExecutor.call(
                         () -> doCreateApplication(actorUsername, command, enforcedLspId));
-            } catch (DataIntegrityViolationException borrowerRace) {
-                lastRace = borrowerRace;
+            } catch (RuntimeException failure) {
+                // M02: only the borrower-PAN find-or-create race is worth replaying —
+                // a concurrent onboarding may have committed the shared identity
+                // between our lookup and our insert, and the retry resolves it
+                // through the committed-read reuse path. Every other integrity
+                // failure (external loan id, FK, check) is deterministic input, so
+                // replaying would merely re-fail; it propagates on first sight.
+                if (!isBorrowerPanRace(failure)) {
+                    throw failure;
+                }
+                lastRace = failure;
             }
         }
         throw lastRace;
@@ -238,6 +250,34 @@ public class LoanApplicationOnboardingService {
                 LoanEventPayloads.loanCreated(savedApplication)
         );
         return savedApplication;
+    }
+
+    /**
+     * True only when the failure's cause chain carries a unique violation of
+     * {@code uk_borrower_pan} — the one race where a retry observes a different,
+     * better answer (the committed shared borrower). The violation can surface as a
+     * mid-transaction {@link DataIntegrityViolationException} at flush or wrapped in
+     * a commit-time {@code TransactionSystemException}, so the whole cause chain is
+     * scanned rather than the top-level type.
+     */
+    private static boolean isBorrowerPanRace(RuntimeException failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException violation) {
+                String constraint = violation.getConstraintName();
+                if (constraint != null
+                        && "uk_borrower_pan".equals(constraint.toLowerCase().replace("\"", ""))) {
+                    return true;
+                }
+            }
+            if (cause instanceof java.sql.SQLException sqlException
+                    && "23505".equals(sqlException.getSQLState())) {
+                String message = sqlException.getMessage();
+                if (message != null && message.contains("uk_borrower_pan")) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private LoanProduct resolveLoanProduct(LoanApplicationOnboardingCommand command) {
